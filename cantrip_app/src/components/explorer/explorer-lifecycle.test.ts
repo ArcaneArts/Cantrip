@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExplorerLifecycleActions } from "./explorer-view";
 import {
   confirmExplorerDiscard,
+  deleteExplorerAfterPreparation,
   nextExplorerEntryReplayKey,
   prepareExplorerPopout,
   prepareExplorerRebind,
@@ -12,8 +13,10 @@ function lifecycle(
   overrides: Partial<ExplorerLifecycleActions> = {},
 ): ExplorerLifecycleActions {
   return {
+    cancelClose: vi.fn(),
     dirty: false,
     flushViewState: vi.fn().mockResolvedValue(true),
+    prepareClose: vi.fn().mockResolvedValue(undefined),
     reconcile: vi.fn(),
     save: vi.fn().mockResolvedValue(true),
     ...overrides,
@@ -64,6 +67,36 @@ describe("Explorer lifecycle preparation", () => {
     expect(await prepareExplorerPopout(stateFailed, () => true)).toBe(
       "state-failed",
     );
+  });
+
+  it("retires local ownership before deleting and resumes after delete failure", async () => {
+    const order: string[] = [];
+    const actions = lifecycle({
+      cancelClose: vi.fn(() => order.push("resume")),
+      prepareClose: vi.fn(async () => {
+        order.push("local-retired");
+      }),
+    });
+    await expect(
+      deleteExplorerAfterPreparation(actions, async () => {
+        order.push("server-delete");
+        return "deleted";
+      }),
+    ).resolves.toBe("deleted");
+    expect(order).toEqual(["local-retired", "server-delete"]);
+    expect(actions.cancelClose).not.toHaveBeenCalled();
+
+    await expect(
+      deleteExplorerAfterPreparation(actions, async () => {
+        order.push("failed-delete");
+        throw new Error("delete failed");
+      }),
+    ).rejects.toThrow("delete failed");
+    expect(order.slice(-3)).toEqual([
+      "local-retired",
+      "failed-delete",
+      "resume",
+    ]);
   });
 });
 

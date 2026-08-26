@@ -129,7 +129,9 @@ vi.mock("@/lib/desktop-code", () => ({
 import {
   EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT,
   ExplorerCodeEditor,
+  type ExplorerCodeEditorLifecycleActions,
 } from "./explorer-code-editor";
+import { deleteExplorerAfterPreparation } from "./explorer-lifecycle";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -251,6 +253,9 @@ function editor(
     active?: boolean;
     appearance?: CodeAppearance;
     explorerId?: string;
+    onLifecycleChange?(
+      actions: ExplorerCodeEditorLifecycleActions | null,
+    ): void;
     onReady?: () => void;
     workerId?: string;
     workerOnline?: boolean;
@@ -261,6 +266,7 @@ function editor(
     active: options.active ?? true,
     appearance: options.appearance ?? "dark",
     explorerId: options.explorerId ?? "explorer-1",
+    onLifecycleChange: options.onLifecycleChange,
     onReady: options.onReady,
     path,
     workerId: options.workerId ?? "worker-1",
@@ -300,14 +306,20 @@ async function mount(
   path: string | null,
   workerOnline = true,
   onReady?: () => void,
+  onLifecycleChange?: (
+    actions: ExplorerCodeEditorLifecycleActions | null,
+  ) => void,
 ) {
   const frameWindow = {} as Window;
   let renderer!: TestRenderer.ReactTestRenderer;
   await act(async () => {
-    renderer = TestRenderer.create(editor(path, { onReady, workerOnline }), {
-      createNodeMock: (element) =>
-        element.type === "iframe" ? { contentWindow: frameWindow } : null,
-    });
+    renderer = TestRenderer.create(
+      editor(path, { onLifecycleChange, onReady, workerOnline }),
+      {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: frameWindow } : null,
+      },
+    );
   });
   await settle();
   return { frameWindow, renderer };
@@ -400,6 +412,73 @@ afterEach(() => {
 });
 
 describe("ExplorerCodeEditor warm lifecycle", () => {
+  it("quiesces and retires the local lease and session before Explorer deletion", async () => {
+    tauri.enabled = true;
+    const order: string[] = [];
+    let lifecycle: ExplorerCodeEditorLifecycleActions | null = null;
+    desktopCode.stopSharedProtectedCodeAttachment.mockImplementation(
+      async () => {
+        order.push("local-lease-retired");
+      },
+    );
+    api.releaseProtectedExplorerCodeSessionAttachment.mockImplementation(
+      async () => {
+        order.push("session-released");
+      },
+    );
+    const { renderer } = await mount(
+      "src/closing.ts",
+      true,
+      undefined,
+      (actions) => {
+        if (actions) lifecycle = actions;
+      },
+    );
+    expect(lifecycle).not.toBeNull();
+    expect(renderer.root.findAllByType("iframe")).toHaveLength(1);
+
+    const explorerActions = {
+      cancelClose: () => lifecycle?.cancelClose(),
+      dirty: false,
+      flushViewState: async () => true,
+      prepareClose: () => lifecycle?.prepareClose() ?? Promise.resolve(),
+      reconcile: async () => undefined,
+      save: async () => true,
+    };
+    let deletion!: Promise<void>;
+    await act(async () => {
+      deletion = deleteExplorerAfterPreparation(explorerActions, async () => {
+        order.push("explorer-delete");
+        order.push("server-root-retired");
+      });
+      await Promise.resolve();
+    });
+    expect(renderer.root.findAllByType("iframe")).toHaveLength(0);
+    await act(async () => deletion);
+
+    expect(order).toEqual([
+      "local-lease-retired",
+      "session-released",
+      "explorer-delete",
+      "server-root-retired",
+    ]);
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+    await settle();
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+  });
+
   it("uses the shared logical-session path in a browser when v2 is supported", async () => {
     api.createProtectedExplorerCodeSessionAttachment.mockResolvedValueOnce(
       sharedOwned,

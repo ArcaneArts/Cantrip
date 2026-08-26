@@ -206,6 +206,11 @@ export function explorerCodeEditorReadyKey(
 type ExplorerCodeAttachmentOwnership =
   CodeProtectedAttachmentWire | BoundExplorerCodeSessionAttachment;
 
+export interface ExplorerCodeEditorLifecycleActions {
+  cancelClose(): void;
+  prepareClose(): Promise<void>;
+}
+
 function sharedExplorerCodeAttachment(
   owned: ExplorerCodeAttachmentOwnership,
 ): owned is BoundExplorerCodeSessionAttachment {
@@ -232,6 +237,7 @@ export function ExplorerCodeEditor({
   active = true,
   appearance,
   explorerId,
+  onLifecycleChange,
   onReady,
   path,
   worktreeId,
@@ -241,6 +247,7 @@ export function ExplorerCodeEditor({
   active?: boolean;
   appearance: CodeAppearance;
   explorerId: string;
+  onLifecycleChange?(actions: ExplorerCodeEditorLifecycleActions | null): void;
   onReady?: () => void;
   path: string | null;
   worktreeId: string;
@@ -258,6 +265,7 @@ export function ExplorerCodeEditor({
   const [readyKey, setReadyKey] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [closing, setClosing] = useState(false);
   const [navigationRecoveryAttempt, setNavigationRecoveryAttempt] = useState(0);
   const [themeRecoveryAttempt, setThemeRecoveryAttempt] = useState(0);
   const [sharedTransportRecoveryAttempt, setSharedTransportRecoveryAttempt] =
@@ -279,6 +287,9 @@ export function ExplorerCodeEditor({
   const frameFailureNonceRef = useRef<string | null>(null);
   const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const closingRef = useRef(false);
+  const closeCommitResolverRef = useRef<(() => void) | null>(null);
+  const closePromiseRef = useRef<Promise<void> | null>(null);
   const navigationQueueRef = useRef(new SerialTaskQueue());
   const navigationRetryCountRef = useRef(0);
   const navigationRetryIdentityRef = useRef<string | null>(null);
@@ -310,6 +321,30 @@ export function ExplorerCodeEditor({
     new SerializedAttachmentLifecycle<ExplorerCodeAttachmentOwnership>(
       retireExplorerCodeAttachment,
     );
+  const prepareClose = useCallback((): Promise<void> => {
+    if (closePromiseRef.current) return closePromiseRef.current;
+    closingRef.current = true;
+    const committed = new Promise<void>((resolve) => {
+      closeCommitResolverRef.current = resolve;
+    });
+    const closePromise = (async () => {
+      setClosing(true);
+      await committed;
+      await attachmentLifecycleRef.current!.retire(
+        "Explorer Code surface is closing.",
+      );
+    })();
+    closePromiseRef.current = closePromise;
+    return closePromise;
+  }, []);
+  const cancelClose = useCallback(() => {
+    if (!closingRef.current) return;
+    closingRef.current = false;
+    closeCommitResolverRef.current?.();
+    closeCommitResolverRef.current = null;
+    closePromiseRef.current = null;
+    setClosing(false);
+  }, []);
   const pathRef = useRef(path);
   const bindingKey = explorerCodeEditorBindingKey({
     explorerId,
@@ -329,10 +364,11 @@ export function ExplorerCodeEditor({
     : null;
   const frameMount = useMemo(
     () =>
-      preferredAttachment
+      !closing && preferredAttachment
         ? createCodeWorkbenchFrameMount(preferredAttachment.attachment.url)
         : null,
     [
+      closing,
       preferredAttachment?.attachment.attachmentId,
       preferredAttachment?.attachment.url,
       frameDocumentVersion,
@@ -379,6 +415,7 @@ export function ExplorerCodeEditor({
         ].join("\0")
       : null;
   const ready = Boolean(
+    !closing &&
     path !== null &&
     frameReady &&
     readyKey !== null &&
@@ -389,7 +426,20 @@ export function ExplorerCodeEditor({
     if (ready) onReadyRef.current?.();
   }, [ready]);
 
+  useEffect(() => {
+    onLifecycleChange?.({ cancelClose, prepareClose });
+    return () => onLifecycleChange?.(null);
+  }, [cancelClose, onLifecycleChange, prepareClose]);
+  useEffect(
+    () => () => {
+      closeCommitResolverRef.current?.();
+      closeCommitResolverRef.current = null;
+    },
+    [],
+  );
+
   const reload = useCallback(() => {
+    if (closingRef.current) return;
     automaticReplacementCountRef.current = 0;
     automaticReplacementPendingRef.current = true;
     setError(null);
@@ -399,6 +449,7 @@ export function ExplorerCodeEditor({
   const requestAutomaticReplacement = useCallback(
     (expectedBindingKey: string): boolean => {
       if (
+        closingRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         automaticReplacementPendingRef.current
       ) {
@@ -422,6 +473,7 @@ export function ExplorerCodeEditor({
   const consumeConnectionRetry = useCallback(
     (expectedBindingKey: string): boolean => {
       if (
+        closingRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         connectionRetryCountRef.current >= EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT
       ) {
@@ -435,7 +487,9 @@ export function ExplorerCodeEditor({
 
   const requestConnectionRetry = useCallback(
     (expectedBindingKey: string): boolean => {
-      if (bindingKeyRef.current !== expectedBindingKey) return false;
+      if (closingRef.current || bindingKeyRef.current !== expectedBindingKey) {
+        return false;
+      }
       if (connectionInFlightRef.current) {
         pendingConnectionWakeRef.current =
           connectionRetryCountRef.current < EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
@@ -468,6 +522,7 @@ export function ExplorerCodeEditor({
   const requestFrameRetry = useCallback(
     (expectedBindingKey: string, expectedNonce: string | null): boolean => {
       if (
+        closingRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         expectedNonce === null ||
         frameMountRef.current?.nonce !== expectedNonce ||
@@ -499,6 +554,7 @@ export function ExplorerCodeEditor({
   const scheduleFrameRetry = useCallback(
     (expectedBindingKey: string, expectedNonce: string) => {
       if (
+        closingRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         frameMountRef.current?.nonce !== expectedNonce
       ) {
@@ -524,6 +580,7 @@ export function ExplorerCodeEditor({
   const requestNavigationRetry = useCallback(
     (expectedNavigationIdentity: string | null): boolean => {
       if (
+        closingRef.current ||
         expectedNavigationIdentity === null ||
         navigationRetryIdentityRef.current !== expectedNavigationIdentity ||
         !navigationRetryPendingRef.current ||
@@ -587,6 +644,7 @@ export function ExplorerCodeEditor({
   }, [explorerId, workerId, worktreeId]);
 
   useEffect(() => {
+    if (closing) return;
     let cancelled = false;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -638,7 +696,7 @@ export function ExplorerCodeEditor({
               ? preferSharedProtectedCodeAttachment(owned, { signal })
               : preferProtectedCodeAttachment(owned, { signal }),
         );
-        if (!cancelled && preferred) {
+        if (!cancelled && !closingRef.current && preferred) {
           connectionInFlightRef.current = false;
           connectionRetryableRef.current = false;
           connectionRetryCountRef.current = 0;
@@ -650,7 +708,7 @@ export function ExplorerCodeEditor({
           setPreferredAttachment(preferred);
         }
       } catch (connectError) {
-        if (!cancelled) {
+        if (!cancelled && !closingRef.current) {
           connectionInFlightRef.current = false;
           const retryable =
             isRetryableExplorerCodeConnectionError(connectError);
@@ -712,6 +770,7 @@ export function ExplorerCodeEditor({
     };
   }, [
     bindingKey,
+    closing,
     connectionAttempt,
     explorerId,
     requestConnectionRetry,
@@ -720,6 +779,7 @@ export function ExplorerCodeEditor({
   ]);
 
   useEffect(() => {
+    if (closingRef.current) return;
     const wasOnline = previousWorkerOnlineRef.current;
     previousWorkerOnlineRef.current = workerOnline;
     if (
@@ -750,6 +810,7 @@ export function ExplorerCodeEditor({
   ]);
 
   useEffect(() => {
+    if (closingRef.current) return;
     const previousPath = previousPathRef.current;
     previousPathRef.current = path;
     if (previousPath !== null || path === null) return;
@@ -768,6 +829,7 @@ export function ExplorerCodeEditor({
   ]);
 
   useEffect(() => {
+    if (closingRef.current) return;
     const wasActive = previousActiveRef.current;
     previousActiveRef.current = active;
     if (wasActive || !active) return;
@@ -789,7 +851,7 @@ export function ExplorerCodeEditor({
   ]);
 
   useEffect(() => {
-    if (!preferredAttachment) return;
+    if (closing || !preferredAttachment) return;
     const attachmentId = preferredAttachment.attachment.attachmentId;
     if (
       preferredAppearanceRef.current?.attachmentId === attachmentId &&
@@ -848,14 +910,20 @@ export function ExplorerCodeEditor({
         ),
       );
     };
-  }, [appearance, explorerId, preferredAttachment, themeRecoveryAttempt]);
+  }, [
+    appearance,
+    closing,
+    explorerId,
+    preferredAttachment,
+    themeRecoveryAttempt,
+  ]);
 
   useEffect(() => {
     automaticReconnectsRef.current = 0;
   }, [path]);
 
   useEffect(() => {
-    if (!preferredAttachment) return;
+    if (closing || !preferredAttachment) return;
     return subscribePreferredCodeAttachmentUnavailable(
       preferredAttachment,
       () => {
@@ -866,10 +934,11 @@ export function ExplorerCodeEditor({
         requestAutomaticReplacement(bindingKey);
       },
     );
-  }, [bindingKey, preferredAttachment, requestAutomaticReplacement]);
+  }, [bindingKey, closing, preferredAttachment, requestAutomaticReplacement]);
 
   useEffect(() => {
     if (
+      closing ||
       sharedTransportRecoveryAttempt === 0 ||
       sharedTransportRecoveryAttempt <= lastSharedRecoveryAttemptRef.current
     ) {
@@ -923,6 +992,7 @@ export function ExplorerCodeEditor({
     };
   }, [
     bindingKey,
+    closing,
     preferredAttachment,
     requestAutomaticReplacement,
     sharedTransportRecoveryAttempt,
@@ -930,7 +1000,7 @@ export function ExplorerCodeEditor({
 
   useEffect(() => {
     const initial = preferredAttachment?.sharedOwnedAttachment;
-    if (!initial) return;
+    if (closing || !initial) return;
     let current = initial;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -980,7 +1050,7 @@ export function ExplorerCodeEditor({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [bindingKey, preferredAttachment, requestAutomaticReplacement]);
+  }, [bindingKey, closing, preferredAttachment, requestAutomaticReplacement]);
 
   useEffect(() => {
     frameRetryCountRef.current = 0;
@@ -1258,12 +1328,22 @@ export function ExplorerCodeEditor({
     requestNavigationRetry,
   ]);
 
+  useEffect(() => {
+    if (!closing) return;
+    // This effect is intentionally declared after connection, theme,
+    // recovery, renewal, frame, and navigation effects. Their close-state
+    // cleanups quiesce first; only then may the delete caller retire the
+    // serialized attachment and continue to the server surface deletion.
+    closeCommitResolverRef.current?.();
+    closeCommitResolverRef.current = null;
+  }, [closing]);
+
   return (
     <section
       className="relative flex min-h-0 flex-1 overflow-hidden bg-background"
       data-slot="explorer-code-editor"
     >
-      {preferredAttachment ? (
+      {!closing && preferredAttachment ? (
         <iframe
           key={frameMount?.nonce}
           allow="clipboard-read; clipboard-write"
@@ -1303,7 +1383,7 @@ export function ExplorerCodeEditor({
         />
       ) : null}
 
-      {!ready ? (
+      {!closing && !ready ? (
         <div
           className="absolute inset-0 grid place-items-center bg-background p-6"
           data-code-editor-cover={

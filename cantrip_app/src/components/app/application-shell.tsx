@@ -237,6 +237,7 @@ import type {
 } from "@/components/explorer/explorer-view";
 import {
   confirmExplorerDiscard,
+  deleteExplorerAfterPreparation,
   prepareExplorerPopout as prepareExplorerPopoutLifecycle,
   prepareExplorerRebind as prepareExplorerRebindLifecycle,
 } from "@/components/explorer/explorer-lifecycle";
@@ -5882,7 +5883,11 @@ export function App() {
       ),
   });
   const deleteExplorerMutation = useMutation({
-    mutationFn: deleteExplorer,
+    mutationFn: (explorerId: string) =>
+      deleteExplorerAfterPreparation(
+        explorerLifecycleRef.current.get(explorerId),
+        () => deleteExplorer(explorerId),
+      ),
     onSuccess: async (_value, deletedId) => {
       explorerLifecycleRef.current.delete(deletedId);
       await queryClient.invalidateQueries({
