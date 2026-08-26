@@ -1,12 +1,9 @@
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/protocol";
 import type {
-  AppDestinationUpdate,
-  AppMode,
   ArchivedStandaloneChatSummary,
   BrowserSummary,
   BrowserFleetService,
   ChatSummary,
-  ClientControlCommand,
   CodeAppearance,
   CodeTabSummary,
   ExecutionTarget,
@@ -23,11 +20,9 @@ import type {
   ProjectViewSummary,
   RemoteDesktopTarget,
   ScriptCommand,
-  SettingsBundle,
   StandaloneChatSummary,
   TaskDetail,
   TerminalSummary,
-  TunnelSummary,
 } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import {
@@ -86,6 +81,17 @@ import {
   TerminalView,
 } from "@/components/app/application-shell-surfaces";
 import { StatusDot } from "@/components/app/status-dot";
+import { useShellEnvironment } from "@/components/app/shell-environment";
+import {
+  createShellNavigationCommands,
+  createShellProjectNavigationCommands,
+  useAppDestinationPersistence,
+  useProjectSelectionReconciliation,
+  useShellClientControlNavigation,
+  useShellNavigationState,
+  useShellStartupNavigation,
+  type PendingSurfaceSelection,
+} from "@/components/app/shell-navigation";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import { updateAgentInspectOpenChats } from "@/components/chat/agent-inspect-panel";
 import { randomAgentChatTitle } from "@/components/chat/agent-chat-name";
@@ -143,10 +149,7 @@ import { MobileBottomNavigation } from "@/components/mobile/mobile-bottom-naviga
 import { MobileProjectHeader } from "@/components/mobile/mobile-project-header";
 import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
-import {
-  ProjectSettingsPage,
-  type ProjectSettingsSection,
-} from "@/components/projects/project-settings-page";
+import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
 import {
@@ -158,17 +161,11 @@ import {
   FolderProjectDialog,
   type FolderSourceMode,
 } from "@/components/projects/folder-project-dialog";
-import {
-  ProjectCreateMenu,
-  type ProjectCreateSource,
-} from "@/components/projects/project-create-menu";
+import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { RepositoryImporter } from "@/components/projects/repository-importer";
 import { terminalLinkBrowserTitle } from "@/components/terminal/terminal-links";
 import { terminalCommandInput } from "@/components/terminal/terminal-command-palette";
-import {
-  SettingsPage,
-  type SettingsSection,
-} from "@/components/settings/settings-page";
+import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerAdminPage } from "@/components/servers/server-admin-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import {
@@ -193,21 +190,10 @@ import {
   mobileBottomTabConfiguration,
   mobileBottomTabsFromConfiguration,
   PRIMARY_MOBILE_BOTTOM_TAB_ID,
-  projectSelectionAction,
   reconcileMobileBottomTabs,
   removeMobileBottomTab,
 } from "@/lib/mobile-navigation";
-import {
-  shouldUseCompactLayout,
-  shouldUseDesktopSidebarDrawer,
-  useNarrowViewport,
-} from "@/lib/use-compact-layout";
-import {
-  useAppLiveClientControl,
-  useAppLiveScope,
-  useAppLiveStatus,
-} from "@/lib/app-live-react";
-import { openClientNotification } from "@/lib/client-control-content-encryption";
+import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AppToast, type AppToastInput } from "@/components/ui/app-toast";
@@ -221,7 +207,6 @@ import {
 } from "@/components/ui/empty-state";
 import {
   createBrowser,
-  CantripApiError,
   createCodeTab,
   acknowledgeChatCompletion,
   createChat,
@@ -287,10 +272,8 @@ import {
   updateProjectViewWorktree,
   updateProjectTabGroup,
   updateSettings,
-  updateAppDestination,
   updateTerminalWorktree,
 } from "@/lib/api";
-import { resolveAppStartupNavigation } from "@/lib/app-navigation";
 import {
   listRunConfigurationRuntimes,
   listRunConfigurations,
@@ -308,27 +291,16 @@ import {
   desktopPopoutTitlebarLeftInset,
   desktopWindowThemeOverride,
   focusDesktopPopoutGroup,
-  isDesktopRuntime,
   isMacosDesktopRuntime,
   openDesktopExplorerFile,
   openDesktopPopoutGroup,
   openDesktopProjectOverviewPopout,
-  parseDesktopExplorerFileTarget,
-  parseDesktopPopoutGroupTarget,
-  parseDesktopProjectOverviewTarget,
-  shouldUseOverlayTitlebar,
   updateDesktopWindowTheme,
   updateMacosProMode,
   updateDesktopWindowTitle,
   watchDesktopPopoutGroup,
 } from "@/lib/desktop-popout";
-import type { ProjectOverviewSection } from "@/lib/project-overview-section";
-import {
-  desktopFolderRevealLabel,
-  desktopProjectRevealButtonLabel,
-  desktopProjectRevealLabel,
-  revealProjectInNativeFileManager,
-} from "@/lib/desktop-project-share";
+import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { scopedClientStorageKey } from "@/lib/client-session";
 import { useDesktopDirectTransportTelemetry } from "@/lib/direct-transport-telemetry";
@@ -381,7 +353,6 @@ import {
 } from "@/lib/project-tab-layout-optimistic";
 import {
   projectsInWorkspace,
-  resolveProjectWorkspaceForSelection,
   resolveProjectWorkspace,
 } from "@/lib/project-workspaces";
 import {
@@ -422,93 +393,63 @@ export function App() {
   );
   const liveStatus = useAppLiveStatus();
   const projectResourcesLive = liveStatus === "live";
-  const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
-  const projectRevealLabel = useMemo(
-    () => desktopProjectRevealLabel(desktopRuntime, navigator.userAgent),
-    [desktopRuntime],
-  );
-  const projectRevealButtonLabel = useMemo(
-    () => desktopProjectRevealButtonLabel(desktopRuntime, navigator.userAgent),
-    [desktopRuntime],
-  );
-  const folderRevealLabel = useMemo(
-    () => desktopFolderRevealLabel(desktopRuntime, navigator.userAgent),
-    [desktopRuntime],
-  );
-  const overlayTitlebar = useMemo(
-    () => shouldUseOverlayTitlebar(desktopRuntime, navigator.userAgent),
-    [desktopRuntime],
-  );
-  const popoutTarget = useMemo(
-    () =>
-      desktopRuntime
-        ? parseDesktopPopoutGroupTarget(window.location.search)
-        : null,
-    [desktopRuntime],
-  );
-  const projectOverviewPopoutTarget = useMemo(
-    () =>
-      desktopRuntime
-        ? parseDesktopProjectOverviewTarget(window.location.search)
-        : null,
-    [desktopRuntime],
-  );
-  const explorerFileTarget = useMemo(
-    () =>
-      desktopRuntime
-        ? parseDesktopExplorerFileTarget(window.location.search)
-        : null,
-    [desktopRuntime],
-  );
-  const popoutProjectId =
-    popoutTarget?.projectId ??
-    projectOverviewPopoutTarget?.projectId ??
-    explorerFileTarget?.projectId ??
-    null;
-  const isPopout =
-    popoutTarget !== null ||
-    projectOverviewPopoutTarget !== null ||
-    explorerFileTarget !== null;
-  const [appMode, setAppMode] = useState<AppMode | null>(
-    isPopout ? "ide" : null,
-  );
-  const [selectedStandaloneChatId, setSelectedStandaloneChatId] = useState<
-    string | null
-  >(null);
-  const [standaloneFilesOpen, setStandaloneFilesOpen] = useState(false);
-  const [standaloneFilePath, setStandaloneFilePath] = useState<string | null>(
-    null,
-  );
-  useEffect(() => {
-    setStandaloneFilesOpen(false);
-    setStandaloneFilePath(null);
-  }, [selectedStandaloneChatId]);
-  const startupNavigationResolvedRef = useRef(isPopout);
-  const destinationWriteRef = useRef<Promise<void>>(Promise.resolve());
-  const narrowViewport = useNarrowViewport();
-  const compactLayout = shouldUseCompactLayout(narrowViewport, desktopRuntime);
-  const compactShell = compactLayout && !isPopout;
-  const desktopSidebarDrawer = shouldUseDesktopSidebarDrawer(
-    narrowViewport,
+  const {
+    compactLayout,
+    compactShell,
     desktopRuntime,
+    desktopSidebarDrawer,
+    explorerFileTarget,
+    folderRevealLabel,
     isPopout,
-  );
-  const showContentTitlebar = !isPopout || desktopRuntime;
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    narrowViewport,
+    overlayTitlebar,
     popoutProjectId,
-  );
-  const [projectOverviewSection, setProjectOverviewSection] =
-    useState<ProjectOverviewSection>(
-      () => projectOverviewPopoutTarget?.section ?? "overview",
-    );
-  const [projectOverviewWorktreeId, setProjectOverviewWorktreeId] = useState<
-    string | null
-  >(() => projectOverviewPopoutTarget?.worktreeId ?? null);
-  useEffect(() => {
-    if (projectOverviewPopoutTarget) return;
-    setProjectOverviewSection("overview");
-    setProjectOverviewWorktreeId(null);
-  }, [projectOverviewPopoutTarget, selectedProjectId]);
+    popoutTarget,
+    projectOverviewPopoutTarget,
+    projectRevealButtonLabel,
+    projectRevealLabel,
+    showContentTitlebar,
+  } = useShellEnvironment();
+  const {
+    appMode,
+    destinationWriteRef,
+    projectOverviewSection,
+    projectOverviewWorktreeId,
+    projectSettingsSection,
+    selectedProjectId,
+    selectedStandaloneChatId,
+    selectedWorkflowIntentId,
+    setAppMode,
+    setProjectOverviewSection,
+    setProjectOverviewWorktreeId,
+    setProjectSettingsSection,
+    setSelectedProjectId,
+    setSelectedStandaloneChatId,
+    setSelectedWorkflowIntentId,
+    setSettingsPolicyId,
+    setSettingsSection,
+    setShowArchivedStandaloneChats,
+    setShowImporter,
+    setShowProjectSettings,
+    setShowServerAdmin,
+    setShowSettings,
+    setStandaloneFilePath,
+    setStandaloneFilesOpen,
+    settingsPolicyId,
+    settingsSection,
+    showArchivedStandaloneChats,
+    showImporter,
+    showProjectSettings,
+    showServerAdmin,
+    showSettings,
+    standaloneFilePath,
+    standaloneFilesOpen,
+    startupNavigationResolvedRef,
+  } = useShellNavigationState({
+    isPopout,
+    popoutProjectId,
+    projectOverviewPopoutTarget,
+  });
   const [createdRepositoryOnboarding, setCreatedRepositoryOnboarding] =
     useState<{ openInitialChat: boolean; projectId: string } | null>(null);
   const [dismissedLongPathFailure, setDismissedLongPathFailure] = useState<
@@ -517,19 +458,16 @@ export function App() {
   const [workspaceSelection, setWorkspaceSelection] = useState(() =>
     emptyWorkspaceSelection(popoutProjectId),
   );
-  const [pendingSurfaceSelection, setPendingSurfaceSelection] = useState<{
-    groupId?: string;
-    projectId: string;
-    tabKey: string;
-  } | null>(
-    popoutTarget
-      ? {
-          groupId: popoutTarget.groupId,
-          projectId: popoutTarget.projectId,
-          tabKey: popoutTarget.activeTabKey,
-        }
-      : null,
-  );
+  const [pendingSurfaceSelection, setPendingSurfaceSelection] =
+    useState<PendingSurfaceSelection | null>(
+      popoutTarget
+        ? {
+            groupId: popoutTarget.groupId,
+            projectId: popoutTarget.projectId,
+            tabKey: popoutTarget.activeTabKey,
+          }
+        : null,
+    );
   const [sidebarFilePreview, setSidebarFilePreview] =
     useState<SidebarFilePreviewState | null>(null);
   const [sidebarFilePinHandoff, setSidebarFilePinHandoff] =
@@ -589,20 +527,9 @@ export function App() {
       ? { kind: "chat", chatId: selectedStandaloneChatId }
       : null,
   );
-  const [showImporter, setShowImporter] = useState(false);
   const [folderProjectDialogOpen, setFolderProjectDialogOpen] = useState(false);
   const [folderProjectDialogMode, setFolderProjectDialogMode] =
     useState<FolderSourceMode>("create");
-  const [showSettings, setShowSettings] = useState(false);
-  const [showArchivedStandaloneChats, setShowArchivedStandaloneChats] =
-    useState(false);
-  const [showServerAdmin, setShowServerAdmin] = useState(false);
-  const [settingsSection, setSettingsSection] =
-    useState<SettingsSection>("general");
-  const [settingsPolicyId, setSettingsPolicyId] = useState<string | null>(null);
-  const [showProjectSettings, setShowProjectSettings] = useState(false);
-  const [projectSettingsSection, setProjectSettingsSection] =
-    useState<ProjectSettingsSection>("general");
   const [commandBarOpen, setCommandBarOpen] = useState(false);
   const [runConfigurationEditorId, setRunConfigurationEditorId] = useState<
     string | "new" | null
@@ -633,9 +560,6 @@ export function App() {
   const [activeProjectWorkspaceId, setActiveProjectWorkspaceId] = useState<
     string | null
   >(() => window.localStorage.getItem(activeProjectWorkspaceStorageKey));
-  const [selectedWorkflowIntentId, setSelectedWorkflowIntentId] = useState<
-    string | null
-  >(null);
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [chatRelocationOpen, setChatRelocationOpen] = useState(false);
   const [mobileTabGridOpen, setMobileTabGridOpen] = useState(false);
@@ -783,156 +707,41 @@ export function App() {
     persistedMobileBottomTabsRef.current = null;
   };
 
-  const openProjectCreateSource = (
-    source: ProjectCreateSource,
-    resetProjectSelection = false,
-  ) => {
-    setAppMode("ide");
-    setDesktopSidebarDrawerOpen(false);
-    if (resetProjectSelection) {
-      setSelectedProjectId(null);
-      setWorkspaceSelection(emptyWorkspaceSelection());
-      resetMobileBottomTabs();
-      setPendingSurfaceSelection(null);
-    }
-    setShowImporter(source === "github");
-    if (source === "folder") setFolderProjectDialogMode("create");
-    setFolderProjectDialogOpen(source === "folder");
-    setShowSettings(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(false);
-    void persistAppDestination({ lastAppMode: "ide" });
-  };
-
-  const openCreatedProject = (project: ProjectSummary) => {
-    setAppMode("ide");
-    setSidebarFilePreview(null);
-    setSelectedProjectId(project.id);
-    setWorkspaceSelection(emptyWorkspaceSelection(project.id));
-    resetMobileBottomTabs();
-    setPendingSurfaceSelection(null);
-    setShowImporter(false);
-    setFolderProjectDialogOpen(false);
-    setShowSettings(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(false);
-    if (project.originKind === "github") {
-      setCreatedRepositoryOnboarding({
-        openInitialChat: !compactShell,
-        projectId: project.id,
-      });
-    }
-    void persistAppDestination({
-      lastAppMode: "ide",
-      lastIdeProjectId: project.id,
-      lastIdeWorkspaceId: activeProjectWorkspace?.id ?? null,
-    });
-  };
-
-  const openCreatedTab = (
-    projectId: string,
-    kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
-    tabId: string,
-  ) => {
-    setAppMode("ide");
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
-    );
-    setDesktopSidebarDrawerOpen(false);
-    const tabKey = projectSurfaceTabKey(kind, tabId);
-    setSelectedProjectId(projectId);
-    setPendingSurfaceSelection({ projectId, tabKey });
-    setMobileTabGridOpen(false);
-    void queryClient.invalidateQueries({
-      queryKey: ["project-tab-layout", projectId],
-    });
-    setShowImporter(false);
-    setShowSettings(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(false);
-    setSelectedWorkflowIntentId(null);
-    void persistAppDestination({
-      lastAppMode: "ide",
-      lastIdeProjectId: projectId,
-      lastIdeWorkspaceId: activeProjectWorkspace?.id ?? null,
-    });
-  };
-
-  const openProjectTask = (projectId: string, chatId: string) => {
-    setAppMode("ide");
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
-    );
-    setProjectTaskChatIds((current) => {
-      const next = new Map(current);
-      next.set(projectId, chatId);
-      return next;
-    });
-    setDesktopSidebarDrawerOpen(false);
-    setSelectedProjectId(projectId);
-    setProjectOverviewSection("tasks");
-    setWorkspaceSelection(emptyWorkspaceSelection(projectId));
-    setPendingSurfaceSelection(null);
-    setMobileTabGridOpen(false);
-    setShowImporter(false);
-    setShowSettings(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(false);
-    setSelectedWorkflowIntentId(null);
-    void persistAppDestination({
-      lastAppMode: "ide",
-      lastIdeProjectId: projectId,
-      lastIdeWorkspaceId: activeProjectWorkspace?.id ?? null,
-    });
-  };
-
-  const closeProjectTask = (projectId: string) => {
-    setProjectTaskChatIds((current) => {
-      if (!current.has(projectId)) return current;
-      const next = new Map(current);
-      next.delete(projectId);
-      return next;
-    });
-  };
-
-  const openProjectSettings = (
-    projectId: string,
-    workflowId: string | null = null,
-    section: ProjectSettingsSection = workflowId ? "workflows" : "general",
-  ) => {
-    setAppMode("ide");
-    setDesktopSidebarDrawerOpen(false);
-    setSelectedProjectId(projectId);
-    setShowImporter(false);
-    setShowSettings(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(true);
-    setProjectSettingsSection(section);
-    setSelectedWorkflowIntentId(workflowId);
-    setMobileTabGridOpen(false);
-    void persistAppDestination({
-      lastAppMode: "ide",
-      lastIdeProjectId: projectId,
-      lastIdeWorkspaceId: activeProjectWorkspace?.id ?? null,
-    });
-  };
-
-  const openTunnelOwner = (tunnel: TunnelSummary) => {
-    if (!tunnel.managedBy || !tunnel.projectId) return;
-    if (tunnel.managedBy.kind === "browser") {
-      openCreatedTab(tunnel.projectId, "browser", tunnel.managedBy.id);
-      return;
-    }
-    if (tunnel.managedBy.kind === "code") {
-      openCreatedTab(tunnel.projectId, "code", tunnel.managedBy.id);
-      return;
-    }
-    openProjectSettings(
-      tunnel.projectId,
-      tunnel.managedBy.kind === "workflow" ? tunnel.managedBy.id : null,
-    );
-  };
-
+  const {
+    closeProjectTask,
+    openCreatedProject,
+    openCreatedTab,
+    openProjectCreateSource,
+    openProjectSettings,
+    openProjectTask,
+    openTunnelOwner,
+  } = createShellProjectNavigationCommands({
+    compactShell,
+    getActiveProjectWorkspaceId: () => activeProjectWorkspace?.id ?? null,
+    navigation: {
+      setAppMode,
+      setProjectOverviewSection,
+      setProjectSettingsSection,
+      setSelectedProjectId,
+      setSelectedWorkflowIntentId,
+      setShowImporter,
+      setShowProjectSettings,
+      setShowServerAdmin,
+      setShowSettings,
+    },
+    persistAppDestination: (patch) => persistAppDestination(patch),
+    queryClient,
+    resetMobileBottomTabs,
+    setCreatedRepositoryOnboarding,
+    setDesktopSidebarDrawerOpen,
+    setFolderProjectDialogMode,
+    setFolderProjectDialogOpen,
+    setMobileTabGridOpen,
+    setPendingSurfaceSelection,
+    setProjectTaskChatIds,
+    setSidebarFilePreview,
+    setWorkspaceSelection,
+  });
   const bootstrap = useQuery({
     queryFn: getServerBootstrap,
     queryKey: ["server-bootstrap"],
@@ -979,57 +788,10 @@ export function App() {
     refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
-  const persistAppDestination = useCallback(
-    (patch: Omit<AppDestinationUpdate, "expectedRevision">) => {
-      const write = destinationWriteRef.current.then(async () => {
-        let bundle = queryClient.getQueryData<SettingsBundle>(["settings"]);
-        if (!bundle) {
-          bundle = await getSettings();
-          queryClient.setQueryData(["settings"], bundle);
-        }
-        const save = (expectedRevision: number) =>
-          updateAppDestination({ ...patch, expectedRevision });
-        let destination;
-        try {
-          destination = await save(bundle.preferences.destinationRevision);
-        } catch (error) {
-          if (!(error instanceof CantripApiError) || error.status !== 409) {
-            throw error;
-          }
-          bundle = await getSettings();
-          queryClient.setQueryData(["settings"], bundle);
-          destination = await save(bundle.preferences.destinationRevision);
-        }
-        queryClient.setQueryData<SettingsBundle>(["settings"], (current) =>
-          current
-            ? {
-                ...current,
-                preferences: {
-                  ...current.preferences,
-                  lastAppMode: destination.lastAppMode,
-                  lastIdeProjectId: destination.lastIdeProjectId,
-                  lastIdeWorkspaceId: destination.lastIdeWorkspaceId,
-                  lastStandaloneChatId: destination.lastStandaloneChatId,
-                  destinationRevision: destination.revision,
-                },
-              }
-            : current,
-        );
-      });
-      destinationWriteRef.current = write.catch((error: unknown) => {
-        clientLogger.warn("Application destination failed to save", {
-          ...operationalErrorMetadata(error),
-          event: "navigation.destination.save.failed",
-          operation: "save-destination",
-          reasonCode: "request-failed",
-          status: "failed",
-          subsystem: "navigation",
-        });
-      });
-      return write;
-    },
-    [queryClient],
-  );
+  const persistAppDestination = useAppDestinationPersistence({
+    destinationWriteRef,
+    queryClient,
+  });
   const saveMobileBottomTabs = useMutation({
     mutationFn: async ({
       groupIds,
@@ -4038,112 +3800,46 @@ export function App() {
     projectWorkspaces.data,
   ]);
 
-  useEffect(() => {
-    if (
-      startupNavigationResolvedRef.current ||
-      !settings.isSuccess ||
-      !projects.isSuccess ||
-      !projectWorkspaces.isSuccess ||
-      (!standaloneChats.isSuccess && !standaloneChats.isError)
-    ) {
-      return;
-    }
-    const preferences = settings.data.preferences;
-    const savedWorkspace =
-      projectWorkspaces.data.find(
-        ({ id }) => id === preferences.lastIdeWorkspaceId,
-      ) ??
-      projectWorkspaces.data.find(({ isDefault }) => isDefault) ??
-      projectWorkspaces.data[0] ??
-      null;
-    const savedWorkspaceProjectIds = new Set(savedWorkspace?.projectIds ?? []);
-    const orderedProjectIds = [
-      ...projects.data
-        .filter(({ id }) => savedWorkspaceProjectIds.has(id))
-        .map(({ id }) => id),
-      ...projects.data
-        .filter(({ id }) => !savedWorkspaceProjectIds.has(id))
-        .map(({ id }) => id),
-    ];
-    const destination = resolveAppStartupNavigation({
-      explicitIde: isPopout,
-      projectIds: orderedProjectIds,
-      savedChatId: preferences.lastStandaloneChatId,
-      savedMode: preferences.lastAppMode,
-      savedProjectId: popoutProjectId ?? preferences.lastIdeProjectId,
-      standaloneChatIds: (standaloneChats.data ?? []).map(({ id }) => id),
-    });
-    startupNavigationResolvedRef.current = true;
-    setAppMode(destination.mode);
-    setSelectedStandaloneChatId(destination.standaloneChatId);
-    if (savedWorkspace) {
-      setActiveProjectWorkspaceId(savedWorkspace.id);
-      window.localStorage.setItem(
-        activeProjectWorkspaceStorageKey,
-        savedWorkspace.id,
-      );
-    }
-    if (destination.projectId !== selectedProjectId) {
-      setSelectedProjectId(destination.projectId);
-      setWorkspaceSelection(emptyWorkspaceSelection(destination.projectId));
-      setPendingSurfaceSelection(null);
-    }
-  }, [
+  useShellStartupNavigation({
     activeProjectWorkspaceStorageKey,
     isPopout,
+    navigation: {
+      setAppMode,
+      setSelectedProjectId,
+      setSelectedStandaloneChatId,
+      startupNavigationResolvedRef,
+    },
     popoutProjectId,
-    projectWorkspaces.data,
-    projectWorkspaces.isSuccess,
-    projects.data,
-    projects.isSuccess,
+    projectWorkspaces,
+    projects,
     selectedProjectId,
-    settings.data,
-    settings.isSuccess,
-    standaloneChats.data,
-    standaloneChats.isError,
-    standaloneChats.isSuccess,
-  ]);
+    setActiveProjectWorkspaceId,
+    setPendingSurfaceSelection,
+    setWorkspaceSelection,
+    settings,
+    standaloneChats,
+  });
 
-  useEffect(() => {
-    if (
-      appMode !== "ide" ||
-      !startupNavigationResolvedRef.current ||
-      !projects.data
-    ) {
-      return;
-    }
-    if (explorerFileTarget) return;
-    const action = projectSelectionAction({
-      compact: compactShell,
-      preserveCurrentDestination: showServerAdmin || showSettings,
-      projects: projects.data,
-      selectedProjectId,
-      visibleProjects,
-    });
-    if (!action) return;
-    if (action.showImporter !== undefined) {
-      setShowImporter(action.showImporter);
-    }
-    if (!compactShell && projects.data.length === 0) {
-      setShowSettings(false);
-      setShowProjectSettings(false);
-    } else if (compactShell) {
-      setShowProjectSettings(false);
-      setSelectedWorkflowIntentId(null);
-    }
-    setSelectedProjectId(action.projectId);
-    setWorkspaceSelection(emptyWorkspaceSelection(action.projectId));
-    setPendingSurfaceSelection(null);
-  }, [
-    appMode,
+  useProjectSelectionReconciliation({
     compactShell,
     explorerFileTarget,
-    projects.data,
-    selectedProjectId,
-    showServerAdmin,
-    showSettings,
+    navigation: {
+      appMode,
+      selectedProjectId,
+      setSelectedProjectId,
+      setSelectedWorkflowIntentId,
+      setShowImporter,
+      setShowProjectSettings,
+      setShowSettings,
+      showServerAdmin,
+      showSettings,
+      startupNavigationResolvedRef,
+    },
+    projects: projects.data,
+    setPendingSurfaceSelection,
+    setWorkspaceSelection,
     visibleProjects,
-  ]);
+  });
 
   useEffect(() => {
     if (!createdRepositoryOnboarding) return;
@@ -4319,256 +4015,67 @@ export function App() {
     tabLayoutMutation.isPending,
   ]);
 
-  const revealWorkspace = () => {
-    setDesktopSidebarDrawerOpen(false);
-    setShowImporter(false);
-    setShowSettings(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(false);
-  };
-  const switchToChat = () => {
-    if (isPopout) return;
-    setDesktopSidebarDrawerOpen(false);
-    setAppMode("chat");
-    setShowImporter(false);
-    setFolderProjectDialogOpen(false);
-    setShowProjectSettings(false);
-    setShowServerAdmin(false);
-    setShowSettings(false);
-    setShowArchivedStandaloneChats(false);
-    setCommandBarOpen(false);
-    void persistAppDestination({
-      lastAppMode: "chat",
-      lastStandaloneChatId: selectedStandaloneChatId,
-    });
-  };
-  const switchToIde = () => {
-    const candidate =
-      (selectedProjectId &&
-      projects.data?.some(({ id }) => id === selectedProjectId)
-        ? selectedProjectId
-        : null) ??
-      (settings.data?.preferences.lastIdeProjectId &&
-      projects.data?.some(
-        ({ id }) => id === settings.data?.preferences.lastIdeProjectId,
-      )
-        ? settings.data.preferences.lastIdeProjectId
-        : null) ??
-      visibleProjects[0]?.id ??
-      projects.data?.[0]?.id ??
-      null;
-    setDesktopSidebarDrawerOpen(false);
-    setAppMode("ide");
-    if (candidate !== selectedProjectId) {
-      setSelectedProjectId(candidate);
-      setWorkspaceSelection(emptyWorkspaceSelection(candidate));
-      setPendingSurfaceSelection(null);
-    }
-    setShowImporter(candidate === null);
-    setShowSettings(false);
-    setShowArchivedStandaloneChats(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(false);
-    void persistAppDestination({
-      lastAppMode: "ide",
-      lastIdeProjectId: candidate,
-      lastIdeWorkspaceId: activeProjectWorkspace?.id ?? null,
-    });
-  };
-  const selectStandaloneChat = (chat: StandaloneChatSummary) => {
-    setDesktopSidebarDrawerOpen(false);
-    setSelectedStandaloneChatId(chat.id);
-    setShowSettings(false);
-    setShowArchivedStandaloneChats(false);
-    setShowServerAdmin(false);
-    void persistAppDestination({
-      lastAppMode: "chat",
-      lastStandaloneChatId: chat.id,
-    });
-  };
-  const selectProjectWorkspace = (workspaceId: string) => {
-    const workspace = projectWorkspaces.data?.find(
-      ({ id }) => id === workspaceId,
-    );
-    if (!workspace) return;
-    setDesktopSidebarDrawerOpen(false);
-    setActiveProjectWorkspaceId(workspace.id);
-    window.localStorage.setItem(activeProjectWorkspaceStorageKey, workspace.id);
-    if (compactShell) {
-      setSelectedProjectId(null);
-      setWorkspaceSelection(emptyWorkspaceSelection());
-      resetMobileBottomTabs();
-      setPendingSurfaceSelection(null);
-      setShowImporter(false);
-      setShowSettings(false);
-      setShowServerAdmin(false);
-      setShowProjectSettings(false);
-      void persistAppDestination({
-        lastAppMode: "ide",
-        lastIdeProjectId: null,
-        lastIdeWorkspaceId: workspace.id,
-      });
-      return;
-    }
-    const projectIds = new Set(workspace.projectIds);
-    const nextProjectId = projectIds.has(selectedProjectId ?? "")
-      ? selectedProjectId
-      : (projects.data?.find(({ id }) => projectIds.has(id))?.id ?? null);
-    setSelectedProjectId(nextProjectId);
-    setWorkspaceSelection(emptyWorkspaceSelection(nextProjectId));
-    setPendingSurfaceSelection(null);
-    setShowImporter(false);
-    setShowSettings(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(false);
-    void persistAppDestination({
-      lastAppMode: "ide",
-      lastIdeProjectId: nextProjectId,
-      lastIdeWorkspaceId: workspace.id,
-    });
-  };
-  const selectProjectFromSidebar = (
-    projectId: string,
-    workspaceId = activeProjectWorkspace?.id ?? null,
-  ) => {
-    setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
-    );
-    setSelectedProjectId(projectId);
-    setProjectOverviewSection("overview");
-    setProjectOverviewWorktreeId(null);
-    setWorkspaceSelection(emptyWorkspaceSelection(projectId));
-    resetMobileBottomTabs();
-    setPendingSurfaceSelection(null);
-    setDetachedGroupId(null);
-    revealWorkspace();
-    void persistAppDestination({
-      lastAppMode: "ide",
-      lastIdeProjectId: projectId,
-      lastIdeWorkspaceId: workspaceId,
-    });
-  };
-  const selectProjectFromCommandBar = (projectId: string) => {
-    const targetWorkspace = resolveProjectWorkspaceForSelection(
-      projectWorkspaces.data ?? [],
-      projectId,
-      activeProjectWorkspace?.id ?? null,
-    );
-    if (!targetWorkspace) return false;
-    if (targetWorkspace && targetWorkspace.id !== activeProjectWorkspace?.id) {
-      setActiveProjectWorkspaceId(targetWorkspace.id);
-      window.localStorage.setItem(
-        activeProjectWorkspaceStorageKey,
-        targetWorkspace.id,
-      );
-    }
-    selectProjectFromSidebar(projectId, targetWorkspace.id);
-    return true;
-  };
-  const handleClientControl = useCallback(
-    async (command: ClientControlCommand) => {
-      if (!projects.data?.some(({ id }) => id === command.projectId)) {
-        return {
-          status: "declined" as const,
-          detail: "The requested project is not available in this client.",
-        };
-      }
-      window.focus();
-      switch (command.kind) {
-        case "notify": {
-          const notification = await openClientNotification({
-            opaque: command.protectedContent,
-            operationId: command.operationId,
-            projectId: command.projectId,
-            workerId: command.workerId,
-          });
-          showAppToast({
-            tone: notification.level,
-            title: notification.title,
-            message: notification.message,
-          });
-          return { status: "applied" as const };
-        }
-        case "focus-project":
-          selectProjectFromCommandBar(command.projectId);
-          return { status: "applied" as const };
-        case "focus-surface":
-          selectProjectFromCommandBar(command.projectId);
-          openCreatedTab(
-            command.projectId,
-            command.surfaceKind,
-            command.surfaceId,
-          );
-          return { status: "applied" as const };
-        case "show-interaction":
-          selectProjectFromCommandBar(command.projectId);
-          if (
-            chats.data?.find(({ id }) => id === command.chatId)?.experience ===
-            "task"
-          ) {
-            openProjectTask(command.projectId, command.chatId);
-          } else {
-            openCreatedTab(command.projectId, "chat", command.chatId);
-          }
-          void queryClient.invalidateQueries({
-            queryKey: ["agent-requests", command.chatId, "pending"],
-          });
-          return { status: "applied" as const };
-      }
+  const {
+    closeCompactProject,
+    openCompactRootSettings,
+    openServerAdmin,
+    returnToCompactProjectOverview,
+    revealWorkspace,
+    selectProjectFromCommandBar,
+    selectProjectFromSidebar,
+    selectProjectWorkspace,
+    selectStandaloneChat,
+    switchToChat,
+    switchToIde,
+  } = createShellNavigationCommands({
+    activeProjectWorkspace,
+    activeProjectWorkspaceStorageKey,
+    compactShell,
+    isPopout,
+    navigation: {
+      selectedProjectId,
+      selectedStandaloneChatId,
+      setAppMode,
+      setProjectOverviewSection,
+      setProjectOverviewWorktreeId,
+      setSelectedProjectId,
+      setSelectedStandaloneChatId,
+      setSelectedWorkflowIntentId,
+      setSettingsSection,
+      setShowArchivedStandaloneChats,
+      setShowImporter,
+      setShowProjectSettings,
+      setShowServerAdmin,
+      setShowSettings,
     },
-    [
-      activeProjectWorkspace,
-      activeProjectWorkspaceStorageKey,
-      chats.data,
-      projectWorkspaces.data,
-      projects.data,
-      queryClient,
-      showAppToast,
-    ],
-  );
-  useAppLiveClientControl(handleClientControl);
-  const closeCompactProject = () => {
-    setSelectedProjectId(null);
-    setWorkspaceSelection(emptyWorkspaceSelection());
-    resetMobileBottomTabs();
-    setPendingSurfaceSelection(null);
-    setDetachedGroupId(null);
-    setShowImporter(false);
-    setShowSettings(false);
-    setShowArchivedStandaloneChats(false);
-    setShowServerAdmin(false);
-    setShowProjectSettings(false);
-    setSelectedWorkflowIntentId(null);
-  };
-  const openCompactRootSettings = (section: SettingsSection = "general") => {
-    setSelectedProjectId(null);
-    setWorkspaceSelection(emptyWorkspaceSelection());
-    resetMobileBottomTabs();
-    setPendingSurfaceSelection(null);
-    setSettingsSection(section);
-    setShowSettings(true);
-    setShowArchivedStandaloneChats(false);
-    setShowServerAdmin(false);
-    setShowImporter(false);
-    setShowProjectSettings(false);
-  };
-  const openServerAdmin = () => {
-    setDesktopSidebarDrawerOpen(false);
-    setShowServerAdmin(true);
-    setShowImporter(false);
-    setShowSettings(false);
-    setShowArchivedStandaloneChats(false);
-    setShowProjectSettings(false);
-    setMobileTabGridOpen(false);
-  };
-  const returnToCompactProjectOverview = () => {
-    setShowProjectSettings(false);
-    setSelectedWorkflowIntentId(null);
-    setMobileTabGridOpen(false);
-    setWorkspaceSelection((current) =>
-      selectWorkspaceOverview(current, selectedProjectId),
-    );
-  };
+    persistAppDestination,
+    projects: projects.data,
+    projectWorkspaces: projectWorkspaces.data,
+    resetMobileBottomTabs,
+    setActiveProjectWorkspaceId,
+    setCommandBarOpen,
+    setDesktopSidebarDrawerOpen,
+    setDetachedGroupId,
+    setFolderProjectDialogOpen,
+    setMobileTabGridOpen,
+    setPendingSurfaceSelection,
+    setSidebarFilePreview,
+    setWorkspaceSelection,
+    settings: settings.data,
+    visibleProjects,
+  });
+  useShellClientControlNavigation({
+    activeProjectWorkspace,
+    activeProjectWorkspaceStorageKey,
+    chats: chats.data,
+    openCreatedTab,
+    openProjectTask,
+    projectWorkspaces: projectWorkspaces.data,
+    projects: projects.data,
+    queryClient,
+    selectProjectFromCommandBar,
+    showAppToast,
+  });
   const selectTopTab = (tabKey: string) => {
     setSidebarFilePreview((current) =>
       current ? { ...current, active: false } : null,
