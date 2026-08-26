@@ -286,6 +286,8 @@ import {
   workerLinkSessionOpenRequestSchema,
   workerLinkSessionSchema,
   workerLinkTerminalGrantRequestSchema,
+  workerLinkTunnelGrantRequestSchema,
+  workerLinkTunnelGrantSchema,
   directTransportTelemetrySchema,
   directTunnelPrepareRequestSchema,
   directTunnelTicketSchema,
@@ -882,6 +884,19 @@ export async function createTerminalWorkerLinkGrant(
     await post(
       `/api/worker-links/${encodeURIComponent(sessionId)}/terminals/${encodeURIComponent(terminalId)}/grant`,
       workerLinkTerminalGrantRequestSchema.parse({ operationId }),
+    ),
+  );
+}
+
+export async function createTunnelWorkerLinkGrant(
+  sessionId: string,
+  attachmentId: string,
+  input: { diagnosticTraceId?: string } = {},
+) {
+  return workerLinkTunnelGrantSchema.parse(
+    await post(
+      `/api/worker-links/${encodeURIComponent(sessionId)}/tunnel-attachments/${encodeURIComponent(attachmentId)}/grant`,
+      workerLinkTunnelGrantRequestSchema.parse(input),
     ),
   );
 }

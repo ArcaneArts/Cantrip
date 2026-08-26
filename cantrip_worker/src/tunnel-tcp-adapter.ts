@@ -173,6 +173,16 @@ export class TunnelTcpDestinationAdapter {
     }
   }
 
+  revokeAttachment(attachmentId: string): number {
+    const streams = [...this.#streams.values()].filter(
+      (stream) => stream.header.attachmentId === attachmentId,
+    );
+    for (const stream of streams) {
+      this.#close(stream, "revoked", "attachment-revoked");
+    }
+    return streams.length;
+  }
+
   close(): void {
     this.disconnect();
   }

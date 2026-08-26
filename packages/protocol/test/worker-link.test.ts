@@ -24,6 +24,8 @@ import {
   workerLinkSessionIdentitySchema,
   workerLinkTelemetryBatchSchema,
   workerLinkTerminalGrantRequestSchema,
+  workerLinkTunnelGrantRequestSchema,
+  workerLinkTunnelGrantSchema,
   workerCommandSchema,
   workerNotificationSchema,
   type WorkerLinkFrameHeader,
@@ -251,6 +253,38 @@ describe("WorkerLink protocol", () => {
         signal: null,
       }),
     ).toMatchObject({ type: "terminal.runtime.observed", status: "exited" });
+  });
+
+  it("binds generic tunnel grants to one attachment route", () => {
+    const tunnelBinding: WorkerLinkGrantBinding = {
+      ...binding,
+      resource: {
+        kind: "tunnel",
+        resourceId: "tunnel-1",
+        attachmentId: "attachment-1",
+      },
+      lanes: ["stream"],
+    };
+    expect(
+      workerLinkTunnelGrantRequestSchema.parse({
+        diagnosticTraceId: openNonce,
+      }),
+    ).toEqual({ diagnosticTraceId: openNonce });
+    expect(
+      workerLinkTunnelGrantSchema.parse({
+        grant: { binding: tunnelBinding, token: grant.token },
+        route: {
+          tunnelId: "tunnel-1",
+          attachmentId: "attachment-1",
+          sourceEndpointId: `worker-link-client:${grantId}`,
+          destinationEndpointId: "worker-link-worker:worker-1",
+          target: { kind: "tcp", host: "127.0.0.1", port: 4321 },
+        },
+      }),
+    ).toMatchObject({
+      grant: { binding: { resource: { kind: "tunnel" } } },
+      route: { attachmentId: "attachment-1" },
+    });
   });
 
   it("round-trips every reliable channel operation", () => {

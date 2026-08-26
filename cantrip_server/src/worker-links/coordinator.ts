@@ -65,6 +65,7 @@ export interface WorkerLinkSessionOpenInput {
 }
 
 export interface WorkerLinkGrantIssueInput {
+  absoluteExpiresAt?: string;
   attachmentId?: string | null;
   lanes: WorkerLinkQosLane[];
   leaseMs?: number;
@@ -164,7 +165,23 @@ export class WorkerLinkCoordinator {
     }
     const now = this.#now();
     const sessionExpiry = Date.parse(state.session.lease.expiresAt);
-    const absoluteExpiry = Date.parse(state.session.lease.absoluteExpiresAt);
+    const requestedAbsoluteExpiry = input.absoluteExpiresAt
+      ? Date.parse(input.absoluteExpiresAt)
+      : Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(requestedAbsoluteExpiry) && input.absoluteExpiresAt) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink resource lifetime is invalid.",
+      );
+    }
+    const absoluteExpiry = Math.min(
+      Date.parse(state.session.lease.absoluteExpiresAt),
+      requestedAbsoluteExpiry,
+    );
+    if (absoluteExpiry <= now) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink resource lifetime has expired.",
+      );
+    }
     const leaseExpiry = Math.min(
       sessionExpiry,
       absoluteExpiry,
@@ -424,6 +441,41 @@ export class WorkerLinkCoordinator {
           if (
             grant.grant.binding.resource.kind === resourceKind &&
             grant.grant.binding.resource.resourceId === resourceId
+          ) {
+            matches.push([state.session.sessionId, grantId]);
+          }
+        }
+      }
+      const results = await Promise.all(
+        matches.map(([sessionId, grantId]) =>
+          this.revokeGrant(sessionId, grantId, reason),
+        ),
+      );
+      return results.filter(Boolean).length;
+    } finally {
+      decrementFence(this.#resourceFences, key);
+    }
+  }
+
+  async revokeAttachment(
+    ownerId: string,
+    resourceKind: WorkerLinkResourceKind,
+    resourceId: string,
+    attachmentId: string,
+    reason: "resource-stopped" | "resource-deleted" = "resource-stopped",
+  ): Promise<number> {
+    const key = resourceKeyOf(ownerId, resourceKind, resourceId);
+    incrementFence(this.#resourceFences, key);
+    try {
+      const matches: Array<[string, string]> = [];
+      for (const state of this.#sessions.values()) {
+        if (state.session.identity.ownerId !== ownerId) continue;
+        for (const [grantId, grant] of state.grants) {
+          const resource = grant.grant.binding.resource;
+          if (
+            resource.kind === resourceKind &&
+            resource.resourceId === resourceId &&
+            resource.attachmentId === attachmentId
           ) {
             matches.push([state.session.sessionId, grantId]);
           }

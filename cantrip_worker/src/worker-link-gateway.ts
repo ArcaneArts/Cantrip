@@ -14,6 +14,7 @@ import {
   type WorkerLinkChannelRejectCode,
   type WorkerLinkCoordinatorCommand,
   type WorkerLinkFrameHeader,
+  type WorkerLinkPayloadFormat,
   type WorkerLinkResourceKind,
   type WorkerLinkSession,
 } from "@cantrip/protocol/worker-link";
@@ -64,7 +65,11 @@ interface ActiveChannel {
 
 type PendingAdapterEmission =
   | { kind: "close"; code: WorkerLinkChannelCloseCode }
-  | { kind: "data"; payload: Uint8Array }
+  | {
+      kind: "data";
+      payload: Uint8Array;
+      payloadFormat: WorkerLinkPayloadFormat;
+    }
   | { kind: "error"; code: WorkerLinkChannelErrorCode }
   | { kind: "half-close" };
 
@@ -82,7 +87,7 @@ export type WorkerLinkFrameResponder = (
 
 export interface WorkerLinkAdapterEmitter {
   close(code?: WorkerLinkChannelCloseCode): Promise<boolean>;
-  data(payload: Uint8Array): boolean;
+  data(payload: Uint8Array, payloadFormat?: WorkerLinkPayloadFormat): boolean;
   error(code: WorkerLinkChannelErrorCode): boolean;
   halfClose(): boolean;
 }
@@ -518,10 +523,14 @@ export class WorkerLinkGateway {
         liveEmitter
           ? liveEmitter.close(code)
           : Promise.resolve(queueEmission({ kind: "close", code })),
-      data: (payload) =>
+      data: (payload, payloadFormat = "raw") =>
         liveEmitter
-          ? liveEmitter.data(payload)
-          : queueEmission({ kind: "data", payload: payload.slice() }),
+          ? liveEmitter.data(payload, payloadFormat)
+          : queueEmission({
+              kind: "data",
+              payload: payload.slice(),
+              payloadFormat,
+            }),
       error: (code) =>
         liveEmitter
           ? liveEmitter.error(code)
@@ -812,14 +821,15 @@ export class WorkerLinkGateway {
         }
         return this.#closeChannel(channelId, code);
       },
-      data: (payload) => {
+      data: (payload, payloadFormat = "raw") => {
         const channel = this.#channels.get(channelId);
         return channel && !channel.outputReady
           ? this.#queueAdapterEmission(channel, {
               kind: "data",
               payload: payload.slice(),
+              payloadFormat,
             })
-          : this.#emitData(channelId, payload);
+          : this.#emitData(channelId, payload, payloadFormat);
       },
       error: (code) => {
         const channel = this.#channels.get(channelId);
@@ -880,7 +890,11 @@ export class WorkerLinkGateway {
       let sent: boolean;
       switch (emission.kind) {
         case "data":
-          sent = this.#emitData(channelId, emission.payload);
+          sent = this.#emitData(
+            channelId,
+            emission.payload,
+            emission.payloadFormat,
+          );
           break;
         case "error":
           sent = this.#emitError(channelId, emission.code);
@@ -899,7 +913,11 @@ export class WorkerLinkGateway {
     }
   }
 
-  #emitData(channelId: string, payload: Uint8Array): boolean {
+  #emitData(
+    channelId: string,
+    payload: Uint8Array,
+    payloadFormat: WorkerLinkPayloadFormat = "raw",
+  ): boolean {
     const channel = this.#channels.get(channelId);
     const grant = channel
       ? this.#grant(channel.sessionId, channel.grantId)
@@ -918,7 +936,7 @@ export class WorkerLinkGateway {
       {
         kind: "data",
         direction: "worker-to-client",
-        payloadFormat: "raw",
+        payloadFormat,
       },
       payload,
     );
@@ -956,7 +974,11 @@ export class WorkerLinkGateway {
   #respond(
     channel: ActiveChannel,
     detail:
-      | { kind: "data"; direction: "worker-to-client"; payloadFormat: "raw" }
+      | {
+          kind: "data";
+          direction: "worker-to-client";
+          payloadFormat: WorkerLinkPayloadFormat;
+        }
       | {
           kind: "credit";
           direction: "client-to-worker" | "worker-to-client";

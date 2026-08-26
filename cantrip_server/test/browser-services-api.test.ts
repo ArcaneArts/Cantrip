@@ -11,6 +11,8 @@ import {
   tunnelAttachmentCreateResultSchema,
   tunnelWireSummarySchema,
   unprobedCodexRuntimeReport,
+  workerLinkSessionSchema,
+  workerLinkTunnelGrantSchema,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
@@ -82,6 +84,17 @@ const workerBridge: WorkerCommandBus = {
   async request(workerId, command) {
     commands.push(command);
     requestedWorkers.push(workerId);
+    if (command.type === "worker-link.identity.resolve") {
+      return {
+        serverId: resolvedServerId,
+        ownerId: LOCAL_USER_ID,
+        workerId,
+        workerProcessGeneration: "worker-generation-1",
+      };
+    }
+    if (command.type.startsWith("worker-link.")) {
+      return { accepted: true };
+    }
     if (command.type === "browser.services.discover") {
       if (workerId === "failing-worker") {
         throw new Error("Worker command browser.services.discover timed out.");
@@ -107,6 +120,7 @@ let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 let browserId: string;
 let browserTunnelId: string;
+let resolvedServerId: string;
 
 function protectedTunnelRecord(operationId: string, revision: number) {
   return {
@@ -214,6 +228,9 @@ beforeAll(async () => {
   if (!browser) throw new Error("Expected test browser creation to succeed.");
   browserId = browser.id;
   app = await buildApp({ config, database, logger: false, workerBridge });
+  resolvedServerId = (
+    await app.inject({ method: "GET", url: "/api/bootstrap" })
+  ).json().server.id;
 });
 
 afterAll(async () => {
@@ -470,6 +487,96 @@ describe.sequential("browser service discovery API", () => {
         workerId: "secondary-worker",
       },
     });
+  });
+
+  it("authorizes an exact Browser tunnel attachment for WorkerLink", async () => {
+    const tunnelResponse = await app.inject({
+      method: "POST",
+      url: `/api/browsers/${browserId}/tunnel`,
+      payload: {
+        tunnelId: randomUUID(),
+        protocolHint: "http-websocket",
+        workerId: "test-worker",
+        protectedRecord: protectedTunnelRecord(randomUUID(), 1),
+      },
+    });
+    expect(tunnelResponse.statusCode).toBe(200);
+    const tunnel = tunnelWireSummarySchema.parse(tunnelResponse.json());
+    const attachmentResponse = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${tunnel.id}/attachments`,
+      payload: { clientId: "browser-worker-link" },
+    });
+    expect(attachmentResponse.statusCode).toBe(201);
+    const attachment = tunnelAttachmentCreateResultSchema.parse(
+      attachmentResponse.json(),
+    );
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/test-worker/worker-link/sessions",
+      payload: { clientInstanceId: "browser-worker-link-client" },
+    });
+    expect(sessionResponse.statusCode).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+    const grantResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/tunnel-attachments/${attachment.attachmentId}/grant`,
+      payload: { diagnosticTraceId: randomUUID() },
+    });
+    expect(grantResponse.statusCode, JSON.stringify(grantResponse.json())).toBe(
+      201,
+    );
+    const issued = workerLinkTunnelGrantSchema.parse(grantResponse.json());
+    expect(issued.grant.binding).toMatchObject({
+      sessionId: session.sessionId,
+      resource: {
+        kind: "tunnel",
+        resourceId: tunnel.id,
+        attachmentId: attachment.attachmentId,
+      },
+      lanes: ["stream"],
+      maxChannels: 1,
+    });
+    expect(issued.route).toMatchObject({
+      tunnelId: tunnel.id,
+      attachmentId: attachment.attachmentId,
+      target: {
+        kind: "protected-tunnel",
+        targetKind: "tcp",
+        recordId: tunnel.id,
+      },
+    });
+    expect(
+      commands.some(
+        (command) =>
+          command.type === "worker-link.grant.install" &&
+          command.grant.binding.grantId === issued.grant.binding.grantId,
+      ),
+    ).toBe(true);
+    const refreshed = tunnelWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/tunnels/${tunnel.id}`,
+        })
+      ).json(),
+    );
+    expect(
+      refreshed.attachments.find(({ id }) => id === attachment.attachmentId)
+        ?.status,
+    ).toBe("active");
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/tunnel-attachments/${attachment.attachmentId}`,
+    });
+    expect(deleted.statusCode).toBe(204);
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        type: "worker-link.grant.revoke",
+        sessionId: session.sessionId,
+        grantId: issued.grant.binding.grantId,
+      }),
+    );
   });
 
   it("rejects non-loopback and plaintext Browser tunnel targets", async () => {

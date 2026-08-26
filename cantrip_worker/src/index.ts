@@ -351,6 +351,7 @@ import {
 } from "./surface-stream-encryption.js";
 import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
+import { TunnelWorkerLinkAdapter } from "./tunnel-worker-link-adapter.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import {
   runWorkerRuntimeLoop,
@@ -1212,6 +1213,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       replay: surfaceStreamReplay,
     }),
   );
+  const tunnelWorkerLinkAdapter = new TunnelWorkerLinkAdapter(
+    tunnelDestinations,
+  );
+  workerLinkGateway.registerAdapter(tunnelWorkerLinkAdapter);
   const providerAuthObserver = new ProviderAuthObserver({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
   });
@@ -5428,14 +5433,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   );
   tunnelDestinations.setFrameEmitter(
     (header, payload) => {
+      const workerLink = tunnelWorkerLinkAdapter.routeFrame(header, payload);
+      if (workerLink !== null) return workerLink;
       const direct = directBroker.routeTunnelFrame(header, payload);
       return (
         direct ?? commandConnection.sendTunnelDataPlaneFrame(header, payload)
       );
     },
-    async (attachmentId) =>
-      (await directBroker.waitForTunnelCapacity(attachmentId)) ??
-      commandConnection.waitForTunnelDataPlaneCapacity(),
+    async (attachmentId) => {
+      const workerLink = tunnelWorkerLinkAdapter.waitForCapacity(attachmentId);
+      if (workerLink) return workerLink;
+      return (
+        (await directBroker.waitForTunnelCapacity(attachmentId)) ??
+        commandConnection.waitForTunnelDataPlaneCapacity()
+      );
+    },
   );
   const mcpEndpoint = await workerStartupPhase(
     "start-mcp-broker",

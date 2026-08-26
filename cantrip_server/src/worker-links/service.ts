@@ -64,6 +64,14 @@ type WorkerLinkRevokeScope =
   | { kind: "account-session"; accountSessionId: string }
   | { kind: "owner"; ownerId: string }
   | {
+      kind: "attachment";
+      ownerId: string;
+      resourceKind: WorkerLinkResourceKind;
+      resourceId: string;
+      attachmentId: string;
+      reason: "resource-stopped" | "resource-deleted";
+    }
+  | {
       kind: "resource";
       ownerId: string;
       resourceKind: WorkerLinkResourceKind;
@@ -255,6 +263,23 @@ export class WorkerLinkService {
     });
   }
 
+  async revokeAttachment(
+    ownerId: string,
+    resourceKind: WorkerLinkResourceKind,
+    resourceId: string,
+    attachmentId: string,
+    reason: "resource-stopped" | "resource-deleted" = "resource-stopped",
+  ): Promise<number> {
+    return this.#revokeEverywhere({
+      kind: "attachment",
+      ownerId,
+      resourceKind,
+      resourceId,
+      attachmentId,
+      reason,
+    });
+  }
+
   stats(): WorkerLinkCoordinatorStats {
     return this.local.stats();
   }
@@ -439,6 +464,14 @@ export class WorkerLinkService {
           scope.resourceId,
           scope.reason,
         );
+      case "attachment":
+        return this.local.revokeAttachment(
+          scope.ownerId,
+          scope.resourceKind,
+          scope.resourceId,
+          scope.attachmentId,
+          scope.reason,
+        );
     }
   }
 
@@ -576,6 +609,16 @@ function parseRevokeScope(value: unknown): WorkerLinkRevokeScope | null {
     return value as WorkerLinkRevokeScope;
   }
   if (value.kind === "owner" && text(value.ownerId)) {
+    return value as WorkerLinkRevokeScope;
+  }
+  if (
+    value.kind === "attachment" &&
+    text(value.ownerId) &&
+    workerLinkResourceKindSchema.safeParse(value.resourceKind).success &&
+    text(value.resourceId) &&
+    text(value.attachmentId) &&
+    (value.reason === "resource-stopped" || value.reason === "resource-deleted")
+  ) {
     return value as WorkerLinkRevokeScope;
   }
   if (

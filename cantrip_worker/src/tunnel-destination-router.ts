@@ -163,6 +163,20 @@ export class TunnelDestinationRouter {
     this.tcp.disconnect();
   }
 
+  revokeAttachment(attachmentId: string): number {
+    for (const key of [...this.#pendingProtections.keys()]) {
+      if (connectionAttachmentId(key) === attachmentId) {
+        this.#pendingProtections.delete(key);
+      }
+    }
+    for (const key of [...this.#protections.keys()]) {
+      if (connectionAttachmentId(key) === attachmentId) {
+        this.#protections.delete(key);
+      }
+    }
+    return this.tcp.revokeAttachment(attachmentId);
+  }
+
   close(): void {
     this.#pendingProtections.clear();
     this.#protections.clear();
@@ -509,4 +523,8 @@ export class TunnelDestinationRouter {
 
 function connectionKey(header: TunnelDataPlaneFrameHeader): string {
   return `${header.tunnelId}\0${header.attachmentId}\0${header.connectionId}`;
+}
+
+function connectionAttachmentId(key: string): string | undefined {
+  return key.split("\0", 3)[1];
 }

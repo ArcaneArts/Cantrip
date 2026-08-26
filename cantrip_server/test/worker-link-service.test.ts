@@ -164,6 +164,26 @@ describe("WorkerLinkService replicated authority", () => {
       }),
     );
 
+    const tunnelGrant = await serviceB.issueGrant({
+      attachmentId: "attachment-1",
+      lanes: ["stream"],
+      operations: ["stream:open", "stream:read", "stream:write"],
+      resourceId: "tunnel-1",
+      resourceKind: "tunnel",
+      sessionId: opened.sessionId,
+    });
+    await expect(
+      serviceB.revokeAttachment(
+        "owner-1",
+        "tunnel",
+        "tunnel-1",
+        "attachment-1",
+      ),
+    ).resolves.toBe(0);
+    await expect(
+      serviceA.renewGrant(opened.sessionId, tunnelGrant.binding.grantId),
+    ).rejects.toThrow(/missing/i);
+
     await expect(serviceB.revokeSession(opened.sessionId)).resolves.toBe(true);
     await expect(
       coordinationB.findWorkerLinkSession(opened.sessionId),
