@@ -19,6 +19,7 @@ import {
   workerLinkRouteSchema,
   workerLinkSessionIdentitySchema,
   workerLinkTelemetryBatchSchema,
+  workerCommandSchema,
   type WorkerLinkFrameHeader,
   type WorkerLinkGrantBinding,
 } from "../src/index.js";
@@ -158,16 +159,26 @@ describe("WorkerLink protocol", () => {
   });
 
   it("keeps worker-installed token hashes separate from client bearer grants", () => {
+    const command = {
+      type: "worker-link.grant.install" as const,
+      sessionId,
+      grant: {
+        binding,
+        tokenHash: "b".repeat(64),
+      },
+    };
     expect(
-      workerLinkCoordinatorCommandSchema.parse({
-        type: "worker-link.grant.install",
-        sessionId,
-        grant: {
-          binding,
-          tokenHash: "b".repeat(64),
-        },
-      }),
+      workerLinkCoordinatorCommandSchema.parse(command),
     ).not.toHaveProperty("grant.token");
+    expect(workerCommandSchema.parse(command)).toEqual(command);
+    expect(
+      workerCommandSchema.parse({
+        type: "worker-link.session.route",
+        sessionId,
+        routeGeneration: 2,
+        preferredRoute: "relay",
+      }),
+    ).toMatchObject({ preferredRoute: "relay", routeGeneration: 2 });
     expect(
       workerLinkCoordinatorCommandSchema.safeParse({
         type: "worker-link.grant.install",

@@ -368,6 +368,15 @@ export const workerLinkSessionRenewCommandSchema = z
   })
   .strict();
 
+export const workerLinkSessionRouteCommandSchema = z
+  .object({
+    type: z.literal("worker-link.session.route"),
+    sessionId: z.string().uuid(),
+    routeGeneration: generationSchema,
+    preferredRoute: workerLinkOperationalRouteSchema,
+  })
+  .strict();
+
 export const workerLinkSessionRevokeCommandSchema = z
   .object({
     type: z.literal("worker-link.session.revoke"),
@@ -407,6 +416,7 @@ export const workerLinkGrantRevokeCommandSchema = z
 export const workerLinkCoordinatorCommandSchema = z.discriminatedUnion("type", [
   workerLinkSessionInstallCommandSchema,
   workerLinkSessionRenewCommandSchema,
+  workerLinkSessionRouteCommandSchema,
   workerLinkSessionRevokeCommandSchema,
   workerLinkGrantInstallCommandSchema,
   workerLinkGrantRenewCommandSchema,
@@ -544,6 +554,9 @@ export type WorkerLinkResourceKind = z.infer<
 export type WorkerLinkGrantOperation = z.infer<
   typeof workerLinkGrantOperationSchema
 >;
+export type WorkerLinkRevokeReason = z.infer<
+  typeof workerLinkRevokeReasonSchema
+>;
 export type WorkerLinkLease = z.infer<typeof workerLinkLeaseSchema>;
 export type WorkerLinkSessionIdentity = z.infer<
   typeof workerLinkSessionIdentitySchema
@@ -563,6 +576,15 @@ export type WorkerLinkChannelIdentity = z.infer<
   typeof workerLinkChannelIdentitySchema
 >;
 export type WorkerLinkFrameHeader = z.infer<typeof workerLinkFrameHeaderSchema>;
+export type WorkerLinkChannelRejectCode = z.infer<
+  typeof workerLinkChannelRejectCodeSchema
+>;
+export type WorkerLinkChannelCloseCode = z.infer<
+  typeof workerLinkChannelCloseCodeSchema
+>;
+export type WorkerLinkChannelErrorCode = z.infer<
+  typeof workerLinkChannelErrorCodeSchema
+>;
 export type WorkerLinkCoordinatorCommand = z.infer<
   typeof workerLinkCoordinatorCommandSchema
 >;

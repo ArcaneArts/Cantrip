@@ -29,7 +29,7 @@ TCP resumption, and final legacy-relay consolidation.
 | Pass                            | Scope                                                                                      | Status      | Branch                                   | PR                                                       | Validation                                                                                                                                    | Notes or deviations                                                                     |
 | ------------------------------- | ------------------------------------------------------------------------------------------ | ----------- | ---------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | 1 — Ledger, ADR, protocol       | Create this ledger, ADR 0009, and strict bounded WorkerLink contracts and tests            | Complete    | `codex/network-tranche1-pass1-contracts` | [#1163](https://github.com/ArcaneArts/Cantrip/pull/1163) | Protocol typecheck and 349 focused tests; workspace typecheck; Code/Codex source verification; CLI check; changed-file formatting; diff check | Runtime routing remains unchanged; repository-wide baseline failures are recorded below |
-| 2 — Server/worker lifecycle     | Add the transient coordinator, gateway, grants, expiry, revocation, and generation fencing | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                       |
+| 2 — Server/worker lifecycle     | Add the transient coordinator, gateway, grants, expiry, revocation, and generation fencing | In progress | `codex/network-tranche1-pass2-lifecycle` | Pending                                                  | Protocol, server, and worker focused tests and package checks pending                                                                         | Compatibility-safe wiring is dormant until a feature adapter is registered              |
 | 3 — Client manager and carriers | Add the shared manager and wrap current LOCAL and RELAY paths                              | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                       |
 | 4 — Terminal                    | Move Terminal route ownership beneath WorkerLink                                           | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                       |
 | 5 — Tunnels and project shares  | Move saved/managed tunnels and WebDAV streams behind WorkerLink                            | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                       |
@@ -84,8 +84,16 @@ TCP resumption, and final legacy-relay consolidation.
   worker.
 - Telemetry payloads accept only bounded route, lane, event, count, latency,
   and reason vocabularies; tenant and resource identifiers are not labels.
+- WorkerLink coordination remains process-local transient authority on the
+  client-facing server. Install/revoke commands use the existing
+  `WorkerCommandBus`, so replicated deployments retain their current worker
+  routing and ownership checks without introducing a second coordination
+  backend.
+- The worker gateway accepts sessions from the authenticated server command
+  plane, fences the exact server/worker-process identity, and exposes no
+  resource until a feature-specific adapter is registered.
 
 ## Next expected pass
 
-Pass 2: server/worker session and grant lifecycle after Pass 1 is reported
-merged and the Primary checkout is synchronized.
+Pass 2 validation and merge, followed by Pass 3: client manager and
+LOCAL/RELAY carriers.
