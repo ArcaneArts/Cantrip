@@ -10,6 +10,8 @@ import {
   tunnelWireListSchema,
   tunnelWireSummarySchema,
   unprobedCodexRuntimeReport,
+  workerLinkSessionSchema,
+  workerLinkTunnelGrantSchema,
   type CodeRuntimeStatus,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -47,7 +49,7 @@ const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
   isConnected(workerId) {
-    return workerId === "worker-b";
+    return workerId === "worker-a" || workerId === "worker-b";
   },
   sendSurfaceFrame() {
     return false;
@@ -58,8 +60,19 @@ const workerBridge: WorkerCommandBus = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
-  async request(_workerId, command) {
+  async request(workerId, command) {
     workerCommands.push(command);
+    if (command.type === "worker-link.identity.resolve") {
+      return {
+        serverId: await database.repository.getOrCreateServerId(),
+        ownerId: LOCAL_USER_ID,
+        workerId,
+        workerProcessGeneration: "worker-link-code-generation-1",
+      };
+    }
+    if (command.type.startsWith("worker-link.")) {
+      return { accepted: true };
+    }
     if (command.type === "direct.capability.prepare") {
       return { accepted: true, capabilityId: command.binding.capabilityId };
     }
@@ -1408,6 +1421,119 @@ describe.sequential("tunnel control plane", () => {
       },
       tunnelId,
     });
+  });
+
+  it("authorizes an exact protected Cantrip Code attachment for WorkerLink", async () => {
+    const mismatchedSessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-a/worker-link/sessions",
+      payload: { clientInstanceId: "wrong-worker-code-worker-link" },
+    });
+    expect(
+      mismatchedSessionResponse.statusCode,
+      mismatchedSessionResponse.body,
+    ).toBe(201);
+    const mismatchedSession = workerLinkSessionSchema.parse(
+      mismatchedSessionResponse.json(),
+    );
+    const installCountBeforeMismatch = workerCommands.filter(
+      (command) => command.type === "worker-link.grant.install",
+    ).length;
+    const mismatchResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${mismatchedSession.sessionId}/tunnel-attachments/${codeAttachment.attachmentId}/grant`,
+      payload: { diagnosticTraceId: randomUUID() },
+    });
+    expect(mismatchResponse.statusCode, mismatchResponse.body).toBe(409);
+    expect(mismatchResponse.json()).toEqual({
+      error: "Tunnel placement does not match the WorkerLink session.",
+    });
+    expect(
+      workerCommands.filter(
+        (command) => command.type === "worker-link.grant.install",
+      ),
+    ).toHaveLength(installCountBeforeMismatch);
+
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-b/worker-link/sessions",
+      payload: { clientInstanceId: "desktop-code-worker-link" },
+    });
+    expect(sessionResponse.statusCode, sessionResponse.body).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+
+    const missingResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/tunnel-attachments/${randomUUID()}/grant`,
+      payload: { diagnosticTraceId: randomUUID() },
+    });
+    expect(missingResponse.statusCode, missingResponse.body).toBe(404);
+    expect(missingResponse.json()).toEqual({
+      error: "Tunnel attachment not found.",
+    });
+
+    const grantResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/tunnel-attachments/${codeAttachment.attachmentId}/grant`,
+      payload: { diagnosticTraceId: randomUUID() },
+    });
+    expect(grantResponse.statusCode, grantResponse.body).toBe(201);
+    const issued = workerLinkTunnelGrantSchema.parse(grantResponse.json());
+    expect(issued.grant.binding).toMatchObject({
+      sessionId: session.sessionId,
+      resource: {
+        kind: "tunnel",
+        resourceId: codeAttachment.tunnelId,
+        attachmentId: codeAttachment.attachmentId,
+      },
+      lanes: ["stream"],
+      maxChannels: 1,
+    });
+    expect(issued.route).toMatchObject({
+      tunnelId: codeAttachment.tunnelId,
+      attachmentId: codeAttachment.attachmentId,
+      target: {
+        kind: "protected-tunnel",
+        targetKind: "code",
+        recordId: codeAttachment.tunnelId,
+      },
+    });
+    expect(
+      workerCommands.some(
+        (command) =>
+          command.type === "worker-link.grant.install" &&
+          command.grant.binding.grantId === issued.grant.binding.grantId,
+      ),
+    ).toBe(true);
+    await expect(
+      database.repository.getDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        codeAttachment.attachmentId,
+      ),
+    ).resolves.toMatchObject({
+      attachmentId: codeAttachment.attachmentId,
+      ownerId: LOCAL_USER_ID,
+      origin: "code",
+      destination: {
+        kind: "worker-adapter",
+        workerId: "worker-b",
+        adapter: "code",
+        resourceId: codeAttachment.tunnelId,
+      },
+    });
+
+    const revokeResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/worker-links/${session.sessionId}/grants/${issued.grant.binding.grantId}`,
+    });
+    expect(revokeResponse.statusCode, revokeResponse.body).toBe(204);
+    expect(workerCommands).toContainEqual(
+      expect.objectContaining({
+        type: "worker-link.grant.revoke",
+        sessionId: session.sessionId,
+        grantId: issued.grant.binding.grantId,
+      }),
+    );
   });
 
   it("does not revoke a newer shared attachment after a stale root-bind failure", async () => {
