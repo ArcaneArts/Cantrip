@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
+import { useDeadReckonedPrefillPercent } from "./prefill-dead-reckoning";
+
 interface ChatRunStatusProps {
   automationPaused: boolean;
   hasLiveActivity: boolean;
@@ -22,16 +24,6 @@ interface ChatRunStatusProps {
   syncingCodeGraph: boolean;
   status: ChatSummary["status"];
   waitingForPlanAnswer: boolean;
-}
-
-function prefillPercent(progress: InferenceProgressSnapshot): number | null {
-  if (
-    progress.precision === "indeterminate" ||
-    progress.fractionComplete === null
-  ) {
-    return null;
-  }
-  return Math.min(100, Math.floor(progress.fractionComplete * 100));
 }
 
 export function formatPrefillTokenCount(tokens: number): string {
@@ -44,7 +36,7 @@ function PrefillProgressStatus({
 }: {
   progress: InferenceProgressSnapshot;
 }) {
-  const percent = prefillPercent(progress);
+  const percent = useDeadReckonedPrefillPercent(progress);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPointerType = useRef<string | null>(null);
