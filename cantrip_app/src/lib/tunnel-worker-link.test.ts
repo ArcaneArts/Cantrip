@@ -3,6 +3,7 @@ import {
   encodeTunnelDataPlaneFrame,
   type TunnelDataPlaneFrameHeader,
   type WorkerLinkChannelCloseCode,
+  type WorkerLinkRoute,
   type WorkerLinkSession,
   type WorkerLinkTunnelGrant,
 } from "@cantrip/protocol";
@@ -27,7 +28,7 @@ const tunnelId = "tunnel-1";
 const attachmentId = "attachment-1";
 const grantId = "11111111-1111-4111-8111-111111111111";
 
-function session(): WorkerLinkSession {
+function session(preferredRoute: WorkerLinkRoute = "local"): WorkerLinkSession {
   return {
     sessionId: "22222222-2222-4222-8222-222222222222",
     identity: {
@@ -46,10 +47,10 @@ function session(): WorkerLinkSession {
     },
     routePolicy: {
       priority: ["local", "lan", "wan", "relay"],
-      enabled: ["local", "relay"],
+      enabled: ["local", "lan", "wan", "relay"],
     },
     routeGeneration: 1,
-    preferredRoute: "local",
+    preferredRoute,
   };
 }
 
@@ -91,7 +92,6 @@ class FakeStream implements WorkerLinkStream {
   readonly channelId = "33333333-3333-4333-8333-333333333333";
   readonly connectionId = "44444444-4444-4444-8444-444444444444";
   readonly lane = "stream" as const;
-  readonly route = "local" as const;
   readonly acknowledgements: number[] = [];
   readonly writes: Uint8Array[] = [];
   readonly closeListeners = new Set<WorkerLinkStreamCloseListener>();
@@ -99,6 +99,8 @@ class FakeStream implements WorkerLinkStream {
   readonly errorListeners = new Set<WorkerLinkStreamErrorListener>();
   readonly halfCloseListeners = new Set<WorkerLinkStreamHalfCloseListener>();
   readonly writableListeners = new Set<WorkerLinkStreamWritableListener>();
+
+  constructor(readonly route: WorkerLinkRoute) {}
 
   acknowledge(bytes: number): boolean {
     this.acknowledgements.push(bytes);
@@ -151,19 +153,19 @@ function base(sequence = 0) {
   };
 }
 
-function setup() {
-  const activeSession = session();
+function setup(route: WorkerLinkRoute = "local") {
+  const activeSession = session(route);
   const activeGrant = issued(activeSession);
-  const stream = new FakeStream();
+  const stream = new FakeStream(route);
   const release = vi.fn();
   const link: WorkerLink = {
-    preferredRoute: "local",
+    preferredRoute: route,
     session: activeSession,
     workerId: "worker-1",
     onRouteChanged: (listener) => {
       listener({
-        preferredRoute: "local",
-        effectiveRoute: "local",
+        preferredRoute: route,
+        effectiveRoute: route,
         routeGeneration: 1,
         latencyMs: 1,
         fallbackReason: null,
@@ -181,7 +183,7 @@ function setup() {
     renewGrant: vi.fn(async () => activeGrant.grant.binding.lease),
     revokeGrant: vi.fn(async () => undefined),
   };
-  return { dependencies, release, stream };
+  return { activeGrant, activeSession, dependencies, link, release, stream };
 }
 
 describe("Tunnel WorkerLink client", () => {
@@ -256,4 +258,32 @@ describe("Tunnel WorkerLink client", () => {
     ).toBe(false);
     expect(onClose).toHaveBeenCalledWith("protocol-error");
   });
+
+  it.each(["lan", "wan", "relay"] satisfies WorkerLinkRoute[])(
+    "keeps grant and stream boundaries topology-neutral on %s",
+    async (route) => {
+      const fixture = setup(route);
+      const connection = await openTunnelWorkerLink(
+        {
+          attachmentId,
+          onClose: vi.fn(),
+          onFrame: vi.fn(),
+          workerId: "worker-1",
+        },
+        fixture.dependencies,
+      );
+
+      expect(connection.route).toBe(route);
+      expect(fixture.dependencies.createGrant).toHaveBeenCalledWith(
+        fixture.activeSession.sessionId,
+        attachmentId,
+        {},
+      );
+      expect(fixture.link.openStream).toHaveBeenCalledWith(
+        fixture.activeGrant.grant,
+        "stream",
+      );
+      connection.close();
+    },
+  );
 });

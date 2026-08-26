@@ -1,5 +1,6 @@
 import type {
   WorkerLinkChannelCloseCode,
+  WorkerLinkRoute,
   WorkerLinkTunnelRoute,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
@@ -22,13 +23,14 @@ class FakeConnection implements TunnelWorkerLinkConnection {
   readonly activate = vi.fn();
   readonly bufferedAmount = 0;
   readonly close = vi.fn((_code?: WorkerLinkChannelCloseCode) => undefined);
-  readonly route = "relay" as const;
   readonly send = vi.fn((_frame: Uint8Array) => true);
   readonly tunnelRoute = route;
+
+  constructor(readonly route: WorkerLinkRoute) {}
 }
 
-function setup() {
-  const connection = new FakeConnection();
+function setup(selectedRoute: WorkerLinkRoute = "relay") {
+  const connection = new FakeConnection(selectedRoute);
   let options:
     Parameters<BrowserCodeWorkerLinkSocketDependencies["openLink"]>[0] | null =
     null;
@@ -52,39 +54,45 @@ function setup() {
 }
 
 describe("browser Code WorkerLink socket", () => {
-  it("adapts the shared WorkerLink stream to the existing Code socket boundary", async () => {
-    const fixture = setup();
-    await new Promise<void>((resolve) =>
-      fixture.socket.addEventListener("open", () => resolve(), { once: true }),
-    );
-    const messages: unknown[] = [];
-    fixture.socket.setMessageConsumer!(async (event) => {
-      messages.push(event.data);
-    });
+  it.each(["lan", "wan", "relay"] satisfies WorkerLinkRoute[])(
+    "adapts a %s WorkerLink stream to the existing Code socket boundary",
+    async (selectedRoute) => {
+      const fixture = setup(selectedRoute);
+      await new Promise<void>((resolve) =>
+        fixture.socket.addEventListener("open", () => resolve(), {
+          once: true,
+        }),
+      );
+      const messages: unknown[] = [];
+      fixture.socket.setMessageConsumer!(async (event) => {
+        messages.push(event.data);
+      });
 
-    fixture.socket.send(
-      JSON.stringify({ type: "initialize", clientId: "web-code:client-1" }),
-    );
-    await vi.waitFor(() => expect(messages).toHaveLength(1));
-    expect(JSON.parse(messages[0] as string)).toEqual({
-      type: "ready",
-      attachmentId: route.attachmentId,
-      destinationEndpointId: route.destinationEndpointId,
-      expiresAt: "2099-01-01T00:00:00.000Z",
-      sourceEndpointId: route.sourceEndpointId,
-      tunnelId: route.tunnelId,
-    });
-    await vi.waitFor(() =>
-      expect(fixture.connection.activate).toHaveBeenCalledOnce(),
-    );
+      fixture.socket.send(
+        JSON.stringify({ type: "initialize", clientId: "web-code:client-1" }),
+      );
+      await vi.waitFor(() => expect(messages).toHaveLength(1));
+      expect(JSON.parse(messages[0] as string)).toEqual({
+        type: "ready",
+        attachmentId: route.attachmentId,
+        destinationEndpointId: route.destinationEndpointId,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        sourceEndpointId: route.sourceEndpointId,
+        tunnelId: route.tunnelId,
+      });
+      await vi.waitFor(() =>
+        expect(fixture.connection.activate).toHaveBeenCalledOnce(),
+      );
 
-    fixture.socket.send(new Uint8Array([1, 2, 3]).buffer);
-    expect(fixture.connection.send).toHaveBeenCalledWith(
-      new Uint8Array([1, 2, 3]),
-    );
-    await fixture.options()!.onFrame(new Uint8Array([4, 5, 6]));
-    expect(messages[1]).toEqual(new Uint8Array([4, 5, 6]).buffer);
-  });
+      fixture.socket.send(new Uint8Array([1, 2, 3]).buffer);
+      expect(fixture.connection.send).toHaveBeenCalledWith(
+        new Uint8Array([1, 2, 3]),
+      );
+      await fixture.options()!.onFrame(new Uint8Array([4, 5, 6]));
+      expect(messages[1]).toEqual(new Uint8Array([4, 5, 6]).buffer);
+      expect(fixture.connection.route).toBe(selectedRoute);
+    },
+  );
 
   it("maps authorization expiry to the existing protected-transport recovery signal", async () => {
     const fixture = setup();
