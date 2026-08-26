@@ -2,7 +2,7 @@
 
 ## Status
 
-This document is the implementation plan for giving Cantrip agents reliable
+This document describes the implemented system that gives Cantrip agents reliable
 web search, static page reading, and browser-backed research without paid
 search APIs or host-level prerequisite installation.
 
@@ -37,6 +37,21 @@ The portable runtimes are host-wide worker resources, not project resources.
 One worker may serve many authorized agent lanes, but every request remains
 bound to its owner, chat, execution lane, permission profile, and current
 worker generation.
+
+### Agent surface profiles
+
+Cantrip uses one managed MCP server implementation with two catalog profiles:
+
+- standalone Chat receives exactly `tool_help`, `web_search`, and `web_read`;
+- IDE/project agents receive the complete managed Cantrip MCP catalog,
+  including search, reading, and interactive web-session tools.
+
+The worker injects the managed server into both surfaces. A discriminated
+binding prevents standalone Chats from carrying project or worktree authority,
+and the broker, server, tool discovery, and `tool_help` all enforce the active
+profile. Cantrip disables Codex's hosted native web search through the common
+generated runtime configuration for every provider, leaving the worker-managed
+path as the single search implementation exposed to agents.
 
 ## 2. Goals
 
@@ -548,10 +563,11 @@ to run package-manager commands.
 | Multiple owners use one worker                     | Share immutable executables only; partition requests, caches where sensitive, sessions, and profiles. |
 | A system SearXNG/Chrome/Playwright is present      | Ignore it completely.                                                                                 |
 
-## 15. Implementation phases
+## 15. Implementation record
 
-Each phase is an independently mergeable manual-change cycle with its own
-worktree, pull request, auto-merge observation, and cleanup.
+The system was delivered as independently mergeable manual-change cycles with
+their own worktrees, pull requests, auto-merge observation, and cleanup. The
+following phases record the implemented architecture and release work.
 
 ### Phase 1 — managed runtime foundation
 

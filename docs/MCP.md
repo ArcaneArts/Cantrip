@@ -1,9 +1,12 @@
 # Managed Cantrip MCP
 
-Cantrip gives each applicable Codex chat a worker-owned MCP server named
-`cantrip`. It is the preferred agent interface for Cantrip-owned context,
-Policies, Run configurations and runtimes, worktrees, execution targets,
-surfaces, and bounded client controls.
+Cantrip gives every project Agent chat and standalone Chat a worker-owned MCP
+server named `cantrip`. One server implementation is exposed through two
+profiles: IDE/project agents receive the full catalog, while standalone Chat
+receives only `tool_help`, `web_search`, and `web_read`. The full profile is the
+preferred agent interface for Cantrip-owned context, Policies, Run
+configurations and runtimes, worktrees, execution targets, surfaces, and
+bounded client controls.
 Normal repository reads, edits, commands, and Git operations still use normal
 shell, file, and Git tools. The worker-authenticated [`cantrip` CLI](CLI.md)
 remains available to humans, scripts, diagnostics, and agents whose MCP runtime
@@ -46,9 +49,11 @@ or MCP configuration returned to the app.
 The worker synthesizes the reserved `cantrip` server after removing any
 user-configured server that attempts to shadow a Cantrip-managed name. Codex
 spawns it with the worker's current Node runtime. A new binding replaces the
-previous binding for that chat, expires after six hours, and is rejected sooner
-when the worker, owner, project, chat, execution lane, worktree, permission
-profile, or active execution status no longer matches. Worker startup clears
+previous binding for that chat and expires after six hours. Project bindings
+are rejected when the worker, owner, project, chat, execution lane, worktree,
+permission profile, or active execution status no longer matches. Standalone
+bindings instead carry the Chat identity and its worker-owned scratch root and
+cannot contain project, worktree, or project-lane claims. Worker startup clears
 orphaned binding documents; revocation and shutdown remove live documents.
 
 Every call is schema-bounded at MCP, broker, worker/server, and result
@@ -72,6 +77,8 @@ configuration ID. Runtime output and secret plaintext are not added to audit
 records.
 
 ## Agent use
+
+### IDE/project profile
 
 1. Call `context_get` first and treat its project, lane, worker, root, worktree,
    permission, and binding-readiness information as authoritative. If it reports
@@ -98,20 +105,33 @@ records.
    command. Do not retry an expired, stale, or denied binding without refreshed
    chat context.
 
+### Standalone Chat profile
+
+Standalone Chat receives exactly three managed tools: `tool_help`,
+`web_search`, and `web_read`. Use `tool_help` for either web tool's exact
+schema, `web_search` to discover sources, and `web_read` to retrieve bounded
+content. The profile cannot discover or invoke project, worktree, Policy, Run,
+client-control, protected-surface, or interactive-browser tools. Its binding is
+rooted in the Chat's private scratch directory rather than a project.
+
 New and resumed Codex threads continue to set `dynamicTools: []`. This removes
 legacy Cantrip dynamic-tool declarations; it does not disable native MCP tools.
 The managed MCP is injected through Codex's MCP configuration and appears in
-the runtime customization inventory as **Managed by Cantrip**. Its catalog is a
-mix of read and mutation tools, so the server as a whole is not labeled read
-only. CodeGraph remains separately labeled **Read only**.
+the runtime customization inventory as **Managed by Cantrip**. Cantrip also
+sets Codex's common `web_search = "disabled"` runtime policy for every provider,
+so the hosted native search tool cannot compete with the managed search path.
+The IDE catalog mixes read and mutation tools, so the server as a whole is not
+labeled read only. CodeGraph remains separately labeled **Read only** and is
+IDE-only.
 
 ## Tool catalog
 
-The catalog contains 36 tools. Read-only and mutation annotations are attached
-per tool. Cantrip narrows Codex's enabled tool list to the current permission
-profile, so read-only bindings receive the Run configuration read tools but not
-authoring, lifecycle, or secret mutations; the broker and server independently
-enforce the same boundary.
+The complete IDE catalog contains 43 tools. Read-only and mutation annotations
+are attached per tool. Cantrip narrows Codex's enabled tool list to the current
+permission profile, so read-only bindings receive the Run configuration read
+tools but not authoring, lifecycle, or secret mutations; the broker and server
+independently enforce the same boundary. The standalone profile is a strict
+three-tool subset, and `tool_help` only advertises tools in the active profile.
 
 | Tool                            | Kind                            | Purpose                                                                                         |
 | ------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -132,6 +152,13 @@ enforce the same boundary.
 | `explorer_read`                 | Read                            | Read bounded protected text and its version from an Explorer target.                            |
 | `terminal_read`                 | Read                            | Read a bounded protected Terminal snapshot.                                                     |
 | `browser_services`              | Read/open-world                 | Discover bounded local HTTP services visible to a Browser target.                               |
+| `web_search`                    | Read/open-world                 | Search through the worker-managed search runtime and return bounded normalized results.         |
+| `web_read`                      | Read/open-world                 | Fetch and extract bounded page content from a URL or prior search result.                       |
+| `web_session_snapshot`          | Read/open-world                 | Return a bounded accessibility snapshot for an exact managed web session.                       |
+| `web_session_open`              | Open-world mutation             | Open or resume an isolated managed browser session at an allowed URL.                           |
+| `web_session_click`             | Open-world mutation             | Click one generation-fenced element reference in a managed web session.                         |
+| `web_session_type`              | Open-world mutation             | Type bounded text into one generation-fenced element reference.                                 |
+| `web_session_close`             | Open-world mutation             | Close an exact managed web session and release its ephemeral state.                             |
 | `run_configuration_create`      | Mutation                        | Create one revisioned shared definition using its document ID.                                  |
 | `run_configuration_update`      | Mutation                        | Update one exact definition with optimistic revision control.                                   |
 | `run_configuration_delete`      | Destructive mutation            | Delete one exact definition after revision validation.                                          |
