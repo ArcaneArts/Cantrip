@@ -100,12 +100,14 @@ describe("worker settings helpers", () => {
           { repositoryCount: 0, workerId: "desktop-current" },
         ],
         linkedWorkerId: "desktop-current",
+        serverWorkerIds: ["desktop-current"],
       }),
     ).toBe("desktop-with-projects");
     expect(
       recoverableDesktopWorkerId({
         candidates: [{ repositoryCount: 0, workerId: "desktop-stale" }],
         linkedWorkerId: "desktop-current",
+        serverWorkerIds: ["desktop-current"],
       }),
     ).toBeNull();
   });
@@ -118,8 +120,19 @@ describe("worker settings helpers", () => {
           { repositoryCount: 1, workerId: "desktop-current" },
         ],
         linkedWorkerId: "desktop-current",
+        serverWorkerIds: ["desktop-current"],
       }),
     ).toBeNull();
+  });
+
+  it("offers the retained local identity after it is unlinked from the server", () => {
+    expect(
+      recoverableDesktopWorkerId({
+        candidates: [{ repositoryCount: 0, workerId: "desktop-disconnected" }],
+        linkedWorkerId: "desktop-disconnected",
+        serverWorkerIds: [],
+      }),
+    ).toBe("desktop-disconnected");
   });
 
   it("retires only offline source-free desktop identities after pairing", () => {

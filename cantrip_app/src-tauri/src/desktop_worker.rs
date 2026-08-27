@@ -387,6 +387,17 @@ impl DesktopWorkers {
         Ok(())
     }
 
+    fn remove_profile_credential(&self, worker_id: &str) -> Result<(), String> {
+        let path = self
+            .profile_directory(worker_id)
+            .join("worker-credential.json");
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Could not remove {}: {error}", path.display())),
+        }
+    }
+
     fn spawn(
         &self,
         profile: &DesktopWorkerProfile,
@@ -925,6 +936,38 @@ pub fn forget_desktop_worker(
     Ok(())
 }
 
+#[tauri::command]
+pub fn disconnect_desktop_worker(
+    app: AppHandle,
+    worker_id: String,
+    workers: State<'_, DesktopWorkers>,
+) -> Result<(), String> {
+    let managed = workers
+        .profiles
+        .lock()
+        .map_err(|_| "The desktop worker registry is unavailable.".to_string())?
+        .iter()
+        .any(|profile| profile.worker_id == worker_id);
+    if !managed {
+        return Err("The linked worker is not managed by this installation.".into());
+    }
+    workers.stop(&worker_id)?;
+    workers.remove_profile_credential(&worker_id)?;
+    app.state::<crate::local_logs::LocalServiceLogs>()
+        .runtime_event(
+            "info",
+            "Linked desktop worker disconnected with identity retained",
+            Some(json!({
+                "event": "desktop.linked-worker.disconnected",
+                "operation": "disconnect-worker",
+                "status": "retained",
+                "subsystem": "desktop-worker",
+                "workerId": worker_id
+            })),
+        );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashMap, fs, path::Path, sync::Mutex};
@@ -1031,13 +1074,19 @@ mod tests {
 
     #[test]
     fn reuses_a_server_authorized_worker_identity() {
-        let (_, replacement) = replacement_profile(
-            None,
+        let existing = DesktopWorkerProfile {
+            name: "This machine".into(),
+            server_url: "https://relay.cantrip.art".into(),
+            worker_id: "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2".into(),
+        };
+        let (replaced_worker_id, replacement) = replacement_profile(
+            Some(&existing),
             "This machine",
             "https://relay.cantrip.art",
             Some("desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2"),
         );
 
+        assert_eq!(replaced_worker_id, Some(existing.worker_id));
         assert_eq!(
             replacement.worker_id,
             "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2"
@@ -1333,6 +1382,33 @@ mod tests {
 
         assert!(!profile_directory.join("desktop-profile.json").exists());
         assert!(!profile_directory.join("worker-credential.json").exists());
+        assert!(profile_directory
+            .join("repositories/ArcaneArts/Cantrip/.git")
+            .exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn disconnecting_worker_preserves_its_identity_and_private_data() {
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-worker-disconnected-profile-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let manager = test_manager(&root);
+        let worker_id = "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2";
+        let profile_directory = manager.profile_directory(worker_id);
+        fs::create_dir_all(profile_directory.join("repositories/ArcaneArts/Cantrip/.git")).unwrap();
+        fs::write(profile_directory.join("desktop-profile.json"), "{}").unwrap();
+        fs::write(profile_directory.join("worker-credential.json"), "{}").unwrap();
+        fs::write(profile_directory.join("worker-encryption-key.json"), "{}").unwrap();
+
+        manager.remove_profile_credential(worker_id).unwrap();
+
+        assert!(profile_directory.join("desktop-profile.json").exists());
+        assert!(!profile_directory.join("worker-credential.json").exists());
+        assert!(profile_directory
+            .join("worker-encryption-key.json")
+            .exists());
         assert!(profile_directory
             .join("repositories/ArcaneArts/Cantrip/.git")
             .exists());
