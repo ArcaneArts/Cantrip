@@ -677,7 +677,7 @@ export function ProjectSidebarFileTree({
   return (
     <>
       <section
-        className="mt-2 border-t border-border/70 pt-2"
+        className="mt-2 border-t border-transparent pt-2 transition-colors duration-150 group-hover/sidebar-shell:border-border/70"
         aria-label="Files"
       >
         <button
