@@ -159,12 +159,7 @@ import {
   encryptedExplorerUpdateSchema,
   encryptedExplorerViewStateUpdateSchema,
   encryptedExplorerWorktreeUpdateSchema,
-  executionPlacementResolveRequestSchema,
-  executionPlacementResolutionSchema,
-  executionTargetWireCatalogSchema,
   executionTargetResourceKindSchema,
-  executionTargetResolutionSchema,
-  executionTargetResolveRequestSchema,
   executionTargetSchema,
   githubAuthStatusSchema,
   githubIssueCloseSchema,
@@ -317,7 +312,6 @@ import {
   managedWebRuntimeActionResultSchema,
   orderedIdsSchema,
   operationalProbeSchema,
-  projectWireListSchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   projectRemoveSchema,
@@ -783,6 +777,7 @@ import { installTransportSecurity } from "./app/http/transport-security.js";
 import { installInternalProviderCredentialRoutes } from "./app/routes/internal-provider-credentials.js";
 import { installPolicyRoutes } from "./app/routes/policies.js";
 import { installProjectAutomationRoutes } from "./app/routes/project-automations.js";
+import { installProjectCatalogAndPlacementRoutes } from "./app/routes/project-catalog-and-placement.js";
 import { installProjectExportRoutes } from "./app/routes/project-exports.js";
 import { installProjectExternalChatHistoryRoute } from "./app/routes/project-external-chat-history.js";
 import { installProjectFolderSetupRoutes } from "./app/routes/project-folder-setup.js";
@@ -17096,80 +17091,11 @@ export async function buildApp({
     },
   );
 
-  app.get("/api/projects", async (_request, reply) => {
-    const projects = await repository.listProjects(applicationOwnerId());
-    return reply.send(projectWireListSchema.parse(projects));
+  installProjectCatalogAndPlacementRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    repository,
   });
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/placement/resolve",
-    async (request, reply) => {
-      const input = executionPlacementResolveRequestSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const resolution = await repository.resolveProjectExecutionPlacement(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data.surfaceKind,
-          input.data.target,
-          (workerId) => bridge.isConnected(workerId),
-        );
-        return reply.send(executionPlacementResolutionSchema.parse(resolution));
-      } catch (error) {
-        if (error instanceof ExecutionPlacementUnavailableError) {
-          return reply
-            .code(error.code === "project-not-found" ? 404 : 409)
-            .send({ code: error.code, error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/execution-targets",
-    async (request, reply) => {
-      const catalog = await repository.listProjectExecutionTargets(
-        applicationOwnerId(),
-        request.params.projectId,
-        (workerId) => bridge.isConnected(workerId),
-      );
-      return catalog
-        ? reply.send(executionTargetWireCatalogSchema.parse(catalog))
-        : reply.code(404).send({ error: "Project not found." });
-    },
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/execution-targets/resolve",
-    async (request, reply) => {
-      const input = executionTargetResolveRequestSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const resolution = await repository.resolveExecutionTarget(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data.target,
-          (workerId) => bridge.isConnected(workerId),
-          input.data.allowUnavailable,
-        );
-        return reply.send(executionTargetResolutionSchema.parse(resolution));
-      } catch (error) {
-        if (error instanceof ExecutionPlacementUnavailableError) {
-          return reply
-            .code(error.code === "project-not-found" ? 404 : 409)
-            .send({ code: error.code, error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
 
   installProjectReplicaRoutes(app, {
     applicationOwnerId,
