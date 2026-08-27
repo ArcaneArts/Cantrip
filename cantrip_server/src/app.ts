@@ -680,6 +680,7 @@ import { installProjectCatalogAndPlacementRoutes } from "./app/routes/project-ca
 import { installProjectExportRoutes } from "./app/routes/project-exports.js";
 import { installProjectExternalChatHistoryRoute } from "./app/routes/project-external-chat-history.js";
 import { installProjectFolderSetupRoutes } from "./app/routes/project-folder-setup.js";
+import { installProjectGitActionAndHistoryRoutes } from "./app/routes/project-git-actions-and-history.js";
 import { installProjectGithubConversionRoutes } from "./app/routes/project-github-conversion.js";
 import { installProjectGithubImportRoute } from "./app/routes/project-github-import.js";
 import { installProjectMcpServerRoutes } from "./app/routes/project-mcp-servers.js";
@@ -17813,87 +17814,12 @@ export async function buildApp({
     worktreeCoordinator,
   });
 
-  app.post<{ Params: { projectId: string; worktreeId: string } }>(
-    "/api/projects/:projectId/worktrees/:worktreeId/git/actions",
-    async (request, reply) => {
-      const input = gitActionSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.getProjectWorktreeContext(
-        applicationOwnerId(),
-        request.params.projectId,
-        request.params.worktreeId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Worktree not found." });
-      }
-      try {
-        const result = await worktreeCoordinator.serialize(
-          request.params.projectId,
-          async () => {
-            const freshContext = await repository.getProjectWorktreeContext(
-              applicationOwnerId(),
-              request.params.projectId,
-              request.params.worktreeId,
-            );
-            if (!freshContext) throw new Error("Worktree not found.");
-            const applied = gitActionResultSchema.parse(
-              await bridge.request(freshContext.workerId, {
-                type: "git.action",
-                cwd: freshContext.worktree.path,
-                action: input.data,
-              }),
-            );
-            await recordLiveWorktreeStatus(
-              request.params.projectId,
-              request.params.worktreeId,
-              worktreeStatusFromGitStatus(
-                freshContext.worktree,
-                applied.status,
-              ),
-            );
-            return applied;
-          },
-        );
-        return reply.send(result);
-      } catch (error) {
-        return sendWorkerConflictFailure(reply, error);
-      }
-    },
-  );
-
-  app.get<{
-    Params: { projectId: string };
-    Querystring: { cursor?: string; limit?: string };
-  }>("/api/projects/:projectId/git/history", async (request, reply) => {
-    const source = await repository.getProjectSource(
-      applicationOwnerId(),
-      request.params.projectId,
-    );
-    if (!source) {
-      return reply.code(404).send({ error: "Project source not found." });
-    }
-    const parsedLimit = Number.parseInt(request.query.limit ?? "100", 10);
-    const limit = Number.isFinite(parsedLimit)
-      ? Math.min(100, Math.max(1, parsedLimit))
-      : 100;
-    const parsedCursor = Number.parseInt(request.query.cursor ?? "0", 10);
-    const cursor = Number.isFinite(parsedCursor)
-      ? Math.max(0, parsedCursor)
-      : 0;
-    try {
-      const history = await bridge.request(source.workerId, {
-        type: "git.history",
-        cwd: source.cwd,
-        cursor,
-        limit,
-        revisions: [],
-      });
-      return reply.send(gitHistorySchema.parse(history));
-    } catch (error) {
-      return sendWorkerRequestFailure(reply, error);
-    }
+  installProjectGitActionAndHistoryRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    recordLiveWorktreeStatus,
+    repository,
+    worktreeCoordinator,
   });
 
   installProjectInsightRoutes(app, {
