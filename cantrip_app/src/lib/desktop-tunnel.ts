@@ -1,7 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
   CodeSharedAttachmentWire,
-  DirectTunnelTicket,
   TunnelAttachmentCreateResult,
   WorkerLinkRoute,
 } from "@cantrip/protocol";
@@ -992,40 +991,6 @@ async function releaseDesktopCodeTransportOnce(
     serverUrl: lease.serverUrl,
   }).catch(() => undefined);
   return true;
-}
-
-export async function startDirectDesktopTunnel(
-  ticket: DirectTunnelTicket,
-  expiresAt: string,
-): Promise<DesktopTunnelForwardSummary> {
-  if (!isTauri()) {
-    throw new Error(
-      "Local direct tunnel attachments are only available in the desktop app.",
-    );
-  }
-  const request = {
-    attachmentId: ticket.route.attachmentId,
-    clientId: desktopTunnelClientId(window.localStorage),
-    diagnosticTraceId: null,
-    direct: ticket,
-    expiresAt,
-    preferredLocalPort: null,
-    relay: null,
-    tunnelId: ticket.route.tunnelId,
-  };
-  try {
-    const started = await invoke<DesktopTunnelForwardSummary>(
-      "start_tunnel_forward",
-      { request },
-    );
-    if (started.routeState !== "local-direct") {
-      throw new Error("The worker is not available on this device.");
-    }
-    return started;
-  } finally {
-    request.direct.secret = "";
-    ticket.secret = "";
-  }
 }
 
 export async function stopDesktopTunnel(

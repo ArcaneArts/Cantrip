@@ -73,7 +73,7 @@ const remoteSurfaceStreamProtocolPath = resolve(
 );
 const remoteSurfaceTransportPath = resolve(
   repositoryRoot,
-  "cantrip_app/src/lib/use-remote-surface-transport.ts",
+  "cantrip_app/src/lib/remote-surface-worker-link.ts",
 );
 const remoteSurfaceManagerPath = resolve(
   repositoryRoot,
@@ -4539,7 +4539,7 @@ function remoteSurfaceStreamProtocolBoundaryAudit(
     "openRemoteSurfaceStreamPayload",
     'direction: "client-to-worker"',
     'direction: "worker-to-client"',
-    "#sequences = new Map<RemoteSurfaceChannel, number>()",
+    "#outboundSequences = new Map<RemoteSurfaceChannel, number>()",
     "#lastInboundSequences = new Map<RemoteSurfaceChannel, number>()",
   ]) {
     if (!transportText.includes(marker)) {

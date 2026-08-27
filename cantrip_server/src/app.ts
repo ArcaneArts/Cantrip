@@ -946,6 +946,11 @@ import {
   buildStorageUsageHistory,
 } from "./account-usage/resource-usage-response.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
+import {
+  LEGACY_FEATURE_TRANSPORT_DEPRECATION,
+  LEGACY_FEATURE_TRANSPORT_DEPRECATION_LINK,
+  legacyFeatureTransportEndpoint,
+} from "./operations/legacy-feature-transports.js";
 import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
 import {
@@ -1496,11 +1501,34 @@ export async function buildApp({
     FastifyRequest,
     { release: () => void; startedAt: number }
   >();
-  app.addHook("onRequest", (request, _reply, done) => {
+  app.addHook("onRequest", (request, reply, done) => {
     requestMetrics.set(request, {
       release: operationalMetrics.beginHttpRequest(),
       startedAt: performance.now(),
     });
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    const legacyEndpoint = legacyFeatureTransportEndpoint(
+      request.method,
+      route,
+    );
+    if (legacyEndpoint) {
+      reply.header("deprecation", LEGACY_FEATURE_TRANSPORT_DEPRECATION);
+      reply.header("link", LEGACY_FEATURE_TRANSPORT_DEPRECATION_LINK);
+      operationalMetrics.recordLegacyFeatureTransport(legacyEndpoint);
+      serverLogger.rateLimited(
+        `legacy-feature-transport:${legacyEndpoint}`,
+        "warn",
+        "Deprecated feature transport endpoint requested",
+        {
+          endpoint: legacyEndpoint,
+          event: "network.compatibility-endpoint.requested",
+          operation: "connect",
+          reasonCode: "legacy-feature-transport",
+          status: "deprecated",
+          subsystem: "worker-link",
+        },
+      );
+    }
     done();
   });
   app.addHook("onResponse", (request, reply, done) => {
@@ -3834,7 +3862,9 @@ export async function buildApp({
       relayQuotas.acquireRemoteSurface(ownerId, workerId),
     consumeRelayBytes: (ownerId, workerId, bytes) =>
       relayQuotas.consumeRelay(ownerId, workerId, bytes),
-    laneLimits: config.workerLinkPeer.laneLimits,
+    ...(config.workerLinkPeer?.laneLimits
+      ? { laneLimits: config.workerLinkPeer.laneLimits }
+      : {}),
     usageRecorder: accountUsageMeter,
   });
   const unsubscribeWorkerLinkRelayRevocations =

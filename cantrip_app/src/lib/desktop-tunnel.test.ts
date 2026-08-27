@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  activateDirectTunnelAttachment: vi.fn(),
   attachDesktopTunnelWorkerLinkForward: vi.fn(),
-  createDirectTunnelAttachment: vi.fn(),
   createTunnelAttachment: vi.fn(),
   deleteDirectAttachment: vi.fn(),
   deleteTunnelAttachment: vi.fn(),
@@ -24,8 +22,6 @@ vi.mock("@tauri-apps/api/core", () => ({
   isTauri: mocks.isTauri,
 }));
 vi.mock("@/lib/api", () => ({
-  activateDirectTunnelAttachment: mocks.activateDirectTunnelAttachment,
-  createDirectTunnelAttachment: mocks.createDirectTunnelAttachment,
   createTunnelAttachment: mocks.createTunnelAttachment,
   deleteDirectAttachment: mocks.deleteDirectAttachment,
   deleteTunnelAttachment: mocks.deleteTunnelAttachment,
@@ -59,7 +55,6 @@ import {
   refreshDesktopTunnelWorkerLinkAttachment,
   releaseDesktopCodeTransport,
   startDesktopTunnel,
-  startDirectDesktopTunnel,
   stopDesktopTunnel,
 } from "./desktop-tunnel";
 
@@ -76,40 +71,6 @@ function deferred<T>(): {
       resolve = settle;
     }),
     resolve,
-  };
-}
-
-function directTicket() {
-  return {
-    broker: {
-      available: true as const,
-      leaseRenewal: true,
-      protocol: "ws-v1" as const,
-      loopbackHost: "127.0.0.1" as const,
-      loopbackPort: 43_123,
-      instanceId: "8d0a19a8-26f9-4f20-bff0-87242d1b280c",
-      publicKey: "a".repeat(43),
-      fingerprint: "b".repeat(64),
-    },
-    binding: {
-      capabilityId,
-      ownerId: "owner-1",
-      authSessionId: "session-1",
-      workerId: "worker-1",
-      resourceKind: "tunnel" as const,
-      resourceId: "tunnel-1",
-      attachmentId: "attachment-1",
-      channels: ["tunnel-data"],
-      expiresAt,
-      leaseExpiresAt: expiresAt,
-    },
-    route: {
-      tunnelId: "tunnel-1",
-      attachmentId: "attachment-1",
-      sourceEndpointId: "desktop:client:attachment-1",
-      destinationEndpointId: "worker:worker-1",
-    },
-    secret: "d".repeat(43),
   };
 }
 
@@ -188,7 +149,6 @@ beforeEach(() => {
     secretExpiresAt: expiresAt,
     expiresAt,
   });
-  mocks.activateDirectTunnelAttachment.mockResolvedValue(undefined);
   mocks.deleteDirectAttachment.mockResolvedValue(undefined);
   mocks.deleteTunnelAttachment.mockResolvedValue(undefined);
   mocks.getTunnelDataProtection.mockResolvedValue({
@@ -354,8 +314,6 @@ describe("shared desktop Code transport", () => {
       { clientId: "generation-one" },
       expect.objectContaining({ serverUrl: owned.binding.serverUrl }),
     );
-    expect(mocks.createDirectTunnelAttachment).not.toHaveBeenCalled();
-    expect(mocks.activateDirectTunnelAttachment).not.toHaveBeenCalled();
     expect(mocks.attachDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith(
       {
         attachmentId: "attachment-1",
@@ -406,7 +364,6 @@ describe("shared desktop Code transport", () => {
 
     expect(mocks.getTunnelDataProtection).not.toHaveBeenCalled();
     expect(mocks.createTunnelAttachment).not.toHaveBeenCalled();
-    expect(mocks.createDirectTunnelAttachment).not.toHaveBeenCalled();
     expect(
       mocks.invoke.mock.calls
         .map(([command]) => command)
@@ -729,8 +686,6 @@ describe("startDesktopTunnel", () => {
       tunnelId: "tunnel-1",
       workerId: "worker-1",
     });
-    expect(mocks.createDirectTunnelAttachment).not.toHaveBeenCalled();
-    expect(mocks.activateDirectTunnelAttachment).not.toHaveBeenCalled();
     expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
   });
 
@@ -753,31 +708,6 @@ describe("startDesktopTunnel", () => {
       tunnelId: "tunnel-1",
     });
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
-  });
-
-  it("starts a capability-only local listener without relay credentials", async () => {
-    const direct = directTicket();
-    mocks.invoke.mockResolvedValue({
-      attachmentId: "attachment-1",
-      expiresAt,
-      localHost: "127.0.0.1",
-      localPort: 41_234,
-      routeState: "local-direct",
-      directCapabilityId: capabilityId,
-      directFallbackReason: null,
-      tunnelId: "tunnel-1",
-    });
-
-    await expect(
-      startDirectDesktopTunnel(direct, expiresAt),
-    ).resolves.toMatchObject({ routeState: "local-direct" });
-    expect(mocks.invoke).toHaveBeenCalledWith("start_tunnel_forward", {
-      request: expect.objectContaining({
-        diagnosticTraceId: null,
-        relay: null,
-      }),
-    });
-    expect(direct.secret).toBe("");
   });
 });
 

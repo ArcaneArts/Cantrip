@@ -43,6 +43,43 @@ afterAll(async () => {
 });
 
 describe("public HTTP hardening", () => {
+  it("advertises and measures retained legacy feature transports", async () => {
+    const config = await testConfig();
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const deprecated = await app.inject({
+        method: "POST",
+        url: "/api/terminals/missing/direct",
+        payload: { clientId: "compatibility-client" },
+      });
+      expect(deprecated.statusCode).toBe(404);
+      expect(deprecated.headers.deprecation).toBe("@1787788800");
+      expect(deprecated.headers.link).toContain('rel="deprecation"');
+
+      const health = (
+        await app.inject({ method: "GET", url: "/api/health" })
+      ).json();
+      expect(health.operations.workerLinkRelay).toMatchObject({
+        channels: 0,
+        connections: 0,
+        queuedBytes: 0,
+        queuedFrames: 0,
+      });
+      expect(
+        health.operations.legacyFeatureTransports.requestsByEndpoint,
+      ).toMatchObject({ "terminal-direct": 1 });
+
+      const metrics = await app.inject({ method: "GET", url: "/metrics" });
+      expect(metrics.statusCode).toBe(200);
+      expect(metrics.body).toContain(
+        'cantrip_legacy_feature_transport_requests_total{endpoint="terminal-direct"} 1',
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
   it("sets defensive API headers and accepts only the configured HTTPS proxy route", async () => {
     const config = await testConfig({
       publicOrigin,

@@ -1685,6 +1685,18 @@ export const serverOperationalStatsSchema = z.object({
     activeRequests: operationalCounterSchema,
     requestCount: operationalCounterSchema,
   }),
+  legacyFeatureTransports: z
+    .object({
+      requestsByEndpoint: z.object({
+        "remote-surface-transport": operationalCounterSchema,
+        "terminal-direct": operationalCounterSchema,
+        "terminal-relay": operationalCounterSchema,
+        "tunnel-direct": operationalCounterSchema,
+        "tunnel-direct-activate": operationalCounterSchema,
+        "tunnel-relay": operationalCounterSchema,
+      }),
+    })
+    .optional(),
   coordination: z.object({
     cachedWorkers: operationalCounterSchema,
     instanceCount: operationalCounterSchema,
@@ -1701,6 +1713,21 @@ export const serverOperationalStatsSchema = z.object({
     routedRequests: operationalCounterSchema,
     succeededRequests: operationalCounterSchema,
   }),
+  workerLinkRelay: z
+    .object({
+      channels: operationalCounterSchema,
+      connections: operationalCounterSchema,
+      queuedBytes: operationalCounterSchema,
+      queuedFrames: operationalCounterSchema,
+      queuedFramesByLane: z.object({
+        events: operationalCounterSchema,
+        interactive: operationalCounterSchema,
+        stream: operationalCounterSchema,
+        realtime: operationalCounterSchema,
+        bulk: operationalCounterSchema,
+      }),
+    })
+    .optional(),
   tunnels: z.object({
     activeConnections: operationalCounterSchema,
     activeRoutes: operationalCounterSchema,

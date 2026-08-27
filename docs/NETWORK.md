@@ -693,6 +693,32 @@ Peer candidates, signaling messages, and active route ownership are transient
 coordination state. Projects, conversations, grants that require auditability,
 and other durable product state remain in PostgreSQL.
 
+### Legacy feature relay compatibility
+
+The feature-owned Terminal, tunnel, and Remote Surface transport endpoints are
+deprecated as of 2026-08-27, but remain operational for already-distributed
+clients. Current client source does not construct these routes. Every request to
+a retained endpoint receives the RFC 9745 `Deprecation` header and a
+`rel="deprecation"` link to this policy, and increments one bounded endpoint
+counter. The server deliberately omits a `Sunset` header until a specific
+removal release is approved.
+
+The compatibility endpoints are not eligible for removal until all of these
+conditions hold:
+
+- the date is no earlier than 2026-11-25, providing at least a 90-day soak;
+- two stable releases containing the deprecation boundary have shipped;
+- every retained endpoint counter has remained at zero in the relevant
+  deployment telemetry for 30 consecutive days; and
+- the removal is announced as a breaking compatibility change with an operator
+  rollback path.
+
+Meeting those conditions permits a removal review; it does not remove the
+endpoints automatically. Native cleanup that retires an already-running legacy
+direct forward remains available for as long as such forwards can survive an
+in-place client upgrade. Supported feature entry points and newly created
+forwards continue to use WorkerLink exclusively.
+
 ## Observability
 
 Expose to the client:
@@ -814,7 +840,8 @@ None of these WorkerLink controls permits TURN.
   T2.10A.
 - Retain independently bounded QoS queues and feature quota/metering parity.
   Complete in T2.10A.
-- Deprecate legacy feature-specific relay endpoints after compatibility soak.
+- Isolate and deprecate legacy feature-specific endpoints behind a measured
+  compatibility soak. Complete in T2.10B; physical removal is separately gated.
 - Preserve the deployment-wide relay-only switch.
 
 ## Validation strategy

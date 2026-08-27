@@ -23,6 +23,22 @@ interface WorkerLinkLatencyMetric {
   sumSeconds: number;
 }
 
+export const legacyFeatureTransportEndpoints = [
+  "remote-surface-transport",
+  "terminal-direct",
+  "terminal-relay",
+  "tunnel-direct",
+  "tunnel-direct-activate",
+  "tunnel-relay",
+] as const;
+
+export type LegacyFeatureTransportEndpoint =
+  (typeof legacyFeatureTransportEndpoints)[number];
+
+export interface LegacyFeatureTransportStats {
+  requestsByEndpoint: Record<LegacyFeatureTransportEndpoint, number>;
+}
+
 export interface SchedulerStats {
   dispatchFailures: number;
   dispatches: number;
@@ -48,6 +64,7 @@ export interface OperationalSnapshot {
     activeRequests: number;
     requestCount: number;
   };
+  legacyFeatureTransports: LegacyFeatureTransportStats;
   scheduler: SchedulerStats;
   uptimeSeconds: number;
 }
@@ -85,6 +102,10 @@ export class OperationalMetrics {
   readonly #directBytes = new Map<string, number>();
   readonly #directConnections = new Map<string, number>();
   readonly #http = new Map<string, HttpMetric>();
+  readonly #legacyFeatureTransportRequests = new Map<
+    LegacyFeatureTransportEndpoint,
+    number
+  >();
   readonly #startedAt = Date.now();
   readonly #workerLinkBytes = new Map<string, number>();
   readonly #workerLinkEvents = new Map<string, number>();
@@ -140,6 +161,24 @@ export class OperationalMetrics {
     this.#database.ready = ready;
     this.#database.latencySeconds = Math.max(0, durationMs) / 1_000;
     if (!ready) this.#database.probeFailures += 1;
+  }
+
+  recordLegacyFeatureTransport(endpoint: LegacyFeatureTransportEndpoint): void {
+    this.#legacyFeatureTransportRequests.set(
+      endpoint,
+      (this.#legacyFeatureTransportRequests.get(endpoint) ?? 0) + 1,
+    );
+  }
+
+  legacyFeatureTransportStats(): LegacyFeatureTransportStats {
+    return {
+      requestsByEndpoint: Object.fromEntries(
+        legacyFeatureTransportEndpoints.map((endpoint) => [
+          endpoint,
+          this.#legacyFeatureTransportRequests.get(endpoint) ?? 0,
+        ]),
+      ) as Record<LegacyFeatureTransportEndpoint, number>,
+    };
   }
 
   recordDirectTransport(
@@ -230,6 +269,7 @@ export class OperationalMetrics {
     return {
       database: { ...this.#database },
       http: { activeRequests: this.#activeRequests, requestCount },
+      legacyFeatureTransports: this.legacyFeatureTransportStats(),
       scheduler: { ...this.#scheduler },
       uptimeSeconds: Math.max(0, Date.now() - this.#startedAt) / 1_000,
     };
@@ -267,6 +307,19 @@ export class OperationalMetrics {
           "cantrip_http_request_duration_seconds_sum",
           metric.durationSeconds,
           labels,
+        ),
+      );
+    }
+    lines.push(
+      "# HELP cantrip_legacy_feature_transport_requests_total Requests to deprecated feature-owned direct or relay endpoints.",
+      "# TYPE cantrip_legacy_feature_transport_requests_total counter",
+    );
+    for (const endpoint of legacyFeatureTransportEndpoints) {
+      lines.push(
+        metricLine(
+          "cantrip_legacy_feature_transport_requests_total",
+          this.#legacyFeatureTransportRequests.get(endpoint) ?? 0,
+          { endpoint },
         ),
       );
     }
