@@ -5,9 +5,11 @@
   "colors": {
     "foreground": "#FFFFFF",
     "descriptionForeground": "#D0D0D0",
-    "focusBorder": "#FFFFFF",
-    "contrastActiveBorder": "#FFFFFF",
+    "focusBorder": "#FFFFFF4D",
+    "contrastActiveBorder": "#FFFFFF00",
     "contrastBorder": "#FFFFFF26",
+    "settings.focusedRowBackground": "#FFFFFF0D",
+    "settings.focusedRowBorder": "#FFFFFF00",
     "editor.background": "#000000",
     "editor.foreground": "#FFFFFF",
     "editorCursor.foreground": "#FFFFFF",
