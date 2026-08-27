@@ -164,8 +164,6 @@ import {
   githubRepositorySchema,
   githubWorkerRepositorySchema,
   githubWorkerRepositoryListSchema,
-  gitActionResultSchema,
-  gitActionSchema,
   gitCommitActionApplySchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
@@ -672,6 +670,7 @@ import { installProjectExportRoutes } from "./app/routes/project-exports.js";
 import { installProjectExternalChatHistoryRoute } from "./app/routes/project-external-chat-history.js";
 import { installProjectFolderSetupRoutes } from "./app/routes/project-folder-setup.js";
 import { installProjectGitActionAndHistoryRoutes } from "./app/routes/project-git-actions-and-history.js";
+import { installProjectGitStatusAndActionRoutes } from "./app/routes/project-git-status-and-actions.js";
 import { installProjectGithubContentRoutes } from "./app/routes/project-github-content.js";
 import { installProjectGithubConversionRoutes } from "./app/routes/project-github-conversion.js";
 import { installProjectGithubImportRoute } from "./app/routes/project-github-import.js";
@@ -17827,68 +17826,12 @@ export async function buildApp({
     worktreeCoordinator,
   });
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/git/status",
-    async (request, reply) => {
-      const source = await repository.getProjectSource(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!source) {
-        return reply.code(404).send({ error: "Project source not found." });
-      }
-      try {
-        const status = await bridge.request(source.workerId, {
-          type: "git.status",
-          cwd: source.cwd,
-        });
-        return reply.send(gitStatusSchema.parse(status));
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/git/actions",
-    async (request, reply) => {
-      const input = gitActionSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const source = await repository.getProjectSource(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!source) {
-        return reply.code(404).send({ error: "Project source not found." });
-      }
-      try {
-        const result = gitActionResultSchema.parse(
-          await bridge.request(source.workerId, {
-            type: "git.action",
-            cwd: source.cwd,
-            action: input.data,
-          }),
-        );
-        const context = await repository.getProjectWorktreeContext(
-          applicationOwnerId(),
-          request.params.projectId,
-          source.worktreeId,
-        );
-        if (context) {
-          await recordLiveWorktreeStatus(
-            request.params.projectId,
-            source.worktreeId,
-            worktreeStatusFromGitStatus(context.worktree, result.status),
-          );
-        }
-        return reply.send(result);
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+  installProjectGitStatusAndActionRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    recordLiveWorktreeStatus,
+    repository,
+  });
 
   installProjectOrderRoute(app, {
     applicationOwnerId,
