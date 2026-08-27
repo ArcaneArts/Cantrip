@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClientSessionIdentitySnapshot } from "./client-session";
 import {
   WorkerLinkManager,
+  WorkerLinkTelemetryReporter,
   type WorkerLinkEnvironmentReason,
   type WorkerLinkManagerDependencies,
 } from "./worker-link";
@@ -262,6 +263,247 @@ function acceptOpen(carrier: FakeCarrier, index = 0): WorkerLinkFrameHeader {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe("WorkerLinkTelemetryReporter", () => {
+  it("collapses streamed surface and Terminal counters without losing bytes", async () => {
+    const recordTelemetry = vi.fn<
+      WorkerLinkManagerDependencies["recordTelemetry"]
+    >(async () => undefined);
+    const readNow = vi.fn(() => now);
+    const reporter = new WorkerLinkTelemetryReporter("session-1", {
+      now: readNow,
+      recordTelemetry,
+    });
+    const surfaceFrameBytes = 1_920 * 1_080 * 4;
+    const terminalWriteBytes = 256;
+
+    for (let frame = 0; frame < 120; frame += 1) {
+      reporter.record(
+        1,
+        "bytes-received",
+        surfaceFrameBytes,
+        "none",
+        "realtime",
+        "local",
+        null,
+      );
+      reporter.record(
+        1,
+        "relay-bytes-avoided",
+        surfaceFrameBytes,
+        "none",
+        "realtime",
+        "local",
+        null,
+      );
+      reporter.record(
+        1,
+        "bytes-sent",
+        terminalWriteBytes,
+        "none",
+        "interactive",
+        "local",
+        null,
+      );
+      reporter.record(
+        1,
+        "relay-bytes-avoided",
+        terminalWriteBytes,
+        "none",
+        "interactive",
+        "local",
+        null,
+      );
+    }
+
+    await reporter.close();
+
+    expect(recordTelemetry).toHaveBeenCalledOnce();
+    expect(recordTelemetry).toHaveBeenCalledWith(
+      "session-1",
+      1,
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "bytes-received",
+          lane: "realtime",
+          value: surfaceFrameBytes * 120,
+        }),
+        expect.objectContaining({
+          event: "bytes-sent",
+          lane: "interactive",
+          value: terminalWriteBytes * 120,
+        }),
+        expect.objectContaining({
+          event: "relay-bytes-avoided",
+          lane: "realtime",
+          value: surfaceFrameBytes * 120,
+        }),
+        expect.objectContaining({
+          event: "relay-bytes-avoided",
+          lane: "interactive",
+          value: terminalWriteBytes * 120,
+        }),
+      ]),
+    );
+    expect(recordTelemetry.mock.calls[0]?.[2]).toHaveLength(4);
+    expect(readNow).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps route transitions and latency-bearing events individually timestamped", async () => {
+    let currentTime = now;
+    const recordTelemetry = vi.fn<
+      WorkerLinkManagerDependencies["recordTelemetry"]
+    >(async () => undefined);
+    const reporter = new WorkerLinkTelemetryReporter("session-1", {
+      now: () => currentTime,
+      recordTelemetry,
+    });
+    const record = (
+      event: "negotiation-completed" | "route-fallback" | "route-selected",
+      latencyMs: number | null,
+    ) => {
+      reporter.record(
+        1,
+        event,
+        1,
+        event === "route-fallback" ? "local-unavailable" : "none",
+        null,
+        "local",
+        latencyMs,
+      );
+      currentTime += 10;
+    };
+
+    record("route-selected", 4);
+    record("route-selected", 5);
+    record("route-fallback", null);
+    record("route-fallback", null);
+    record("negotiation-completed", 4);
+    record("negotiation-completed", 5);
+    await reporter.close();
+
+    const samples = recordTelemetry.mock.calls[0]?.[2] ?? [];
+    expect(samples).toHaveLength(6);
+    expect(samples.map((sample) => sample.value)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(samples.map((sample) => sample.occurredAt)).toEqual(
+      Array.from({ length: 6 }, (_, index) =>
+        new Date(now + index * 10).toISOString(),
+      ),
+    );
+  });
+
+  it("keeps additive route, lane, reason, and generation dimensions independent", async () => {
+    const recordTelemetry = vi.fn<
+      WorkerLinkManagerDependencies["recordTelemetry"]
+    >(async () => undefined);
+    const reporter = new WorkerLinkTelemetryReporter("session-1", {
+      now: () => now,
+      recordTelemetry,
+    });
+
+    reporter.record(
+      1,
+      "frame-dropped",
+      2,
+      "congested",
+      "realtime",
+      "local",
+      null,
+    );
+    reporter.record(
+      1,
+      "frame-dropped",
+      3,
+      "congested",
+      "realtime",
+      "local",
+      null,
+    );
+    reporter.record(
+      1,
+      "frame-dropped",
+      5,
+      "protocol-error",
+      "realtime",
+      "local",
+      null,
+    );
+    reporter.record(
+      1,
+      "frame-dropped",
+      7,
+      "congested",
+      "stream",
+      "local",
+      null,
+    );
+    reporter.record(
+      1,
+      "frame-dropped",
+      11,
+      "congested",
+      "realtime",
+      "relay",
+      null,
+    );
+    reporter.record(
+      2,
+      "frame-dropped",
+      13,
+      "congested",
+      "realtime",
+      "local",
+      null,
+    );
+    await reporter.close();
+
+    expect(recordTelemetry.mock.calls.map((call) => call[1])).toEqual([1, 2]);
+    expect(recordTelemetry.mock.calls[0]?.[2]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          lane: "realtime",
+          reason: "congested",
+          route: "local",
+          value: 5,
+        }),
+        expect.objectContaining({ reason: "protocol-error", value: 5 }),
+        expect.objectContaining({ lane: "stream", value: 7 }),
+        expect.objectContaining({ route: "relay", value: 11 }),
+      ]),
+    );
+    expect(recordTelemetry.mock.calls[0]?.[2]).toHaveLength(4);
+    expect(recordTelemetry.mock.calls[1]?.[2]).toEqual([
+      expect.objectContaining({ value: 13 }),
+    ]);
+  });
+
+  it("keeps generation batches bounded and drains later samples after a failed post", async () => {
+    let currentTime = now;
+    const recordTelemetry = vi
+      .fn<WorkerLinkManagerDependencies["recordTelemetry"]>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(undefined);
+    const reporter = new WorkerLinkTelemetryReporter("session-1", {
+      now: () => currentTime++,
+      recordTelemetry,
+    });
+
+    for (let sample = 0; sample < 128; sample += 1) {
+      reporter.record(1, "route-selected", 1, "none", null, "local", sample);
+    }
+    for (let sample = 0; sample < 2; sample += 1) {
+      reporter.record(2, "route-selected", 1, "none", null, "relay", sample);
+    }
+
+    await reporter.close();
+
+    expect(recordTelemetry).toHaveBeenCalledTimes(2);
+    expect(recordTelemetry.mock.calls.map((call) => call[1])).toEqual([1, 2]);
+    expect(recordTelemetry.mock.calls.map((call) => call[2].length)).toEqual([
+      128, 2,
+    ]);
+  });
 });
 
 describe("WorkerLinkManager", () => {
@@ -973,12 +1215,7 @@ describe("WorkerLinkManager", () => {
         expect.objectContaining({
           event: "relay-bytes-avoided",
           route: "local",
-          value: 3,
-        }),
-        expect.objectContaining({
-          event: "relay-bytes-avoided",
-          route: "local",
-          value: 2,
+          value: 5,
         }),
         expect.objectContaining({
           event: "channel-closed",
@@ -986,6 +1223,14 @@ describe("WorkerLinkManager", () => {
         }),
       ]),
     );
+    expect(
+      samples.filter(
+        (sample) =>
+          sample.event === "relay-bytes-avoided" &&
+          sample.route === "local" &&
+          sample.lane === "interactive",
+      ),
+    ).toHaveLength(1);
     await manager.close();
   });
 
@@ -1072,15 +1317,20 @@ describe("WorkerLinkManager", () => {
     );
     const calls = vi.mocked(setup.dependency.recordTelemetry).mock.calls;
     expect(calls.every((call) => call[2].length <= 128)).toBe(true);
-    expect(calls.flatMap((call) => call[2])).toEqual(
+    const samples = calls.flatMap((call) => call[2]);
+    expect(samples).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           event: "queue-pressure",
           reason: "congested",
+          value: 160,
         }),
         expect.objectContaining({ event: "session-closed" }),
       ]),
     );
+    expect(
+      samples.filter((sample) => sample.event === "queue-pressure"),
+    ).toHaveLength(1);
     await manager.close();
   });
 

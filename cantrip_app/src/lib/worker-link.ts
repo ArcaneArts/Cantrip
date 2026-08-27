@@ -63,6 +63,14 @@ const SCHEDULER_RETRY_MS = 5;
 const TELEMETRY_FLUSH_INTERVAL_MS = 1_000;
 const DEFAULT_LAST_USED_STATUS_TTL_MS = 30_000;
 const ROUTES: readonly WorkerLinkRoute[] = ["local", "lan", "wan", "relay"];
+const INDIVIDUAL_TELEMETRY_EVENTS: ReadonlySet<
+  WorkerLinkTelemetrySample["event"]
+> = new Set([
+  "route-selected",
+  "route-fallback",
+  "route-promoted",
+  "route-demoted",
+]);
 const SCHEDULER_LANES: readonly WorkerLinkQosLane[] = [
   "interactive",
   "interactive",
@@ -221,11 +229,16 @@ export interface WorkerLinkManagerDependencies {
 }
 
 interface PendingWorkerLinkTelemetry {
+  additive: boolean;
   routeGeneration: number;
   sample: WorkerLinkTelemetrySample;
 }
 
-class WorkerLinkTelemetryReporter {
+export class WorkerLinkTelemetryReporter {
+  readonly #additive = new Map<
+    number,
+    Map<WorkerLinkTelemetrySample["event"], PendingWorkerLinkTelemetry[]>
+  >();
   #closed = false;
   #flush: Promise<void> | null = null;
   readonly #pending: PendingWorkerLinkTelemetry[] = [];
@@ -241,19 +254,45 @@ class WorkerLinkTelemetryReporter {
 
   record(
     routeGeneration: number,
-    sample: Omit<WorkerLinkTelemetrySample, "occurredAt">,
+    event: WorkerLinkTelemetrySample["event"],
+    value: number,
+    reason: WorkerLinkTelemetrySample["reason"],
+    lane: WorkerLinkQosLane | null,
+    route: WorkerLinkRoute | null,
+    latencyMs: number | null,
   ): void {
     if (this.#closed) return;
-    if (this.#pending.length >= WORKER_LINK_MAX_TELEMETRY_SAMPLES) {
-      this.#pending.shift();
+    const additive =
+      latencyMs === null && !INDIVIDUAL_TELEMETRY_EVENTS.has(event);
+    if (additive) {
+      const existing = this.#findAdditive(
+        routeGeneration,
+        event,
+        route,
+        lane,
+        reason,
+        value,
+      );
+      if (existing) {
+        existing.sample.value += value;
+        return;
+      }
     }
-    this.#pending.push({
+    const pending: PendingWorkerLinkTelemetry = {
+      additive,
       routeGeneration,
       sample: {
         occurredAt: new Date(this.dependencies.now()).toISOString(),
-        ...sample,
+        event,
+        route,
+        lane,
+        value,
+        latencyMs,
+        reason,
       },
-    });
+    };
+    this.#pending.push(pending);
+    if (additive) this.#indexAdditive(pending);
     this.#schedule();
   }
 
@@ -269,14 +308,7 @@ class WorkerLinkTelemetryReporter {
     if (this.#flush) return this.#flush;
     const operation = (async () => {
       while (this.#pending.length > 0) {
-        const routeGeneration = this.#pending[0]!.routeGeneration;
-        const samples: WorkerLinkTelemetrySample[] = [];
-        while (
-          this.#pending[0]?.routeGeneration === routeGeneration &&
-          samples.length < WORKER_LINK_MAX_TELEMETRY_SAMPLES
-        ) {
-          samples.push(this.#pending.shift()!.sample);
-        }
+        const { routeGeneration, samples } = this.#takeBatch();
         await this.dependencies
           .recordTelemetry(this.sessionId, routeGeneration, samples)
           .catch(() => undefined);
@@ -289,8 +321,86 @@ class WorkerLinkTelemetryReporter {
     return operation;
   }
 
+  #findAdditive(
+    routeGeneration: number,
+    event: WorkerLinkTelemetrySample["event"],
+    route: WorkerLinkRoute | null,
+    lane: WorkerLinkQosLane | null,
+    reason: WorkerLinkTelemetrySample["reason"],
+    value: number,
+  ): PendingWorkerLinkTelemetry | null {
+    const candidates = this.#additive.get(routeGeneration)?.get(event);
+    if (!candidates) return null;
+    for (let index = candidates.length - 1; index >= 0; index -= 1) {
+      const candidate = candidates[index]!;
+      const sample = candidate.sample;
+      if (
+        sample.route === route &&
+        sample.lane === lane &&
+        sample.reason === reason &&
+        Number.isSafeInteger(sample.value + value)
+      ) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  #indexAdditive(pending: PendingWorkerLinkTelemetry): void {
+    let generation = this.#additive.get(pending.routeGeneration);
+    if (!generation) {
+      generation = new Map();
+      this.#additive.set(pending.routeGeneration, generation);
+    }
+    let candidates = generation.get(pending.sample.event);
+    if (!candidates) {
+      candidates = [];
+      generation.set(pending.sample.event, candidates);
+    }
+    candidates.push(pending);
+  }
+
+  #takeBatch(): {
+    routeGeneration: number;
+    samples: WorkerLinkTelemetrySample[];
+  } {
+    const routeGeneration = this.#pending[0]!.routeGeneration;
+    let count = 1;
+    while (
+      count < WORKER_LINK_MAX_TELEMETRY_SAMPLES &&
+      this.#pending[count]?.routeGeneration === routeGeneration
+    ) {
+      count += 1;
+    }
+    const pending = this.#pending.splice(0, count);
+    const samples: WorkerLinkTelemetrySample[] = [];
+    for (const entry of pending) {
+      if (entry.additive) this.#unindexAdditive(entry);
+      samples.push(entry.sample);
+    }
+    return { routeGeneration, samples };
+  }
+
+  #unindexAdditive(pending: PendingWorkerLinkTelemetry): void {
+    const generation = this.#additive.get(pending.routeGeneration);
+    const candidates = generation?.get(pending.sample.event);
+    if (!generation || !candidates) return;
+    const index = candidates.indexOf(pending);
+    if (index >= 0) candidates.splice(index, 1);
+    if (candidates.length > 0) return;
+    generation.delete(pending.sample.event);
+    if (generation.size === 0) this.#additive.delete(pending.routeGeneration);
+  }
+
   #schedule(): void {
-    if (this.#closed || this.#timer || this.#flush) return;
+    if (this.#closed || this.#flush) return;
+    if (this.#pending.length >= WORKER_LINK_MAX_TELEMETRY_SAMPLES) {
+      if (this.#timer) clearTimeout(this.#timer);
+      this.#timer = null;
+      void this.flush();
+      return;
+    }
+    if (this.#timer) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
       void this.flush();
@@ -1456,14 +1566,15 @@ class ClientWorkerLink implements WorkerLink {
     route: WorkerLinkRoute | null = this.preferredRoute,
     latencyMs: number | null = null,
   ): void {
-    this.#telemetry.record(this.#session.routeGeneration, {
+    this.#telemetry.record(
+      this.#session.routeGeneration,
       event,
-      route,
-      lane,
       value,
-      latencyMs,
       reason,
-    });
+      lane,
+      route,
+      latencyMs,
+    );
   }
 }
 
