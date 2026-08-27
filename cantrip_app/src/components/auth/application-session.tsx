@@ -3,7 +3,11 @@ import type {
   ServerBootstrap,
   UserSummary,
 } from "@cantrip/protocol";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -30,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import {
   getAuthSession,
   getServerBootstrap,
+  getWorkers,
   login,
   registerAccount,
 } from "@/lib/api";
@@ -37,6 +42,7 @@ import { CantripApiError } from "@/lib/api-client";
 import { AppLiveClient, appLiveWebSocketUrl } from "@/lib/app-live-client";
 import { AppLiveQueryBridge } from "@/lib/app-live-query";
 import { AppLiveProvider } from "@/lib/app-live-react";
+import { WorkerObservationClient } from "@/lib/worker-observation-client";
 import {
   authenticationRequiredAction,
   clearClientSession,
@@ -654,8 +660,11 @@ function AuthenticatedApplication({
     client.setQueryData(["server-bootstrap"], bootstrap);
     return client;
   }, [bootstrap.server.id, user.id]);
+  const queryBridge = useMemo(
+    () => new AppLiveQueryBridge(queryClient),
+    [queryClient],
+  );
   const liveClient = useMemo(() => {
-    const queryBridge = new AppLiveQueryBridge(queryClient);
     const clientIdKey = "cantrip.app-live.client-id.v1";
     let clientId = window.localStorage.getItem(clientIdKey);
     if (!clientId) {
@@ -691,7 +700,11 @@ function AuthenticatedApplication({
       storageKey: `cantrip.app-live.resume.v1.${bootstrap.server.id}.${user.id}`,
       url: appLiveWebSocketUrl(serverUrl, window.location.origin),
     });
-  }, [bootstrap.server.id, queryClient, serverUrl, user.id]);
+  }, [bootstrap.server.id, queryBridge, serverUrl, user.id]);
+  const observationClient = useMemo(
+    () => new WorkerObservationClient(queryBridge),
+    [queryBridge],
+  );
 
   useEffect(() => {
     const releaseScope = liveClient.retainScope({ kind: "current-user" });
@@ -720,10 +733,36 @@ function AuthenticatedApplication({
   return (
     <QueryClientProvider client={queryClient}>
       <AppLiveProvider client={liveClient}>
+        <WorkerObservationSession client={observationClient} />
         <RouterProvider router={router} />
       </AppLiveProvider>
     </QueryClientProvider>
   );
+}
+
+function WorkerObservationSession({
+  client,
+}: {
+  client: WorkerObservationClient;
+}) {
+  const workers = useQuery({
+    queryFn: getWorkers,
+    queryKey: ["workers"],
+    refetchInterval: 30_000,
+  });
+  useEffect(() => {
+    client.start();
+    return () => client.stop();
+  }, [client]);
+  useEffect(() => {
+    if (!workers.data) return;
+    client.updateWorkers(
+      workers.data
+        .filter((worker) => worker.online)
+        .map((worker) => worker.workerId),
+    );
+  }, [client, workers.data]);
+  return null;
 }
 
 export function ApplicationSession() {

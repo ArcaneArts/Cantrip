@@ -27,6 +27,10 @@ export function chatMessageLiveQueryKey(chatId: string) {
   return ["message-live", chatId] as const;
 }
 
+export function chatMessageProvisionalQueryKey(chatId: string) {
+  return ["message-provisional", chatId] as const;
+}
+
 export function chatMessageOlderPagesQueryKey(
   chatId: string,
   headCursor: number,
@@ -78,10 +82,22 @@ export function deleteFromChatMessageLiveOverlay(
   };
 }
 
+export function removeFromChatMessageLiveOverlay(
+  current: ChatMessageLiveOverlay | undefined,
+  messageId: string,
+): ChatMessageLiveOverlay {
+  const overlay = current ?? EMPTY_CHAT_MESSAGE_LIVE_OVERLAY;
+  if (!(messageId in overlay.upserts)) return overlay;
+  const upserts = { ...overlay.upserts };
+  delete upserts[messageId];
+  return { deletedIds: overlay.deletedIds, upserts };
+}
+
 export function mergeChatMessageHistory(
   pagesNewestFirst: readonly ChatMessagePage[],
   overlay: ChatMessageLiveOverlay = EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
   limit = CHAT_MESSAGE_MEMORY_LIMIT,
+  provisional: ChatMessageLiveOverlay = EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
 ): ChatMessage[] {
   const byId = new Map<string, ChatMessage>();
   for (const page of [...pagesNewestFirst].reverse()) {
@@ -100,6 +116,10 @@ export function mergeChatMessageHistory(
     }
   }
   for (const id of overlay.deletedIds) byId.delete(id);
+  for (const message of Object.values(provisional.upserts)) {
+    byId.set(message.id, message);
+  }
+  for (const id of provisional.deletedIds) byId.delete(id);
   return [...byId.values()]
     .sort(
       (left, right) =>

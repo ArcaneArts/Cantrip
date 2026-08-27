@@ -1,4 +1,7 @@
-import { chatMessageSchema } from "@cantrip/protocol";
+import {
+  chatMessageSchema,
+  workerObservationEnvelopeSchema,
+} from "@cantrip/protocol";
 import { generateAccountMasterKey } from "@cantrip/crypto";
 import type {
   AppLiveServerMessage,
@@ -16,6 +19,7 @@ import { clearClientSession, setClientSession } from "./client-session";
 import { createTaskMessageOpaqueContent } from "./task-message-encryption";
 import {
   chatMessageLiveQueryKey,
+  chatMessageProvisionalQueryKey,
   type ChatMessageLiveOverlay,
 } from "./chat-message-history";
 
@@ -53,6 +57,275 @@ const event = (
 afterEach(() => clearClientSession());
 
 describe("application live query bridge", () => {
+  it("projects direct chat messages provisionally and removes them when canonical state arrives", async () => {
+    const queryClient = new QueryClient();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const sourceEvent = {
+      operationId: "user-message-1",
+      turnId: "turn-1",
+      messageId: "agent-message-1",
+      sequence: 0,
+    };
+    const observation = workerObservationEnvelopeSchema.parse({
+      protocolVersion: 1,
+      subscriptionId: "77777777-7777-4777-8777-777777777777",
+      continuitySequence: 0,
+      observedAt: "2026-08-09T12:00:00.000Z",
+      identity: sourceEvent,
+      payload: {
+        topic: "chat-progress",
+        chatId: "chat-one",
+        clientMessageId: "user-message-1",
+        executionLaneId: "lane-one",
+        contextKind: "project",
+        worktreeId: "worktree-one",
+        scratchRootId: null,
+        event: {
+          type: "agent.message",
+          message: {
+            id: "agent-message-1",
+            text: "Working directly",
+            phase: "commentary",
+            streaming: true,
+          },
+        },
+      },
+    });
+
+    await bridge.handleWorkerObservation("worker-one", observation);
+    const provisional = queryClient.getQueryData<ChatMessageLiveOverlay>(
+      chatMessageProvisionalQueryKey("chat-one"),
+    );
+    expect(Object.values(provisional?.upserts ?? {})).toHaveLength(1);
+
+    const canonical = chatMessageSchema.parse({
+      id: "canonical-message-one",
+      chatId: "chat-one",
+      contextKind: "project",
+      worktreeId: "worktree-one",
+      scratchRootId: null,
+      executionLaneId: "lane-one",
+      sequence: 2,
+      role: "assistant",
+      mode: "default",
+      content: [
+        {
+          type: "text",
+          text: "Working directly",
+          phase: "commentary",
+          streaming: true,
+          sourceEvent,
+        },
+      ],
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      reasoningEffort: null,
+      appliedReasoningEffort: null,
+      reasoningAdjusted: false,
+      createdAt: "2026-08-09T12:00:01.000Z",
+    });
+    bridge.handleEvent({
+      ...event({
+        resource: "chat-message",
+        scope: { kind: "chat", chatId: "chat-one" },
+        entityId: canonical.id,
+      }),
+      revision: canonical.sequence,
+      payload: canonical,
+    });
+
+    expect(
+      Object.values(
+        queryClient.getQueryData<ChatMessageLiveOverlay>(
+          chatMessageProvisionalQueryKey("chat-one"),
+        )?.upserts ?? {},
+      ),
+    ).toEqual([]);
+    expect(liveMessages(queryClient, "chat-one")).toEqual([canonical]);
+
+    await bridge.handleWorkerObservation(
+      "worker-one",
+      workerObservationEnvelopeSchema.parse({
+        ...observation,
+        continuitySequence: 1,
+        identity: {
+          operationId: "user-message-1",
+          turnId: "turn-1",
+          messageId: "activity-1",
+          sequence: 1,
+        },
+        payload: {
+          ...observation.payload,
+          event: {
+            type: "agent.activity",
+            activity: {
+              type: "reasoning",
+              id: "activity-1",
+              status: "running",
+              summary: ["Still working"],
+              correlation: {
+                sourceMethod: "item/started",
+                diagnosticId: null,
+                threadId: "thread-1",
+                turnId: "turn-1",
+                itemId: "activity-1",
+              },
+            },
+          },
+        },
+      }),
+    );
+    const finalMessage = chatMessageSchema.parse({
+      ...canonical,
+      id: "canonical-final-one",
+      sequence: 3,
+      content: [
+        {
+          type: "text",
+          text: "Done",
+          phase: "final_answer",
+          sourceEvent: {
+            operationId: "user-message-1",
+            turnId: "turn-1",
+            messageId: "final-1",
+            sequence: 2,
+          },
+        },
+      ],
+    });
+    bridge.handleEvent({
+      ...event({
+        resource: "chat-message",
+        scope: { kind: "chat", chatId: "chat-one" },
+        entityId: finalMessage.id,
+      }),
+      cursor: 2,
+      revision: finalMessage.sequence,
+      payload: finalMessage,
+    });
+    expect(
+      Object.values(
+        queryClient.getQueryData<ChatMessageLiveOverlay>(
+          chatMessageProvisionalQueryKey("chat-one"),
+        )?.upserts ?? {},
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not let delayed canonical inference progress regress a newer direct observation", async () => {
+    const queryClient = new QueryClient();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const progress = {
+      kind: "progress" as const,
+      requestId: "request-one",
+      cycle: 1,
+      sequence: 4,
+      phase: "generating" as const,
+      fractionComplete: 0.5,
+      completedTokens: 50,
+      totalTokens: 100,
+      precision: "exact" as const,
+      source: "provider-stream" as const,
+      startedAt: "2026-08-09T12:00:00.000Z",
+      observedAt: "2026-08-09T12:00:04.000Z",
+    };
+    await bridge.handleWorkerObservation(
+      "worker-one",
+      workerObservationEnvelopeSchema.parse({
+        protocolVersion: 1,
+        subscriptionId: "77777777-7777-4777-8777-777777777777",
+        continuitySequence: 0,
+        observedAt: progress.observedAt,
+        identity: {
+          operationId: progress.requestId,
+          turnId: null,
+          messageId: progress.requestId,
+          sequence: progress.sequence,
+        },
+        payload: {
+          topic: "chat-progress",
+          chatId: "chat-one",
+          clientMessageId: progress.requestId,
+          executionLaneId: "lane-one",
+          contextKind: "project",
+          worktreeId: "worktree-one",
+          scratchRootId: null,
+          event: { type: "agent.inference-progress", progress },
+        },
+      }),
+    );
+    bridge.handleEvent({
+      ...event({
+        resource: "inference-progress",
+        scope: { kind: "chat", chatId: "chat-one" },
+        entityId: progress.requestId,
+      }),
+      revision: 3,
+      payload: { ...progress, sequence: 3 },
+    });
+    expect(
+      queryClient.getQueryData(["inference-progress", "chat-one"]),
+    ).toEqual(progress);
+
+    bridge.handleEvent({
+      ...event({
+        resource: "inference-progress",
+        scope: { kind: "chat", chatId: "chat-one" },
+        entityId: progress.requestId,
+      }),
+      cursor: 2,
+      revision: 4,
+      payload: progress,
+    });
+    await bridge.recoverWorkerObservations("worker-one");
+    expect(
+      queryClient.getQueryData(["inference-progress", "chat-one"]),
+    ).toEqual(progress);
+  });
+
+  it("routes direct filesystem hints through existing query families", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    await bridge.handleWorkerObservation(
+      "worker-one",
+      workerObservationEnvelopeSchema.parse({
+        protocolVersion: 1,
+        subscriptionId: "77777777-7777-4777-8777-777777777777",
+        continuitySequence: 0,
+        observedAt: "2026-08-09T12:00:00.000Z",
+        identity: {
+          operationId: "filesystem-one",
+          turnId: null,
+          messageId: "filesystem-one",
+          sequence: 0,
+        },
+        payload: {
+          topic: "filesystem",
+          notification: {
+            type: "worktree.filesystem.changed",
+            sourcePath: "/repo",
+            worktreePath: "/repo/worktree",
+          },
+        },
+      }),
+    );
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["explorer-directory"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["explorer-file"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["project-repository-stats"],
+    });
+  });
+
   it("maps typed resources to their scoped query families", () => {
     expect(
       appLiveEventQueryKeys(
@@ -734,6 +1007,154 @@ describe("application live query bridge", () => {
       ]),
     );
     expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("keeps a newer protected direct revision until the matching canonical ciphertext arrives", async () => {
+    const ownerId = "owner-direct-task";
+    const serverId = "server-direct-task";
+    setClientSession({
+      authMode: "accounts",
+      csrfToken: "c".repeat(32),
+      expiresAt: "2026-08-20T12:00:00.000Z",
+      serverId,
+      user: {
+        id: ownerId,
+        kind: "account",
+        displayName: "Direct Task Owner",
+        email: "direct-task@example.com",
+        role: "owner",
+      },
+    });
+    clientEncryption.setAccountMasterKey({
+      accountMasterKey: generateAccountMasterKey(),
+      identity: { ownerId, serverId },
+      masterKeyRevision: 1,
+    });
+    const messageId = "22222222-2222-4222-8222-222222222222";
+    const oldOpaque = await createTaskMessageOpaqueContent({
+      content: [
+        {
+          type: "text",
+          text: "older protected progress",
+          phase: "commentary",
+          streaming: true,
+        },
+      ],
+      idempotencyKey: "task-direct:test",
+      messageId,
+      mode: "goal",
+      role: "assistant",
+    });
+    const directOpaque = await createTaskMessageOpaqueContent({
+      content: [
+        {
+          type: "text",
+          text: "newer protected progress",
+          phase: "commentary",
+          streaming: true,
+        },
+      ],
+      idempotencyKey: "task-direct:test",
+      messageId,
+      mode: "goal",
+      role: "assistant",
+    });
+    const summary = (opaque: typeof directOpaque, sequence: number) => ({
+      id: opaque.id,
+      chatId: "chat-direct-task",
+      worktreeId: "worktree-one",
+      executionLaneId: "lane-one",
+      sequence,
+      role: opaque.classification.role,
+      mode: opaque.classification.mode,
+      attachmentIds: opaque.classification.attachmentIds,
+      protectedContent: opaque.protectedContent,
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      reasoningEffort: null,
+      appliedReasoningEffort: null,
+      reasoningAdjusted: false,
+      idempotencyKey: opaque.idempotencyKey,
+      createdAt: "2026-08-19T12:00:00.000Z",
+    });
+    const queryClient = new QueryClient();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    await bridge.handleWorkerObservation(
+      "worker-one",
+      workerObservationEnvelopeSchema.parse({
+        protocolVersion: 1,
+        subscriptionId: "77777777-7777-4777-8777-777777777777",
+        continuitySequence: 0,
+        observedAt: "2026-08-19T12:00:01.000Z",
+        identity: {
+          operationId: "user-message-one",
+          turnId: "turn-one",
+          messageId,
+          sequence: 0,
+        },
+        payload: {
+          topic: "chat-progress",
+          chatId: "chat-direct-task",
+          clientMessageId: "user-message-one",
+          executionLaneId: "lane-one",
+          contextKind: "project",
+          worktreeId: "worktree-one",
+          scratchRootId: null,
+          event: {
+            type: "agent.protected-task-message",
+            message: directOpaque,
+            telemetry: {
+              kind: "message",
+              phase: "commentary",
+              streaming: true,
+              turnId: "turn-one",
+            },
+          },
+        },
+      }),
+    );
+
+    bridge.handleEvent({
+      ...event({
+        entityId: messageId,
+        resource: "chat-message",
+        scope: { kind: "chat", chatId: "chat-direct-task" },
+      }),
+      payload: summary(oldOpaque, 1),
+      revision: 1,
+    });
+    await vi.waitFor(() =>
+      expect(
+        Object.values(
+          queryClient.getQueryData<ChatMessageLiveOverlay>(
+            chatMessageProvisionalQueryKey("chat-direct-task"),
+          )?.upserts ?? {},
+        ),
+      ).toHaveLength(1),
+    );
+
+    bridge.handleEvent({
+      ...event({
+        entityId: messageId,
+        resource: "chat-message",
+        scope: { kind: "chat", chatId: "chat-direct-task" },
+      }),
+      cursor: 2,
+      payload: summary(directOpaque, 1),
+      revision: 1,
+    });
+    await vi.waitFor(() =>
+      expect(
+        Object.values(
+          queryClient.getQueryData<ChatMessageLiveOverlay>(
+            chatMessageProvisionalQueryKey("chat-direct-task"),
+          )?.upserts ?? {},
+        ),
+      ).toEqual([]),
+    );
   });
 
   it("upserts Git status while invalidating revision-derived graph data", async () => {
