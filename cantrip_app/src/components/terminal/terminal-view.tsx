@@ -37,6 +37,7 @@ import {
   type MobileTerminalKey,
 } from "./mobile-terminal-command-bar";
 import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
+import { isTerminalClearShortcut } from "./terminal-keyboard";
 import { installTerminalLinkLayer } from "./terminal-link-layer";
 import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
 import { TerminalServicePanel } from "./terminal-service-panel";
@@ -160,6 +161,13 @@ export function TerminalView({
     const fit = new FitAddon();
     xterm.loadAddon(fit);
     xterm.open(container);
+    xterm.attachCustomKeyEventHandler((event) => {
+      if (!isTerminalClearShortcut(event, terminal.linkedChatId)) return true;
+      event.preventDefault();
+      event.stopPropagation();
+      xterm.clear();
+      return false;
+    });
     xtermRef.current = xterm;
     const terminalContentGlitchRenderer = createTerminalContentGlitchRenderer(
       xterm,
