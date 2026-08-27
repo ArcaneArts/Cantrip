@@ -70,6 +70,34 @@ test("keeps OLED surfaces pure while softening structural contrast", async () =>
   assert.equal(light.contrastBorder, "#00000026");
 });
 
+test("uses subtle fills instead of extreme high-contrast focus outlines", async () => {
+  const themes = [
+    {
+      name: "cantrip-hc-dark.json",
+      focusBorder: "#FFFFFF4D",
+      focusedRowBackground: "#FFFFFF0D",
+      transparent: "#FFFFFF00",
+    },
+    {
+      name: "cantrip-hc-light.json",
+      focusBorder: "#0000004D",
+      focusedRowBackground: "#0000000D",
+      transparent: "#00000000",
+    },
+  ];
+
+  for (const expected of themes) {
+    const colors = (await theme(expected.name)).colors;
+    assert.equal(colors.focusBorder, expected.focusBorder);
+    assert.equal(colors.contrastActiveBorder, expected.transparent);
+    assert.equal(
+      colors["settings.focusedRowBackground"],
+      expected.focusedRowBackground,
+    );
+    assert.equal(colors["settings.focusedRowBorder"], expected.transparent);
+  }
+});
+
 test("uses transparent structural surfaces for Pro Mode themes", async () => {
   const names = [
     "cantrip-pro-dark.json",
