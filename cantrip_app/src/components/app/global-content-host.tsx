@@ -67,6 +67,7 @@ import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { cn } from "@/lib/utils";
 import { projectSetupPercent } from "@/lib/project-setup-progress";
+import { projectHasGithubCapability } from "@/lib/project-capabilities";
 import {
   projectFolderSetupErrorMessage,
   projectReplicaProgressMessage,
@@ -977,7 +978,9 @@ export function GlobalContentHost({
                     <div className="relative flex h-10 shrink-0 items-center px-3">
                       <ProjectOverviewNavigation
                         activeTab={activeProjectOverviewSection}
-                        githubEnabled={Boolean(selectedProject.github)}
+                        githubEnabled={projectHasGithubCapability(
+                          selectedProject,
+                        )}
                         gitEnabled={selectedProject.capabilities.git}
                         onTabChange={(section) => {
                           if (

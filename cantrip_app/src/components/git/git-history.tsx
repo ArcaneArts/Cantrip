@@ -70,6 +70,7 @@ import {
 } from "@/components/worktrees/worktree-control";
 import { cn } from "@/lib/utils";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
+import { projectHasGithubCapability } from "@/lib/project-capabilities";
 import { useCompactLayout } from "@/lib/use-compact-layout";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
@@ -569,9 +570,9 @@ export function GitHistoryView({
   });
   const issueKind: GithubIssueKind =
     section === "prs" ? "pull-request" : "issue";
+  const githubAvailable = projectHasGithubCapability(project);
   const issues = useInfiniteQuery({
-    enabled:
-      (section === "issues" || section === "prs") && Boolean(project.github),
+    enabled: (section === "issues" || section === "prs") && githubAvailable,
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       getGithubIssues(project.id, issueKind, issueState, pageParam),
@@ -897,7 +898,7 @@ export function GitHistoryView({
       ) : null}
       {drawer.kind === "repository" ? (
         <GitRepositoryPanel
-          githubEnabled={Boolean(project.github)}
+          githubEnabled={githubAvailable}
           projectId={project.id}
           worktreeId={worktreeId}
           onClose={closeDrawer}
@@ -912,7 +913,7 @@ export function GitHistoryView({
         {showSectionTabs ? (
           <ProjectOverviewNavigation
             activeTab={section}
-            githubEnabled={Boolean(project.github)}
+            githubEnabled={githubAvailable}
             gitEnabled
             includeOverview={includeOverviewTab}
             onTabChange={(next) => {
