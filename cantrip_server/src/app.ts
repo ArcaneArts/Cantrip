@@ -62,12 +62,10 @@ import {
   codeRuntimeStatusSchema,
   codeGraphActionAcknowledgementSchema,
   codeGraphProjectStatusSchema,
-  codeSaveAllResultSchema,
   codeTabWireSummarySchema,
   explorerCodeProtectedAttachmentCreateSchema,
   explorerCodeSessionAttachmentCreateSchema,
   codeSharedAttachmentWireSchema,
-  codeThemeUpdateSchema,
   desktopUpdateActiveWorkSummarySchema,
   serviceLogReadResultSchema,
   workerLogStreamServerMessageSchema,
@@ -627,6 +625,11 @@ import {
   installCodeTabManagementRoutes,
   installCodeTabSessionListRoute,
 } from "./app/routes/code-tab-management.js";
+import {
+  installCodeTabRuntimeReadRoute,
+  installCodeTabWorkerControlRoutes,
+  type CodeTabWorkerRuntime,
+} from "./app/routes/code-tab-worker-controls.js";
 import { installProjectExportRoutes } from "./app/routes/project-exports.js";
 import { installProjectExternalChatHistoryRoute } from "./app/routes/project-external-chat-history.js";
 import { installGithubRepositoryCatalogRoutes } from "./app/routes/github-repository-catalog.js";
@@ -3723,6 +3726,27 @@ export async function buildApp({
     const result = await repository.updateCodeSessionRuntime(...input);
     publishLiveInvalidation("code-tab");
     return result;
+  };
+  const codeTabWorkerRuntime: CodeTabWorkerRuntime = {
+    isWorkerConnected: (workerId) => bridge.isConnected(workerId),
+    readStatus: (workerId, sessionId) =>
+      bridge.request(workerId, { type: "code.status", sessionId }),
+    saveAll: (workerId, sessionId) =>
+      bridge.request(workerId, { type: "code.saveAll", sessionId }),
+    stop: (workerId, sessionId) =>
+      bridge.request(workerId, { type: "code.stop", sessionId }),
+    setTheme: (workerId, sessionId, appearance) =>
+      bridge.request(workerId, {
+        type: "code.setTheme",
+        sessionId,
+        themeMode: "follow-cantrip",
+        appearance,
+      }),
+    revokeTunnelSession: (sessionId) => codeTunnel.revokeSession(sessionId),
+    revokeDirectSession: async (ownerId, sessionId) => {
+      await directAttachments.revokeResource(ownerId, "code", sessionId);
+    },
+    recordSessionRuntime: updateCodeSessionRuntime,
   };
   const advanceLiveWorkflowSchedule = async (
     triggerId: string,
@@ -19264,49 +19288,11 @@ export async function buildApp({
     repository,
   });
 
-  app.get<{ Params: { codeTabId: string; sessionId: string } }>(
-    "/api/code-tabs/:codeTabId/sessions/:sessionId/runtime",
-    async (request, reply) => {
-      const context = await repository.getCodeTabExecutionContext(
-        applicationOwnerId(),
-        request.params.codeTabId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Code tab not found." });
-      }
-      const sessions =
-        (await repository.listCodeSessions(
-          applicationOwnerId(),
-          request.params.codeTabId,
-        )) ?? [];
-      const session = sessions.find(
-        (candidate) => candidate.id === request.params.sessionId,
-      );
-      if (!session) {
-        return reply.code(404).send({ error: "Code session not found." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      try {
-        const runtime = codeRuntimeStatusSchema.parse(
-          await bridge.request(context.workerId, {
-            type: "code.status",
-            sessionId: session.id,
-          }),
-        );
-        await updateCodeSessionRuntime(
-          applicationOwnerId(),
-          context.codeTab.id,
-          session.id,
-          runtime,
-        );
-        return reply.send(runtime);
-      } catch (error) {
-        return reply.code(502).send({ error: errorMessage(error) });
-      }
-    },
-  );
+  installCodeTabRuntimeReadRoute(app, {
+    applicationOwnerId,
+    repository,
+    runtime: codeTabWorkerRuntime,
+  });
 
   app.post<{ Params: { codeTabId: string } }>(
     "/api/code-tabs/:codeTabId/protected-attachment-intents",
@@ -19672,143 +19658,11 @@ export async function buildApp({
     },
   );
 
-  app.post<{ Params: { codeTabId: string } }>(
-    "/api/code-tabs/:codeTabId/save-all",
-    async (request, reply) => {
-      const context = await repository.getCodeTabExecutionContext(
-        applicationOwnerId(),
-        request.params.codeTabId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Code tab not found." });
-      }
-      const sessions =
-        (await repository.listCodeSessions(
-          applicationOwnerId(),
-          request.params.codeTabId,
-        )) ?? [];
-      const session = sessions.find((candidate) =>
-        ["starting", "running", "idle"].includes(candidate.status),
-      );
-      if (!session) {
-        return reply.code(409).send({ error: "Code editor is not running." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      try {
-        return reply.send(
-          codeSaveAllResultSchema.parse(
-            await bridge.request(context.workerId, {
-              type: "code.saveAll",
-              sessionId: session.id,
-            }),
-          ),
-        );
-      } catch (error) {
-        return reply.code(502).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.post<{ Params: { codeTabId: string } }>(
-    "/api/code-tabs/:codeTabId/stop",
-    async (request, reply) => {
-      const context = await repository.getCodeTabExecutionContext(
-        applicationOwnerId(),
-        request.params.codeTabId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Code tab not found." });
-      }
-      const sessions =
-        (await repository.listCodeSessions(
-          applicationOwnerId(),
-          request.params.codeTabId,
-        )) ?? [];
-      const session = sessions.find(
-        (candidate) => candidate.status !== "stopped",
-      );
-      if (!session) return reply.code(204).send();
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      try {
-        const runtime = codeRuntimeStatusSchema.parse(
-          await bridge.request(context.workerId, {
-            type: "code.stop",
-            sessionId: session.id,
-          }),
-        );
-        await codeTunnel.revokeSession(session.id);
-        await directAttachments.revokeResource(
-          applicationOwnerId(),
-          "code",
-          session.id,
-        );
-        await updateCodeSessionRuntime(
-          applicationOwnerId(),
-          context.codeTab.id,
-          session.id,
-          runtime,
-        );
-        return reply.send(runtime);
-      } catch (error) {
-        return reply.code(502).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.post<{ Params: { codeTabId: string } }>(
-    "/api/code-tabs/:codeTabId/theme",
-    async (request, reply) => {
-      const input = codeThemeUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.getCodeTabExecutionContext(
-        applicationOwnerId(),
-        request.params.codeTabId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Code tab not found." });
-      }
-      const codeTab = await repository.updateCodeTab(
-        applicationOwnerId(),
-        request.params.codeTabId,
-        { themeMode: "follow-cantrip" },
-      );
-      const sessions =
-        (await repository.listCodeSessions(
-          applicationOwnerId(),
-          request.params.codeTabId,
-        )) ?? [];
-      const session = sessions.find((candidate) =>
-        ["starting", "running", "idle"].includes(candidate.status),
-      );
-      if (session && bridge.isConnected(context.workerId)) {
-        try {
-          const runtime = codeRuntimeStatusSchema.parse(
-            await bridge.request(context.workerId, {
-              type: "code.setTheme",
-              sessionId: session.id,
-              themeMode: "follow-cantrip",
-              appearance: input.data.appearance,
-            }),
-          );
-          await updateCodeSessionRuntime(
-            applicationOwnerId(),
-            context.codeTab.id,
-            session.id,
-            runtime,
-          );
-        } catch (error) {
-          return reply.code(502).send({ error: errorMessage(error) });
-        }
-      }
-      return reply.send(codeTabWireSummarySchema.parse(codeTab));
-    },
-  );
+  installCodeTabWorkerControlRoutes(app, {
+    applicationOwnerId,
+    repository,
+    runtime: codeTabWorkerRuntime,
+  });
 
   app.delete<{ Params: { codeTabId: string } }>(
     "/api/code-tabs/:codeTabId",
