@@ -47,6 +47,11 @@ export async function forgetDesktopWorker(workerId: string): Promise<void> {
   await invoke("forget_desktop_worker", { workerId });
 }
 
+export async function disconnectDesktopWorker(workerId: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("disconnect_desktop_worker", { workerId });
+}
+
 export async function getDesktopAutostart(): Promise<boolean> {
   return isTauri() ? invoke<boolean>("desktop_autostart_enabled") : false;
 }

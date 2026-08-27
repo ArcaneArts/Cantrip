@@ -63,6 +63,7 @@ import { errorMessage } from "@/lib/error-message";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import {
+  disconnectDesktopWorker,
   forgetDesktopWorker,
   getDesktopAutostart,
   listDesktopWorkerCandidates,
@@ -129,11 +130,15 @@ export function canAddThisMachine(input: {
 export function recoverableDesktopWorkerId(input: {
   candidates: Array<{ repositoryCount: number; workerId: string }>;
   linkedWorkerId: string | null;
+  serverWorkerIds: string[];
 }): string | null {
   if (input.linkedWorkerId) {
     const linkedWorker = input.candidates.find(
       (candidate) => candidate.workerId === input.linkedWorkerId,
     );
+    if (linkedWorker && !input.serverWorkerIds.includes(input.linkedWorkerId)) {
+      return linkedWorker.workerId;
+    }
     if (!linkedWorker || linkedWorker.repositoryCount > 0) return null;
   }
   return (
@@ -729,7 +734,7 @@ export function WorkerSettings() {
       const workerId = unlinkTarget!.workerId;
       await unlinkWorker(workerId);
       if (desktopWorkers.data?.some((worker) => worker.workerId === workerId)) {
-        await forgetDesktopWorker(workerId);
+        await disconnectDesktopWorker(workerId);
       }
     },
     onSuccess: async () => {
@@ -799,11 +804,12 @@ export function WorkerSettings() {
         .map((worker) => worker.workerId),
     [desktopWorkers.data, serverUrl],
   );
+  const serverWorkerIds = (workers.data ?? []).map((worker) => worker.workerId);
   const recoverableWorkerId = recoverableDesktopWorkerId({
     candidates: desktopWorkerCandidates.data ?? [],
     linkedWorkerId: desktopWorkerForServer?.workerId ?? null,
+    serverWorkerIds,
   });
-  const serverWorkerIds = (workers.data ?? []).map((worker) => worker.workerId);
   const hasInternalWorker = (workers.data ?? []).some(
     (worker) => worker.internal,
   );
@@ -1695,7 +1701,8 @@ export function WorkerSettings() {
             <DialogDescription>
               Its credentials will be revoked and the connection will close.
               Server-owned projects and conversations remain, while its local
-              sources become unavailable until the same worker is paired again.
+              sources become unavailable until the same worker is restored.
+              Pairing a different worker does not move those sources.
             </DialogDescription>
           </DialogHeader>
           {unlinkTarget?.sources.length ? (

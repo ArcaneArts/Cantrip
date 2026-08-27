@@ -954,6 +954,7 @@ pub fn run() {
             desktop_worker::list_desktop_workers,
             desktop_worker::list_desktop_worker_candidates,
             desktop_worker::pair_desktop_worker,
+            desktop_worker::disconnect_desktop_worker,
             desktop_worker::forget_desktop_worker,
             direct_probe::probe_direct_worker,
             local_logs::open_local_logs_directory,

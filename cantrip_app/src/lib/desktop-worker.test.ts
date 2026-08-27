@@ -8,6 +8,7 @@ const tauri = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => tauri);
 
 import {
+  disconnectDesktopWorker,
   forgetDesktopWorker,
   getDesktopAutostart,
   listDesktopWorkerCandidates,
@@ -29,6 +30,7 @@ describe("desktop worker bridge", () => {
       listDesktopWorkerCandidates("https://cantrip.example"),
     ).resolves.toEqual([]);
     await expect(getDesktopAutostart()).resolves.toBe(false);
+    await expect(disconnectDesktopWorker("worker-1")).resolves.toBeUndefined();
     await expect(forgetDesktopWorker("worker-1")).resolves.toBeUndefined();
     await expect(
       pairDesktopWorker({
@@ -38,6 +40,19 @@ describe("desktop worker bridge", () => {
       }),
     ).rejects.toThrow("desktop app");
     expect(tauri.invoke).not.toHaveBeenCalled();
+  });
+
+  it("disconnects a native worker without forgetting its retained identity", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    tauri.invoke.mockResolvedValue(undefined);
+
+    await disconnectDesktopWorker(
+      "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+    );
+
+    expect(tauri.invoke).toHaveBeenCalledWith("disconnect_desktop_worker", {
+      workerId: "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+    });
   });
 
   it("passes enrollment directly to the desktop host", async () => {
