@@ -262,7 +262,6 @@ import {
   providerTelemetryExportSchema,
   projectShareAttachmentSchema,
   projectShareAttachmentWireSchema,
-  projectShareDirectCreateSchema,
   projectShareTunnelCreateSchema,
   type ProjectSummary,
   projectWireSummarySchema,
@@ -301,9 +300,6 @@ import {
   type WorkerLinkRoute,
   type WorkerLinkTelemetrySample,
   directTransportTelemetrySchema,
-  directTunnelPrepareRequestSchema,
-  directTunnelTicketSchema,
-  type DirectTunnelPrepareRequest,
   remoteDesktopWireListSchema,
   remoteDesktopFleetWireSchema,
   remoteDesktopWireSummarySchema,
@@ -340,7 +336,6 @@ import {
   terminalServiceConfigurationSchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
-  tunnelDirectActivationSchema,
   tunnelUserWireCreateSchema,
   tunnelUserWireUpdateSchema,
   tunnelWireListSchema,
@@ -1242,40 +1237,6 @@ export async function renewTunnelAttachmentLease(
   await request(
     `${options.serverUrl ?? ""}/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/lease`,
     {
-      method: "POST",
-      signal: options.signal,
-    },
-    options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
-  );
-}
-
-export async function createDirectTunnelAttachment(
-  attachmentId: string,
-  input: DirectTunnelPrepareRequest = {},
-  options: { serverUrl?: string; signal?: AbortSignal } = {},
-) {
-  return directTunnelTicketSchema.parse(
-    await request(
-      `${options.serverUrl ?? ""}/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct`,
-      {
-        body: JSON.stringify(directTunnelPrepareRequestSchema.parse(input)),
-        method: "POST",
-        signal: options.signal,
-      },
-      options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
-    ),
-  );
-}
-
-export async function activateDirectTunnelAttachment(
-  attachmentId: string,
-  input: { capabilityId: string },
-  options: { serverUrl?: string; signal?: AbortSignal } = {},
-): Promise<void> {
-  await request(
-    `${options.serverUrl ?? ""}/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct-activate`,
-    {
-      body: JSON.stringify(tunnelDirectActivationSchema.parse(input)),
       method: "POST",
       signal: options.signal,
     },
@@ -2373,18 +2334,6 @@ export async function deleteProjectNetworkShare(attachmentId: string) {
   await request(`/api/project-shares/${encodeURIComponent(attachmentId)}`, {
     method: "DELETE",
   });
-}
-
-export async function createDirectTerminalAttachment(
-  terminalId: string,
-  clientId: string,
-) {
-  return directTunnelTicketSchema.parse(
-    await post(
-      `/api/terminals/${encodeURIComponent(terminalId)}/direct`,
-      projectShareDirectCreateSchema.parse({ clientId }),
-    ),
-  );
 }
 
 export async function getProjectWorkspaceWireList() {
@@ -6874,36 +6823,6 @@ export async function deleteExplorerEntry(
     throw new Error("Explorer returned an unexpected delete result.");
   }
   return explorerEntryMutationResultSchema.parse(result.value);
-}
-
-export function terminalWebSocketUrl(
-  terminalId: string,
-  operationId: string,
-): string {
-  const serverUrl = getActiveServerUrl();
-  const url = new URL(
-    `/api/terminals/${encodeURIComponent(terminalId)}/connect`,
-    serverUrl || window.location.origin,
-  );
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.searchParams.set("operationId", operationId);
-  return url.toString();
-}
-
-export function remoteSurfaceWebSocketUrl(
-  surfaceId: string,
-  viewport: { width: number; height: number; devicePixelRatio: number },
-): string {
-  const serverUrl = getActiveServerUrl();
-  const url = new URL(
-    `/api/remote-surfaces/${encodeURIComponent(surfaceId)}/connect`,
-    serverUrl || window.location.origin,
-  );
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.searchParams.set("width", String(viewport.width));
-  url.searchParams.set("height", String(viewport.height));
-  url.searchParams.set("devicePixelRatio", String(viewport.devicePixelRatio));
-  return url.toString();
 }
 
 async function openContextualChat(raw: unknown) {

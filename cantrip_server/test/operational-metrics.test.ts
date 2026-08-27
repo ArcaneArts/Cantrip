@@ -11,6 +11,9 @@ describe("OperationalMetrics direct data plane", () => {
       connectionsClosed: 1,
       connectionsOpened: 2,
     });
+    metrics.recordLegacyFeatureTransport("terminal-relay");
+    metrics.recordLegacyFeatureTransport("terminal-relay");
+    metrics.recordLegacyFeatureTransport("tunnel-relay");
     metrics.recordWorkerLinkTelemetry([
       {
         occurredAt: "2026-08-26T12:00:00.000Z",
@@ -150,6 +153,22 @@ describe("OperationalMetrics direct data plane", () => {
     expect(output).toContain(
       'cantrip_data_plane_bytes_total{direction="source_to_destination",resource_kind="terminal",transport="local-direct"} 120',
     );
+    expect(output).toContain(
+      'cantrip_legacy_feature_transport_requests_total{endpoint="terminal-relay"} 2',
+    );
+    expect(output).toContain(
+      'cantrip_legacy_feature_transport_requests_total{endpoint="tunnel-relay"} 1',
+    );
+    expect(metrics.snapshot().legacyFeatureTransports).toEqual({
+      requestsByEndpoint: {
+        "remote-surface-transport": 0,
+        "terminal-direct": 0,
+        "terminal-relay": 2,
+        "tunnel-direct": 0,
+        "tunnel-direct-activate": 0,
+        "tunnel-relay": 1,
+      },
+    });
     expect(output).toContain(
       'cantrip_data_plane_connections_total{event="opened",resource_kind="terminal",transport="local-direct"} 2',
     );

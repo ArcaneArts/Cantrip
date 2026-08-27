@@ -473,9 +473,9 @@ All renderer connections derive from the selected server profile:
 - `cantrip_app/src/lib/api-client.ts` performs credentialed application HTTP;
 - `cantrip_app/src/lib/app-live-client.ts` owns the resumable application WSS;
 - `cantrip_app/src/components/terminal/terminal-view.tsx` attaches terminal
-  WebSockets through the server;
-- `cantrip_app/src/lib/use-remote-surface-transport.ts` carries browser and
-  desktop streams through the server; and
+  streams through the shared WorkerLink;
+- `cantrip_app/src/lib/remote-surface-worker-link.ts` carries protected Browser
+  and Remote Desktop streams over the selected WorkerLink carrier; and
 - Code and project-share attachment URLs are server-minted isolated-origin
   capabilities.
 

@@ -67,6 +67,7 @@ out of scope.
 | T2.9A — Observation authority and worker fan-out | Add bounded observation envelopes, exact topic grants, replicated issuance, event-subscription channels, and worker-side provisional fan-out | Complete | `codex/network-tranche2-pass9-observations`              | [#1208](https://github.com/ArcaneArts/Cantrip/pull/1208) | Focused protocol 18, server 18, worker 16, and app 33; full protocol 367; full app 1,609 pass and 3 skip; full worker 903 pass, 2 skip, and one order-dependent Code-settings failure that passes alone; workspace typecheck/build; topology and Code/Codex source verification; changed-file formatting and diff checks                                                                                                     | Existing worker-to-server and app-live paths remain unchanged; the supported client does not consume provisional observations until T2.9B, while protocol validation already excludes final messages, outcomes, approvals, and authority-bearing notifications                                             |
 | T2.9B — Observation client and reconciliation    | Subscribe every supported client to online workers, project provisional state, deduplicate canonical commits, and resync after gaps          | Complete | `codex/network-tranche2-pass9b-observation-client`       | [#1209](https://github.com/ArcaneArts/Cantrip/pull/1209) | Focused protocol 18, worker 3, and app 33; full protocol 367; full app 1,618 pass and 3 skip; full worker 904 pass and 2 skip; workspace typecheck/build; Android/iOS Capacitor sync; topology, Code/Codex source, and CLI verification; changed-file formatting and diff checks                                                                                                                                             | Browser, Capacitor, and Tauri share one application-wide observer; final messages, outcomes, approvals, and durable records remain server-authoritative; the broad local-foundation test is blocked before the changed path by the recorded provider-catalog baseline failure                              |
 | T2.10A — Unified relay parity and hardening      | Give every WorkerLink RELAY feature shared quota, metering, Remote Surface limits, lane-isolated backpressure, and cross-replica delivery    | Complete | `codex/network-tranche2-pass10-relay-consolidation`      | [#1210](https://github.com/ArcaneArts/Cantrip/pull/1210) | Focused server WorkerLink relay, replicated service, and shared coordination 26; server and workspace typecheck; workspace build; topology, Code/Codex source, CLI, formatting, and diff verification                                                                                                                                                                                                                        | Supported feature clients already enter WorkerLink; this pass hardens their common server carrier without changing Code/Explorer lifecycle. Legacy feature endpoints remain operational until T2.10B; an attempted broad server run retains the recorded unrelated PGlite schema/fixture baseline failures |
+| T2.10B — Compatibility boundary and source audit | Remove unused legacy client topology code, retain and advertise compatibility endpoints, meter bounded use, and enforce the removal soak     | Complete | `codex/network-tranche2-pass10b-compatibility-cleanup`   | [#1211](https://github.com/ArcaneArts/Cantrip/pull/1211) | Focused protocol 2, server 10, and app 110; full protocol 369; full app 1,607 pass and 3 skip; workspace typecheck/build; Android/iOS Capacitor sync; Tranche One/Two topology, Code/Codex source, CLI, formatting, and diff verification                                                                                                                                                                                    | Current clients construct only WorkerLink transports; native retirement of already-running legacy direct forwards remains. Endpoint removal is forbidden before the documented gates. A missing optional relay-config fallback exposed by the compatibility integration fixture was fixed in this pass     |
 
 ## Stabilization acceptance evidence
 
@@ -420,6 +421,15 @@ out of scope.
   resource labels. `CoordinatedWorkerBridge` carries the same relay frames when
   the client and worker terminate on different server replicas, and replicated
   route/session revocation closes the live relay on every replica.
+- Supported client source no longer contains the unused feature-specific Remote
+  Surface WebSocket/WebRTC transport, direct Terminal/tunnel preparation
+  helpers, or raw Terminal/Remote Surface WebSocket URL constructors. The
+  server still serves every legacy endpoint for distributed clients and marks
+  each request with RFC 9745 deprecation metadata, a documentation link, a
+  bounded metric, and a rate-limited identifier-free warning. Removal is only
+  reviewable after the 90-day, two-stable-release, and 30-day-zero-use gates.
+  The native relay-switch cleanup remains because a forward created by an older
+  build can survive an in-place application upgrade.
 - The obsolete `desktop-terminal.ts` direct-route helper had no supported
   caller and was removed. Public compatibility endpoints and shared direct
   infrastructure remain because older clients may still depend on them.
@@ -440,8 +450,8 @@ event-subscription channel, and worker fan-out. T2.9B connects that substrate to
 the supported browser, Capacitor, and Tauri application, including provisional
 chat/runtime projection, canonical deduplication, and authoritative resync.
 T2.10A completes common RELAY parity and replicated relay hardening. T2.10B
-still must audit supported feature entry points, remove only unused client-side
-topology remnants, and establish an explicit compatibility endpoint soak and
-removal gate. The final T2.11 acceptance gate then remains. TURN and transparent
-TCP resumption stay explicitly deferred, and the restored Code/Explorer
-lifecycle remains a mandatory regression boundary.
+completes the supported-source audit and installs the measured compatibility
+soak without prematurely removing distributed-client server endpoints. Only
+the final T2.11 acceptance gate remains. TURN and transparent TCP resumption
+stay explicitly deferred, and the restored Code/Explorer lifecycle remains a
+mandatory regression boundary.

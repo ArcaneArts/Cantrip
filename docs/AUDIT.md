@@ -744,6 +744,12 @@ maximum missed-invalidation recovery bound.
 
 ### P0-02 — opportunity — Remove redundant remote-surface frame work end to end
 
+Resolved for supported clients on 2026-08-27: Browser and Remote Desktop moved
+to the shared WorkerLink adapter, and T2.10B removed the two legacy client
+transport modules named below. The evidence remains as the historical basis for
+the finding; the retained server/worker compatibility endpoint follows the
+separate soak policy in `docs/NETWORK.md`.
+
 - Category: HOT_PATH_ALLOCATION
 - Expected gain: high
 - Risk: low-medium
