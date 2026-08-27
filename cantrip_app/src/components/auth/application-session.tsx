@@ -45,6 +45,10 @@ import { AppLiveQueryBridge } from "@/lib/app-live-query";
 import { AppLiveProvider } from "@/lib/app-live-react";
 import { WorkerObservationClient } from "@/lib/worker-observation-client";
 import {
+  WorkerObservationBackgroundDemandSession,
+  WorkerObservationProvider,
+} from "@/lib/worker-observation-react";
+import {
   authenticationRequiredAction,
   clearClientSession,
   notifyAuthenticationRequired,
@@ -734,9 +738,12 @@ function AuthenticatedApplication({
   return (
     <QueryClientProvider client={queryClient}>
       <AppLiveProvider client={liveClient}>
-        <WorkerObservationSession client={observationClient} />
-        <DesktopWorkerRecoverySession />
-        <RouterProvider router={router} />
+        <WorkerObservationProvider client={observationClient}>
+          <WorkerObservationSession client={observationClient} />
+          <WorkerObservationBackgroundDemandSession />
+          <DesktopWorkerRecoverySession />
+          <RouterProvider router={router} />
+        </WorkerObservationProvider>
       </AppLiveProvider>
     </QueryClientProvider>
   );
@@ -758,7 +765,7 @@ function WorkerObservationSession({
   }, [client]);
   useEffect(() => {
     if (!workers.data) return;
-    client.updateWorkers(
+    client.updateAvailableWorkers(
       workers.data
         .filter((worker) => worker.online)
         .map((worker) => worker.workerId),
