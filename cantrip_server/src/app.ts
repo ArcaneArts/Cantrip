@@ -241,14 +241,10 @@ import {
   skillAudienceUpdateSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
-  encryptedTerminalCreateSchema,
   encryptedLinkedConsoleCreateSchema,
-  terminalWireListSchema,
   terminalOpenResultSchema,
-  encryptedTerminalServiceConfigurationSchema,
   terminalServerMessageSchema,
   terminalWireSummarySchema,
-  encryptedTerminalUpdateSchema,
   tunnelWireSummarySchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
@@ -668,6 +664,11 @@ import { installProjectWorktreePullRequestRoutes } from "./app/routes/project-wo
 import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
 import { installRepositoryOperationRoutes } from "./app/routes/repository-operations.js";
 import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
+import {
+  installTerminalCreateRoute,
+  installTerminalListRoute,
+  installTerminalManagementRoutes,
+} from "./app/routes/terminal-management.js";
 import { installDirectAttachmentControlRoutes } from "./app/routes/direct-attachment-control.js";
 import {
   installTunnelListRoute,
@@ -3700,6 +3701,22 @@ export async function buildApp({
         updateTerminalStatus(terminalId, "running"),
       ),
     );
+  };
+  const terminalServiceRuntime = {
+    isWorkerConnected: (workerId: string): boolean =>
+      bridge.isConnected(workerId),
+    reconcileServicesForWorker: synchronizeTerminalServicesForWorker,
+    recordStatus: updateTerminalStatus,
+    restartService: async (
+      workerId: string,
+      terminalId: string,
+    ): Promise<void> => {
+      await bridge.request(
+        workerId,
+        { type: "terminal.service.restart", terminalId },
+        { timeoutMs: 30_000 },
+      );
+    },
   };
   const updateCodeSessionRuntime = async (
     ...input: Parameters<typeof repository.updateCodeSessionRuntime>
@@ -18649,16 +18666,10 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/terminals",
-    async (request, reply) => {
-      const terminals = await repository.listTerminals(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      return reply.send(terminalWireListSchema.parse(terminals));
-    },
-  );
+  installTerminalListRoute(app, {
+    applicationOwnerId,
+    repository,
+  });
 
   installRunConfigurationSecretRoutes(app, {
     appendAudit,
@@ -18957,33 +18968,11 @@ export async function buildApp({
     },
   );
 
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/terminals",
-    async (request, reply) => {
-      const input = encryptedTerminalCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const terminal = await repository.createTerminal(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-          (workerId) => bridge.isConnected(workerId),
-        );
-        return terminal
-          ? reply.code(201).send(terminalWireSummarySchema.parse(terminal))
-          : reply.code(404).send({ error: "Project source not found." });
-      } catch (error) {
-        if (error instanceof ExecutionPlacementUnavailableError) {
-          return reply
-            .code(error.code === "project-not-found" ? 404 : 409)
-            .send({ code: error.code, error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
+  installTerminalCreateRoute(app, {
+    applicationOwnerId,
+    repository,
+    runtime: terminalServiceRuntime,
+  });
 
   app.get<{
     Params: { terminalId: string };
@@ -19097,124 +19086,11 @@ export async function buildApp({
     }
   });
 
-  app.patch<{ Params: { terminalId: string } }>(
-    "/api/terminals/:terminalId",
-    async (request, reply) => {
-      const input = encryptedTerminalUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const terminal = await repository.updateTerminal(
-          applicationOwnerId(),
-          request.params.terminalId,
-          input.data,
-        );
-        return terminal
-          ? reply.send(terminalWireSummarySchema.parse(terminal))
-          : reply.code(404).send({ error: "Terminal not found." });
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.put<{ Params: { terminalId: string } }>(
-    "/api/terminals/:terminalId/service",
-    async (request, reply) => {
-      const input = encryptedTerminalServiceConfigurationSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const context = await repository.getTerminalExecutionContext(
-          applicationOwnerId(),
-          request.params.terminalId,
-        );
-        if (!context) {
-          return reply.code(404).send({ error: "Terminal not found." });
-        }
-        if (context.kind === "run-configuration" || !context.stateProtection) {
-          return reply.code(409).send({
-            error:
-              "Run configuration terminals are read-only and use the managed runtime output API.",
-          });
-        }
-        const terminal = await repository.updateTerminalService(
-          applicationOwnerId(),
-          request.params.terminalId,
-          input.data,
-        );
-        if (!terminal) {
-          return reply.code(404).send({ error: "Terminal not found." });
-        }
-        let status: "idle" | "offline" | "running" = input.data.enabled
-          ? "offline"
-          : "idle";
-        if (bridge.isConnected(context.workerId)) {
-          try {
-            await synchronizeTerminalServicesForWorker(context.workerId);
-            status = input.data.enabled ? "running" : "idle";
-          } catch {
-            app.log.warn(
-              { terminalId: terminal.id },
-              "Terminal service will reconcile when the worker reconnects",
-            );
-          }
-        }
-        await updateTerminalStatus(terminal.id, status);
-        return reply.send(
-          terminalWireSummarySchema.parse({
-            ...terminal,
-            status,
-          }),
-        );
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.post<{ Params: { terminalId: string } }>(
-    "/api/terminals/:terminalId/service/restart",
-    async (request, reply) => {
-      const context = await repository.getTerminalExecutionContext(
-        applicationOwnerId(),
-        request.params.terminalId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Terminal not found." });
-      }
-      if (context.kind === "run-configuration") {
-        return reply.code(409).send({
-          error: "Run configuration terminals are controlled by their runtime.",
-        });
-      }
-      if (!context.serviceEnabled) {
-        return reply.code(409).send({ error: "Terminal service is disabled." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        await updateTerminalStatus(context.terminalId, "offline");
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      try {
-        await bridge.request(
-          context.workerId,
-          {
-            type: "terminal.service.restart",
-            terminalId: context.terminalId,
-          },
-          { timeoutMs: 30_000 },
-        );
-        await updateTerminalStatus(context.terminalId, "running");
-        return reply.code(202).send({ accepted: true });
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+  installTerminalManagementRoutes(app, {
+    applicationOwnerId,
+    repository,
+    runtime: terminalServiceRuntime,
+  });
 
   app.patch<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId/worktree",
