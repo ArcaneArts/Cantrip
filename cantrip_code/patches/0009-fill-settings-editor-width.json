@@ -1,0 +1,15 @@
+{
+  "id": "0009-fill-settings-editor-width",
+  "title": "Fill the embedded Cantrip Code settings surface",
+  "reason": "Cantrip embeds the Code OSS graphical settings editor as the only content in its Code settings tab. Upstream caps and centers the editor, header, table of contents, and setting rows at 1200 pixels, which creates a second large gutter inside Cantrip's already-contained settings surface. The VS Code extension API does not expose settings-editor layout or stylesheet injection, and the outer Cantrip app cannot safely style the separately served workbench document.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": [
+    "src/vs/workbench/contrib/preferences/browser/media/settingsEditor2.css"
+  ],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:source:verify",
+    "Open Settings > Code in Cantrip and confirm the search header, category table of contents, and settings rows use the full embedded workbench width with only their standard 24-pixel content padding"
+  ],
+  "removal": "Remove if Code OSS provides a supported setting or extension API for full-width graphical settings, or if Cantrip stops embedding graphical settings inside its own settings shell."
+}
