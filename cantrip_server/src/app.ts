@@ -583,25 +583,17 @@ import type {
   WorkerCliCommandCall,
 } from "@cantrip/protocol";
 import {
-  encryptedProjectAutomationCreateSchema,
-  encryptedProjectAutomationUpdateSchema,
   projectAutomationDispatchRequestSchema,
   projectAutomationDispatchResultSchema,
   projectAutomationWireListSchema,
-  projectAutomationWireSchema,
 } from "@cantrip/protocol/automations";
 import {
   encryptedWorkflowGateDecisionSchema,
   encryptedWorkflowNodeRetrySchema,
   encryptedWorkflowRunCancelSchema,
-  encryptedWorkflowAutomationTriggerCreateSchema,
-  encryptedWorkflowAutomationTriggerUpdateSchema,
   encryptedWorkflowGitEventDeliveryCreateSchema,
   encryptedWorkflowTriggerDeliveryCreateSchema,
   protectedWorkflowTriggerPrepareResultSchema,
-  workflowAutomationTriggerQuerySchema,
-  workflowAutomationTriggerWireListSchema,
-  workflowAutomationTriggerWireSchema,
   encryptedWorkflowRunCreateSchema,
   encryptedWorkflowRunPauseSchema,
   encryptedWorkflowRunResumeSchema,
@@ -765,7 +757,6 @@ import {
   toChatAttachmentOpaqueSummary,
 } from "./db/repository.js";
 import type { FocusedExecutionTargetResourceKind } from "./execution-targets/catalog.js";
-import { ProjectAutomationConflictError } from "./db/project-automations.js";
 import {
   configurationReasoningStateForRuntimes,
   prepareRuntimesForReasoning,
@@ -851,6 +842,7 @@ import { createApplicationServer } from "./app/http/server.js";
 import { installTransportSecurity } from "./app/http/transport-security.js";
 import { installInternalProviderCredentialRoutes } from "./app/routes/internal-provider-credentials.js";
 import { installPolicyRoutes } from "./app/routes/policies.js";
+import { installProjectAutomationRoutes } from "./app/routes/project-automations.js";
 import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
 import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
 import { installDirectAttachmentControlRoutes } from "./app/routes/direct-attachment-control.js";
@@ -864,6 +856,7 @@ import { installWorkerCredentialRoutes } from "./app/routes/worker-credentials.j
 import { installWorkerEnrollmentCodeRoutes } from "./app/routes/worker-enrollment-codes.js";
 import { installWorkerManagementRoutes } from "./app/routes/worker-management.js";
 import { installWorkflowDefinitionRoutes } from "./app/routes/workflow-definitions.js";
+import { installWorkflowTriggerManagementRoutes } from "./app/routes/workflow-trigger-management.js";
 import {
   sendWorkerConflictFailure,
   sendWorkerRequestFailure,
@@ -17692,101 +17685,11 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/automations",
-    async (request, reply) =>
-      reply.send(
-        projectAutomationWireListSchema.parse(
-          await repository.projectAutomations.list(
-            applicationOwnerId(),
-            request.params.projectId,
-          ),
-        ),
-      ),
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/automations",
-    async (request, reply) => {
-      const input = encryptedProjectAutomationCreateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const automation = await repository.projectAutomations.create(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-        );
-        if (!automation) {
-          return reply
-            .code(404)
-            .send({ error: "Project or target chat not found." });
-        }
-        publishProjectAutomationChange(automation.projectId, automation.id);
-        return reply
-          .code(201)
-          .send(projectAutomationWireSchema.parse(automation));
-      } catch (error) {
-        if (error instanceof ProjectAutomationConflictError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.patch<{ Params: { automationId: string } }>(
-    "/api/automations/:automationId",
-    async (request, reply) => {
-      const input = encryptedProjectAutomationUpdateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const automation = await repository.projectAutomations.update(
-          applicationOwnerId(),
-          request.params.automationId,
-          input.data,
-        );
-        if (!automation) {
-          return reply.code(404).send({ error: "Automation not found." });
-        }
-        publishProjectAutomationChange(automation.projectId, automation.id);
-        return reply.send(projectAutomationWireSchema.parse(automation));
-      } catch (error) {
-        if (error instanceof ProjectAutomationConflictError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.delete<{ Params: { automationId: string } }>(
-    "/api/automations/:automationId",
-    async (request, reply) => {
-      const automation = await repository.projectAutomations.get(
-        applicationOwnerId(),
-        request.params.automationId,
-      );
-      if (
-        !automation ||
-        !(await repository.projectAutomations.delete(
-          applicationOwnerId(),
-          request.params.automationId,
-        ))
-      ) {
-        return reply.code(404).send({ error: "Automation not found." });
-      }
-      publishProjectAutomationChange(automation.projectId, automation.id);
-      return reply.code(204).send();
-    },
-  );
+  installProjectAutomationRoutes(app, {
+    applicationOwnerId,
+    publishProjectAutomationChange,
+    repository,
+  });
 
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/mcp-servers",
@@ -17982,97 +17885,11 @@ export async function buildApp({
     },
   );
 
-  app.get<{
-    Querystring: {
-      enabled?: string;
-      limit?: string;
-      projectId?: string;
-      type?: string;
-    };
-  }>("/api/workflow-triggers", async (request, reply) => {
-    const query = workflowAutomationTriggerQuerySchema.safeParse(request.query);
-    if (!query.success) {
-      return reply.code(400).send(invalidBody(query.error.issues));
-    }
-    return reply.send(
-      workflowAutomationTriggerWireListSchema.parse(
-        await repository.workflowTriggers.list(
-          applicationOwnerId(),
-          query.data,
-        ),
-      ),
-    );
+  installWorkflowTriggerManagementRoutes(app, {
+    applicationOwnerId,
+    publishWorkflowTriggerChange,
+    repository,
   });
-
-  app.post("/api/workflow-triggers", async (request, reply) => {
-    const input = encryptedWorkflowAutomationTriggerCreateSchema.safeParse(
-      request.body,
-    );
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    if (input.data.type === "git") {
-      const project = await repository.getProject(
-        applicationOwnerId(),
-        input.data.projectId,
-      );
-      if (!project) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      requireProjectCapability(project, "git");
-    }
-    try {
-      const trigger = await repository.workflowTriggers.create(
-        applicationOwnerId(),
-        input.data,
-      );
-      if (trigger) {
-        publishWorkflowTriggerChange(trigger.id, trigger.projectId);
-      }
-      return trigger
-        ? reply
-            .code(201)
-            .send(workflowAutomationTriggerWireSchema.parse(trigger))
-        : reply
-            .code(404)
-            .send({ error: "Workflow revision or project not found." });
-    } catch (error) {
-      if (error instanceof WorkflowTriggerConflictError) {
-        return reply.code(409).send({ error: error.message });
-      }
-      throw error;
-    }
-  });
-
-  app.patch<{ Params: { triggerId: string } }>(
-    "/api/workflow-triggers/:triggerId",
-    async (request, reply) => {
-      const input = encryptedWorkflowAutomationTriggerUpdateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const trigger = await repository.workflowTriggers.update(
-          applicationOwnerId(),
-          request.params.triggerId,
-          input.data,
-        );
-        if (trigger) {
-          publishWorkflowTriggerChange(trigger.id, trigger.projectId);
-        }
-        return trigger
-          ? reply.send(workflowAutomationTriggerWireSchema.parse(trigger))
-          : reply.code(404).send({ error: "Workflow trigger not found." });
-      } catch (error) {
-        if (error instanceof WorkflowTriggerConflictError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
 
   app.post<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId/deliver",
