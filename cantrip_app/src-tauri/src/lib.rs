@@ -27,6 +27,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_window_state::StateFlags;
 
 mod desktop_update;
+#[cfg(desktop)]
+mod desktop_window_placement;
 mod desktop_worker;
 mod direct_probe;
 mod local_logs;
@@ -409,6 +411,7 @@ fn show_main_window(app: &tauri::AppHandle) {
 fn close_desktop_windows(app: &tauri::AppHandle) {
     for (label, window) in app.webview_windows() {
         if label == "main" {
+            let _ = desktop_window_placement::save(&window);
             let _ = window.hide();
         } else {
             let _ = window.close();
@@ -919,6 +922,8 @@ pub fn run() {
             .with_filter(should_persist_window_state)
             .build(),
     );
+    #[cfg(desktop)]
+    let builder = builder.plugin(desktop_window_placement::plugin());
     #[cfg(all(
         desktop,
         not(debug_assertions),
@@ -1150,6 +1155,7 @@ pub fn run() {
             if label == "main" {
                 api.prevent_close();
                 if let Some(window) = handle.get_webview_window("main") {
+                    let _ = desktop_window_placement::save(&window);
                     let _ = window.hide();
                 }
             } else if label == "synthetic-build-progress"
