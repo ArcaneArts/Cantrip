@@ -100,6 +100,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         ["desktop-worker-enrollment-status"],
         ["chat-sync"],
         ["project-repository-stats"],
+        ["run-configurations"],
       ];
     case "project":
       return projectId
