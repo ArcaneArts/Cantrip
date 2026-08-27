@@ -21,7 +21,15 @@ export const topologyMatrix = [
       ),
       evidence(
         "cantrip_app/src/lib/worker-link-carriers.test.ts",
-        "accepts LOCAL only after the loopback broker proves its ephemeral identity",
+        "activates and renews LOCAL after the broker proves its identity",
+      ),
+      evidence(
+        "cantrip_server/test/direct-attachment-coordinator.test.ts",
+        "keeps an activated WorkerLink capability alive across repeated renewals",
+      ),
+      evidence(
+        "cantrip_server/test/project-placement-api.test.ts",
+        "activates an exact LOCAL capability before accepting lease heartbeats",
       ),
     ],
   },
@@ -293,6 +301,7 @@ export const featureMatrix = [
       evidence(
         "cantrip_app/src/lib/worker-observation-client.test.ts",
         "discards provisional state and reconnects after a continuity gap",
+        "keeps the WorkerLink alive while moving observations to a promoted route",
       ),
     ],
   },
@@ -430,6 +439,8 @@ export const targetedTests = {
     "src/worker-observation-worker-link-adapter.test.ts",
   ],
   server: [
+    "test/direct-attachment-coordinator.test.ts",
+    "test/project-placement-api.test.ts",
     "test/worker-link-coordinator.test.ts",
     "test/worker-link-service.test.ts",
     "test/worker-link-relay.test.ts",

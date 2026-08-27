@@ -971,6 +971,7 @@ import { WorkerLinkRelay } from "./worker-links/relay.js";
 import { WorkerLinkService } from "./worker-links/service.js";
 import {
   workerLinkGrantBindingSchema,
+  workerLinkDirectActivationSchema,
   workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
   workerLinkObservationGrantRequestSchema,
@@ -14995,6 +14996,7 @@ export async function buildApp({
           return reply.code(404).send({ error: "Worker not found." });
         }
         const ticket = await directAttachments.prepare({
+          attachmentId: session.sessionId,
           authSessionId: accountSessionId,
           channels: ["worker-link"],
           leaseExpiresAt: new Date(session.lease.expiresAt),
@@ -15014,6 +15016,51 @@ export async function buildApp({
       } finally {
         directAttachments.releasePreparationLease(preparationLease);
       }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    "/api/worker-links/:sessionId/direct-activate",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerLinkDirectActivationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const authSessionId = principal.sessionId ?? `local:${principal.user.id}`;
+      const session = await workerLinks.sessionForAuthorization(
+        request.params.sessionId,
+        { accountSessionId: authSessionId, ownerId: principal.user.id },
+      );
+      if (!session) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      const authorization = {
+        attachmentId: session.sessionId,
+        authSessionId,
+        ownerId: principal.user.id,
+      };
+      if (!directAttachments.matches(input.data.capabilityId, authorization)) {
+        directAttachments.recordActivationOutcome(
+          input.data.capabilityId,
+          authorization,
+          "capability_mismatch",
+        );
+        return reply.code(404).send({ error: "Direct attachment not found." });
+      }
+      if (
+        !directAttachments.recordActivationOutcome(
+          input.data.capabilityId,
+          authorization,
+          "completed",
+        )
+      ) {
+        return reply
+          .code(409)
+          .send({ error: "Direct attachment changed while activating." });
+      }
+      return reply.code(204).send();
     },
   );
 

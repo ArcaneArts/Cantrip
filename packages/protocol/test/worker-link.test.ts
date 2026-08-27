@@ -19,6 +19,7 @@ import {
   WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
   WorkerLinkRemoteSurfaceFrameAssembler,
   workerLinkCoordinatorCommandSchema,
+  workerLinkDirectActivationSchema,
   workerLinkFrameHeaderSchema,
   workerLinkGrantBindingSchema,
   workerLinkIdentityResolveResultSchema,
@@ -161,6 +162,18 @@ const frameBase = {
 };
 
 describe("WorkerLink protocol", () => {
+  it("binds LOCAL activation to one exact direct capability", () => {
+    expect(
+      workerLinkDirectActivationSchema.parse({ capabilityId: channelId }),
+    ).toEqual({ capabilityId: channelId });
+    expect(
+      workerLinkDirectActivationSchema.safeParse({
+        capabilityId: channelId,
+        attachmentId: "unexpected",
+      }).success,
+    ).toBe(false);
+  });
+
   it("binds sessions to the exact server, account, client, and worker process", () => {
     expect(workerLinkSessionIdentitySchema.parse(identity)).toEqual(identity);
     expect(

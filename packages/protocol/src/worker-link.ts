@@ -334,6 +334,12 @@ export const workerLinkSessionOpenRequestSchema = z
   })
   .strict();
 
+export const workerLinkDirectActivationSchema = z
+  .object({
+    capabilityId: z.string().uuid(),
+  })
+  .strict();
+
 export const workerLinkPeerSessionSchema = z
   .object({
     peerSessionId: z.string().uuid(),

@@ -149,10 +149,14 @@ export class WorkerObservationClient {
     }
     state.connecting = true;
     const generation = ++state.generation;
-    let reference: WorkerLinkReference | null = null;
+    let reference = state.reference;
+    let ownsReference = false;
     let grant: WorkerLinkResourceGrant | null = null;
     try {
-      reference = await this.dependencies.manager.acquire(state.workerId);
+      if (!reference) {
+        reference = await this.dependencies.manager.acquire(state.workerId);
+        ownsReference = true;
+      }
       const sessionId = reference.link.session.sessionId;
       grant = await this.dependencies.createGrant(sessionId, [
         ...OBSERVATION_TOPICS,
@@ -163,10 +167,11 @@ export class WorkerObservationClient {
         await this.dependencies
           .revokeGrant(sessionId, grant.binding.grantId)
           .catch(() => undefined);
-        reference.release();
+        if (ownsReference) reference.release();
         return;
       }
       state.reference = reference;
+      ownsReference = false;
       state.grant = grant;
       state.sessionId = sessionId;
       state.stream = stream;
@@ -188,7 +193,7 @@ export class WorkerObservationClient {
           .revokeGrant(reference.link.session.sessionId, grant.binding.grantId)
           .catch(() => undefined);
       }
-      reference?.release();
+      if (ownsReference) reference?.release();
       if (this.#isCurrent(state, generation)) this.#scheduleReconnect(state);
     }
   }
@@ -309,7 +314,9 @@ export class WorkerObservationClient {
     const grant = state.grant;
     const sessionId = state.sessionId;
     state.stream = null;
-    state.reference = null;
+    const keepReference =
+      code === "route-replaced" && reconnect && reference !== null;
+    state.reference = keepReference ? reference : null;
     state.grant = null;
     state.sessionId = null;
     if (closeStream) stream?.close(code ?? "normal");
@@ -318,8 +325,10 @@ export class WorkerObservationClient {
         .revokeGrant(sessionId, grant.binding.grantId)
         .catch(() => undefined);
     }
-    reference?.release();
-    if (hadData) void this.sink.recoverWorkerObservations(state.workerId);
+    if (!keepReference) reference?.release();
+    if (hadData || code === "route-replaced") {
+      void this.sink.recoverWorkerObservations(state.workerId);
+    }
     if (reconnect && state.desired && !this.#stopped) {
       this.#scheduleReconnect(state);
     }

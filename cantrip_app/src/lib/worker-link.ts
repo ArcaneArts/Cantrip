@@ -23,6 +23,7 @@ import {
 } from "@cantrip/protocol";
 
 import {
+  activateWorkerLinkDirectTicket,
   createWorkerLinkDirectTicket,
   createWorkerLinkPeerSession,
   createWorkerLinkSession,
@@ -754,6 +755,7 @@ class ClientWorkerLink implements WorkerLink {
       const stream = new ClientWorkerLinkStream(
         channelId,
         this.dependencies.createId(),
+        channelKind,
         lane,
         route,
         this.#session,
@@ -799,6 +801,7 @@ class ClientWorkerLink implements WorkerLink {
           countedActive = true;
           this.#activeStreamRoutes.set(channelId, route);
           this.#emitStatus();
+          this.#schedulePromotableStreamRetirement(stream);
         }
         return stream;
       } catch (error) {
@@ -1224,13 +1227,14 @@ class ClientWorkerLink implements WorkerLink {
     const previous = this.#routeStatus;
     const previousSelected = this.#selectedRoute;
     this.#selectedRoute = route;
+    let promoted = false;
     if (!previousSelected) {
       this.#markTransition("carrier-ready");
     } else if (previousSelected !== route) {
       const previousPriority =
         this.#session.routePolicy.priority.indexOf(previousSelected);
       const nextPriority = this.#session.routePolicy.priority.indexOf(route);
-      const promoted = nextPriority < previousPriority;
+      promoted = nextPriority < previousPriority;
       const transition = promoted ? "route-promoted" : "route-demoted";
       this.#markTransition(transition);
       this.#recordTelemetry(
@@ -1258,6 +1262,41 @@ class ClientWorkerLink implements WorkerLink {
       for (const listener of this.#routeListeners) listener(this.#routeStatus);
     }
     this.#emitStatus();
+    if (promoted) {
+      for (const stream of this.#streams.values()) {
+        this.#schedulePromotableStreamRetirement(stream);
+      }
+    }
+  }
+
+  #schedulePromotableStreamRetirement(stream: ClientWorkerLinkStream): void {
+    if (stream.channelKind !== "event-subscription") return;
+    const preferred = this.#availableRoutes()[0];
+    if (
+      !preferred ||
+      this.#session.routePolicy.priority.indexOf(stream.route) <=
+        this.#session.routePolicy.priority.indexOf(preferred)
+    ) {
+      return;
+    }
+    setTimeout(() => {
+      if (
+        this.#closed ||
+        this.#streams.get(stream.channelId) !== stream ||
+        !this.#activeStreamRoutes.has(stream.channelId)
+      ) {
+        return;
+      }
+      const currentPreferred = this.#availableRoutes()[0];
+      if (
+        !currentPreferred ||
+        this.#session.routePolicy.priority.indexOf(stream.route) <=
+          this.#session.routePolicy.priority.indexOf(currentPreferred)
+      ) {
+        return;
+      }
+      stream.retire("route-replaced");
+    }, 0);
   }
 
   #fallbackFor(
@@ -1338,7 +1377,6 @@ class ClientWorkerLink implements WorkerLink {
             return;
           }
           this.#session = session;
-          this.#markTransition("session-renewed");
           this.#emitStatus();
           this.#scheduleRenewal();
         })
@@ -1586,6 +1624,10 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
   constructor(
     readonly channelId: string,
     readonly connectionId: string,
+    readonly channelKind: Extract<
+      WorkerLinkChannelKind,
+      "reliable-stream" | "event-subscription"
+    >,
     readonly lane: WorkerLinkQosLane,
     readonly route: WorkerLinkRoute,
     private readonly session: WorkerLinkSession,
@@ -2097,6 +2139,7 @@ const defaultDependencies: WorkerLinkManagerDependencies = {
   now: Date.now,
   openLocal: (session) =>
     openWorkerLinkLocalCarrier({
+      activateCapability: activateWorkerLinkDirectTicket,
       createTicket: createWorkerLinkDirectTicket,
       createWebSocket: (url) => new WebSocket(url),
       recordActivity: (capabilityId) =>
