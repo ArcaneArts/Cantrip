@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  cantripCliCommandResultSchema,
   projectFolderSetupJobSummarySchema,
   projectGithubConversionJobSummarySchema,
   projectGithubConversionPreflightResultSchema,
@@ -1215,6 +1216,55 @@ describe("managed folder project lifecycle", () => {
     const root = (
       await database.repository.listProjectWorktrees(LOCAL_USER_ID, project.id)
     )[0]!;
+
+    const fullCatalog = vi.spyOn(
+      database.repository,
+      "listProjectExecutionTargets",
+    );
+    const invokeTargetCommand = (
+      command: "target.show" | "target.resolve-browser",
+    ) =>
+      app.inject({
+        method: "POST",
+        url: "/api/internal/cli",
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: {
+          command,
+          chatContext: null,
+          context: {
+            codexThreadId: null,
+            terminalId: null,
+            cwd: root.path,
+          },
+          arguments: {},
+          requestId: `folder-${command}`,
+          workerId: "folder-worker",
+        },
+      });
+    const shownTarget = await invokeTargetCommand("target.show");
+    expect(shownTarget.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(shownTarget.json()),
+    ).toMatchObject({
+      target: {
+        kind: "worker",
+        projectId: project.id,
+        workerId: "folder-worker",
+      },
+    });
+    const browserFallback = await invokeTargetCommand("target.resolve-browser");
+    expect(browserFallback.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(browserFallback.json()),
+    ).toMatchObject({
+      target: {
+        kind: "worker",
+        projectId: project.id,
+        workerId: "folder-worker",
+      },
+    });
+    expect(fullCatalog).not.toHaveBeenCalled();
+    fullCatalog.mockRestore();
 
     const unsupported = await app.inject({
       method: "POST",
