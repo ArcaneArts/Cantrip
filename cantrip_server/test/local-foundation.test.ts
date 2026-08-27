@@ -4531,6 +4531,51 @@ describe("local server foundation", () => {
       { type: "activity", activity: { type: "turnSummary" } },
     ]);
     expect(
+      richMessages.slice(1).map((message) => {
+        const content = message.content[0];
+        return content?.type === "text" || content?.type === "activity"
+          ? content.sourceEvent
+          : null;
+      }),
+    ).toEqual([
+      {
+        operationId: richMessages[0]!.id,
+        turnId: "rich-turn-1",
+        messageId: "commentary-1",
+        sequence: 0,
+      },
+      {
+        operationId: richMessages[0]!.id,
+        turnId: "rich-turn-1",
+        messageId: "reasoning-1",
+        sequence: 1,
+      },
+      {
+        operationId: richMessages[0]!.id,
+        turnId: "rich-turn-1",
+        messageId: "mcp-1",
+        sequence: 2,
+      },
+      {
+        operationId: richMessages[0]!.id,
+        turnId: "rich-turn-1",
+        messageId: "turn:rich-turn-1:usage",
+        sequence: 3,
+      },
+      {
+        operationId: richMessages[0]!.id,
+        turnId: "rich-turn-1",
+        messageId: "final-1",
+        sequence: 4,
+      },
+      {
+        operationId: richMessages[0]!.id,
+        turnId: "rich-turn-1",
+        messageId: "turn:rich-turn-1:summary",
+        sequence: 4,
+      },
+    ]);
+    expect(
       richMessages.filter((message) =>
         message.content.some(
           (content) =>

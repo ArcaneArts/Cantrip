@@ -11,12 +11,15 @@ import type {
   AppLiveResyncReason,
   AppLiveScope,
   AppLiveServerMessage,
+  ChatMessage,
   CodeGraphProjectStatus,
   CodexAuthStatus,
   GitConflictList,
   GitManagedOperationResponse,
   GitStatus,
   InferenceProgressSnapshot,
+  WorkerObservationEnvelope,
+  WorkerObservationEventIdentity,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { chatMessageOpaqueSummarySchema } from "@cantrip/protocol/communication-content";
@@ -33,7 +36,9 @@ import {
   EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
   chatMessageLiveQueryKey,
   chatMessagePagesQueryKey,
+  chatMessageProvisionalQueryKey,
   deleteFromChatMessageLiveOverlay,
+  removeFromChatMessageLiveOverlay,
   upsertChatMessageLiveOverlay,
   type ChatMessageLiveOverlay,
 } from "./chat-message-history";
@@ -494,6 +499,163 @@ function uniqueQueryKeys(keys: QueryKey[]): QueryKey[] {
   return [...unique.values()];
 }
 
+const MAX_DIRECT_OBSERVATION_STATE = 4_096;
+const PROVISIONAL_MESSAGE_SEQUENCE_BASE =
+  Number.MAX_SAFE_INTEGER - MAX_DIRECT_OBSERVATION_STATE;
+
+interface ProvisionalMessageState {
+  chatId: string;
+  contentFingerprint: string;
+  messageId: string;
+  protectedFingerprint: string | null;
+  sourceEvent: WorkerObservationEventIdentity;
+  workerId: string;
+}
+
+interface ProvisionalInferenceState {
+  chatId: string;
+  cycle: number;
+  kind: "clear" | "progress";
+  requestId: string;
+  sequence: number;
+  workerId: string;
+}
+
+function observationIdentityKey(
+  identity: WorkerObservationEventIdentity,
+): string {
+  return `${identity.operationId}\0${identity.turnId ?? ""}\0${identity.messageId ?? ""}\0${identity.sequence}`;
+}
+
+function observationLineageKey(
+  identity: WorkerObservationEventIdentity,
+): string {
+  return `${identity.operationId}\0${identity.turnId ?? ""}\0${identity.messageId ?? ""}`;
+}
+
+function messageObservationIdentities(
+  message: ChatMessage,
+): WorkerObservationEventIdentity[] {
+  return message.content.flatMap((content) =>
+    (content.type === "text" || content.type === "activity") &&
+    content.sourceEvent
+      ? [content.sourceEvent]
+      : [],
+  );
+}
+
+function messageIsAuthoritativeFinal(message: ChatMessage): boolean {
+  return message.content.some(
+    (content) =>
+      content.type === "text" &&
+      content.phase === "final_answer" &&
+      content.streaming !== true,
+  );
+}
+
+function messageTurnIds(message: ChatMessage): Set<string> {
+  const ids = new Set<string>();
+  for (const content of message.content) {
+    if (content.type === "text") {
+      const turnId = content.sourceEvent?.turnId ?? content.correlation?.turnId;
+      if (turnId) ids.add(turnId);
+    } else if (content.type === "activity") {
+      const turnId =
+        content.sourceEvent?.turnId ?? content.activity.correlation?.turnId;
+      if (turnId) ids.add(turnId);
+    }
+  }
+  return ids;
+}
+
+function protectedContentFingerprint(value: {
+  protectedContent: unknown;
+}): string {
+  return JSON.stringify(value.protectedContent);
+}
+
+function messageContentFingerprint(message: ChatMessage): string {
+  return JSON.stringify(
+    message.content.map((content) => {
+      if (content.type === "text" || content.type === "activity") {
+        const { sourceEvent: _sourceEvent, ...stable } = content;
+        return stable;
+      }
+      return content;
+    }),
+  );
+}
+
+function provisionalMessageSequence(continuitySequence: number): number {
+  return (
+    PROVISIONAL_MESSAGE_SEQUENCE_BASE +
+    Math.min(continuitySequence, MAX_DIRECT_OBSERVATION_STATE - 1)
+  );
+}
+
+function directObservationQueryKeys(
+  envelope: WorkerObservationEnvelope,
+): QueryKey[] {
+  if (envelope.payload.topic === "chat-progress") return [];
+  const notification = envelope.payload.notification;
+  switch (notification.type) {
+    case "worktree.filesystem.changed":
+      return [
+        ["explorer-directory"],
+        ["explorer-directory-commits"],
+        ["explorer-file"],
+        ["project-repository-stats"],
+      ];
+    case "worktree.inventory.observed":
+      return [["worktrees"], ["worktree-status"]];
+    case "worktree.status.observed":
+      return [
+        ["worktrees"],
+        ["worktree-status"],
+        ["worktree-history"],
+        ["git-graph-snapshot"],
+        ["git-graph-metrics"],
+        ["git-graph-commit-overlay"],
+      ];
+    case "git.operation.observed":
+      return [
+        ["git-operation", notification.projectId],
+        ["worktree-status", notification.projectId, notification.worktreeId],
+        ["project-repository-stats", notification.projectId],
+      ];
+    case "terminal.runtime.observed":
+      return [["terminals"], ["run-configuration-runtimes"]];
+    case "codegraph.status.observed":
+      return [
+        [
+          "codegraph",
+          notification.status.projectId,
+          notification.status.worktreeId,
+        ],
+      ];
+    case "project.run-configuration-runtime.observed":
+      return [
+        ["run-configuration-runtimes", notification.observation.projectId],
+        ["terminals", notification.observation.projectId],
+      ];
+    case "project.run-configuration-definitions.changed":
+      return [
+        ["run-configurations", notification.projectId],
+        ["run-configuration-secrets", notification.projectId],
+        ...(notification.change.id
+          ? [
+              [
+                "run-configuration",
+                notification.projectId,
+                notification.change.id,
+              ],
+            ]
+          : []),
+      ];
+  }
+  return [];
+}
+
 export class AppLiveQueryBridge {
   readonly #codeGraphRevisions = new Map<string, number>();
   readonly #gitConflictRevisions = new Map<string, number>();
@@ -501,6 +663,8 @@ export class AppLiveQueryBridge {
   readonly #inferenceProgressCursors = new Map<string, number>();
   readonly #messageCursors = new Map<string, number>();
   readonly #providerAuthRevisions = new Map<string, number>();
+  readonly #provisionalInference = new Map<string, ProvisionalInferenceState>();
+  readonly #provisionalMessages = new Map<string, ProvisionalMessageState>();
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
   readonly #workflowRunSequences = new Map<string, number>();
@@ -514,6 +678,60 @@ export class AppLiveQueryBridge {
 
   constructor(queryClient: QueryClient) {
     this.#queryClient = queryClient;
+  }
+
+  async handleWorkerObservation(
+    workerId: string,
+    envelope: WorkerObservationEnvelope,
+  ): Promise<void> {
+    if (envelope.payload.topic === "chat-progress") {
+      await this.#applyDirectChatObservation(workerId, envelope);
+      return;
+    }
+    if (envelope.payload.notification.type === "codegraph.status.observed") {
+      const status = envelope.payload.notification.status;
+      this.#queryClient.setQueryData<CodeGraphProjectStatus>(
+        ["codegraph", status.projectId, status.worktreeId],
+        status,
+      );
+    }
+    for (const queryKey of directObservationQueryKeys(envelope)) {
+      void this.#queryClient.invalidateQueries({ queryKey });
+    }
+  }
+
+  async recoverWorkerObservations(workerId: string): Promise<void> {
+    for (const [key, state] of [...this.#provisionalMessages]) {
+      if (state.workerId !== workerId) continue;
+      this.#removeProvisionalMessage(state.chatId, state.messageId);
+      this.#provisionalMessages.delete(key);
+    }
+    for (const [key, state] of [...this.#provisionalInference]) {
+      if (state.workerId !== workerId) continue;
+      if (state.kind === "progress") {
+        this.#queryClient.setQueryData<InferenceProgressSnapshot | null>(
+          ["inference-progress", state.chatId],
+          (current) =>
+            current?.requestId === state.requestId &&
+            current.cycle === state.cycle &&
+            current.sequence === state.sequence
+              ? null
+              : (current ?? null),
+        );
+        this.#queryClient.setQueryData<InferenceProgressTrace[]>(
+          inferenceProgressHistoryQueryKey(state.chatId),
+          (current) =>
+            (current ?? []).filter(
+              ({ progress }) =>
+                progress.requestId !== state.requestId ||
+                progress.cycle !== state.cycle ||
+                progress.sequence !== state.sequence,
+            ),
+        );
+      }
+      this.#provisionalInference.delete(key);
+    }
+    await this.#queryClient.invalidateQueries();
   }
 
   handleEvent(event: AppLiveEvent): void {
@@ -580,6 +798,280 @@ export class AppLiveQueryBridge {
     });
   }
 
+  async #applyDirectChatObservation(
+    workerId: string,
+    envelope:
+      | Extract<
+          WorkerObservationEnvelope,
+          { payload: { topic: "chat-progress" } }
+        >
+      | WorkerObservationEnvelope,
+  ): Promise<void> {
+    if (envelope.payload.topic !== "chat-progress") return;
+    const payload = envelope.payload;
+    const event = payload.event;
+    if (event.type === "agent.inference-progress") {
+      const progress = event.progress;
+      const key = `${payload.chatId}\0${progress.requestId}\0${progress.cycle}`;
+      if (progress.kind === "clear") {
+        const current =
+          this.#queryClient.getQueryData<InferenceProgressSnapshot | null>([
+            "inference-progress",
+            payload.chatId,
+          ]);
+        if (
+          current?.requestId === progress.requestId &&
+          current.cycle === progress.cycle &&
+          current.sequence <= progress.sequence
+        ) {
+          this.#queryClient.setQueryData(
+            ["inference-progress", payload.chatId],
+            null,
+          );
+          this.#queryClient.setQueryData<InferenceProgressTrace[]>(
+            inferenceProgressHistoryQueryKey(payload.chatId),
+            (traces) =>
+              completeInferenceProgressTrace(
+                traces,
+                current,
+                progress.observedAt,
+              ),
+          );
+        }
+        this.#rememberProvisionalInference(key, {
+          chatId: payload.chatId,
+          cycle: progress.cycle,
+          kind: "clear",
+          requestId: progress.requestId,
+          sequence: progress.sequence,
+          workerId,
+        });
+        return;
+      }
+      const current =
+        this.#queryClient.getQueryData<InferenceProgressSnapshot | null>([
+          "inference-progress",
+          payload.chatId,
+        ]);
+      if (
+        current?.requestId === progress.requestId &&
+        current.cycle === progress.cycle &&
+        current.sequence > progress.sequence
+      ) {
+        return;
+      }
+      this.#queryClient.setQueryData<InferenceProgressSnapshot>(
+        ["inference-progress", payload.chatId],
+        progress,
+      );
+      this.#queryClient.setQueryData<InferenceProgressTrace[]>(
+        inferenceProgressHistoryQueryKey(payload.chatId),
+        (traces) => upsertInferenceProgressTrace(traces, progress),
+      );
+      this.#rememberProvisionalInference(key, {
+        chatId: payload.chatId,
+        cycle: progress.cycle,
+        kind: "progress",
+        requestId: progress.requestId,
+        sequence: progress.sequence,
+        workerId,
+      });
+      return;
+    }
+
+    const sequence = provisionalMessageSequence(envelope.continuitySequence);
+    const common = {
+      chatId: payload.chatId,
+      contextKind: payload.contextKind,
+      worktreeId: payload.worktreeId,
+      scratchRootId: payload.scratchRootId,
+      executionLaneId: payload.executionLaneId,
+      sequence,
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      appliedReasoningEffort: null,
+      reasoningAdjusted: false,
+      createdAt: envelope.observedAt,
+    } as const;
+    let message: ChatMessage | null = null;
+    let protectedFingerprint: string | null = null;
+    if (event.type === "agent.message") {
+      message = {
+        ...common,
+        id: `provisional-message:${event.message.id}`,
+        role: "assistant",
+        mode: "default",
+        reasoningEffort: null,
+        content: [
+          {
+            type: "text",
+            text: event.message.text,
+            phase: event.message.phase,
+            ...(event.message.streaming ? { streaming: true } : {}),
+            correlation: event.message.correlation,
+            ...(event.message.agentScope
+              ? { agentScope: event.message.agentScope }
+              : {}),
+            sourceEvent: envelope.identity,
+          },
+        ],
+      };
+    } else if (event.type === "agent.activity") {
+      message = {
+        ...common,
+        id: `provisional-activity:${event.activity.id}`,
+        role: "assistant",
+        mode: "default",
+        reasoningEffort: null,
+        content: [
+          {
+            type: "activity",
+            activity: event.activity,
+            sourceEvent: envelope.identity,
+          },
+        ],
+      };
+    } else if (event.type === "agent.protected-message") {
+      protectedFingerprint = protectedContentFingerprint(event.message);
+      message = await openChatMessageOpaqueSummary({
+        ...event.message.classification,
+        ...common,
+        id: event.message.id,
+        protectedContent: event.message.protectedContent,
+        reasoningEffort: event.message.reasoningEffort,
+        idempotencyKey: event.message.idempotencyKey,
+      }).catch(() => null);
+    } else if (
+      event.type === "agent.protected-task-message" &&
+      payload.contextKind === "project" &&
+      payload.worktreeId
+    ) {
+      protectedFingerprint = protectedContentFingerprint(event.message);
+      message = await openTaskMessageOpaqueSummary({
+        ...event.message.classification,
+        id: event.message.id,
+        chatId: payload.chatId,
+        worktreeId: payload.worktreeId,
+        executionLaneId: payload.executionLaneId,
+        sequence,
+        protectedContent: event.message.protectedContent,
+        modelId: null,
+        modelRouteId: null,
+        providerId: null,
+        providerName: null,
+        providerModelName: null,
+        reasoningEffort: event.message.reasoningEffort,
+        appliedReasoningEffort: null,
+        reasoningAdjusted: false,
+        idempotencyKey: event.message.idempotencyKey,
+        createdAt: envelope.observedAt,
+      }).catch(() => null);
+    }
+    if (!message) return;
+    const state: ProvisionalMessageState = {
+      chatId: payload.chatId,
+      contentFingerprint: messageContentFingerprint(message),
+      messageId: message.id,
+      protectedFingerprint,
+      sourceEvent: envelope.identity,
+      workerId,
+    };
+    const stateKey = `${payload.chatId}\0${message.id}`;
+    this.#provisionalMessages.delete(stateKey);
+    this.#provisionalMessages.set(stateKey, state);
+    this.#queryClient.setQueryData<ChatMessageLiveOverlay>(
+      chatMessageProvisionalQueryKey(payload.chatId),
+      (current) => upsertChatMessageLiveOverlay(current, message!),
+    );
+    while (this.#provisionalMessages.size > MAX_DIRECT_OBSERVATION_STATE) {
+      const oldest = this.#provisionalMessages.entries().next().value;
+      if (!oldest) break;
+      const [oldestKey, oldestState] = oldest;
+      this.#provisionalMessages.delete(oldestKey);
+      this.#removeProvisionalMessage(oldestState.chatId, oldestState.messageId);
+    }
+  }
+
+  #rememberProvisionalInference(
+    key: string,
+    state: ProvisionalInferenceState,
+  ): void {
+    this.#provisionalInference.delete(key);
+    this.#provisionalInference.set(key, state);
+    while (this.#provisionalInference.size > MAX_DIRECT_OBSERVATION_STATE) {
+      const oldest = this.#provisionalInference.keys().next().value;
+      if (oldest === undefined) break;
+      this.#provisionalInference.delete(oldest);
+    }
+  }
+
+  #removeProvisionalMessage(chatId: string, messageId: string): void {
+    this.#queryClient.setQueryData<ChatMessageLiveOverlay>(
+      chatMessageProvisionalQueryKey(chatId),
+      (current) => removeFromChatMessageLiveOverlay(current, messageId),
+    );
+  }
+
+  #reconcileCanonicalMessage(
+    message: ChatMessage,
+    protectedFingerprint: string | null,
+  ): void {
+    const canonicalIdentities = messageObservationIdentities(message);
+    const canonicalKeys = new Set(
+      canonicalIdentities.map(observationIdentityKey),
+    );
+    const canonicalLineages = new Set(
+      canonicalIdentities.map(observationLineageKey),
+    );
+    const canonicalOperationIds = new Set(
+      canonicalIdentities.map(({ operationId }) => operationId),
+    );
+    const canonicalTurnIds = messageTurnIds(message);
+    const canonicalContentFingerprint = messageContentFingerprint(message);
+    const finalMessage = messageIsAuthoritativeFinal(message);
+    for (const [key, state] of [...this.#provisionalMessages]) {
+      if (state.chatId !== message.chatId) continue;
+      const sameMessage = state.messageId === message.id;
+      const sameSource = canonicalKeys.has(
+        observationIdentityKey(state.sourceEvent),
+      );
+      const sameLineage = canonicalLineages.has(
+        observationLineageKey(state.sourceEvent),
+      );
+      const finalLineage =
+        finalMessage &&
+        canonicalLineages.has(observationLineageKey(state.sourceEvent));
+      const finalTurn =
+        finalMessage &&
+        (canonicalOperationIds.has(state.sourceEvent.operationId) ||
+          (state.sourceEvent.turnId !== null &&
+            canonicalTurnIds.has(state.sourceEvent.turnId)));
+      const sameContentRevision =
+        (sameMessage || sameLineage) &&
+        state.contentFingerprint === canonicalContentFingerprint;
+      const sameProtectedRevision =
+        sameMessage &&
+        protectedFingerprint !== null &&
+        state.protectedFingerprint !== null &&
+        protectedFingerprint === state.protectedFingerprint;
+      if (
+        !sameSource &&
+        !finalLineage &&
+        !finalTurn &&
+        !sameContentRevision &&
+        !sameProtectedRevision &&
+        !(sameMessage && finalMessage)
+      ) {
+        continue;
+      }
+      this.#removeProvisionalMessage(state.chatId, state.messageId);
+      this.#provisionalMessages.delete(key);
+    }
+  }
+
   #acceptWorkflowEvent(event: AppLiveEvent): boolean {
     if (
       !["workflow-gate", "workflow-node", "workflow-run"].includes(
@@ -627,6 +1119,10 @@ export class AppLiveQueryBridge {
         liveQueryKey,
         (current) => deleteFromChatMessageLiveOverlay(current, event.entityId!),
       );
+      this.#removeProvisionalMessage(event.scope.chatId, event.entityId);
+      this.#provisionalMessages.delete(
+        `${event.scope.chatId}\0${event.entityId}`,
+      );
       this.#messageCursors.set(entityKey, event.cursor);
       return true;
     }
@@ -641,6 +1137,7 @@ export class AppLiveQueryBridge {
       encryptedChat.data.id === event.entityId &&
       encryptedChat.data.chatId === event.scope.chatId
     ) {
+      const fingerprint = protectedContentFingerprint(encryptedChat.data);
       void openChatMessageOpaqueSummary(encryptedChat.data)
         .catch(() => openTaskMessageOpaqueSummary(event.payload))
         .then((message) => {
@@ -650,6 +1147,7 @@ export class AppLiveQueryBridge {
             liveQueryKey,
             (current) => upsertChatMessageLiveOverlay(current, message),
           );
+          this.#reconcileCanonicalMessage(message, fingerprint);
           this.#messageCursors.set(entityKey, event.cursor);
         })
         .catch(() => {
@@ -662,6 +1160,7 @@ export class AppLiveQueryBridge {
       encrypted.data.id === event.entityId &&
       encrypted.data.chatId === event.scope.chatId
     ) {
+      const fingerprint = protectedContentFingerprint(encrypted.data);
       void openTaskMessageOpaqueSummary(encrypted.data)
         .then((message) => {
           const latest = this.#messageCursors.get(entityKey);
@@ -670,6 +1169,7 @@ export class AppLiveQueryBridge {
             liveQueryKey,
             (current) => upsertChatMessageLiveOverlay(current, message),
           );
+          this.#reconcileCanonicalMessage(message, fingerprint);
           this.#messageCursors.set(entityKey, event.cursor);
         })
         .catch(() => {
@@ -688,6 +1188,7 @@ export class AppLiveQueryBridge {
       liveQueryKey,
       (current) => upsertChatMessageLiveOverlay(current, parsed.data),
     );
+    this.#reconcileCanonicalMessage(parsed.data, null);
     this.#messageCursors.set(entityKey, event.cursor);
     return true;
   }
@@ -709,7 +1210,11 @@ export class AppLiveQueryBridge {
         this.#queryClient.getQueryData<InferenceProgressSnapshot | null>(
           queryKey,
         );
-      if (progress?.requestId === event.entityId) {
+      const revision = event.revision ?? Number.MAX_SAFE_INTEGER;
+      if (
+        progress?.requestId === event.entityId &&
+        progress.sequence <= revision
+      ) {
         this.#queryClient.setQueryData<InferenceProgressTrace[]>(
           inferenceProgressHistoryQueryKey(chatId),
           (current) =>
@@ -719,8 +1224,19 @@ export class AppLiveQueryBridge {
       this.#queryClient.setQueryData<InferenceProgressSnapshot | null>(
         queryKey,
         (current) =>
-          current?.requestId === event.entityId ? null : (current ?? null),
+          current?.requestId === event.entityId && current.sequence <= revision
+            ? null
+            : (current ?? null),
       );
+      for (const [key, state] of [...this.#provisionalInference]) {
+        if (
+          state.chatId === chatId &&
+          state.requestId === event.entityId &&
+          state.sequence <= revision
+        ) {
+          this.#provisionalInference.delete(key);
+        }
+      }
       this.#inferenceProgressCursors.set(chatId, event.cursor);
       return true;
     }
@@ -728,14 +1244,29 @@ export class AppLiveQueryBridge {
     if (!parsed.success || parsed.data.requestId !== event.entityId) {
       return false;
     }
-    this.#queryClient.setQueryData<InferenceProgressSnapshot>(
-      queryKey,
-      parsed.data,
-    );
-    this.#queryClient.setQueryData<InferenceProgressTrace[]>(
-      inferenceProgressHistoryQueryKey(chatId),
-      (current) => upsertInferenceProgressTrace(current, parsed.data),
-    );
+    const current =
+      this.#queryClient.getQueryData<InferenceProgressSnapshot | null>(
+        queryKey,
+      );
+    if (
+      current?.requestId !== parsed.data.requestId ||
+      current.cycle !== parsed.data.cycle ||
+      current.sequence <= parsed.data.sequence
+    ) {
+      this.#queryClient.setQueryData<InferenceProgressSnapshot>(
+        queryKey,
+        parsed.data,
+      );
+      this.#queryClient.setQueryData<InferenceProgressTrace[]>(
+        inferenceProgressHistoryQueryKey(chatId),
+        (history) => upsertInferenceProgressTrace(history, parsed.data),
+      );
+    }
+    const provisionalKey = `${chatId}\0${parsed.data.requestId}\0${parsed.data.cycle}`;
+    const provisional = this.#provisionalInference.get(provisionalKey);
+    if (provisional && provisional.sequence <= parsed.data.sequence) {
+      this.#provisionalInference.delete(provisionalKey);
+    }
     this.#inferenceProgressCursors.set(chatId, event.cursor);
     return true;
   }
@@ -981,6 +1512,10 @@ export class AppLiveQueryBridge {
         chatMessageLiveQueryKey(scope.chatId),
         EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
       );
+      this.#queryClient.setQueryData(
+        chatMessageProvisionalQueryKey(scope.chatId),
+        EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
+      );
       this.#queryClient.removeQueries({
         queryKey: ["message-history", scope.chatId],
       });
@@ -989,6 +1524,15 @@ export class AppLiveQueryBridge {
         null,
       );
       this.#inferenceProgressCursors.delete(scope.chatId);
+      for (const [key, state] of [...this.#provisionalMessages]) {
+        if (state.chatId === scope.chatId)
+          this.#provisionalMessages.delete(key);
+      }
+      for (const [key, state] of [...this.#provisionalInference]) {
+        if (state.chatId === scope.chatId) {
+          this.#provisionalInference.delete(key);
+        }
+      }
       const prefix = `${scope.chatId}:`;
       for (const key of this.#messageCursors.keys()) {
         if (key.startsWith(prefix)) this.#messageCursors.delete(key);

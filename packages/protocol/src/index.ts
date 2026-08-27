@@ -15824,7 +15824,7 @@ const directWorkerNotificationTopics = new Map<
   ["project.run-configuration-definitions.changed", "runtime"],
 ]);
 
-function workerEventIsProvisional(event: WorkerEvent): boolean {
+export function workerEventIsProvisional(event: WorkerEvent): boolean {
   if (!directWorkerEventTypes.has(event.type)) return false;
   if (event.type === "agent.message") {
     return (
@@ -15853,10 +15853,30 @@ export const workerObservationPayloadSchema = z.discriminatedUnion("topic", [
       chatId: z.string().min(1).max(200),
       clientMessageId: z.string().min(1).max(200),
       executionLaneId: z.string().min(1).max(200),
+      contextKind: chatContextKindSchema,
+      worktreeId: z.string().min(1).max(200).nullable(),
+      scratchRootId: z.string().min(1).max(200).nullable(),
       event: workerEventSchema,
     })
     .strict()
     .superRefine((payload, context) => {
+      if (
+        (payload.contextKind === "project" &&
+          payload.worktreeId !== null &&
+          payload.scratchRootId === null) ||
+        (payload.contextKind === "standalone" &&
+          payload.worktreeId === null &&
+          payload.scratchRootId !== null)
+      ) {
+        // The observation retains the exact execution root needed to render a
+        // provisional message before the server publishes its durable row.
+      } else {
+        context.addIssue({
+          code: "custom",
+          path: ["contextKind"],
+          message: "The observation execution root is invalid.",
+        });
+      }
       if (!workerEventIsProvisional(payload.event)) {
         context.addIssue({
           code: "custom",

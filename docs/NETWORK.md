@@ -510,6 +510,31 @@ identities so clients can deduplicate them. If the observation channel loses
 continuity, the client drops uncertain provisional state and fetches the
 authoritative server snapshot.
 
+The supported application owns one feature-neutral observation client for each
+online worker. This runs inside the shared renderer application, so browser,
+Capacitor, and Tauri clients inherit the same LOCAL, LAN, WAN, and RELAY route
+selection without feature branches. Each client acquires all four initial
+topics through one read-only event subscription, renews the exact grant, and
+reopens the subscription through WorkerLink after mobility, revocation, worker
+restart, or transport failure.
+
+Direct chat messages use a separate provisional query overlay. Plaintext worker
+events carry the same source-event identity into their canonical encrypted
+message, while already-protected messages are matched by stable message ID and
+protected-content revision. A delayed canonical inference event cannot replace
+a newer direct sequence. The committed app-live event removes the matching
+provisional revision; an authoritative final removes remaining provisional
+state for that turn. Direct filesystem, worktree, Git, terminal, CodeGraph, and
+run-configuration notifications feed the existing query families as immediate
+hints rather than introducing feature-owned listeners.
+
+The client validates the subscription attachment and every continuity sequence
+before acknowledging credit. A gap, malformed envelope, half-close, queue
+overflow, grant-renewal failure, or channel loss closes the attempt, removes
+that worker's uncertain provisional messages and inference traces, invalidates
+the authoritative query snapshot, and retries through WorkerLink's current
+LOCAL -> LAN -> WAN -> RELAY priority.
+
 The worker fans eligible events to every authorized subscription while keeping
 the existing server delivery unchanged. Protocol validation excludes final
 messages, final turn outcomes, approvals and interactions, peer signaling,
@@ -759,10 +784,12 @@ None of these WorkerLink controls permits TURN.
 
 ### Phase 6: Worker observations
 
-- Add scoped observation subscription grants.
-- Move incremental inference and activity progress to WorkerLink.
-- Move filesystem watcher hints to WorkerLink.
-- Retain final server persistence and app-live reconciliation.
+- Add scoped observation subscription grants. Complete in T2.9A.
+- Move incremental inference and activity progress to WorkerLink. Complete in
+  T2.9B.
+- Move filesystem watcher hints to WorkerLink. Complete in T2.9B.
+- Retain final server persistence and app-live reconciliation. Complete in
+  T2.9B.
 
 ### Phase 7: Relay consolidation and cleanup
 

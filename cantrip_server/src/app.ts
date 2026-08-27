@@ -455,6 +455,7 @@ import {
   workerAttachmentUploadResultSchema,
   workerListSchema,
   workerManagementListSchema,
+  workerEventIsProvisional,
   compatibleWorkerCantripMcpOperationCallSchema,
   workerCantripMcpCapabilitiesQuerySchema,
   CANTRIP_MCP_BINDING_PROTOCOL_VERSIONS,
@@ -600,6 +601,8 @@ import type {
   ReasoningEffort,
   WorkerNotification,
   WorkerCommand,
+  WorkerEvent,
+  WorkerObservationEventIdentity,
   WorkerSummary,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
@@ -1225,6 +1228,36 @@ type ChatLiveResource = Extract<
   | "inference-progress"
   | "task"
 >;
+
+function workerObservationTurnId(event: WorkerEvent): string | null {
+  switch (event.type) {
+    case "agent.activity":
+      return event.activity.correlation?.turnId ?? null;
+    case "agent.message":
+      return event.message.correlation?.turnId ?? null;
+    case "agent.protected-message":
+    case "agent.protected-task-message":
+      return event.telemetry.turnId;
+    default:
+      return null;
+  }
+}
+
+function workerObservationMessageId(event: WorkerEvent): string | null {
+  switch (event.type) {
+    case "agent.activity":
+      return event.activity.id;
+    case "agent.message":
+      return event.message.id;
+    case "agent.protected-message":
+    case "agent.protected-task-message":
+      return event.message.id;
+    case "agent.inference-progress":
+      return event.progress.requestId;
+    default:
+      return null;
+  }
+}
 
 export function mutationLiveResources(
   route: string,
@@ -10577,6 +10610,27 @@ export async function buildApp({
     );
     void runAsOwner(ownerId, async () => {
       let anyActivity = false;
+      let workerObservationSequence = 0;
+      const observationIdentity = (
+        event: WorkerEvent,
+      ): WorkerObservationEventIdentity => {
+        const sequence =
+          event.type === "agent.inference-progress"
+            ? event.progress.sequence
+            : workerObservationSequence;
+        if (
+          event.type !== "agent.inference-progress" &&
+          workerEventIsProvisional(event)
+        ) {
+          workerObservationSequence += 1;
+        }
+        return {
+          operationId: userMessage.id,
+          turnId: workerObservationTurnId(event),
+          messageId: workerObservationMessageId(event),
+          sequence,
+        };
+      };
       const changedPaths = new Set<string>();
       const taskDispatchHeartbeat = options.taskDispatchLease
         ? setInterval(
@@ -10881,6 +10935,7 @@ export async function buildApp({
                 onEvent: (event) =>
                   runAsOwner(ownerId, async () => {
                     const observedAt = new Date();
+                    const sourceEvent = observationIdentity(event);
                     behaviorTracker.markActivity(observedAt);
                     attemptActivity = true;
                     anyActivity = true;
@@ -11231,6 +11286,7 @@ export async function buildApp({
                                 ? { streaming: true }
                                 : {}),
                               correlation: event.message.correlation,
+                              sourceEvent,
                             },
                           ],
                           idempotencyKey: `agent-message:${turnId ?? userMessage.id}:${event.message.id}`,
@@ -11383,7 +11439,11 @@ export async function buildApp({
                       {
                         role: "assistant",
                         content: [
-                          { type: "activity", activity: event.activity },
+                          {
+                            type: "activity",
+                            activity: event.activity,
+                            sourceEvent,
+                          },
                         ],
                         idempotencyKey:
                           event.activity.type === "worktree"

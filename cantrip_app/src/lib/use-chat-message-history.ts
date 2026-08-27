@@ -7,6 +7,7 @@ import {
   CHAT_MESSAGE_MEMORY_LIMIT,
   EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
   chatMessageLiveQueryKey,
+  chatMessageProvisionalQueryKey,
   chatMessageOlderPagesQueryKey,
   chatMessagePagesQueryKey,
   mergeChatMessageHistory,
@@ -38,6 +39,13 @@ export function useChatMessageHistory({
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
     initialData: EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
     queryKey: chatMessageLiveQueryKey(chatId),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const provisional = useQuery({
+    enabled: false,
+    gcTime: CHAT_MESSAGE_CACHE_GC_MS,
+    initialData: EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
+    queryKey: chatMessageProvisionalQueryKey(chatId),
     staleTime: Number.POSITIVE_INFINITY,
   });
   const head = useQuery({
@@ -73,8 +81,14 @@ export function useChatMessageHistory({
     [head.data, older.data?.pages],
   );
   const data = useMemo(
-    () => mergeChatMessageHistory(pages, live.data, maxCachedMessages),
-    [live.data, maxCachedMessages, pages],
+    () =>
+      mergeChatMessageHistory(
+        pages,
+        live.data,
+        maxCachedMessages,
+        provisional.data,
+      ),
+    [live.data, maxCachedMessages, pages, provisional.data],
   );
   const hasOlder =
     historyCursor !== null &&

@@ -104,6 +104,9 @@ export class WorkerObservationHub implements WorkerLinkResourceAdapter {
       chatId: command.chatId,
       clientMessageId: command.clientMessageId,
       executionLaneId: command.executionLaneId,
+      contextKind: command.contextKind,
+      worktreeId: command.worktreeId,
+      scratchRootId: command.scratchRootId,
       event,
     });
     if (!payload.success) return false;

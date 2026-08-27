@@ -322,6 +322,9 @@ describe("WorkerLink protocol", () => {
           chatId: "chat-1",
           clientMessageId: "client-message-1",
           executionLaneId: "lane-1",
+          contextKind: "project",
+          worktreeId: "worktree-1",
+          scratchRootId: null,
           event: {
             type: "agent.message",
             message: {
@@ -342,6 +345,9 @@ describe("WorkerLink protocol", () => {
           chatId: "chat-1",
           clientMessageId: "client-message-1",
           executionLaneId: "lane-1",
+          contextKind: "project",
+          worktreeId: "worktree-1",
+          scratchRootId: null,
           event: {
             type: "agent.message",
             message: {

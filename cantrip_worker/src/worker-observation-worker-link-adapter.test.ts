@@ -70,6 +70,9 @@ function fixtures() {
     chatId: "chat-1",
     clientMessageId: "client-message-1",
     executionLaneId: "execution-lane-1",
+    contextKind: "project",
+    worktreeId: "worktree-1",
+    scratchRootId: null,
   } as WorkerCommand;
   return { command, grant, session };
 }
