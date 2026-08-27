@@ -259,7 +259,9 @@ describe("worker TCP tunnel destination", () => {
 
   it("pauses destination reads until the source grants more byte credit", async () => {
     const size = 320 * 1_024;
-    const initialCredit = 64 * 1_024;
+    // Deliberately does not align with Node's TCP read size. The adapter must
+    // split a queued read at the exact credit boundary instead of deadlocking.
+    const initialCredit = 48 * 1_024 + 13;
     const port = await listenBurst(size);
     const adapter = new TunnelTcpDestinationAdapter();
     const output: Array<{

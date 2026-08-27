@@ -270,7 +270,7 @@ describe("worker network graph", () => {
     expect(markup).toContain("Last used · 0 links · 0 channels");
   });
 
-  it("renders future-compatible mixed route segments without enabling them", () => {
+  it("renders truthful mixed route segments per channel", () => {
     const status = routeStatus({
       activeChannelCount: 3,
       effectiveRoutes: ["local", "relay"],

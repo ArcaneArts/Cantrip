@@ -1,8 +1,9 @@
 # Client-worker network fabric
 
-- Status: Tranche One implemented; Tranche Two in progress
+- Status: Tranche One and Tranche Two stabilized
 - Scope: Client-to-worker latency- and bandwidth-sensitive traffic
 - Route priority: `LOCAL -> LAN -> WAN -> RELAY`
+- Acceptance: [NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md)
 
 Cantrip should use the server as its durable control plane without requiring the
 server to relay every byte exchanged between a client and a worker. A client
@@ -12,12 +13,14 @@ revocation. After the server authorizes a client-worker relationship, a shared
 network fabric selects the best reachable data route and carries the features
 that benefit from lower latency or reduced server bandwidth.
 
-This document is the implementation plan for that fabric. It extends the
+This document defines the implemented architecture and operating boundaries for
+that fabric. It extends the
 [unified tunnel framework](adr/0007-unified-tunnel-framework.md), the
 [server-authorized local-direct data plane](adr/0008-server-authorized-local-direct-data-plane.md),
 the [application live transport](LIVE_TRANSPORT.md), and the existing Remote
-Surface WebRTC path. It does not describe behavior that is already fully
-implemented.
+Surface foundation. The execution history lives in
+[NETWORK_PROGRESS.md](NETWORK_PROGRESS.md), and the repeatable final matrix is
+recorded in [NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md).
 
 ## Product decisions
 
@@ -845,6 +848,11 @@ None of these WorkerLink controls permits TURN.
 - Preserve the deployment-wide relay-only switch.
 
 ## Validation strategy
+
+Run `pnpm network:acceptance` for the deterministic route, failure, feature,
+authorization, replica, and native-bridge matrix. The executable evidence map
+and the results, including unavailable physical-device checks, are documented
+in [NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md).
 
 Build a repeatable network matrix for every migrated feature:
 

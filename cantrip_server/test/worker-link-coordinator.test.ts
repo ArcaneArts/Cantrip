@@ -133,6 +133,68 @@ function peerConfiguration(
 }
 
 describe("WorkerLinkCoordinator", () => {
+  it("isolates multiple clients per worker and multiple workers per client", async () => {
+    const workers = new FakeWorkerBus();
+    const coordinator = new WorkerLinkCoordinator(workers.asBus(), {
+      serverGeneration,
+      serverId,
+      sweepIntervalMs: 0,
+    });
+    const clientAWorker1 = await coordinator.openSession(sessionInput());
+    const clientBWorker1 = await coordinator.openSession(
+      sessionInput({ clientInstanceId: "client-instance-2" }),
+    );
+    const clientAWorker2 = await coordinator.openSession(
+      sessionInput({ workerId: "worker-2" }),
+    );
+
+    expect(
+      new Set([
+        clientAWorker1.sessionId,
+        clientBWorker1.sessionId,
+        clientAWorker2.sessionId,
+      ]).size,
+    ).toBe(3);
+    expect(
+      workers.commands.filter(
+        (command) => command.type === "worker-link.session.install",
+      ),
+    ).toHaveLength(3);
+
+    const grants = await Promise.all(
+      [clientAWorker1, clientBWorker1, clientAWorker2].map((activeSession) =>
+        coordinator.issueGrant({
+          lanes: ["interactive"],
+          maxChannels: 1,
+          operations: ["stream:open", "stream:read", "stream:write"],
+          resourceId: `terminal-${activeSession.identity.clientInstanceId}-${activeSession.identity.workerId}`,
+          resourceKind: "terminal",
+          sessionId: activeSession.sessionId,
+        }),
+      ),
+    );
+    expect(coordinator.stats()).toEqual({ grants: 3, sessions: 3 });
+
+    await expect(
+      coordinator.revokeSession(clientAWorker1.sessionId),
+    ).resolves.toBe(true);
+    await expect(
+      coordinator.renewGrant(
+        clientBWorker1.sessionId,
+        grants[1]!.binding.grantId,
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      coordinator.renewGrant(
+        clientAWorker2.sessionId,
+        grants[2]!.binding.grantId,
+      ),
+    ).resolves.toBeDefined();
+    expect(coordinator.stats()).toEqual({ grants: 2, sessions: 2 });
+
+    await coordinator.close();
+  });
+
   it("revokes one exact tunnel attachment without retiring sibling grants", async () => {
     const workers = new FakeWorkerBus();
     const coordinator = new WorkerLinkCoordinator(workers.asBus(), {

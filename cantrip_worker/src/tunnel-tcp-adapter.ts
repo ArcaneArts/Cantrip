@@ -366,9 +366,11 @@ export class TunnelTcpDestinationAdapter {
       while (stream.pendingOutput.length > 0) {
         if (!this.#streams.has(key(stream.header))) return;
         const payload = stream.pendingOutput[0]!;
-        if (payload.byteLength > stream.destinationToSourceCredit) {
-          return;
-        }
+        if (stream.destinationToSourceCredit === 0) return;
+        const writablePayload =
+          payload.byteLength <= stream.destinationToSourceCredit
+            ? payload
+            : payload.subarray(0, stream.destinationToSourceCredit);
         const header: TunnelDataPlaneFrameHeader = {
           ...responseBase(stream),
           kind: "data",
@@ -377,13 +379,19 @@ export class TunnelTcpDestinationAdapter {
         // A false result means the frame was not accepted. Preserve the exact
         // payload and sequence across the capacity wait so parallel HTTP and
         // WebSocket streams cannot turn transient contention into data loss.
-        while (!this.#emit(header, payload)) {
+        while (!this.#emit(header, writablePayload)) {
           if (!(await this.#awaitCapacity(stream))) return;
           if (!this.#streams.has(key(stream.header))) return;
         }
-        stream.pendingOutput.shift();
-        stream.pendingBytes -= payload.byteLength;
-        stream.destinationToSourceCredit -= payload.byteLength;
+        if (writablePayload.byteLength === payload.byteLength) {
+          stream.pendingOutput.shift();
+        } else {
+          stream.pendingOutput[0] = payload.subarray(
+            writablePayload.byteLength,
+          );
+        }
+        stream.pendingBytes -= writablePayload.byteLength;
+        stream.destinationToSourceCredit -= writablePayload.byteLength;
         if (!(await this.#awaitCapacity(stream))) return;
       }
       if (!this.#streams.has(key(stream.header))) return;
