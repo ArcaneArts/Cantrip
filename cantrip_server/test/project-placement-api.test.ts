@@ -1086,6 +1086,10 @@ describe.sequential("project execution placement API", () => {
         },
       });
 
+    const fullCatalog = vi.spyOn(
+      database.repository,
+      "listProjectExecutionTargets",
+    );
     const resolution = await request("target.resolve-browser", {});
     expect(resolution.statusCode, JSON.stringify(resolution.json())).toBe(200);
     expect(
@@ -1098,6 +1102,7 @@ describe.sequential("project execution placement API", () => {
       },
       data: { stateRevision: null },
     });
+    expect(fullCatalog).not.toHaveBeenCalled();
 
     const fields = protectedBrowserFields();
     const created = await request("browser.create", {
@@ -1119,6 +1124,7 @@ describe.sequential("project execution placement API", () => {
     expect(
       await database.repository.deleteBrowser(LOCAL_USER_ID, fields.id),
     ).toBe(true);
+    fullCatalog.mockRestore();
   });
 
   it("honors explicit worktrees and never silently moves an invalid target", async () => {
@@ -1670,6 +1676,10 @@ describe.sequential("project execution placement API", () => {
       policyId: hiddenPolicy.id,
     });
     expect(hiddenPolicyRead.statusCode).toBe(404);
+    const fullCatalog = vi.spyOn(
+      database.repository,
+      "listProjectExecutionTargets",
+    );
     const cliCurrentTarget = await cli("target.show");
     expect(cliCurrentTarget.statusCode).toBe(200);
     expect(
@@ -1677,6 +1687,7 @@ describe.sequential("project execution placement API", () => {
     ).toMatchObject({
       target: { kind: "worktree", worktreeId: alphaWorktreeId },
     });
+    expect(fullCatalog).not.toHaveBeenCalled();
     const cliTargets = await cli("target.list", { kind: "terminal" });
     expect(cliTargets.statusCode).toBe(200);
     expect(
@@ -1691,6 +1702,20 @@ describe.sequential("project execution placement API", () => {
         }),
       ]),
     });
+    expect(fullCatalog).toHaveBeenCalledTimes(1);
+    fullCatalog.mockClear();
+    const cliExactTarget = await cli("target.show", { target: terminal.id });
+    expect(cliExactTarget.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliExactTarget.json()),
+    ).toMatchObject({
+      target: {
+        kind: "surface",
+        surfaceKind: "terminal",
+        surfaceId: terminal.id,
+      },
+    });
+    expect(fullCatalog).not.toHaveBeenCalled();
     const cliTerminal = await cli("terminal.read", {
       ...protectedSurfaceArguments(terminal.id),
     });
@@ -1723,6 +1748,8 @@ describe.sequential("project execution placement API", () => {
     ).toEqual([
       expect.objectContaining({ workerId: "worker-beta", port: 4_173 }),
     ]);
+    expect(fullCatalog).not.toHaveBeenCalled();
+    fullCatalog.mockRestore();
     const cliWorktreeStatus = await cli("worktree.status", {
       worktree: betaWorktreeId,
     });
@@ -1894,6 +1921,104 @@ describe.sequential("project execution placement API", () => {
     );
     expect(stale.statusCode).toBe(409);
     expect(stale.json().error).toContain("active chat lane");
+  });
+
+  it("revalidates a focused Explorer identity across concurrent move and delete", async () => {
+    const invoke = (explorerId: string, requestId: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/internal/cli",
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: {
+          command: "explorer.list",
+          chatContext: null,
+          context: {
+            codexThreadId: null,
+            terminalId: null,
+            cwd: path.join(dataDirectory, "worker-alpha"),
+          },
+          arguments: protectedSurfaceArguments(explorerId),
+          requestId,
+          workerId: "worker-alpha",
+        },
+      });
+    const create = async () => {
+      const fields = protectedExplorerFields();
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/explorers`,
+        payload: {
+          ...fields,
+          target: {
+            kind: "worktree",
+            projectId,
+            worktreeId: alphaWorktreeId,
+          },
+        },
+      });
+      expect(response.statusCode, response.body).toBe(201);
+      return {
+        fields,
+        explorer: explorerWireSummarySchema.parse(response.json()),
+      };
+    };
+
+    const moved = await create();
+    const resolveSelector =
+      database.repository.resolveExecutionTargetSelector.bind(
+        database.repository,
+      );
+    const moveAfterSelection = vi.spyOn(
+      database.repository,
+      "resolveExecutionTargetSelector",
+    );
+    moveAfterSelection.mockImplementationOnce(async (...arguments_) => {
+      const selected = await resolveSelector(...arguments_);
+      await database.repository.updateExplorerWorktree(
+        LOCAL_USER_ID,
+        moved.explorer.id,
+        {
+          worktreeId: betaWorktreeId,
+          stateProtection: protectedExplorerFields(moved.explorer.id)
+            .stateProtection,
+        },
+      );
+      return selected;
+    });
+    const movedResult = await invoke(
+      moved.explorer.id,
+      "cli-focused-explorer-moved",
+    );
+    moveAfterSelection.mockRestore();
+    expect(movedResult.statusCode, movedResult.body).toBe(200);
+    expect(routedCommands.at(-1)).toMatchObject({
+      workerId: "worker-beta",
+      command: { type: "explorer.operation", explorerId: moved.explorer.id },
+    });
+
+    const deleted = await create();
+    const commandsBeforeDelete = routedCommands.length;
+    const deleteAfterSelection = vi.spyOn(
+      database.repository,
+      "resolveExecutionTargetSelector",
+    );
+    deleteAfterSelection.mockImplementationOnce(async (...arguments_) => {
+      const selected = await resolveSelector(...arguments_);
+      await database.repository.deleteExplorer(
+        LOCAL_USER_ID,
+        deleted.explorer.id,
+      );
+      return selected;
+    });
+    const deletedResult = await invoke(
+      deleted.explorer.id,
+      "cli-focused-explorer-deleted",
+    );
+    deleteAfterSelection.mockRestore();
+    expect(deletedResult.statusCode).toBe(404);
+    expect(routedCommands).toHaveLength(commandsBeforeDelete);
+
+    await database.repository.deleteExplorer(LOCAL_USER_ID, moved.explorer.id);
   });
 
   it("atomically promotes an existing sidebar Explorer into the tab layout", async () => {

@@ -5,9 +5,9 @@ import type {
   ExecutionPlacement,
   ExecutionTarget,
   ExecutionTargetAvailability,
+  ExecutionTargetResourceKind,
   ExecutionTargetWireCatalog,
   ExecutionTargetWireDescriptor,
-  ExecutionTargetResourceKind,
   ExplorerWireSummary,
   ProjectReplicaSummary,
   ProjectWorktreeSummary,
@@ -19,6 +19,151 @@ import type {
 } from "@cantrip/protocol";
 
 export type ExecutionTargetCapability = "browser" | "code" | "desktop" | null;
+
+export type FocusedExecutionTargetResourceKind = Extract<
+  ExecutionTargetResourceKind,
+  "browser" | "explorer" | "terminal" | "worker" | "worktree"
+>;
+
+export type ExecutionTargetSelectorResult =
+  | { outcome: "selected"; target: ExecutionTarget }
+  | {
+      outcome: "ambiguous";
+      matches: Array<{ id: string; title: string }>;
+    }
+  | { outcome: "not-found" }
+  | { outcome: "unavailable" };
+
+export type ExecutionTargetSelectorCandidate = Pick<
+  ExecutionTargetWireDescriptor,
+  "resourceKind" | "target" | "title"
+>;
+
+export function executionTargetId(target: ExecutionTarget): string {
+  switch (target.kind) {
+    case "project":
+      return target.projectId;
+    case "worker":
+      return target.workerId;
+    case "replica":
+      return target.projectReplicaId;
+    case "worktree":
+      return target.worktreeId;
+    case "surface":
+      return target.surfaceId;
+  }
+}
+
+function executionTargetSelectorMatch(
+  candidate: ExecutionTargetSelectorCandidate,
+): { id: string; title: string } {
+  const id = executionTargetId(candidate.target);
+  return {
+    id,
+    title: candidate.title ?? `${candidate.resourceKind} ${id}`,
+  };
+}
+
+export function selectExplicitExecutionTarget(
+  candidates: readonly ExecutionTargetSelectorCandidate[],
+  selector: string,
+): ExecutionTargetSelectorResult {
+  const exactResult = selectExactExecutionTarget(candidates, selector);
+  if (exactResult) return exactResult;
+  const wanted = selector.toLocaleLowerCase();
+  const partial = candidates.filter((candidate) => {
+    const id = executionTargetId(candidate.target);
+    return (
+      id.startsWith(selector) ||
+      candidate.title?.toLocaleLowerCase().includes(wanted)
+    );
+  });
+  if (partial.length === 1) {
+    return { outcome: "selected", target: partial[0]!.target };
+  }
+  if (partial.length > 1) {
+    return {
+      outcome: "ambiguous",
+      matches: partial.map(executionTargetSelectorMatch),
+    };
+  }
+  return { outcome: "not-found" };
+}
+
+export function selectExactExecutionTarget(
+  candidates: readonly ExecutionTargetSelectorCandidate[],
+  selector: string,
+): ExecutionTargetSelectorResult | null {
+  const wanted = selector.toLocaleLowerCase();
+  const exact = candidates.filter((candidate) => {
+    const id = executionTargetId(candidate.target);
+    return id === selector || candidate.title?.toLocaleLowerCase() === wanted;
+  });
+  if (exact.length === 1) {
+    return { outcome: "selected", target: exact[0]!.target };
+  }
+  return exact.length > 1
+    ? {
+        outcome: "ambiguous",
+        matches: exact.map(executionTargetSelectorMatch),
+      }
+    : null;
+}
+
+export function selectExecutionTarget(
+  candidates: readonly ExecutionTargetWireDescriptor[],
+  input: {
+    currentTerminalId: string | null;
+    currentWorkerId: string;
+    currentWorktreeId: string;
+    resourceKind: FocusedExecutionTargetResourceKind | null;
+    selector: string | null;
+  },
+): ExecutionTargetSelectorResult {
+  if (input.selector) {
+    return selectExplicitExecutionTarget(candidates, input.selector);
+  }
+
+  if (input.resourceKind === "terminal" && input.currentTerminalId) {
+    const currentTerminal = candidates.find(
+      ({ target }) =>
+        target.kind === "surface" &&
+        target.surfaceId === input.currentTerminalId,
+    );
+    if (currentTerminal) {
+      return { outcome: "selected", target: currentTerminal.target };
+    }
+  }
+  if (input.resourceKind === "worktree") {
+    const currentWorktree = candidates.find(
+      ({ target }) =>
+        target.kind === "worktree" &&
+        target.worktreeId === input.currentWorktreeId,
+    );
+    if (currentWorktree) {
+      return { outcome: "selected", target: currentWorktree.target };
+    }
+  }
+  const available = candidates.filter(
+    ({ availability }) => availability === "available",
+  );
+  const local = available.filter(
+    ({ placement }) =>
+      placement.workerId === input.currentWorkerId &&
+      placement.worktreeId === input.currentWorktreeId,
+  );
+  const matches = local.length === 1 ? local : available;
+  if (matches.length === 1) {
+    return { outcome: "selected", target: matches[0]!.target };
+  }
+  if (matches.length > 1) {
+    return {
+      outcome: "ambiguous",
+      matches: matches.map(executionTargetSelectorMatch),
+    };
+  }
+  return { outcome: "unavailable" };
+}
 
 export function executionTargetAvailability(
   worker: WorkerSummary,
@@ -65,13 +210,18 @@ export function buildExecutionTargetCatalog(input: {
   desktops: readonly RemoteDesktopWireSummary[];
   explorers: readonly ExplorerWireSummary[];
   isWorkerConnected?: (workerId: string) => boolean;
+  maximumTargets?: number | null;
   projectId: string;
   remoteSurfaces: readonly RemoteSurfaceWireSummary[];
+  resourceKinds?: readonly ExecutionTargetResourceKind[];
   replicas: readonly ProjectReplicaSummary[];
   terminals: readonly TerminalWireSummary[];
   workers: readonly WorkerSummary[];
   worktrees: readonly ProjectWorktreeSummary[];
 }): ExecutionTargetWireCatalog {
+  const requestedResourceKinds = input.resourceKinds
+    ? new Set(input.resourceKinds)
+    : null;
   const workersById = new Map(
     input.workers.map((worker) => [worker.workerId, worker]),
   );
@@ -89,6 +239,12 @@ export function buildExecutionTargetCatalog(input: {
     title?: string;
     titleProtection?: PrivateDisplayLabelOpaque | null;
   }) => {
+    if (
+      requestedResourceKinds &&
+      !requestedResourceKinds.has(candidate.resourceKind)
+    ) {
+      return;
+    }
     const worker = workersById.get(candidate.placement.workerId);
     if (!worker) return;
     let availability = executionTargetAvailability(
@@ -161,7 +317,9 @@ export function buildExecutionTargetCatalog(input: {
     });
   };
 
-  for (const worker of input.workers) {
+  for (const worker of requestedResourceKinds?.has("worker") === false
+    ? []
+    : input.workers) {
     const replica = input.replicas.find(
       ({ workerId }) => workerId === worker.workerId,
     );
@@ -195,7 +353,9 @@ export function buildExecutionTargetCatalog(input: {
       title: worker.name,
     });
   }
-  for (const replica of input.replicas) {
+  for (const replica of requestedResourceKinds?.has("replica") === false
+    ? []
+    : input.replicas) {
     const primary = input.worktrees.find(
       (worktree) =>
         worktree.id === replica.primaryWorktreeId &&
@@ -225,7 +385,9 @@ export function buildExecutionTargetCatalog(input: {
       title: `${replica.workerName} project replica`,
     });
   }
-  for (const worktree of input.worktrees) {
+  for (const worktree of requestedResourceKinds?.has("worktree") === false
+    ? []
+    : input.worktrees) {
     append({
       placement: {
         projectId: input.projectId,
@@ -364,9 +526,15 @@ export function buildExecutionTargetCatalog(input: {
       left.resourceKind.localeCompare(right.resourceKind) ||
       JSON.stringify(left.target).localeCompare(JSON.stringify(right.target)),
   );
+  const maximumTargets =
+    input.maximumTargets === undefined ? 2_000 : input.maximumTargets;
   return {
     projectId: input.projectId,
-    targets: descriptors.slice(0, 2_000),
-    truncated: descriptors.length > 2_000,
+    targets:
+      maximumTargets === null
+        ? descriptors
+        : descriptors.slice(0, maximumTargets),
+    truncated:
+      maximumTargets === null ? false : descriptors.length > maximumTargets,
   };
 }

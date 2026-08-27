@@ -829,6 +829,7 @@ import {
   type TunnelAttachmentAuthorization,
   toChatAttachmentOpaqueSummary,
 } from "./db/repository.js";
+import type { FocusedExecutionTargetResourceKind } from "./execution-targets/catalog.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
 import {
   PolicyConflictError,
@@ -8040,23 +8041,6 @@ export async function buildApp({
     );
   };
 
-  const executionTargetId = (
-    target: Parameters<typeof repository.resolveExecutionTarget>[2],
-  ) => {
-    switch (target.kind) {
-      case "project":
-        return target.projectId;
-      case "worker":
-        return target.workerId;
-      case "replica":
-        return target.projectReplicaId;
-      case "worktree":
-        return target.worktreeId;
-      case "surface":
-        return target.surfaceId;
-    }
-  };
-
   const ambiguousSelection = (
     noun: string,
     matches: Array<{ id: string; title: string }>,
@@ -8126,113 +8110,41 @@ export async function buildApp({
     );
   };
 
-  const targetCatalog = async (context: ExecutionOperationContext) => {
-    const catalog = await repository.listProjectExecutionTargets(
+  const selectTarget = async (
+    context: ExecutionOperationContext,
+    resourceKind: FocusedExecutionTargetResourceKind | null,
+    selector: string | null,
+  ) => {
+    const result = await repository.resolveExecutionTargetSelector(
       applicationOwnerId(),
       context.projectId,
+      resourceKind,
+      selector,
+      {
+        terminalId: context.terminalId,
+        workerId: context.workerId,
+        worktreeId: context.worktreeId,
+      },
       (workerId) => bridge.isConnected(workerId),
     );
-    if (!catalog) {
+    if (!result) {
       throw new CliCommandRequestError(
         "not-found",
         404,
         "The current project no longer exists.",
       );
     }
-    return catalog;
-  };
-
-  const selectTarget = async (
-    context: ExecutionOperationContext,
-    resourceKind: string | null,
-    selector: string | null,
-  ) => {
-    const catalog = await targetCatalog(context);
-    const candidates = catalog.targets.filter(
-      (target) => !resourceKind || target.resourceKind === resourceKind,
-    );
-    if (selector) {
-      const wanted = selector.toLocaleLowerCase();
-      const exact = candidates.filter((candidate) => {
-        const id = executionTargetId(candidate.target);
-        return (
-          id === selector || candidate.title?.toLocaleLowerCase() === wanted
-        );
-      });
-      if (exact.length === 1) return exact[0]!;
-      if (exact.length > 1) {
-        throw ambiguousSelection(
-          resourceKind ?? "execution",
-          exact.map((candidate) => ({
-            id: executionTargetId(candidate.target),
-            title:
-              candidate.title ??
-              `${candidate.resourceKind} ${executionTargetId(candidate.target)}`,
-          })),
-        );
-      }
-      const partial = candidates.filter((candidate) => {
-        const id = executionTargetId(candidate.target);
-        return (
-          id.startsWith(selector) ||
-          candidate.title?.toLocaleLowerCase().includes(wanted)
-        );
-      });
-      if (partial.length === 1) return partial[0]!;
-      if (partial.length > 1) {
-        throw ambiguousSelection(
-          resourceKind ?? "execution",
-          partial.map((candidate) => ({
-            id: executionTargetId(candidate.target),
-            title:
-              candidate.title ??
-              `${candidate.resourceKind} ${executionTargetId(candidate.target)}`,
-          })),
-        );
-      }
+    if (result.outcome === "selected") return result;
+    if (result.outcome === "ambiguous") {
+      throw ambiguousSelection(resourceKind ?? "execution", result.matches);
+    }
+    if (result.outcome === "not-found") {
       throw new CliCommandRequestError(
         "not-found",
         404,
         `Target ${selector} was not found. Run \`cantrip target list${
           resourceKind ? ` --kind ${resourceKind}` : ""
         }\` to see available targets.`,
-      );
-    }
-
-    if (resourceKind === "terminal" && context.terminalId) {
-      const currentTerminal = candidates.find(
-        ({ target }) =>
-          target.kind === "surface" && target.surfaceId === context.terminalId,
-      );
-      if (currentTerminal) return currentTerminal;
-    }
-    if (resourceKind === "worktree") {
-      const currentWorktree = candidates.find(
-        ({ target }) =>
-          target.kind === "worktree" &&
-          target.worktreeId === context.worktreeId,
-      );
-      if (currentWorktree) return currentWorktree;
-    }
-    const available = candidates.filter(
-      ({ availability }) => availability === "available",
-    );
-    const local = available.filter(
-      ({ placement }) =>
-        placement.workerId === context.workerId &&
-        placement.worktreeId === context.worktreeId,
-    );
-    const matches = local.length === 1 ? local : available;
-    if (matches.length === 1) return matches[0]!;
-    if (matches.length > 1) {
-      throw ambiguousSelection(
-        resourceKind ?? "execution",
-        matches.map((candidate) => ({
-          id: executionTargetId(candidate.target),
-          title:
-            candidate.title ??
-            `${candidate.resourceKind} ${executionTargetId(candidate.target)}`,
-        })),
       );
     }
     throw new CliCommandRequestError(

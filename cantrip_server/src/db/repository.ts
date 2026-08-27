@@ -112,6 +112,7 @@ import type {
   ExecutionPlacementResolution,
   ExecutionSurfaceKind,
   ExecutionTarget,
+  ExecutionTargetResourceKind,
   ExecutionTargetWireCatalog,
   ExecutionTargetResolution,
   EncryptedGithubProjectCreate,
@@ -248,13 +249,22 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import type { PgDatabase } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import type { AnyPgColumn, PgDatabase } from "drizzle-orm/pg-core";
+import { unionAll } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import {
   buildExecutionTargetCatalog,
   executionTargetAvailability,
+  executionTargetId,
+  selectExactExecutionTarget,
+  selectExplicitExecutionTarget,
+  selectExecutionTarget,
   type ExecutionTargetCapability,
+  type ExecutionTargetSelectorCandidate,
+  type ExecutionTargetSelectorResult,
+  type FocusedExecutionTargetResourceKind,
 } from "../execution-targets/catalog.js";
 import {
   CHAT_MESSAGE_PAGE_BOUNDARY_MAX,
@@ -10369,6 +10379,925 @@ export class ServerRepository {
       availability: availability.availability,
       unavailableReason: availability.unavailableReason,
     };
+  }
+
+  private async executionTargetProjectScope(
+    ownerId: string,
+    projectId: string,
+  ): Promise<{
+    folderProject: boolean;
+    owningWorkerId: string | null;
+  } | null> {
+    const rows = await this.database
+      .select({
+        originKind: schema.projects.originKind,
+        preferredWorkerId: schema.projects.preferredWorkerId,
+        sourceWorkerId: schema.projectSources.workerId,
+      })
+      .from(schema.projects)
+      .leftJoin(
+        schema.projectSources,
+        and(
+          eq(schema.projectSources.projectId, schema.projects.id),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .leftJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.projectSourceId, schema.projectSources.id),
+          eq(schema.projectWorktrees.isPrimary, true),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .orderBy(
+        desc(
+          sql<boolean>`coalesce(${schema.projectWorktrees.lifecycleState} = 'ready', false)`,
+        ),
+        asc(schema.projectSources.createdAt),
+        asc(schema.projectSources.id),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          folderProject: row.originKind === "managed-folder",
+          owningWorkerId: row.preferredWorkerId ?? row.sourceWorkerId,
+        }
+      : null;
+  }
+
+  private buildFocusedExecutionTargetCatalog(
+    projectId: string,
+    resourceKind: FocusedExecutionTargetResourceKind,
+    scope: { folderProject: boolean; owningWorkerId: string | null },
+    resources: {
+      browsers?: readonly BrowserWireSummary[];
+      explorers?: readonly ExplorerWireSummary[];
+      replicas?: readonly ProjectReplicaSummary[];
+      terminals?: readonly TerminalWireSummary[];
+      workers: readonly WorkerSummary[];
+      worktrees?: readonly ProjectWorktreeSummary[];
+    },
+    isWorkerConnected?: (workerId: string) => boolean,
+  ): ExecutionTargetWireCatalog {
+    const catalog = buildExecutionTargetCatalog({
+      browsers: resources.browsers ?? [],
+      chats: [],
+      codeTabs: [],
+      desktops: [],
+      explorers: resources.explorers ?? [],
+      isWorkerConnected,
+      maximumTargets: null,
+      projectId,
+      remoteSurfaces: [],
+      replicas: resources.replicas ?? [],
+      resourceKinds: [resourceKind],
+      terminals: resources.terminals ?? [],
+      workers: scope.folderProject
+        ? resources.workers.filter(
+            ({ workerId }) => workerId === scope.owningWorkerId,
+          )
+        : resources.workers,
+      worktrees: resources.worktrees ?? [],
+    });
+    return scope.folderProject && resourceKind === "worktree"
+      ? { ...catalog, targets: [] }
+      : catalog;
+  }
+
+  private async listFocusedProjectExecutionTargets(
+    ownerId: string,
+    projectId: string,
+    resourceKind: FocusedExecutionTargetResourceKind,
+    isWorkerConnected?: (workerId: string) => boolean,
+  ): Promise<ExecutionTargetWireCatalog | null> {
+    const scopePromise = this.executionTargetProjectScope(ownerId, projectId);
+    switch (resourceKind) {
+      case "browser": {
+        const [scope, browsers, workers] = await Promise.all([
+          scopePromise,
+          this.listBrowsers(ownerId, projectId),
+          this.listWorkers(ownerId),
+        ]);
+        return scope
+          ? this.buildFocusedExecutionTargetCatalog(
+              projectId,
+              resourceKind,
+              scope,
+              { browsers, workers },
+              isWorkerConnected,
+            )
+          : null;
+      }
+      case "explorer": {
+        const [scope, explorers, workers, worktrees] = await Promise.all([
+          scopePromise,
+          this.listExplorers(ownerId, projectId),
+          this.listWorkers(ownerId),
+          this.listProjectWorktrees(ownerId, projectId),
+        ]);
+        return scope
+          ? this.buildFocusedExecutionTargetCatalog(
+              projectId,
+              resourceKind,
+              scope,
+              { explorers, workers, worktrees },
+              isWorkerConnected,
+            )
+          : null;
+      }
+      case "terminal": {
+        const [scope, terminals, workers, worktrees] = await Promise.all([
+          scopePromise,
+          this.listTerminals(ownerId, projectId),
+          this.listWorkers(ownerId),
+          this.listProjectWorktrees(ownerId, projectId),
+        ]);
+        return scope
+          ? this.buildFocusedExecutionTargetCatalog(
+              projectId,
+              resourceKind,
+              scope,
+              { terminals, workers, worktrees },
+              isWorkerConnected,
+            )
+          : null;
+      }
+      case "worker": {
+        const [scope, replicas, workers, worktrees] = await Promise.all([
+          scopePromise,
+          this.listProjectReplicas(ownerId, projectId),
+          this.listWorkers(ownerId),
+          this.listProjectWorktrees(ownerId, projectId),
+        ]);
+        return scope && replicas
+          ? this.buildFocusedExecutionTargetCatalog(
+              projectId,
+              resourceKind,
+              scope,
+              { replicas, workers, worktrees },
+              isWorkerConnected,
+            )
+          : null;
+      }
+      case "worktree": {
+        const [scope, workers, worktrees] = await Promise.all([
+          scopePromise,
+          this.listWorkers(ownerId),
+          this.listProjectWorktrees(ownerId, projectId),
+        ]);
+        return scope
+          ? this.buildFocusedExecutionTargetCatalog(
+              projectId,
+              resourceKind,
+              scope,
+              { workers, worktrees },
+              isWorkerConnected,
+            )
+          : null;
+      }
+    }
+  }
+
+  private async listUntypedExecutionTargetSelectorCandidates(
+    ownerId: string,
+    projectId: string,
+    scope: { folderProject: boolean; owningWorkerId: string | null },
+    selector: string,
+    exactOnly: boolean,
+  ): Promise<ExecutionTargetSelectorCandidate[]> {
+    const workerAllowed = (workerId: typeof schema.workers.id) =>
+      scope.folderProject
+        ? eq(workerId, scope.owningWorkerId ?? "")
+        : undefined;
+    const folderRootExcluded = scope.folderProject
+      ? sql<boolean>`false`
+      : undefined;
+    const noTitle = sql<string | null>`null::text`;
+    const idMatches = (column: AnyPgColumn) =>
+      exactOnly
+        ? sql<boolean>`${column} = ${selector}`
+        : sql<boolean>`starts_with(${column}, ${selector})`;
+    const selectorTitle = selector.toLocaleLowerCase();
+    const selectorNeedsJsTitleFallback = /[^\x00-\x7f]/u.test(selector);
+    const plaintextCandidateMatches = (
+      id: AnyPgColumn,
+      title: SQL<string | null>,
+    ) =>
+      or(
+        idMatches(id),
+        selectorNeedsJsTitleFallback
+          ? sql<boolean>`true`
+          : or(
+              sql<boolean>`length(${title}) <> octet_length(${title})`,
+              exactOnly
+                ? sql<boolean>`lower(${title}) = ${selectorTitle}`
+                : sql<boolean>`strpos(lower(${title}), ${selectorTitle}) > 0`,
+            ),
+      );
+
+    const workerTitle = sql<
+      string | null
+    >`coalesce(${schema.workers.displayName}, ${schema.workers.name})`;
+    const workers = this.database
+      .select({
+        id: schema.workers.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'worker'::text`,
+        surfaceKind: sql<string | null>`null::text`,
+        title: workerTitle,
+      })
+      .from(schema.workers)
+      .where(
+        and(
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+          workerAllowed(schema.workers.id),
+          plaintextCandidateMatches(schema.workers.id, workerTitle),
+        ),
+      );
+    const replicaTitle = sql<
+      string | null
+    >`${workerTitle} || ' project replica'`;
+    const replicas = this.database
+      .select({
+        id: schema.projectSources.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'replica'::text`,
+        surfaceKind: sql<string | null>`null::text`,
+        title: replicaTitle,
+      })
+      .from(schema.projectSources)
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.projectSources.workerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projectSources.projectId, projectId),
+          isNull(schema.projectSources.removedAt),
+          folderRootExcluded,
+          plaintextCandidateMatches(schema.projectSources.id, replicaTitle),
+        ),
+      );
+    const worktreeTitle = sql<string | null>`${schema.projectWorktrees.name}`;
+    const worktrees = this.database
+      .select({
+        id: schema.projectWorktrees.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'worktree'::text`,
+        surfaceKind: sql<string | null>`null::text`,
+        title: worktreeTitle,
+      })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSources,
+        and(
+          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+          eq(schema.projectSources.projectId, projectId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.projectWorktrees.workerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          folderRootExcluded,
+          plaintextCandidateMatches(schema.projectWorktrees.id, worktreeTitle),
+        ),
+      );
+    const chats = this.database
+      .select({
+        id: schema.chats.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'chat'::text`,
+        surfaceKind: sql<string | null>`'chat'::text`,
+        title: noTitle,
+      })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
+          or(
+            isNull(schema.chats.activeWorkerId),
+            eq(schema.projectWorktrees.workerId, schema.chats.activeWorkerId),
+          ),
+        ),
+      )
+      .innerJoin(
+        schema.projectSources,
+        and(
+          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+          eq(schema.projectSources.projectId, projectId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.projectWorktrees.workerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chats.projectId, projectId),
+          isNull(schema.chats.archivedAt),
+          workerAllowed(schema.workers.id),
+          idMatches(schema.chats.id),
+        ),
+      );
+    const terminals = this.database
+      .select({
+        id: schema.terminals.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'terminal'::text`,
+        surfaceKind: sql<string | null>`'terminal'::text`,
+        title: noTitle,
+      })
+      .from(schema.terminals)
+      .innerJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.id, schema.terminals.worktreeId),
+          eq(schema.projectWorktrees.workerId, schema.terminals.activeWorkerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectSources,
+        and(
+          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+          eq(schema.projectSources.projectId, projectId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.terminals.activeWorkerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.terminals.projectId, projectId),
+          ne(schema.terminals.kind, "run-configuration"),
+          workerAllowed(schema.workers.id),
+          idMatches(schema.terminals.id),
+        ),
+      );
+    const explorers = this.database
+      .select({
+        id: schema.explorers.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'explorer'::text`,
+        surfaceKind: sql<string | null>`'explorer'::text`,
+        title: noTitle,
+      })
+      .from(schema.explorers)
+      .innerJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.id, schema.explorers.worktreeId),
+          eq(schema.projectWorktrees.workerId, schema.explorers.activeWorkerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectSources,
+        and(
+          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+          eq(schema.projectSources.projectId, projectId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.explorers.activeWorkerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.explorers.projectId, projectId),
+          workerAllowed(schema.workers.id),
+          idMatches(schema.explorers.id),
+        ),
+      );
+    const codeTabs = this.database
+      .select({
+        id: schema.codeTabs.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'code'::text`,
+        surfaceKind: sql<string | null>`'code'::text`,
+        title: noTitle,
+      })
+      .from(schema.codeTabs)
+      .innerJoin(
+        schema.projectWorktrees,
+        and(
+          eq(schema.projectWorktrees.id, schema.codeTabs.worktreeId),
+          eq(schema.projectWorktrees.workerId, schema.codeTabs.activeWorkerId),
+        ),
+      )
+      .innerJoin(
+        schema.projectSources,
+        and(
+          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+          eq(schema.projectSources.projectId, projectId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.codeTabs.activeWorkerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.codeTabs.projectId, projectId),
+          workerAllowed(schema.workers.id),
+          idMatches(schema.codeTabs.id),
+        ),
+      );
+    const browsers = this.database
+      .select({
+        id: schema.browsers.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'browser'::text`,
+        surfaceKind: sql<string | null>`'browser'::text`,
+        title: noTitle,
+      })
+      .from(schema.browsers)
+      .innerJoin(
+        schema.remoteSurfaces,
+        and(
+          eq(schema.remoteSurfaces.id, schema.browsers.id),
+          eq(schema.remoteSurfaces.projectId, projectId),
+          eq(schema.remoteSurfaces.kind, "browser"),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.remoteSurfaces.workerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.browsers.projectId, projectId),
+          workerAllowed(schema.workers.id),
+          idMatches(schema.browsers.id),
+        ),
+      );
+    const desktops = this.database
+      .select({
+        id: schema.projectViews.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'remote-desktop'::text`,
+        surfaceKind: sql<string | null>`'remote-desktop'::text`,
+        title: noTitle,
+      })
+      .from(schema.projectViews)
+      .innerJoin(
+        schema.remoteSurfaces,
+        and(
+          eq(schema.remoteSurfaces.id, schema.projectViews.id),
+          eq(schema.remoteSurfaces.projectId, projectId),
+          eq(schema.remoteSurfaces.kind, "desktop"),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.remoteSurfaces.workerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projectViews.projectId, projectId),
+          eq(schema.projectViews.kind, "remote-desktop"),
+          workerAllowed(schema.workers.id),
+          idMatches(schema.projectViews.id),
+        ),
+      );
+    const remoteSurfaces = this.database
+      .select({
+        id: schema.remoteSurfaces.id,
+        resourceKind: sql<ExecutionTargetResourceKind>`'remote-surface'::text`,
+        surfaceKind: sql<string | null>`'remote-surface'::text`,
+        title: noTitle,
+      })
+      .from(schema.remoteSurfaces)
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.remoteSurfaces.workerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.remoteSurfaces.projectId, projectId),
+          workerAllowed(schema.workers.id),
+          idMatches(schema.remoteSurfaces.id),
+          sql<boolean>`not exists (
+            select 1 from ${schema.browsers}
+            where ${schema.browsers.id} = ${schema.remoteSurfaces.id}
+          )`,
+          sql<boolean>`not exists (
+            select 1 from ${schema.projectViews}
+            where ${schema.projectViews.id} = ${schema.remoteSurfaces.id}
+              and ${schema.projectViews.kind} = 'remote-desktop'
+              and ${schema.remoteSurfaces.kind} = 'desktop'
+          )`,
+        ),
+      );
+
+    const rows = await unionAll(
+      workers,
+      replicas,
+      worktrees,
+      chats,
+      terminals,
+      explorers,
+      codeTabs,
+      browsers,
+      desktops,
+      remoteSurfaces,
+    );
+    const candidates: ExecutionTargetSelectorCandidate[] = rows.map((row) => ({
+      resourceKind: row.resourceKind,
+      target:
+        row.resourceKind === "worker"
+          ? { kind: "worker", projectId, workerId: row.id }
+          : row.resourceKind === "replica"
+            ? { kind: "replica", projectId, projectReplicaId: row.id }
+            : row.resourceKind === "worktree"
+              ? { kind: "worktree", projectId, worktreeId: row.id }
+              : {
+                  kind: "surface",
+                  projectId,
+                  surfaceKind: row.surfaceKind as Extract<
+                    ExecutionTarget,
+                    { kind: "surface" }
+                  >["surfaceKind"],
+                  surfaceId: row.id,
+                },
+      title: row.title,
+    }));
+    candidates.sort(
+      (left, right) =>
+        left.resourceKind.localeCompare(right.resourceKind) ||
+        executionTargetId(left.target).localeCompare(
+          executionTargetId(right.target),
+        ),
+    );
+    return candidates;
+  }
+
+  private async resolveExactFocusedExecutionTarget(
+    ownerId: string,
+    projectId: string,
+    resourceKind: Extract<
+      FocusedExecutionTargetResourceKind,
+      "browser" | "explorer" | "terminal"
+    >,
+    resourceId: string,
+  ): Promise<{
+    folderProject: boolean;
+    preferredWorkerId: string | null;
+    target: ExecutionTarget;
+    workerId: string;
+  } | null> {
+    if (resourceKind === "explorer") {
+      const rows = await this.database
+        .select({
+          id: schema.explorers.id,
+          originKind: schema.projects.originKind,
+          preferredWorkerId: schema.projects.preferredWorkerId,
+          workerId: schema.explorers.activeWorkerId,
+        })
+        .from(schema.explorers)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.explorers.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .innerJoin(
+          schema.projectWorktrees,
+          and(
+            eq(schema.projectWorktrees.id, schema.explorers.worktreeId),
+            eq(
+              schema.projectWorktrees.workerId,
+              schema.explorers.activeWorkerId,
+            ),
+          ),
+        )
+        .innerJoin(
+          schema.projectSources,
+          and(
+            eq(
+              schema.projectSources.id,
+              schema.projectWorktrees.projectSourceId,
+            ),
+            eq(schema.projectSources.projectId, schema.projects.id),
+            isNull(schema.projectSources.removedAt),
+          ),
+        )
+        .innerJoin(
+          schema.workers,
+          and(
+            eq(schema.workers.id, schema.explorers.activeWorkerId),
+            eq(schema.workers.ownerId, ownerId),
+            isNull(schema.workers.unlinkedAt),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.explorers.id, resourceId),
+            eq(schema.explorers.projectId, projectId),
+          ),
+        )
+        .limit(1);
+      return rows[0]
+        ? {
+            folderProject: rows[0].originKind === "managed-folder",
+            preferredWorkerId: rows[0].preferredWorkerId,
+            target: {
+              kind: "surface",
+              projectId,
+              surfaceKind: "explorer",
+              surfaceId: resourceId,
+            },
+            workerId: rows[0].workerId,
+          }
+        : null;
+    }
+    if (resourceKind === "terminal") {
+      const rows = await this.database
+        .select({
+          id: schema.terminals.id,
+          originKind: schema.projects.originKind,
+          preferredWorkerId: schema.projects.preferredWorkerId,
+          workerId: schema.terminals.activeWorkerId,
+        })
+        .from(schema.terminals)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.terminals.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .innerJoin(
+          schema.projectWorktrees,
+          and(
+            eq(schema.projectWorktrees.id, schema.terminals.worktreeId),
+            eq(
+              schema.projectWorktrees.workerId,
+              schema.terminals.activeWorkerId,
+            ),
+          ),
+        )
+        .innerJoin(
+          schema.projectSources,
+          and(
+            eq(
+              schema.projectSources.id,
+              schema.projectWorktrees.projectSourceId,
+            ),
+            eq(schema.projectSources.projectId, schema.projects.id),
+            isNull(schema.projectSources.removedAt),
+          ),
+        )
+        .innerJoin(
+          schema.workers,
+          and(
+            eq(schema.workers.id, schema.terminals.activeWorkerId),
+            eq(schema.workers.ownerId, ownerId),
+            isNull(schema.workers.unlinkedAt),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.terminals.id, resourceId),
+            eq(schema.terminals.projectId, projectId),
+            ne(schema.terminals.kind, "run-configuration"),
+          ),
+        )
+        .limit(1);
+      return rows[0]
+        ? {
+            folderProject: rows[0].originKind === "managed-folder",
+            preferredWorkerId: rows[0].preferredWorkerId,
+            target: {
+              kind: "surface",
+              projectId,
+              surfaceKind: "terminal",
+              surfaceId: resourceId,
+            },
+            workerId: rows[0].workerId,
+          }
+        : null;
+    }
+    const rows = await this.database
+      .select({
+        id: schema.browsers.id,
+        originKind: schema.projects.originKind,
+        preferredWorkerId: schema.projects.preferredWorkerId,
+        workerId: schema.remoteSurfaces.workerId,
+      })
+      .from(schema.browsers)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.browsers.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.remoteSurfaces,
+        and(
+          eq(schema.remoteSurfaces.id, schema.browsers.id),
+          eq(schema.remoteSurfaces.projectId, schema.projects.id),
+          eq(schema.remoteSurfaces.kind, "browser"),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.remoteSurfaces.workerId),
+          eq(schema.workers.ownerId, ownerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.browsers.id, resourceId),
+          eq(schema.browsers.projectId, projectId),
+        ),
+      )
+      .limit(1);
+    return rows[0]
+      ? {
+          folderProject: rows[0].originKind === "managed-folder",
+          preferredWorkerId: rows[0].preferredWorkerId,
+          target: {
+            kind: "surface",
+            projectId,
+            surfaceKind: "browser",
+            surfaceId: resourceId,
+          },
+          workerId: rows[0].workerId,
+        }
+      : null;
+  }
+
+  async resolveExecutionTargetSelector(
+    ownerId: string,
+    projectId: string,
+    resourceKind: FocusedExecutionTargetResourceKind | null,
+    selector: string | null,
+    context: {
+      terminalId: string | null;
+      workerId: string;
+      worktreeId: string;
+    },
+    isWorkerConnected?: (workerId: string) => boolean,
+  ): Promise<ExecutionTargetSelectorResult | null> {
+    if (
+      selector &&
+      (resourceKind === "browser" ||
+        resourceKind === "explorer" ||
+        resourceKind === "terminal")
+    ) {
+      const exact = await this.resolveExactFocusedExecutionTarget(
+        ownerId,
+        projectId,
+        resourceKind,
+        selector,
+      );
+      if (exact) {
+        const owningWorkerId = exact.folderProject
+          ? (exact.preferredWorkerId ??
+            (await this.executionTargetProjectScope(ownerId, projectId))
+              ?.owningWorkerId ??
+            null)
+          : exact.workerId;
+        if (exact.workerId === owningWorkerId) {
+          return { outcome: "selected", target: exact.target };
+        }
+      }
+    } else if (!selector && resourceKind === "terminal" && context.terminalId) {
+      const current = await this.resolveExactFocusedExecutionTarget(
+        ownerId,
+        projectId,
+        resourceKind,
+        context.terminalId,
+      );
+      if (current) {
+        const owningWorkerId = current.folderProject
+          ? (current.preferredWorkerId ??
+            (await this.executionTargetProjectScope(ownerId, projectId))
+              ?.owningWorkerId ??
+            null)
+          : current.workerId;
+        if (current.workerId === owningWorkerId) {
+          return { outcome: "selected", target: current.target };
+        }
+      }
+    } else if (!selector && resourceKind === "worker") {
+      const [scope, worker] = await Promise.all([
+        this.executionTargetProjectScope(ownerId, projectId),
+        this.getWorker(ownerId, context.workerId),
+      ]);
+      if (!scope) return null;
+      if (scope.folderProject && scope.owningWorkerId === context.workerId) {
+        if (
+          worker &&
+          executionTargetAvailability(worker, null, isWorkerConnected)
+            .availability === "available"
+        ) {
+          return {
+            outcome: "selected",
+            target: {
+              kind: "worker",
+              projectId,
+              workerId: context.workerId,
+            },
+          };
+        }
+        return { outcome: "unavailable" };
+      }
+    }
+
+    if (!resourceKind && selector) {
+      const scope = await this.executionTargetProjectScope(ownerId, projectId);
+      if (!scope) return null;
+      const exactCandidates =
+        await this.listUntypedExecutionTargetSelectorCandidates(
+          ownerId,
+          projectId,
+          scope,
+          selector,
+          true,
+        );
+      const exact = selectExactExecutionTarget(exactCandidates, selector);
+      if (exact) return exact;
+      const partialCandidates =
+        await this.listUntypedExecutionTargetSelectorCandidates(
+          ownerId,
+          projectId,
+          scope,
+          selector,
+          false,
+        );
+      return selectExplicitExecutionTarget(partialCandidates, selector);
+    }
+
+    const catalog = resourceKind
+      ? await this.listFocusedProjectExecutionTargets(
+          ownerId,
+          projectId,
+          resourceKind,
+          isWorkerConnected,
+        )
+      : await this.listProjectExecutionTargets(
+          ownerId,
+          projectId,
+          isWorkerConnected,
+        );
+    return catalog
+      ? selectExecutionTarget(catalog.targets, {
+          currentTerminalId: context.terminalId,
+          currentWorkerId: context.workerId,
+          currentWorktreeId: context.worktreeId,
+          resourceKind,
+          selector,
+        })
+      : null;
   }
 
   async listProjectExecutionTargets(
