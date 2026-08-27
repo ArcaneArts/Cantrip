@@ -1,0 +1,60 @@
+--- a/src/vs/workbench/contrib/preferences/browser/media/settingsEditor2.css
++++ b/src/vs/workbench/contrib/preferences/browser/media/settingsEditor2.css
+@@ -10,8 +10,6 @@
+ .settings-editor {
+ 	height: 100%;
+ 	overflow: hidden;
+-	max-width: 1200px;
+-	margin: auto;
+ }
+ 
+ .settings-editor:focus {
+@@ -21,13 +19,11 @@
+ /* header styling */
+ .settings-editor > .settings-header {
+ 	box-sizing: border-box;
+-	margin: auto;
+ 	overflow: hidden;
+ 	margin-top: 11px;
+ 	padding-top: 3px;
+ 	padding-left: 24px;
+ 	padding-right: 24px;
+-	max-width: 1200px;
+ }
+ 
+ .settings-editor > .settings-header > .search-container {
+@@ -160,8 +156,6 @@
+ 
+ .settings-editor > .settings-body > .no-results-message {
+ 	display: none;
+-	max-width: 1200px;
+-	margin: auto;
+ 	margin-top: 20px;
+ 	padding-left: 24px;
+ 	padding-right: 24px;
+@@ -346,7 +340,5 @@
+ .settings-editor > .settings-body .settings-toc-wrapper {
+ 	height: 100%;
+-	max-width: 1200px;
+-	margin: auto;
+ }
+ 
+ .settings-editor.narrow-width > .settings-body .settings-tree-container {
+@@ -368,15 +360,14 @@
+ }
+ 
+ .settings-editor > .settings-body .settings-tree-container .monaco-list-row .monaco-tl-contents {
+-	max-width: min(100%, 1200px); /* We don't want the widgets to be too long */
+-	margin: auto;
++	max-width: 100%;
+ 	box-sizing: border-box;
+ 	padding-left: 24px;
+ 	padding-right: 24px;
+ 	overflow: visible;
+ }
+ .settings-editor > .settings-body .settings-tree-container .monaco-list-row .monaco-tl-contents.group-title {
+-	max-width: min(100%, 1200px); /* Cut off title if too long for window */
++	max-width: 100%;
+ }
+ 
+ .settings-editor > .settings-body .settings-tree-container .settings-group-title-label,
