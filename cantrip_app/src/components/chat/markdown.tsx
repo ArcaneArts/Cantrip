@@ -4,12 +4,18 @@ import remarkGfm from "remark-gfm";
 
 import { SyntaxHighlightedCode } from "@/components/chat/markdown-code";
 import {
+  markdownColorFromHref,
+  normalizeHexColor,
+  remarkMarkdownColors,
+} from "@/components/chat/markdown-color";
+import { MarkdownColorPreview } from "@/components/chat/markdown-color-preview";
+import {
   markdownFileLinkUrlTransform,
   markdownFilePathFromHref,
 } from "@/components/chat/markdown-file-link";
 import { cn } from "@/lib/utils";
 
-const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMarkdownColors];
 
 export function handleMarkdownLinkClick(
   event: { preventDefault(): void },
@@ -43,6 +49,14 @@ export const Markdown = memo(function Markdown({
   const components = useMemo<Components>(
     () => ({
       a: ({ children: linkChildren, ...props }) => {
+        const color = markdownColorFromHref(props.href);
+        if (color) {
+          return (
+            <MarkdownColorPreview hex={color} inverse={inverse}>
+              {linkChildren}
+            </MarkdownColorPreview>
+          );
+        }
         const filePath = markdownFilePathFromHref(props.href);
         return (
           <a
@@ -87,7 +101,8 @@ export const Markdown = memo(function Markdown({
             </SyntaxHighlightedCode>
           );
         }
-        return (
+        const color = normalizeHexColor(String(codeChildren));
+        const inlineCode = (
           <code
             {...props}
             className={cn(
@@ -99,6 +114,14 @@ export const Markdown = memo(function Markdown({
             {codeChildren}
           </code>
         );
+        if (color) {
+          return (
+            <MarkdownColorPreview hex={color} inverse={inverse}>
+              {inlineCode}
+            </MarkdownColorPreview>
+          );
+        }
+        return inlineCode;
       },
       h1: ({ children: headingChildren }) => (
         <h1 className="mb-3 mt-6 text-xl font-semibold leading-tight first:mt-0">
