@@ -184,7 +184,6 @@ import {
   githubPullRequestLifecyclePreviewSchema,
   githubPullRequestReviewActionSchema,
   githubIssueStateSchema,
-  encryptedGithubProjectCreateSchema,
   githubRepositoryCreateSchema,
   githubRepositoryListSchema,
   githubRepositoryOwnerListSchema,
@@ -320,11 +319,6 @@ import {
   orderedIdsSchema,
   operationalProbeSchema,
   projectWireListSchema,
-  projectGithubConversionJobSummarySchema,
-  encryptedProjectGithubConversionPreflightRequestSchema,
-  projectGithubConversionPreflightResultSchema,
-  projectGithubConversionRetrySchema,
-  encryptedProjectGithubConversionStartSchema,
   projectExternalChatDiscoverySchema,
   projectExportCreateSchema,
   projectExportPreviewRequestSchema,
@@ -765,10 +759,6 @@ import {
 } from "./db/chat-relocation-jobs.js";
 import { CodeSettingsRevisionConflictError } from "./db/code-settings.js";
 import {
-  ProjectGithubConversionJobConflictError,
-  ProjectGithubConversionJobNotFoundError,
-} from "./db/project-github-conversion-jobs.js";
-import {
   WorkflowControlConflictError,
   WorkflowRunConflictError,
 } from "./db/workflow-runs.js";
@@ -827,6 +817,8 @@ import { installInternalProviderCredentialRoutes } from "./app/routes/internal-p
 import { installPolicyRoutes } from "./app/routes/policies.js";
 import { installProjectAutomationRoutes } from "./app/routes/project-automations.js";
 import { installProjectFolderSetupRoutes } from "./app/routes/project-folder-setup.js";
+import { installProjectGithubConversionRoutes } from "./app/routes/project-github-conversion.js";
+import { installProjectGithubImportRoute } from "./app/routes/project-github-import.js";
 import { installProjectReplicaRoutes } from "./app/routes/project-replicas.js";
 import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
 import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
@@ -22167,319 +22159,20 @@ export async function buildApp({
     repository,
   });
 
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/github-conversion/preflight",
-    async (request, reply) => {
-      const input =
-        encryptedProjectGithubConversionPreflightRequestSchema.safeParse(
-          request.body,
-        );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const project = await repository.getProject(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!project) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      if (
-        project.originKind !== "managed-folder" ||
-        project.setupStatus !== "ready" ||
-        project.folderManagement !== "managed"
-      ) {
-        return reply.code(409).send({
-          code: "project-not-ready",
-          error:
-            "Only a ready folder managed by Cantrip can be converted. Attached folders remain user-owned.",
-        });
-      }
-      if (
-        await repository.projectGithubConversionJobs.hasActiveProjectJob(
-          project.id,
-        )
-      ) {
-        return reply.code(409).send({
-          code: "transition-active",
-          error: "A GitHub conversion is already active for this project.",
-        });
-      }
-      if (
-        await repository.hasGithubProject(
-          applicationOwnerId(),
-          input.data.repositoryBlindIndex,
-        )
-      ) {
-        return reply.code(409).send({
-          code: "repository-collision",
-          error:
-            "This GitHub repository is already bound to another Cantrip project.",
-        });
-      }
-      const workerId = project.preferredWorkerId;
-      if (!workerId) {
-        return reply.code(409).send({
-          code: "project-not-ready",
-          error: "The folder project no longer has an owning worker.",
-        });
-      }
-      const worker = await repository.getWorker(applicationOwnerId(), workerId);
-      if (!worker?.managedFolders.convertToGithub) {
-        return reply.code(409).send({
-          code: "capability-missing",
-          error:
-            "The owning worker does not support managed folder conversion.",
-        });
-      }
-      if (!bridge.isConnected(workerId)) {
-        return reply.code(503).send({
-          code: "worker-offline",
-          error: "The owning worker must be online before conversion.",
-        });
-      }
-      try {
-        return reply.send(
-          projectGithubConversionPreflightResultSchema.parse(
-            await bridge.request(
-              workerId,
-              {
-                type: "project.folder-conversion.preflight",
-                projectId: project.id,
-                repository: input.data.repository,
-              },
-              { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
-            ),
-          ),
-        );
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+  installProjectGithubConversionRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    publishProjectGithubConversionChange,
+    queueProjectGithubConversionJobs: () =>
+      projectGithubConversionJobExecutor.queueAvailable(),
+    repository,
+  });
 
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/github-conversion",
-    async (request, reply) => {
-      const input = encryptedProjectGithubConversionStartSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const project = await repository.getProject(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!project) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      if (
-        project.originKind !== "managed-folder" ||
-        project.setupStatus !== "ready" ||
-        project.folderManagement !== "managed"
-      ) {
-        return reply.code(409).send({
-          code: "project-not-ready",
-          error:
-            "Only a ready folder managed by Cantrip can be converted. Attached folders remain user-owned.",
-        });
-      }
-      const workerId = project.preferredWorkerId;
-      if (!workerId) {
-        return reply.code(409).send({
-          code: "project-not-ready",
-          error: "The folder project no longer has an owning worker.",
-        });
-      }
-      const worker = await repository.getWorker(applicationOwnerId(), workerId);
-      if (!worker?.managedFolders.convertToGithub) {
-        return reply.code(409).send({
-          code: "capability-missing",
-          error:
-            "The owning worker does not support managed folder conversion.",
-        });
-      }
-      if (!bridge.isConnected(workerId)) {
-        return reply.code(503).send({
-          code: "worker-offline",
-          error: "The owning worker must be online before conversion.",
-        });
-      }
-      if (
-        await repository.hasGithubProject(
-          applicationOwnerId(),
-          input.data.repositoryBlindIndex,
-        )
-      ) {
-        return reply.code(409).send({
-          code: "repository-collision",
-          error:
-            "This GitHub repository is already bound to another Cantrip project.",
-        });
-      }
-      try {
-        const job = await repository.projectGithubConversionJobs.create(
-          applicationOwnerId(),
-          project.id,
-          workerId,
-          input.data,
-        );
-        publishProjectGithubConversionChange({
-          ownerId: applicationOwnerId(),
-          job,
-        });
-        projectGithubConversionJobExecutor.queueAvailable();
-        return reply
-          .code(202)
-          .send(projectGithubConversionJobSummarySchema.parse(job));
-      } catch (error) {
-        if (error instanceof ProjectGithubConversionJobNotFoundError) {
-          return reply.code(404).send({ error: "Project not found." });
-        }
-        if (error instanceof ProjectGithubConversionJobConflictError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/github-conversion",
-    async (request, reply) => {
-      const project = await repository.getProject(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!project) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      const job = await repository.projectGithubConversionJobs.get(
-        applicationOwnerId(),
-        project.id,
-      );
-      return job
-        ? reply.send(projectGithubConversionJobSummarySchema.parse(job))
-        : reply.code(404).send({ error: "GitHub conversion job not found." });
-    },
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/github-conversion/retry",
-    async (request, reply) => {
-      const input = projectGithubConversionRetrySchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const project = await repository.getProject(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!project) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      if (project.originKind !== "managed-folder") {
-        return reply.code(409).send({
-          error: "The project is no longer a managed folder.",
-        });
-      }
-      const job = await repository.projectGithubConversionJobs.retry(
-        applicationOwnerId(),
-        project.id,
-        input.data.stateRevision,
-      );
-      if (!job) {
-        return reply.code(409).send({
-          error: "GitHub conversion changed or is not retryable.",
-        });
-      }
-      publishProjectGithubConversionChange({
-        ownerId: applicationOwnerId(),
-        job,
-      });
-      projectGithubConversionJobExecutor.queueAvailable();
-      return reply.send(projectGithubConversionJobSummarySchema.parse(job));
-    },
-  );
-
-  app.post("/api/projects/from-github", async (request, reply) => {
-    const input = encryptedGithubProjectCreateSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    if (
-      await repository.hasGithubProject(
-        applicationOwnerId(),
-        input.data.repositoryBlindIndex,
-      )
-    ) {
-      return reply.code(409).send({
-        error: "This GitHub repository already has a Cantrip project.",
-      });
-    }
-    const worker = await repository.getWorker(
-      applicationOwnerId(),
-      input.data.workerId,
-    );
-    if (!worker) {
-      return reply.code(404).send({ error: "Worker not found." });
-    }
-    const placement = input.data.placement ?? { mode: "managed" as const };
-    const supportsPlacement =
-      placement.mode === "managed" ||
-      (placement.mode === "managed-link"
-        ? worker.projectReplicas.managedLinkPlacement &&
-          worker.projectReplicas.recursiveParentCreation
-        : worker.projectReplicas.directPlacement &&
-          worker.projectReplicas.attachExisting &&
-          worker.projectReplicas.recursiveParentCreation);
-    if (!supportsPlacement) {
-      return reply.code(409).send({
-        code: "placement-unsupported",
-        error:
-          "The selected worker does not support this repository placement mode.",
-      });
-    }
-
-    try {
-      const project = await repository.createGithubProject(
-        applicationOwnerId(),
-        input.data,
-      );
-      const job = await repository.projectReplicaJobs.createProvision(
-        applicationOwnerId(),
-        project.id,
-        {
-          workerId: input.data.workerId,
-          repository: input.data.nameWithOwner,
-          placement,
-          expectedRevision: null,
-          idempotencyKey: `project-import:${project.id}:${input.data.workerId}`,
-        },
-      );
-      publishProjectReplicaJobChange({
-        ownerId: applicationOwnerId(),
-        job,
-      });
-      projectReplicaJobExecutor.queueAvailable();
-      return reply.code(202).send(projectWireSummarySchema.parse(project));
-    } catch (error) {
-      if (error instanceof ProjectWorkspaceInvariantError) {
-        return reply.code(400).send({ error: error.message });
-      }
-      if (
-        await repository.hasGithubProject(
-          applicationOwnerId(),
-          input.data.repositoryBlindIndex,
-        )
-      ) {
-        return reply.code(409).send({
-          error: "This GitHub repository already has a Cantrip project.",
-        });
-      }
-      return sendWorkerRequestFailure(reply, error);
-    }
+  installProjectGithubImportRoute(app, {
+    applicationOwnerId,
+    publishProjectReplicaJobChange,
+    queueProjectReplicaJobs: () => projectReplicaJobExecutor.queueAvailable(),
+    repository,
   });
 
   app.get<{ Params: { projectId: string } }>(
