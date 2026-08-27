@@ -7,6 +7,7 @@ import type {
   CodeAppearance,
   CodeDirtyEditor,
   CodeOpenFileResult,
+  CodeOpenExtensionsResult,
   CodeOpenSettingsResult,
   CodePresentation,
   CodeSaveAllResult,
@@ -15,6 +16,7 @@ import type {
 import {
   codeAgentTurnNotificationResultSchema,
   codeAgentTurnPreparationSessionSchema,
+  codeOpenExtensionsResultSchema,
   codeOpenSettingsResultSchema,
   codeWorkbenchStateSchema,
 } from "@cantrip/protocol";
@@ -656,6 +658,36 @@ export class CodeWorkbenchBridge {
       await this.#request(
         session,
         "openSettings",
+        {},
+        OPEN_SETTINGS_REQUEST_TIMEOUT_MS,
+        signal,
+      ),
+    );
+  }
+
+  async openExtensions(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<CodeOpenExtensionsResult> {
+    const session = this.#sessions.get(sessionId);
+    if (!session) throw new Error("Cantrip Code session is not registered.");
+    const connected =
+      Boolean(this.#authoritativeSocket(session)) ||
+      (await this.waitUntilConnected(
+        sessionId,
+        this.#controlConnectTimeoutMs,
+        signal,
+      ));
+    if (!connected) {
+      throw new Error("Cantrip workbench bridge is not connected.");
+    }
+    if (this.#sessions.get(sessionId) !== session) {
+      throw new Error("Cantrip workbench bridge session was superseded.");
+    }
+    return codeOpenExtensionsResultSchema.parse(
+      await this.#request(
+        session,
+        "openExtensions",
         {},
         OPEN_SETTINGS_REQUEST_TIMEOUT_MS,
         signal,

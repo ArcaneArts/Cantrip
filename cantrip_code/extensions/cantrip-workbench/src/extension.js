@@ -15,6 +15,7 @@ const {
   setWorkbenchPresentation,
 } = require("./layout.js");
 const { observeSocketErrors } = require("./socket.js");
+const { openGraphicalExtensions } = require("./extensions.js");
 const { openGraphicalSettings } = require("./settings.js");
 
 function configuration() {
@@ -473,6 +474,15 @@ class WorkbenchCoordinator {
         vscode.ConfigurationTarget.Workspace,
       );
       return openGraphicalSettings(vscode.commands);
+    }
+    if (method === "openExtensions") {
+      await setWorkbenchPresentation(
+        "extensions",
+        vscode.workspace,
+        vscode.commands,
+        vscode.ConfigurationTarget.Workspace,
+      );
+      return openGraphicalExtensions(vscode.commands);
     }
     if (method === "agentTurnState") return this.agentTurnState(params);
     if (method === "ping") return { connected: true };

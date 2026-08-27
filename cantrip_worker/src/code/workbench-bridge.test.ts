@@ -116,6 +116,45 @@ describe("CodeWorkbenchBridge graphical settings", () => {
     await expect(opening).rejects.toThrow("Settings editor unavailable.");
   });
 
+  it("sends the exact authenticated openExtensions request", async () => {
+    const { bridge, nextRequest, socket } = await connectedBridge();
+
+    const opening = bridge.openExtensions("settings-session");
+    const request = await nextRequest();
+    expect(request).toMatchObject({
+      type: "request",
+      method: "openExtensions",
+      params: {},
+    });
+    socket.send(
+      JSON.stringify({
+        type: "response",
+        id: request.id,
+        ok: true,
+        result: { opened: true },
+      }),
+    );
+
+    await expect(opening).resolves.toEqual({ opened: true });
+  });
+
+  it("rejects a malformed openExtensions acknowledgement", async () => {
+    const { bridge, nextRequest, socket } = await connectedBridge();
+
+    const opening = bridge.openExtensions("settings-session");
+    const request = await nextRequest();
+    socket.send(
+      JSON.stringify({
+        type: "response",
+        id: request.id,
+        ok: true,
+        result: { opened: false },
+      }),
+    );
+
+    await expect(opening).rejects.toThrow();
+  });
+
   it("does not accept a socket without the registered session token", async () => {
     const { bridge, url } = await connectedBridge();
     const unauthorizedUrl = new URL(url);

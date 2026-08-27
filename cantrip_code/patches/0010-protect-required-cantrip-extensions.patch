@@ -1,0 +1,109 @@
+--- a/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
++++ b/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
+@@ -40,6 +40,13 @@
+ 
+ const EXTENSION_UNIFICATION_SETTING = 'chat.extensionUnification.enabled';
+ 
++const CANTRIP_REQUIRED_EXTENSIONS = new Set([
++	'cantrip.cantrip-themes',
++	'cantrip.cantrip-workbench',
++]);
++const isCantripRequiredExtension = (extension: IExtension): boolean =>
++	CANTRIP_REQUIRED_EXTENSIONS.has(extension.identifier.id.toLowerCase());
++
+ export class ExtensionEnablementService extends Disposable implements IWorkbenchExtensionEnablementService {
+ 
+ 	declare readonly _serviceBrand: undefined;
+@@ -180,6 +187,10 @@
+ 	}
+ 
+ 	private throwErrorIfCannotChangeEnablement(extension: IExtension, donotCheckDependencies?: boolean): void {
++		if (isCantripRequiredExtension(extension)) {
++			throw new Error(localize('cannot change required cantrip extension', "Cannot change enablement of {0} because Cantrip requires it.", extension.manifest.displayName || extension.identifier.id));
++		}
++
+ 		if (isLanguagePackExtension(extension.manifest)) {
+ 			throw new Error(localize('cannot disable language pack extension', "Cannot change enablement of {0} extension because it contributes language packs.", extension.manifest.displayName || extension.identifier.id));
+ 		}
+@@ -377,6 +388,11 @@
+ 		if (enablementState !== undefined) {
+ 			return enablementState;
+ 		}
++		if (isCantripRequiredExtension(extension)) {
++			enablementState = EnablementState.EnabledByEnvironment;
++			computedEnablementStates.set(extension, enablementState);
++			return enablementState;
++		}
+ 
+ 		enablementState = this._getUserEnablementState(extension.identifier);
+ 		const isEnabled = this.isEnabledEnablementState(enablementState);
+--- a/src/vs/platform/extensionManagement/node/extensionManagementService.ts
++++ b/src/vs/platform/extensionManagement/node/extensionManagementService.ts
+@@ -69,6 +69,13 @@
+ 
+ const DELETED_FOLDER_POSTFIX = '.vsctmp';
+ 
++const CANTRIP_REQUIRED_EXTENSIONS = new Set([
++	'cantrip.cantrip-themes',
++	'cantrip.cantrip-workbench',
++]);
++const isCantripRequiredExtension = (identifier: IExtensionIdentifier): boolean =>
++	CANTRIP_REQUIRED_EXTENSIONS.has(identifier.id.toLowerCase());
++
+ export class ExtensionManagementService extends AbstractExtensionManagementService implements INativeServerExtensionManagementService {
+ 
+ 	private readonly extensionsScanner: ExtensionsScanner;
+@@ -152,6 +159,9 @@
+ 		try {
+ 			const manifest = await getManifest(path.resolve(location.fsPath));
+ 			const extensionId = getGalleryExtensionId(manifest.publisher, manifest.name);
++			if (isCantripRequiredExtension({ id: extensionId })) {
++				throw new Error(nls.localize('cannot replace required cantrip extension', "Cannot replace '{0}' because Cantrip requires its bundled version.", extensionId));
++			}
+ 			if (manifest.engines && manifest.engines.vscode && !isEngineValid(manifest.engines.vscode, this.productService.version, this.productService.date)) {
+ 				throw new Error(nls.localize('incompatible', "Unable to install extension '{0}' as it is not compatible with VS Code '{1}'.", extensionId, this.productService.version));
+ 			}
+@@ -179,6 +189,9 @@
+ 		if (!local || !local.manifest.name || !local.manifest.version) {
+ 			throw new Error(`Cannot find a valid extension from the location ${location.toString()}`);
+ 		}
++		if (isCantripRequiredExtension(local.identifier)) {
++			throw new Error(nls.localize('cannot add required cantrip extension', "Cannot add '{0}' because Cantrip requires its bundled version.", local.identifier.id));
++		}
+ 		await this.addExtensionsToProfile([[local, { source: 'resource' }]], profileLocation);
+ 		this.logService.info('Successfully installed extension', local.identifier.id, profileLocation.toString());
+ 		return local;
+@@ -279,6 +292,10 @@
+ 
+ 	protected createInstallExtensionTask(manifest: IExtensionManifest, extension: URI | IGalleryExtension, options: InstallExtensionTaskOptions): IInstallExtensionTask {
+ 		const extensionKey = extension instanceof URI ? new ExtensionKey({ id: getGalleryExtensionId(manifest.publisher, manifest.name) }, manifest.version) : ExtensionKey.create(extension);
++		if (isCantripRequiredExtension(extensionKey.identifier)) {
++			throw new Error(nls.localize('cannot install required cantrip extension', "Cannot install '{0}' because Cantrip requires its bundled version.", extensionKey.identifier.id));
++		}
++
+ 		return this.instantiationService.createInstance(InstallExtensionInProfileTask, extensionKey, manifest, extension, options, (operation, token) => {
+ 			if (extension instanceof URI) {
+ 				return this.extractVSIX(extensionKey, extension, options, token);
+@@ -294,6 +311,10 @@
+ 	}
+ 
+ 	protected createUninstallExtensionTask(extension: ILocalExtension, options: UninstallExtensionTaskOptions): IUninstallExtensionTask {
++		if (isCantripRequiredExtension(extension.identifier)) {
++			throw new Error(nls.localize('cannot uninstall required cantrip extension', "Cannot uninstall '{0}' because Cantrip requires it.", extension.identifier.id));
++		}
++
+ 		return new UninstallExtensionInProfileTask(extension, options, this.extensionsProfileScannerService);
+ 	}
+ 
+@@ -520,6 +541,11 @@
+ 	}
+ 
+ 	private async addExtensionsToProfile(extensions: [ILocalExtension, Metadata | undefined][], profileLocation: URI): Promise<void> {
++		const required = extensions.find(([extension]) => isCantripRequiredExtension(extension.identifier));
++		if (required) {
++			throw new Error(nls.localize('cannot profile required cantrip extension', "Cannot add '{0}' to a profile because Cantrip requires its bundled version.", required[0].identifier.id));
++		}
++
+ 		const localExtensions = extensions.map(e => e[0]);
+ 		await this.extensionsScanner.unsetExtensionsForRemoval(...localExtensions.map(extension => ExtensionKey.create(extension)));
+ 		await this.extensionsProfileScannerService.addExtensionsToProfile(extensions, profileLocation);

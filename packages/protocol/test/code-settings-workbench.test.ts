@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  codeOpenExtensionsRequestSchema,
+  codeOpenExtensionsResultSchema,
   codeOpenSettingsRequestSchema,
   codeOpenSettingsResultSchema,
   codeSettingsWorkbenchAttachmentCreateSchema,
@@ -73,6 +75,16 @@ describe("Code settings workbench protocol", () => {
       codeOpenSettingsRequestSchema.safeParse({ extra: true }).success,
     ).toBe(false);
     expect(codeOpenSettingsResultSchema.parse({ opened: true })).toEqual({
+      opened: true,
+    });
+  });
+
+  it("keeps authenticated open-extensions control strict", () => {
+    expect(codeOpenExtensionsRequestSchema.parse({})).toEqual({});
+    expect(
+      codeOpenExtensionsRequestSchema.safeParse({ extra: true }).success,
+    ).toBe(false);
+    expect(codeOpenExtensionsResultSchema.parse({ opened: true })).toEqual({
       opened: true,
     });
   });

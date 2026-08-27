@@ -62,6 +62,62 @@ test("closes non-editor parts for the editor-only presentation", async () => {
   ]);
 });
 
+test("keeps the primary sidebar and notifications available for Extensions", async () => {
+  const commands = [];
+
+  assert.equal(
+    await configureWorkbenchPresentation(configuration("extensions"), {
+      async executeCommand(command) {
+        commands.push(command);
+      },
+    }),
+    true,
+  );
+  assert.deepEqual(commands, [
+    "workbench.action.closeAuxiliaryBar",
+    "workbench.action.closePanel",
+  ]);
+});
+
+test("applies the restricted Extensions presentation", async () => {
+  const updates = [];
+  const commands = [];
+  const workspace = {
+    getConfiguration(section) {
+      return {
+        inspect() {
+          return { workspaceValue: undefined };
+        },
+        async update(key, value, target) {
+          updates.push([section, key, value, target]);
+        },
+      };
+    },
+  };
+
+  await setWorkbenchPresentation(
+    "extensions",
+    workspace,
+    {
+      async executeCommand(command) {
+        commands.push(command);
+      },
+    },
+    "workspace",
+  );
+
+  assert.deepEqual(updates[0], [
+    "cantrip",
+    "presentation",
+    "extensions",
+    "workspace",
+  ]);
+  assert.deepEqual(commands, [
+    "workbench.action.closeAuxiliaryBar",
+    "workbench.action.closePanel",
+  ]);
+});
+
 test("applies editor-only settings without changing ordinary workbenches", async () => {
   const updates = [];
   const commands = [];

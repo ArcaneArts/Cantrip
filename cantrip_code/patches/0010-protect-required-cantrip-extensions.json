@@ -1,0 +1,16 @@
+{
+  "id": "0010-protect-required-cantrip-extensions",
+  "title": "Protect Cantrip-required built-in extensions",
+  "reason": "Cantrip Code depends on its bundled bridge and theme extensions for authenticated worker control and appearance synchronization. Built-in status hides normal uninstall actions but does not prevent global disablement or every lower-level gallery, VSIX, profile, and uninstall path. The extension API cannot protect its own enablement or installation identity, so enforcement must live below the Extensions UI.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": [
+    "src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts",
+    "src/vs/platform/extensionManagement/node/extensionManagementService.ts"
+  ],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:extension:test",
+    "Confirm cantrip.cantrip-workbench and cantrip.cantrip-themes cannot be disabled, uninstalled, downgraded, or replaced through Open VSX, VSIX, or profile operations"
+  ],
+  "removal": "Remove if OpenVSCode adds a product-level required-extension policy that covers enablement, uninstall, gallery and VSIX replacement, and profile import paths."
+}

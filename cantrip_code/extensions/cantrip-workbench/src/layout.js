@@ -26,14 +26,17 @@ async function executeLayoutCommand(commands, command) {
 }
 
 async function configureWorkbenchPresentation(configuration, commands) {
+  const presentation = configuration.get("presentation", "workbench");
   const commandIds = ["workbench.action.closeAuxiliaryBar"];
-  if (configuration.get("presentation", "workbench") === "editor") {
+  if (presentation === "editor") {
     commandIds.push(
       "workbench.action.closeSidebar",
       "workbench.action.closePanel",
       "notifications.hideToasts",
       "notifications.clearAll",
     );
+  } else if (presentation === "extensions") {
+    commandIds.push("workbench.action.closePanel");
   }
   const results = [];
   for (const command of commandIds) {
@@ -48,7 +51,7 @@ async function setWorkbenchPresentation(
   commands,
   configurationTarget,
 ) {
-  if (presentation !== "editor") {
+  if (presentation !== "editor" && presentation !== "extensions") {
     throw new Error(`Unsupported Cantrip presentation: ${presentation}`);
   }
   const cantripConfiguration = workspace.getConfiguration("cantrip");

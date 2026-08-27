@@ -1166,3 +1166,91 @@ describe("CodeDirectEndpointManager graphical settings control", () => {
     }
   });
 });
+
+describe("CodeDirectEndpointManager extensions control", () => {
+  it("opens extensions for the bound session from an empty POST body", async () => {
+    const openExtensions = vi.fn().mockResolvedValue({ opened: true });
+    const manager = new CodeDirectEndpointManager({
+      openExtensions,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "extensions-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/open-extensions`,
+        {
+          body: "{}",
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      await expect(response.json()).resolves.toEqual({ opened: true });
+      expect(openExtensions).toHaveBeenCalledWith("settings-session");
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("rejects non-empty extensions request bodies", async () => {
+    const openExtensions = vi.fn();
+    const manager = new CodeDirectEndpointManager({
+      openExtensions,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "extensions-invalid-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/open-extensions`,
+        {
+          body: JSON.stringify({ id: "not-allowed" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Cantrip Code extensions-open requests require an empty body.",
+      });
+      expect(openExtensions).not.toHaveBeenCalled();
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("rejects a malformed supervisor acknowledgement", async () => {
+    const openExtensions = vi.fn().mockResolvedValue({ opened: false });
+    const manager = new CodeDirectEndpointManager({
+      openExtensions,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "extensions-malformed-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/open-extensions`,
+        {
+          body: "{}",
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(openExtensions).toHaveBeenCalledWith("settings-session");
+    } finally {
+      manager.close();
+    }
+  });
+});

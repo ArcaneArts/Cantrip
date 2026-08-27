@@ -905,6 +905,22 @@ export class CodeSupervisor {
     });
   }
 
+  async openExtensions(sessionId: string) {
+    const generation = this.#sessionGeneration(sessionId);
+    const signal = this.#sessionOperationSignal(sessionId, generation);
+    return this.#enqueueSessionOperation(sessionId, async () => {
+      this.#assertCurrentOperation(sessionId, generation);
+      const session = this.#requireSession(sessionId);
+      if (session.kind !== "settings") {
+        throw new Error("Cantrip Code extensions require a settings session.");
+      }
+      this.#touch(session);
+      const result = await this.#bridge.openExtensions(sessionId, signal);
+      this.#assertCurrentOperation(sessionId, generation, session);
+      return result;
+    });
+  }
+
   async setTheme(
     sessionId: string,
     _themeMode: CodeThemeMode,
