@@ -6464,6 +6464,12 @@ export const codeOpenSettingsResultSchema = z
   .object({ opened: z.literal(true) })
   .strict();
 
+export const codeOpenExtensionsRequestSchema = z.object({}).strict();
+
+export const codeOpenExtensionsResultSchema = z
+  .object({ opened: z.literal(true) })
+  .strict();
+
 export const codePresentationUpdateSchema = z
   .object({
     presentation: codePresentationSchema,
@@ -17124,6 +17130,9 @@ export type CodeOpenFileResult = z.infer<typeof codeOpenFileResultSchema>;
 export type CodeOpenFileRequest = z.infer<typeof codeOpenFileRequestSchema>;
 export type CodeOpenSettingsResult = z.infer<
   typeof codeOpenSettingsResultSchema
+>;
+export type CodeOpenExtensionsResult = z.infer<
+  typeof codeOpenExtensionsResultSchema
 >;
 export type CodeSettingsWorkbenchOpenResult = z.infer<
   typeof codeSettingsWorkbenchOpenResultSchema

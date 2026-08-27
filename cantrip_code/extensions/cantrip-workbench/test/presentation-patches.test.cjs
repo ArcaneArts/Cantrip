@@ -17,16 +17,23 @@ test("makes every prohibited workbench part authoritative in editor presentation
 
   assert.match(source, /case Parts\.TITLEBAR_PART:/u);
   assert.doesNotMatch(source, /^\+\s+case Parts\.TITLEBAR_PART:/mu);
-  assert.match(source, /case Parts\.SIDEBAR_PART:/u);
+  assert.match(
+    source,
+    /part === Parts\.SIDEBAR_PART && isCantripEditorPresentation/u,
+  );
   assert.match(source, /case Parts\.PANEL_PART:/u);
   assert.match(source, /case Parts\.AUXILIARYBAR_PART:/u);
   assert.match(source, /case Parts\.STATUSBAR_PART:/u);
   assert.match(source, /case Parts\.ACTIVITYBAR_PART:/u);
   assert.equal(
     source.match(
-      /hidden = hidden \|\| isCantripEditorPresentation\(this\.configurationService\);/gu,
+      /hidden = hidden \|\| isCantripEmbeddedPresentation\(this\.configurationService\);/gu,
     )?.length,
-    5,
+    4,
+  );
+  assert.match(
+    source,
+    /private setSideBarHidden\(hidden: boolean\): void \{\n\+\s*hidden = hidden \|\| isCantripEditorPresentation/u,
   );
   assert.match(
     source,
@@ -36,7 +43,7 @@ test("makes every prohibited workbench part authoritative in editor presentation
   assert.match(source, /options\.editorActionsLocation = 'hidden';/u);
   assert.match(
     source,
-    /!isCantripEditorPresentation\(configurationService\) && config\.getValue\(\)/u,
+    /!isCantripEmbeddedPresentation\(configurationService\) && config\.getValue\(\)/u,
   );
   assert.match(
     source,
@@ -44,7 +51,28 @@ test("makes every prohibited workbench part authoritative in editor presentation
   );
   assert.match(
     source,
-    /if \(isCantripEditorPresentation\(configurationService\)\) \{\n\+\t\treturn false;/u,
+    /if \(isCantripEmbeddedPresentation\(configurationService\)\) \{\n\+\t\treturn false;/u,
+  );
+});
+
+test("retains only extension-management surfaces in Extensions presentation", () => {
+  const source = patch("0007-honor-editor-presentation-layout");
+
+  assert.match(
+    source,
+    /presentation === 'editor' \|\| presentation === 'extensions'/u,
+  );
+  assert.match(
+    source,
+    /part === Parts\.SIDEBAR_PART && isCantripEditorPresentation/u,
+  );
+  assert.match(
+    source,
+    /isCantripEmbeddedPresentation\(this\.configurationService\)/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /private addToast\(item: INotificationViewItem\): void \{\n\+\s*if \(isCantripEmbeddedPresentation/u,
   );
 });
 
@@ -73,4 +101,16 @@ test("signals readiness only from a restored embedded editor with a valid mount 
     source,
     /lifecycleService\.phase = LifecyclePhase\.Restored;\n\+\t\t\t\tsignalCantripWorkbenchReady\(\);/u,
   );
+});
+
+test("protects Cantrip-required extensions below the Extensions UI", () => {
+  const source = patch("0010-protect-required-cantrip-extensions");
+
+  assert.match(source, /cantrip\.cantrip-workbench/u);
+  assert.match(source, /cantrip\.cantrip-themes/u);
+  assert.match(source, /EnablementState\.EnabledByEnvironment/u);
+  assert.match(source, /createInstallExtensionTask/u);
+  assert.match(source, /createUninstallExtensionTask/u);
+  assert.match(source, /addExtensionsToProfile/u);
+  assert.match(source, /Cannot replace/u);
 });

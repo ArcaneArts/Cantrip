@@ -51,11 +51,12 @@
           "type": "string",
           "enum": [
             "workbench",
-            "editor"
+            "editor",
+            "extensions"
           ],
           "default": "workbench",
           "scope": "window",
-          "description": "Selects the full workbench or the compact editor-only Cantrip surface."
+          "description": "Selects the full workbench, compact editor-only surface, or restricted Extensions customization surface."
         },
         "cantrip.saveBeforeAgentTurn": {
           "type": "string",

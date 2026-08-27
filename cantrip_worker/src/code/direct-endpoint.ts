@@ -11,6 +11,8 @@ import type { Socket } from "node:net";
 
 import {
   CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
+  codeOpenExtensionsRequestSchema,
+  codeOpenExtensionsResultSchema,
   codeOpenFileRequestSchema,
   codeOpenFileResultSchema,
   codeOpenSettingsRequestSchema,
@@ -1425,6 +1427,10 @@ export class CodeDirectEndpointManager {
       void this.#openSettings(context, request, response);
       return;
     }
+    if (pathname === `${basePath}/_cantrip/open-extensions`) {
+      void this.#openExtensions(context, request, response);
+      return;
+    }
     if (pathname === `${basePath}/_cantrip/presentation`) {
       void this.#setPresentation(context, request, response);
       return;
@@ -1737,6 +1743,76 @@ export class CodeDirectEndpointManager {
           error instanceof Error
             ? error.message
             : "Cantrip Code could not open graphical settings.",
+      });
+    }
+  }
+
+  async #openExtensions(
+    context: CodeEndpointContext,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const { sessionId } = context;
+    const sessionGeneration = this.#sessionGenerations.get(sessionId) ?? 0;
+    if (request.method === "OPTIONS") {
+      writeControlResponse(response, 204);
+      return;
+    }
+    if (request.method !== "POST") {
+      writeControlResponse(response, 405, {
+        error: "Cantrip Code extensions-open requests require POST.",
+      });
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readControlRequest(request);
+    } catch {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code requires a valid JSON request body.",
+      });
+      return;
+    }
+    if (!codeOpenExtensionsRequestSchema.safeParse(body).success) {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code extensions-open requests require an empty body.",
+      });
+      return;
+    }
+    try {
+      this.#assertRouteActive(context);
+      const result = codeOpenExtensionsResultSchema.parse(
+        await this.#enqueueControl(sessionId, () => {
+          this.#assertRouteActive(context);
+          return (this.#sessionGenerations.get(sessionId) ?? 0) ===
+            sessionGeneration
+            ? this.supervisor.openExtensions(sessionId)
+            : Promise.reject(new Error("Cantrip Code session stopped."));
+        }),
+      );
+      writeControlResponse(response, 200, result);
+      workerLogger.event("debug", "Cantrip Code extensions opened", {
+        event: "code.direct.extensions-opened",
+        subsystem: "code",
+        operation: "open-extensions",
+        status: "completed",
+        ...this.#logContext(context),
+      });
+    } catch (error) {
+      workerLogger.event("warn", "Cantrip Code extensions open failed", {
+        event: "code.direct.extensions-open-failed",
+        subsystem: "code",
+        operation: "open-extensions",
+        reasonCode: "open-failed",
+        status: "failed",
+        ...this.#logContext(context),
+        error: workerLogError(error),
+      });
+      writeControlResponse(response, 503, {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Cantrip Code could not open extensions.",
       });
     }
   }

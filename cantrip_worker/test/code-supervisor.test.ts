@@ -2406,6 +2406,22 @@ describe("Cantrip Code supervisor", () => {
       }),
     );
     await expect(opening).resolves.toEqual({ opened: true });
+    const extensionsRequestPromise = bridge.nextRequest();
+    const extensionsOpening = supervisor.openExtensions(sessionId);
+    const extensionsRequest = await extensionsRequestPromise;
+    expect(extensionsRequest).toMatchObject({
+      method: "openExtensions",
+      params: {},
+    });
+    bridge.socket.send(
+      JSON.stringify({
+        type: "response",
+        id: extensionsRequest.id,
+        ok: true,
+        result: { opened: true },
+      }),
+    );
+    await expect(extensionsOpening).resolves.toEqual({ opened: true });
     await expect(supervisor.openFile(sessionId, "anything.ts")).rejects.toThrow(
       "settings sessions cannot open files",
     );
