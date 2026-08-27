@@ -15783,11 +15783,14 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
     .strict(),
   z.object({
     type: z.literal("worktree.inventory.observed"),
+    projectId: worktreeObservationTargetSchema.shape.projectId,
     sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
     inventory: worktreeInventorySchema,
   }),
   z.object({
     type: z.literal("worktree.status.observed"),
+    projectId: worktreeObservationTargetSchema.shape.projectId,
+    worktreeId: worktreeObservationTargetSchema.shape.worktreeId,
     sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
     worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
     result: worktreeStatusResultSchema,
@@ -15795,6 +15798,8 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("worktree.filesystem.changed"),
+      projectId: worktreeObservationTargetSchema.shape.projectId,
+      worktreeId: worktreeObservationTargetSchema.shape.worktreeId,
       sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
       worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
     })

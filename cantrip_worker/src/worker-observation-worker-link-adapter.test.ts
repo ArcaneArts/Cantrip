@@ -127,6 +127,8 @@ describe("WorkerObservationHub", () => {
     ).toBe(true);
     const filesystem: WorkerNotification = {
       type: "worktree.filesystem.changed",
+      projectId: "55555555-5555-4555-8555-555555555555",
+      worktreeId: "worktree-one",
       sourcePath: "/repo",
       worktreePath: "/repo/worktree",
     };
