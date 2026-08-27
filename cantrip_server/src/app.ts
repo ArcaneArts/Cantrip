@@ -426,23 +426,15 @@ import {
   tunnelUserWireCreateSchema,
   tunnelUserWireUpdateSchema,
   userSettingsUpdateSchema,
-  workerCredentialListSchema,
-  workerCredentialRotateResultSchema,
-  workerCredentialRotateSchema,
   encodeWorkerConnectionEnvelope,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
   WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
-  workerEnrollmentCodeCreateSchema,
   workerLogReadQuerySchema,
-  workerEnrollmentCodeResultSchema,
-  workerEnrollmentCodeStatusSchema,
   workerEnrollmentExchangeSchema,
   workerEnrollmentResultSchema,
   workerHeartbeatSchema,
   workerAttachmentReadResultSchema,
   workerAttachmentUploadResultSchema,
-  workerListSchema,
-  workerManagementListSchema,
   workerEventIsProvisional,
   compatibleWorkerCantripMcpOperationCallSchema,
   workerCantripMcpCapabilitiesQuerySchema,
@@ -450,9 +442,6 @@ import {
   CANTRIP_MCP_OPERATIONS,
   isCantripMcpMutationOperation,
   workerCliCommandCallSchema,
-  workerRestartAcknowledgementSchema,
-  workerRestartResultSchema,
-  workerUpdateSchema,
   worktreeMutationResultSchema,
   worktreePruneResultSchema,
   worktreeRemoveResultSchema,
@@ -836,9 +825,7 @@ import { workerPresenceFingerprint } from "./workers/presence.js";
 import {
   authenticateWorkerRequest,
   createWorkerCredential,
-  createWorkerEnrollmentCode,
   DEFAULT_WORKER_CREDENTIAL_SCOPES,
-  developmentWorkerBootstrapAllowed,
 } from "./workers/credentials.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
@@ -880,6 +867,10 @@ import { installInternalProviderCredentialRoutes } from "./app/routes/internal-p
 import { installPolicyRoutes } from "./app/routes/policies.js";
 import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
 import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
+import { installWorkerCatalogRoutes } from "./app/routes/worker-catalog.js";
+import { installWorkerCredentialRoutes } from "./app/routes/worker-credentials.js";
+import { installWorkerEnrollmentCodeRoutes } from "./app/routes/worker-enrollment-codes.js";
+import { installWorkerManagementRoutes } from "./app/routes/worker-management.js";
 import {
   sendWorkerConflictFailure,
   sendWorkerRequestFailure,
@@ -12799,15 +12790,7 @@ export async function buildApp({
     );
   });
 
-  app.get("/api/workers", { logLevel: "warn" }, async (request, reply) => {
-    const workers = (
-      await repository.listWorkers(principalOwnerId(request))
-    ).map((worker) => ({
-      ...worker,
-      online: bridge.isConnected(worker.workerId),
-    }));
-    return reply.send(workerListSchema.parse(workers));
-  });
+  installWorkerCatalogRoutes(app, { bridge, repository });
 
   app.post<{ Params: { workerId: string } }>(
     "/api/workers/:workerId/encryption/refresh",
@@ -14827,343 +14810,26 @@ export async function buildApp({
     },
   );
 
-  app.get(
-    "/api/workers/management",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const ownerId = principalOwnerId(request);
-      const records = await repository.listWorkerManagement(ownerId);
-      const localBootstrap = developmentWorkerBootstrapAllowed(config);
-      return reply.send(
-        workerManagementListSchema.parse(
-          records.map((record) => {
-            const internal = localBootstrap && record.credentialCount === 0;
-            return {
-              ...record.worker,
-              runtimeName: record.runtimeName,
-              internal,
-              editable: !internal,
-              removable: !internal,
-              credentialCount: record.credentialCount,
-              activeCredentialCount: record.activeCredentialCount,
-              sources: record.sources,
-            };
-          }),
-        ),
-      );
+  installWorkerManagementRoutes(app, {
+    bridge,
+    config,
+    markCredentialRevoked: (credentialId) => {
+      revokedWorkerCredentialIds.add(credentialId);
     },
-  );
+    publishWorkerAvailability: (workerId) =>
+      publishLiveInvalidation("worker-availability", { entityId: workerId }),
+    repository,
+  });
 
-  app.post<{ Params: { workerId: string } }>(
-    "/api/workers/:workerId/restart",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const ownerId = principalOwnerId(request);
-      const record = (await repository.listWorkerManagement(ownerId)).find(
-        ({ worker }) => worker.workerId === request.params.workerId,
-      );
-      if (!record) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      try {
-        workerRestartAcknowledgementSchema.parse(
-          await bridge.request(
-            request.params.workerId,
-            { type: "worker.restart" },
-            { ownerId, timeoutMs: 10_000 },
-          ),
-        );
-      } catch (error) {
-        if (error instanceof WorkerUnavailableError) {
-          return reply
-            .code(409)
-            .send({ error: "The worker is offline and cannot be restarted." });
-        }
-        throw error;
-      }
-      serverLogger.info("Worker restart requested", {
-        event: "worker.runtime.restart-requested",
-        subsystem: "worker-command",
-        operation: "worker.restart",
-        status: "accepted",
-        requestId: request.id,
-        workerId: request.params.workerId,
-      });
-      return reply.code(202).send(
-        workerRestartResultSchema.parse({
-          workerId: request.params.workerId,
-          status: "restarting",
-        }),
-      );
-    },
-  );
+  installWorkerEnrollmentCodeRoutes(app, { repository });
 
-  app.patch<{ Params: { workerId: string } }>(
-    "/api/workers/:workerId",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const input = workerUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = principalOwnerId(request);
-      const record = (await repository.listWorkerManagement(ownerId)).find(
-        ({ worker }) => worker.workerId === request.params.workerId,
-      );
-      if (!record) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      if (
-        developmentWorkerBootstrapAllowed(config) &&
-        record.credentialCount === 0
-      ) {
-        return reply
-          .code(409)
-          .send({ error: "The internal worker cannot be renamed." });
-      }
-      const worker = await repository.updateWorkerDisplayName(
-        ownerId,
-        request.params.workerId,
-        input.data.name,
-      );
-      return worker
-        ? reply.send(worker)
-        : reply.code(404).send({ error: "Worker not found." });
+  installWorkerCredentialRoutes(app, {
+    bridge,
+    markCredentialRevoked: (credentialId) => {
+      revokedWorkerCredentialIds.add(credentialId);
     },
-  );
-
-  app.delete<{ Params: { workerId: string } }>(
-    "/api/workers/:workerId",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const ownerId = principalOwnerId(request);
-      const record = (await repository.listWorkerManagement(ownerId)).find(
-        ({ worker }) => worker.workerId === request.params.workerId,
-      );
-      if (!record) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      if (
-        developmentWorkerBootstrapAllowed(config) &&
-        record.credentialCount === 0
-      ) {
-        return reply
-          .code(409)
-          .send({ error: "The internal worker cannot be unlinked." });
-      }
-      const credentials = await repository.listWorkerCredentials(
-        ownerId,
-        request.params.workerId,
-      );
-      if (!(await repository.unlinkWorker(ownerId, request.params.workerId))) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      for (const credential of credentials ?? []) {
-        if (credential.active) revokedWorkerCredentialIds.add(credential.id);
-      }
-      bridge.disconnect?.(request.params.workerId, "Worker was unlinked");
-      publishLiveInvalidation("worker-availability", {
-        entityId: request.params.workerId,
-      });
-      serverLogger.info("Worker unlinked", {
-        event: "worker.enrollment.unlinked",
-        subsystem: "worker-auth",
-        operation: "unlink",
-        status: "completed",
-        requestId: request.id,
-        workerId: request.params.workerId,
-        counts: { credentials: credentials?.length ?? 0 },
-      });
-      return reply.code(204).send();
-    },
-  );
-
-  app.post(
-    "/api/workers/enrollment-codes",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const input = workerEnrollmentCodeCreateSchema.safeParse(
-        request.body ?? {},
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const principal = authenticatedPrincipal(request);
-      const workerId = await repository.findReusableWorkerId(
-        principal.user.id,
-        input.data.candidateWorkerIds,
-      );
-      const generated = createWorkerEnrollmentCode();
-      const expiresAt = new Date(
-        Date.now() + input.data.expiresInSeconds * 1_000,
-      );
-      const id = await repository.createWorkerEnrollmentCode({
-        codeHash: generated.codeHash,
-        createdBySessionId: principal.sessionId,
-        expiresAt,
-        label: input.data.label,
-        ownerId: principal.user.id,
-      });
-      serverLogger.info("Worker enrollment code created", {
-        event: "worker.enrollment.code_created",
-        subsystem: "worker-auth",
-        operation: "create-enrollment-code",
-        status: "completed",
-        requestId: request.id,
-        enrollmentCodeId: id,
-        workerId,
-        expiresInSeconds: input.data.expiresInSeconds,
-      });
-      return reply.code(201).send(
-        workerEnrollmentCodeResultSchema.parse({
-          code: generated.code,
-          id,
-          expiresAt: expiresAt.toISOString(),
-          label: input.data.label,
-          workerId,
-        }),
-      );
-    },
-  );
-
-  app.get<{ Params: { enrollmentCodeId: string } }>(
-    "/api/workers/enrollment-codes/:enrollmentCodeId",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const status = await repository.getWorkerEnrollmentCodeStatus(
-        principalOwnerId(request),
-        request.params.enrollmentCodeId,
-      );
-      return status
-        ? reply.send(workerEnrollmentCodeStatusSchema.parse(status))
-        : reply.code(404).send({ error: "Worker link code not found." });
-    },
-  );
-
-  app.get<{ Params: { workerId: string } }>(
-    "/api/workers/:workerId/credentials",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const credentials = await repository.listWorkerCredentials(
-        principalOwnerId(request),
-        request.params.workerId,
-      );
-      return credentials
-        ? reply.send(workerCredentialListSchema.parse(credentials))
-        : reply.code(404).send({ error: "Worker not found." });
-    },
-  );
-
-  app.post<{ Params: { workerId: string } }>(
-    "/api/workers/:workerId/credentials/rotate",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const input = workerCredentialRotateSchema.safeParse(request.body ?? {});
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const generated = createWorkerCredential();
-      const ownerId = principalOwnerId(request);
-      const previousCredentials = await repository.listWorkerCredentials(
-        ownerId,
-        request.params.workerId,
-      );
-      let credential: Awaited<
-        ReturnType<typeof repository.rotateWorkerCredential>
-      >;
-      try {
-        credential = await repository.rotateWorkerCredential({
-          credentialHash: generated.credentialHash,
-          credentialId: generated.credentialId,
-          label: input.data.label,
-          ownerId,
-          scopes: DEFAULT_WORKER_CREDENTIAL_SCOPES,
-          workerId: request.params.workerId,
-        });
-      } catch (error) {
-        if (error instanceof WorkerEnrollmentError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-      if (!credential) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      for (const previous of previousCredentials ?? []) {
-        if (previous.active) revokedWorkerCredentialIds.add(previous.id);
-      }
-      let delivered = false;
-      if (bridge.isConnected(request.params.workerId)) {
-        try {
-          await bridge.request(
-            request.params.workerId,
-            {
-              type: "worker.credential.rotate",
-              credential: generated.credential,
-            },
-            { timeoutMs: 10_000 },
-          );
-          delivered = true;
-        } catch {
-          delivered = false;
-        }
-      }
-      bridge.disconnect?.(
-        request.params.workerId,
-        "Worker credential was rotated",
-        1012,
-      );
-      serverLogger.info("Worker credential rotated", {
-        event: "worker.credential.rotated",
-        subsystem: "worker-auth",
-        operation: "rotate",
-        status: delivered ? "completed" : "degraded",
-        reasonCode: delivered ? undefined : "worker_delivery_failed",
-        requestId: request.id,
-        workerId: request.params.workerId,
-        counts: { previousCredentials: previousCredentials?.length ?? 0 },
-      });
-      return reply.send(
-        workerCredentialRotateResultSchema.parse({
-          credential: generated.credential,
-          credentialSummary: credential,
-          delivered,
-        }),
-      );
-    },
-  );
-
-  app.delete<{
-    Params: { credentialId: string; workerId: string };
-  }>(
-    "/api/workers/:workerId/credentials/:credentialId",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const revoked = await repository.revokeWorkerCredential(
-        principalOwnerId(request),
-        request.params.workerId,
-        request.params.credentialId,
-      );
-      if (!revoked) {
-        return reply.code(404).send({ error: "Worker credential not found." });
-      }
-      revokedWorkerCredentialIds.add(revoked.id);
-      bridge.disconnect?.(
-        request.params.workerId,
-        "Worker credential was revoked",
-      );
-      serverLogger.info("Worker credential revoked", {
-        event: "worker.credential.revoked",
-        subsystem: "worker-auth",
-        operation: "revoke",
-        status: "completed",
-        requestId: request.id,
-        workerId: request.params.workerId,
-        credentialId: request.params.credentialId,
-      });
-      return reply.code(204).send();
-    },
-  );
+    repository,
+  });
 
   app.post(
     "/api/run-configuration-runtimes/operations",
