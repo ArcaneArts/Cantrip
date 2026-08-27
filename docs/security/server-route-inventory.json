@@ -37,6 +37,7 @@
       "cantrip_server/src/app/routes/project-settings-and-insights.ts",
       "cantrip_server/src/app/routes/project-workspaces.ts",
       "cantrip_server/src/app/routes/project-worktree-git-commit-actions.ts",
+      "cantrip_server/src/app/routes/project-worktree-git-commit-signature.ts",
       "cantrip_server/src/app/routes/project-worktree-git-history-and-graph.ts",
       "cantrip_server/src/app/routes/project-worktree-git-inspection-and-recovery.ts",
       "cantrip_server/src/app/routes/project-worktree-git-managed-operations.ts",
@@ -1034,7 +1035,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 27474,
+      "line": 27447,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chat-imports/:jobId",
@@ -1047,7 +1048,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 27487,
+      "line": 27460,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chat-imports/:jobId/retry",
@@ -2906,7 +2907,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 27461,
+      "line": 27434,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chat-imports",
@@ -2919,7 +2920,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 27384,
+      "line": 27357,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chat-imports",
@@ -4114,8 +4115,8 @@
     },
     {
       "boundary": "application-principal",
-      "file": "cantrip_server/src/app.ts",
-      "line": 27351,
+      "file": "cantrip_server/src/app/routes/project-worktree-git-commit-signature.ts",
+      "line": 23,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
