@@ -317,10 +317,6 @@ import {
   projectShareDirectCreateSchema,
   projectShareTunnelCreateSchema,
   standaloneChatShareAttachmentWireSchema,
-  encryptedProjectWorkspaceCreateSchema,
-  encryptedProjectWorkspaceUpdateSchema,
-  projectWorkspaceWireListSchema,
-  projectWorkspaceWireSummarySchema,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
   projectWorktreeLockSchema,
@@ -778,12 +774,14 @@ import { installProjectExternalChatHistoryRoute } from "./app/routes/project-ext
 import { installProjectFolderSetupRoutes } from "./app/routes/project-folder-setup.js";
 import { installProjectGithubConversionRoutes } from "./app/routes/project-github-conversion.js";
 import { installProjectGithubImportRoute } from "./app/routes/project-github-import.js";
+import { installProjectMcpServerRoutes } from "./app/routes/project-mcp-servers.js";
 import { installProjectReplicaRoutes } from "./app/routes/project-replicas.js";
 import {
   installProjectInsightRoutes,
   installProjectOrderRoute,
   installProjectPreferenceRoutes,
 } from "./app/routes/project-settings-and-insights.js";
+import { installProjectWorkspaceRoutes } from "./app/routes/project-workspaces.js";
 import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
 import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
 import { installDirectAttachmentControlRoutes } from "./app/routes/direct-attachment-control.js";
@@ -17295,199 +17293,16 @@ export async function buildApp({
     repository,
   });
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/mcp-servers",
-    async (request, reply) => {
-      const servers = await repository.listMcpServers(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      return servers
-        ? reply.send(mcpServerWireListSchema.parse(servers))
-        : reply.code(404).send({ error: "Project not found." });
-    },
-  );
-
-  app.get<{ Params: { projectId: string; workerId: string } }>(
-    "/api/projects/:projectId/mcp-discovery/:workerId",
-    async (request, reply) => {
-      const ownerId = applicationOwnerId();
-      const project = await repository.getProject(
-        ownerId,
-        request.params.projectId,
-      );
-      if (!project) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      const worker = await repository.getWorker(
-        ownerId,
-        request.params.workerId,
-      );
-      if (!worker) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      const replicas = await repository.listProjectReplicas(
-        ownerId,
-        project.id,
-      );
-      const replica = replicas?.find(
-        (candidate) =>
-          candidate.workerId === worker.workerId && candidate.ready,
-      );
-      if (!replica) {
-        return reply.code(409).send({
-          error: "This project does not have a ready replica on that worker.",
-        });
-      }
-      if (!worker.online || !bridge.isConnected(worker.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      try {
-        const result = await bridge.request(
-          worker.workerId,
-          {
-            type: "mcp.configurations.discover",
-            projectRoot: replica.path,
-          },
-          { timeoutMs: 20_000 },
-        );
-        return reply.send(mcpServerDiscoveryResultSchema.parse(result));
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/mcp-servers",
-    async (request, reply) => {
-      const input = encryptedMcpServerCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const server = await repository.createMcpServer(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-        );
-        return server
-          ? reply.code(201).send(mcpServerWireSummarySchema.parse(server))
-          : reply.code(404).send({ error: "Project not found." });
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.put<{ Params: { projectId: string; serverId: string } }>(
-    "/api/projects/:projectId/mcp-servers/:serverId",
-    async (request, reply) => {
-      const input = encryptedMcpServerUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const server = await repository.updateMcpServer(
-          applicationOwnerId(),
-          request.params.projectId,
-          request.params.serverId,
-          input.data,
-        );
-        return server
-          ? reply.send(mcpServerWireSummarySchema.parse(server))
-          : reply.code(404).send({ error: "MCP server not found." });
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.delete<{ Params: { projectId: string; serverId: string } }>(
-    "/api/projects/:projectId/mcp-servers/:serverId",
-    async (request, reply) => {
-      try {
-        return (await repository.deleteMcpServer(
-          applicationOwnerId(),
-          request.params.projectId,
-          request.params.serverId,
-        ))
-          ? reply.code(204).send()
-          : reply.code(404).send({ error: "MCP server not found." });
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.get("/api/workspaces", async (_request, reply) => {
-    return reply.send(
-      projectWorkspaceWireListSchema.parse(
-        await repository.listProjectWorkspaceWire(applicationOwnerId()),
-      ),
-    );
+  installProjectMcpServerRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    repository,
   });
 
-  app.post("/api/workspaces", async (request, reply) => {
-    const input = encryptedProjectWorkspaceCreateSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      return reply
-        .code(201)
-        .send(
-          projectWorkspaceWireSummarySchema.parse(
-            await repository.createEncryptedProjectWorkspace(
-              applicationOwnerId(),
-              input.data,
-            ),
-          ),
-        );
-    } catch (error) {
-      return reply.code(409).send({ error: errorMessage(error) });
-    }
+  installProjectWorkspaceRoutes(app, {
+    applicationOwnerId,
+    repository,
   });
-
-  app.patch<{ Params: { workspaceId: string } }>(
-    "/api/workspaces/:workspaceId",
-    async (request, reply) => {
-      const input = encryptedProjectWorkspaceUpdateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const workspace = await repository.updateEncryptedProjectWorkspace(
-          applicationOwnerId(),
-          request.params.workspaceId,
-          input.data,
-        );
-        return workspace
-          ? reply.send(projectWorkspaceWireSummarySchema.parse(workspace))
-          : reply.code(404).send({ error: "Workspace not found." });
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.delete<{ Params: { workspaceId: string } }>(
-    "/api/workspaces/:workspaceId",
-    async (request, reply) => {
-      try {
-        return (await repository.deleteProjectWorkspace(
-          applicationOwnerId(),
-          request.params.workspaceId,
-        ))
-          ? reply.code(204).send()
-          : reply.code(404).send({ error: "Workspace not found." });
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
 
   installWorkflowTriggerManagementRoutes(app, {
     applicationOwnerId,
