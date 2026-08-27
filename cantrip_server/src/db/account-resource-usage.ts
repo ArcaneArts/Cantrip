@@ -326,6 +326,10 @@ function resultRows<T>(result: unknown): T[] {
   throw new Error("Database returned an unsupported accounting result shape.");
 }
 
+function timestampParameter(value: Date) {
+  return sql.param(value, schema.accountStorageUsageSnapshots.bucketStart);
+}
+
 function hourBucket(value: Date): Date {
   return new Date(
     Date.UTC(
@@ -427,8 +431,8 @@ export class AccountResourceUsageRepository {
         from ${schema.accountStorageUsageSnapshots}
         where owner_id = ${ownerId}
           and resolution in ('hour', 'day')
-          and bucket_start >= ${from}
-          and bucket_start < ${to}
+          and bucket_start >= ${timestampParameter(from)}
+          and bucket_start < ${timestampParameter(to)}
       ) daily
       where recency = 1
       order by bucket_start, storage_class, category
@@ -541,8 +545,8 @@ export class AccountResourceUsageRepository {
       from ${schema.accountBandwidthUsageBuckets}
       where owner_id = ${ownerId}
         and ${resolutionFilter}
-        and bucket_start >= ${from}
-        and bucket_start < ${to}
+        and bucket_start >= ${timestampParameter(from)}
+        and bucket_start < ${timestampParameter(to)}
       group by ${bucketExpression}, channel, direction
       order by bucket_start, channel, direction
     `);
@@ -681,8 +685,8 @@ export class AccountResourceUsageRepository {
               max(updated_at) as updated_at
             from ${schema.accountBandwidthUsageBuckets}
             where resolution = 'hour'
-              and bucket_start >= ${dailyCutoff}
-              and bucket_start < ${hourlyCutoff}
+              and bucket_start >= ${timestampParameter(dailyCutoff)}
+              and bucket_start < ${timestampParameter(hourlyCutoff)}
             group by owner_id,
               date_trunc('day', bucket_start at time zone 'UTC'),
               channel,
@@ -690,7 +694,7 @@ export class AccountResourceUsageRepository {
           ), upserted as (
             insert into ${schema.accountBandwidthUsageBuckets}
               (owner_id, bucket_start, resolution, channel, direction, bytes, operation_count, created_at, updated_at)
-            select owner_id, bucket_start, 'day', channel, direction, bytes, operation_count, ${now}, updated_at
+            select owner_id, bucket_start, 'day', channel, direction, bytes, operation_count, ${timestampParameter(now)}, updated_at
             from daily
             on conflict (owner_id, bucket_start, resolution, channel, direction)
             do update set bytes = ${schema.accountBandwidthUsageBuckets}.bytes + excluded.bytes,
@@ -720,12 +724,12 @@ export class AccountResourceUsageRepository {
               ) as recency
             from ${schema.accountStorageUsageSnapshots}
             where resolution = 'hour'
-              and bucket_start >= ${dailyCutoff}
-              and bucket_start < ${hourlyCutoff}
+              and bucket_start >= ${timestampParameter(dailyCutoff)}
+              and bucket_start < ${timestampParameter(hourlyCutoff)}
           ), upserted as (
             insert into ${schema.accountStorageUsageSnapshots}
               (owner_id, bucket_start, resolution, storage_class, category, logical_bytes, row_count, basis_version, measured_at, created_at, updated_at)
-            select owner_id, bucket_start, 'day', storage_class, category, logical_bytes, row_count, basis_version, measured_at, ${now}, updated_at
+            select owner_id, bucket_start, 'day', storage_class, category, logical_bytes, row_count, basis_version, measured_at, ${timestampParameter(now)}, updated_at
             from ranked where recency = 1
             on conflict (owner_id, bucket_start, resolution, storage_class, category)
             do update set
