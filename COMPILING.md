@@ -103,7 +103,7 @@ Useful overrides include:
 
 ```powershell
 # Build a branch, tag, or commit from origin.
-.\yeet-windows.ps1 -Ref codex/codex-0.149.0
+.\yeet-windows.ps1 -Ref main
 
 # Put the checkout on another drive and use two Cargo compiler jobs.
 .\yeet-windows.ps1 -CheckoutPath D:\src\Cantrip -CargoJobs 2

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index 2b52e0c..a66a7b2 100644
+index cf081d7c95..28eba84464 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -163,6 +163,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
+@@ -189,6 +189,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
      }
  }
  
@@ -26,10 +26,10 @@ index 2b52e0c..a66a7b2 100644
  fn approvals_reviewer_serializes_auto_review_and_accepts_legacy_guardian_subagent() {
      assert_eq!(
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 6c409e7..3e91e8c 100644
+index fc70dbe6f2..b887a06646 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -387,6 +387,15 @@ pub struct ThreadResumeParams {
+@@ -395,6 +395,15 @@ pub struct ThreadResumeParams {
      pub developer_instructions: Option<String>,
      #[ts(optional = nullable)]
      pub personality: Option<Personality>,
@@ -46,10 +46,10 @@ index 6c409e7..3e91e8c 100644
      /// populating `thread.turns`. This is useful when the client plans to call
      /// `thread/turns/list` immediately after resuming.
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 4bb5e43..83ed2d9 100644
+index 686d5dd201..4071372b27 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -3419,6 +3419,7 @@ impl ThreadRequestProcessor {
+@@ -3596,6 +3596,7 @@ impl ThreadRequestProcessor {
              base_instructions,
              developer_instructions,
              personality,
@@ -57,7 +57,7 @@ index 4bb5e43..83ed2d9 100644
              exclude_turns,
              initial_turns_page,
          } = params;
-@@ -3448,13 +3449,17 @@ impl ThreadRequestProcessor {
+@@ -3625,13 +3626,17 @@ impl ThreadRequestProcessor {
                  Err(error) => Err(error),
              }
          };
@@ -77,10 +77,10 @@ index 4bb5e43..83ed2d9 100644
              matches!(thread.history_mode, ThreadHistoryMode::Paginated).then_some(thread.thread_id)
          });
 diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
-index f95a9d9..791c59d 100644
+index 6e15c01bc8..260ef8919c 100644
 --- a/codex-rs/history/src/lib.rs
 +++ b/codex-rs/history/src/lib.rs
-@@ -220,6 +220,23 @@ pub enum InitialHistory {
+@@ -227,6 +227,23 @@ pub enum InitialHistory {
  }
  
  impl InitialHistory {

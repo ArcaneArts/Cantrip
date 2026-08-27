@@ -1,7 +1,10 @@
 diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
+index 6aa6941a3c..75ca76f78c 100644
 --- a/codex-rs/model-provider/src/provider.rs
 +++ b/codex-rs/model-provider/src/provider.rs
-@@ -299,13 +299,17 @@ impl ModelProvider for ConfiguredModelProvider {
+@@ -339,15 +339,19 @@ impl ModelProvider for ConfiguredModelProvider {
+     }
+ 
      fn capabilities(&self) -> ProviderCapabilities {
 -        let remote_compaction = if self.info.is_openai()
 -            || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref())
@@ -22,8 +25,8 @@ diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/s
              remote_compaction,
              ..ProviderCapabilities::default()
          }
-@@ -591,6 +595,28 @@ mod tests {
-         assert_eq!(provider.capabilities(), ProviderCapabilities::default());
+@@ -643,6 +647,28 @@ mod tests {
+         );
      }
  
 +    #[test]
