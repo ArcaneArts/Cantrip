@@ -671,6 +671,7 @@ import {
   installProjectPreferenceRoutes,
 } from "./app/routes/project-settings-and-insights.js";
 import { installProjectWorkspaceRoutes } from "./app/routes/project-workspaces.js";
+import { installProjectWorktreeStatusRoute } from "./app/routes/project-worktree-status.js";
 import { installProjectWorktreeRoutes } from "./app/routes/project-worktrees.js";
 import { installProjectWorktreeGitCommitActionRoutes } from "./app/routes/project-worktree-git-commit-actions.js";
 import { installProjectWorktreeGitHistoryAndGraphRoutes } from "./app/routes/project-worktree-git-history-and-graph.js";
@@ -16931,45 +16932,12 @@ export async function buildApp({
     worktreeCoordinator,
   });
 
-  app.get<{ Params: { projectId: string; worktreeId: string } }>(
-    "/api/projects/:projectId/worktrees/:worktreeId/status",
-    async (request, reply) => {
-      const context = await repository.getProjectWorktreeContext(
-        applicationOwnerId(),
-        request.params.projectId,
-        request.params.worktreeId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Worktree not found." });
-      }
-      try {
-        const result = worktreeStatusResultSchema.parse(
-          await bridge.request(context.workerId, {
-            type: "worktree.status",
-            sourcePath: context.sourcePath,
-            worktreePath: context.worktree.path,
-          }),
-        );
-        await recordLiveWorktreeStatus(
-          request.params.projectId,
-          request.params.worktreeId,
-          result,
-        );
-        return reply.send(result);
-      } catch (error) {
-        if (error instanceof WorkerUnavailableError) {
-          const snapshot = await repository.getProjectWorktreeStatusSnapshot(
-            applicationOwnerId(),
-            request.params.projectId,
-            request.params.worktreeId,
-          );
-          if (snapshot)
-            return reply.send(worktreeStatusResultSchema.parse(snapshot));
-        }
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+  installProjectWorktreeStatusRoute(app, {
+    applicationOwnerId,
+    bridge,
+    recordLiveWorktreeStatus,
+    repository,
+  });
 
   installProjectWorktreeGitHistoryAndGraphRoutes(app, {
     applicationOwnerId,
