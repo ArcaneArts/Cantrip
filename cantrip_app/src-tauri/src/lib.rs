@@ -1217,6 +1217,26 @@ mod tests {
     }
 
     #[test]
+    fn synthetic_build_progress_window_has_desktop_capabilities() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/popouts.json"))
+                .expect("popout capabilities should be valid JSON");
+        let windows = capability["windows"]
+            .as_array()
+            .expect("popout capabilities should target windows");
+        let permissions = capability["permissions"]
+            .as_array()
+            .expect("popout capabilities should grant permissions");
+
+        assert!(windows
+            .iter()
+            .any(|window| window == "synthetic-build-progress"));
+        assert!(permissions
+            .iter()
+            .any(|permission| permission == "core:default"));
+    }
+
+    #[test]
     fn packaged_node_services_use_a_working_directory_relative_entrypoint() {
         let directory = Path::new(r"C:\Program Files\Cantrip\runtime\server");
         let command = node_service_command(
