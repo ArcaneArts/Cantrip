@@ -3,11 +3,7 @@ import type {
   ServerBootstrap,
   UserSummary,
 } from "@cantrip/protocol";
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -28,6 +24,7 @@ import { ApplicationLoadingSplash } from "@/components/auth/application-loading-
 import { DesktopWorkerRecoverySession } from "@/components/auth/desktop-worker-recovery-session";
 import { MobileSignInScanner } from "@/components/auth/mobile-sign-in-scanner";
 import { SessionWindowDragRegion } from "@/components/auth/session-window-drag-region";
+import { WorkerObservationSession } from "@/components/auth/worker-observation-session";
 import { AddServerForm } from "@/components/servers/add-server-form";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import { Button } from "@/components/ui/button";
@@ -35,7 +32,6 @@ import { Input } from "@/components/ui/input";
 import {
   getAuthSession,
   getServerBootstrap,
-  getWorkers,
   login,
   registerAccount,
 } from "@/lib/api";
@@ -747,31 +743,6 @@ function AuthenticatedApplication({
       </AppLiveProvider>
     </QueryClientProvider>
   );
-}
-
-function WorkerObservationSession({
-  client,
-}: {
-  client: WorkerObservationClient;
-}) {
-  const workers = useQuery({
-    queryFn: getWorkers,
-    queryKey: ["workers"],
-    refetchInterval: 30_000,
-  });
-  useEffect(() => {
-    client.start();
-    return () => client.stop();
-  }, [client]);
-  useEffect(() => {
-    if (!workers.data) return;
-    client.updateAvailableWorkers(
-      workers.data
-        .filter((worker) => worker.online)
-        .map((worker) => worker.workerId),
-    );
-  }, [client, workers.data]);
-  return null;
 }
 
 export function ApplicationSession() {
