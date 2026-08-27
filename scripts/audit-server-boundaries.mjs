@@ -4,9 +4,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "prettier";
 
+import {
+  combineApplicationSources,
+  readApplicationSourceCorpus,
+} from "./application-source-corpus.mjs";
+
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverSourcePath = resolve(repositoryRoot, "cantrip_server/src");
-const appPath = resolve(serverSourcePath, "app.ts");
 const schemaPath = resolve(serverSourcePath, "db/schema.ts");
 const protocolPath = resolve(repositoryRoot, "packages/protocol/src/index.ts");
 const endpointContentProtocolPath = resolve(
@@ -113,17 +117,17 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "bd6174828b93ba7a40de3eba885c6c21e1bc15f71c2872c6e537b9520492a505",
+    "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
   applicationRoutes:
-    "24384b1c926c0e4fa45d8efe9fc43d21e97d5c331e18d694018dde49c175324b",
+    "7cc5a3800c3577e0f7ea9fe6f8fc0603b247c554146c50fc271778cdd0f979f3",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
-    "50ee8ef086ecd45fe4d0b1e86b57464495b70c0c983717ba322051ecedd27152",
+    "80c1b1ba37b9a45e90eb42afd3a754b8e222442e8420cb4f82f8c5e350b09f7b",
   workerCommands:
-    "2926b80dfb1d9fef3c6e12e59f7d7ee029bd0e169ebc22af6a0bc2877ab758b5",
+    "705ac88e7a25c9474a6c810a6b746b02b1d67ab84b8873c50abd0e6296463214",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -494,6 +498,18 @@ async function typescriptFiles(directory) {
     }),
   );
   return nested.flat().sort();
+}
+
+let applicationSourceCorpusPromise;
+
+async function applicationSourceCorpus() {
+  applicationSourceCorpusPromise ??=
+    readApplicationSourceCorpus(repositoryRoot);
+  return applicationSourceCorpusPromise;
+}
+
+async function readApplicationSourceText() {
+  return combineApplicationSources(await applicationSourceCorpus());
 }
 
 function lineForOffset(text, offset) {
@@ -966,7 +982,7 @@ function matchingDelimiter(text, start, open, close) {
   throw new Error(`Could not find ${close} for delimiter at byte ${start}.`);
 }
 
-function parseRoutes(sourceText) {
+function parseRoutes(sourceText, file) {
   const routes = [];
   const routeStart = /\bapp\.(delete|get|head|patch|post|put)\b/gu;
   for (const match of sourceText.matchAll(routeStart)) {
@@ -980,7 +996,9 @@ function parseRoutes(sourceText) {
       );
     }
     if (sourceText[cursor] !== "(") {
-      throw new Error(`Could not parse server route near byte ${start}.`);
+      throw new Error(
+        `Could not parse server route in ${file} near byte ${start}.`,
+      );
     }
     const end = matchingDelimiter(sourceText, cursor, "(", ")");
     const text = sourceText.slice(start, end + 1);
@@ -999,12 +1017,13 @@ function parseRoutes(sourceText) {
         : [];
     if (paths.length === 0) {
       throw new Error(
-        `Server route at ${sourceText.slice(0, start).split("\n").length} does not use a static path.`,
+        `Server route at ${file}:${sourceText.slice(0, start).split("\n").length} does not use a static path.`,
       );
     }
     for (const path of paths) {
       routes.push({
         boundary: routeBoundary(path),
+        file,
         line: sourceText.slice(0, start).split("\n").length,
         method: method.toUpperCase(),
         ownerEvidence: ownerEvidence(path, text),
@@ -1860,7 +1879,7 @@ async function projectAutomationContentBoundaryAudit() {
   ] = await Promise.all([
     readFile(schemaPath, "utf8"),
     readFile(repositoryPath, "utf8"),
-    readFile(appPath, "utf8"),
+    readApplicationSourceText(),
     readFile(automationProtocolPath, "utf8"),
     readFile(clientAutomationEncryptionPath, "utf8"),
     readFile(clientAutomationSettingsPath, "utf8"),
@@ -2019,7 +2038,7 @@ async function workflowCatalogContentBoundaryAudit() {
   ] = await Promise.all([
     readFile(schemaPath, "utf8"),
     readFile(repositoryPath, "utf8"),
-    readFile(appPath, "utf8"),
+    readApplicationSourceText(),
     readFile(workflowProtocolPath, "utf8"),
     readFile(protocolPath, "utf8"),
     readFile(clientWorkflowApiPath, "utf8"),
@@ -2655,7 +2674,7 @@ async function policyRepositoryBoundaryAudit() {
   const [schemaText, repositoryText, applicationText] = await Promise.all([
     readFile(schemaPath, "utf8"),
     readFile(repositoryPath, "utf8"),
-    readFile(appPath, "utf8"),
+    readApplicationSourceText(),
   ]);
   const failures = [];
   const initializer = tableInitializer(schemaText, "policies");
@@ -2744,11 +2763,13 @@ async function providerSecretRepositoryBoundaryAudit() {
     applicationText,
     workerText,
     clientSecretsText,
-  ] = await Promise.all(
-    [schemaPath, repositoryPath, appPath, workerPath, clientSecretsPath].map(
-      (path) => readFile(path, "utf8"),
-    ),
-  );
+  ] = await Promise.all([
+    readFile(schemaPath, "utf8"),
+    readFile(repositoryPath, "utf8"),
+    readApplicationSourceText(),
+    readFile(workerPath, "utf8"),
+    readFile(clientSecretsPath, "utf8"),
+  ]);
   const failures = [];
   const providerTable = tableInitializer(schemaText, "modelProviders");
   const accountTable = tableInitializer(schemaText, "modelProviderAccounts");
@@ -2895,7 +2916,6 @@ async function workspaceNameRepositoryBoundaryAudit() {
     schema: resolve(serverSourcePath, "db/schema.ts"),
     repository: resolve(serverSourcePath, "db/repository.ts"),
     protocol: protocolPath,
-    application: appPath,
     client: resolve(
       repositoryRoot,
       "cantrip_app/src/lib/workspace-encryption.ts",
@@ -2905,14 +2925,17 @@ async function workspaceNameRepositoryBoundaryAudit() {
       "cantrip_server/drizzle/0133_lame_rocket_racer.sql",
     ),
   };
-  const texts = Object.fromEntries(
-    await Promise.all(
-      Object.entries(paths).map(async ([name, path]) => [
-        name,
-        await readFile(path, "utf8"),
-      ]),
+  const texts = {
+    ...Object.fromEntries(
+      await Promise.all(
+        Object.entries(paths).map(async ([name, path]) => [
+          name,
+          await readFile(path, "utf8"),
+        ]),
+      ),
     ),
-  );
+    application: await readApplicationSourceText(),
+  };
   const failures = [];
   const table = tableInitializer(texts.schema, "projectWorkspaces");
   for (const marker of [
@@ -3002,7 +3025,6 @@ async function tunnelConfigurationBoundaryAudit() {
   const paths = {
     schema: resolve(serverSourcePath, "db/schema.ts"),
     repository: resolve(serverSourcePath, "db/repository.ts"),
-    application: appPath,
     protocol: protocolPath,
     tunnelProtocol: tunnelDataPlaneProtocolPath,
     client: resolve(
@@ -3031,14 +3053,17 @@ async function tunnelConfigurationBoundaryAudit() {
       "cantrip_server/drizzle/0145_closed_quasimodo.sql",
     ),
   };
-  const texts = Object.fromEntries(
-    await Promise.all(
-      Object.entries(paths).map(async ([name, path]) => [
-        name,
-        await readFile(path, "utf8"),
-      ]),
+  const texts = {
+    ...Object.fromEntries(
+      await Promise.all(
+        Object.entries(paths).map(async ([name, path]) => [
+          name,
+          await readFile(path, "utf8"),
+        ]),
+      ),
     ),
-  );
+    application: await readApplicationSourceText(),
+  };
   const failures = [];
   const tunnelTable = tableInitializer(texts.schema, "tunnels");
   const attachmentTable = tableInitializer(texts.schema, "tunnelAttachments");
@@ -3448,7 +3473,6 @@ async function clientControlNotificationBoundaryAudit() {
       "packages/protocol/src/encryption.ts",
     ),
     liveProtocol: liveProtocolPath,
-    server: appPath,
     worker: resolve(
       repositoryRoot,
       "cantrip_worker/src/mcp/client-control-operations.ts",
@@ -3459,21 +3483,24 @@ async function clientControlNotificationBoundaryAudit() {
     ),
     client: resolve(
       repositoryRoot,
-      "cantrip_app/src/components/app/application-shell.tsx",
+      "cantrip_app/src/components/app/shell-navigation.ts",
     ),
     clientEncryption: resolve(
       repositoryRoot,
       "cantrip_app/src/lib/client-control-content-encryption.ts",
     ),
   };
-  const texts = Object.fromEntries(
-    await Promise.all(
-      Object.entries(paths).map(async ([name, path]) => [
-        name,
-        await readFile(path, "utf8"),
-      ]),
+  const texts = {
+    ...Object.fromEntries(
+      await Promise.all(
+        Object.entries(paths).map(async ([name, path]) => [
+          name,
+          await readFile(path, "utf8"),
+        ]),
+      ),
     ),
-  );
+    server: await readApplicationSourceText(),
+  };
   const failures = [];
   for (const marker of [
     "clientNotificationContentSchema",
@@ -3596,21 +3623,23 @@ async function analyticsAuditLogPrivacyBoundaryAudit() {
   const paths = {
     schema: resolve(serverSourcePath, "db/schema.ts"),
     repository: resolve(serverSourcePath, "db/repository.ts"),
-    application: appPath,
     logging: resolve(repositoryRoot, "packages/logging/src/records.ts"),
     rotatingLog: resolve(
       repositoryRoot,
       "packages/logging/src/rotating-jsonl.ts",
     ),
   };
-  const texts = Object.fromEntries(
-    await Promise.all(
-      Object.entries(paths).map(async ([name, path]) => [
-        name,
-        await readFile(path, "utf8"),
-      ]),
+  const texts = {
+    ...Object.fromEntries(
+      await Promise.all(
+        Object.entries(paths).map(async ([name, path]) => [
+          name,
+          await readFile(path, "utf8"),
+        ]),
+      ),
     ),
-  );
+    application: await readApplicationSourceText(),
+  };
   const failures = [];
   const schemaTables = {
     auditEvents: ["ipAddressHash", "userAgentHash", "metadata"],
@@ -3708,7 +3737,6 @@ async function attachmentContentRepositoryBoundaryAudit() {
   const paths = [
     resolve(serverSourcePath, "db/schema.ts"),
     resolve(serverSourcePath, "db/repository.ts"),
-    appPath,
     resolve(serverSourcePath, "chat-imports/executor.ts"),
     resolve(serverSourcePath, "chat-relocations/executor.ts"),
     resolve(serverSourcePath, "chats/execution-helpers.ts"),
@@ -3719,7 +3747,6 @@ async function attachmentContentRepositoryBoundaryAudit() {
   const [
     schemaText,
     repositoryText,
-    applicationText,
     importExecutorText,
     relocationExecutorText,
     chatExecutionHelpersText,
@@ -3727,6 +3754,7 @@ async function attachmentContentRepositoryBoundaryAudit() {
     protocolText,
     workerText,
   ] = await Promise.all(paths.map((path) => readFile(path, "utf8")));
+  const applicationText = await readApplicationSourceText();
   const failures = [];
   const initializer = tableInitializer(schemaText, "chatAttachments");
   if (
@@ -4348,6 +4376,12 @@ function agentOperationContentClassification(operation) {
       rationale: "opaque execution target and worker-local repository state",
     };
   }
+  if (/^web\./u.test(operation)) {
+    return {
+      classification: "worker-local",
+      rationale: "worker-local search, page content, and browser session state",
+    };
+  }
   return {
     classification: "intentionally-public-control-plane",
     rationale: "reviewed operation discovery or client-control contract",
@@ -4827,7 +4861,7 @@ async function repositoryMethodInventory() {
 
 async function buildInventory() {
   const [
-    sourceText,
+    applicationSources,
     schemaText,
     protocolText,
     liveProtocolText,
@@ -4864,7 +4898,7 @@ async function buildInventory() {
     remoteSurfaceStreamDependencies,
     encryptionLedgerClosure,
   ] = await Promise.all([
-    readFile(appPath, "utf8"),
+    applicationSourceCorpus(),
     readFile(schemaPath, "utf8"),
     readFile(protocolPath, "utf8"),
     readFile(liveProtocolPath, "utf8"),
@@ -4901,6 +4935,7 @@ async function buildInventory() {
     remoteSurfaceStreamProductionDependencyAudit(),
     encryptionLedgerClosureAudit(),
   ]);
+  const sourceText = combineApplicationSources(applicationSources);
   const surfacePrivateStateRepository =
     await surfacePrivateStateRepositoryBoundaryAudit(protocolText);
   const surfaceStreamProtocol = surfaceStreamProtocolBoundaryAudit(
@@ -4913,7 +4948,9 @@ async function buildInventory() {
     remoteSurfaceManagerText,
     remoteSurfaceRelayText,
   );
-  const parsedRoutes = parseRoutes(sourceText);
+  const parsedRoutes = applicationSources.flatMap(({ file, sourceText }) =>
+    parseRoutes(sourceText, file),
+  );
   const taskRouteContracts = taskRouteBoundaryAudit(parsedRoutes);
   const privateDisplayLabelRouteContracts =
     privateDisplayLabelRouteBoundaryAudit(parsedRoutes);
@@ -4930,7 +4967,9 @@ async function buildInventory() {
     clientApiText,
     `${workerText}\n${workerRoutingText}`,
   );
-  const routeKeys = parsedRoutes.map(({ method, path }) => `${method} ${path}`);
+  const routeKeys = parsedRoutes.map(
+    ({ method, path, transport }) => `${transport} ${method} ${path}`,
+  );
   const workerCommands = workerCommandLiteralValues(protocolText).sort();
   const liveResources = enumValues(
     liveProtocolText,
@@ -5149,10 +5188,10 @@ async function buildInventory() {
   };
 
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     sources: {
       agentOperations: "packages/protocol/src/index.ts",
-      applicationRoutes: "cantrip_server/src/app.ts",
+      applicationRoutes: applicationSources.map(({ file }) => file),
       clientControlCommands: "packages/protocol/src/live.ts",
       durableTables: "cantrip_server/src/db/schema.ts",
       liveProtocol: "packages/protocol/src/live.ts",

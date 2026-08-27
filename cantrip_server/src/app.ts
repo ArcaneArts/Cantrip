@@ -25839,7 +25839,7 @@ export async function buildApp({
           await bridge.request(
             context.workerId,
             { type: "chat.pause.set", chatId: context.chatId, paused: false },
-            { timeoutMs: null },
+            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
           ),
         );
         if (resumed.paused) {
@@ -25875,7 +25875,7 @@ export async function buildApp({
             .request(
               context.workerId,
               { type: "chat.pause.set", chatId: context.chatId, paused: true },
-              { timeoutMs: null },
+              { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
             )
             .catch(() => undefined);
         }
@@ -25955,7 +25955,7 @@ export async function buildApp({
           await bridge.request(
             context.workerId,
             { type: "chat.pause.set", chatId: context.chatId, paused: true },
-            { timeoutMs: null },
+            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
           ),
         );
         if (!paused.paused) {
@@ -32211,7 +32211,7 @@ export async function buildApp({
               chatId: context.chatId,
               paused: false,
             },
-            { timeoutMs: null },
+            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
           );
         } catch (error) {
           return reply.code(502).send({
@@ -32229,7 +32229,7 @@ export async function buildApp({
               chatId: context.chatId,
               paused: true,
             },
-            { timeoutMs: null },
+            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
           );
         } catch (error) {
           return reply.code(502).send({
@@ -32253,7 +32253,7 @@ export async function buildApp({
                 chatId: context.chatId,
                 paused: !input.data.paused,
               },
-              { timeoutMs: null },
+              { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
             )
             .catch(() => undefined);
         }

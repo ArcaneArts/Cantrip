@@ -2,6 +2,11 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  combineApplicationSources,
+  readApplicationSourceCorpus,
+} from "./application-source-corpus.mjs";
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -9,6 +14,8 @@ const repositoryRoot = path.resolve(
 
 const read = (relativePath) =>
   readFile(path.join(repositoryRoot, relativePath), "utf8");
+const readApplication = async () =>
+  combineApplicationSources(await readApplicationSourceCorpus(repositoryRoot));
 
 const supportedConsumers = [
   {
@@ -103,7 +110,7 @@ const [
 ] = await Promise.all([
   read("cantrip_app/src/lib/api.ts"),
   read("cantrip_app/src/lib/desktop-tunnel.ts"),
-  read("cantrip_server/src/app.ts"),
+  readApplication(),
   read("cantrip_server/src/operations/legacy-feature-transports.ts"),
   read("cantrip_server/src/operations/metrics.ts"),
   read("packages/protocol/src/index.ts"),

@@ -27,6 +27,7 @@
     "cli:test": "cargo test --locked --manifest-path cantrip_cli/Cargo.toml",
     "cli:check": "cargo fmt --manifest-path cantrip_cli/Cargo.toml -- --check && cargo clippy --locked --manifest-path cantrip_cli/Cargo.toml --all-targets -- -D warnings",
     "check:large-files": "node scripts/check-large-files.mjs",
+    "check:app-decomposition": "node scripts/check-app-decomposition.mjs",
     "managed-runtime:searxng:build": "node scripts/managed-runtimes/build-searxng.mjs",
     "managed-runtime:searxng:release": "node scripts/managed-runtimes/release-searxng.mjs",
     "managed-runtime:searxng:test": "node --test scripts/managed-runtimes/*.test.mjs",
@@ -61,7 +62,7 @@
     "build": "pnpm cli:build && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "node --test scripts/*.test.mjs scripts/managed-runtimes/*.test.mjs scripts/cantrip-code/*.test.mjs scripts/cantrip-cli/*.test.mjs && pnpm cli:test && pnpm code:extension:test && pnpm -r --if-present test",
-    "check": "pnpm check:large-files && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm network:acceptance:check && pnpm code:source:verify && pnpm codex:verify && pnpm cli:check && pnpm typecheck && pnpm test && pnpm format:check",
+    "check": "pnpm check:large-files && pnpm check:app-decomposition && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm network:acceptance:check && pnpm code:source:verify && pnpm codex:verify && pnpm cli:check && pnpm typecheck && pnpm test && pnpm format:check",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
