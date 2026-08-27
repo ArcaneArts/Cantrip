@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import {
+  decodeTunnelDataPlaneFrame,
+  encodeTunnelDataPlaneFrame,
+  type TunnelDataPlaneFrameHeader,
+} from "@cantrip/protocol";
 import type {
   InstalledWorkerLinkGrant,
   WorkerLinkFrameHeader,
@@ -12,6 +17,8 @@ import {
   WorkerLinkGateway,
   type WorkerLinkAdapterEmitter,
 } from "./worker-link-gateway.js";
+import type { TunnelDestinationRouter } from "./tunnel-destination-router.js";
+import { TunnelWorkerLinkAdapter } from "./tunnel-worker-link-adapter.js";
 
 const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const serverGeneration = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -751,6 +758,507 @@ describe("WorkerLinkGateway", () => {
       kind: "close",
       code: "protocol-error",
     });
+    expect(gateway.stats().channels).toBe(0);
+    await gateway.close();
+  });
+
+  it("coalesces carrier wakeups without spending credit or sequence on rejection", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const payload = new Uint8Array(64 * 1_024);
+    const attempts: WorkerLinkFrameHeader[] = [];
+    let emit!: WorkerLinkAdapterEmitter;
+    let carrierAvailable = false;
+    let releaseCarrier!: (available: boolean) => void;
+    const carrierCapacity = new Promise<boolean>((resolve) => {
+      releaseCarrier = resolve;
+    });
+    let releaseSecondCarrier!: (available: boolean) => void;
+    const secondCarrierCapacity = new Promise<boolean>((resolve) => {
+      releaseSecondCarrier = resolve;
+    });
+    const waitForCapacity = vi.fn(() =>
+      waitForCapacity.mock.calls.length === 1
+        ? carrierCapacity
+        : secondCarrierCapacity,
+    );
+    const wakeResults: boolean[] = [];
+    const carrierWritable = vi.fn(() => {
+      wakeResults.push(emit.data(payload));
+    });
+    const respond = Object.assign(
+      (header: WorkerLinkFrameHeader) => {
+        if (header.kind !== "data") return true;
+        attempts.push(header);
+        return carrierAvailable;
+      },
+      { waitForCapacity },
+    );
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "terminal",
+      open: ({ emit: openedEmitter }) => {
+        emit = openedEmitter;
+        return { carrierWritable };
+      },
+    });
+    await install(gateway, fixture);
+    await expect(
+      gateway.handleFrame(fixture.open, new Uint8Array(), respond),
+    ).resolves.toBe(true);
+
+    expect(emit.data(payload)).toBe(false);
+    expect(emit.data(payload)).toBe(false);
+    await vi.waitFor(() => expect(waitForCapacity).toHaveBeenCalledTimes(1));
+
+    releaseCarrier(true);
+    await vi.waitFor(() => expect(waitForCapacity).toHaveBeenCalledTimes(2));
+    expect(wakeResults).toEqual([false]);
+    carrierAvailable = true;
+    releaseSecondCarrier(true);
+    await vi.waitFor(() => expect(carrierWritable).toHaveBeenCalledTimes(2));
+    expect(wakeResults).toEqual([false, true]);
+    expect(attempts.slice(0, 4).map(({ sequence }) => sequence)).toEqual([
+      1, 1, 1, 1,
+    ]);
+
+    expect(emit.data(payload)).toBe(true);
+    expect(emit.data(payload)).toBe(true);
+    expect(emit.data(payload)).toBe(true);
+    expect(emit.data(new Uint8Array([1]))).toBe(false);
+    expect(waitForCapacity).toHaveBeenCalledTimes(2);
+    expect(attempts.slice(3).map(({ sequence }) => sequence)).toEqual([
+      1, 2, 3, 4,
+    ]);
+    await gateway.close();
+  });
+
+  it("retries rejected credit controls exactly before waking adapter output", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const creditAttempts: Array<
+      Extract<WorkerLinkFrameHeader, { kind: "credit" }>
+    > = [];
+    const write = vi.fn();
+    const carrierWritable = vi.fn();
+    let carrierAvailable = false;
+    let releaseCarrier!: (available: boolean) => void;
+    const capacity = new Promise<boolean>((resolve) => {
+      releaseCarrier = resolve;
+    });
+    const waitForCapacity = vi.fn(() => capacity);
+    const respond = Object.assign(
+      (header: WorkerLinkFrameHeader) => {
+        if (header.kind !== "credit") return true;
+        creditAttempts.push(header);
+        return carrierAvailable;
+      },
+      { waitForCapacity },
+    );
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "terminal",
+      open: () => ({ carrierWritable, write }),
+    });
+    await install(gateway, fixture);
+    await expect(
+      gateway.handleFrame(fixture.open, new Uint8Array(), respond),
+    ).resolves.toBe(true);
+
+    for (const [sequence, payload] of [
+      [1, new Uint8Array([1, 2, 3])],
+      [2, new Uint8Array([4, 5])],
+    ] as const) {
+      await expect(
+        gateway.handleFrame(
+          {
+            protocolVersion: 1,
+            sessionId,
+            routeGeneration: 1,
+            effectiveRoute: "local",
+            channel: fixture.open.channel,
+            lane: "interactive",
+            sequence,
+            kind: "data",
+            direction: "client-to-worker",
+            payloadFormat: "raw",
+          },
+          payload,
+          respond,
+        ),
+      ).resolves.toBe(true);
+    }
+    await vi.waitFor(() => expect(waitForCapacity).toHaveBeenCalledTimes(1));
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(creditAttempts).toEqual([
+      expect.objectContaining({ bytes: 3, sequence: 1 }),
+    ]);
+
+    carrierAvailable = true;
+    releaseCarrier(true);
+    await vi.waitFor(() => expect(carrierWritable).toHaveBeenCalledTimes(1));
+    expect(
+      creditAttempts.map(({ bytes, sequence }) => ({ bytes, sequence })),
+    ).toEqual([
+      { bytes: 3, sequence: 1 },
+      { bytes: 3, sequence: 1 },
+      { bytes: 2, sequence: 2 },
+    ]);
+    await gateway.close();
+  });
+
+  it("does not authorize input from credit queued behind carrier congestion", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    fixture.open = { ...fixture.open, initialCreditBytes: 3 };
+    const write = vi.fn();
+    const responses: WorkerLinkFrameHeader[] = [];
+    const capacity = new Promise<boolean>(() => undefined);
+    const respond = Object.assign(
+      (header: WorkerLinkFrameHeader) => {
+        responses.push(header);
+        return header.kind !== "credit";
+      },
+      { waitForCapacity: vi.fn(() => capacity) },
+    );
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "terminal",
+      open: () => ({ write }),
+    });
+    await install(gateway, fixture);
+    await gateway.handleFrame(fixture.open, new Uint8Array(), respond);
+
+    await expect(
+      gateway.handleFrame(
+        {
+          protocolVersion: 1,
+          sessionId,
+          routeGeneration: 1,
+          effectiveRoute: "local",
+          channel: fixture.open.channel,
+          lane: "interactive",
+          sequence: 1,
+          kind: "data",
+          direction: "client-to-worker",
+          payloadFormat: "raw",
+        },
+        new Uint8Array([1, 2, 3]),
+        respond,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      gateway.handleFrame(
+        {
+          protocolVersion: 1,
+          sessionId,
+          routeGeneration: 1,
+          effectiveRoute: "local",
+          channel: fixture.open.channel,
+          lane: "interactive",
+          sequence: 2,
+          kind: "data",
+          direction: "client-to-worker",
+          payloadFormat: "raw",
+        },
+        new Uint8Array([4]),
+        respond,
+      ),
+    ).resolves.toBe(false);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(responses.map(({ kind }) => kind)).toEqual([
+      "accept",
+      "credit",
+      "close",
+    ]);
+    await gateway.close();
+  });
+
+  it("cancels a blocked accept before a sequence-zero rejection", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const attempts: WorkerLinkFrameHeader[] = [];
+    let releaseCapacity!: (available: boolean) => void;
+    const capacity = new Promise<boolean>((resolve) => {
+      releaseCapacity = resolve;
+    });
+    const respond = Object.assign(
+      (header: WorkerLinkFrameHeader) => {
+        attempts.push(header);
+        return header.kind === "reject";
+      },
+      { waitForCapacity: vi.fn(() => capacity) },
+    );
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({ kind: "terminal", open: () => ({}) });
+    await install(gateway, fixture);
+
+    const opening = gateway.handleFrame(
+      fixture.open,
+      new Uint8Array(),
+      respond,
+    );
+    await vi.waitFor(() =>
+      expect(respond.waitForCapacity).toHaveBeenCalledTimes(1),
+    );
+    await expect(gateway.closeChannel(channelId, "revoked")).resolves.toBe(
+      true,
+    );
+    await expect(opening).resolves.toBe(false);
+    releaseCapacity(true);
+    await Promise.resolve();
+    expect(attempts.map(({ kind, sequence }) => ({ kind, sequence }))).toEqual([
+      { kind: "accept", sequence: 0 },
+      { kind: "reject", sequence: 0 },
+    ]);
+    await gateway.close();
+  });
+
+  it("does not emit stale credit when a channel closes during adapter write", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const responses: WorkerLinkFrameHeader[] = [];
+    let finishWrite!: () => void;
+    const writing = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    const write = vi.fn(() => writing);
+    const respond = (header: WorkerLinkFrameHeader) => {
+      responses.push(header);
+      return true;
+    };
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "terminal",
+      open: () => ({ write }),
+    });
+    await install(gateway, fixture);
+    await gateway.handleFrame(fixture.open, new Uint8Array(), respond);
+
+    const handling = gateway.handleFrame(
+      {
+        protocolVersion: 1,
+        sessionId,
+        routeGeneration: 1,
+        effectiveRoute: "local",
+        channel: fixture.open.channel,
+        lane: "interactive",
+        sequence: 1,
+        kind: "data",
+        direction: "client-to-worker",
+        payloadFormat: "raw",
+      },
+      new Uint8Array([1, 2, 3]),
+      respond,
+    );
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    await gateway.closeChannel(channelId, "revoked");
+    finishWrite();
+    await expect(handling).resolves.toBe(true);
+    expect(responses.map(({ kind, sequence }) => ({ kind, sequence }))).toEqual(
+      [
+        { kind: "accept", sequence: 0 },
+        { kind: "close", sequence: 1 },
+      ],
+    );
+    await gateway.close();
+  });
+
+  it("drains four exact 64 KiB nested tunnel frames through one outer credit window", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const tunnelId = "66666666-6666-4666-8666-666666666666";
+    const attachmentId = "attachment-1";
+    const binding: WorkerLinkResourceGrant["binding"] = {
+      ...fixture.grant.binding,
+      resource: { kind: "tunnel", resourceId: tunnelId, attachmentId },
+      lanes: ["stream"],
+      maxChannels: 1,
+    };
+    fixture.grant = { binding, token };
+    fixture.installed = {
+      binding,
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+    };
+    fixture.open = {
+      ...fixture.open,
+      grant: fixture.grant,
+      lane: "stream",
+    };
+    const destinations = {
+      handleFrame: vi.fn(),
+      revokeAttachment: vi.fn(() => 1),
+    };
+    const tunnel = new TunnelWorkerLinkAdapter(
+      destinations as unknown as TunnelDestinationRouter,
+    );
+    const responses: Array<{
+      header: WorkerLinkFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    const respond = (header: WorkerLinkFrameHeader, payload: Uint8Array) => {
+      responses.push({ header, payload: payload.slice() });
+      return true;
+    };
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter(tunnel);
+    await install(gateway, fixture);
+    await expect(
+      gateway.handleFrame(fixture.open, new Uint8Array(), respond),
+    ).resolves.toBe(true);
+
+    const encodedFrames: Uint8Array[] = [];
+    for (let sequence = 0; sequence < 5; sequence += 1) {
+      const header: TunnelDataPlaneFrameHeader = {
+        protocolVersion: 1,
+        tunnelId,
+        attachmentId,
+        sourceEndpointId: `worker-link-client:${grantId}`,
+        destinationEndpointId: "worker-link-worker:worker-1",
+        connectionId: "nested-connection-1",
+        sequence,
+        kind: "data",
+        direction: "destination-to-source",
+      };
+      const overhead =
+        encodeTunnelDataPlaneFrame(header, new Uint8Array([1])).byteLength - 1;
+      const payload = new Uint8Array(64 * 1_024 - overhead).fill(sequence + 1);
+      encodedFrames.push(encodeTunnelDataPlaneFrame(header, payload));
+    }
+    expect(encodedFrames.map(({ byteLength }) => byteLength)).toEqual(
+      Array(5).fill(64 * 1_024),
+    );
+
+    for (const encoded of encodedFrames.slice(0, 4)) {
+      const nested = decodeTunnelDataPlaneFrame(encoded);
+      expect(tunnel.routeFrame(nested.header, nested.payload)).toBe(true);
+    }
+    expect(
+      responses
+        .filter(({ header }) => header.kind === "data")
+        .map(({ header, payload }) => ({
+          sequence: header.sequence,
+          payloadFormat:
+            header.kind === "data" ? header.payloadFormat : undefined,
+          payload,
+        })),
+    ).toEqual(
+      encodedFrames.slice(0, 4).map((payload, index) => ({
+        sequence: index + 1,
+        payloadFormat: "tunnel-data-plane-v1",
+        payload,
+      })),
+    );
+
+    const fifth = decodeTunnelDataPlaneFrame(encodedFrames[4]!);
+    expect(tunnel.routeFrame(fifth.header, fifth.payload)).toBe(false);
+    const protocolCapacity = tunnel.waitForCapacity(attachmentId)!;
+    let settled = false;
+    void protocolCapacity.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await gateway.handleFrame(
+      {
+        protocolVersion: 1,
+        sessionId,
+        routeGeneration: 1,
+        effectiveRoute: "local",
+        channel: fixture.open.channel,
+        lane: "stream",
+        sequence: 1,
+        kind: "credit",
+        direction: "worker-to-client",
+        bytes: encodedFrames[4]!.byteLength,
+      },
+      new Uint8Array(),
+      respond,
+    );
+    await expect(protocolCapacity).resolves.toBe(true);
+    expect(tunnel.routeFrame(fifth.header, fifth.payload)).toBe(true);
+    expect(
+      responses.filter(({ header }) => header.kind === "data").at(-1),
+    ).toEqual({
+      header: expect.objectContaining({ kind: "data", sequence: 5 }),
+      payload: encodedFrames[4],
+    });
+    await gateway.close();
+  });
+
+  it("closes a blocked channel when its carrier cannot become writable", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    let emit!: WorkerLinkAdapterEmitter;
+    const close = vi.fn();
+    const respond = Object.assign(
+      (header: WorkerLinkFrameHeader) => header.kind !== "data",
+      { waitForCapacity: vi.fn(async () => false) },
+    );
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "terminal",
+      open: ({ emit: openedEmitter }) => {
+        emit = openedEmitter;
+        return { close };
+      },
+    });
+    await install(gateway, fixture);
+    await gateway.handleFrame(fixture.open, new Uint8Array(), respond);
+
+    expect(emit.data(new Uint8Array([1]))).toBe(false);
+    await vi.waitFor(() =>
+      expect(close).toHaveBeenCalledWith("endpoint-disconnected"),
+    );
     expect(gateway.stats().channels).toBe(0);
     await gateway.close();
   });

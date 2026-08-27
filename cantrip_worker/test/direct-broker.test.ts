@@ -13,6 +13,7 @@ import WebSocket from "ws";
 
 import { DirectBroker } from "../src/direct-broker.js";
 import { subscribeWorkerLogs } from "../src/logger.js";
+import type { WorkerLinkFrameResponder } from "../src/worker-link-gateway.js";
 
 const brokers: DirectBroker[] = [];
 const subscriptions: Array<() => void> = [];
@@ -219,6 +220,133 @@ describe("DirectBroker", () => {
 
     await expect(closed).resolves.toBe(1003);
     expect(handled).not.toHaveBeenCalled();
+  });
+
+  it("coalesces direct WorkerLink high-water waits across drain and close", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+    const sessionId = randomUUID();
+    const grant = {
+      ...binding(),
+      resourceKind: "worker-link" as const,
+      resourceId: sessionId,
+      attachmentId: sessionId,
+      channels: ["worker-link"],
+    };
+    let respond: WorkerLinkFrameResponder | null = null;
+    const disconnected = vi.fn();
+    broker.setWorkerLinkFrameHandler((_header, _payload, candidate) => {
+      respond = candidate;
+      return true;
+    }, disconnected);
+    const socket = await activate(
+      broker,
+      advertisement.loopbackPort,
+      grant,
+      randomBytes(32).toString("base64url"),
+    );
+    const lease = {
+      issuedAt: new Date().toISOString(),
+      expiresAt: grant.expiresAt,
+      absoluteExpiresAt: grant.leaseExpiresAt,
+    };
+    const open: WorkerLinkFrameHeader = {
+      protocolVersion: 1,
+      sessionId,
+      routeGeneration: 1,
+      effectiveRoute: "local",
+      channel: { channelId: randomUUID(), connectionId: randomUUID() },
+      lane: "stream",
+      sequence: 0,
+      kind: "open",
+      openNonce: randomUUID(),
+      channelKind: "reliable-stream",
+      grant: {
+        binding: {
+          grantId: randomUUID(),
+          grantGeneration: 1,
+          sessionId,
+          identity: {
+            serverId: "server-1",
+            serverGeneration: "server-generation-1",
+            ownerId: grant.ownerId,
+            accountSessionId: grant.authSessionId,
+            clientInstanceId: "client-instance-1",
+            workerId: grant.workerId,
+            workerProcessGeneration: "worker-generation-1",
+          },
+          resource: {
+            kind: "tunnel",
+            resourceId: "tunnel-1",
+            attachmentId: grant.attachmentId,
+          },
+          lanes: ["stream"],
+          operations: ["stream:open", "stream:read"],
+          maxChannels: 1,
+          lease,
+        },
+        token: "a".repeat(43),
+      },
+      initialCreditBytes: 256 * 1_024,
+    };
+    socket.send(encodeWorkerLinkFrame(open, new Uint8Array()));
+    await vi.waitFor(() => expect(respond).not.toBeNull());
+
+    const activeRespond = respond as unknown as WorkerLinkFrameResponder;
+    const rawSocket = (
+      socket as unknown as {
+        _socket: { pause(): void; resume(): void };
+      }
+    )._socket;
+    const outboundPayload = new Uint8Array(64 * 1_024);
+    let sequence = 1;
+    const saturate = () => {
+      rawSocket.pause();
+      let accepted = true;
+      for (let attempt = 0; attempt < 1_024 && accepted; attempt += 1) {
+        accepted = activeRespond(
+          {
+            protocolVersion: 1,
+            sessionId,
+            routeGeneration: 1,
+            effectiveRoute: "local",
+            channel: open.channel,
+            lane: "stream",
+            sequence: sequence++,
+            kind: "data",
+            direction: "worker-to-client",
+            payloadFormat: "raw",
+          },
+          outboundPayload,
+        );
+      }
+      expect(accepted).toBe(false);
+    };
+
+    saturate();
+    const first = activeRespond.waitForCapacity!("stream");
+    const second = activeRespond.waitForCapacity!("stream");
+    expect(second).toBe(first);
+    let drained = false;
+    void first.then(() => {
+      drained = true;
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(drained).toBe(false);
+    rawSocket.resume();
+    await expect(first).resolves.toBe(true);
+
+    saturate();
+    const interrupted = activeRespond.waitForCapacity!("stream");
+    const closed = new Promise<void>((resolve) =>
+      socket.once("close", () => resolve()),
+    );
+    socket.terminate();
+    await closed;
+    await vi.waitFor(() => expect(disconnected).toHaveBeenCalled());
+    await expect(interrupted).resolves.toBe(false);
   });
 
   it("does not resurrect an active capability after its current lease expires", async () => {

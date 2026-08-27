@@ -27,6 +27,7 @@ import {
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import { workerLogErrorIdentity, workerLogger } from "./logger.js";
+import type { WorkerLinkFrameResponder } from "./worker-link-gateway.js";
 
 type PrepareCommand = Extract<
   WorkerCommand,
@@ -49,6 +50,7 @@ interface ActiveSession {
   socket: WebSocket;
   timer: ReturnType<typeof setTimeout>;
   tunnelRoute: NonNullable<PrepareCommand["tunnelRoute"]> | null;
+  workerLinkCapacityWait: Promise<boolean> | null;
   workerLinkRespond: WorkerLinkFrameResponder;
 }
 
@@ -67,10 +69,6 @@ type TunnelTargetResolver = (
   target: TunnelDataPlaneTarget,
 ) => Promise<TunnelDataPlaneTarget>;
 type CapabilityRevoker = (capabilityId: string, reason: string) => void;
-type WorkerLinkFrameResponder = (
-  header: WorkerLinkFrameHeader,
-  payload: Uint8Array,
-) => boolean;
 type WorkerLinkFrameHandler = (
   header: WorkerLinkFrameHeader,
   payload: Uint8Array,
@@ -422,6 +420,7 @@ export class DirectBroker {
       // unrelated workbench HTTP and WebSocket stream sharing it.
       return true;
     } catch (error) {
+      active.socket.terminate();
       workerLogger.event("warn", "Direct tunnel response was not routed", {
         event: "direct.frame.return-failed",
         subsystem: "direct-broker",
@@ -452,6 +451,29 @@ export class DirectBroker {
       await new Promise<void>((resolve) => setTimeout(resolve, 5));
     }
     return false;
+  }
+
+  #waitForWorkerLinkCapacity(active: ActiveSession): Promise<boolean> {
+    if (active.workerLinkCapacityWait) return active.workerLinkCapacityWait;
+    const waiting = (async () => {
+      while (
+        this.#active.get(active.binding.capabilityId) === active &&
+        active.socket.readyState === WebSocket.OPEN
+      ) {
+        if (active.socket.bufferedAmount <= TUNNEL_LOW_WATER_BYTES) {
+          return true;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      }
+      return false;
+    })();
+    active.workerLinkCapacityWait = waiting;
+    void waiting.then(() => {
+      if (active.workerLinkCapacityWait === waiting) {
+        active.workerLinkCapacityWait = null;
+      }
+    });
+    return waiting;
   }
 
   async close(): Promise<void> {
@@ -513,15 +535,9 @@ export class DirectBroker {
         this.#prepared.delete(initialize.binding.capabilityId);
         initialized = true;
         const leaseExpiry = Date.parse(capability.binding.leaseExpiresAt);
-        const active: ActiveSession = {
-          acceptanceDiagnosticEmitted: false,
-          binding: capability.binding,
-          connections: new Map(),
-          diagnosticTraceId: capability.diagnosticTraceId,
-          socket,
-          timer: this.#leaseTimer(capability.binding.capabilityId, leaseExpiry),
-          tunnelRoute: capability.tunnelRoute,
-          workerLinkRespond: (header, payload) => {
+        let active: ActiveSession;
+        const workerLinkRespond: WorkerLinkFrameResponder = Object.assign(
+          (header: WorkerLinkFrameHeader, payload: Uint8Array) => {
             if (
               this.#active.get(capability.binding.capabilityId)?.socket !==
                 socket ||
@@ -536,9 +552,24 @@ export class DirectBroker {
               });
               return true;
             } catch {
+              socket.terminate();
               return false;
             }
           },
+          {
+            waitForCapacity: () => this.#waitForWorkerLinkCapacity(active),
+          },
+        );
+        active = {
+          acceptanceDiagnosticEmitted: false,
+          binding: capability.binding,
+          connections: new Map(),
+          diagnosticTraceId: capability.diagnosticTraceId,
+          socket,
+          timer: this.#leaseTimer(capability.binding.capabilityId, leaseExpiry),
+          tunnelRoute: capability.tunnelRoute,
+          workerLinkCapacityWait: null,
+          workerLinkRespond,
         };
         this.#active.set(capability.binding.capabilityId, active);
         workerLogger.event("info", "Direct capability connected", {

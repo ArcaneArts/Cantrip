@@ -264,6 +264,44 @@ export const featureMatrix = [
     ],
   },
   {
+    id: "worker-link-byte-window-drain",
+    evidence: [
+      evidence(
+        "cantrip_worker/src/worker-link-gateway.test.ts",
+        "coalesces carrier wakeups without spending credit or sequence on rejection",
+        "retries rejected credit controls exactly before waking adapter output",
+        "does not authorize input from credit queued behind carrier congestion",
+        "cancels a blocked accept before a sequence-zero rejection",
+        "does not emit stale credit when a channel closes during adapter write",
+        "drains four exact 64 KiB nested tunnel frames through one outer credit window",
+      ),
+      evidence(
+        "cantrip_worker/test/direct-broker.test.ts",
+        "coalesces direct WorkerLink high-water waits across drain and close",
+      ),
+      evidence(
+        "cantrip_worker/test/tunnel-data-transport.test.ts",
+        "coalesces WorkerLink capacity waits through reconnect grace",
+      ),
+      evidence(
+        "cantrip_worker/src/worker-link-webrtc.test.ts",
+        "coalesces lane low-water waits and resolves them on capacity or close",
+        "fails a capacity wait for a frame that cannot fit legal lane ceilings",
+      ),
+      evidence(
+        "cantrip_worker/test/tunnel-tcp-adapter.test.ts",
+        "relays binary echo and preserves TCP half-close",
+        "retains and retries nested credit when the outer carrier is congested",
+        "interleaves sustained sibling streams within the shared byte window",
+        "allows exactly the pending-output cap and closes at one byte over",
+        "keeps destination reads paused while queued output has no byte credit",
+        "drains the initial byte window without a carrier round trip per frame",
+        "relays a fast 16 MiB response in order while WebSocket capacity is delayed",
+        "retains and retries an output frame rejected by shared channel congestion",
+      ),
+    ],
+  },
+  {
     id: "browser-remote-surface",
     evidence: [
       evidence(
@@ -434,6 +472,8 @@ export const targetedTests = {
     "src/worker-link-webrtc.test.ts",
     "src/terminal-worker-link-adapter.test.ts",
     "src/tunnel-worker-link-adapter.test.ts",
+    "test/direct-broker.test.ts",
+    "test/tunnel-data-transport.test.ts",
     "test/tunnel-tcp-adapter.test.ts",
     "src/remote-surface-worker-link-adapter.test.ts",
     "src/worker-observation-worker-link-adapter.test.ts",

@@ -55,6 +55,17 @@ interface LaneRateState {
   windowStartedAt: number;
 }
 
+interface LaneCapacityBlock {
+  buffered: boolean;
+  rateLimited: boolean;
+  requiredBytes: number;
+}
+
+interface ChannelCapacityWait {
+  promise: Promise<boolean>;
+  resolve(available: boolean): void;
+}
+
 export function createWorkerLinkWebRtcTransportFactory(
   gateway: WorkerLinkWebRtcTransportFactoryOptions,
 ): WorkerLinkPeerTransportFactory {
@@ -77,6 +88,15 @@ class WorkerLinkWebRtcTransport implements WorkerLinkPeerTransport {
   readonly #peerSession: WorkerLinkPeerSession;
   readonly #rate = new Map<WorkerLinkQosLane, LaneRateState>();
   readonly #respond: WorkerLinkFrameResponder;
+  readonly #capacityBlocks = new Map<
+    WorkerLinkQosLane,
+    Map<string, LaneCapacityBlock>
+  >();
+  readonly #capacityPolls = new Map<WorkerLinkQosLane, Promise<void>>();
+  readonly #capacityWaits = new Map<
+    WorkerLinkQosLane,
+    Map<string, ChannelCapacityWait>
+  >();
   readonly #transportInput: Parameters<
     WorkerLinkPeerTransportFactory["open"]
   >[0];
@@ -90,7 +110,14 @@ class WorkerLinkWebRtcTransport implements WorkerLinkPeerTransport {
     this.#peerSession = input.peerSession;
     this.#configuration = input.configuration;
     this.#interfaces = interfaceBindings(input.configuration);
-    this.#respond = (header, payload) => this.#send(header, payload);
+    this.#respond = Object.assign(
+      (header: WorkerLinkFrameHeader, payload: Uint8Array) =>
+        this.#send(header, payload),
+      {
+        waitForCapacity: (lane: WorkerLinkQosLane, channelId?: string) =>
+          this.#waitForCapacity(lane, channelId),
+      },
+    );
     const createPeerConnection =
       gateway.createPeerConnection ??
       ((configuration: ConstructorParameters<typeof RTCPeerConnection>[0]) =>
@@ -210,6 +237,7 @@ class WorkerLinkWebRtcTransport implements WorkerLinkPeerTransport {
   async close(reason: string): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    this.#settleAllCapacity(false);
     this.#control?.close();
     for (const channel of this.#lanes.values()) channel.close();
     await this.#peer.close();
@@ -321,25 +349,192 @@ class WorkerLinkWebRtcTransport implements WorkerLinkPeerTransport {
     const channel = this.#lanes.get(header.lane);
     const limits = this.#configuration.laneLimits[header.lane];
     const frame = encodeWorkerLinkFrame(header, payload);
+    if (!channel || channel.readyState !== "open") {
+      return false;
+    }
+    if (channel.bufferedAmount + frame.byteLength > limits.maxQueuedBytes) {
+      this.#blockCapacity(header.lane, header.channel.channelId, {
+        buffered: true,
+        rateLimited: false,
+        requiredBytes: frame.byteLength,
+      });
+      return false;
+    }
     if (
-      !channel ||
-      channel.readyState !== "open" ||
-      channel.bufferedAmount + frame.byteLength > limits.maxQueuedBytes ||
       !this.#consumeRate(
         header.lane,
         frame.byteLength,
         limits.maxBytesPerSecond,
       )
     ) {
+      this.#blockCapacity(header.lane, header.channel.channelId, {
+        buffered: false,
+        rateLimited: true,
+        requiredBytes: frame.byteLength,
+      });
       return false;
     }
     try {
       channel.send(Buffer.from(frame));
+      if (header.kind === "close" || header.kind === "reject") {
+        this.#settleChannelCapacity(
+          header.lane,
+          header.channel.channelId,
+          false,
+        );
+      }
       return true;
     } catch {
       void this.close("peer-send-failed");
       return false;
     }
+  }
+
+  #waitForCapacity(
+    lane: WorkerLinkQosLane,
+    channelId?: string,
+  ): Promise<boolean> {
+    const channel = this.#lanes.get(lane);
+    if (
+      this.#closed ||
+      !this.#authenticated ||
+      !channel ||
+      channel.readyState !== "open"
+    ) {
+      return Promise.resolve(false);
+    }
+    const blocks = this.#capacityBlocks.get(lane);
+    const resolvedChannelId =
+      channelId ??
+      (blocks?.size === 1 ? blocks.keys().next().value : undefined);
+    if (!resolvedChannelId) return Promise.resolve(false);
+    const blocked = blocks?.get(resolvedChannelId);
+    // This method is only called after #send rejected a frame. Every
+    // retryable peer rejection records a channel-scoped block first, so a
+    // missing block is a permanent/stale failure rather than fresh capacity.
+    if (!blocked) return Promise.resolve(false);
+    const limits = this.#configuration.laneLimits[lane];
+    if (
+      blocked.requiredBytes > limits.maxQueuedBytes ||
+      blocked.requiredBytes > limits.maxBytesPerSecond
+    ) {
+      this.#settleChannelCapacity(lane, resolvedChannelId, false);
+      return Promise.resolve(false);
+    }
+    const waits = this.#capacityWaits.get(lane) ?? new Map();
+    this.#capacityWaits.set(lane, waits);
+    const existing = waits.get(resolvedChannelId);
+    if (existing) return existing.promise;
+    let resolve!: (available: boolean) => void;
+    const promise = new Promise<boolean>((settle) => {
+      resolve = settle;
+    });
+    waits.set(resolvedChannelId, { promise, resolve });
+    this.#ensureCapacityPoll(lane);
+    return promise;
+  }
+
+  #ensureCapacityPoll(lane: WorkerLinkQosLane): void {
+    if (this.#capacityPolls.has(lane)) return;
+    let polling!: Promise<void>;
+    polling = (async () => {
+      while (!this.#closed && this.#authenticated) {
+        const channel = this.#lanes.get(lane);
+        if (!channel || channel.readyState !== "open") {
+          this.#settleLaneCapacity(lane, false);
+          return;
+        }
+        const blocks = this.#capacityBlocks.get(lane);
+        if (!blocks || blocks.size === 0) return;
+        const limits = this.#configuration.laneLimits[lane];
+        const rate = this.#rate.get(lane);
+        for (const [channelId, blocked] of [...blocks]) {
+          if (
+            blocked.requiredBytes > limits.maxQueuedBytes ||
+            blocked.requiredBytes > limits.maxBytesPerSecond
+          ) {
+            this.#settleChannelCapacity(lane, channelId, false);
+            continue;
+          }
+          const bufferedReady =
+            !blocked.buffered ||
+            (channel.bufferedAmount <= Math.floor(limits.maxQueuedBytes / 2) &&
+              channel.bufferedAmount + blocked.requiredBytes <=
+                limits.maxQueuedBytes);
+          const rateReady =
+            !blocked.rateLimited ||
+            !rate ||
+            performance.now() - rate.windowStartedAt >= 1_000 ||
+            rate.bytes + blocked.requiredBytes <= limits.maxBytesPerSecond;
+          if (bufferedReady && rateReady) {
+            this.#settleChannelCapacity(lane, channelId, true);
+          }
+        }
+        if (!this.#capacityBlocks.has(lane)) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      }
+      this.#settleLaneCapacity(lane, false);
+    })().finally(() => {
+      if (this.#capacityPolls.get(lane) !== polling) return;
+      this.#capacityPolls.delete(lane);
+      if (this.#capacityWaits.get(lane)?.size) {
+        this.#ensureCapacityPoll(lane);
+      }
+    });
+    this.#capacityPolls.set(lane, polling);
+  }
+
+  #settleChannelCapacity(
+    lane: WorkerLinkQosLane,
+    channelId: string,
+    available: boolean,
+  ): void {
+    const blocks = this.#capacityBlocks.get(lane);
+    blocks?.delete(channelId);
+    if (blocks?.size === 0) this.#capacityBlocks.delete(lane);
+    const waits = this.#capacityWaits.get(lane);
+    const waiting = waits?.get(channelId);
+    waits?.delete(channelId);
+    if (waits?.size === 0) this.#capacityWaits.delete(lane);
+    waiting?.resolve(available);
+  }
+
+  #settleLaneCapacity(lane: WorkerLinkQosLane, available: boolean): void {
+    const channelIds = new Set([
+      ...(this.#capacityBlocks.get(lane)?.keys() ?? []),
+      ...(this.#capacityWaits.get(lane)?.keys() ?? []),
+    ]);
+    for (const channelId of channelIds) {
+      this.#settleChannelCapacity(lane, channelId, available);
+    }
+  }
+
+  #settleAllCapacity(available: boolean): void {
+    const lanes = new Set([
+      ...this.#capacityBlocks.keys(),
+      ...this.#capacityWaits.keys(),
+    ]);
+    for (const lane of lanes) this.#settleLaneCapacity(lane, available);
+  }
+
+  #blockCapacity(
+    lane: WorkerLinkQosLane,
+    channelId: string,
+    block: LaneCapacityBlock,
+  ): void {
+    const blocks = this.#capacityBlocks.get(lane) ?? new Map();
+    this.#capacityBlocks.set(lane, blocks);
+    const current = blocks.get(channelId);
+    blocks.set(
+      channelId,
+      current
+        ? {
+            buffered: current.buffered || block.buffered,
+            rateLimited: current.rateLimited || block.rateLimited,
+            requiredBytes: Math.max(current.requiredBytes, block.requiredBytes),
+          }
+        : block,
+    );
   }
 
   #candidateAllowed(candidate: WorkerLinkPeerCandidate, local = true): boolean {

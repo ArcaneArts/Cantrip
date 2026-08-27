@@ -45,6 +45,7 @@ test("Tranche Two feature matrix covers every migrated fabric consumer", () => {
     "remote-desktop",
     "stale-route-generation",
     "terminal",
+    "worker-link-byte-window-drain",
   ]);
 });
 

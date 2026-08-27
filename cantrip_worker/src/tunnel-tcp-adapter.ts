@@ -14,6 +14,11 @@ type FrameEmitter = (
 ) => boolean;
 type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 type ConnectionObserver = (localPort: number) => void;
+type SocketConnector = (options: {
+  allowHalfOpen: boolean;
+  host: string;
+  port: number;
+}) => Socket;
 
 interface TcpStream {
   destinationHalfClosed: boolean;
@@ -25,7 +30,9 @@ interface TcpStream {
   outputSequence: number;
   pendingBytes: number;
   pendingOutput: Uint8Array[];
+  pendingSourceCreditBytes: number;
   pausedForOutput: boolean;
+  rejectedOutputSequence: number | null;
   socket: Socket;
   sourceHalfClosed: boolean;
   startedAtMs: number;
@@ -36,6 +43,7 @@ const INITIAL_CREDIT_BYTES = 256 * 1_024;
 const CONNECT_TIMEOUT_MS = 15_000;
 const MAX_STREAMS = 256;
 const MAX_SOCKET_BUFFER_BYTES = 1 * 1_024 * 1_024;
+const MAX_OUTPUT_FRAMES_PER_TURN = 1;
 
 function key(header: TunnelDataPlaneFrameHeader): string {
   return `${header.tunnelId}\0${header.attachmentId}\0${header.connectionId}`;
@@ -50,6 +58,33 @@ function responseBase(stream: TcpStream) {
     destinationEndpointId: stream.header.destinationEndpointId,
     connectionId: stream.header.connectionId,
     sequence: stream.outputSequence++,
+  };
+}
+
+function terminalResponseBase(stream: TcpStream, sequence?: number) {
+  if (sequence !== undefined) {
+    stream.rejectedOutputSequence = null;
+    return {
+      protocolVersion: 1 as const,
+      tunnelId: stream.header.tunnelId,
+      attachmentId: stream.header.attachmentId,
+      sourceEndpointId: stream.header.sourceEndpointId,
+      destinationEndpointId: stream.header.destinationEndpointId,
+      connectionId: stream.header.connectionId,
+      sequence,
+    };
+  }
+  if (stream.rejectedOutputSequence === null) return responseBase(stream);
+  const reserved = stream.rejectedOutputSequence;
+  stream.rejectedOutputSequence = null;
+  return {
+    protocolVersion: 1 as const,
+    tunnelId: stream.header.tunnelId,
+    attachmentId: stream.header.attachmentId,
+    sourceEndpointId: stream.header.sourceEndpointId,
+    destinationEndpointId: stream.header.destinationEndpointId,
+    connectionId: stream.header.connectionId,
+    sequence: reserved,
   };
 }
 
@@ -71,6 +106,11 @@ export class TunnelTcpDestinationAdapter {
   readonly #streams = new Map<string, TcpStream>();
   #emit: FrameEmitter = () => false;
   #waitForCapacity: CapacityWaiter = async () => true;
+
+  constructor(
+    private readonly connectSocket: SocketConnector = (options) =>
+      connect(options),
+  ) {}
 
   setFrameEmitter(
     emit: FrameEmitter,
@@ -114,15 +154,8 @@ export class TunnelTcpDestinationAdapter {
       }
       stream.socket.write(payload, () => {
         if (!this.#streams.has(key(stream.header))) return;
-        this.#emit(
-          {
-            ...responseBase(stream),
-            kind: "credit",
-            direction: "source-to-destination",
-            bytes: payload.byteLength,
-          },
-          EMPTY_PAYLOAD,
-        );
+        stream.pendingSourceCreditBytes += payload.byteLength;
+        void this.#flushOutput(stream);
       });
       return;
     }
@@ -154,6 +187,18 @@ export class TunnelTcpDestinationAdapter {
   failProtectedFrame(header: TunnelDataPlaneFrameHeader): void {
     const stream = this.#streams.get(key(header));
     if (stream) this.#close(stream, "protocol-error");
+  }
+
+  failProtectedOutputFrame(header: TunnelDataPlaneFrameHeader): void {
+    const stream = this.#streams.get(key(header));
+    if (stream) {
+      this.#close(
+        stream,
+        "protocol-error",
+        "protected-output-frame-failed",
+        header.sequence,
+      );
+    }
   }
 
   disconnect(): void {
@@ -207,7 +252,7 @@ export class TunnelTcpDestinationAdapter {
       this.#reject(header, "target-rejected");
       return;
     }
-    const socket = connect({
+    const socket = this.connectSocket({
       host: header.target.host,
       port: header.target.port,
       allowHalfOpen: true,
@@ -222,7 +267,9 @@ export class TunnelTcpDestinationAdapter {
       outputSequence: 0,
       pendingBytes: 0,
       pendingOutput: [],
+      pendingSourceCreditBytes: 0,
       pausedForOutput: false,
+      rejectedOutputSequence: null,
       socket,
       sourceHalfClosed: false,
       startedAtMs: Date.now(),
@@ -266,25 +313,22 @@ export class TunnelTcpDestinationAdapter {
           durationMs: Date.now() - stream.startedAtMs,
         },
       );
-      if (
-        !this.#emit(
-          {
-            ...responseBase(stream),
-            kind: "accepted",
-            initialCreditBytes: INITIAL_CREDIT_BYTES,
-          },
-          EMPTY_PAYLOAD,
-        )
-      ) {
+      const accepted: TunnelDataPlaneFrameHeader = {
+        ...responseBase(stream),
+        kind: "accepted",
+        initialCreditBytes: INITIAL_CREDIT_BYTES,
+      };
+      if (!this.#emit(accepted, EMPTY_PAYLOAD)) {
+        stream.rejectedOutputSequence = accepted.sequence;
         this.#close(stream, "congested", "accepted-frame-emitter-rejected");
       }
     });
     socket.once("timeout", () => {
       if (!this.#remove(stream)) return;
       this.#logFailure(stream, "timeout", "target-unavailable");
-      this.#emit(
+      void this.#emitDetached(
         {
-          ...responseBase(stream),
+          ...terminalResponseBase(stream),
           kind: "rejected",
           code: "target-unavailable",
         },
@@ -307,9 +351,9 @@ export class TunnelTcpDestinationAdapter {
     socket.once("error", () => {
       if (!this.#remove(stream)) return;
       this.#logFailure(stream, "connection-error", "connection-failed");
-      this.#emit(
+      void this.#emitDetached(
         {
-          ...responseBase(stream),
+          ...terminalResponseBase(stream),
           kind: "error",
           code: "connection-failed",
         },
@@ -330,9 +374,9 @@ export class TunnelTcpDestinationAdapter {
         durationMs: Date.now() - stream.startedAtMs,
         counts: { streams: this.#streams.size },
       });
-      this.#emit(
+      void this.#emitDetached(
         {
-          ...responseBase(stream),
+          ...terminalResponseBase(stream),
           kind: "close",
           code: "normal",
         },
@@ -362,11 +406,12 @@ export class TunnelTcpDestinationAdapter {
   async #flushOutput(stream: TcpStream): Promise<void> {
     if (stream.flushing) return;
     stream.flushing = true;
+    let emittedFramesThisTurn = 0;
     try {
       while (stream.pendingOutput.length > 0) {
         if (!this.#streams.has(key(stream.header))) return;
         const payload = stream.pendingOutput[0]!;
-        if (stream.destinationToSourceCredit === 0) return;
+        if (stream.destinationToSourceCredit === 0) break;
         const writablePayload =
           payload.byteLength <= stream.destinationToSourceCredit
             ? payload
@@ -379,9 +424,8 @@ export class TunnelTcpDestinationAdapter {
         // A false result means the frame was not accepted. Preserve the exact
         // payload and sequence across the capacity wait so parallel HTTP and
         // WebSocket streams cannot turn transient contention into data loss.
-        while (!this.#emit(header, writablePayload)) {
-          if (!(await this.#awaitCapacity(stream))) return;
-          if (!this.#streams.has(key(stream.header))) return;
+        if (!(await this.#emitStreamFrame(stream, header, writablePayload))) {
+          return;
         }
         if (writablePayload.byteLength === payload.byteLength) {
           stream.pendingOutput.shift();
@@ -392,25 +436,61 @@ export class TunnelTcpDestinationAdapter {
         }
         stream.pendingBytes -= writablePayload.byteLength;
         stream.destinationToSourceCredit -= writablePayload.byteLength;
-        if (!(await this.#awaitCapacity(stream))) return;
+        emittedFramesThisTurn += 1;
+        if (emittedFramesThisTurn >= MAX_OUTPUT_FRAMES_PER_TURN) {
+          // Yield between accepted nested frames without waiting on the
+          // carrier. Multiple streams can therefore share one outer byte
+          // window instead of whichever continuation wakes first refilling it.
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          emittedFramesThisTurn = 0;
+        }
       }
       if (!this.#streams.has(key(stream.header))) return;
-      if (stream.destinationHalfClosed && !stream.destinationHalfCloseSent) {
+      while (stream.pendingSourceCreditBytes > 0) {
+        const bytes = Math.min(
+          TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
+          stream.pendingSourceCreditBytes,
+        );
+        const header: TunnelDataPlaneFrameHeader = {
+          ...responseBase(stream),
+          kind: "credit",
+          direction: "source-to-destination",
+          bytes,
+        };
+        if (!(await this.#emitStreamFrame(stream, header, EMPTY_PAYLOAD))) {
+          return;
+        }
+        stream.pendingSourceCreditBytes -= bytes;
+      }
+      if (!this.#streams.has(key(stream.header))) return;
+      if (
+        stream.pendingOutput.length === 0 &&
+        stream.destinationHalfClosed &&
+        !stream.destinationHalfCloseSent
+      ) {
         const header: TunnelDataPlaneFrameHeader = {
           ...responseBase(stream),
           kind: "half-close",
           direction: "destination-to-source",
         };
-        while (!this.#emit(header, EMPTY_PAYLOAD)) {
-          if (!(await this.#awaitCapacity(stream))) return;
-          if (!this.#streams.has(key(stream.header))) return;
+        if (!(await this.#emitStreamFrame(stream, header, EMPTY_PAYLOAD))) {
+          return;
         }
         stream.destinationHalfCloseSent = true;
       }
     } finally {
       stream.flushing = false;
+      if (!this.#streams.has(key(stream.header))) return;
       if (
-        this.#streams.has(key(stream.header)) &&
+        (stream.pendingOutput.length > 0 &&
+          stream.destinationToSourceCredit > 0) ||
+        stream.pendingSourceCreditBytes > 0 ||
+        (stream.pendingOutput.length === 0 &&
+          stream.destinationHalfClosed &&
+          !stream.destinationHalfCloseSent)
+      ) {
+        void this.#flushOutput(stream);
+      } else if (
         stream.pendingOutput.length === 0 &&
         !stream.destinationHalfClosed
       ) {
@@ -436,6 +516,22 @@ export class TunnelTcpDestinationAdapter {
     return true;
   }
 
+  async #emitStreamFrame(
+    stream: TcpStream,
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+  ): Promise<boolean> {
+    while (!this.#emit(header, payload)) {
+      stream.rejectedOutputSequence = header.sequence;
+      if (!(await this.#awaitCapacity(stream))) return false;
+      if (!this.#streams.has(key(stream.header))) return false;
+    }
+    if (stream.rejectedOutputSequence === header.sequence) {
+      stream.rejectedOutputSequence = null;
+    }
+    return true;
+  }
+
   #pauseOutput(stream: TcpStream): void {
     if (stream.pausedForOutput) return;
     stream.pausedForOutput = true;
@@ -452,7 +548,7 @@ export class TunnelTcpDestinationAdapter {
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "rejected" }>["code"],
   ): void {
-    this.#emit(
+    void this.#emitDetached(
       {
         protocolVersion: 1,
         tunnelId: header.tunnelId,
@@ -472,6 +568,7 @@ export class TunnelTcpDestinationAdapter {
     stream: TcpStream,
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "close" }>["code"],
     reasonCode: string = code,
+    outputSequence?: number,
   ): void {
     if (!this.#remove(stream)) return;
     workerLogger.rateLimited(
@@ -496,15 +593,31 @@ export class TunnelTcpDestinationAdapter {
         },
       },
     );
-    this.#emit(
+    void this.#emitDetached(
       {
-        ...responseBase(stream),
+        ...terminalResponseBase(stream, outputSequence),
         kind: "close",
         code,
       },
       EMPTY_PAYLOAD,
     );
     stream.socket.destroy();
+  }
+
+  async #emitDetached(
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+  ): Promise<void> {
+    while (!this.#emit(header, payload)) {
+      let available = false;
+      try {
+        available = await this.#waitForCapacity(header.attachmentId);
+      } catch {
+        return;
+      }
+      if (!available) return;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
   }
 
   #remove(stream: TcpStream): boolean {
