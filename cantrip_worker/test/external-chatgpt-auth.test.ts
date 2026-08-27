@@ -12,12 +12,12 @@ import {
 const externalAuthReport = {
   ...unprobedCodexRuntimeReport,
   compatibility: "compatible" as const,
-  version: { raw: "codex-cli 0.149.0", semantic: "0.149.0" },
+  version: { raw: "codex-cli 0.150.1", semantic: "0.150.1" },
   initialize: {
     experimentalApi: true,
     platformFamily: "unix",
     platformOs: "macos",
-    userAgent: "codex_cli_rs/0.149.0",
+    userAgent: "codex_cli_rs/0.150.1",
   },
   methods: { "account/login/start": "available" as const },
   degradedReasons: [],
@@ -54,9 +54,9 @@ describe("Codex external ChatGPT authentication", () => {
     expect(
       chatGptExternalAuthCapabilityError({
         ...externalAuthReport,
-        version: { raw: "codex-cli 0.148.0", semantic: "0.148.0" },
+        version: { raw: "codex-cli 0.149.0", semantic: "0.149.0" },
       }),
-    ).toContain("Codex 0.149.x");
+    ).toContain("Codex 0.150.x");
     expect(
       chatGptExternalAuthCapabilityError({
         ...externalAuthReport,

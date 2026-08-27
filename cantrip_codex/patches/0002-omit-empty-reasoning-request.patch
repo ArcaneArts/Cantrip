@@ -1,5 +1,5 @@
 diff --git a/codex-rs/codex-api/src/common.rs b/codex-rs/codex-api/src/common.rs
-index ef28c6a..dcade84 100644
+index ef28c6ad74..dcade8454d 100644
 --- a/codex-rs/codex-api/src/common.rs
 +++ b/codex-rs/codex-api/src/common.rs
 @@ -258,6 +258,7 @@ pub struct ResponsesApiRequest {
@@ -11,12 +11,12 @@ index ef28c6a..dcade84 100644
      pub store: bool,
      pub stream: bool,
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index da3b6da..cd90c8c 100644
+index ed0f10d3d4..78a6422f9f 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -895,9 +895,15 @@ impl ModelClient {
-             )
-         };
+@@ -916,9 +916,15 @@ impl ModelClient {
+             }
+         }
          let reasoning = Self::build_reasoning(model_info, effort, summary);
 +        let reasoning = (reasoning.effort.is_some()
 +            || reasoning.summary.is_some()
@@ -31,7 +31,7 @@ index da3b6da..cd90c8c 100644
          .then_some(StreamOptions {
              reasoning_summary_delivery: codex_api::ReasoningSummaryDelivery::SequentialCutoff,
          });
-@@ -927,7 +933,7 @@ impl ModelClient {
+@@ -948,7 +954,7 @@ impl ModelClient {
              tools,
              tool_choice: "auto".to_string(),
              parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
@@ -41,10 +41,10 @@ index da3b6da..cd90c8c 100644
              stream: true,
              stream_options,
 diff --git a/codex-rs/core/tests/suite/client.rs b/codex-rs/core/tests/suite/client.rs
-index daaf811..1d2fc27 100644
+index 556c3844f2..b8f223c149 100644
 --- a/codex-rs/core/tests/suite/client.rs
 +++ b/codex-rs/core/tests/suite/client.rs
-@@ -2445,6 +2445,56 @@ async fn model_without_summary_parameter_support_omits_configured_summary() -> a
+@@ -2493,6 +2493,56 @@ async fn model_without_summary_parameter_support_omits_configured_summary() -> a
      Ok(())
  }
  

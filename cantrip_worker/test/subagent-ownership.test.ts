@@ -39,7 +39,7 @@ const compatibility = {
     experimentalApi: true,
     platformFamily: "unix",
     platformOs: "macos",
-    userAgent: "codex_cli_rs/0.149.0",
+    userAgent: "codex_cli_rs/0.150.1",
   },
   methods: {
     "thread/list": "available" as const,
@@ -50,7 +50,7 @@ const compatibility = {
     protocolVersion: NATIVE_SUBAGENT_PROTOCOL_VERSION,
     reason: null,
   },
-  version: { raw: "codex-cli 0.149.0", semantic: "0.149.0" },
+  version: { raw: "codex-cli 0.150.1", semantic: "0.150.1" },
 };
 
 const provider = {

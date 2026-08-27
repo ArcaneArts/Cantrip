@@ -1,5 +1,5 @@
 diff --git a/codex-rs/core/src/tools/parallel.rs b/codex-rs/core/src/tools/parallel.rs
-index 4f1d0b7..7e87c60 100644
+index 191850c4eb..6b1d5e60fc 100644
 --- a/codex-rs/core/src/tools/parallel.rs
 +++ b/codex-rs/core/src/tools/parallel.rs
 @@ -75,6 +75,7 @@ impl ToolCallRuntime {
@@ -11,7 +11,7 @@ index 4f1d0b7..7e87c60 100644
          let source = call.direct_source();
          let future = self.handle_tool_call_with_source(call, source, cancellation_token);
 diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
-index b3e60a5..bdcd7f4 100644
+index e5e6124b44..73aba18df6 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
 @@ -68,6 +68,7 @@ pub(crate) fn tool_log_payload<'a>(
@@ -47,7 +47,7 @@ index b3e60a5..bdcd7f4 100644
          }
      }
  
-@@ -131,25 +146,45 @@ impl ToolRouter {
+@@ -131,17 +146,37 @@ impl ToolRouter {
          &self,
          tool_name: &ToolName,
      ) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
@@ -67,15 +67,8 @@ index b3e60a5..bdcd7f4 100644
 -        self.registry.tool(&call.tool_name)
 +        self.registry
 +            .tool(&self.resolve_model_visible_name(&call.tool_name))
-     }
- 
-     pub fn tool_waits_for_runtime_cancellation(&self, call: &ToolCall) -> bool {
-         self.registry
--            .waits_for_runtime_cancellation(&call.tool_name)
-+            .waits_for_runtime_cancellation(&self.resolve_model_visible_name(&call.tool_name))
-             .unwrap_or(false)
-     }
- 
++    }
++
 +    pub(crate) fn normalize_tool_call(&self, mut call: ToolCall) -> ToolCall {
 +        call.tool_name = self.resolve_model_visible_name(&call.tool_name);
 +        call
@@ -92,16 +85,14 @@ index b3e60a5..bdcd7f4 100644
 +    #[cfg(test)]
 +    pub(crate) fn resolve_model_visible_name_for_test(&self, tool_name: &ToolName) -> ToolName {
 +        self.resolve_model_visible_name(tool_name)
-+    }
-+
+     }
+ 
      #[instrument(level = "trace", skip_all, err)]
-     pub fn build_tool_call(item: ResponseItem) -> Result<Option<ToolCall>, FunctionCallError> {
-         match item {
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index 3da01c0..40cc978 100644
+index b317ca2c02..a75c2e7742 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -435,7 +435,7 @@ pub(crate) fn finalize_tool_router(
+@@ -431,7 +431,7 @@ pub(crate) fn finalize_tool_router(
          }
      }
  
@@ -110,7 +101,7 @@ index 3da01c0..40cc978 100644
          build_model_visible_specs(turn_context, &registry, &code_mode_tool_names, hosted_specs);
      if include_tool_namespaces_info {
          turn_context
-@@ -447,7 +447,11 @@ pub(crate) fn finalize_tool_router(
+@@ -443,7 +443,11 @@ pub(crate) fn finalize_tool_router(
              ));
      }
  
@@ -123,7 +114,7 @@ index 3da01c0..40cc978 100644
  }
  
  fn apply_direct_model_only_namespace_overrides(
-@@ -489,8 +493,10 @@ fn build_model_visible_specs(
+@@ -485,8 +489,10 @@ fn build_model_visible_specs(
      registry: &ToolRegistry,
      code_mode_tool_names: &BTreeMap<String, ToolName>,
      hosted_specs: Vec<ToolSpec>,
@@ -135,7 +126,7 @@ index 3da01c0..40cc978 100644
      for tool in registry.entries() {
          let exposure = tool.exposure;
          if !exposure.is_direct() {
-@@ -503,22 +509,57 @@ fn build_model_visible_specs(
+@@ -499,22 +505,57 @@ fn build_model_visible_specs(
          }
  
          let spec = tool.runtime.spec();
@@ -203,10 +194,10 @@ index 3da01c0..40cc978 100644
  
  fn spec_for_model_request(
 diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tools/spec_plan_tests.rs
-index 87ab8df..ab1b441 100644
+index b5be3fbf08..d5ca56ec11 100644
 --- a/codex-rs/core/src/tools/spec_plan_tests.rs
 +++ b/codex-rs/core/src/tools/spec_plan_tests.rs
-@@ -78,6 +78,7 @@ struct ToolPlanProbe {
+@@ -79,6 +79,7 @@ struct ToolPlanProbe {
      namespace_functions: BTreeMap<String, Vec<String>>,
      registered_names: Vec<String>,
      exposures: BTreeMap<String, ToolExposure>,
@@ -214,7 +205,7 @@ index 87ab8df..ab1b441 100644
  }
  
  impl ToolPlanProbe {
-@@ -107,6 +108,15 @@ impl ToolPlanProbe {
+@@ -108,6 +109,15 @@ impl ToolPlanProbe {
                  | ToolSpec::Freeform(_) => None,
              })
              .collect::<BTreeMap<_, _>>();
@@ -230,7 +221,7 @@ index 87ab8df..ab1b441 100644
          let registered_tool_names = router.registered_tool_names_for_test();
          let registered_names = registered_tool_names
              .iter()
-@@ -127,6 +137,7 @@ impl ToolPlanProbe {
+@@ -128,6 +138,7 @@ impl ToolPlanProbe {
              namespace_functions,
              registered_names,
              exposures,
@@ -238,7 +229,7 @@ index 87ab8df..ab1b441 100644
          }
      }
  
-@@ -194,6 +205,13 @@ impl ToolPlanProbe {
+@@ -195,6 +206,13 @@ impl ToolPlanProbe {
              .get(name)
              .unwrap_or_else(|| panic!("expected registered tool `{name}`"))
      }
@@ -252,7 +243,7 @@ index 87ab8df..ab1b441 100644
  }
  
  async fn probe_with(
-@@ -303,6 +321,19 @@ fn use_bedrock_provider(turn: &mut TurnContext) {
+@@ -304,6 +322,19 @@ fn use_bedrock_provider(turn: &mut TurnContext) {
      turn.provider = create_model_provider(provider_info, turn.auth_manager.clone());
  }
  
@@ -272,7 +263,7 @@ index 87ab8df..ab1b441 100644
  struct TestNamespaceExtensionTool {
      namespace: &'static str,
      tool_name: &'static str,
-@@ -1120,6 +1151,31 @@ async fn mcp_and_tool_search_follow_direct_and_deferred_tool_exposure() {
+@@ -1283,6 +1314,31 @@ async fn mcp_and_tool_search_follow_direct_and_deferred_tool_exposure() {
          &["lookup".to_string()]
      );
  
