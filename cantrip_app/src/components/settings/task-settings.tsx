@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { ModelCombobox } from "@/components/chat/model-combobox";
 import { modelsShareProvider } from "@/components/chat/model-reasoning-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -462,14 +463,13 @@ export function TaskSettings() {
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,.55fr)]">
-                  <label className="grid gap-1.5 text-xs">
+                  <div className="grid gap-1.5 text-xs">
                     <span className="font-medium">Model</span>
-                    <NativeSelect
-                      size="default"
+                    <ModelCombobox
+                      ariaLabel="Task Worker root model"
                       value={draft.modelConfiguration.modelId ?? ""}
-                      aria-label="Task Worker root model"
-                      onChange={(event) => {
-                        const modelId = event.target.value || null;
+                      models={models}
+                      onValueChange={(modelId) => {
                         const root = models.find(({ id }) => id === modelId);
                         setDraft((current) => {
                           const subagent = models.find(
@@ -498,17 +498,8 @@ export function TaskSettings() {
                           };
                         });
                       }}
-                    >
-                      <option value="" disabled>
-                        Select a model
-                      </option>
-                      {models.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </label>
+                    />
+                  </div>
                   <label className="grid gap-1.5 text-xs">
                     <span className="font-medium">Reasoning</span>
                     <NativeSelect
@@ -564,44 +555,35 @@ export function TaskSettings() {
 
                 {draft.modelConfiguration.customSubagentModel ? (
                   <div className="grid gap-3 pl-0 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,.55fr)] sm:pl-7">
-                    <label className="grid gap-1.5 text-xs">
+                    <div className="grid gap-1.5 text-xs">
                       <span className="font-medium">Subagent model</span>
-                      <NativeSelect
-                        size="default"
+                      <ModelCombobox
+                        ariaLabel="Task Worker subagent model"
                         value={draft.modelConfiguration.subagentModelId ?? ""}
-                        aria-label="Task Worker subagent model"
-                        onChange={(event) =>
+                        getOptionDisabled={(model) =>
+                          !selectedRoot ||
+                          !modelsShareProvider(selectedRoot, model)
+                        }
+                        getOptionNote={(model) =>
+                          selectedRoot &&
+                          modelsShareProvider(selectedRoot, model)
+                            ? null
+                            : "Different provider"
+                        }
+                        models={models}
+                        placeholder="Select a subagent model"
+                        onValueChange={(subagentModelId) =>
                           setDraft((current) => ({
                             ...current,
                             modelConfiguration: {
                               ...current.modelConfiguration,
-                              subagentModelId: event.target.value || null,
+                              subagentModelId,
                               subagentReasoningEffort: null,
                             },
                           }))
                         }
-                      >
-                        <option value="" disabled>
-                          Select a subagent model
-                        </option>
-                        {models.map((model) => {
-                          const compatible = Boolean(
-                            selectedRoot &&
-                            modelsShareProvider(selectedRoot, model),
-                          );
-                          return (
-                            <option
-                              key={model.id}
-                              value={model.id}
-                              disabled={!compatible}
-                            >
-                              {model.name}
-                              {compatible ? "" : " — different provider"}
-                            </option>
-                          );
-                        })}
-                      </NativeSelect>
-                    </label>
+                      />
+                    </div>
                     <label className="grid gap-1.5 text-xs">
                       <span className="font-medium">Reasoning</span>
                       <NativeSelect

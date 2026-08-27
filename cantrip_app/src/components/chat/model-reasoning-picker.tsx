@@ -11,6 +11,7 @@ import {
 import { Check, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ModelCombobox } from "@/components/chat/model-combobox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,9 +21,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { NativeSelect } from "@/components/ui/native-select";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
+
+export { filterConfiguredModels } from "@/components/chat/model-combobox";
 
 export interface ReasoningChoice {
   effort: ReasoningEffort | null;
@@ -62,17 +64,6 @@ export interface ModelReasoningPickerProps {
   onSave(configuration: ModelConfiguration): Promise<unknown> | unknown;
 }
 
-function searchableModelText(model: ModelProfileSummary): string {
-  return [
-    model.name,
-    model.canonicalModelId,
-    ...model.routes.flatMap((route) => [route.providerName, route.modelName]),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLocaleLowerCase();
-}
-
 export function modelReasoningChoices(
   state?: ChatReasoningState,
 ): ReasoningChoice[] {
@@ -95,18 +86,6 @@ export function modelReasoningChoices(
       label: option.effort,
     })),
   ];
-}
-
-export function filterConfiguredModels(
-  models: ModelProfileSummary[],
-  query: string,
-): ModelProfileSummary[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  return normalizedQuery
-    ? models.filter((model) =>
-        searchableModelText(model).includes(normalizedQuery),
-      )
-    : models;
 }
 
 export function chatModelConfiguration(
@@ -597,29 +576,20 @@ export function ModelReasoningPicker({
                 The model used for the main conversation.
               </p>
             </div>
-            <NativeSelect
-              size="default"
+            <ModelCombobox
+              ariaLabel="Root model"
               className="w-full"
               value={draft.modelId ?? ""}
               disabled={readOnly || effectivePending}
-              aria-label="Root model"
-              onChange={(event) =>
+              models={models}
+              onValueChange={(modelId) =>
                 setDraft((current) => ({
                   ...current,
-                  modelId: event.target.value || null,
+                  modelId,
                   reasoningEffort: null,
                 }))
               }
-            >
-              <option value="" disabled>
-                Select a model
-              </option>
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </NativeSelect>
+            />
             <ReasoningSlider
               label="Root reasoning effort"
               choices={rootChoices}
@@ -665,42 +635,31 @@ export function ModelReasoningPicker({
 
               {draft.customSubagentModel ? (
                 <div className="space-y-2 pl-0 sm:pl-4">
-                  <NativeSelect
-                    size="default"
+                  <ModelCombobox
+                    ariaLabel="Subagent model"
                     className="w-full"
                     value={draft.subagentModelId ?? ""}
                     disabled={
                       readOnly || effectivePending || !subagentsAvailable
                     }
-                    aria-label="Subagent model"
-                    onChange={(event) =>
+                    getOptionDisabled={(model) =>
+                      !modelsShareProvider(draftRootModel, model)
+                    }
+                    getOptionNote={(model) =>
+                      modelsShareProvider(draftRootModel, model)
+                        ? null
+                        : "Different provider"
+                    }
+                    models={models}
+                    placeholder="Select a subagent model"
+                    onValueChange={(subagentModelId) =>
                       setDraft((current) => ({
                         ...current,
-                        subagentModelId: event.target.value || null,
+                        subagentModelId,
                         subagentReasoningEffort: null,
                       }))
                     }
-                  >
-                    <option value="" disabled>
-                      Select a subagent model
-                    </option>
-                    {models.map((model) => {
-                      const compatible = modelsShareProvider(
-                        draftRootModel,
-                        model,
-                      );
-                      return (
-                        <option
-                          key={model.id}
-                          value={model.id}
-                          disabled={!compatible}
-                        >
-                          {model.name}
-                          {compatible ? "" : " — different provider"}
-                        </option>
-                      );
-                    })}
-                  </NativeSelect>
+                  />
                   <ReasoningSlider
                     label="Subagent reasoning effort"
                     choices={subagentChoices}
