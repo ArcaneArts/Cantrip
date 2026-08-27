@@ -166,7 +166,6 @@ import {
   executionTargetResolutionSchema,
   executionTargetResolveRequestSchema,
   executionTargetSchema,
-  externalChatDiscoveryWorkerResultSchema,
   githubAuthStatusSchema,
   githubIssueCloseSchema,
   githubIssueCommentCreateSchema,
@@ -319,12 +318,6 @@ import {
   orderedIdsSchema,
   operationalProbeSchema,
   projectWireListSchema,
-  projectExternalChatDiscoverySchema,
-  projectExportCreateSchema,
-  projectExportPreviewRequestSchema,
-  projectExportPreviewSchema,
-  projectExportResultSchema,
-  projectExportTargetInspectionSchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   projectRemoveSchema,
@@ -689,10 +682,6 @@ import {
   ProjectReplicaJobExecutor,
   type ProjectReplicaJobLiveChange,
 } from "./project-replicas/executor.js";
-import {
-  exportCanonicalChat,
-  projectExportTargetDefinition,
-} from "./project-exports/service.js";
 import { requireProjectCapability } from "./projects/capabilities.js";
 import {
   TunnelRuntimeManager,
@@ -816,6 +805,8 @@ import { installTransportSecurity } from "./app/http/transport-security.js";
 import { installInternalProviderCredentialRoutes } from "./app/routes/internal-provider-credentials.js";
 import { installPolicyRoutes } from "./app/routes/policies.js";
 import { installProjectAutomationRoutes } from "./app/routes/project-automations.js";
+import { installProjectExportRoutes } from "./app/routes/project-exports.js";
+import { installProjectExternalChatHistoryRoute } from "./app/routes/project-external-chat-history.js";
 import { installProjectFolderSetupRoutes } from "./app/routes/project-folder-setup.js";
 import { installProjectGithubConversionRoutes } from "./app/routes/project-github-conversion.js";
 import { installProjectGithubImportRoute } from "./app/routes/project-github-import.js";
@@ -941,8 +932,6 @@ import {
   BROWSER_FLEET_DISCOVERY_TIMEOUT_MS,
   BROWSER_FLEET_DISCOVERY_WORKER_LIMIT,
   CONFIGURABLE_PERMISSION_PROFILES,
-  EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS,
-  EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT,
   FINITE_WORKER_COMMAND_TIMEOUT_MS,
   GOAL_RESUME_PROMPT,
   PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS,
@@ -25304,422 +25293,17 @@ export async function buildApp({
       ),
   );
 
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/exports/preview",
-    async (request, reply) => {
-      const input = projectExportPreviewRequestSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = applicationOwnerId();
-      const context = await repository.getProjectWorktreeContext(
-        ownerId,
-        request.params.projectId,
-        input.data.worktreeId,
-      );
-      if (!context) {
-        return reply
-          .code(404)
-          .send({ error: "Project worktree was not found or is not ready." });
-      }
-      const worker = (await repository.listWorkers(ownerId)).find(
-        (candidate) => candidate.workerId === context.workerId,
-      );
-      if (!worker) {
-        return reply.code(404).send({ error: "Project worker was not found." });
-      }
-      const definition = projectExportTargetDefinition(input.data.target);
-      let inspection;
-      if (
-        definition.requiredWorkerCapability === "externalCodexHistory" &&
-        !worker.externalCodexHistory
-      ) {
-        inspection = {
-          target: input.data.target,
-          available: false,
-          destinationLabel: null,
-          message: `${worker.name} does not support local Codex project exports.`,
-          platform: worker.platform,
-        };
-      } else if (!worker.online || !bridge.isConnected(worker.workerId)) {
-        inspection = {
-          target: input.data.target,
-          available: false,
-          destinationLabel: null,
-          message: `${worker.name} is offline.`,
-          platform: worker.platform,
-        };
-      } else {
-        try {
-          inspection = projectExportTargetInspectionSchema.parse(
-            await bridge.request(
-              worker.workerId,
-              {
-                type: "project.export.target.inspect",
-                target: input.data.target,
-                cwd: context.worktree.path,
-              },
-              { timeoutMs: 30_000 },
-            ),
-          );
-        } catch (error) {
-          inspection = {
-            target: input.data.target,
-            available: false,
-            destinationLabel: null,
-            message: errorMessage(error).slice(0, 2_000),
-            platform: worker.platform,
-          };
-        }
-      }
-      return reply.send(
-        projectExportPreviewSchema.parse({
-          target: input.data.target,
-          targetLabel: definition.label,
-          available: inspection.available,
-          destinationLabel: inspection.destinationLabel,
-          message: inspection.message,
-          worker: {
-            workerId: worker.workerId,
-            name: worker.name,
-            platform: inspection.platform,
-          },
-          worktree: {
-            worktreeId: context.worktree.id,
-            name: context.worktree.name,
-            displayPath: context.worktree.displayPath,
-          },
-          maxChats: definition.maxChats,
-          supportedChatExperiences: definition.supportedChatExperiences,
-          preserves: definition.preserves,
-          flattens: definition.flattens,
-        }),
-      );
-    },
-  );
+  installProjectExportRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    repository,
+  });
 
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/exports",
-    async (request, reply) => {
-      const input = projectExportCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = applicationOwnerId();
-      const context = await repository.getProjectWorktreeContext(
-        ownerId,
-        request.params.projectId,
-        input.data.worktreeId,
-      );
-      if (!context) {
-        return reply
-          .code(404)
-          .send({ error: "Project worktree was not found or is not ready." });
-      }
-      const worker = (await repository.listWorkers(ownerId)).find(
-        (candidate) => candidate.workerId === context.workerId,
-      );
-      if (!worker) {
-        return reply.code(404).send({ error: "Project worker was not found." });
-      }
-      const definition = projectExportTargetDefinition(input.data.target);
-      if (
-        definition.requiredWorkerCapability === "externalCodexHistory" &&
-        !worker.externalCodexHistory
-      ) {
-        return reply
-          .code(409)
-          .send({ error: "The selected worker cannot export to Codex." });
-      }
-      if (!worker.online || !bridge.isConnected(worker.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      const chatsById = new Map(
-        (await repository.listChats(ownerId, request.params.projectId)).map(
-          (chat) => [chat.id, chat],
-        ),
-      );
-      const selectedChats = input.data.chatIds.map((chatId) =>
-        chatsById.get(chatId),
-      );
-      if (selectedChats.some((chat) => !chat)) {
-        return reply
-          .code(404)
-          .send({ error: "One or more selected chats were not found." });
-      }
-      const unsupported = selectedChats.find(
-        (chat) =>
-          chat &&
-          !definition.supportedChatExperiences.includes(chat.experience),
-      );
-      if (unsupported) {
-        return reply.code(409).send({
-          error:
-            "The selected export target does not support one or more chat types.",
-        });
-      }
-      const active = selectedChats.find(
-        (chat) =>
-          chat?.status === "running" || chat?.status === "waiting-for-approval",
-      );
-      if (active) {
-        return reply.code(409).send({
-          error: "Wait for selected chats to finish before exporting them.",
-        });
-      }
-      const outcomes = [];
-      for (const chat of selectedChats) {
-        if (!chat) continue;
-        try {
-          const messages = await repository.listEncryptedMessages(
-            ownerId,
-            chat.id,
-          );
-          const exported = await exportCanonicalChat({
-            bridge,
-            operationId: input.data.operationId,
-            target: input.data.target,
-            workerId: worker.workerId,
-            chatId: chat.id,
-            cwd: context.worktree.path,
-            titleProtection: chat.titleProtection,
-            payload: {
-              version: 1,
-              kind: "chat-encrypted",
-              messages,
-              attachments: [],
-            },
-          });
-          outcomes.push({ status: "exported" as const, ...exported });
-        } catch (error) {
-          const message = errorMessage(error).slice(0, 2_000);
-          const normalized = message.toLowerCase();
-          const code = /encrypt|decrypt|key revision|private label/iu.test(
-            normalized,
-          )
-            ? ("encryption-unavailable" as const)
-            : /external codex home|export target|worktree|worker is offline/iu.test(
-                  normalized,
-                )
-              ? ("target-unavailable" as const)
-              : /codex|thread\/(?:start|inject_items|read|name)|runtime/iu.test(
-                    normalized,
-                  )
-                ? ("runtime-incompatible" as const)
-                : ("worker-error" as const);
-          outcomes.push({
-            status: "failed" as const,
-            chatId: chat.id,
-            code,
-            message: message || "Could not export this chat.",
-          });
-        }
-      }
-      return reply.send(
-        projectExportResultSchema.parse({
-          operationId: input.data.operationId,
-          target: input.data.target,
-          workerId: worker.workerId,
-          worktreeId: context.worktree.id,
-          outcomes,
-        }),
-      );
-    },
-  );
-
-  app.get<{
-    Params: { projectId: string };
-    Querystring: { includeArchived?: string };
-  }>(
-    "/api/projects/:projectId/external-chat-history",
-    async (request, reply) => {
-      const ownerId = applicationOwnerId();
-      const replicas = await repository.listProjectReplicas(
-        ownerId,
-        request.params.projectId,
-      );
-      if (!replicas) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      if (
-        request.query.includeArchived !== undefined &&
-        !["true", "false"].includes(request.query.includeArchived)
-      ) {
-        return reply
-          .code(400)
-          .send({ error: "includeArchived must be true or false." });
-      }
-      const includeArchived = request.query.includeArchived === "true";
-      const [workers, worktrees] = await Promise.all([
-        repository.listWorkers(ownerId),
-        repository.listProjectWorktrees(ownerId, request.params.projectId),
-      ]);
-      const workersById = new Map(
-        workers.map((worker) => [worker.workerId, worker]),
-      );
-      const groupedReplicas = new Map<string, typeof replicas>();
-      for (const replica of replicas) {
-        const grouped = groupedReplicas.get(replica.workerId) ?? [];
-        grouped.push(replica);
-        groupedReplicas.set(replica.workerId, grouped);
-      }
-      const candidates = [...groupedReplicas].sort(([leftId], [rightId]) => {
-        const left = workersById.get(leftId)?.name ?? leftId;
-        const right = workersById.get(rightId)?.name ?? rightId;
-        return left.localeCompare(right) || leftId.localeCompare(rightId);
-      });
-      const fleetTruncated =
-        candidates.length > EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT;
-      const results = await Promise.all(
-        candidates
-          .slice(0, EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT)
-          .map(async ([workerId, workerReplicas]) => {
-            const worker = workersById.get(workerId);
-            const workerName = (worker?.name ?? workerId).slice(0, 200);
-            const base = {
-              workerId,
-              workerName,
-              platform: (worker?.platform ?? "unknown").slice(0, 100),
-            };
-            if (!worker?.externalCodexHistory) {
-              return {
-                ...base,
-                status: "unsupported" as const,
-                sources: [],
-                error: {
-                  code: "capability-missing" as const,
-                  message: `${workerName} does not support local Codex history discovery.`,
-                },
-              };
-            }
-            if (!worker.online || !bridge.isConnected(workerId)) {
-              return {
-                ...base,
-                status: "offline" as const,
-                sources: [],
-                error: {
-                  code: "worker-offline" as const,
-                  message: `${workerName} is offline.`,
-                },
-              };
-            }
-            try {
-              const result = externalChatDiscoveryWorkerResultSchema.parse(
-                await bridge.request(
-                  workerId,
-                  {
-                    type: "external.chat-history.discover",
-                    includeArchived,
-                    targets: workerReplicas.map((replica) => ({
-                      projectReplicaId: replica.id,
-                      path: replica.path,
-                      repositoryFingerprint: replica.repositoryFingerprint,
-                      worktrees: worktrees
-                        .filter(
-                          (worktree) =>
-                            worktree.projectSourceId === replica.id &&
-                            worktree.workerId === workerId,
-                        )
-                        .map((worktree) => ({
-                          worktreeId: worktree.id,
-                          path: worktree.path,
-                          isPrimary: worktree.isPrimary,
-                        })),
-                    })),
-                  },
-                  { timeoutMs: EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS },
-                ),
-              );
-              return {
-                ...base,
-                status: "ok" as const,
-                sources: result.sources,
-                error: null,
-              };
-            } catch (error) {
-              const message = errorMessage(error).slice(0, 2_000);
-              const unavailable = error instanceof WorkerUnavailableError;
-              const timedOut = /timed out/iu.test(message);
-              return {
-                ...base,
-                status: unavailable
-                  ? ("offline" as const)
-                  : timedOut
-                    ? ("timed-out" as const)
-                    : ("error" as const),
-                sources: [],
-                error: {
-                  code: unavailable
-                    ? ("worker-offline" as const)
-                    : timedOut
-                      ? ("worker-timeout" as const)
-                      : ("worker-error" as const),
-                  message:
-                    message ||
-                    `Could not inspect Codex history on ${workerName}.`,
-                },
-              };
-            }
-          }),
-      );
-      const importReferences =
-        await repository.chatImportJobs.listSourceReferences(
-          ownerId,
-          results.map(({ workerId }) => workerId),
-        );
-      const importsBySource = new Map(
-        importReferences.map((entry) => [
-          [
-            entry.sourceKind,
-            entry.sourceWorkerId,
-            entry.sourceId,
-            entry.sourceThreadId,
-          ].join("\0"),
-          entry.reference,
-        ]),
-      );
-      const annotatedResults = results.map((result) => ({
-        ...result,
-        sources: result.sources.map((source) => ({
-          ...source,
-          threads: source.threads.map((thread) => ({
-            ...thread,
-            existingImport:
-              importsBySource.get(
-                [
-                  source.kind,
-                  result.workerId,
-                  source.sourceId,
-                  thread.sourceThreadId,
-                ].join("\0"),
-              ) ?? null,
-          })),
-        })),
-      }));
-      const truncated =
-        fleetTruncated ||
-        annotatedResults.some((result) =>
-          result.sources.some((source) => source.truncated),
-        );
-      return reply.send(
-        projectExternalChatDiscoverySchema.parse({
-          projectId: request.params.projectId,
-          observedAt: new Date().toISOString(),
-          partial:
-            truncated ||
-            annotatedResults.some(
-              (result) =>
-                result.status !== "ok" ||
-                result.sources.some(
-                  (source) => source.availability !== "available",
-                ),
-            ),
-          truncated,
-          workers: annotatedResults,
-        }),
-      );
-    },
-  );
+  installProjectExternalChatHistoryRoute(app, {
+    applicationOwnerId,
+    bridge,
+    repository,
+  });
 
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/browser-services",
