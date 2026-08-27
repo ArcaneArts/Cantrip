@@ -381,7 +381,6 @@ import {
   encryptedRemoteDesktopCreateSchema,
   encryptedRemoteDesktopUpdateSchema,
   directAttachmentTicketSchema,
-  directTransportTelemetrySchema,
   directTunnelPrepareRequestSchema,
   directTunnelTicketSchema,
   remoteDesktopFleetWireSchema,
@@ -416,15 +415,12 @@ import {
   terminalServerMessageSchema,
   terminalWireSummarySchema,
   encryptedTerminalUpdateSchema,
-  tunnelWireListSchema,
   tunnelWireSummarySchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
   tunnelAttachmentInitializeSchema,
   tunnelDirectActivationSchema,
   tunnelAttachmentReadySchema,
-  tunnelUserWireCreateSchema,
-  tunnelUserWireUpdateSchema,
   userSettingsUpdateSchema,
   encodeWorkerConnectionEnvelope,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
@@ -867,6 +863,12 @@ import { installInternalProviderCredentialRoutes } from "./app/routes/internal-p
 import { installPolicyRoutes } from "./app/routes/policies.js";
 import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
 import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
+import { installDirectAttachmentControlRoutes } from "./app/routes/direct-attachment-control.js";
+import {
+  installTunnelListRoute,
+  installTunnelMutationRoutes,
+  installTunnelReadAndCreateRoutes,
+} from "./app/routes/tunnel-management.js";
 import { installWorkerCatalogRoutes } from "./app/routes/worker-catalog.js";
 import { installWorkerCredentialRoutes } from "./app/routes/worker-credentials.js";
 import { installWorkerEnrollmentCodeRoutes } from "./app/routes/worker-enrollment-codes.js";
@@ -13935,139 +13937,13 @@ export async function buildApp({
     },
   );
 
-  app.post<{ Params: { workerId: string } }>(
-    "/api/workers/:workerId/direct-probe",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const principal = authenticatedPrincipal(request);
-      const authSessionId = principal.sessionId ?? `local:${principal.user.id}`;
-      const preparationLease = directAttachments.acquirePreparationLease({
-        authSessionId,
-        ownerId: principal.user.id,
-        resourceId: request.params.workerId,
-        resourceKind: "probe",
-      });
-      if (!preparationLease) {
-        return reply.code(409).send({
-          error: "The owning resource is being revoked.",
-        });
-      }
-      try {
-        const worker = await repository.getWorker(
-          principal.user.id,
-          request.params.workerId,
-        );
-        if (!worker) {
-          return reply.code(404).send({ error: "Worker not found." });
-        }
-        const ticket = await directAttachments.prepare({
-          authSessionId,
-          channels: ["probe"],
-          ownerId: principal.user.id,
-          preparationLease,
-          resourceId: request.params.workerId,
-          resourceKind: "probe",
-          worker,
-        });
-        if (!directAttachments.preparationLeaseIsActive(preparationLease)) {
-          await directAttachments.revoke(
-            ticket.binding.capabilityId,
-            "Owning resource was revoked",
-          );
-          return reply.code(409).send({
-            error:
-              "The owning resource changed while direct access was opening.",
-          });
-        }
-        return reply.code(201).send(directAttachmentTicketSchema.parse(ticket));
-      } catch (error) {
-        if (error instanceof DirectAttachmentUnavailableError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      } finally {
-        directAttachments.releasePreparationLease(preparationLease);
-      }
-    },
-  );
-
-  app.delete<{ Params: { capabilityId: string } }>(
-    "/api/direct-attachments/:capabilityId",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const principal = authenticatedPrincipal(request);
-      await directAttachments.revoke(
-        request.params.capabilityId,
-        "Client released direct attachment",
-        {
-          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
-          ownerId: principal.user.id,
-        },
-      );
-      // A completed or concurrent revocation is already the requested end state.
-      return reply.code(204).send();
-    },
-  );
-
-  app.post<{ Params: { capabilityId: string } }>(
-    "/api/direct-attachments/:capabilityId/telemetry",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const principal = authenticatedPrincipal(request);
-      const telemetry = directTransportTelemetrySchema.parse(request.body);
-      const authorization = {
-        authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
-        ownerId: principal.user.id,
-      };
-      const activeDelta = directAttachments.recordTelemetry(
-        request.params.capabilityId,
-        authorization,
-        telemetry,
-      );
-      const delta =
-        activeDelta ??
-        directAttachments.recordFinalizedTelemetry(
-          request.params.capabilityId,
-          authorization,
-          telemetry,
-        );
-      if (!delta) {
-        return reply.code(404).send({ error: "Direct attachment not found." });
-      }
-      operationalMetrics.recordDirectTransport(delta.resourceKind, delta);
-      if (activeDelta === null) return reply.code(204).send();
-      const renewal = await directAttachments.renewActiveLease(
-        request.params.capabilityId,
-        authorization,
-      );
-      switch (renewal.status) {
-        case "completed":
-        case "unsupported":
-          return reply.code(204).send();
-        case "retryable-failure":
-          return reply.code(503).send({
-            error: "Direct attachment renewal is temporarily unavailable.",
-          });
-        case "missing":
-          // Telemetry was correlated while the capability was live. A
-          // concurrent authoritative teardown may have finalized it before
-          // renewal; the requested terminal accounting still succeeded.
-          return reply.code(204).send();
-        case "expired":
-        case "not-active":
-        case "root-missing":
-        case "worker-rejected":
-          return reply.code(409).send({
-            error: "Direct attachment renewal was rejected.",
-          });
-      }
-    },
-  );
-
-  app.get("/api/tunnels", { logLevel: "warn" }, async (request, reply) => {
-    const tunnels = await repository.listTunnels(principalOwnerId(request));
-    return reply.send(tunnelWireListSchema.parse(tunnels));
+  installDirectAttachmentControlRoutes(app, {
+    directAttachments,
+    operationalMetrics,
+    repository,
   });
+
+  installTunnelListRoute(app, { repository });
 
   app.get<{ Querystring: { context?: string } }>(
     "/api/chats",
@@ -14132,61 +14008,7 @@ export async function buildApp({
     }
   });
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/tunnels",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const ownerId = principalOwnerId(request);
-      const projectExists = (await repository.listProjects(ownerId)).some(
-        ({ id }) => id === request.params.projectId,
-      );
-      if (!projectExists) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      const tunnels = await repository.listTunnels(
-        ownerId,
-        request.params.projectId,
-      );
-      return reply.send(tunnelWireListSchema.parse(tunnels));
-    },
-  );
-
-  app.get<{ Params: { tunnelId: string } }>(
-    "/api/tunnels/:tunnelId",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const tunnel = await repository.getTunnel(
-        principalOwnerId(request),
-        request.params.tunnelId,
-      );
-      return tunnel
-        ? reply.send(tunnelWireSummarySchema.parse(tunnel))
-        : reply.code(404).send({ error: "Tunnel not found." });
-    },
-  );
-
-  app.post("/api/tunnels", async (request, reply) => {
-    const input = tunnelUserWireCreateSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      const tunnel = await repository.createUserTunnel(
-        principalOwnerId(request),
-        input.data,
-      );
-      return tunnel
-        ? reply.code(201).send(tunnelWireSummarySchema.parse(tunnel))
-        : reply
-            .code(404)
-            .send({ error: "Project or destination worker not found." });
-    } catch (error) {
-      if (error instanceof TunnelManagementError) {
-        return reply.code(409).send({ error: error.message });
-      }
-      throw error;
-    }
-  });
+  installTunnelReadAndCreateRoutes(app, { repository });
 
   app.post<{ Params: { tunnelId: string } }>(
     "/api/tunnels/:tunnelId/attachments",
@@ -14764,51 +14586,7 @@ export async function buildApp({
     },
   );
 
-  app.patch<{ Params: { tunnelId: string } }>(
-    "/api/tunnels/:tunnelId",
-    async (request, reply) => {
-      const input = tunnelUserWireUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const tunnel = await repository.updateUserTunnel(
-          principalOwnerId(request),
-          request.params.tunnelId,
-          input.data,
-        );
-        return tunnel
-          ? reply.send(tunnelWireSummarySchema.parse(tunnel))
-          : reply.code(404).send({
-              error: "Tunnel, project, or destination worker not found.",
-            });
-      } catch (error) {
-        if (error instanceof TunnelManagementError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.delete<{ Params: { tunnelId: string } }>(
-    "/api/tunnels/:tunnelId",
-    async (request, reply) => {
-      try {
-        return (await repository.deleteUserTunnel(
-          principalOwnerId(request),
-          request.params.tunnelId,
-        ))
-          ? reply.code(204).send()
-          : reply.code(404).send({ error: "Tunnel not found." });
-      } catch (error) {
-        if (error instanceof TunnelManagementError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
+  installTunnelMutationRoutes(app, { repository });
 
   installWorkerManagementRoutes(app, {
     bridge,
