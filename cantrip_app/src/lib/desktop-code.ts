@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
+  codeOpenExtensionsResultSchema,
   codeOpenFileResultSchema,
   codeOpenSettingsResultSchema,
   codePresentationUpdateSchema,
@@ -1103,6 +1104,32 @@ export async function openDirectCodeAttachmentSettings(
     throw new Error(message);
   }
   return codeOpenSettingsResultSchema.parse(body);
+}
+
+export async function openDirectCodeAttachmentExtensions(
+  attachment: CodeAttachment,
+  options: { signal?: AbortSignal } = {},
+) {
+  const endpoint = new URL("_cantrip/open-extensions", attachment.url);
+  const response = await fetch(endpoint, {
+    body: JSON.stringify({}),
+    credentials: "omit",
+    headers: { "content-type": "application/json" },
+    method: "POST",
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  const body = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const message =
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      typeof body.error === "string"
+        ? body.error
+        : "Cantrip Code could not open extensions.";
+    throw new Error(message);
+  }
+  return codeOpenExtensionsResultSchema.parse(body);
 }
 
 export async function setDirectCodeAttachmentPresentation(

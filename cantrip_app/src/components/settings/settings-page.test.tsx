@@ -70,7 +70,10 @@ describe("account settings", () => {
     );
     const code = renderSettings("code");
     expect(code).toContain('data-slot="code-settings-surface"');
-    expect(code).toContain("Starting the Code settings workbench…");
+    expect(code).toContain("Starting the Code customization workbench…");
+    expect(code).toContain("Code customization sections");
+    expect(code).toContain("Extensions");
+    expect(code).toContain("Code customization worker");
     expect(code).not.toContain("VS Code settings</p>");
   });
 
