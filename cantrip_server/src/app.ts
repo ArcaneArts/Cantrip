@@ -63,11 +63,7 @@ import {
   codeGraphActionAcknowledgementSchema,
   codeGraphProjectStatusSchema,
   codeSaveAllResultSchema,
-  codeSessionListSchema,
-  encryptedCodeTabCreateSchema,
-  codeTabWireListSchema,
   codeTabWireSummarySchema,
-  encryptedCodeTabUpdateSchema,
   explorerCodeProtectedAttachmentCreateSchema,
   explorerCodeSessionAttachmentCreateSchema,
   codeSharedAttachmentWireSchema,
@@ -539,7 +535,6 @@ import {
 import { TabLayoutInvariantError } from "./db/tab-layouts.js";
 import {
   AgentInteractionConflictError,
-  CodeCapabilityUnavailableError,
   ExecutionLaneConflictError,
   ExecutionPlacementUnavailableError,
   StandaloneChatPlacementUnavailableError,
@@ -628,6 +623,10 @@ import { installInternalProviderCredentialRoutes } from "./app/routes/internal-p
 import { installPolicyRoutes } from "./app/routes/policies.js";
 import { installProjectAutomationRoutes } from "./app/routes/project-automations.js";
 import { installProjectCatalogAndPlacementRoutes } from "./app/routes/project-catalog-and-placement.js";
+import {
+  installCodeTabManagementRoutes,
+  installCodeTabSessionListRoute,
+} from "./app/routes/code-tab-management.js";
 import { installProjectExportRoutes } from "./app/routes/project-exports.js";
 import { installProjectExternalChatHistoryRoute } from "./app/routes/project-external-chat-history.js";
 import { installGithubRepositoryCatalogRoutes } from "./app/routes/github-repository-catalog.js";
@@ -19200,69 +19199,13 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/code-tabs",
-    async (request, reply) =>
-      reply.send(
-        codeTabWireListSchema.parse(
-          await repository.listCodeTabs(
-            applicationOwnerId(),
-            request.params.projectId,
-          ),
-        ),
-      ),
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/code-tabs",
-    async (request, reply) => {
-      const input = encryptedCodeTabCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const codeTab = await repository.createCodeTab(
-          applicationOwnerId(),
-          request.params.projectId,
-          { ...input.data, themeMode: "follow-cantrip" },
-          (workerId) => bridge.isConnected(workerId),
-        );
-        return codeTab
-          ? reply.code(201).send(codeTabWireSummarySchema.parse(codeTab))
-          : reply
-              .code(404)
-              .send({ error: "Project source or worktree not found." });
-      } catch (error) {
-        if (error instanceof ExecutionPlacementUnavailableError) {
-          return reply
-            .code(error.code === "project-not-found" ? 404 : 409)
-            .send({ code: error.code, error: error.message });
-        }
-        if (error instanceof CodeCapabilityUnavailableError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
+  installCodeTabManagementRoutes(app, {
+    applicationOwnerId,
+    repository,
+    runtime: {
+      isWorkerConnected: (workerId) => bridge.isConnected(workerId),
     },
-  );
-
-  app.patch<{ Params: { codeTabId: string } }>(
-    "/api/code-tabs/:codeTabId",
-    async (request, reply) => {
-      const input = encryptedCodeTabUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const codeTab = await repository.updateCodeTab(
-        applicationOwnerId(),
-        request.params.codeTabId,
-        { ...input.data, themeMode: "follow-cantrip" },
-      );
-      return codeTab
-        ? reply.send(codeTabWireSummarySchema.parse(codeTab))
-        : reply.code(404).send({ error: "Code tab not found." });
-    },
-  );
+  });
 
   app.patch<{ Params: { codeTabId: string } }>(
     "/api/code-tabs/:codeTabId/worktree",
@@ -19316,18 +19259,10 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { codeTabId: string } }>(
-    "/api/code-tabs/:codeTabId/sessions",
-    async (request, reply) => {
-      const sessions = await repository.listCodeSessions(
-        applicationOwnerId(),
-        request.params.codeTabId,
-      );
-      return sessions
-        ? reply.send(codeSessionListSchema.parse(sessions))
-        : reply.code(404).send({ error: "Code tab not found." });
-    },
-  );
+  installCodeTabSessionListRoute(app, {
+    applicationOwnerId,
+    repository,
+  });
 
   app.get<{ Params: { codeTabId: string; sessionId: string } }>(
     "/api/code-tabs/:codeTabId/sessions/:sessionId/runtime",
