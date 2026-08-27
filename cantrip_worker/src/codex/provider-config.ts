@@ -20,6 +20,11 @@ const CANTRIP_CODEX_RUNTIME_POLICY = [
   "agents.enabled=true",
 ] as const;
 
+// ChatGPT reserves `collaboration.*`; keep Codex's local V2 subagents available
+// under a caller-defined namespace whose schemas the backend accepts.
+const CHATGPT_MULTI_AGENT_V2_COMPATIBILITY_POLICY =
+  'features.multi_agent_v2.tool_namespace="agents"';
+
 export function isZaiRuntimeProvider(provider: CodexProvider): boolean {
   return (
     provider.kind === "openai-compatible" &&
@@ -41,7 +46,11 @@ export function codexProviderConfiguration(
   const modelProvider = codexModelProviderName(provider);
   if (modelProvider === "openai") {
     return {
-      arguments: [...CANTRIP_CODEX_RUNTIME_POLICY, 'model_provider="openai"'],
+      arguments: [
+        ...CANTRIP_CODEX_RUNTIME_POLICY,
+        CHATGPT_MULTI_AGENT_V2_COMPATIBILITY_POLICY,
+        'model_provider="openai"',
+      ],
       environment: {},
     };
   }
