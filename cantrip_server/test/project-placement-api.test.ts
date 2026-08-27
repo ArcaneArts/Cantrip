@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   browserWireSummarySchema,
   cantripCliCommandResultSchema,
+  directAttachmentTicketSchema,
   explorerWireSummarySchema,
   executionPlacementResolutionSchema,
   executionTargetWireCatalogSchema,
@@ -171,6 +172,15 @@ const workerBridge: WorkerCommandBus = {
       case "worker-link.peer.revoke":
       case "worker-link.peer.signal":
         return { accepted: true };
+      case "direct.capability.prepare":
+        return {
+          accepted: true,
+          capabilityId: command.binding.capabilityId,
+        };
+      case "direct.capability.renew":
+        return { renewed: true, leaseExpiresAt: command.leaseExpiresAt };
+      case "direct.capability.revoke":
+        return { revoked: true };
       case "terminal.open":
         await options?.onEvent?.({ type: "terminal.ready" });
         return { status: "detached" };
@@ -272,6 +282,16 @@ beforeAll(async () => {
     architecture: "arm64",
     codexVersion: "0.146.1",
     codexRuntime: unprobedCodexRuntimeReport,
+    directBroker: {
+      available: true,
+      leaseRenewal: true,
+      protocol: "ws-v1",
+      loopbackHost: "127.0.0.1",
+      loopbackPort: 43_123,
+      instanceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      publicKey: "a".repeat(43),
+      fingerprint: "b".repeat(64),
+    },
     code: {
       available: true,
       version: "1.109.5",
@@ -444,6 +464,57 @@ describe.sequential("project execution placement API", () => {
     );
     expect(metrics.body).not.toContain(session.sessionId);
     expect(metrics.body).not.toContain("telemetry-client-1");
+  });
+
+  it("activates an exact LOCAL capability before accepting lease heartbeats", async () => {
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-alpha/worker-link/sessions",
+      payload: { clientInstanceId: "local-capability-client-1" },
+    });
+    expect(sessionResponse.statusCode).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+    const ticketResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/direct`,
+      payload: {},
+    });
+    expect(ticketResponse.statusCode, ticketResponse.body).toBe(201);
+    const ticket = directAttachmentTicketSchema.parse(ticketResponse.json());
+    expect(ticket.binding).toMatchObject({
+      attachmentId: session.sessionId,
+      resourceId: session.sessionId,
+      resourceKind: "worker-link",
+      workerId: "worker-alpha",
+    });
+
+    const heartbeat = {
+      bytesFromLocal: 0,
+      bytesToLocal: 0,
+      connectionsClosed: 0,
+      connectionsOpened: 0,
+    };
+    const beforeActivation = await app.inject({
+      method: "POST",
+      url: `/api/direct-attachments/${ticket.binding.capabilityId}/telemetry`,
+      payload: heartbeat,
+    });
+    expect(beforeActivation.statusCode).toBe(409);
+
+    const activated = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/direct-activate`,
+      payload: { capabilityId: ticket.binding.capabilityId },
+    });
+    expect(activated.statusCode).toBe(204);
+    for (let heartbeatIndex = 0; heartbeatIndex < 3; heartbeatIndex += 1) {
+      const renewed = await app.inject({
+        method: "POST",
+        url: `/api/direct-attachments/${ticket.binding.capabilityId}/telemetry`,
+        payload: heartbeat,
+      });
+      expect(renewed.statusCode).toBe(204);
+    }
   });
 
   it("authorizes bounded peer signaling and an exact worker mailbox", async () => {

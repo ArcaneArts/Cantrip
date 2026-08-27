@@ -4,7 +4,7 @@ import {
   type WorkerLinkFrameHeader,
   type WorkerLinkSession,
 } from "@cantrip/protocol";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   openWorkerLinkLocalCarrier,
@@ -142,6 +142,8 @@ const closeHeader: WorkerLinkFrameHeader = {
   code: "normal",
 };
 
+afterEach(() => vi.useRealTimers());
+
 describe("WorkerLink carriers", () => {
   it("builds the authenticated server RELAY URL and forwards binary frames", async () => {
     let socket!: FakeSocket;
@@ -170,7 +172,8 @@ describe("WorkerLink carriers", () => {
     carrier.close();
   });
 
-  it("accepts LOCAL only after the loopback broker proves its ephemeral identity", async () => {
+  it("activates and renews LOCAL after the broker proves its identity", async () => {
+    vi.useFakeTimers();
     const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
       "sign",
       "verify",
@@ -207,8 +210,15 @@ describe("WorkerLink carriers", () => {
       secret: "s".repeat(43),
     };
     let socket!: FakeSocket;
+    const activated = vi.fn(async () => undefined);
+    const recorded = vi
+      .fn<() => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("lease rejected"));
     const released = vi.fn(async () => undefined);
     const carrierPromise = openWorkerLinkLocalCarrier({
+      activateCapability: activated,
       createTicket: async () => ticket,
       createWebSocket: (url) => {
         socket = new FakeSocket(url, (data) => {
@@ -239,7 +249,7 @@ describe("WorkerLink carriers", () => {
         queueMicrotask(() => socket.open());
         return socket;
       },
-      recordActivity: async () => undefined,
+      recordActivity: recorded,
       releaseCapability: released,
       session,
     });
@@ -248,7 +258,18 @@ describe("WorkerLink carriers", () => {
     expect(carrier.route).toBe("local");
     expect(socket.url).toBe("ws://127.0.0.1:43123/direct/v1");
     expect(ticket.secret).toBe("");
-    carrier.close();
+    expect(activated).toHaveBeenCalledWith(
+      session.sessionId,
+      ticket.binding.capabilityId,
+    );
+    expect(recorded).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(20_000);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(recorded).toHaveBeenCalledTimes(2);
+    expect(socket.closed).toBe(false);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await vi.waitFor(() => expect(socket.closed).toBe(true));
+    expect(recorded).toHaveBeenCalledTimes(3);
     await vi.waitFor(() => expect(released).toHaveBeenCalledOnce());
   });
 });

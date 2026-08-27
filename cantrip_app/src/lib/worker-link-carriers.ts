@@ -49,6 +49,7 @@ export interface WorkerLinkWebSocketLike {
 }
 
 export interface WorkerLinkLocalCarrierOptions {
+  activateCapability(sessionId: string, capabilityId: string): Promise<void>;
   createTicket(sessionId: string): Promise<DirectAttachmentTicket>;
   createWebSocket(url: string): WorkerLinkWebSocketLike;
   recordActivity(capabilityId: string): Promise<void>;
@@ -160,7 +161,7 @@ export async function openWorkerLinkLocalCarrier(
   const ticket = await options.createTicket(options.session.sessionId);
   let capabilityId: string | null = ticket.binding.capabilityId;
   let socket: WorkerLinkWebSocketLike | null = null;
-  let renewTimer: ReturnType<typeof setInterval> | null = null;
+  let renewTimer: ReturnType<typeof setTimeout> | null = null;
   try {
     const startedAt = performance.now();
     socket = options.createWebSocket(
@@ -184,18 +185,29 @@ export async function openWorkerLinkLocalCarrier(
       JSON.parse(String(await readyPromise)),
     );
     await verifyDirectBroker(ticket, ready, challenge);
-    renewTimer = setInterval(() => {
-      if (!capabilityId) return;
-      void options.recordActivity(capabilityId).catch(() => undefined);
-    }, DIRECT_RENEW_INTERVAL_MS);
+    await options.activateCapability(
+      options.session.sessionId,
+      ticket.binding.capabilityId,
+    );
     const connectedSocket = socket;
     const connectedCapabilityId = capabilityId;
-    return new WebSocketWorkerLinkCarrier(
+    let carrier!: WebSocketWorkerLinkCarrier;
+    const scheduleRenewal = () => {
+      renewTimer = setTimeout(() => {
+        renewTimer = null;
+        if (!capabilityId) return;
+        void options
+          .recordActivity(capabilityId)
+          .then(scheduleRenewal)
+          .catch(() => carrier.close("local-capability-renewal-failed"));
+      }, DIRECT_RENEW_INTERVAL_MS);
+    };
+    carrier = new WebSocketWorkerLinkCarrier(
       "local",
       Math.max(0, performance.now() - startedAt),
       connectedSocket,
       () => {
-        if (renewTimer) clearInterval(renewTimer);
+        if (renewTimer) clearTimeout(renewTimer);
         renewTimer = null;
         capabilityId = null;
         void options
@@ -203,8 +215,10 @@ export async function openWorkerLinkLocalCarrier(
           .catch(() => undefined);
       },
     );
+    scheduleRenewal();
+    return carrier;
   } catch (error) {
-    if (renewTimer) clearInterval(renewTimer);
+    if (renewTimer) clearTimeout(renewTimer);
     socket?.close(1000, "WorkerLink local setup failed");
     if (capabilityId) {
       await options.releaseCapability(capabilityId).catch(() => undefined);

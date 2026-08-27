@@ -3,6 +3,8 @@
 - Gate: T2.11
 - Deterministic run: 2026-08-26
 - Base commit: `69f9d1312802d33aab94972062a5220decf36dba`
+- Post-gate regression run: 2026-08-27
+- Post-gate repair: [#1213](https://github.com/ArcaneArts/Cantrip/pull/1213)
 - Command: `pnpm network:acceptance`
 - Result: Pass
 
@@ -35,7 +37,7 @@ stateDiagram-v2
 
 | Scenario                                                | Expected                                                            | Automated result |
 | ------------------------------------------------------- | ------------------------------------------------------------------- | ---------------- |
-| Tauri and worker on the same machine                    | `LOCAL`                                                             | Pass             |
+| Tauri and worker on the same machine                    | Activated `LOCAL` survives repeated lease renewals                  | Pass             |
 | Separate devices on an ordinary LAN                     | `LAN`                                                               | Pass             |
 | Tailscale interface                                     | `WAN`                                                               | Pass             |
 | ZeroTier interface                                      | `WAN`                                                               | Pass             |
@@ -51,10 +53,11 @@ stateDiagram-v2
 | Worker restart                                          | Worker-process generation fence and safe reconnect                  | Pass             |
 | Server-generation change                                | Stale authority rejected; affected streams reopen                   | Pass             |
 
-`RELAY` is prepared concurrently wherever policy enables it. Successful LAN or
-WAN promotion applies to new logical channels; an already-open channel keeps
-its effective route until that stream reconnects. No matrix case uses TURN or
-a relay ICE candidate.
+`RELAY` is prepared concurrently wherever policy enables it. Successful direct
+promotion applies to new logical channels and reconnectable provisional event
+subscriptions. An already-open reliable feature stream keeps its effective
+route until that stream reconnects. No matrix case uses TURN or a relay ICE
+candidate.
 
 ## Feature matrix
 
@@ -66,7 +69,7 @@ a relay ICE candidate.
 | Generic TCP                    | Open, data, nested identity, credit, half-close, backpressure, route walk, and stable native listener                                                            | Pass   |
 | Browser Remote Surface         | Interactive input remains reliable while frames/cursors are bounded and disposable                                                                               | Pass   |
 | Remote Desktop                 | Interactive control, realtime congestion, exact attachment authority, and truthful per-lane routes                                                               | Pass   |
-| Worker observations            | Provisional chat/filesystem fan-out, ordered acknowledgement, canonical exclusion, continuity discard, and authoritative resync                                  | Pass   |
+| Worker observations            | Provisional chat/filesystem fan-out, ordered acknowledgement, canonical exclusion, promoted-route reconnect, continuity discard, and authoritative resync        | Pass   |
 | Multiple clients per worker    | Independent sessions and grants with exact revocation isolation                                                                                                  | Pass   |
 | Multiple workers per client    | Independent manager links, carriers, channels, and status projections                                                                                            | Pass   |
 | Mixed routes                   | Simultaneous LAN and RELAY channels with per-channel failure containment                                                                                         | Pass   |
@@ -84,6 +87,20 @@ The T2.11 deterministic run passed:
 - worker gateway and adapters: 42 assertions;
 - server authority, relay, and cross-replica coordination: 35 assertions; and
 - native Tauri WorkerLink bridge: 5 Rust assertions.
+
+The 2026-08-27 post-gate regression run passed the expanded matrix:
+
+- protocol: 19 assertions;
+- browser/Tauri-renderer application: 180 assertions;
+- worker gateway and adapters: 42 assertions;
+- server authority, relay, direct activation, and cross-replica coordination:
+  80 assertions; and
+- native Tauri WorkerLink bridge: 5 Rust assertions.
+
+The added cases prove that an authenticated same-machine capability is
+explicitly activated, survives consecutive renewal periods, fails into normal
+route recovery when renewal is rejected, and reconnects the provisional
+observation subscription from RELAY to LOCAL with authoritative resync.
 
 The acceptance PR also runs the full protocol, application, and worker suites,
 workspace typecheck/build, Android and iOS Capacitor sync, native formatting and
@@ -113,7 +130,10 @@ The repository acceptance gate finds no remaining Tranche Two implementation
 gap. `LOCAL -> LAN -> WAN -> RELAY` is operational beneath WorkerLink; supported
 features do not own topology selection; direct traffic retains exact
 server-issued authority; cross-replica behavior does not require sticky
-sessions; and RELAY remains forceable and independently covered.
+sessions; and RELAY remains forceable and independently covered. Post-gate
+coverage also proves that same-machine LOCAL authorization remains active
+through lease renewal and that promoted provisional observations stop keeping
+an unnecessary RELAY data channel alive.
 
 Deferred product decisions remain unchanged: TURN, transparent arbitrary TCP
 resumption, extra trusted-device approval, VPN-as-LAN allowlisting, and general

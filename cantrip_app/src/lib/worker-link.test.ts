@@ -786,6 +786,48 @@ describe("WorkerLinkManager", () => {
     );
   });
 
+  it("reconnects event subscriptions after LOCAL replaces RELAY", async () => {
+    const relay = new FakeCarrier("relay", 30);
+    const local = new FakeCarrier("local", 2);
+    const pendingLocal = deferred<WorkerLinkCarrier>();
+    const setup = dependencies({
+      enabled: ["local", "relay"],
+      local: async () => pendingLocal.promise,
+      preferredRoute: "local",
+      relay: async () => relay,
+    });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+    expect(reference.link.preferredRoute).toBe("relay");
+
+    const opening = reference.link.openEventSubscription(
+      observationGrant(reference.link.session),
+    );
+    await vi.waitFor(() => expect(relay.sent).toHaveLength(1));
+    acceptOpen(relay);
+    const subscription = await opening;
+    const closed = vi.fn();
+    subscription.onClose(closed);
+
+    pendingLocal.resolve(local);
+    await vi.waitFor(() => expect(reference.link.preferredRoute).toBe("local"));
+    await vi.waitFor(() =>
+      expect(closed).toHaveBeenCalledWith("route-replaced"),
+    );
+    expect(relay.closed).toBe(false);
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({
+        activeChannelCount: 0,
+        effectiveRoutes: ["local"],
+        preferredRoute: "local",
+        transitionReason: "route-promoted",
+      }),
+    );
+
+    reference.release();
+    await manager.close();
+  });
+
   it("widens browser direct probing from LAN to WAN before retaining RELAY", async () => {
     const relay = new FakeCarrier("relay", 50);
     const wan = new FakeCarrier("wan", 12);

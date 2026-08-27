@@ -118,6 +118,79 @@ async function prepareDirect(
 }
 
 describe("DirectAttachmentCoordinator", () => {
+  it("keeps an activated WorkerLink capability alive across repeated renewals", async () => {
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        if (command.type === "direct.capability.prepare") {
+          return { accepted: true, capabilityId: command.binding.capabilityId };
+        }
+        if (command.type === "direct.capability.renew") {
+          return { renewed: true, leaseExpiresAt: command.leaseExpiresAt };
+        }
+        return { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const preparedAtMs = Date.now();
+    const ticket = await prepareDirect(coordinator, {
+      attachmentId: "worker-link-session-1",
+      authSessionId: "session-1",
+      channels: ["worker-link"],
+      leaseExpiresAt: new Date(preparedAtMs + 60_000),
+      maxLeaseExpiresAt: new Date(preparedAtMs + 5 * 60_000),
+      ownerId: "owner-1",
+      resourceId: "worker-link-session-1",
+      resourceKind: "worker-link",
+      worker: worker(true),
+    });
+    expect(
+      coordinator.recordActivationOutcome(
+        ticket.binding.capabilityId,
+        {
+          attachmentId: "worker-link-session-1",
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        },
+        "completed",
+      ),
+    ).toBe(true);
+
+    let nowMs = preparedAtMs;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => nowMs);
+    try {
+      const expiries: string[] = [];
+      for (const elapsedMs of [20_000, 40_000, 60_000]) {
+        nowMs = preparedAtMs + elapsedMs;
+        const renewal = await coordinator.renewActiveLease(
+          ticket.binding.capabilityId,
+          { authSessionId: "session-1", ownerId: "owner-1" },
+        );
+        expect(renewal.status).toBe("completed");
+        if (renewal.status === "completed") {
+          expect(renewal.renewed).toBe(true);
+          expiries.push(renewal.leaseExpiresAt);
+        }
+      }
+      expect(expiries.map(Date.parse)).toEqual([
+        preparedAtMs + 80_000,
+        preparedAtMs + 100_000,
+        preparedAtMs + 120_000,
+      ]);
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.renew",
+        ),
+      ).toHaveLength(3);
+    } finally {
+      now.mockRestore();
+      await coordinator.close();
+    }
+  });
+
   it("publishes exact tunnel lease renewal and finalization without observing generic grants", async () => {
     const renewed = vi.fn(async () => undefined);
     const finalized = vi.fn(async () => undefined);

@@ -280,6 +280,7 @@ import {
   queuedPromptSchema,
   directAttachmentTicketSchema,
   workerLinkLeaseSchema,
+  workerLinkDirectActivationSchema,
   workerLinkObservationGrantRequestSchema,
   workerLinkPeerMailboxReadRequestSchema,
   workerLinkPeerMailboxSchema,
@@ -890,6 +891,16 @@ export async function recordWorkerLinkTelemetry(
 export async function createWorkerLinkDirectTicket(sessionId: string) {
   return directAttachmentTicketSchema.parse(
     await post(`/api/worker-links/${encodeURIComponent(sessionId)}/direct`, {}),
+  );
+}
+
+export async function activateWorkerLinkDirectTicket(
+  sessionId: string,
+  capabilityId: string,
+): Promise<void> {
+  await post(
+    `/api/worker-links/${encodeURIComponent(sessionId)}/direct-activate`,
+    workerLinkDirectActivationSchema.parse({ capabilityId }),
   );
 }
 

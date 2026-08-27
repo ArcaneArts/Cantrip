@@ -96,6 +96,9 @@ function fixture() {
     grant,
     session,
     stream,
+    emitClose: (code: Parameters<WorkerLinkStream["close"]>[0]) => {
+      for (const listener of closeListeners) listener(code ?? "normal");
+    },
     emitData: (payload: Uint8Array) => {
       for (const listener of dataListeners) listener(payload);
     },
@@ -136,6 +139,7 @@ function setup() {
     recoverWorkerObservations: vi.fn(),
   };
   const release = vi.fn();
+  const openEventSubscription = vi.fn(async () => value.stream);
   const dependencies: WorkerObservationClientDependencies = {
     clearTimer: (timer) => clearTimeout(timer),
     createGrant: vi.fn(async () => value.grant),
@@ -147,7 +151,7 @@ function setup() {
           workerId: value.session.identity.workerId,
           onRouteChanged: () => () => undefined,
           openStream: vi.fn(),
-          openEventSubscription: vi.fn(async () => value.stream),
+          openEventSubscription,
           reprobe: vi.fn(),
         },
         release,
@@ -158,7 +162,7 @@ function setup() {
     revokeGrant: vi.fn(async () => undefined),
     setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
   };
-  return { ...value, dependencies, release, sink };
+  return { ...value, dependencies, openEventSubscription, release, sink };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -207,6 +211,28 @@ describe("WorkerObservationClient", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(value.dependencies.manager.acquire).toHaveBeenCalledTimes(2);
     client.stop();
+  });
+
+  it("keeps the WorkerLink alive while moving observations to a promoted route", async () => {
+    vi.useFakeTimers();
+    const value = setup();
+    const client = new WorkerObservationClient(value.sink, value.dependencies);
+    client.updateWorkers(["worker-one"]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(value.dependencies.manager.acquire).toHaveBeenCalledOnce();
+
+    value.emitClose("route-replaced");
+    expect(value.release).not.toHaveBeenCalled();
+    expect(value.sink.recoverWorkerObservations).toHaveBeenCalledWith(
+      "worker-one",
+    );
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(value.dependencies.manager.acquire).toHaveBeenCalledOnce();
+    expect(value.dependencies.createGrant).toHaveBeenCalledTimes(2);
+    expect(value.openEventSubscription).toHaveBeenCalledTimes(2);
+    client.stop();
+    expect(value.release).toHaveBeenCalledOnce();
   });
 
   it("recovers an observation that was applied before credit acknowledgement failed", async () => {
