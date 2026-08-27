@@ -8,6 +8,7 @@ import {
   WORKER_LINK_MAX_TELEMETRY_SAMPLES,
   decodeWorkerLinkFrame,
   workerLinkFrameHeaderSchema,
+  type WorkerLinkChannelKind,
   type WorkerLinkChannelCloseCode,
   type WorkerLinkChannelErrorCode,
   type WorkerLinkChannelRejectCode,
@@ -117,6 +118,9 @@ export interface WorkerLink {
   openStream(
     grant: WorkerLinkResourceGrant,
     lane: WorkerLinkQosLane,
+  ): Promise<WorkerLinkStream>;
+  openEventSubscription(
+    grant: WorkerLinkResourceGrant,
   ): Promise<WorkerLinkStream>;
   reprobe(reason?: WorkerLinkReprobeReason): Promise<void>;
 }
@@ -714,10 +718,33 @@ class ClientWorkerLink implements WorkerLink {
     grant: WorkerLinkResourceGrant,
     lane: WorkerLinkQosLane,
   ): Promise<WorkerLinkStream> {
+    return this.#openChannel(grant, lane, "reliable-stream");
+  }
+
+  async openEventSubscription(
+    grant: WorkerLinkResourceGrant,
+  ): Promise<WorkerLinkStream> {
+    return this.#openChannel(grant, "events", "event-subscription");
+  }
+
+  async #openChannel(
+    grant: WorkerLinkResourceGrant,
+    lane: WorkerLinkQosLane,
+    channelKind: Extract<
+      WorkerLinkChannelKind,
+      "reliable-stream" | "event-subscription"
+    >,
+  ): Promise<WorkerLinkStream> {
     if (this.#closed || this.#carriers.size === 0) {
       throw new Error("WorkerLink is not connected.");
     }
-    validateGrant(grant, this.#session, lane, this.dependencies.now());
+    validateGrant(
+      grant,
+      this.#session,
+      lane,
+      channelKind,
+      this.dependencies.now(),
+    );
     let unavailable: unknown = null;
     for (const route of this.#availableRoutes()) {
       const active = this.#carriers.get(route);
@@ -767,7 +794,7 @@ class ClientWorkerLink implements WorkerLink {
       );
       this.#streams.set(channelId, stream);
       try {
-        await stream.open(grant);
+        await stream.open(grant, channelKind);
         if (this.#streams.get(channelId) === stream) {
           countedActive = true;
           this.#activeStreamRoutes.set(channelId, route);
@@ -1574,8 +1601,16 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
     ) => void,
   ) {}
 
-  open(grant: WorkerLinkResourceGrant): Promise<void> {
-    this.#canRead = grant.binding.operations.includes("stream:read");
+  open(
+    grant: WorkerLinkResourceGrant,
+    channelKind: Extract<
+      WorkerLinkChannelKind,
+      "reliable-stream" | "event-subscription"
+    >,
+  ): Promise<void> {
+    this.#canRead =
+      grant.binding.operations.includes("stream:read") ||
+      grant.binding.operations.includes("events:subscribe");
     this.#canWrite = grant.binding.operations.includes("stream:write");
     this.#canHalfClose = grant.binding.operations.includes("stream:half-close");
     const opened = new Promise<void>((resolve, reject) => {
@@ -1587,7 +1622,7 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
         this.#header({
           kind: "open",
           openNonce: crypto.randomUUID(),
-          channelKind: "reliable-stream",
+          channelKind,
           grant,
           initialCreditBytes: INITIAL_CREDIT_BYTES,
         }),
@@ -1896,6 +1931,10 @@ function validateGrant(
   grant: WorkerLinkResourceGrant,
   session: WorkerLinkSession,
   lane: WorkerLinkQosLane,
+  channelKind: Extract<
+    WorkerLinkChannelKind,
+    "reliable-stream" | "event-subscription"
+  >,
   now: number,
 ): void {
   const binding = grant.binding;
@@ -1903,7 +1942,9 @@ function validateGrant(
     binding.sessionId !== session.sessionId ||
     JSON.stringify(binding.identity) !== JSON.stringify(session.identity) ||
     !binding.lanes.includes(lane) ||
-    !binding.operations.includes("stream:open") ||
+    (channelKind === "event-subscription"
+      ? !binding.operations.includes("events:subscribe")
+      : !binding.operations.includes("stream:open")) ||
     Date.parse(binding.lease.expiresAt) <= now
   ) {
     throw new Error("WorkerLink grant does not authorize this stream.");

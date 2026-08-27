@@ -24,6 +24,7 @@ export const WORKER_LINK_MAX_PEER_SIGNALS = 256;
 export const WORKER_LINK_MAX_PEER_SIGNALING_BYTES = 4 * 1_024 * 1_024;
 export const WORKER_LINK_MAX_STUN_URLS = 8;
 export const WORKER_LINK_MAX_INTERFACE_RULES = 64;
+export const WORKER_LINK_MAX_OBSERVATION_TOPICS = 4;
 export const WORKER_LINK_PEER_CONTROL_CHANNEL =
   "cantrip-worker-link-v1:control";
 export const WORKER_LINK_PEER_LANE_CHANNEL_PREFIX =
@@ -86,6 +87,13 @@ export const workerLinkGrantOperationSchema = z.enum([
   "stream:half-close",
   "events:subscribe",
   "datagram:send",
+]);
+
+export const workerLinkObservationTopicSchema = z.enum([
+  "chat-progress",
+  "filesystem",
+  "worktree",
+  "runtime",
 ]);
 
 export const workerLinkRevokeReasonSchema = z.enum([
@@ -521,6 +529,25 @@ export const workerLinkRemoteSurfaceGrantRequestSchema = z
   })
   .strict();
 
+export const workerLinkObservationGrantRequestSchema = z
+  .object({
+    topics: z
+      .array(workerLinkObservationTopicSchema)
+      .min(1)
+      .max(WORKER_LINK_MAX_OBSERVATION_TOPICS)
+      .refine((topics) => new Set(topics).size === topics.length, {
+        message: "Observation topics must be unique.",
+      }),
+  })
+  .strict();
+
+export const workerLinkObservationInstallationSchema = z
+  .object({
+    subscriptionId: z.string().uuid(),
+    topics: workerLinkObservationGrantRequestSchema.shape.topics,
+  })
+  .strict();
+
 export const workerLinkTunnelRouteSchema = z
   .object({
     tunnelId: idSchema,
@@ -600,9 +627,32 @@ export const workerLinkTunnelGrantSchema = z
 export const installedWorkerLinkGrantSchema = z
   .object({
     binding: workerLinkGrantBindingSchema,
+    observation: workerLinkObservationInstallationSchema.optional(),
     tokenHash: workerLinkGrantTokenHashSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((grant, context) => {
+    const observationGrant = grant.binding.resource.kind === "observations";
+    if (observationGrant !== (grant.observation !== undefined)) {
+      context.addIssue({
+        code: "custom",
+        path: ["observation"],
+        message:
+          "Only observation grants require an installed observation subscription.",
+      });
+    }
+    if (
+      grant.observation &&
+      grant.binding.resource.attachmentId !== grant.observation.subscriptionId
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["observation", "subscriptionId"],
+        message:
+          "The observation subscription must match the exact grant attachment.",
+      });
+    }
+  });
 
 export const workerLinkRevocationSchema = z
   .object({
@@ -1419,6 +1469,9 @@ export type WorkerLinkResourceKind = z.infer<
 export type WorkerLinkGrantOperation = z.infer<
   typeof workerLinkGrantOperationSchema
 >;
+export type WorkerLinkObservationTopic = z.infer<
+  typeof workerLinkObservationTopicSchema
+>;
 export type WorkerLinkRevokeReason = z.infer<
   typeof workerLinkRevokeReasonSchema
 >;
@@ -1441,6 +1494,12 @@ export type WorkerLinkTunnelGrantRequest = z.infer<
 >;
 export type WorkerLinkRemoteSurfaceGrantRequest = z.infer<
   typeof workerLinkRemoteSurfaceGrantRequestSchema
+>;
+export type WorkerLinkObservationGrantRequest = z.infer<
+  typeof workerLinkObservationGrantRequestSchema
+>;
+export type WorkerLinkObservationInstallation = z.infer<
+  typeof workerLinkObservationInstallationSchema
 >;
 export type WorkerLinkTunnelRoute = z.infer<typeof workerLinkTunnelRouteSchema>;
 export type WorkerLinkTunnelGrant = z.infer<typeof workerLinkTunnelGrantSchema>;

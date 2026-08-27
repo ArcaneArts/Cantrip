@@ -66,6 +66,7 @@ export interface WorkerConnectionTimingOptions {
   connectionGeneration?: string;
   handleWorkerLinkFrame?: WorkerLinkFrameHandler;
   keepaliveTimeoutMs?: number;
+  observeEvent?: (command: WorkerCommand, event: WorkerEvent) => void;
   reconnectDelayMs?: number;
   transportDisconnectGraceMs?: number;
 }
@@ -1043,6 +1044,11 @@ export class WorkerConnection {
     try {
       const emit = (event: WorkerEvent) => {
         emittedEventCount += 1;
+        try {
+          this.timing.observeEvent?.(request.command, event);
+        } catch {
+          // Direct observations are provisional; the server event remains authoritative.
+        }
         this.sendServerEnvelope({
           kind: "event",
           requestId: request.requestId,

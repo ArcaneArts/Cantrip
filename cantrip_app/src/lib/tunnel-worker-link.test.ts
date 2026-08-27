@@ -173,6 +173,7 @@ function setup(route: WorkerLinkRoute = "local") {
       });
       return () => undefined;
     },
+    openEventSubscription: vi.fn(async () => stream),
     openStream: vi.fn(async () => stream),
     reprobe: vi.fn(async () => undefined),
   };

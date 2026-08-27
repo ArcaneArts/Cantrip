@@ -275,6 +275,36 @@ describe("WorkerLinkService replicated authority", () => {
       }),
     );
 
+    const observationSubscriptionId = "77777777-7777-4777-8777-777777777777";
+    const observationGrant = await serviceB.issueGrant({
+      attachmentId: observationSubscriptionId,
+      lanes: ["events"],
+      observation: {
+        subscriptionId: observationSubscriptionId,
+        topics: ["chat-progress", "filesystem"],
+      },
+      operations: ["events:subscribe"],
+      resourceId: "worker-1",
+      resourceKind: "observations",
+      sessionId: opened.sessionId,
+    });
+    expect(workersA.commands).toContainEqual(
+      expect.objectContaining({
+        type: "worker-link.grant.install",
+        sessionId: opened.sessionId,
+        grant: expect.objectContaining({
+          binding: observationGrant.binding,
+          observation: {
+            subscriptionId: observationSubscriptionId,
+            topics: ["chat-progress", "filesystem"],
+          },
+        }),
+      }),
+    );
+    await expect(
+      serviceB.revokeGrant(opened.sessionId, observationGrant.binding.grantId),
+    ).resolves.toBe(true);
+
     const tunnelGrant = await serviceB.issueGrant({
       attachmentId: "attachment-1",
       lanes: ["stream"],

@@ -188,6 +188,9 @@ function setup(
     session: activeSession,
     workerId: "worker-1",
     onRouteChanged: vi.fn(() => () => undefined),
+    openEventSubscription: vi.fn(async () => {
+      throw new Error("not used");
+    }),
     openStream: vi.fn(async (_grant, lane) => {
       if (lane === "interactive") {
         streamSets.push({

@@ -465,8 +465,13 @@ The application live WebSocket remains connected to the server and remains the
 source of committed, replayable state. It is not replaced with a direct worker
 socket.
 
-WorkerLink adds an authorized `worker-observations` channel for high-frequency,
-provisional information:
+WorkerLink adds an authorized `event-subscription` channel for high-frequency,
+provisional information. The server issues an exact `observations` resource
+grant for one worker, account session, client instance, worker process, route
+generation, subscription attachment, and bounded set of topics. The installed
+topic metadata is sent only to the worker; the client bearer grant cannot widen
+it. The initial topic vocabulary is `chat-progress`, `filesystem`, `worktree`,
+and `runtime`:
 
 - incremental inference output;
 - agent activity and tool progress;
@@ -504,6 +509,15 @@ Direct and canonical events share stable operation, turn, message, and sequence
 identities so clients can deduplicate them. If the observation channel loses
 continuity, the client drops uncertain provisional state and fetches the
 authoritative server snapshot.
+
+The worker fans eligible events to every authorized subscription while keeping
+the existing server delivery unchanged. Protocol validation excludes final
+messages, final turn outcomes, approvals and interactions, peer signaling,
+provider authentication, and other durable or authority-bearing notifications
+from the direct channel. Each subscription has its own monotonic continuity
+sequence and bounded reliable queue; overflow closes that subscription so the
+client must resubscribe and reconcile instead of displaying an undetectable
+gap.
 
 Filesystem events are normally direct invalidation hints. Workers may still
 send compact worktree and Git summaries to the server when durable coordination

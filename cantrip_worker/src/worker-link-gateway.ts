@@ -376,7 +376,11 @@ export class WorkerLinkGateway {
         "WorkerLink route generation is stale or unavailable.",
       );
     }
-    if (parsed.sequence !== 0 || parsed.channelKind !== "reliable-stream") {
+    if (
+      parsed.sequence !== 0 ||
+      (parsed.channelKind !== "reliable-stream" &&
+        parsed.channelKind !== "event-subscription")
+    ) {
       throw this.#rejection(
         parsed.sessionId,
         "unsupported-channel",
@@ -450,7 +454,9 @@ export class WorkerLinkGateway {
     }
     if (
       !installed.grant.binding.lanes.includes(parsed.lane) ||
-      !installed.grant.binding.operations.includes("stream:open")
+      (parsed.channelKind === "event-subscription"
+        ? !installed.grant.binding.operations.includes("events:subscribe")
+        : !installed.grant.binding.operations.includes("stream:open"))
     ) {
       throw this.#rejection(
         parsed.sessionId,
@@ -511,7 +517,7 @@ export class WorkerLinkGateway {
       if (pendingOutput.length >= MAX_PENDING_ADAPTER_EMISSIONS) return false;
       if (emission.kind === "data") {
         if (
-          !installed.grant.binding.operations.includes("stream:read") ||
+          !grantAllowsWorkerOutput(installed.grant) ||
           emission.payload.byteLength === 0 ||
           emission.payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
           pendingOutputBytes + emission.payload.byteLength >
@@ -887,7 +893,7 @@ export class WorkerLinkGateway {
     if (emission.kind === "data") {
       const grant = this.#grant(channel.sessionId, channel.grantId);
       if (
-        !grant?.grant.binding.operations.includes("stream:read") ||
+        !grantAllowsWorkerOutput(grant?.grant) ||
         emission.payload.byteLength === 0 ||
         emission.payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
         channel.pendingOutputBytes + emission.payload.byteLength >
@@ -955,7 +961,7 @@ export class WorkerLinkGateway {
       : null;
     if (
       !channel ||
-      !grant?.grant.binding.operations.includes("stream:read") ||
+      !grantAllowsWorkerOutput(grant?.grant) ||
       payload.byteLength === 0 ||
       payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
       payload.byteLength > channel.outboundCreditBytes
@@ -1378,6 +1384,15 @@ function tokenMatches(token: string, expectedHash: string): boolean {
 
 function canonical(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function grantAllowsWorkerOutput(
+  grant: InstalledWorkerLinkGrant | undefined,
+): boolean {
+  return Boolean(
+    grant?.binding.operations.includes("stream:read") ||
+    grant?.binding.operations.includes("events:subscribe"),
+  );
 }
 
 function resolveIdentityPart(

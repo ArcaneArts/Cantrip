@@ -360,6 +360,7 @@ import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
 import { TunnelWorkerLinkAdapter } from "./tunnel-worker-link-adapter.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-adapter.js";
+import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
 import {
   runWorkerRuntimeLoop,
   scheduleWorkerRuntimeRestart,
@@ -741,6 +742,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
     workerProcessGeneration,
   });
+  const workerObservationHub = new WorkerObservationHub();
+  workerLinkGateway.registerAdapter(workerObservationHub);
   const workerLinkPeerGateway = new WorkerLinkPeerGateway({
     authorize: (peerSession) =>
       workerLinkGateway.peerSessionAuthorized(peerSession),
@@ -5514,18 +5517,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ),
         );
       },
+      observeEvent: (command, event) => {
+        workerObservationHub.publishCommandEvent(command, event);
+      },
     },
   );
   directBroker.setTunnelFrameHandler((header, payload, diagnostics) =>
     tunnelDestinations.handleFrame(header, payload, diagnostics),
   );
-  worktrees.setObservationEmitter((notification) =>
-    commandConnection.sendNotification(notification),
-  );
-  workerNotificationEmitter = (notification) =>
-    commandConnection.sendNotification(notification);
-  codegraphNotificationEmitter = (notification) =>
-    commandConnection.sendNotification(notification);
+  const sendWorkerNotification = (notification: WorkerNotification) => {
+    workerObservationHub.publishNotification(notification);
+    return commandConnection.sendNotification(notification);
+  };
+  worktrees.setObservationEmitter(sendWorkerNotification);
+  workerNotificationEmitter = sendWorkerNotification;
+  codegraphNotificationEmitter = sendWorkerNotification;
   remoteSurfaces.setFrameEmitter((header, payload) =>
     commandConnection.sendSurfaceFrame(header, payload),
   );

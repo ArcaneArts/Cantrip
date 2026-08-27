@@ -7667,6 +7667,14 @@ export const terminalSnapshotResultSchema = z.object({
 
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
 export const agentMessagePhaseSchema = z.enum(["commentary", "final_answer"]);
+export const workerObservationEventIdentitySchema = z
+  .object({
+    operationId: z.string().min(1).max(200),
+    turnId: z.string().min(1).max(200).nullable(),
+    messageId: z.string().min(1).max(200).nullable(),
+    sequence: z.number().int().nonnegative().safe(),
+  })
+  .strict();
 export const agentActivityStatusSchema = z.enum([
   "running",
   "completed",
@@ -7965,10 +7973,12 @@ export const chatMessageContentSchema = z.array(
       streaming: z.boolean().optional(),
       correlation: codexEventCorrelationSchema.nullable().optional(),
       agentScope: agentScopeSchema.optional(),
+      sourceEvent: workerObservationEventIdentitySchema.optional(),
     }),
     z.object({
       type: z.literal("activity"),
       activity: agentActivitySchema,
+      sourceEvent: workerObservationEventIdentitySchema.optional(),
     }),
     z.object({
       type: z.literal("attachment"),
@@ -15792,6 +15802,113 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
   providerAuthStatusObservationSchema,
 ]);
 
+const directWorkerEventTypes = new Set<WorkerEvent["type"]>([
+  "agent.activity",
+  "agent.inference-progress",
+  "agent.message",
+  "agent.protected-message",
+  "agent.protected-task-message",
+]);
+
+const directWorkerNotificationTopics = new Map<
+  WorkerNotification["type"],
+  "filesystem" | "runtime" | "worktree"
+>([
+  ["worktree.filesystem.changed", "filesystem"],
+  ["worktree.inventory.observed", "worktree"],
+  ["worktree.status.observed", "worktree"],
+  ["git.operation.observed", "worktree"],
+  ["terminal.runtime.observed", "runtime"],
+  ["codegraph.status.observed", "runtime"],
+  ["project.run-configuration-runtime.observed", "runtime"],
+  ["project.run-configuration-definitions.changed", "runtime"],
+]);
+
+function workerEventIsProvisional(event: WorkerEvent): boolean {
+  if (!directWorkerEventTypes.has(event.type)) return false;
+  if (event.type === "agent.message") {
+    return (
+      event.message.streaming === true || event.message.phase === "commentary"
+    );
+  }
+  if (
+    event.type === "agent.protected-message" ||
+    event.type === "agent.protected-task-message"
+  ) {
+    return (
+      event.telemetry.kind === "activity" ||
+      event.telemetry.kind === "usage" ||
+      (event.telemetry.kind === "message" &&
+        (event.telemetry.streaming === true ||
+          event.telemetry.phase === "commentary"))
+    );
+  }
+  return true;
+}
+
+export const workerObservationPayloadSchema = z.discriminatedUnion("topic", [
+  z
+    .object({
+      topic: z.literal("chat-progress"),
+      chatId: z.string().min(1).max(200),
+      clientMessageId: z.string().min(1).max(200),
+      executionLaneId: z.string().min(1).max(200),
+      event: workerEventSchema,
+    })
+    .strict()
+    .superRefine((payload, context) => {
+      if (!workerEventIsProvisional(payload.event)) {
+        context.addIssue({
+          code: "custom",
+          path: ["event"],
+          message:
+            "Final messages, outcomes, approvals, and durable worker events cannot use the provisional observation channel.",
+        });
+      }
+    }),
+  z
+    .object({
+      topic: z.enum(["filesystem", "worktree", "runtime"]),
+      notification: workerNotificationSchema,
+    })
+    .strict()
+    .superRefine((payload, context) => {
+      if (
+        directWorkerNotificationTopics.get(payload.notification.type) !==
+        payload.topic
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["notification"],
+          message:
+            "This worker notification is not authorized for the selected provisional observation topic.",
+        });
+      }
+    }),
+]);
+
+export const workerObservationEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(1),
+    subscriptionId: z.string().uuid(),
+    continuitySequence: z.number().int().nonnegative().safe(),
+    observedAt: z.iso.datetime(),
+    identity: workerObservationEventIdentitySchema,
+    payload: workerObservationPayloadSchema,
+  })
+  .strict()
+  .superRefine((envelope, context) => {
+    if (
+      new TextEncoder().encode(JSON.stringify(envelope)).byteLength >
+      512 * 1_024
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Worker observation envelopes may contain at most 512 KiB.",
+      });
+    }
+  });
+
 export const workerNotificationEnvelopeSchema = z.object({
   kind: z.literal("notification"),
   notification: workerNotificationSchema,
@@ -17580,6 +17697,15 @@ export type CodeGraphActionAcknowledgement = z.infer<
   typeof codeGraphActionAcknowledgementSchema
 >;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
+export type WorkerObservationEventIdentity = z.infer<
+  typeof workerObservationEventIdentitySchema
+>;
+export type WorkerObservationPayload = z.infer<
+  typeof workerObservationPayloadSchema
+>;
+export type WorkerObservationEnvelope = z.infer<
+  typeof workerObservationEnvelopeSchema
+>;
 export type InferenceProgressPhase = z.infer<
   typeof inferenceProgressPhaseSchema
 >;

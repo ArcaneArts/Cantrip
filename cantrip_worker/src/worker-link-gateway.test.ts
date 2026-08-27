@@ -159,6 +159,94 @@ describe("WorkerLinkGateway", () => {
     await gateway.close();
   });
 
+  it("opens server-to-client event subscriptions without stream authority", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const subscriptionId = "77777777-7777-4777-8777-777777777777";
+    const binding: WorkerLinkResourceGrant["binding"] = {
+      ...fixture.grant.binding,
+      resource: {
+        kind: "observations",
+        resourceId: "worker-1",
+        attachmentId: subscriptionId,
+      },
+      lanes: ["events"],
+      operations: ["events:subscribe"],
+      maxChannels: 1,
+    };
+    const grant: WorkerLinkResourceGrant = { binding, token };
+    const installed: InstalledWorkerLinkGrant = {
+      binding,
+      observation: {
+        subscriptionId,
+        topics: ["filesystem"],
+      },
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+    };
+    let adapterEmitter: WorkerLinkAdapterEmitter | null = null;
+    const responses: Array<{
+      header: WorkerLinkFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "observations",
+      open: ({ emit }) => {
+        adapterEmitter = emit;
+        return {};
+      },
+    });
+    await gateway.handleCoordinatorCommand({
+      type: "worker-link.session.install",
+      session: fixture.session,
+    });
+    await gateway.handleCoordinatorCommand({
+      type: "worker-link.grant.install",
+      sessionId,
+      grant: installed,
+    });
+    await expect(
+      gateway.openChannel({
+        ...fixture.open,
+        lane: "events",
+        channelKind: "reliable-stream",
+        grant,
+      }),
+    ).rejects.toMatchObject({ code: "unauthorized" });
+    await expect(
+      gateway.openChannel(
+        {
+          ...fixture.open,
+          lane: "events",
+          channelKind: "event-subscription",
+          grant,
+        },
+        (header, payload) => {
+          responses.push({ header, payload });
+          return true;
+        },
+      ),
+    ).resolves.toMatchObject({ kind: "accept", lane: "events" });
+    expect(adapterEmitter).not.toBeNull();
+    expect(adapterEmitter!.data(new Uint8Array([1, 2, 3]))).toBe(true);
+    expect(responses).toContainEqual({
+      header: expect.objectContaining({
+        kind: "data",
+        lane: "events",
+        direction: "worker-to-client",
+      }),
+      payload: new Uint8Array([1, 2, 3]),
+    });
+    await gateway.close();
+  });
+
   it("rejects cross-session, cross-account, stale-route, and wrong-process authority", async () => {
     const now = Date.parse("2026-08-26T12:00:00.000Z");
     const fixture = fixtures(now);
