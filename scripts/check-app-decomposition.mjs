@@ -10,7 +10,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const legacyEntrypoint = "cantrip_server/src/app.ts";
 // Ratchet this downward as each extraction lands; remove the legacy exception
 // once app.ts becomes the final compatibility facade.
-const legacyEntrypointMaximum = 28_132;
+const legacyEntrypointMaximum = 27_735;
 const applicationModuleMaximum = 1_999;
 const sources = await readApplicationSourceCorpus(repositoryRoot);
 const failures = [];
