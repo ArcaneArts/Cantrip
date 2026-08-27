@@ -3,11 +3,10 @@ import { Network as CapacitorNetwork } from "@capacitor/network";
 import { isTauri } from "@tauri-apps/api/core";
 import {
   WORKER_LINK_MAX_CREDIT_BYTES,
-  WORKER_LINK_MAX_HEADER_BYTES,
   WORKER_LINK_MAX_PAYLOAD_BYTES,
   WORKER_LINK_MAX_TELEMETRY_SAMPLES,
+  createWorkerLinkFrame,
   decodeWorkerLinkFrame,
-  workerLinkFrameHeaderSchema,
   type WorkerLinkChannelKind,
   type WorkerLinkChannelCloseCode,
   type WorkerLinkChannelErrorCode,
@@ -20,6 +19,7 @@ import {
   type WorkerLinkRouteStatus,
   type WorkerLinkSession,
   type WorkerLinkTelemetrySample,
+  type ValidatedWorkerLinkFrame,
 } from "@cantrip/protocol";
 
 import {
@@ -1467,17 +1467,11 @@ class ClientWorkerLink implements WorkerLink {
   }
 }
 
-interface ScheduledWorkerLinkFrame {
-  bytes: number;
-  header: WorkerLinkFrameHeader;
-  payload: Uint8Array;
-}
-
 class WorkerLinkFrameScheduler {
   readonly #bytes = new Map<WorkerLinkQosLane, number>();
   #closed = false;
   #laneIndex = 0;
-  readonly #queues = new Map<WorkerLinkQosLane, ScheduledWorkerLinkFrame[]>();
+  readonly #queues = new Map<WorkerLinkQosLane, ValidatedWorkerLinkFrame[]>();
   #scheduled = false;
   readonly #saturated = new Set<WorkerLinkQosLane>();
   #timer: ReturnType<typeof setTimeout> | null = null;
@@ -1496,20 +1490,21 @@ class WorkerLinkFrameScheduler {
     if (this.#closed) return false;
     const queue = this.#queues.get(header.lane);
     if (!queue) return false;
-    const frameBytes = WORKER_LINK_MAX_HEADER_BYTES + payload.byteLength;
     const laneBytes = this.#bytes.get(header.lane) ?? 0;
     if (
       queue.length >= SCHEDULER_MAX_FRAMES_PER_LANE ||
-      laneBytes + frameBytes > SCHEDULER_MAX_BYTES_PER_LANE
+      laneBytes + 8 + payload.byteLength > SCHEDULER_MAX_BYTES_PER_LANE
     ) {
       this.#saturated.add(header.lane);
       return false;
     }
-    queue.push({
-      bytes: frameBytes,
-      header: workerLinkFrameHeaderSchema.parse(header),
-      payload: Uint8Array.from(payload),
-    });
+    const frame = createWorkerLinkFrame(header, payload);
+    const frameBytes = frame.bytes.byteLength;
+    if (laneBytes + frameBytes > SCHEDULER_MAX_BYTES_PER_LANE) {
+      this.#saturated.add(header.lane);
+      return false;
+    }
+    queue.push(frame);
     this.#bytes.set(header.lane, laneBytes + frameBytes);
     this.#schedule();
     return true;
@@ -1532,7 +1527,7 @@ class WorkerLinkFrameScheduler {
       for (let index = queue.length - 1; index >= 0; index -= 1) {
         const frame = queue[index]!;
         if (frame.header.channel.channelId === channelId) {
-          removedBytes += frame.bytes;
+          removedBytes += frame.bytes.byteLength;
           queue.splice(index, 1);
         }
       }
@@ -1565,7 +1560,7 @@ class WorkerLinkFrameScheduler {
     while (sent < SCHEDULER_BURST_FRAMES) {
       const next = this.#next();
       if (!next) return;
-      if (!this.carrier.send(next.header, next.payload)) {
+      if (!this.carrier.send(next)) {
         this.#schedule(SCHEDULER_RETRY_MS);
         return;
       }
@@ -1573,7 +1568,10 @@ class WorkerLinkFrameScheduler {
       queue.shift();
       this.#bytes.set(
         next.header.lane,
-        Math.max(0, (this.#bytes.get(next.header.lane) ?? 0) - next.bytes),
+        Math.max(
+          0,
+          (this.#bytes.get(next.header.lane) ?? 0) - next.bytes.byteLength,
+        ),
       );
       if (this.#saturated.delete(next.header.lane)) {
         this.available(next.header.lane);
@@ -1583,7 +1581,7 @@ class WorkerLinkFrameScheduler {
     if (this.#hasQueuedFrames()) this.#schedule(1);
   }
 
-  #next(): ScheduledWorkerLinkFrame | null {
+  #next(): ValidatedWorkerLinkFrame | null {
     for (let checked = 0; checked < SCHEDULER_LANES.length; checked += 1) {
       const lane = SCHEDULER_LANES[this.#laneIndex]!;
       this.#laneIndex = (this.#laneIndex + 1) % SCHEDULER_LANES.length;

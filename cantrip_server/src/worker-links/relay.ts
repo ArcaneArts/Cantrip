@@ -1,6 +1,6 @@
 import {
+  createWorkerLinkFrame,
   decodeWorkerLinkFrame,
-  encodeWorkerLinkFrame,
   type WorkerLinkFrameHeader,
   type WorkerLinkPeerLaneLimits,
   type WorkerLinkQosLane,
@@ -9,7 +9,6 @@ import {
 import type { AccountBandwidthChannel } from "@cantrip/protocol/resource-usage";
 
 import type { AccountUsageRecorder } from "../account-usage/bandwidth-meter.js";
-import { recordEncodedFrame } from "../account-usage/frame-bandwidth.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
 
 const MAX_RELAY_BUFFERED_BYTES = 8 * 1_024 * 1_024;
@@ -171,7 +170,8 @@ export class WorkerLinkRelay {
     connection.unsubscribers.push(
       this.workers.subscribeWorkerLinkFrames?.(
         session.identity.workerId,
-        (header, payload) => {
+        (frame) => {
+          const { header, payload } = frame;
           if (
             this.#connections.get(session.sessionId) !== connection ||
             header.sessionId !== session.sessionId ||
@@ -193,19 +193,18 @@ export class WorkerLinkRelay {
             return;
           }
           channel.workerSequence = header.sequence;
-          const encoded = encodeWorkerLinkFrame(header, payload);
           this.#record(
             connection,
             channel.bandwidthChannel,
             "ingress",
-            encoded,
+            frame.bytes.byteLength,
           );
           if (!this.#consumeRelay(connection, payload.byteLength)) return;
           const accepted = this.#sendOrQueue(
             connection,
             header.lane,
             channel.bandwidthChannel,
-            encoded,
+            frame.bytes,
           );
           if (
             accepted &&
@@ -346,21 +345,29 @@ export class WorkerLinkRelay {
       channel = current;
     }
     const bandwidthChannel = channel.bandwidthChannel;
-    const encoded = encodeWorkerLinkFrame(header, frame.payload);
-    this.#record(connection, bandwidthChannel, "ingress", encoded);
+    this.#record(
+      connection,
+      bandwidthChannel,
+      "ingress",
+      frame.bytes.byteLength,
+    );
     if (!this.#consumeRelay(connection, frame.payload.byteLength)) return;
     const delivered =
       this.workers.sendWorkerLinkFrame?.(
         connection.session.identity.workerId,
-        header,
-        frame.payload,
+        frame,
       ) ?? false;
     if (!delivered) {
       connection.socket.close(1013, "WorkerLink worker route is unavailable");
       return;
     }
     channel.clientDeliveredSequence = header.sequence;
-    this.#record(connection, bandwidthChannel, "egress", encoded);
+    this.#record(
+      connection,
+      bandwidthChannel,
+      "egress",
+      frame.bytes.byteLength,
+    );
     if (header.kind === "close") this.#releaseChannel(connection, channelId);
   }
 
@@ -404,7 +411,7 @@ export class WorkerLinkRelay {
   ): boolean {
     try {
       connection.socket.send(encoded, { binary: true });
-      this.#record(connection, bandwidthChannel, "egress", encoded);
+      this.#record(connection, bandwidthChannel, "egress", encoded.byteLength);
       return true;
     } catch {
       connection.socket.close(1011, "WorkerLink relay send failed");
@@ -492,13 +499,13 @@ export class WorkerLinkRelay {
     connection: RelayConnection,
     channel: AccountBandwidthChannel,
     direction: "egress" | "ingress",
-    data: unknown,
+    bytes: number,
   ): void {
-    recordEncodedFrame(this.options.usageRecorder, {
+    this.options.usageRecorder?.record({
       ownerId: connection.session.identity.ownerId,
       direction,
       channel,
-      data,
+      bytes,
     });
   }
 
@@ -566,18 +573,20 @@ export class WorkerLinkRelay {
       if (channel.clientDeliveredSequence < 0) continue;
       this.workers.sendWorkerLinkFrame?.(
         connection.session.identity.workerId,
-        {
-          protocolVersion: channel.header.protocolVersion,
-          sessionId: channel.header.sessionId,
-          routeGeneration: channel.header.routeGeneration,
-          effectiveRoute: channel.header.effectiveRoute,
-          channel: channel.header.channel,
-          lane: channel.header.lane,
-          sequence: channel.clientDeliveredSequence + 1,
-          kind: "close",
-          code: "endpoint-disconnected",
-        },
-        EMPTY_PAYLOAD,
+        createWorkerLinkFrame(
+          {
+            protocolVersion: channel.header.protocolVersion,
+            sessionId: channel.header.sessionId,
+            routeGeneration: channel.header.routeGeneration,
+            effectiveRoute: channel.header.effectiveRoute,
+            channel: channel.header.channel,
+            lane: channel.header.lane,
+            sequence: channel.clientDeliveredSequence + 1,
+            kind: "close",
+            code: "endpoint-disconnected",
+          },
+          EMPTY_PAYLOAD,
+        ),
       );
     }
     connection.channels.clear();

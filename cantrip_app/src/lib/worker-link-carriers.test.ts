@@ -1,4 +1,5 @@
 import {
+  createWorkerLinkFrame,
   decodeWorkerLinkFrame,
   type DirectAttachmentTicket,
   type WorkerLinkFrameHeader,
@@ -162,13 +163,12 @@ describe("WorkerLink carriers", () => {
     expect(socket.url).toBe(
       "wss://cantrip.example/api/worker-links/11111111-1111-4111-8111-111111111111/connect?clientInstanceId=client-instance-1",
     );
-    expect(carrier.send(closeHeader, new Uint8Array())).toBe(true);
+    const frame = createWorkerLinkFrame(closeHeader, new Uint8Array());
+    expect(carrier.send(frame)).toBe(true);
     const sent = socket.sent[0];
-    if (!(sent instanceof ArrayBuffer))
-      throw new Error("Missing binary frame.");
-    expect(decodeWorkerLinkFrame(new Uint8Array(sent)).header).toEqual(
-      closeHeader,
-    );
+    expect(sent).toBe(frame.bytes);
+    if (!(sent instanceof Uint8Array)) throw new Error("Missing binary frame.");
+    expect(decodeWorkerLinkFrame(sent).header).toEqual(closeHeader);
     carrier.close();
   });
 

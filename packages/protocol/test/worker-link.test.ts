@@ -4,6 +4,7 @@ import {
   decodeTunnelDataPlaneFrame,
   decodeWorkerLinkFrame,
   decodeWorkerLinkRemoteSurfaceChunk,
+  createWorkerLinkFrame,
   encodeTunnelDataPlaneFrame,
   encodeWorkerLinkFrame,
   encodeWorkerLinkRemoteSurfaceChunk,
@@ -809,10 +810,12 @@ describe("WorkerLink protocol", () => {
     for (const header of headers) {
       const encoded = encodeWorkerLinkFrame(header, new Uint8Array());
       expect(isWorkerLinkFrame(encoded)).toBe(true);
-      expect(decodeWorkerLinkFrame(encoded)).toEqual({
+      const decoded = decodeWorkerLinkFrame(encoded);
+      expect(decoded).toMatchObject({
         header,
         payload: new Uint8Array(),
       });
+      expect(decoded.bytes).toBe(encoded);
     }
 
     const dataHeader: WorkerLinkFrameHeader = {
@@ -822,9 +825,30 @@ describe("WorkerLink protocol", () => {
       payloadFormat: "raw",
     };
     const payload = new Uint8Array([0, 1, 2, 255]);
-    expect(
-      decodeWorkerLinkFrame(encodeWorkerLinkFrame(dataHeader, payload)),
-    ).toEqual({ header: dataHeader, payload });
+    const encoded = encodeWorkerLinkFrame(dataHeader, payload);
+    const decoded = decodeWorkerLinkFrame(encoded);
+    expect(decoded).toMatchObject({ header: dataHeader, payload });
+    expect(decoded.bytes).toBe(encoded);
+    expect(decoded.payload.buffer).toBe(encoded.buffer);
+  });
+
+  it("owns caller bytes while exposing one validated encoded frame", () => {
+    const header: WorkerLinkFrameHeader = {
+      ...frameBase,
+      kind: "data",
+      direction: "client-to-worker",
+      payloadFormat: "raw",
+    };
+    const payload = new Uint8Array([1, 2, 3, 4]);
+    const frame = createWorkerLinkFrame(header, payload);
+    payload.fill(9);
+
+    expect(frame.payload).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect(frame.payload.buffer).toBe(frame.bytes.buffer);
+    expect(decodeWorkerLinkFrame(frame.bytes)).toMatchObject({
+      header,
+      payload: new Uint8Array([1, 2, 3, 4]),
+    });
   });
 
   it("can encapsulate the existing tunnel frame without rewriting it", () => {

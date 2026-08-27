@@ -1,6 +1,7 @@
 import {
   appLiveClientMessageSchema,
   appLiveServerMessageSchema,
+  createWorkerLinkFrame,
   decodeRemoteSurfaceFrame,
   decodeWorkerLinkFrame,
   encodeRemoteSurfaceFrame,
@@ -190,8 +191,7 @@ describe("shared relay coordination", () => {
     expect(
       bridgeA.sendWorkerLinkFrame(
         "worker-1",
-        workerLinkHeader,
-        new Uint8Array(),
+        createWorkerLinkFrame(workerLinkHeader, new Uint8Array()),
       ),
     ).toBe(true);
     await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(3));
@@ -211,8 +211,10 @@ describe("shared relay coordination", () => {
     );
     await vi.waitFor(() =>
       expect(workerLinkReceived).toHaveBeenCalledWith(
-        { ...workerLinkHeader, sequence: 2 },
-        new Uint8Array(),
+        expect.objectContaining({
+          header: { ...workerLinkHeader, sequence: 2 },
+          payload: new Uint8Array(),
+        }),
       ),
     );
 

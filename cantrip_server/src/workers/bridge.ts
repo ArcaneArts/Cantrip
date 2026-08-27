@@ -8,7 +8,6 @@ import {
   encodeWorkerRequestEnvelope,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
-  encodeWorkerLinkFrame,
   isTunnelDataPlaneFrame,
   isWorkerLinkFrame,
   type RemoteSurfaceFrameHeader,
@@ -16,7 +15,7 @@ import {
   type WorkerCommand,
   type WorkerEvent,
   type WorkerNotification,
-  type WorkerLinkFrameHeader,
+  type ValidatedWorkerLinkFrame,
   type WorkerServerEnvelope,
 } from "@cantrip/protocol";
 import type { ServiceLogger } from "@cantrip/logging";
@@ -50,10 +49,7 @@ export type WorkerTunnelDataPlaneFrameListener = (
   payload: Uint8Array,
 ) => void;
 
-export type WorkerLinkFrameListener = (
-  header: WorkerLinkFrameHeader,
-  payload: Uint8Array,
-) => void;
+export type WorkerLinkFrameListener = (frame: ValidatedWorkerLinkFrame) => void;
 
 export type WorkerNotificationListener = (
   notification: WorkerNotification,
@@ -87,8 +83,7 @@ export interface WorkerCommandBus {
   ): boolean;
   sendWorkerLinkFrame?(
     workerId: string,
-    header: WorkerLinkFrameHeader,
-    payload: Uint8Array,
+    frame: ValidatedWorkerLinkFrame,
   ): boolean;
   subscribeWorkerDisconnect(workerId: string, listener: () => void): () => void;
   subscribeWorkerOffline?(workerId: string, listener: () => void): () => void;
@@ -400,7 +395,7 @@ export class WorkerBridge implements WorkerCommandBus {
       if (isWorkerLinkFrame(bytes)) {
         const frame = decodeWorkerLinkFrame(bytes);
         for (const listener of this.#workerLinkListeners.get(workerId) ?? []) {
-          listener(frame.header, frame.payload);
+          listener(frame);
         }
         return;
       }
@@ -647,14 +642,13 @@ export class WorkerBridge implements WorkerCommandBus {
 
   sendWorkerLinkFrame(
     workerId: string,
-    header: WorkerLinkFrameHeader,
-    payload: Uint8Array,
+    frame: ValidatedWorkerLinkFrame,
   ): boolean {
     const socket = this.#sockets.get(workerId);
     if (!socket || socket.readyState !== 1) return false;
     if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
     try {
-      socket.send(encodeWorkerLinkFrame(header, payload), { binary: true });
+      socket.send(frame.bytes, { binary: true });
       return true;
     } catch {
       return false;

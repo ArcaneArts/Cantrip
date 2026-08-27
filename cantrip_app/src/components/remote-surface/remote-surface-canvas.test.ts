@@ -84,6 +84,40 @@ function touchPointer(
 }
 
 describe("RemoteSurfaceFrameRenderer", () => {
+  it("preserves the canvas backing store while frame dimensions are unchanged", async () => {
+    let width = 640;
+    let height = 650;
+    const widthWrites = vi.fn((value: number) => {
+      width = value;
+    });
+    const heightWrites = vi.fn((value: number) => {
+      height = value;
+    });
+    const target = Object.defineProperties(
+      {},
+      {
+        height: { get: () => height, set: heightWrites },
+        width: { get: () => width, set: widthWrites },
+      },
+    ) as HTMLCanvasElement;
+    const onRendered = vi.fn();
+    const renderer = new RemoteSurfaceFrameRenderer({
+      policy: "ordered",
+      getCanvas: () => target,
+      decodeFrame: async () => bitmap(640),
+      drawFrame: vi.fn(),
+      onError: vi.fn(),
+      onRendered,
+    });
+
+    renderer.push(new Uint8Array([1]));
+    renderer.push(new Uint8Array([2]));
+    await vi.waitFor(() => expect(onRendered).toHaveBeenCalledTimes(2));
+
+    expect(widthWrites).not.toHaveBeenCalled();
+    expect(heightWrites).not.toHaveBeenCalled();
+  });
+
   it("renders ordered browser frames without dropping them", async () => {
     const target = canvas();
     const drawn: number[] = [];

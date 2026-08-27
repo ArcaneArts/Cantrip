@@ -1,4 +1,5 @@
 import {
+  createWorkerLinkFrame,
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,
   type WorkerLinkFrameHeader,
@@ -6,6 +7,7 @@ import {
   type WorkerLinkQosLane,
   type WorkerLinkResourceKind,
   type WorkerLinkSession,
+  type ValidatedWorkerLinkFrame,
 } from "@cantrip/protocol/worker-link";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,6 +15,13 @@ import { WorkerLinkRelay } from "../src/worker-links/relay.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const empty = new Uint8Array();
+
+function validatedFrame(
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array = empty,
+): ValidatedWorkerLinkFrame {
+  return createWorkerLinkFrame(header, payload);
+}
 
 function session(): WorkerLinkSession {
   return {
@@ -159,25 +168,22 @@ class FakeSocket {
 
 class FakeWorkerBus {
   readonly delivered: Array<{
-    header: WorkerLinkFrameHeader;
-    payload: Uint8Array;
+    frame: ValidatedWorkerLinkFrame;
     workerId: string;
   }> = [];
-  frameListener:
-    ((header: WorkerLinkFrameHeader, payload: Uint8Array) => void) | null =
-    null;
+  frameListener: ((frame: ValidatedWorkerLinkFrame) => void) | null = null;
   offlineListener: (() => void) | null = null;
 
   sendWorkerLinkFrame = vi.fn(
-    (workerId: string, header: WorkerLinkFrameHeader, payload: Uint8Array) => {
-      this.delivered.push({ workerId, header, payload });
+    (workerId: string, frame: ValidatedWorkerLinkFrame) => {
+      this.delivered.push({ workerId, frame });
       return true;
     },
   );
 
   subscribeWorkerLinkFrames(
     _workerId: string,
-    listener: (header: WorkerLinkFrameHeader, payload: Uint8Array) => void,
+    listener: (frame: ValidatedWorkerLinkFrame) => void,
   ) {
     this.frameListener = listener;
     return () => {
@@ -209,10 +215,13 @@ describe("WorkerLinkRelay", () => {
     const open = openFrame();
     expect(relay.attach(session(), socket)).toBe(true);
 
-    socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
-    expect(workers.delivered).toEqual([
-      { workerId: "worker-1", header: open, payload: empty },
-    ]);
+    const inbound = encodeWorkerLinkFrame(open, empty);
+    socket.emit("message", inbound, true);
+    expect(workers.delivered[0]).toMatchObject({
+      workerId: "worker-1",
+      frame: { header: open, payload: empty },
+    });
+    expect(workers.delivered[0]?.frame.bytes).toBe(inbound);
 
     const accept: WorkerLinkFrameHeader = {
       protocolVersion: 1,
@@ -225,13 +234,32 @@ describe("WorkerLinkRelay", () => {
       kind: "accept",
       initialCreditBytes: 1_024,
     };
-    workers.frameListener?.(accept, empty);
-    expect(decodeWorkerLinkFrame(socket.sent[0]!)).toEqual({
+    const outbound = validatedFrame(accept);
+    workers.frameListener?.(outbound);
+    expect(socket.sent[0]).toBe(outbound.bytes);
+    expect(decodeWorkerLinkFrame(socket.sent[0]!)).toMatchObject({
       header: accept,
       payload: empty,
     });
     expect(relay.stats()).toMatchObject({ channels: 1, connections: 1 });
     relay.close();
+  });
+
+  it("rejects malformed bytes before the validated frame reaches a worker", () => {
+    const workers = new FakeWorkerBus();
+    const relay = new WorkerLinkRelay(workers.asBus());
+    const socket = new FakeSocket();
+    relay.attach(session(), socket);
+    const malformed = encodeWorkerLinkFrame(openFrame(), empty);
+    malformed[0] ^= 0xff;
+
+    socket.emit("message", malformed, true);
+
+    expect(socket.closes.at(-1)).toMatchObject({
+      code: 1003,
+      reason: expect.stringMatching(/frame is invalid/i),
+    });
+    expect(workers.delivered).toHaveLength(0);
   });
 
   it("fails closed on stale generations and closes worker channels on disconnect", () => {
@@ -259,7 +287,7 @@ describe("WorkerLinkRelay", () => {
       true,
     );
     expect(socket.closes.at(-1)?.code).toBe(1008);
-    expect(workers.delivered.at(-1)?.header).toMatchObject({
+    expect(workers.delivered.at(-1)?.frame.header).toMatchObject({
       kind: "close",
       code: "endpoint-disconnected",
       channel: open.channel,
@@ -277,7 +305,7 @@ describe("WorkerLinkRelay", () => {
     socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
 
     workers.frameListener?.(
-      {
+      validatedFrame({
         protocolVersion: 1,
         sessionId: open.sessionId,
         routeGeneration: open.routeGeneration,
@@ -287,8 +315,7 @@ describe("WorkerLinkRelay", () => {
         sequence: 1,
         kind: "accept",
         initialCreditBytes: 1_024,
-      },
-      empty,
+      }),
     );
     expect(socket.closes.at(-1)?.code).toBe(1008);
     expect(relay.stats()).toMatchObject({ channels: 0, connections: 0 });
@@ -360,7 +387,7 @@ describe("WorkerLinkRelay", () => {
       socket.emit("message", encodeWorkerLinkFrame(interactive, empty), true);
       for (const open of [bulk, interactive]) {
         workers.frameListener?.(
-          {
+          validatedFrame({
             protocolVersion: 1,
             sessionId: open.sessionId,
             routeGeneration: open.routeGeneration,
@@ -370,8 +397,7 @@ describe("WorkerLinkRelay", () => {
             sequence: 0,
             kind: "accept",
             initialCreditBytes: 1_024,
-          },
-          empty,
+          }),
         );
       }
       expect(relay.stats()).toMatchObject({
@@ -409,7 +435,7 @@ describe("WorkerLinkRelay", () => {
     relay.attach(session(), socket);
     socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
     workers.frameListener?.(
-      {
+      validatedFrame({
         protocolVersion: 1,
         sessionId: open.sessionId,
         routeGeneration: open.routeGeneration,
@@ -419,23 +445,24 @@ describe("WorkerLinkRelay", () => {
         sequence: 0,
         kind: "accept",
         initialCreditBytes: 1_024,
-      },
-      empty,
+      }),
     );
     workers.frameListener?.(
-      {
-        protocolVersion: 1,
-        sessionId: open.sessionId,
-        routeGeneration: open.routeGeneration,
-        effectiveRoute: "relay",
-        channel: open.channel,
-        lane: open.lane,
-        sequence: 1,
-        kind: "data",
-        direction: "worker-to-client",
-        payloadFormat: "raw",
-      },
-      new Uint8Array([1]),
+      validatedFrame(
+        {
+          protocolVersion: 1,
+          sessionId: open.sessionId,
+          routeGeneration: open.routeGeneration,
+          effectiveRoute: "relay",
+          channel: open.channel,
+          lane: open.lane,
+          sequence: 1,
+          kind: "data",
+          direction: "worker-to-client",
+          payloadFormat: "raw",
+        },
+        new Uint8Array([1]),
+      ),
     );
     expect(socket.closes.at(-1)).toMatchObject({
       code: 1013,
@@ -455,7 +482,7 @@ describe("WorkerLinkRelay", () => {
       relay.attach(session(), socket);
       socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
       workers.frameListener?.(
-        {
+        validatedFrame({
           protocolVersion: 1,
           sessionId: open.sessionId,
           routeGeneration: open.routeGeneration,
@@ -465,8 +492,7 @@ describe("WorkerLinkRelay", () => {
           sequence: 0,
           kind: "accept",
           initialCreditBytes: 1_024,
-        },
-        empty,
+        }),
       );
 
       await vi.advanceTimersByTimeAsync(5_000);
@@ -562,11 +588,8 @@ describe("WorkerLinkRelay", () => {
       direction: "client-to-worker",
       payloadFormat: "raw",
     };
-    socket.emit(
-      "message",
-      encodeWorkerLinkFrame(data, new Uint8Array([1, 2, 3])),
-      true,
-    );
+    const encodedData = encodeWorkerLinkFrame(data, new Uint8Array([1, 2, 3]));
+    socket.emit("message", encodedData, true);
 
     expect(consumeRelayBytes).toHaveBeenCalledWith("owner-1", "worker-1", 3);
     expect(record).toHaveBeenCalledWith(
@@ -574,6 +597,7 @@ describe("WorkerLinkRelay", () => {
         channel: "remote-surface-relay",
         direction: "ingress",
         ownerId: "owner-1",
+        bytes: encodedData.byteLength,
       }),
     );
     expect(socket.closes.at(-1)).toMatchObject({

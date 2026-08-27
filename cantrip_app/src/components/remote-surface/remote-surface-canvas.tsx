@@ -141,8 +141,8 @@ export class RemoteSurfaceFrameRenderer {
         bitmap = null;
         return;
       }
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
+      if (canvas.width !== bitmap.width) canvas.width = bitmap.width;
+      if (canvas.height !== bitmap.height) canvas.height = bitmap.height;
       this.drawFrame(canvas, bitmap);
       bitmap.close();
       bitmap = null;
@@ -164,9 +164,11 @@ export class RemoteSurfaceFrameRenderer {
 
   private decodeFrame(bytes: Uint8Array): Promise<RemoteSurfaceBitmap> {
     if (this.#options.decodeFrame) return this.#options.decodeFrame(bytes);
-    return createImageBitmap(
-      new Blob([Uint8Array.from(bytes).buffer], { type: "image/jpeg" }),
-    );
+    const blobBytes =
+      bytes.buffer instanceof ArrayBuffer
+        ? (bytes as Uint8Array<ArrayBuffer>)
+        : Uint8Array.from(bytes);
+    return createImageBitmap(new Blob([blobBytes], { type: "image/jpeg" }));
   }
 
   private drawFrame(

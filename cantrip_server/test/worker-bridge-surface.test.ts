@@ -2,6 +2,7 @@ import {
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
   decodeWorkerLinkFrame,
+  createWorkerLinkFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
   encodeWorkerLinkFrame,
@@ -130,19 +131,22 @@ describe("WorkerBridge Remote Surface transport", () => {
     const received = vi.fn();
     bridge.subscribeWorkerLinkFrames("worker-1", received);
 
-    socket.emit(
-      "message",
-      encodeWorkerLinkFrame(frame, new Uint8Array()),
-      true,
-    );
-    expect(received).toHaveBeenCalledWith(frame, new Uint8Array());
-    expect(
-      bridge.sendWorkerLinkFrame("worker-1", frame, new Uint8Array()),
-    ).toBe(true);
+    const inbound = encodeWorkerLinkFrame(frame, new Uint8Array());
+    socket.emit("message", inbound, true);
+    const receivedFrame = received.mock.calls[0]?.[0];
+    expect(receivedFrame).toMatchObject({
+      header: frame,
+      payload: new Uint8Array(),
+    });
+    expect(receivedFrame?.bytes).toBe(inbound);
+
+    const outboundFrame = createWorkerLinkFrame(frame, new Uint8Array());
+    expect(bridge.sendWorkerLinkFrame("worker-1", outboundFrame)).toBe(true);
     const outbound = socket.sent.at(-1);
     if (!(outbound instanceof Uint8Array)) {
       throw new Error("WorkerLink frame was not sent as binary.");
     }
+    expect(outbound).toBe(outboundFrame.bytes);
     expect(decodeWorkerLinkFrame(outbound).header).toEqual(frame);
     bridge.close();
   });

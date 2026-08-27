@@ -1,7 +1,7 @@
 import type { WorkerCommand, WorkerNotification } from "@cantrip/protocol";
 import type {
-  WorkerLinkFrameHeader,
   WorkerLinkPeerConfiguration,
+  ValidatedWorkerLinkFrame,
 } from "@cantrip/protocol/worker-link";
 import { describe, expect, it, vi } from "vitest";
 
@@ -27,7 +27,7 @@ class FakeWorkerBus {
   >();
   readonly workerLinkFrameListeners = new Map<
     string,
-    Set<(header: WorkerLinkFrameHeader, payload: Uint8Array) => void>
+    Set<(frame: ValidatedWorkerLinkFrame) => void>
   >();
 
   sendWorkerLinkFrame = vi.fn(() => true);
@@ -70,7 +70,7 @@ class FakeWorkerBus {
 
   subscribeWorkerLinkFrames(
     workerId: string,
-    listener: (header: WorkerLinkFrameHeader, payload: Uint8Array) => void,
+    listener: (frame: ValidatedWorkerLinkFrame) => void,
   ) {
     const listeners = this.workerLinkFrameListeners.get(workerId) ?? new Set();
     listeners.add(listener);

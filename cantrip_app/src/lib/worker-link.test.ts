@@ -4,6 +4,7 @@ import {
   type WorkerLinkResourceGrant,
   type WorkerLinkRoute,
   type WorkerLinkSession,
+  type ValidatedWorkerLinkFrame,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -122,8 +123,7 @@ class FakeCarrier implements WorkerLinkCarrier {
   readonly closes = new Set<WorkerLinkCarrierCloseListener>();
   closed = false;
   readonly frames = new Set<WorkerLinkCarrierFrameListener>();
-  readonly sent: Array<{ header: WorkerLinkFrameHeader; payload: Uint8Array }> =
-    [];
+  readonly sent: ValidatedWorkerLinkFrame[] = [];
   writable = true;
 
   constructor(
@@ -131,9 +131,9 @@ class FakeCarrier implements WorkerLinkCarrier {
     readonly latencyMs = 5,
   ) {}
 
-  send(header: WorkerLinkFrameHeader, payload: Uint8Array): boolean {
+  send(frame: ValidatedWorkerLinkFrame): boolean {
     if (this.closed || !this.writable) return false;
-    this.sent.push({ header, payload });
+    this.sent.push(frame);
     return true;
   }
 
@@ -892,7 +892,9 @@ describe("WorkerLinkManager", () => {
     stream.onData(received);
     stream.onWritable(writable);
     expect(writable).toHaveBeenCalledOnce();
-    expect(stream.write(new Uint8Array([1, 2, 3]))).toBe(true);
+    const outbound = new Uint8Array([1, 2, 3]);
+    expect(stream.write(outbound)).toBe(true);
+    outbound.fill(9);
 
     carrier.receive(
       {
@@ -947,6 +949,7 @@ describe("WorkerLinkManager", () => {
       "data",
       "credit",
     ]);
+    expect(carrier.sent[1]?.payload).toEqual(new Uint8Array([1, 2, 3]));
 
     reference.release();
     await vi.waitFor(() =>
