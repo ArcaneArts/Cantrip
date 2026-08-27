@@ -3,6 +3,7 @@ import type {
   ProjectTabLayoutSummary,
 } from "@cantrip/protocol";
 import { useMutation, type QueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 
 import {
   moveProjectTabGroupMember,
@@ -14,11 +15,38 @@ import { errorMessage as errorText } from "@/lib/error-message";
 import {
   applyOptimisticTabLayoutToCache,
   restoreOptimisticTabLayoutCache,
+  type OptimisticTabLayoutSnapshot,
 } from "@/lib/project-tab-layout-optimistic";
 import type {
   TabLayoutCommand,
   WorkspaceDropOperation,
 } from "@/lib/workspace-dnd-model";
+
+interface TabLayoutMutationInput {
+  projectId: string;
+  command: TabLayoutCommand;
+}
+
+interface PreparedTabLayoutMutation {
+  cancellation: Promise<void>;
+  snapshot: OptimisticTabLayoutSnapshot;
+}
+
+export function prepareOptimisticTabLayoutMutation(
+  queryClient: QueryClient,
+  input: TabLayoutMutationInput,
+): PreparedTabLayoutMutation {
+  const queryKey = ["project-tab-layout", input.projectId] as const;
+  const cancellation = queryClient.cancelQueries({ queryKey });
+  // dnd-kit measures the drop destination as soon as onDragEnd returns. Keep
+  // this projection synchronous so its overlay lands on the reordered tab.
+  const snapshot = applyOptimisticTabLayoutToCache(
+    queryClient,
+    input.projectId,
+    input.command,
+  );
+  return { cancellation, snapshot };
+}
 
 export function useTabLayoutOperations({
   queryClient,
@@ -27,7 +55,10 @@ export function useTabLayoutOperations({
   queryClient: QueryClient;
   setWorkspaceDragError: (error: string | null) => void;
 }) {
-  const tabLayoutMutation = useMutation({
+  const preparedTabLayouts = useRef(
+    new WeakMap<TabLayoutMutationInput, PreparedTabLayoutMutation>(),
+  );
+  const baseTabLayoutMutation = useMutation({
     mutationFn: ({
       command,
       projectId,
@@ -65,11 +96,17 @@ export function useTabLayoutOperations({
           : { targetGroupPosition: command.targetGroupPosition }),
       });
     },
-    onMutate: async ({ command, projectId }) => {
+    onMutate: async (input: TabLayoutMutationInput) => {
       setWorkspaceDragError(null);
-      const queryKey = ["project-tab-layout", projectId] as const;
-      await queryClient.cancelQueries({ queryKey });
-      return applyOptimisticTabLayoutToCache(queryClient, projectId, command);
+      const prepared = preparedTabLayouts.current.get(input);
+      if (prepared) {
+        preparedTabLayouts.current.delete(input);
+        await prepared.cancellation;
+        return prepared.snapshot;
+      }
+      const next = prepareOptimisticTabLayoutMutation(queryClient, input);
+      await next.cancellation;
+      return next.snapshot;
     },
     onError: (error, _input, context) => {
       restoreOptimisticTabLayoutCache(queryClient, context);
@@ -85,6 +122,14 @@ export function useTabLayoutOperations({
         queryKey: ["project-tab-layout", input.projectId],
       }),
   });
+  const tabLayoutMutation = {
+    isPending: baseTabLayoutMutation.isPending,
+    mutate: (input: TabLayoutMutationInput) => {
+      const prepared = prepareOptimisticTabLayoutMutation(queryClient, input);
+      preparedTabLayouts.current.set(input, prepared);
+      baseTabLayoutMutation.mutate(input);
+    },
+  };
   const renameTabGroupMutation = useMutation({
     mutationFn: ({
       groupId,
