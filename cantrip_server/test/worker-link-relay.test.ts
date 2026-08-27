@@ -2,6 +2,9 @@ import {
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,
   type WorkerLinkFrameHeader,
+  type WorkerLinkPeerLaneLimits,
+  type WorkerLinkQosLane,
+  type WorkerLinkResourceKind,
   type WorkerLinkSession,
 } from "@cantrip/protocol/worker-link";
 import { describe, expect, it, vi } from "vitest";
@@ -72,6 +75,56 @@ function openFrame(): Extract<WorkerLinkFrameHeader, { kind: "open" }> {
       token: "a".repeat(43),
     },
     initialCreditBytes: 1_024,
+  };
+}
+
+function distinctOpenFrame(input: {
+  channelId: string;
+  grantId: string;
+  lane: WorkerLinkQosLane;
+  openNonce: string;
+  resourceKind?: WorkerLinkResourceKind;
+}): Extract<WorkerLinkFrameHeader, { kind: "open" }> {
+  const base = openFrame();
+  return {
+    ...base,
+    channel: {
+      channelId: input.channelId,
+      connectionId: input.channelId,
+    },
+    grant: {
+      ...base.grant,
+      binding: {
+        ...base.grant.binding,
+        grantId: input.grantId,
+        lanes: [input.lane],
+        resource: {
+          ...base.grant.binding.resource,
+          kind: input.resourceKind ?? "terminal",
+        },
+      },
+    },
+    lane: input.lane,
+    openNonce: input.openNonce,
+  };
+}
+
+function laneLimits(
+  override: Partial<WorkerLinkPeerLaneLimits> = {},
+): WorkerLinkPeerLaneLimits {
+  const limit = {
+    maxChannels: 64,
+    maxQueuedFrames: 8,
+    maxQueuedBytes: 64 * 1_024,
+    maxBytesPerSecond: 64 * 1_024,
+  };
+  return {
+    events: limit,
+    interactive: limit,
+    stream: limit,
+    realtime: limit,
+    bulk: limit,
+    ...override,
   };
 }
 
@@ -177,7 +230,7 @@ describe("WorkerLinkRelay", () => {
       header: accept,
       payload: empty,
     });
-    expect(relay.stats()).toEqual({ channels: 1, connections: 1 });
+    expect(relay.stats()).toMatchObject({ channels: 1, connections: 1 });
     relay.close();
   });
 
@@ -212,7 +265,7 @@ describe("WorkerLinkRelay", () => {
       channel: open.channel,
       sequence: 1,
     });
-    expect(relay.stats()).toEqual({ channels: 0, connections: 0 });
+    expect(relay.stats()).toMatchObject({ channels: 0, connections: 0 });
   });
 
   it("closes the relay when worker output skips its per-channel sequence", () => {
@@ -238,7 +291,7 @@ describe("WorkerLinkRelay", () => {
       empty,
     );
     expect(socket.closes.at(-1)?.code).toBe(1008);
-    expect(relay.stats()).toEqual({ channels: 0, connections: 0 });
+    expect(relay.stats()).toMatchObject({ channels: 0, connections: 0 });
   });
 
   it("keeps RELAY on standby, rejects disabled RELAY, and ends offline relays", () => {
@@ -279,5 +332,254 @@ describe("WorkerLinkRelay", () => {
     relay.attach(session(), relaySocket);
     workers.offlineListener?.();
     expect(relaySocket.closes.at(-1)?.reason).toMatch(/offline/i);
+  });
+
+  it("queues congested output separately and drains higher-priority lanes first", async () => {
+    vi.useFakeTimers();
+    try {
+      const workers = new FakeWorkerBus();
+      const relay = new WorkerLinkRelay(workers.asBus(), {
+        laneLimits: laneLimits(),
+      });
+      const socket = new FakeSocket();
+      socket.bufferedAmount = 8 * 1_024 * 1_024 + 1;
+      relay.attach(session(), socket);
+      const bulk = distinctOpenFrame({
+        channelId: "66666666-6666-4666-8666-666666666666",
+        grantId: "77777777-7777-4777-8777-777777777777",
+        lane: "bulk",
+        openNonce: "88888888-8888-4888-8888-888888888888",
+      });
+      const interactive = distinctOpenFrame({
+        channelId: "99999999-9999-4999-8999-999999999999",
+        grantId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        lane: "interactive",
+        openNonce: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      });
+      socket.emit("message", encodeWorkerLinkFrame(bulk, empty), true);
+      socket.emit("message", encodeWorkerLinkFrame(interactive, empty), true);
+      for (const open of [bulk, interactive]) {
+        workers.frameListener?.(
+          {
+            protocolVersion: 1,
+            sessionId: open.sessionId,
+            routeGeneration: open.routeGeneration,
+            effectiveRoute: "relay",
+            channel: open.channel,
+            lane: open.lane,
+            sequence: 0,
+            kind: "accept",
+            initialCreditBytes: 1_024,
+          },
+          empty,
+        );
+      }
+      expect(relay.stats()).toMatchObject({
+        queuedFrames: 2,
+        queuedFramesByLane: { bulk: 1, interactive: 1 },
+      });
+
+      socket.bufferedAmount = 0;
+      await vi.advanceTimersByTimeAsync(5);
+      expect(
+        socket.sent.map((frame) => decodeWorkerLinkFrame(frame).header.lane),
+      ).toEqual(["interactive", "bulk"]);
+      expect(relay.stats()).toMatchObject({ queuedBytes: 0, queuedFrames: 0 });
+      relay.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails closed when one lane exceeds its independent relay queue", () => {
+    const workers = new FakeWorkerBus();
+    const relay = new WorkerLinkRelay(workers.asBus(), {
+      laneLimits: laneLimits({
+        interactive: {
+          maxChannels: 64,
+          maxQueuedFrames: 1,
+          maxQueuedBytes: 64 * 1_024,
+          maxBytesPerSecond: 64 * 1_024,
+        },
+      }),
+    });
+    const socket = new FakeSocket();
+    socket.bufferedAmount = 8 * 1_024 * 1_024 + 1;
+    const open = openFrame();
+    relay.attach(session(), socket);
+    socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
+    workers.frameListener?.(
+      {
+        protocolVersion: 1,
+        sessionId: open.sessionId,
+        routeGeneration: open.routeGeneration,
+        effectiveRoute: "relay",
+        channel: open.channel,
+        lane: open.lane,
+        sequence: 0,
+        kind: "accept",
+        initialCreditBytes: 1_024,
+      },
+      empty,
+    );
+    workers.frameListener?.(
+      {
+        protocolVersion: 1,
+        sessionId: open.sessionId,
+        routeGeneration: open.routeGeneration,
+        effectiveRoute: "relay",
+        channel: open.channel,
+        lane: open.lane,
+        sequence: 1,
+        kind: "data",
+        direction: "worker-to-client",
+        payloadFormat: "raw",
+      },
+      new Uint8Array([1]),
+    );
+    expect(socket.closes.at(-1)).toMatchObject({
+      code: 1013,
+      reason: expect.stringMatching(/lane is congested/i),
+    });
+    expect(relay.stats()).toMatchObject({ connections: 0, queuedFrames: 0 });
+  });
+
+  it("fails closed when a congested client makes no drain progress", async () => {
+    vi.useFakeTimers();
+    try {
+      const workers = new FakeWorkerBus();
+      const relay = new WorkerLinkRelay(workers.asBus());
+      const socket = new FakeSocket();
+      socket.bufferedAmount = 8 * 1_024 * 1_024 + 1;
+      const open = openFrame();
+      relay.attach(session(), socket);
+      socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
+      workers.frameListener?.(
+        {
+          protocolVersion: 1,
+          sessionId: open.sessionId,
+          routeGeneration: open.routeGeneration,
+          effectiveRoute: "relay",
+          channel: open.channel,
+          lane: open.lane,
+          sequence: 0,
+          kind: "accept",
+          initialCreditBytes: 1_024,
+        },
+        empty,
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(socket.closes.at(-1)).toMatchObject({
+        code: 1013,
+        reason: expect.stringMatching(/too slow/i),
+      });
+      expect(relay.stats()).toMatchObject({ connections: 0, queuedFrames: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shares one Remote Surface quota across a grant's lanes", () => {
+    const workers = new FakeWorkerBus();
+    const releaseSurface = vi.fn();
+    const acquireRemoteSurface = vi.fn(() => releaseSurface);
+    const relay = new WorkerLinkRelay(workers.asBus(), {
+      acquireRemoteSurface,
+    });
+    const socket = new FakeSocket();
+    const interactive = distinctOpenFrame({
+      channelId: "66666666-6666-4666-8666-666666666666",
+      grantId: "77777777-7777-4777-8777-777777777777",
+      lane: "interactive",
+      openNonce: "88888888-8888-4888-8888-888888888888",
+      resourceKind: "remote-desktop",
+    });
+    interactive.grant.binding.lanes = ["interactive", "realtime"];
+    interactive.grant.binding.maxChannels = 2;
+    const realtime: Extract<WorkerLinkFrameHeader, { kind: "open" }> = {
+      ...interactive,
+      channel: {
+        channelId: "99999999-9999-4999-8999-999999999999",
+        connectionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      },
+      lane: "realtime",
+      openNonce: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    };
+    relay.attach(session(), socket);
+    socket.emit("message", encodeWorkerLinkFrame(interactive, empty), true);
+    socket.emit("message", encodeWorkerLinkFrame(realtime, empty), true);
+
+    expect(acquireRemoteSurface).toHaveBeenCalledOnce();
+    for (const open of [interactive, realtime]) {
+      const close: WorkerLinkFrameHeader = {
+        protocolVersion: 1,
+        sessionId: open.sessionId,
+        routeGeneration: open.routeGeneration,
+        effectiveRoute: "relay",
+        channel: open.channel,
+        lane: open.lane,
+        sequence: 1,
+        kind: "close",
+        code: "normal",
+      };
+      socket.emit("message", encodeWorkerLinkFrame(close, empty), true);
+      if (open === interactive) expect(releaseSurface).not.toHaveBeenCalled();
+    }
+    expect(releaseSurface).toHaveBeenCalledOnce();
+    relay.close();
+  });
+
+  it("meters feature traffic and enforces shared relay and Remote Surface quotas", () => {
+    const workers = new FakeWorkerBus();
+    const releaseSurface = vi.fn();
+    const consumeRelayBytes = vi.fn(() => false);
+    const record = vi.fn(() => true);
+    const relay = new WorkerLinkRelay(workers.asBus(), {
+      acquireRemoteSurface: vi.fn(() => releaseSurface),
+      consumeRelayBytes,
+      usageRecorder: { record },
+    });
+    const socket = new FakeSocket();
+    const open = distinctOpenFrame({
+      channelId: "66666666-6666-4666-8666-666666666666",
+      grantId: "77777777-7777-4777-8777-777777777777",
+      lane: "interactive",
+      openNonce: "88888888-8888-4888-8888-888888888888",
+      resourceKind: "browser",
+    });
+    relay.attach(session(), socket);
+    socket.emit("message", encodeWorkerLinkFrame(open, empty), true);
+    const data: WorkerLinkFrameHeader = {
+      protocolVersion: 1,
+      sessionId: open.sessionId,
+      routeGeneration: open.routeGeneration,
+      effectiveRoute: "relay",
+      channel: open.channel,
+      lane: open.lane,
+      sequence: 1,
+      kind: "data",
+      direction: "client-to-worker",
+      payloadFormat: "raw",
+    };
+    socket.emit(
+      "message",
+      encodeWorkerLinkFrame(data, new Uint8Array([1, 2, 3])),
+      true,
+    );
+
+    expect(consumeRelayBytes).toHaveBeenCalledWith("owner-1", "worker-1", 3);
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "remote-surface-relay",
+        direction: "ingress",
+        ownerId: "owner-1",
+      }),
+    );
+    expect(socket.closes.at(-1)).toMatchObject({
+      code: 1013,
+      reason: expect.stringMatching(/bandwidth quota/i),
+    });
+    expect(releaseSurface).toHaveBeenCalledOnce();
   });
 });

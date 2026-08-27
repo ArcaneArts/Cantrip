@@ -1,5 +1,8 @@
 import type { WorkerCommand, WorkerNotification } from "@cantrip/protocol";
-import type { WorkerLinkPeerConfiguration } from "@cantrip/protocol/worker-link";
+import type {
+  WorkerLinkFrameHeader,
+  WorkerLinkPeerConfiguration,
+} from "@cantrip/protocol/worker-link";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +10,7 @@ import {
   InMemoryRelayCoordinator,
 } from "../src/coordination/relay-coordinator.js";
 import { WorkerLinkCoordinator } from "../src/worker-links/coordinator.js";
+import { WorkerLinkRelay } from "../src/worker-links/relay.js";
 import { WorkerLinkService } from "../src/worker-links/service.js";
 import type {
   WorkerCommandBus,
@@ -21,6 +25,12 @@ class FakeWorkerBus {
     string,
     Set<(notification: WorkerNotification) => Promise<void> | void>
   >();
+  readonly workerLinkFrameListeners = new Map<
+    string,
+    Set<(header: WorkerLinkFrameHeader, payload: Uint8Array) => void>
+  >();
+
+  sendWorkerLinkFrame = vi.fn(() => true);
 
   request = vi.fn(
     async (
@@ -58,6 +68,16 @@ class FakeWorkerBus {
     return () => listeners.delete(listener);
   }
 
+  subscribeWorkerLinkFrames(
+    workerId: string,
+    listener: (header: WorkerLinkFrameHeader, payload: Uint8Array) => void,
+  ) {
+    const listeners = this.workerLinkFrameListeners.get(workerId) ?? new Set();
+    listeners.add(listener);
+    this.workerLinkFrameListeners.set(workerId, listeners);
+    return () => listeners.delete(listener);
+  }
+
   async emit(workerId: string, notification: WorkerNotification) {
     await Promise.all(
       [...(this.notificationListeners.get(workerId) ?? [])].map((listener) =>
@@ -68,6 +88,32 @@ class FakeWorkerBus {
 
   asBus(): WorkerCommandBus {
     return this as unknown as WorkerCommandBus;
+  }
+}
+
+class TestRelaySocket {
+  bufferedAmount = 0;
+  readonly closes: Array<{ code?: number; reason?: string }> = [];
+  readonly listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+  readyState = 1;
+
+  close(code?: number, reason?: string): void {
+    if (this.readyState === 3) return;
+    this.closes.push({ code, reason });
+    this.readyState = 3;
+    this.emit("close");
+  }
+
+  on(event: string, listener: (...args: never[]) => void): void {
+    const listeners = this.listeners.get(event) ?? [];
+    listeners.push(listener as (...args: unknown[]) => void);
+    this.listeners.set(event, listeners);
+  }
+
+  send(): void {}
+
+  emit(event: string, ...args: unknown[]): void {
+    for (const listener of this.listeners.get(event) ?? []) listener(...args);
   }
 }
 
@@ -134,12 +180,25 @@ describe("WorkerLinkService replicated authority", () => {
     });
     const relayRevocationsA: unknown[] = [];
     const relayRevocationsB: unknown[] = [];
+    const relayB = new WorkerLinkRelay(workersB.asBus());
+    const relaySocket = new TestRelaySocket();
+    expect(relayB.attach(opened, relaySocket)).toBe(true);
     serviceA.subscribeRelayRevocations((scope) =>
       relayRevocationsA.push(scope),
     );
-    serviceB.subscribeRelayRevocations((scope) =>
-      relayRevocationsB.push(scope),
-    );
+    serviceB.subscribeRelayRevocations((scope) => {
+      relayRevocationsB.push(scope);
+      switch (scope.kind) {
+        case "session":
+          relayB.revokeSession(scope.sessionId);
+          return;
+        case "account-session":
+          relayB.revokeAccountSession(scope.accountSessionId);
+          return;
+        case "owner":
+          relayB.revokeOwner(scope.ownerId);
+      }
+    });
     await expect(
       serviceB.sessionForAuthorization(opened.sessionId, {
         accountSessionId: "account-session-1",
@@ -230,6 +289,10 @@ describe("WorkerLinkService replicated authority", () => {
     expect(relayRevocationsB).toContainEqual({
       kind: "session",
       sessionId: opened.sessionId,
+    });
+    expect(relaySocket.closes.at(-1)).toMatchObject({
+      code: 1008,
+      reason: expect.stringMatching(/session ended/i),
     });
     await expect(
       serviceB.sessionForAuthorization(opened.sessionId, {
@@ -336,6 +399,7 @@ describe("WorkerLinkService replicated authority", () => {
       }),
     );
 
+    relayB.close();
     await serviceA.close();
     await serviceB.close();
     await Promise.all([coordinationA.close(), coordinationB.close()]);
