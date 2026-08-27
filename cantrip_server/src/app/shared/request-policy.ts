@@ -99,3 +99,65 @@ export function auditResourceId(request: FastifyRequest): string | null {
   }
   return null;
 }
+
+export function publicRoute(route: string): boolean {
+  return (
+    route === "/api" ||
+    route === "/version" ||
+    route === "/healthz" ||
+    route === "/readyz" ||
+    route === "/metrics" ||
+    route === "/api/bootstrap" ||
+    route === "/api/auth/login" ||
+    route === "/api/auth/register" ||
+    route === "/api/auth/mobile-sign-in/exchange" ||
+    route === "/api/auth/session" ||
+    route.startsWith("/api/internal/") ||
+    route.startsWith("/api/workflow-hooks/") ||
+    route === "/api/tunnel-attachments/:attachmentId/connect"
+  );
+}
+
+export function csrfExemptRoute(route: string): boolean {
+  return publicRoute(route) || route === "/api/auth/session";
+}
+
+export function removedPlaintextRepositoryRoute(route: string): boolean {
+  const projectRoute = route.startsWith("/api/projects/:projectId/");
+  const legacyGitRoute =
+    projectRoute &&
+    route.includes("/git/") &&
+    !route.endsWith("/git/agent/drafts");
+  const legacyHistoryRoute =
+    projectRoute && (route.endsWith("/history") || route.includes("/history/"));
+  const legacyGithubContentRoute =
+    projectRoute &&
+    (route.includes("/github/issues") ||
+      route.includes("/github/releases") ||
+      route.includes("/github/pull-requests"));
+  const legacyGithubCatalogRoute = route.startsWith("/api/github/");
+  const legacyWorktreeStatusRoute =
+    projectRoute && route.endsWith("/worktrees/:worktreeId/status");
+  return (
+    legacyGitRoute ||
+    legacyHistoryRoute ||
+    legacyGithubContentRoute ||
+    legacyGithubCatalogRoute ||
+    legacyWorktreeStatusRoute
+  );
+}
+
+export function standaloneChatFeatureForbidden(route: string): boolean {
+  return (
+    route === "/api/chats/:chatId/console" ||
+    route === "/api/chats/:chatId/goal" ||
+    route === "/api/chats/:chatId/plan" ||
+    route === "/api/chats/:chatId/relocations" ||
+    route === "/api/chats/:chatId/skills" ||
+    route === "/api/chats/:chatId/sync" ||
+    route === "/api/chats/:chatId/workflow-generation" ||
+    route === "/api/chats/:chatId/worktree" ||
+    route.startsWith("/api/chats/:chatId/customizations") ||
+    route.startsWith("/api/chats/:chatId/execution-lanes")
+  );
+}

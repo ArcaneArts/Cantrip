@@ -1,9 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes, randomUUID } from "node:crypto";
-import { isIP } from "node:net";
-
-import cors from "@fastify/cors";
-import websocket from "@fastify/websocket";
 import {
   accountAdminSummarySchema,
   accountLicenseWhitelistCreateSchema,
@@ -570,7 +565,6 @@ import {
   workerEncryptionRefreshRequestSchema,
   workerEncryptionRefreshResultSchema,
 } from "@cantrip/protocol/encryption";
-import Fastify from "fastify";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
   AgentTurnResult,
@@ -699,14 +693,11 @@ import {
 } from "./tasks/dashboard.js";
 import {
   authenticatedPrincipal,
-  AuthenticationRequiredError,
   authenticationState,
   installRequestPrincipal,
   principalOwnerId,
 } from "./auth/principal.js";
 import {
-  AuthRateLimiter,
-  ConflictingSessionCookiesError,
   createMobileSignInCode,
   DUMMY_PASSWORD_HASH,
   hashSecret,
@@ -773,11 +764,7 @@ import {
   exportCanonicalChat,
   projectExportTargetDefinition,
 } from "./project-exports/service.js";
-import {
-  ProjectCapabilityUnavailableError,
-  projectCapabilityForRoute,
-  requireProjectCapability,
-} from "./projects/capabilities.js";
+import { requireProjectCapability } from "./projects/capabilities.js";
 import {
   TunnelRuntimeManager,
   tunnelBandwidthChannel,
@@ -902,6 +889,22 @@ import {
   requiredToolString,
 } from "./http/request-helpers.js";
 import {
+  createAuditAppender,
+  installMutationAuditHook,
+} from "./app/http/audit.js";
+import { installAuthenticationGuard } from "./app/http/auth-guard.js";
+import { installBandwidthHooks } from "./app/http/bandwidth-hooks.js";
+import { installApplicationErrorHandler } from "./app/http/error-handler.js";
+import { installOperationalHooks } from "./app/http/operational-hooks.js";
+import { createApplicationOwnerContext } from "./app/http/owner-context.js";
+import { createRequestLimits } from "./app/http/request-limits.js";
+import {
+  installProjectContextGuards,
+  installRemovedPlaintextRouteGuard,
+} from "./app/http/route-guards.js";
+import { createApplicationServer } from "./app/http/server.js";
+import { installTransportSecurity } from "./app/http/transport-security.js";
+import {
   sendWorkerConflictFailure,
   sendWorkerRequestFailure,
 } from "./http/worker-request-failures.js";
@@ -918,11 +921,7 @@ import {
   CantripMcpBindingError,
 } from "./agent-tools/binding.js";
 import { visibleWorktreeLeases } from "./agent-tools/worktree-list.js";
-import {
-  createServerLogStream,
-  SERVER_LOG_REDACTION_PATHS,
-  serverLogger,
-} from "./logger.js";
+import { serverLogger } from "./logger.js";
 import { StorageReconciliationService } from "./account-usage/storage-reconciler.js";
 import { AccountUsageMeter } from "./account-usage/bandwidth-meter.js";
 import { AccountUsageHistoryMaintenanceService } from "./account-usage/history-maintenance.js";
@@ -931,32 +930,14 @@ import {
   recordEncodedFrame,
 } from "./account-usage/frame-bandwidth.js";
 import {
-  encodedPayloadBytes,
-  httpBandwidthChannelForRoute,
-  isReadablePayload,
-  meterPayloadStream,
-} from "./account-usage/http-bandwidth.js";
-import {
   accountBandwidthPeriod,
   buildAccountResourceUsage,
   buildBandwidthUsageHistory,
   buildStorageUsageHistory,
 } from "./account-usage/resource-usage-response.js";
-import {
-  LEGACY_FEATURE_TRANSPORT_DEPRECATION,
-  LEGACY_FEATURE_TRANSPORT_DEPRECATION_LINK,
-  legacyFeatureTransportEndpoint,
-} from "./operations/legacy-feature-transports.js";
-import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
-import {
-  ActiveLimit,
-  RelayLimitError,
-  SlidingWindowRateLimiter,
-} from "./security/abuse-limits.js";
 import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
 import { MeteredWorkerCommandBus } from "./workers/metered-command-bus.js";
-import { selectCantripWebSocketSubprotocol } from "./workers/websocket-subprotocol.js";
 import {
   DirectAttachmentCoordinator,
   DirectAttachmentUnavailableError,
@@ -1030,14 +1011,10 @@ import {
   BROWSER_FLEET_DISCOVERY_TIMEOUT_MS,
   BROWSER_FLEET_DISCOVERY_WORKER_LIMIT,
   CONFIGURABLE_PERMISSION_PROFILES,
-  DEFAULT_API_BODY_LIMIT_BYTES,
-  DEFAULT_UPLOAD_LIMIT_BYTES,
-  DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES,
   EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS,
   EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT,
   FINITE_WORKER_COMMAND_TIMEOUT_MS,
   GOAL_RESUME_PROMPT,
-  MAX_PENDING_WORKER_HANDSHAKES,
   PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS,
   PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT,
   REMOTE_DESKTOP_FLEET_SURFACE_LIMIT,
@@ -1074,8 +1051,6 @@ import {
   type ChatLiveResource,
 } from "./app/shared/live-resources.js";
 import {
-  auditResourceId,
-  mutationAuditDescriptor,
   tunnelAttachmentSocketSecret,
   validUuidPathParameter,
 } from "./app/shared/request-policy.js";
@@ -1105,37 +1080,12 @@ export async function buildApp({
   coordinator,
   workerBridge,
 }: BuildAppOptions) {
-  const apiBodyLimitBytes =
-    config.apiBodyLimitBytes ?? DEFAULT_API_BODY_LIMIT_BYTES;
-  const uploadLimitBytes =
-    config.uploadLimitBytes ?? DEFAULT_UPLOAD_LIMIT_BYTES;
-  const encryptedAttachmentUploadLimitBytes =
-    Math.ceil(uploadLimitBytes * 1.5) + 1024 * 1024;
-  const websocketMaxPayloadBytes =
-    config.websocketMaxPayloadBytes ?? DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES;
-  const app = Fastify({
-    bodyLimit: apiBodyLimitBytes,
-    genReqId: () => randomUUID(),
-    requestTimeout: 0,
-    trustProxy:
-      config.trustedProxies && config.trustedProxies.length > 0
-        ? config.trustedProxies
-        : false,
-    logger: logger
-      ? {
-          stream: createServerLogStream(),
-          redact: {
-            paths: [...SERVER_LOG_REDACTION_PATHS],
-            censor: "[REDACTED]",
-          },
-        }
-      : false,
-  });
-  app.addContentTypeParser(
-    "application/octet-stream",
-    { bodyLimit: encryptedAttachmentUploadLimitBytes, parseAs: "buffer" },
-    (_request, body, done) => done(null, body),
-  );
+  const {
+    app,
+    encryptedAttachmentUploadLimitBytes,
+    uploadLimitBytes,
+    websocketMaxPayloadBytes,
+  } = createApplicationServer(config, logger);
   const repository = database.repository;
   const requireProjectWorktrees = async (projectId: string) => {
     const project = await repository.getProject(
@@ -1180,54 +1130,7 @@ export async function buildApp({
   const normalizedAdminEmail = config.adminEmail
     ? normalizeAccountEmail(config.adminEmail)
     : null;
-  const operationalMetrics = new OperationalMetrics();
-  const requestMetrics = new WeakMap<
-    FastifyRequest,
-    { release: () => void; startedAt: number }
-  >();
-  app.addHook("onRequest", (request, reply, done) => {
-    requestMetrics.set(request, {
-      release: operationalMetrics.beginHttpRequest(),
-      startedAt: performance.now(),
-    });
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    const legacyEndpoint = legacyFeatureTransportEndpoint(
-      request.method,
-      route,
-    );
-    if (legacyEndpoint) {
-      reply.header("deprecation", LEGACY_FEATURE_TRANSPORT_DEPRECATION);
-      reply.header("link", LEGACY_FEATURE_TRANSPORT_DEPRECATION_LINK);
-      operationalMetrics.recordLegacyFeatureTransport(legacyEndpoint);
-      serverLogger.rateLimited(
-        `legacy-feature-transport:${legacyEndpoint}`,
-        "warn",
-        "Deprecated feature transport endpoint requested",
-        {
-          endpoint: legacyEndpoint,
-          event: "network.compatibility-endpoint.requested",
-          operation: "connect",
-          reasonCode: "legacy-feature-transport",
-          status: "deprecated",
-          subsystem: "worker-link",
-        },
-      );
-    }
-    done();
-  });
-  app.addHook("onResponse", (request, reply, done) => {
-    const metric = requestMetrics.get(request);
-    if (metric) {
-      metric.release();
-      operationalMetrics.recordHttpResponse(
-        request.method,
-        reply.statusCode,
-        metric.startedAt,
-      );
-      requestMetrics.delete(request);
-    }
-    done();
-  });
+  const operationalMetrics = installOperationalHooks(app);
   const relayQuotas = providedRelayQuotas ?? new RelayQuotaManager(config);
   let publishAccountResourceUsageChange = (_ownerId: string): void => undefined;
   const accountUsageMeter = new AccountUsageMeter(
@@ -1334,17 +1237,10 @@ export async function buildApp({
       relayQuotas.consumeRelay(ownerId, workerId, bytes),
     accountUsageMeter,
   );
-  const ownerContext = new AsyncLocalStorage<string>();
-  const applicationOwnerId = (): string => {
-    const ownerId = ownerContext.getStore();
-    if (ownerId) return ownerId;
-    if (config.authMode !== "accounts") return LOCAL_USER_ID;
-    throw new AuthenticationRequiredError(
-      "An explicit account owner is required outside a request context.",
-    );
-  };
-  const runAsOwner = <T>(ownerId: string, operation: () => T): T =>
-    ownerContext.run(ownerId, operation);
+  const applicationOwnerContext = createApplicationOwnerContext(
+    config.authMode,
+  );
+  const { applicationOwnerId, runAsOwner } = applicationOwnerContext;
   const workerOwnerId = (workerId: string): Promise<string | null> =>
     repository.getWorkerOwnerId(workerId);
   const serverInstanceId = config.serverInstanceId ?? "local-single-instance";
@@ -3655,217 +3551,12 @@ export async function buildApp({
     app.log.error({ err: error }, "Could not resume queued workflow runs");
   });
 
-  const trustedProxyConfigured = Boolean(config.trustedProxies?.length);
-  const expectedPublicHost = config.publicOrigin
-    ? new URL(config.publicOrigin).host.toLowerCase()
-    : null;
-  const rejectSecurityRequest = (
-    request: FastifyRequest,
-    reply: FastifyReply,
-    statusCode: 400 | 403,
-    reason: string,
-    message: string,
-  ) => {
-    request.log.warn(
-      {
-        event: "security.request-rejected",
-        method: request.method,
-        reason,
-        requestId: request.id,
-        route: request.routeOptions.url ?? request.url.split("?", 1)[0],
-      },
-      "Rejected unsafe application request",
-    );
-    return reply.code(statusCode).send({ error: message });
-  };
-
-  app.addHook("onRequest", async (request, reply) => {
-    const forwarded = request.headers.forwarded;
-    const forwardedFor = request.headers["x-forwarded-for"];
-    const forwardedHost = request.headers["x-forwarded-host"];
-    const forwardedProto = request.headers["x-forwarded-proto"];
-    const hasForwardedHeaders = Boolean(
-      forwarded || forwardedFor || forwardedHost || forwardedProto,
-    );
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    const directLoopbackProbe =
-      (route === "/healthz" || route === "/readyz") &&
-      !hasForwardedHeaders &&
-      ["127.0.0.1", "::1"].includes(request.ip);
-    if (directLoopbackProbe) return;
-    if (hasForwardedHeaders && !trustedProxyConfigured) {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        400,
-        "untrusted-forwarding-headers",
-        "Forwarding headers require a configured trusted proxy.",
-      );
-    }
-    if (forwarded) {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        400,
-        "unsupported-forwarded-header",
-        "Use validated X-Forwarded-* headers through the trusted proxy.",
-      );
-    }
-    if (
-      Array.isArray(forwardedFor) ||
-      Array.isArray(forwardedHost) ||
-      Array.isArray(forwardedProto)
-    ) {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        400,
-        "ambiguous-forwarding-headers",
-        "Forwarding headers are invalid.",
-      );
-    }
-    const forwardedLength = [forwardedFor, forwardedHost, forwardedProto]
-      .filter((value): value is string => typeof value === "string")
-      .reduce((total, value) => total + value.length, 0);
-    if (forwardedLength > 2_048) {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        400,
-        "oversized-forwarding-headers",
-        "Forwarding headers are invalid.",
-      );
-    }
-    if (typeof forwardedFor === "string") {
-      const addresses = forwardedFor.split(",").map((value) => value.trim());
-      if (
-        addresses.length > 16 ||
-        addresses.some((address) => isIP(address) === 0)
-      ) {
-        return rejectSecurityRequest(
-          request,
-          reply,
-          400,
-          "invalid-forwarded-for",
-          "Forwarding headers are invalid.",
-        );
-      }
-    }
-    if (
-      typeof forwardedProto === "string" &&
-      !["http", "https"].includes(forwardedProto.toLowerCase())
-    ) {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        400,
-        "invalid-forwarded-proto",
-        "Forwarding headers are invalid.",
-      );
-    }
-    if (
-      typeof forwardedHost === "string" &&
-      (forwardedHost.includes(",") ||
-        !/^[A-Za-z0-9.[\]:_-]{1,255}$/u.test(forwardedHost))
-    ) {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        400,
-        "invalid-forwarded-host",
-        "Forwarding headers are invalid.",
-      );
-    }
-    if (config.requireHttps && request.protocol !== "https") {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        400,
-        "insecure-public-scheme",
-        "HTTPS is required.",
-      );
-    }
-    if (
-      expectedPublicHost &&
-      request.host.toLowerCase() !== expectedPublicHost
-    ) {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        400,
-        "unexpected-public-host",
-        "Request host is not configured for this server.",
-      );
-    }
-    const origin = request.headers.origin;
-    const websocketUpgrade =
-      request.headers.upgrade?.toLowerCase() === "websocket";
-    if (origin && !websocketUpgrade && !config.appOrigins.includes(origin)) {
-      return rejectSecurityRequest(
-        request,
-        reply,
-        403,
-        "unapproved-application-origin",
-        "Origin is not allowed.",
-      );
-    }
-  });
-
-  app.addHook("onSend", async (request, reply, payload) => {
-    reply.header(
-      "content-security-policy",
-      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
-    );
-    reply.header(
-      "permissions-policy",
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
-    );
-    reply.header("referrer-policy", "no-referrer");
-    reply.header("x-content-type-options", "nosniff");
-    reply.header("x-frame-options", "DENY");
-    reply.header("x-permitted-cross-domain-policies", "none");
-    reply.header("x-request-id", request.id);
-    if (!reply.hasHeader("cache-control")) {
-      reply.header("cache-control", "no-store");
-    }
-    if (config.requireHttps) {
-      reply.header("strict-transport-security", "max-age=31536000");
-    }
-    return payload;
-  });
-
-  await app.register(cors, {
-    credentials: true,
-    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    origin: config.appOrigins,
-  });
-  await app.register(websocket, {
-    options: {
-      handleProtocols: selectCantripWebSocketSubprotocol,
-      maxPayload: websocketMaxPayloadBytes,
-    },
-  });
+  await installTransportSecurity(app, config, websocketMaxPayloadBytes);
 
   const sessionService = new UserSessionService(repository, config);
-  const authRateLimiter = new AuthRateLimiter(config.authRateLimit ?? 10);
-  const apiRateLimiter = new SlidingWindowRateLimiter(
-    config.apiRateLimitPerMinute ?? 1_200,
-  );
-  const pairingRateLimiter = new SlidingWindowRateLimiter(
-    config.pairingRateLimitPerMinute ?? 20,
-  );
-  const uploadRateLimiter = new SlidingWindowRateLimiter(
-    config.uploadRateLimitPerMinute ?? 30,
-  );
-  const websocketRateLimiter = new SlidingWindowRateLimiter(
-    config.websocketHandshakeRatePerMinute ?? 120,
-  );
-  const accountWebsockets = new ActiveLimit(config.accountWebsocketLimit ?? 32);
-  const accountUploads = new ActiveLimit(config.accountUploadConcurrency ?? 4);
-  const pendingWorkerHandshakes = new ActiveLimit(
-    MAX_PENDING_WORKER_HANDSHAKES,
-  );
-  const uploadReleases = new WeakMap<FastifyRequest, () => void>();
+  const requestLimits = createRequestLimits(config);
+  const { authRateLimiter, accountWebsockets, pendingWorkerHandshakes } =
+    requestLimits;
   const sessionSockets = new Map<
     string,
     {
@@ -3882,455 +3573,21 @@ export async function buildApp({
     });
   }
 
-  app.addHook("preParsing", async (request, _reply, payload) => {
-    if (
-      request.method === "OPTIONS" ||
-      request.principal.state !== "authenticated" ||
-      request.headers.upgrade?.toLowerCase() === "websocket"
-    ) {
-      return payload;
-    }
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    return meterPayloadStream(
-      payload,
-      request.principal.user.id,
-      "ingress",
-      accountUsageMeter,
-      !route.startsWith("/api/account/resource-usage"),
-      httpBandwidthChannelForRoute(route),
-    );
-  });
+  installBandwidthHooks(app, accountUsageMeter);
+  applicationOwnerContext.installRequestHook(app);
 
-  app.addHook("onSend", async (request, reply, payload) => {
-    if (
-      request.method === "OPTIONS" ||
-      request.principal?.state !== "authenticated" ||
-      request.method === "HEAD" ||
-      request.headers.upgrade?.toLowerCase() === "websocket" ||
-      reply.statusCode === 204 ||
-      reply.statusCode === 304
-    ) {
-      return payload;
-    }
-    const ownerId = request.principal.user.id;
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    const notifyChange = !route.startsWith("/api/account/resource-usage");
-    const channel = httpBandwidthChannelForRoute(route);
-    const bytes = encodedPayloadBytes(payload);
-    if (bytes !== null) {
-      accountUsageMeter.record({
-        ownerId,
-        direction: "egress",
-        channel,
-        bytes,
-        notifyChange,
-      });
-      return payload;
-    }
-    return isReadablePayload(payload)
-      ? meterPayloadStream(
-          payload,
-          ownerId,
-          "egress",
-          accountUsageMeter,
-          notifyChange,
-          channel,
-        )
-      : payload;
-  });
+  const appendAudit = createAuditAppender(repository);
+  installMutationAuditHook(app, appendAudit);
 
-  app.addHook("onRequest", (request, _reply, done) => {
-    if (
-      request.method === "OPTIONS" ||
-      request.principal.state !== "authenticated"
-    ) {
-      done();
-      return;
-    }
-    ownerContext.run(request.principal.user.id, done);
-  });
+  installAuthenticationGuard(app, config, sessionService);
 
-  const appendAudit = async (
-    request: FastifyRequest,
-    input: {
-      action: string;
-      actorSessionId?: string | null;
-      actorUserId?: string | null;
-      ownerId?: string | null;
-      resourceId?: string | null;
-      resourceType: string;
-      result: "denied" | "failed" | "succeeded";
-    },
-  ): Promise<void> => {
-    const principal = request.principal;
-    const authenticated = principal.state === "authenticated";
-    try {
-      await repository.appendAuditEvent({
-        action: input.action,
-        actorSessionId:
-          input.actorSessionId === undefined
-            ? authenticated
-              ? principal.sessionId
-              : null
-            : input.actorSessionId,
-        actorUserId:
-          input.actorUserId === undefined
-            ? authenticated
-              ? principal.user.id
-              : null
-            : input.actorUserId,
-        ownerId:
-          input.ownerId === undefined
-            ? authenticated
-              ? principal.user.id
-              : null
-            : input.ownerId,
-        requestId: request.id,
-        resourceId: input.resourceId ?? null,
-        resourceType: input.resourceType,
-        result: input.result,
-      });
-    } catch (error) {
-      request.log.error(
-        {
-          action: input.action,
-          err: error,
-          event: "security.audit-write-failed",
-          requestId: request.id,
-        },
-        "Could not append security audit event",
-      );
-    }
-  };
+  installRemovedPlaintextRouteGuard(app);
 
-  app.addHook("onResponse", async (request, reply) => {
-    if (
-      request.method === "OPTIONS" ||
-      request.principal.state !== "authenticated"
-    ) {
-      return;
-    }
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    const descriptor = mutationAuditDescriptor(request.method, route);
-    if (!descriptor) return;
-    await appendAudit(request, {
-      ...descriptor,
-      resourceId: auditResourceId(request),
-      result:
-        reply.statusCode < 400
-          ? "succeeded"
-          : reply.statusCode === 401 || reply.statusCode === 403
-            ? "denied"
-            : "failed",
-    });
-  });
+  requestLimits.installHooks(app);
 
-  const publicRoute = (route: string): boolean =>
-    route === "/api" ||
-    route === "/version" ||
-    route === "/healthz" ||
-    route === "/readyz" ||
-    route === "/metrics" ||
-    route === "/api/bootstrap" ||
-    route === "/api/auth/login" ||
-    route === "/api/auth/register" ||
-    route === "/api/auth/mobile-sign-in/exchange" ||
-    route === "/api/auth/session" ||
-    route.startsWith("/api/internal/") ||
-    route.startsWith("/api/workflow-hooks/") ||
-    route === "/api/tunnel-attachments/:attachmentId/connect";
-  const csrfExemptRoute = (route: string): boolean =>
-    publicRoute(route) || route === "/api/auth/session";
+  installProjectContextGuards(app, repository, applicationOwnerId);
 
-  app.addHook("onRequest", async (request, reply) => {
-    if (config.authMode === "none" || request.method === "OPTIONS") return;
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    if (!publicRoute(route) && request.principal.state !== "authenticated") {
-      serverLogger.rateLimited(
-        `security-auth-required:${request.method}:${route}`,
-        "warn",
-        "Unauthenticated application request rejected",
-        {
-          event: "security.authentication.rejected",
-          subsystem: "security",
-          operation: request.method,
-          reasonCode: "authentication-required",
-          requestId: request.id,
-          status: "rejected",
-          route,
-        },
-      );
-      return reply.code(401).send({ error: "Authentication is required." });
-    }
-    const expectedAccountId = request.headers["x-cantrip-account-id"];
-    if (
-      (!publicRoute(route) || route === "/api/auth/session") &&
-      typeof expectedAccountId === "string" &&
-      request.principal.state === "authenticated" &&
-      request.principal.user.id !== expectedAccountId
-    ) {
-      sessionService.clear(reply);
-      serverLogger.warn("Application session account pin did not match", {
-        event: "security.session-account-mismatch",
-        subsystem: "security",
-        operation: request.method,
-        reasonCode: "session-account-mismatch",
-        requestId: request.id,
-        status: "rejected",
-        route,
-      });
-      return reply.code(401).send({
-        code: "session-account-mismatch",
-        error: "This server connection changed accounts. Sign in again.",
-      });
-    }
-    if (
-      !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
-      !csrfExemptRoute(route)
-    ) {
-      const origin = request.headers.origin;
-      if (origin && !config.appOrigins.includes(origin)) {
-        serverLogger.rateLimited(
-          `security-origin-rejected:${request.method}:${route}`,
-          "warn",
-          "Application request origin rejected",
-          {
-            event: "security.origin.rejected",
-            subsystem: "security",
-            operation: request.method,
-            reasonCode: "origin-not-allowed",
-            requestId: request.id,
-            status: "rejected",
-            route,
-          },
-        );
-        return reply.code(403).send({ error: "Origin is not allowed." });
-      }
-      const session = await sessionService.resolve(request);
-      if (
-        !session ||
-        !sessionService.csrfMatches(session, request.headers["x-cantrip-csrf"])
-      ) {
-        serverLogger.rateLimited(
-          `security-csrf-rejected:${request.method}:${route}`,
-          "warn",
-          "Application request failed CSRF validation",
-          {
-            event: "security.csrf.rejected",
-            subsystem: "security",
-            operation: request.method,
-            reasonCode: "csrf-validation-failed",
-            requestId: request.id,
-            status: "rejected",
-            route,
-          },
-        );
-        return reply.code(403).send({ error: "CSRF validation failed." });
-      }
-    }
-  });
-
-  app.addHook("onRequest", async (request, reply) => {
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    const projectRoute = route.startsWith("/api/projects/:projectId/");
-    const legacyGitRoute =
-      projectRoute &&
-      route.includes("/git/") &&
-      !route.endsWith("/git/agent/drafts");
-    const legacyHistoryRoute =
-      projectRoute &&
-      (route.endsWith("/history") || route.includes("/history/"));
-    const legacyGithubContentRoute =
-      projectRoute &&
-      (route.includes("/github/issues") ||
-        route.includes("/github/releases") ||
-        route.includes("/github/pull-requests"));
-    const legacyGithubCatalogRoute = route.startsWith("/api/github/");
-    const legacyWorktreeStatusRoute =
-      projectRoute && route.endsWith("/worktrees/:worktreeId/status");
-    if (
-      legacyGitRoute ||
-      legacyHistoryRoute ||
-      legacyGithubContentRoute ||
-      legacyGithubCatalogRoute ||
-      legacyWorktreeStatusRoute
-    ) {
-      return reply.code(410).send({
-        error:
-          "This plaintext repository route was removed. Use the protected repository operation endpoint.",
-      });
-    }
-  });
-
-  app.addHook("onRequest", async (request, reply) => {
-    if (request.method === "OPTIONS") return;
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    const internalWorkerRoute =
-      route.startsWith("/api/internal/workers/") &&
-      route !== "/api/internal/workers/enroll";
-    if (internalWorkerRoute) return;
-    const key =
-      request.principal.state === "authenticated"
-        ? `owner:${request.principal.user.id}`
-        : `ip:${request.ip}`;
-    let limiter = apiRateLimiter;
-    let category = "api";
-    if (route === "/api/auth/login" || route === "/api/auth/register") {
-      return;
-    }
-    if (
-      (route === "/api/workers/enrollment-codes" &&
-        request.method === "POST") ||
-      route === "/api/internal/workers/enroll" ||
-      route.endsWith("/credentials/rotate")
-    ) {
-      limiter = pairingRateLimiter;
-      category = "pairing";
-    } else if (
-      route === "/api/chats/:chatId/attachments" &&
-      request.method === "POST"
-    ) {
-      limiter = uploadRateLimiter;
-      category = "upload";
-    } else if (request.headers.upgrade?.toLowerCase() === "websocket") {
-      limiter = websocketRateLimiter;
-      category = "websocket-handshake";
-    }
-    if (category === "api" && config.deploymentMode === "local") return;
-    const retryAfter = limiter.consume(key);
-    if (retryAfter === null) {
-      if (category === "upload") {
-        const release = accountUploads.acquire(key);
-        if (!release) {
-          return reply
-            .header("retry-after", "1")
-            .code(429)
-            .send({ error: "Account upload concurrency limit reached." });
-        }
-        uploadReleases.set(request, release);
-      }
-      return;
-    }
-    request.log.warn(
-      {
-        category,
-        event: "security.rate-limited",
-        requestId: request.id,
-        route,
-      },
-      "Request rate limit reached",
-    );
-    return reply
-      .header("retry-after", String(retryAfter))
-      .code(429)
-      .send({ error: "Request rate limit reached. Retry shortly." });
-  });
-
-  app.addHook("onResponse", async (request) => {
-    uploadReleases.get(request)?.();
-    uploadReleases.delete(request);
-  });
-
-  app.addHook("preHandler", async (request) => {
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    const capability = projectCapabilityForRoute(request.method, route);
-    if (!capability || !request.params || typeof request.params !== "object") {
-      return;
-    }
-    const projectId = (request.params as Record<string, unknown>).projectId;
-    if (typeof projectId !== "string" || projectId.length === 0) return;
-    const project = await repository.getProject(
-      applicationOwnerId(),
-      projectId,
-    );
-    if (project) requireProjectCapability(project, capability);
-  });
-
-  app.addHook("preHandler", async (request, reply) => {
-    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
-    const standaloneForbidden =
-      route === "/api/chats/:chatId/console" ||
-      route === "/api/chats/:chatId/goal" ||
-      route === "/api/chats/:chatId/plan" ||
-      route === "/api/chats/:chatId/relocations" ||
-      route === "/api/chats/:chatId/skills" ||
-      route === "/api/chats/:chatId/sync" ||
-      route === "/api/chats/:chatId/workflow-generation" ||
-      route === "/api/chats/:chatId/worktree" ||
-      route.startsWith("/api/chats/:chatId/customizations") ||
-      route.startsWith("/api/chats/:chatId/execution-lanes");
-    if (
-      !standaloneForbidden ||
-      !request.params ||
-      typeof request.params !== "object"
-    ) {
-      return;
-    }
-    const chatId = (request.params as Record<string, unknown>).chatId;
-    if (typeof chatId !== "string" || chatId.length === 0) return;
-    const context = await repository.getChatExecutionContext(
-      applicationOwnerId(),
-      chatId,
-    );
-    if (context?.contextKind === "standalone") {
-      return reply.code(409).send({
-        error: "This IDE-only Chat feature is unavailable in standalone Chat.",
-      });
-    }
-  });
-
-  app.setErrorHandler((error, request, reply) => {
-    if (error instanceof ConflictingSessionCookiesError) {
-      sessionService.clear(reply);
-      request.log.warn(
-        {
-          event: "security.session-cookie-conflict",
-          requestId: request.id,
-          route: request.routeOptions.url ?? request.url.split("?", 1)[0],
-        },
-        "Conflicting application session cookies were cleared",
-      );
-      return reply.code(401).send({
-        code: "session-cookie-conflict",
-        error: error.message,
-      });
-    }
-    if (error instanceof AuthenticationRequiredError) {
-      return reply.code(401).send({ error: error.message });
-    }
-    if (error instanceof RelayLimitError) {
-      return reply
-        .header("retry-after", String(error.retryAfterSeconds))
-        .code(429)
-        .send({ error: error.message });
-    }
-    if (error instanceof ProjectCapabilityUnavailableError) {
-      return reply.code(error.statusCode).send(error.response());
-    }
-    const statusCode =
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      typeof error.statusCode === "number"
-        ? error.statusCode
-        : 500;
-    if (statusCode >= 500) {
-      request.log.error(
-        {
-          err: error,
-          event: "security.internal-error",
-          requestId: request.id,
-          route: request.routeOptions.url ?? request.url.split("?", 1)[0],
-        },
-        "Application request failed",
-      );
-      return reply.code(500).send({
-        error: "Internal server error.",
-        requestId: request.id,
-      });
-    }
-    return reply.code(statusCode).send(error);
-  });
+  installApplicationErrorHandler(app, sessionService);
 
   const publishAccountSessionChange = (
     ownerId: string,
