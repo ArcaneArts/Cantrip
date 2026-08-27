@@ -7,8 +7,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkerLinkStream } from "./worker-link";
 import {
+  mergeWorkerObservationDemands,
   WorkerObservationClient,
+  WORKER_OBSERVATION_DEMAND_GRACE_MS,
   type WorkerObservationClientDependencies,
+  type WorkerObservationTopic,
   type WorkerObservationSink,
 } from "./worker-observation-client";
 
@@ -143,6 +146,7 @@ function setup() {
   const dependencies: WorkerObservationClientDependencies = {
     clearTimer: (timer) => clearTimeout(timer),
     createGrant: vi.fn(async () => value.grant),
+    demandGraceMs: WORKER_OBSERVATION_DEMAND_GRACE_MS,
     manager: {
       acquire: vi.fn(async () => ({
         link: {
@@ -165,17 +169,25 @@ function setup() {
   return { ...value, dependencies, openEventSubscription, release, sink };
 }
 
+function activate(
+  client: WorkerObservationClient,
+  topics: readonly WorkerObservationTopic[] = ["filesystem"],
+): () => void {
+  client.updateAvailableWorkers(["worker-one"]);
+  return client.retainDemands([{ topics, workerId: "worker-one" }]);
+}
+
 afterEach(() => vi.useRealTimers());
 
 describe("WorkerObservationClient", () => {
   it("opens one shared subscription and acknowledges ordered observations", async () => {
     const value = setup();
     const client = new WorkerObservationClient(value.sink, value.dependencies);
-    client.updateWorkers(["worker-one"]);
+    activate(client);
     await vi.waitFor(() =>
       expect(value.dependencies.createGrant).toHaveBeenCalledWith(
         value.session.sessionId,
-        ["chat-progress", "filesystem", "worktree", "runtime"],
+        ["filesystem"],
       ),
     );
 
@@ -197,7 +209,7 @@ describe("WorkerObservationClient", () => {
     vi.useFakeTimers();
     const value = setup();
     const client = new WorkerObservationClient(value.sink, value.dependencies);
-    client.updateWorkers(["worker-one"]);
+    activate(client);
     await vi.advanceTimersByTimeAsync(0);
     value.emitData(envelope(0));
     await vi.advanceTimersByTimeAsync(0);
@@ -217,7 +229,7 @@ describe("WorkerObservationClient", () => {
     vi.useFakeTimers();
     const value = setup();
     const client = new WorkerObservationClient(value.sink, value.dependencies);
-    client.updateWorkers(["worker-one"]);
+    activate(client);
     await vi.advanceTimersByTimeAsync(0);
     expect(value.dependencies.manager.acquire).toHaveBeenCalledOnce();
 
@@ -239,7 +251,7 @@ describe("WorkerObservationClient", () => {
     const value = setup();
     vi.mocked(value.stream.acknowledge).mockReturnValue(false);
     const client = new WorkerObservationClient(value.sink, value.dependencies);
-    client.updateWorkers(["worker-one"]);
+    activate(client);
     await vi.waitFor(() =>
       expect(value.dependencies.createGrant).toHaveBeenCalledTimes(1),
     );
@@ -255,7 +267,7 @@ describe("WorkerObservationClient", () => {
   it("releases the worker subscription when the worker leaves the online set", async () => {
     const value = setup();
     const client = new WorkerObservationClient(value.sink, value.dependencies);
-    client.updateWorkers(["worker-one"]);
+    activate(client);
     await vi.waitFor(() =>
       expect(value.dependencies.createGrant).toHaveBeenCalledTimes(1),
     );
@@ -263,7 +275,7 @@ describe("WorkerObservationClient", () => {
     await vi.waitFor(() =>
       expect(value.sink.handleWorkerObservation).toHaveBeenCalledTimes(1),
     );
-    client.updateWorkers([]);
+    client.updateAvailableWorkers([]);
     expect(value.sink.recoverWorkerObservations).toHaveBeenCalledWith(
       "worker-one",
     );
@@ -277,17 +289,193 @@ describe("WorkerObservationClient", () => {
   it("can restart after React StrictMode replays its owning effect", async () => {
     const value = setup();
     const client = new WorkerObservationClient(value.sink, value.dependencies);
-    client.updateWorkers(["worker-one"]);
+    activate(client);
     await vi.waitFor(() =>
       expect(value.dependencies.manager.acquire).toHaveBeenCalledTimes(1),
     );
     client.stop();
     client.start();
-    client.updateWorkers(["worker-one"]);
+    activate(client);
     await vi.waitFor(() =>
       expect(value.dependencies.manager.acquire).toHaveBeenCalledTimes(2),
     );
     client.stop();
     await vi.waitFor(() => expect(value.release).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not open subscriptions for an idle 256-worker fleet", async () => {
+    const value = setup();
+    const client = new WorkerObservationClient(value.sink, value.dependencies);
+    client.updateAvailableWorkers(
+      Array.from({ length: 256 }, (_, index) => `worker-${index}`),
+    );
+    await Promise.resolve();
+    expect(value.dependencies.manager.acquire).not.toHaveBeenCalled();
+    expect(value.dependencies.createGrant).not.toHaveBeenCalled();
+    client.stop();
+  });
+
+  it.each([1, 32, 256])(
+    "opens only the one demanded subscription in a %i-worker fleet",
+    async (workerCount) => {
+      const value = setup();
+      const client = new WorkerObservationClient(
+        value.sink,
+        value.dependencies,
+      );
+      client.updateAvailableWorkers([
+        "worker-one",
+        ...Array.from(
+          { length: workerCount - 1 },
+          (_, index) => `idle-worker-${index}`,
+        ),
+      ]);
+      client.retainDemands([
+        { topics: ["filesystem"], workerId: "worker-one" },
+      ]);
+      await vi.waitFor(() =>
+        expect(value.dependencies.manager.acquire).toHaveBeenCalledOnce(),
+      );
+      expect(value.dependencies.manager.acquire).toHaveBeenCalledWith(
+        "worker-one",
+      );
+      expect(value.dependencies.createGrant).toHaveBeenCalledOnce();
+      client.stop();
+    },
+  );
+
+  it("shares topic demand and retires it only after the grace period", async () => {
+    vi.useFakeTimers();
+    const value = setup();
+    const client = new WorkerObservationClient(value.sink, value.dependencies);
+    client.updateAvailableWorkers(["worker-one"]);
+    const releaseFirst = client.retainDemands([
+      { topics: ["chat-progress"], workerId: "worker-one" },
+    ]);
+    const releaseSecond = client.retainDemands([
+      { topics: ["chat-progress"], workerId: "worker-one" },
+    ]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(value.dependencies.createGrant).toHaveBeenCalledOnce();
+    expect(value.dependencies.createGrant).toHaveBeenCalledWith(
+      value.session.sessionId,
+      ["chat-progress"],
+    );
+
+    releaseFirst();
+    await vi.advanceTimersByTimeAsync(WORKER_OBSERVATION_DEMAND_GRACE_MS);
+    expect(value.dependencies.revokeGrant).not.toHaveBeenCalled();
+    releaseSecond();
+    await vi.advanceTimersByTimeAsync(WORKER_OBSERVATION_DEMAND_GRACE_MS - 1);
+    expect(value.dependencies.revokeGrant).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(value.dependencies.revokeGrant).toHaveBeenCalledWith(
+      value.session.sessionId,
+      value.grant.binding.grantId,
+    );
+    expect(value.release).toHaveBeenCalledOnce();
+  });
+
+  it("replaces a grant when a consumer expands its topic demand", async () => {
+    vi.useFakeTimers();
+    const value = setup();
+    const client = new WorkerObservationClient(value.sink, value.dependencies);
+    client.updateAvailableWorkers(["worker-one"]);
+    const releaseChat = client.retainDemands([
+      { topics: ["chat-progress"], workerId: "worker-one" },
+    ]);
+    await vi.advanceTimersByTimeAsync(0);
+    const releaseFilesystem = client.retainDemands([
+      { topics: ["filesystem"], workerId: "worker-one" },
+    ]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(value.dependencies.createGrant).toHaveBeenNthCalledWith(
+      1,
+      value.session.sessionId,
+      ["chat-progress"],
+    );
+    expect(value.dependencies.createGrant).toHaveBeenNthCalledWith(
+      2,
+      value.session.sessionId,
+      ["chat-progress", "filesystem"],
+    );
+    expect(value.dependencies.revokeGrant).toHaveBeenCalledOnce();
+    releaseFilesystem();
+    await vi.advanceTimersByTimeAsync(WORKER_OBSERVATION_DEMAND_GRACE_MS);
+    expect(value.dependencies.createGrant).toHaveBeenNthCalledWith(
+      3,
+      value.session.sessionId,
+      ["chat-progress"],
+    );
+    expect(value.dependencies.manager.acquire).toHaveBeenCalledOnce();
+    releaseChat();
+    client.stop();
+  });
+
+  it("keeps the previous project worker only for the switch grace window", async () => {
+    vi.useFakeTimers();
+    const value = setup();
+    const client = new WorkerObservationClient(value.sink, value.dependencies);
+    client.updateAvailableWorkers(["worker-one", "worker-two"]);
+    const releaseFirst = client.retainDemands([
+      { topics: ["filesystem"], workerId: "worker-one" },
+    ]);
+    await vi.advanceTimersByTimeAsync(0);
+    releaseFirst();
+    client.retainDemands([{ topics: ["filesystem"], workerId: "worker-two" }]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(value.dependencies.manager.acquire).toHaveBeenNthCalledWith(
+      1,
+      "worker-one",
+    );
+    expect(value.dependencies.manager.acquire).toHaveBeenNthCalledWith(
+      2,
+      "worker-two",
+    );
+    expect(value.release).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(WORKER_OBSERVATION_DEMAND_GRACE_MS - 1);
+    expect(value.release).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(value.release).toHaveBeenCalledOnce();
+    client.stop();
+  });
+
+  it("retains demand across worker availability loss and recovery", async () => {
+    vi.useFakeTimers();
+    const value = setup();
+    const client = new WorkerObservationClient(value.sink, value.dependencies);
+    client.retainDemands([{ topics: ["filesystem"], workerId: "worker-one" }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(value.dependencies.manager.acquire).not.toHaveBeenCalled();
+
+    client.updateAvailableWorkers(["worker-one"]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(value.dependencies.manager.acquire).toHaveBeenCalledOnce();
+    client.updateAvailableWorkers([]);
+    expect(value.release).toHaveBeenCalledOnce();
+    client.updateAvailableWorkers(["worker-one"]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(value.dependencies.manager.acquire).toHaveBeenCalledTimes(2);
+    client.stop();
+  });
+});
+
+describe("mergeWorkerObservationDemands", () => {
+  it("deduplicates workers and preserves canonical topic order", () => {
+    expect(
+      mergeWorkerObservationDemands([
+        { workerId: "worker-two", topics: ["runtime"] },
+        { workerId: "worker-one", topics: ["worktree", "chat-progress"] },
+        { workerId: "worker-one", topics: ["filesystem", "worktree"] },
+      ]),
+    ).toEqual([
+      {
+        workerId: "worker-one",
+        topics: ["chat-progress", "filesystem", "worktree"],
+      },
+      { workerId: "worker-two", topics: ["runtime"] },
+    ]);
   });
 });

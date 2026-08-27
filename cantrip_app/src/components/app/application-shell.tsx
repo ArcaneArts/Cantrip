@@ -124,6 +124,7 @@ import {
 } from "@/lib/app-actions";
 import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboarding";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
+import { useWorkerObservationDemands } from "@/lib/worker-observation-react";
 import { type AppToastInput } from "@/components/ui/app-toast";
 import { getChatRelocations } from "@/lib/api";
 import { runConfigurationTargetControlForIdentity } from "@/lib/run-configuration-control-model";
@@ -143,6 +144,7 @@ import {
   projectSetupFailureKey,
 } from "@/lib/project-setup-progress";
 import { selectWorkspaceTab } from "@/lib/workspace-selection";
+import { workspaceWorkerObservationDemands } from "@/lib/workspace-worker-observation";
 import { ChatTranscript } from "@/components/chat/chat-transcript";
 export { ChatTranscript };
 export function App() {
@@ -1088,6 +1090,59 @@ export function App() {
     !sidebarFilePreviewVisible && selectedSurface?.kind === "code"
       ? selectedSurface.entity
       : undefined;
+  const visibleWorkerObservationDemands = useMemo(() => {
+    const visibleWorktreeIds = new Set(
+      [
+        sidebarExplorer?.worktreeId,
+        selectedExplorer?.worktreeId,
+        selectedTerminal?.worktreeId,
+        selectedCodeTab?.worktreeId,
+        selectedProjectView?.worktreeId,
+        projectOverviewSelected ? resolvedProjectOverviewWorktreeId : null,
+      ].filter((worktreeId): worktreeId is string => Boolean(worktreeId)),
+    );
+    return workspaceWorkerObservationDemands({
+      projectBroadWorkerIds: [
+        selectedProjectWorkerId,
+        selectedTerminal?.activeWorkerId,
+        selectedCodeTab?.activeWorkerId,
+        ...(worktrees.data ?? [])
+          .filter((worktree) => visibleWorktreeIds.has(worktree.id))
+          .map((worktree) => worktree.workerId),
+      ],
+      projectChatWorkerId: activeChat?.activeWorkerId,
+      projectFilesystemWorkerIds: [
+        sidebarExplorer?.activeWorkerId,
+        sidebarFileWorkerId,
+        selectedExplorer?.activeWorkerId,
+      ],
+      projectVisible:
+        appMode === "ide" &&
+        (appActionView === "project" || appActionView === "popout"),
+      standaloneChatWorkerId:
+        appMode === "chat" ? selectedStandaloneChat?.activeWorkerId : null,
+    });
+  }, [
+    activeChat?.activeWorkerId,
+    appActionView,
+    appMode,
+    projectOverviewSelected,
+    resolvedProjectOverviewWorktreeId,
+    selectedCodeTab?.activeWorkerId,
+    selectedCodeTab?.worktreeId,
+    selectedExplorer?.activeWorkerId,
+    selectedExplorer?.worktreeId,
+    selectedProjectView?.worktreeId,
+    selectedProjectWorkerId,
+    selectedStandaloneChat?.activeWorkerId,
+    selectedTerminal?.activeWorkerId,
+    selectedTerminal?.worktreeId,
+    sidebarExplorer?.activeWorkerId,
+    sidebarExplorer?.worktreeId,
+    sidebarFileWorkerId,
+    worktrees.data,
+  ]);
+  useWorkerObservationDemands(visibleWorkerObservationDemands);
   const activeWorktreeTarget: WorktreeBindingTarget | null = activeChat
     ? {
         kind: "chat",

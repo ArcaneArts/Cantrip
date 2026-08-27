@@ -17,12 +17,18 @@ import {
   type WorkerLinkStream,
 } from "./worker-link";
 
-const OBSERVATION_TOPICS = [
+export const WORKER_OBSERVATION_TOPICS = [
   "chat-progress",
   "filesystem",
   "worktree",
   "runtime",
 ] as const;
+export type WorkerObservationTopic = (typeof WORKER_OBSERVATION_TOPICS)[number];
+export interface WorkerObservationDemand {
+  topics: readonly WorkerObservationTopic[];
+  workerId: string;
+}
+export const WORKER_OBSERVATION_DEMAND_GRACE_MS = 5_000;
 const MAX_PENDING_EVENTS = 256;
 const MAX_PENDING_BYTES = 4 * 1_024 * 1_024;
 const RENEW_AHEAD_MS = 20_000;
@@ -43,8 +49,9 @@ export interface WorkerObservationClientDependencies {
   clearTimer(timer: ReturnType<typeof setTimeout>): void;
   createGrant(
     sessionId: string,
-    topics: Array<(typeof OBSERVATION_TOPICS)[number]>,
+    topics: WorkerObservationTopic[],
   ): Promise<WorkerLinkResourceGrant>;
+  demandGraceMs: number;
   manager: Pick<WorkerLinkManager, "acquire">;
   now(): number;
   renewGrant(sessionId: string, grantId: string): Promise<WorkerLinkLease>;
@@ -71,13 +78,20 @@ interface WorkerObservationState {
   renewTimer: ReturnType<typeof setTimeout> | null;
   sessionId: string | null;
   stream: WorkerLinkStream | null;
+  topics: Set<WorkerObservationTopic>;
   unsubscribes: Array<() => void>;
   workerId: string;
+}
+
+interface WorkerObservationDemandState {
+  count: number;
+  retireTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const defaultDependencies: WorkerObservationClientDependencies = {
   clearTimer: (timer) => globalThis.clearTimeout(timer),
   createGrant: createWorkerObservationGrant,
+  demandGraceMs: WORKER_OBSERVATION_DEMAND_GRACE_MS,
   manager: workerLinkManager,
   now: Date.now,
   renewGrant: renewWorkerLinkGrant,
@@ -85,7 +99,39 @@ const defaultDependencies: WorkerObservationClientDependencies = {
   setTimer: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
 };
 
+function setsEqual<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
+  return (
+    left.size === right.size && [...left].every((value) => right.has(value))
+  );
+}
+
+export function mergeWorkerObservationDemands(
+  demands: readonly WorkerObservationDemand[],
+): WorkerObservationDemand[] {
+  const byWorker = new Map<string, Set<WorkerObservationTopic>>();
+  for (const demand of demands) {
+    if (!demand.workerId) continue;
+    let topics = byWorker.get(demand.workerId);
+    if (!topics) {
+      topics = new Set();
+      byWorker.set(demand.workerId, topics);
+    }
+    for (const topic of demand.topics) topics.add(topic);
+  }
+  return [...byWorker]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([workerId, topics]) => ({
+      workerId,
+      topics: WORKER_OBSERVATION_TOPICS.filter((topic) => topics.has(topic)),
+    }));
+}
+
 export class WorkerObservationClient {
+  readonly #availableWorkerIds = new Set<string>();
+  readonly #demands = new Map<
+    string,
+    Map<WorkerObservationTopic, WorkerObservationDemandState>
+  >();
   readonly #states = new Map<string, WorkerObservationState>();
   #stopped = false;
 
@@ -96,51 +142,136 @@ export class WorkerObservationClient {
 
   start(): void {
     this.#stopped = false;
+    for (const workerId of this.#demands.keys()) this.#reconcile(workerId);
   }
 
-  updateWorkers(workerIds: readonly string[]): void {
-    if (this.#stopped) return;
-    const desired = new Set(workerIds);
-    for (const [workerId, state] of this.#states) {
-      if (desired.has(workerId)) continue;
-      state.desired = false;
-      this.#retire(state, "normal", true, false);
-      this.#states.delete(workerId);
+  retainDemands(demands: readonly WorkerObservationDemand[]): () => void {
+    const retained = new Map<string, Set<WorkerObservationTopic>>();
+    for (const demand of mergeWorkerObservationDemands(demands)) {
+      retained.set(demand.workerId, new Set(demand.topics));
     }
-    for (const workerId of desired) {
-      if (this.#states.has(workerId)) continue;
-      const state: WorkerObservationState = {
-        connecting: false,
-        desired: true,
-        generation: 0,
-        grant: null,
-        inbound: [],
-        inboundBytes: 0,
-        draining: false,
-        expectedSequence: 0,
-        receivedData: false,
-        reconnectAttempt: 0,
-        reconnectTimer: null,
-        reference: null,
-        renewTimer: null,
-        sessionId: null,
-        stream: null,
-        unsubscribes: [],
-        workerId,
-      };
-      this.#states.set(workerId, state);
-      void this.#connect(state);
+
+    for (const [workerId, topics] of retained) {
+      let workerDemands = this.#demands.get(workerId);
+      if (!workerDemands) {
+        workerDemands = new Map();
+        this.#demands.set(workerId, workerDemands);
+      }
+      for (const topic of topics) {
+        let demand = workerDemands.get(topic);
+        if (!demand) {
+          demand = { count: 0, retireTimer: null };
+          workerDemands.set(topic, demand);
+        }
+        if (demand.retireTimer) {
+          this.dependencies.clearTimer(demand.retireTimer);
+          demand.retireTimer = null;
+        }
+        demand.count += 1;
+      }
+      this.#reconcile(workerId);
     }
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      for (const [workerId, topics] of retained) {
+        const workerDemands = this.#demands.get(workerId);
+        if (!workerDemands) continue;
+        for (const topic of topics) {
+          const demand = workerDemands.get(topic);
+          if (!demand || demand.count === 0) continue;
+          demand.count -= 1;
+          if (demand.count > 0 || demand.retireTimer) continue;
+          demand.retireTimer = this.dependencies.setTimer(() => {
+            demand.retireTimer = null;
+            if (demand.count > 0) return;
+            workerDemands.delete(topic);
+            if (workerDemands.size === 0) this.#demands.delete(workerId);
+            this.#reconcile(workerId);
+          }, this.dependencies.demandGraceMs);
+        }
+      }
+    };
+  }
+
+  updateAvailableWorkers(workerIds: readonly string[]): void {
+    const previous = new Set(this.#availableWorkerIds);
+    this.#availableWorkerIds.clear();
+    for (const workerId of workerIds) this.#availableWorkerIds.add(workerId);
+    for (const workerId of previous) this.#reconcile(workerId);
+    for (const workerId of this.#availableWorkerIds) this.#reconcile(workerId);
   }
 
   stop(): void {
-    if (this.#stopped) return;
     this.#stopped = true;
     for (const state of this.#states.values()) {
       state.desired = false;
       this.#retire(state, "normal", true, false);
     }
     this.#states.clear();
+    for (const workerDemands of this.#demands.values()) {
+      for (const demand of workerDemands.values()) {
+        if (demand.retireTimer)
+          this.dependencies.clearTimer(demand.retireTimer);
+      }
+    }
+    this.#demands.clear();
+  }
+
+  #reconcile(workerId: string): void {
+    const topics = this.#desiredTopics(workerId);
+    const shouldConnect =
+      !this.#stopped &&
+      this.#availableWorkerIds.has(workerId) &&
+      topics.size > 0;
+    const state = this.#states.get(workerId);
+    if (!shouldConnect) {
+      if (!state) return;
+      state.desired = false;
+      this.#retire(state, "normal", true, false);
+      this.#states.delete(workerId);
+      return;
+    }
+    if (state && setsEqual(state.topics, topics)) return;
+    if (state) {
+      state.desired = false;
+      this.#retire(state, "normal", true, false, true);
+      state.desired = true;
+      state.topics = topics;
+      void this.#connect(state);
+      return;
+    }
+    const next: WorkerObservationState = {
+      connecting: false,
+      desired: true,
+      generation: 0,
+      grant: null,
+      inbound: [],
+      inboundBytes: 0,
+      draining: false,
+      expectedSequence: 0,
+      receivedData: false,
+      reconnectAttempt: 0,
+      reconnectTimer: null,
+      reference: null,
+      renewTimer: null,
+      sessionId: null,
+      stream: null,
+      topics,
+      unsubscribes: [],
+      workerId,
+    };
+    this.#states.set(workerId, next);
+    void this.#connect(next);
+  }
+
+  #desiredTopics(workerId: string): Set<WorkerObservationTopic> {
+    const demands = this.#demands.get(workerId);
+    return new Set(
+      WORKER_OBSERVATION_TOPICS.filter((topic) => demands?.has(topic)),
+    );
   }
 
   async #connect(state: WorkerObservationState): Promise<void> {
@@ -149,6 +280,7 @@ export class WorkerObservationClient {
     }
     state.connecting = true;
     const generation = ++state.generation;
+    const topics = [...state.topics];
     let reference = state.reference;
     let ownsReference = false;
     let grant: WorkerLinkResourceGrant | null = null;
@@ -158,9 +290,7 @@ export class WorkerObservationClient {
         ownsReference = true;
       }
       const sessionId = reference.link.session.sessionId;
-      grant = await this.dependencies.createGrant(sessionId, [
-        ...OBSERVATION_TOPICS,
-      ]);
+      grant = await this.dependencies.createGrant(sessionId, topics);
       const stream = await reference.link.openEventSubscription(grant);
       if (!this.#isCurrent(state, generation)) {
         stream.close("normal");
@@ -187,7 +317,8 @@ export class WorkerObservationClient {
       ];
       this.#scheduleRenewal(state, generation, grant.binding.lease);
     } catch {
-      state.connecting = false;
+      const current = this.#isCurrent(state, generation);
+      if (current) state.connecting = false;
       if (grant && reference) {
         await this.dependencies
           .revokeGrant(reference.link.session.sessionId, grant.binding.grantId)
@@ -291,6 +422,7 @@ export class WorkerObservationClient {
     code: Parameters<WorkerLinkStream["close"]>[0] = "normal",
     closeStream: boolean,
     reconnect: boolean,
+    preserveReference = false,
   ): void {
     const hadData = state.receivedData;
     state.generation += 1;
@@ -315,7 +447,8 @@ export class WorkerObservationClient {
     const sessionId = state.sessionId;
     state.stream = null;
     const keepReference =
-      code === "route-replaced" && reconnect && reference !== null;
+      reference !== null &&
+      (preserveReference || (code === "route-replaced" && reconnect));
     state.reference = keepReference ? reference : null;
     state.grant = null;
     state.sessionId = null;
