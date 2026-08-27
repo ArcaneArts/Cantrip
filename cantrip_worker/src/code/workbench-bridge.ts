@@ -6,6 +6,7 @@ import type {
   CodeAgentTurnPreparationResult,
   CodeAppearance,
   CodeDirtyEditor,
+  CodeInstallVsixResult,
   CodeOpenFileResult,
   CodeOpenExtensionsResult,
   CodeOpenSettingsResult,
@@ -16,6 +17,7 @@ import type {
 import {
   codeAgentTurnNotificationResultSchema,
   codeAgentTurnPreparationSessionSchema,
+  codeInstallVsixResultSchema,
   codeOpenExtensionsResultSchema,
   codeOpenSettingsResultSchema,
   codeWorkbenchStateSchema,
@@ -103,6 +105,7 @@ const DEFAULT_LIVENESS_TIMEOUT_MS = 3_000;
 const MAX_LIVENESS_INTERVAL_MS = 60_000;
 const MAX_LIVENESS_TIMEOUT_MS = 5_000;
 const OPEN_SETTINGS_REQUEST_TIMEOUT_MS = 15_000;
+const INSTALL_VSIX_REQUEST_TIMEOUT_MS = 2 * 60_000;
 const DEFAULT_RETIRED_SESSION_LIMIT = 256;
 const MAX_RETIRED_SESSION_LIMIT = 1_024;
 const DEFAULT_RETIRED_SESSION_TTL_MS = 30_000;
@@ -690,6 +693,37 @@ export class CodeWorkbenchBridge {
         "openExtensions",
         {},
         OPEN_SETTINGS_REQUEST_TIMEOUT_MS,
+        signal,
+      ),
+    );
+  }
+
+  async installVsix(
+    sessionId: string,
+    vsixPath: string,
+    signal?: AbortSignal,
+  ): Promise<CodeInstallVsixResult> {
+    const session = this.#sessions.get(sessionId);
+    if (!session) throw new Error("Cantrip Code session is not registered.");
+    const connected =
+      Boolean(this.#authoritativeSocket(session)) ||
+      (await this.waitUntilConnected(
+        sessionId,
+        this.#controlConnectTimeoutMs,
+        signal,
+      ));
+    if (!connected) {
+      throw new Error("Cantrip workbench bridge is not connected.");
+    }
+    if (this.#sessions.get(sessionId) !== session) {
+      throw new Error("Cantrip workbench bridge session was superseded.");
+    }
+    return codeInstallVsixResultSchema.parse(
+      await this.#request(
+        session,
+        "installVsix",
+        { path: vsixPath },
+        INSTALL_VSIX_REQUEST_TIMEOUT_MS,
         signal,
       ),
     );

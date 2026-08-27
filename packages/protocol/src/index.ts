@@ -5778,7 +5778,11 @@ export const explorerListSchema = z.array(explorerSummarySchema);
 export const explorerWireListSchema = z.array(explorerWireSummarySchema);
 
 export const codeThemeModeSchema = z.enum(["follow-cantrip", "independent"]);
-export const codePresentationSchema = z.enum(["workbench", "editor"]);
+export const codePresentationSchema = z.enum([
+  "workbench",
+  "editor",
+  "extensions",
+]);
 export const codeAppearanceSchema = z.enum([
   "light",
   "dark",
@@ -6468,6 +6472,10 @@ export const codeOpenExtensionsRequestSchema = z.object({}).strict();
 
 export const codeOpenExtensionsResultSchema = z
   .object({ opened: z.literal(true) })
+  .strict();
+
+export const codeInstallVsixResultSchema = z
+  .object({ installed: z.literal(true) })
   .strict();
 
 export const codePresentationUpdateSchema = z
@@ -17134,6 +17142,7 @@ export type CodeOpenSettingsResult = z.infer<
 export type CodeOpenExtensionsResult = z.infer<
   typeof codeOpenExtensionsResultSchema
 >;
+export type CodeInstallVsixResult = z.infer<typeof codeInstallVsixResultSchema>;
 export type CodeSettingsWorkbenchOpenResult = z.infer<
   typeof codeSettingsWorkbenchOpenResultSchema
 >;

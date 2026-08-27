@@ -155,6 +155,31 @@ describe("CodeWorkbenchBridge graphical settings", () => {
     await expect(opening).rejects.toThrow();
   });
 
+  it("sends a worker-local VSIX path to the authenticated workbench", async () => {
+    const { bridge, nextRequest, socket } = await connectedBridge();
+
+    const installation = bridge.installVsix(
+      "settings-session",
+      "/tmp/cantrip-code-vsix/upload.vsix",
+    );
+    const request = await nextRequest();
+    expect(request).toMatchObject({
+      type: "request",
+      method: "installVsix",
+      params: { path: "/tmp/cantrip-code-vsix/upload.vsix" },
+    });
+    socket.send(
+      JSON.stringify({
+        type: "response",
+        id: request.id,
+        ok: true,
+        result: { installed: true },
+      }),
+    );
+
+    await expect(installation).resolves.toEqual({ installed: true });
+  });
+
   it("does not accept a socket without the registered session token", async () => {
     const { bridge, url } = await connectedBridge();
     const unauthorizedUrl = new URL(url);

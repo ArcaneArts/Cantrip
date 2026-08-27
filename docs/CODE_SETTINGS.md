@@ -1,8 +1,9 @@
-# Global Cantrip Code settings
+# Global Cantrip Code customization
 
-Cantrip exposes the graphical Code OSS settings editor under **Settings →
-Code**. The surface is global: it does not require a project, repository, or
-worktree, and it uses a dedicated folderless Cantrip Code session.
+Cantrip exposes the native Code OSS Settings and Extensions experiences under
+**Settings → Code**. A Cantrip-owned sub-tab bar switches between them. The
+surface is global: it does not require a project, repository, or worktree, and
+it uses a dedicated folderless Cantrip Code session.
 
 ## Data flow
 
@@ -18,12 +19,20 @@ worktree, and it uses a dedicated folderless Cantrip Code session.
    semantic settings object, and encrypts it locally. The server stores only
    the ciphertext envelope and revision metadata.
 5. The app mounts the protected workbench iframe and waits for the
-   authenticated, origin-bound readiness message. It then invokes
-   `workbench.action.openSettings` through the authenticated Cantrip workbench
-   bridge.
-6. The settings workbench remains mounted and connected after the user changes
-   Cantrip Settings tabs. Returning to Code reveals the same iframe rather than
-   creating another editor process or attachment.
+   authenticated, origin-bound readiness message. It then invokes either
+   `workbench.action.openSettings` or `workbench.view.extensions` through the
+   authenticated Cantrip workbench bridge.
+6. Switching the inner sub-tab changes the native workbench presentation in
+   place. The app keeps one iframe, attachment, worker connection, and Code
+   process instead of creating parallel customization workbenches.
+7. The customization workbench remains mounted and connected after the user
+   changes Cantrip Settings tabs. Returning to Code reveals the same iframe.
+
+The selected sub-tab is retained with the Settings page. Control requests are
+serialized and abortable, so a stale response cannot win after rapid switching.
+The requested view is reapplied after iframe reload, attachment recovery, or
+worker reconnect. Changing the visible worker selector deliberately retires the
+old attachment and opens the selected worker's profile.
 
 The worker watcher debounces subsequent settings-file changes and uploads them
 with compare-and-swap revision semantics. Server invalidations and reconnect
@@ -72,17 +81,63 @@ There is no blind last-write-wins path.
 
 ## Presentation and lifecycle
 
-The settings session uses the same editor-only presentation contract as file
-editing. Activity bars, sidebars, panels, status bars, breadcrumbs, native tab
-strips, the command center, layout controls, minimaps, and notification clutter
-remain hidden. Cantrip's Settings navigation and synchronization status remain
-visible around the embedded graphical settings editor.
+The Settings sub-tab uses the editor-only presentation contract. The Extensions
+sub-tab retains the native primary Extensions sidebar and editor details while
+still hiding the activity bar, title bar, status bar, panel, auxiliary sidebar,
+native tab strip, breadcrumbs, command center, navigation and layout controls,
+and unrelated notification clutter. Native extension dialogs, progress, errors,
+and reload or extension-host restart prompts remain available.
+
+An encrypted Settings conflict overlays only the Settings sub-tab. Extensions
+remain usable because extension state is worker-local and is not part of the
+server-side encrypted settings document.
 
 The server attachment and local direct tunnel have a serialized lifecycle and
 are retired exactly once when the retained Settings surface is finally
 unmounted or replaced. A lost direct connection is detected by health probes;
 Retry performs a worker synchronization and creates a fresh attachment without
 initializing from stale local state.
+
+## Extensions
+
+Extensions are installed into the selected worker's default owner-scoped
+Cantrip Code profile under `worker-data/code/profiles/<profile-key>/extensions`.
+That directory survives app reloads, server reconnects, worker/editor process
+restarts, and warm-profile eviction. Raw extension packages and installed
+extension state are not synchronized through or persisted by the Cantrip
+server.
+
+The native Code OSS experience provides Open VSX search, extension details,
+install and uninstall, global enable and disable, manual **Check for Extension
+Updates**, **Update All**, prerelease selection, and **Install from VSIX**.
+Microsoft Marketplace endpoints are not configured. Automatic update checking
+and installation are disabled, recommendation notifications are suppressed,
+and the folderless customization session does not offer workspace-only
+enable/disable actions.
+
+Use the native **Install from VSIX** action when the browser supports its file
+picker. Cantrip also shows **Upload VSIX** as a bounded fallback for WebKit,
+mobile, and other surfaces where that native picker cannot supply a worker-local
+file. The fallback accepts one `.vsix` up to 16 MiB (the protected browser
+transport's bounded request limit), sends it directly over
+the authenticated attachment without server persistence, writes it to a
+mode-`0600` worker temporary directory, delegates manifest validation and
+installation to Code OSS, and removes the temporary directory on success,
+failure, or cancellation. Worker startup recreates the private upload root,
+removing crash remnants and stale symlinks without following them. The client
+supplies bytes only: the endpoint accepts neither a browser-provided worker path
+nor a remote URL. Cantrip reports completion or failure beside the button; Code
+OSS owns any required reload/restart prompt.
+
+`cantrip.cantrip-workbench` and `cantrip.cantrip-themes` are required runtime
+extensions. Code OSS forces them enabled and rejects attempts to disable,
+uninstall, downgrade, replace, import over, or install a VSIX/gallery package
+with either identity. This enforcement lives below the UI and overrides stale
+disabled-profile state.
+
+Treat every third-party extension as trusted worker code. It can access files,
+start or modify processes, read credentials available to the worker account,
+and use the worker's network with the same practical authority as a terminal.
 
 ## Local validation
 

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  codeInstallVsixResultSchema,
   codeOpenExtensionsRequestSchema,
   codeOpenExtensionsResultSchema,
   codeOpenSettingsRequestSchema,
   codeOpenSettingsResultSchema,
+  codePresentationUpdateSchema,
   codeSettingsWorkbenchAttachmentCreateSchema,
   workerCommandSchema,
 } from "../src/index.js";
@@ -87,5 +89,20 @@ describe("Code settings workbench protocol", () => {
     expect(codeOpenExtensionsResultSchema.parse({ opened: true })).toEqual({
       opened: true,
     });
+  });
+
+  it("keeps authenticated VSIX installation acknowledgements strict", () => {
+    expect(codeInstallVsixResultSchema.parse({ installed: true })).toEqual({
+      installed: true,
+    });
+    expect(
+      codeInstallVsixResultSchema.safeParse({ installed: false }).success,
+    ).toBe(false);
+  });
+
+  it("represents the worker-authoritative Extensions presentation", () => {
+    expect(
+      codePresentationUpdateSchema.parse({ presentation: "extensions" }),
+    ).toEqual({ presentation: "extensions" });
   });
 });
