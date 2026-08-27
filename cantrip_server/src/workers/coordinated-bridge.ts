@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  createWorkerLinkFrame,
   remoteSurfaceFrameHeaderSchema,
   tunnelDataPlaneFrameHeaderSchema,
   workerLinkFrameHeaderSchema,
@@ -12,7 +13,7 @@ import {
   type WorkerCommand,
   type WorkerEvent,
   type WorkerNotification,
-  type WorkerLinkFrameHeader,
+  type ValidatedWorkerLinkFrame,
 } from "@cantrip/protocol";
 
 import type {
@@ -307,17 +308,23 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
           );
         },
       ),
-      this.#local.subscribeWorkerLinkFrames(workerId, (header, payload) => {
+      this.#local.subscribeWorkerLinkFrames(workerId, (frame) => {
         if (this.#connections.get(workerId)?.connectionId !== connectionId)
           return;
-        this.#dispatchFrame("worker-link", workerId, header, payload);
+        this.#dispatchFrame(
+          "worker-link",
+          workerId,
+          frame.header,
+          frame.payload,
+          frame,
+        );
         this.#publishWorkerFrame(
           "from-worker",
           "worker-link",
           resolvedOwnerId,
           workerId,
-          header,
-          payload,
+          frame.header,
+          frame.payload,
         );
       }),
       this.#local.subscribeNotifications(workerId, (notification) => {
@@ -498,10 +505,15 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
 
   sendWorkerLinkFrame(
     workerId: string,
-    header: WorkerLinkFrameHeader,
-    payload: Uint8Array,
+    frame: ValidatedWorkerLinkFrame,
   ): boolean {
-    return this.#sendFrame("worker-link", workerId, header, payload);
+    return this.#sendFrame(
+      "worker-link",
+      workerId,
+      frame.header,
+      frame.payload,
+      frame,
+    );
   }
 
   subscribeWorkerDisconnect(
@@ -951,8 +963,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         if (header.success) {
           this.#local.sendWorkerLinkFrame(
             message.workerId,
-            header.data,
-            payload,
+            createWorkerLinkFrame(header.data, payload),
           );
         }
       }
@@ -964,6 +975,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     workerId: string,
     header: unknown,
     payload: Uint8Array,
+    workerLinkFrame?: ValidatedWorkerLinkFrame,
   ): boolean {
     if (this.#connections.has(workerId)) {
       switch (transport) {
@@ -980,11 +992,9 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
             payload,
           );
         case "worker-link":
-          return this.#local.sendWorkerLinkFrame(
-            workerId,
-            header as WorkerLinkFrameHeader,
-            payload,
-          );
+          return workerLinkFrame
+            ? this.#local.sendWorkerLinkFrame(workerId, workerLinkFrame)
+            : false;
       }
     }
     const presence = this.#coordinator.cachedWorker(workerId);
@@ -1042,6 +1052,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     workerId: string,
     header: unknown,
     payload: Uint8Array,
+    workerLinkFrame?: ValidatedWorkerLinkFrame,
   ): void {
     if (transport === "surface") {
       const parsed = remoteSurfaceFrameHeaderSchema.safeParse(header);
@@ -1061,8 +1072,10 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     }
     const parsed = workerLinkFrameHeaderSchema.safeParse(header);
     if (!parsed.success) return;
+    const frame =
+      workerLinkFrame ?? createWorkerLinkFrame(parsed.data, payload);
     for (const listener of this.#workerLinkListeners.get(workerId) ?? []) {
-      listener(parsed.data, payload);
+      listener(frame);
     }
   }
 

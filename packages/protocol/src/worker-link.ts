@@ -31,6 +31,23 @@ export const WORKER_LINK_PEER_LANE_CHANNEL_PREFIX =
   "cantrip-worker-link-v1:lane:";
 
 const FRAME_MAGIC = new Uint8Array([0x43, 0x57, 0x4c, 0x4b]);
+const FRAME_TEXT_DECODER = new TextDecoder();
+const FRAME_TEXT_ENCODER = new TextEncoder();
+
+declare const validatedWorkerLinkFrameBrand: unique symbol;
+
+/**
+ * A WorkerLink frame whose header and payload were validated together with the
+ * exact encoded bytes. The byte array and payload view must be treated as
+ * immutable after construction so transport layers can forward them without
+ * rebuilding the frame.
+ */
+export interface ValidatedWorkerLinkFrame {
+  readonly bytes: Uint8Array;
+  readonly header: WorkerLinkFrameHeader;
+  readonly payload: Uint8Array;
+  readonly [validatedWorkerLinkFrameBrand]: true;
+}
 
 const idSchema = z
   .string()
@@ -1000,7 +1017,7 @@ function validatePayload(
 }
 
 function jsonBytes(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  return FRAME_TEXT_ENCODER.encode(JSON.stringify(value)).byteLength;
 }
 
 export type WorkerLinkPeerAddressKind =
@@ -1262,7 +1279,33 @@ export function encodeWorkerLinkFrame(
 ): Uint8Array {
   const parsedHeader = workerLinkFrameHeaderSchema.parse(header);
   validatePayload(parsedHeader, payload);
-  const encodedHeader = new TextEncoder().encode(JSON.stringify(parsedHeader));
+  return encodeValidatedWorkerLinkFrameBytes(parsedHeader, payload);
+}
+
+/**
+ * Validates and owns a WorkerLink frame in one pass. The returned payload is a
+ * view into the returned bytes, so callers may safely mutate their input after
+ * this function returns without changing the scheduled frame.
+ */
+export function createWorkerLinkFrame(
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array,
+): ValidatedWorkerLinkFrame {
+  const parsedHeader = workerLinkFrameHeaderSchema.parse(header);
+  validatePayload(parsedHeader, payload);
+  const bytes = encodeValidatedWorkerLinkFrameBytes(parsedHeader, payload);
+  return validatedWorkerLinkFrame(
+    bytes,
+    parsedHeader,
+    bytes.subarray(bytes.byteLength - payload.byteLength),
+  );
+}
+
+function encodeValidatedWorkerLinkFrameBytes(
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array,
+): Uint8Array {
+  const encodedHeader = FRAME_TEXT_ENCODER.encode(JSON.stringify(header));
   if (encodedHeader.byteLength > WORKER_LINK_MAX_HEADER_BYTES) {
     throw new Error("WorkerLink header exceeds the protocol limit.");
   }
@@ -1276,10 +1319,9 @@ export function encodeWorkerLinkFrame(
   return frame;
 }
 
-export function decodeWorkerLinkFrame(frame: Uint8Array): {
-  header: WorkerLinkFrameHeader;
-  payload: Uint8Array;
-} {
+export function decodeWorkerLinkFrame(
+  frame: Uint8Array,
+): ValidatedWorkerLinkFrame {
   if (frame.byteLength < 8 || !isWorkerLinkFrame(frame)) {
     throw new Error("WorkerLink frame has an invalid magic value.");
   }
@@ -1298,7 +1340,7 @@ export function decodeWorkerLinkFrame(frame: Uint8Array): {
   let rawHeader: unknown;
   try {
     rawHeader = JSON.parse(
-      new TextDecoder().decode(frame.subarray(8, payloadOffset)),
+      FRAME_TEXT_DECODER.decode(frame.subarray(8, payloadOffset)),
     );
   } catch {
     throw new Error("WorkerLink frame header is not valid JSON.");
@@ -1306,7 +1348,15 @@ export function decodeWorkerLinkFrame(frame: Uint8Array): {
   const header = workerLinkFrameHeaderSchema.parse(rawHeader);
   const payload = frame.subarray(payloadOffset);
   validatePayload(header, payload);
-  return { header, payload };
+  return validatedWorkerLinkFrame(frame, header, payload);
+}
+
+function validatedWorkerLinkFrame(
+  bytes: Uint8Array,
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array,
+): ValidatedWorkerLinkFrame {
+  return { bytes, header, payload } as ValidatedWorkerLinkFrame;
 }
 
 const REMOTE_SURFACE_CHUNK_MAGIC = new Uint8Array([0x43, 0x54, 0x52, 0x4c]);

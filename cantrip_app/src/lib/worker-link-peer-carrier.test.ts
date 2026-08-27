@@ -1,5 +1,6 @@
 import {
   WORKER_LINK_PEER_CONTROL_CHANNEL,
+  createWorkerLinkFrame,
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,
   workerLinkPeerHandshakeSchema,
@@ -212,14 +213,15 @@ describe("WorkerLink WebRTC PeerCarrier", () => {
       direction: "client-to-worker",
       payloadFormat: "raw",
     };
-    expect(carrier.send(header, new Uint8Array([1, 2, 3]))).toBe(true);
+    const frame = createWorkerLinkFrame(header, new Uint8Array([1, 2, 3]));
+    expect(carrier.send(frame)).toBe(true);
     const interactive = peer.channels.get(
       workerLinkPeerLaneChannelLabel("interactive"),
     )!;
-    expect(
-      decodeWorkerLinkFrame(new Uint8Array(interactive.sent[0] as ArrayBuffer))
-        .payload,
-    ).toEqual(new Uint8Array([1, 2, 3]));
+    expect(interactive.sent[0]).toBe(frame.bytes);
+    expect(decodeWorkerLinkFrame(frame.bytes).payload).toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
 
     const onFrame = vi.fn();
     carrier.onFrame(onFrame);

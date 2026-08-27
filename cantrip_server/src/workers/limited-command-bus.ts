@@ -1,8 +1,8 @@
 import type {
   RemoteSurfaceFrameHeader,
   TunnelDataPlaneFrameHeader,
+  ValidatedWorkerLinkFrame,
   WorkerCommand,
-  WorkerLinkFrameHeader,
 } from "@cantrip/protocol";
 
 import {
@@ -116,12 +116,9 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
 
   sendWorkerLinkFrame(
     workerId: string,
-    header: WorkerLinkFrameHeader,
-    payload: Uint8Array,
+    frame: ValidatedWorkerLinkFrame,
   ): boolean {
-    return (
-      this.delegate.sendWorkerLinkFrame?.(workerId, header, payload) ?? false
-    );
+    return this.delegate.sendWorkerLinkFrame?.(workerId, frame) ?? false;
   }
 
   subscribeWorkerDisconnect(workerId: string, listener: () => void) {

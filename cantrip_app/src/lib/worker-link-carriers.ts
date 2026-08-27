@@ -1,10 +1,9 @@
 import {
   directBrokerReadySchema,
-  encodeWorkerLinkFrame,
   type DirectAttachmentTicket,
-  type WorkerLinkFrameHeader,
   type WorkerLinkRoute,
   type WorkerLinkSession,
+  type ValidatedWorkerLinkFrame,
 } from "@cantrip/protocol";
 
 const CONNECT_TIMEOUT_MS = 5_000;
@@ -20,7 +19,15 @@ export interface WorkerLinkCarrier {
   close(reason?: string): void;
   onClose(listener: WorkerLinkCarrierCloseListener): () => void;
   onFrame(listener: WorkerLinkCarrierFrameListener): () => void;
-  send(header: WorkerLinkFrameHeader, payload: Uint8Array): boolean;
+  send(frame: ValidatedWorkerLinkFrame): boolean;
+}
+
+export function workerLinkFrameBufferSource(
+  frame: ValidatedWorkerLinkFrame,
+): Uint8Array<ArrayBuffer> {
+  return frame.bytes.buffer instanceof ArrayBuffer
+    ? (frame.bytes as Uint8Array<ArrayBuffer>)
+    : Uint8Array.from(frame.bytes);
 }
 
 export interface WorkerLinkWebSocketLike {
@@ -88,7 +95,7 @@ class WebSocketWorkerLinkCarrier implements WorkerLinkCarrier {
     socket.addEventListener("error", closed, { once: true });
   }
 
-  send(header: WorkerLinkFrameHeader, payload: Uint8Array): boolean {
+  send(frame: ValidatedWorkerLinkFrame): boolean {
     if (
       this.#closed ||
       this.socket.readyState !== 1 ||
@@ -97,9 +104,7 @@ class WebSocketWorkerLinkCarrier implements WorkerLinkCarrier {
       return false;
     }
     try {
-      this.socket.send(
-        copiedArrayBuffer(encodeWorkerLinkFrame(header, payload)),
-      );
+      this.socket.send(workerLinkFrameBufferSource(frame));
       return true;
     } catch {
       this.#retire("carrier-send-failed");

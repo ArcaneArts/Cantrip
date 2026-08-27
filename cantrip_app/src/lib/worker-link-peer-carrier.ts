@@ -2,7 +2,6 @@ import {
   WORKER_LINK_PEER_CONTROL_CHANNEL,
   classifyWorkerLinkPeerAddress,
   decodeWorkerLinkFrame,
-  encodeWorkerLinkFrame,
   filterWorkerLinkPeerSdp,
   parseWorkerLinkPeerCandidate,
   workerLinkPeerCandidateAllowed,
@@ -22,6 +21,7 @@ import {
   type WorkerLinkPeerSignalEnvelope,
   type WorkerLinkQosLane,
   type WorkerLinkSession,
+  type ValidatedWorkerLinkFrame,
 } from "@cantrip/protocol/worker-link";
 
 import type {
@@ -29,6 +29,7 @@ import type {
   WorkerLinkCarrierCloseListener,
   WorkerLinkCarrierFrameListener,
 } from "./worker-link-carriers";
+import { workerLinkFrameBufferSource } from "./worker-link-carriers";
 
 const MAILBOX_POLL_MS = 40;
 const LANES = workerLinkQosLaneSchema.options;
@@ -223,7 +224,8 @@ class WebRtcWorkerLinkCarrier implements WorkerLinkCarrier {
     }
   }
 
-  send(header: WorkerLinkFrameHeader, payload: Uint8Array): boolean {
+  send(frame: ValidatedWorkerLinkFrame): boolean {
+    const { bytes, header } = frame;
     if (
       this.#closed ||
       !this.#handshakeAccepted ||
@@ -235,23 +237,20 @@ class WebRtcWorkerLinkCarrier implements WorkerLinkCarrier {
     }
     const channel = this.#lanes.get(header.lane);
     const limits = this.#configuration.laneLimits[header.lane];
-    const bytes = payload.byteLength + JSON.stringify(header).length + 8;
     if (
       !channel ||
       channel.readyState !== "open" ||
-      channel.bufferedAmount + bytes > limits.maxQueuedBytes ||
-      !this.#consumeRate(header.lane, bytes, limits.maxBytesPerSecond)
+      channel.bufferedAmount + bytes.byteLength > limits.maxQueuedBytes ||
+      !this.#consumeRate(
+        header.lane,
+        bytes.byteLength,
+        limits.maxBytesPerSecond,
+      )
     ) {
       return false;
     }
     try {
-      channel.send(
-        Uint8Array.from(
-          // Encoding here preserves the exact envelope used by LOCAL and RELAY.
-          // The worker validates it again before granting resource access.
-          encodeWorkerLinkFrame(header, payload),
-        ).buffer,
-      );
+      channel.send(workerLinkFrameBufferSource(frame));
       return true;
     } catch {
       this.#fail("WorkerLink peer send failed.");
