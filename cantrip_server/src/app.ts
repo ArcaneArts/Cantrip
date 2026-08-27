@@ -206,10 +206,6 @@ import {
   orderedIdsSchema,
   operationalProbeSchema,
   projectShareDirectCreateSchema,
-  encryptedProjectViewCreateSchema,
-  projectViewWireListSchema,
-  projectViewWireSummarySchema,
-  encryptedProjectViewUpdateSchema,
   configurablePermissionProfileIdSchema,
   DEFAULT_PERMISSION_PROFILE_ID,
   permissionProfileCapabilitySchema,
@@ -652,6 +648,7 @@ import { installProjectMcpServerRoutes } from "./app/routes/project-mcp-servers.
 import { installProjectNetworkShareRoutes } from "./app/routes/project-network-shares.js";
 import { installProjectRemovalRoute } from "./app/routes/project-removal.js";
 import { installProjectReplicaRoutes } from "./app/routes/project-replicas.js";
+import { installProjectViewRoutes } from "./app/routes/project-views.js";
 import {
   installProjectInsightRoutes,
   installProjectOrderRoute,
@@ -21152,134 +21149,13 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/views",
-    async (request, reply) =>
-      reply.send(
-        projectViewWireListSchema.parse(
-          await repository.listProjectViews(
-            applicationOwnerId(),
-            request.params.projectId,
-          ),
-        ),
-      ),
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/views",
-    async (request, reply) => {
-      const input = encryptedProjectViewCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      if (input.data.kind === "remote-desktop") {
-        return reply.code(400).send({
-          error:
-            "Remote Desktop views must be created with endpoint configuration.",
-        });
-      }
-      const project = await repository.getProject(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (project && input.data.kind === "history") {
-        requireProjectCapability(project, "git");
-      }
-      if (project && input.data.kind === "issues") {
-        requireProjectCapability(project, "github");
-      }
-      const view = await repository.createProjectView(
-        applicationOwnerId(),
-        request.params.projectId,
-        input.data,
-      );
-      return view
-        ? reply.code(201).send(projectViewWireSummarySchema.parse(view))
-        : reply.code(404).send({ error: "Project source not found." });
-    },
-  );
-
-  app.patch<{ Params: { viewId: string } }>(
-    "/api/project-views/:viewId",
-    async (request, reply) => {
-      const input = encryptedProjectViewUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const view = await repository.updateProjectView(
-        applicationOwnerId(),
-        request.params.viewId,
-        input.data,
-      );
-      return view
-        ? reply.send(projectViewWireSummarySchema.parse(view))
-        : reply.code(404).send({ error: "Project view not found." });
-    },
-  );
-
-  app.patch<{ Params: { viewId: string } }>(
-    "/api/project-views/:viewId/worktree",
-    async (request, reply) => {
-      const input = worktreeSelectionSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const projectId = await repository.getProjectViewProjectId(
-        applicationOwnerId(),
-        request.params.viewId,
-      );
-      if (projectId) await requireProjectWorktrees(projectId);
-      try {
-        const view = await repository.updateProjectViewWorktree(
-          applicationOwnerId(),
-          request.params.viewId,
-          input.data,
-        );
-        return view
-          ? reply.send(projectViewWireSummarySchema.parse(view))
-          : reply
-              .code(404)
-              .send({ error: "History view or worktree not found." });
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.delete<{ Params: { viewId: string } }>(
-    "/api/project-views/:viewId",
-    async (request, reply) => {
-      const context = await repository.getRemoteSurfaceExecutionContext(
-        applicationOwnerId(),
-        request.params.viewId,
-      );
-      if (
-        !(await repository.deleteProjectView(
-          applicationOwnerId(),
-          request.params.viewId,
-        ))
-      ) {
-        return reply.code(404).send({ error: "Project view not found." });
-      }
-      if (context) {
-        await workerLinks.revokeResource(
-          applicationOwnerId(),
-          context.surface.kind === "browser" ? "browser" : "remote-desktop",
-          context.surface.id,
-          "resource-deleted",
-        );
-      }
-      if (context && bridge.isConnected(context.workerId)) {
-        void bridge
-          .request(context.workerId, {
-            type: "surface.close",
-            surfaceId: context.surface.id,
-          })
-          .catch(() => undefined);
-      }
-      return reply.code(204).send();
-    },
-  );
+  installProjectViewRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    repository,
+    requireProjectWorktrees,
+    workerLinks,
+  });
 
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/explorers",
