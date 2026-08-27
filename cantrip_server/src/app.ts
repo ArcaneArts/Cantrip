@@ -531,10 +531,7 @@ import {
   runConfigurationValidateResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
-import {
-  runConfigurationIdSchema,
-  type RunConfigurationFile,
-} from "@cantrip/protocol/run-configuration-definitions";
+import { runConfigurationIdSchema } from "@cantrip/protocol/run-configuration-definitions";
 import {
   protectedRunConfigurationRuntimeOutputResultSchema,
   protectedRunConfigurationRuntimeWorkerOutputSchema,
@@ -695,7 +692,6 @@ import {
 } from "@cantrip/protocol/tasks";
 import { cantripVersion } from "@cantrip/version";
 
-import type { ServerConfig } from "./config.js";
 import {
   associateTaskPullRequests,
   taskAdvisoryWarnings,
@@ -789,7 +785,6 @@ import {
 import { TunnelStreamBroker } from "./tunnels/broker.js";
 import { terminalRelayOutputMessage } from "./terminals/relay.js";
 import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
-import type { DatabaseConnection } from "./db/index.js";
 import { TaskConflictError } from "./db/tasks.js";
 import {
   TASK_DISPATCH_LEASE_MS,
@@ -875,11 +870,7 @@ import {
   type WorkflowScheduleDispatchLease,
   type WorkflowTriggerClaim,
 } from "./db/workflow-triggers.js";
-import {
-  WorkerBridge,
-  type WorkerCommandBus,
-  WorkerUnavailableError,
-} from "./workers/bridge.js";
+import { WorkerBridge, WorkerUnavailableError } from "./workers/bridge.js";
 import { BufferedWorkerSocket } from "./workers/buffered-socket.js";
 import { workerLogStreamConsumerIsSlow } from "./workers/log-stream.js";
 import { workerPresenceFingerprint } from "./workers/presence.js";
@@ -951,7 +942,6 @@ import {
   buildBandwidthUsageHistory,
   buildStorageUsageHistory,
 } from "./account-usage/resource-usage-response.js";
-import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import {
   LEGACY_FEATURE_TRANSPORT_DEPRECATION,
   LEGACY_FEATURE_TRANSPORT_DEPRECATION_LINK,
@@ -1030,391 +1020,78 @@ import {
 } from "./models/provider-quota.js";
 import { evaluateModelRouteAvailability } from "./models/model-route-availability.js";
 import { workerEncryptionRefreshChangesSurfaceMaterial } from "./worker-encryption-refresh.js";
+import type { BuildAppOptions } from "./app/options.js";
+import {
+  ACCOUNT_RESOURCE_USAGE_LIVE_COALESCE_MS,
+  ACCOUNT_RESOURCE_USAGE_LIVE_TIMER_LIMIT,
+  AGENT_INTERACTION_EXPIRY_SWEEP_MS,
+  ATTACHMENT_CHUNK_BYTES,
+  BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT,
+  BROWSER_FLEET_DISCOVERY_TIMEOUT_MS,
+  BROWSER_FLEET_DISCOVERY_WORKER_LIMIT,
+  CONFIGURABLE_PERMISSION_PROFILES,
+  DEFAULT_API_BODY_LIMIT_BYTES,
+  DEFAULT_UPLOAD_LIMIT_BYTES,
+  DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES,
+  EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS,
+  EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT,
+  FINITE_WORKER_COMMAND_TIMEOUT_MS,
+  GOAL_RESUME_PROMPT,
+  MAX_PENDING_WORKER_HANDSHAKES,
+  PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS,
+  PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT,
+  REMOTE_DESKTOP_FLEET_SURFACE_LIMIT,
+  REMOTE_DESKTOP_FLEET_TARGET_LIMIT,
+  REMOTE_DESKTOP_FLEET_TIMEOUT_MS,
+  REMOTE_DESKTOP_FLEET_WORKER_LIMIT,
+  ROUTE_FAILURE_COOLDOWN_MS,
+  STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+  TASK_SCHEDULE_POLL_MS,
+  TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS,
+  TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS,
+  TUNNEL_ATTACHMENT_LIFETIME_MS,
+  TUNNEL_ATTACHMENT_SECRET_TTL_MS,
+  WORKER_HANDSHAKE_LIMIT_KEY,
+  WORKER_HANDSHAKE_TIMEOUT_MS,
+  WORKER_LOG_STREAM_HEARTBEAT_MS,
+  WORKER_LOG_STREAM_LEASE_MS,
+  WORKER_LOG_STREAM_RENEW_MS,
+  WORKFLOW_GATE_EXPIRY_SWEEP_MS,
+  WORKFLOW_SCHEDULE_POLL_MS,
+} from "./app/shared/constants.js";
+import {
+  ProviderAccountReconnectRequiredError,
+  ScheduleDispatchLeaseLostError,
+  SkillSettingsRequestError,
+} from "./app/shared/errors.js";
+import {
+  gitManagedOperationContext,
+  gitOperationObservationMatches,
+} from "./app/shared/git-managed-operations.js";
+import {
+  mutationChatLiveResources,
+  mutationLiveResources,
+  type ChatLiveResource,
+} from "./app/shared/live-resources.js";
+import {
+  auditResourceId,
+  mutationAuditDescriptor,
+  tunnelAttachmentSocketSecret,
+  validUuidPathParameter,
+} from "./app/shared/request-policy.js";
+import { runConfigurationSecretReferences } from "./app/shared/run-configuration-secrets.js";
+import {
+  createStreamedFinalTracker,
+  hasFinal,
+  recordFinal,
+} from "./app/shared/streamed-final-tracker.js";
+import {
+  workerObservationMessageId,
+  workerObservationTurnId,
+} from "./app/shared/worker-observations.js";
 
-export interface BuildAppOptions {
-  config: ServerConfig;
-  database: DatabaseConnection;
-  logger?: boolean;
-  codeTunnel?: CodeTunnelBroker;
-  projectShareTunnel?: ProjectShareTunnelBroker;
-  workerBridge?: WorkerCommandBus;
-  relayQuotas?: RelayQuotaManager;
-  coordinator?: RelayCoordinator;
-  providerCatalogService?: OpenRouterCatalogService;
-  providerCredentialMigrations?: ProviderCredentialMigrationCoordinator;
-}
-
-class SkillSettingsRequestError extends Error {
-  readonly statusCode: 404 | 409 | 503;
-
-  constructor(statusCode: 404 | 409 | 503, message: string) {
-    super(message);
-    this.name = "SkillSettingsRequestError";
-    this.statusCode = statusCode;
-  }
-}
-
-class ScheduleDispatchLeaseLostError extends Error {}
-
-class ProviderAccountReconnectRequiredError extends Error {
-  constructor() {
-    super(
-      "The original worker must reconnect before this provider account can be signed out globally.",
-    );
-    this.name = "ProviderAccountReconnectRequiredError";
-  }
-}
-
-function gitManagedOperationContext(
-  operation: GitManagedOperationRecord,
-): GitManagedOperationContext {
-  return {
-    type: operation.type,
-    originalHead: operation.originalHead,
-    sourceRef: operation.sourceRef,
-    sourceRevision: operation.sourceRevision,
-    targetRef: operation.targetRef,
-    targetRevision: operation.targetRevision,
-    pendingCommits: operation.pendingCommits,
-    totalSteps: operation.totalSteps,
-    checkpointRef: operation.checkpointRef,
-  };
-}
-
-function gitOperationObservationMatches(
-  state: GitManagedOperationWorkerState,
-  observation: GitOperationObservationState,
-): boolean {
-  return (
-    state.state === observation.state &&
-    state.currentHead === observation.currentHead &&
-    state.currentStep === observation.currentStep &&
-    state.totalSteps === observation.totalSteps &&
-    state.pendingCommits.length === observation.pendingCommitCount &&
-    state.conflictedPaths.length === observation.conflictedPathCount &&
-    (state.pausedAction ?? null) === observation.pausedAction
-  );
-}
-
-const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
-const DEFAULT_API_BODY_LIMIT_BYTES = 1_024 * 1_024;
-const DEFAULT_UPLOAD_LIMIT_BYTES = 25 * 1_024 * 1_024;
-const DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES = 8 * 1_024 * 1_024;
-const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
-const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
-const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
-const GOAL_RESUME_PROMPT =
-  "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
-const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
-const TASK_SCHEDULE_POLL_MS = 1_000;
-const PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS = 10_000;
-const PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT = 4_096;
-const ACCOUNT_RESOURCE_USAGE_LIVE_COALESCE_MS = 5_000;
-const ACCOUNT_RESOURCE_USAGE_LIVE_TIMER_LIMIT = 4_096;
-const TUNNEL_ATTACHMENT_SECRET_TTL_MS = 2 * 60_000;
-const TUNNEL_BROWSER_PROTOCOL_PREFIX = "cantrip-tunnel-v1.";
-const UUID_PATH_PARAMETER_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-
-function validUuidPathParameter(value: string): boolean {
-  return UUID_PATH_PARAMETER_PATTERN.test(value);
-}
-
-function tunnelAttachmentSocketSecret(headers: {
-  authorization?: string;
-  "sec-websocket-protocol"?: string;
-}): string {
-  if (headers.authorization?.startsWith("Bearer ")) {
-    return headers.authorization.slice("Bearer ".length);
-  }
-  const protocol = headers["sec-websocket-protocol"]
-    ?.split(",")
-    .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith(TUNNEL_BROWSER_PROTOCOL_PREFIX));
-  return protocol?.slice(TUNNEL_BROWSER_PROTOCOL_PREFIX.length) ?? "";
-}
-const TUNNEL_ATTACHMENT_LIFETIME_MS = 12 * 60 * 60_000;
-const TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS = 10_000;
-const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
-const BROWSER_FLEET_DISCOVERY_TIMEOUT_MS = 20_000;
-const WORKER_LOG_STREAM_LEASE_MS = 120_000;
-const WORKER_LOG_STREAM_RENEW_MS = 60_000;
-const WORKER_LOG_STREAM_HEARTBEAT_MS = 25_000;
-
-const BROWSER_FLEET_DISCOVERY_WORKER_LIMIT = 64;
-const BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT = 1_024;
-const EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS = 20_000;
-const EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT = 64;
-const REMOTE_DESKTOP_FLEET_TIMEOUT_MS = 20_000;
-const REMOTE_DESKTOP_FLEET_WORKER_LIMIT = 64;
-const REMOTE_DESKTOP_FLEET_TARGET_LIMIT = 4_096;
-const REMOTE_DESKTOP_FLEET_SURFACE_LIMIT = 64;
-const FINITE_WORKER_COMMAND_TIMEOUT_MS = 30 * 60_000;
-const STREAMING_WORKER_COMMAND_TIMEOUT_MS = null;
-function mutationAuditDescriptor(
-  method: string,
-  route: string,
-): { action: string; resourceType: string } | null {
-  if (route.startsWith("/api/encryption") && method !== "GET") {
-    return {
-      action: "encryption.registry-changed",
-      resourceType: "encryption-registry",
-    };
-  }
-  if (route.startsWith("/api/admin/license-whitelist") && method !== "GET") {
-    return {
-      action: "account-license.configuration-changed",
-      resourceType: "account-license",
-    };
-  }
-  if (method === "GET" && route === "/api/projects/:projectId/chats") {
-    return { action: "project.accessed", resourceType: "project" };
-  }
-  if (method === "POST" && route === "/api/workers/enrollment-codes") {
-    return { action: "worker.pairing-code-created", resourceType: "worker" };
-  }
-  if (
-    method === "POST" &&
-    route === "/api/run-configuration-runtimes/operations"
-  ) {
-    return {
-      action: "run.configuration.lifecycle-requested",
-      resourceType: "run-configuration-runtime",
-    };
-  }
-  if (route.startsWith("/api/workers/") && method !== "GET") {
-    return { action: "worker.configuration-changed", resourceType: "worker" };
-  }
-  if (
-    (route.startsWith("/api/settings/providers") ||
-      route.includes("/mcp-servers")) &&
-    method !== "GET"
-  ) {
-    return { action: "secret.configuration-changed", resourceType: "secret" };
-  }
-  if (route.includes("/git/") && method !== "GET") {
-    return { action: "git.operation-requested", resourceType: "project" };
-  }
-  if (route.includes("/replica") && method !== "GET") {
-    return {
-      action: "project-replica.configuration-changed",
-      resourceType: "project-replica",
-    };
-  }
-  if (route.startsWith("/api/projects") && method !== "GET") {
-    return { action: "project.configuration-changed", resourceType: "project" };
-  }
-  return null;
-}
-
-function auditResourceId(request: FastifyRequest): string | null {
-  if (!request.params || typeof request.params !== "object") return null;
-  const params = request.params as Record<string, unknown>;
-  for (const key of [
-    "grantId",
-    "principalId",
-    "credentialId",
-    "workerId",
-    "providerId",
-    "policyId",
-    "serverId",
-    "projectReplicaId",
-    "replicaId",
-    "projectId",
-  ]) {
-    const value = params[key];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
-}
-
-type ChatLiveResource = Extract<
-  AppLiveResource,
-  | "agent-interaction"
-  | "chat"
-  | "chat-goal"
-  | "chat-message"
-  | "chat-plan"
-  | "chat-queue"
-  | "customization"
-  | "inference-progress"
-  | "task"
->;
-
-function workerObservationTurnId(event: WorkerEvent): string | null {
-  switch (event.type) {
-    case "agent.activity":
-      return event.activity.correlation?.turnId ?? null;
-    case "agent.message":
-      return event.message.correlation?.turnId ?? null;
-    case "agent.protected-message":
-    case "agent.protected-task-message":
-      return event.telemetry.turnId;
-    default:
-      return null;
-  }
-}
-
-function workerObservationMessageId(event: WorkerEvent): string | null {
-  switch (event.type) {
-    case "agent.activity":
-      return event.activity.id;
-    case "agent.message":
-      return event.message.id;
-    case "agent.protected-message":
-    case "agent.protected-task-message":
-      return event.message.id;
-    case "agent.inference-progress":
-      return event.progress.requestId;
-    default:
-      return null;
-  }
-}
-
-export function mutationLiveResources(
-  route: string,
-  repositoryAccess: "read" | "write" = "write",
-): AppLiveResource[] {
-  if (
-    repositoryAccess === "read" &&
-    (route ===
-      "/api/projects/:projectId/worktrees/:worktreeId/repository-operation" ||
-      route === "/api/workers/:workerId/repository-operation")
-  ) {
-    return [];
-  }
-  if (
-    route === "/api/projects/:projectId/tasks" ||
-    route === "/api/tasks/:chatId" ||
-    route.startsWith("/api/tasks/:chatId/")
-  ) {
-    return ["task", "chat"];
-  }
-  if (
-    route === "/api/policies" ||
-    route.startsWith("/api/policies/") ||
-    route === "/api/projects/:projectId/policies" ||
-    route === "/api/workspaces/:workspaceId/policies"
-  ) {
-    return ["policy"];
-  }
-  if (route === "/api/workspaces" || route.startsWith("/api/workspaces/")) {
-    return ["project", "policy"];
-  }
-  if (route === "/api/tunnels" || route.startsWith("/api/tunnels/")) {
-    return ["tunnel"];
-  }
-  if (route.startsWith("/api/tunnel-attachments/")) return ["tunnel"];
-  if (route === "/api/browsers/:browserId/tunnel") {
-    return ["browser", "tunnel"];
-  }
-  if (route === "/api/browsers/:browserId") {
-    return ["browser", "tunnel", "project-tab-layout"];
-  }
-  if (route.startsWith("/api/workers/")) return ["worker"];
-  if (
-    route === "/api/projects/from-github" ||
-    route === "/api/projects/from-folder" ||
-    route === "/api/projects/:projectId/folder-setup/retry" ||
-    route === "/api/projects/:projectId/github-conversion" ||
-    route === "/api/projects/:projectId/github-conversion/retry" ||
-    route === "/api/projects/order" ||
-    route === "/api/projects/:projectId" ||
-    route === "/api/projects/:projectId/preferred-worker" ||
-    route === "/api/projects/:projectId/worktree-policy"
-  ) {
-    return ["project"];
-  }
-  if (route.startsWith("/api/projects/:projectId/tab-groups")) {
-    return ["project", "project-tab-layout"];
-  }
-  if (route.includes("/worktrees")) return ["worktree"];
-  if (
-    route.includes("/run-configurations") ||
-    route.includes("/run-configuration-secrets")
-  ) {
-    return ["run-configuration"];
-  }
-  if (route === "/api/chats/:chatId/console") {
-    return ["chat", "terminal", "project-tab-layout"];
-  }
-  if (route === "/api/chats/:chatId/composer-draft") return [];
-  if (
-    route === "/api/projects/:projectId/chats" ||
-    route === "/api/chats/:chatId"
-  ) {
-    return ["chat", "project-tab-layout"];
-  }
-  if (route.startsWith("/api/chats/")) {
-    return ["chat"];
-  }
-  if (route.includes("/terminals")) {
-    return ["terminal", "project-tab-layout"];
-  }
-  if (route.includes("/explorers")) {
-    return ["explorer", "project-tab-layout"];
-  }
-  if (route.includes("/browsers")) {
-    return ["browser", "project-tab-layout"];
-  }
-  if (route.includes("/code-tabs")) {
-    return ["code-tab", "project-tab-layout"];
-  }
-  if (
-    route.includes("/remote-desktops") ||
-    route.includes("/remote-surfaces")
-  ) {
-    return ["browser", "remote-desktop", "project-view", "project-tab-layout"];
-  }
-  if (
-    route === "/api/projects/:projectId/views" ||
-    route.startsWith("/api/project-views/")
-  ) {
-    return ["project-view", "project-tab-layout"];
-  }
-  return [];
-}
-
-function mutationChatLiveResources(route: string): ChatLiveResource[] {
-  if (route === "/api/chats/:chatId/goal") return ["chat-goal"];
-  return [];
-}
-
-function runConfigurationSecretReferences(
-  document: RunConfigurationFile,
-): string[] {
-  const references = new Set(
-    document.environment.secrets.map(({ secret }) => secret),
-  );
-  const overrides = Object.values(document.platformOverrides) as Array<{
-    environment?: { secrets?: Array<{ secret: string }> };
-  }>;
-  for (const override of overrides) {
-    for (const secret of override.environment?.secrets ?? []) {
-      references.add(secret.secret);
-    }
-  }
-  return [...references].sort((left, right) => left.localeCompare(right));
-}
-
-const CONFIGURABLE_PERMISSION_PROFILES = [
-  { id: ":read-only", description: "Inspection only", allowed: true },
-  { id: ":workspace", description: "Workspace writes", allowed: true },
-  {
-    id: ":danger-full-access",
-    description: "Unrestricted access with approval prompts",
-    allowed: true,
-  },
-  {
-    id: YOLO_PERMISSION_PROFILE_ID,
-    description: "Unrestricted access without approval prompts",
-    allowed: true,
-  },
-] as const;
-
-const MAX_PENDING_WORKER_HANDSHAKES = 32;
-const WORKER_HANDSHAKE_TIMEOUT_MS = 10_000;
-const WORKER_HANDSHAKE_LIMIT_KEY = "worker-command-handshake";
+export type { BuildAppOptions } from "./app/options.js";
+export { mutationLiveResources };
 
 export async function buildApp({
   config,
@@ -36473,34 +36150,4 @@ export async function buildApp({
   });
 
   return app;
-}
-
-type StreamedFinalTracker = {
-  turnIds: Set<string>;
-  texts: Set<string>;
-};
-
-function createStreamedFinalTracker(): StreamedFinalTracker {
-  return { turnIds: new Set(), texts: new Set() };
-}
-
-function recordFinal(
-  tracker: StreamedFinalTracker,
-  turnId: string | null | undefined,
-  text: string,
-): void {
-  tracker.texts.add(text.trim());
-  if (turnId) tracker.turnIds.add(turnId);
-}
-
-function hasFinal(
-  tracker: StreamedFinalTracker,
-  turnId: string | null | undefined,
-  text: string,
-): boolean {
-  if (turnId && tracker.turnIds.has(turnId)) return true;
-  const normalizedText = text.trim();
-  return normalizedText
-    ? tracker.texts.has(normalizedText)
-    : tracker.texts.size > 0;
 }
