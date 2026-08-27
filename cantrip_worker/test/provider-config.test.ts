@@ -77,4 +77,19 @@ describe("Codex provider configuration", () => {
       ).toHaveLength(1);
     }
   });
+
+  it("uses a non-reserved MultiAgent V2 namespace for ChatGPT runtimes", () => {
+    const compatibilityArgument =
+      'features.multi_agent_v2.tool_namespace="agents"';
+
+    expect(codexProviderConfiguration(provider("chatgpt")).arguments).toContain(
+      compatibilityArgument,
+    );
+
+    for (const kind of ["ollama", "openai-compatible", "grok"] as const) {
+      expect(
+        codexProviderConfiguration(provider(kind)).arguments,
+      ).not.toContain(compatibilityArgument);
+    }
+  });
 });
