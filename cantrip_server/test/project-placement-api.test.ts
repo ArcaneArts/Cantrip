@@ -561,6 +561,60 @@ describe.sequential("project execution placement API", () => {
     });
   });
 
+  it("authorizes exact WorkerLink observation subscriptions", async () => {
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-alpha/worker-link/sessions",
+      payload: { clientInstanceId: "observation-client-1" },
+    });
+    expect(sessionResponse.statusCode).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/observations/grant`,
+      payload: {
+        topics: ["chat-progress", "filesystem", "worktree", "runtime"],
+      },
+    });
+    expect(response.statusCode, JSON.stringify(response.json())).toBe(201);
+    const grant = workerLinkResourceGrantSchema.parse(response.json());
+    expect(grant.binding).toMatchObject({
+      sessionId: session.sessionId,
+      resource: {
+        kind: "observations",
+        resourceId: "worker-alpha",
+        attachmentId: expect.any(String),
+      },
+      lanes: ["events"],
+      operations: ["events:subscribe"],
+      maxChannels: 1,
+    });
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "worker-link.grant.install",
+        sessionId: session.sessionId,
+        grant: expect.objectContaining({
+          binding: expect.objectContaining({
+            grantId: grant.binding.grantId,
+          }),
+          observation: {
+            subscriptionId: grant.binding.resource.attachmentId,
+            topics: ["chat-progress", "filesystem", "worktree", "runtime"],
+          },
+        }),
+      }),
+    });
+
+    const invalid = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/observations/grant`,
+      payload: { topics: ["filesystem", "filesystem"] },
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it("authorizes a Terminal WorkerLink grant without relaying PTY output", async () => {
     const terminalCreated = await app.inject({
       method: "POST",

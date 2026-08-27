@@ -95,6 +95,29 @@ function grant(activeSession: WorkerLinkSession): WorkerLinkResourceGrant {
   };
 }
 
+function observationGrant(
+  activeSession: WorkerLinkSession,
+): WorkerLinkResourceGrant {
+  return {
+    binding: {
+      grantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      grantGeneration: 1,
+      sessionId: activeSession.sessionId,
+      identity: activeSession.identity,
+      resource: {
+        kind: "observations",
+        resourceId: activeSession.identity.workerId,
+        attachmentId: "77777777-7777-4777-8777-777777777777",
+      },
+      lanes: ["events"],
+      operations: ["events:subscribe"],
+      maxChannels: 1,
+      lease: activeSession.lease,
+    },
+    token: "b".repeat(43),
+  };
+}
+
 class FakeCarrier implements WorkerLinkCarrier {
   readonly closes = new Set<WorkerLinkCarrierCloseListener>();
   closed = false;
@@ -389,6 +412,64 @@ describe("WorkerLinkManager", () => {
     expect(manager.getStatusSnapshot()).toEqual([]);
     expect(changed).toHaveBeenCalled();
     unsubscribe();
+    await manager.close();
+  });
+
+  it("opens read-only event subscriptions through the shared carrier", async () => {
+    const carrier = new FakeCarrier("local");
+    const setup = dependencies({ local: async () => carrier });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+    await expect(
+      reference.link.openStream(
+        observationGrant(reference.link.session),
+        "events",
+      ),
+    ).rejects.toThrow(/does not authorize/i);
+    const opening = reference.link.openEventSubscription(
+      observationGrant(reference.link.session),
+    );
+    await vi.waitFor(() => expect(carrier.sent).toHaveLength(1));
+    const open = carrier.sent[0]!.header;
+    expect(open).toMatchObject({
+      kind: "open",
+      channelKind: "event-subscription",
+      lane: "events",
+    });
+    if (open.kind !== "open") throw new Error("Missing subscription open.");
+    carrier.receive({
+      protocolVersion: 1,
+      sessionId: open.sessionId,
+      routeGeneration: open.routeGeneration,
+      effectiveRoute: "local",
+      channel: open.channel,
+      lane: "events",
+      sequence: 0,
+      kind: "accept",
+      initialCreditBytes: 64 * 1_024,
+    });
+    const subscription = await opening;
+    const received = vi.fn();
+    subscription.onData(received);
+    carrier.receive(
+      {
+        protocolVersion: 1,
+        sessionId: open.sessionId,
+        routeGeneration: open.routeGeneration,
+        effectiveRoute: "local",
+        channel: open.channel,
+        lane: "events",
+        sequence: 1,
+        kind: "data",
+        direction: "worker-to-client",
+        payloadFormat: "raw",
+      },
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(received).toHaveBeenCalledWith(new Uint8Array([1, 2, 3]));
+    expect(subscription.write(new Uint8Array([4]))).toBe(false);
+    expect(subscription.acknowledge(3)).toBe(true);
+    reference.release();
     await manager.close();
   });
 

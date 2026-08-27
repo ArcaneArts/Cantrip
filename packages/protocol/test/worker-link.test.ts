@@ -10,6 +10,7 @@ import {
   classifyWorkerLinkPeerAddress,
   filterWorkerLinkPeerSdp,
   isWorkerLinkFrame,
+  installedWorkerLinkGrantSchema,
   WORKER_LINK_MAX_CREDIT_BYTES,
   WORKER_LINK_MAX_PAYLOAD_BYTES,
   WORKER_LINK_MAX_PEER_CANDIDATES,
@@ -22,6 +23,7 @@ import {
   workerLinkGrantBindingSchema,
   workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
+  workerLinkObservationGrantRequestSchema,
   workerLinkPeerCandidateAdvertisementSchema,
   workerLinkPeerCandidateAllowed,
   workerLinkPeerConfigurationSchema,
@@ -49,6 +51,7 @@ import {
   workerLinkTunnelGrantSchema,
   workerCommandSchema,
   workerNotificationSchema,
+  workerObservationEnvelopeSchema,
   type WorkerLinkFrameHeader,
   type WorkerLinkGrantBinding,
 } from "../src/index.js";
@@ -242,6 +245,137 @@ describe("WorkerLink protocol", () => {
       workerLinkResourceGrantSchema.safeParse({
         binding,
         token: "too-short",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("binds bounded observation topics to an exact installed attachment", () => {
+    const subscriptionId = "77777777-7777-4777-8777-777777777777";
+    const observationBinding: WorkerLinkGrantBinding = {
+      ...binding,
+      resource: {
+        kind: "observations",
+        resourceId: identity.workerId,
+        attachmentId: subscriptionId,
+      },
+      lanes: ["events"],
+      operations: ["events:subscribe"],
+      maxChannels: 1,
+    };
+    expect(
+      workerLinkObservationGrantRequestSchema.parse({
+        topics: ["chat-progress", "filesystem", "worktree", "runtime"],
+      }),
+    ).toMatchObject({
+      topics: ["chat-progress", "filesystem", "worktree", "runtime"],
+    });
+    expect(
+      installedWorkerLinkGrantSchema.parse({
+        binding: observationBinding,
+        observation: {
+          subscriptionId,
+          topics: ["chat-progress", "filesystem"],
+        },
+        tokenHash: "a".repeat(64),
+      }).observation,
+    ).toMatchObject({ subscriptionId });
+    expect(
+      installedWorkerLinkGrantSchema.safeParse({
+        binding: observationBinding,
+        observation: {
+          subscriptionId: "88888888-8888-4888-8888-888888888888",
+          topics: ["chat-progress"],
+        },
+        tokenHash: "a".repeat(64),
+      }).success,
+    ).toBe(false);
+    expect(
+      installedWorkerLinkGrantSchema.safeParse({
+        binding,
+        observation: {
+          subscriptionId,
+          topics: ["chat-progress"],
+        },
+        tokenHash: "a".repeat(64),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("allows only provisional direct observations with stable identities", () => {
+    const base = {
+      protocolVersion: 1 as const,
+      subscriptionId: "77777777-7777-4777-8777-777777777777",
+      continuitySequence: 0,
+      observedAt: now,
+      identity: {
+        operationId: "client-message-1",
+        turnId: "turn-1",
+        messageId: "message-1",
+        sequence: 3,
+      },
+    };
+    expect(
+      workerObservationEnvelopeSchema.parse({
+        ...base,
+        payload: {
+          topic: "chat-progress",
+          chatId: "chat-1",
+          clientMessageId: "client-message-1",
+          executionLaneId: "lane-1",
+          event: {
+            type: "agent.message",
+            message: {
+              id: "message-1",
+              text: "still working",
+              phase: "commentary",
+              streaming: true,
+            },
+          },
+        },
+      }).identity,
+    ).toEqual(base.identity);
+    expect(
+      workerObservationEnvelopeSchema.safeParse({
+        ...base,
+        payload: {
+          topic: "chat-progress",
+          chatId: "chat-1",
+          clientMessageId: "client-message-1",
+          executionLaneId: "lane-1",
+          event: {
+            type: "agent.message",
+            message: {
+              id: "message-1",
+              text: "done",
+              phase: "final_answer",
+            },
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      workerObservationEnvelopeSchema.safeParse({
+        ...base,
+        payload: {
+          topic: "runtime",
+          notification: {
+            type: "chat.turn.outcome",
+            chatId: "chat-1",
+            clientMessageId: "client-message-1",
+            executionLaneId: "lane-1",
+            contextKind: "project",
+            worktreeId: "worktree-1",
+            scratchRootId: null,
+            outcome: {
+              ok: true,
+              result: {
+                threadId: "thread-1",
+                text: "done",
+                status: "completed",
+              },
+            },
+          },
+        },
       }).success,
     ).toBe(false);
   });

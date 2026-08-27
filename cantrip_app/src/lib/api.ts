@@ -281,6 +281,7 @@ import {
   queuedPromptSchema,
   directAttachmentTicketSchema,
   workerLinkLeaseSchema,
+  workerLinkObservationGrantRequestSchema,
   workerLinkPeerMailboxReadRequestSchema,
   workerLinkPeerMailboxSchema,
   workerLinkPeerSessionOpenRequestSchema,
@@ -966,6 +967,18 @@ export async function createRemoteSurfaceWorkerLinkGrant(
     await post(
       `/api/worker-links/${encodeURIComponent(sessionId)}/remote-surfaces/${encodeURIComponent(surfaceId)}/grant`,
       workerLinkRemoteSurfaceGrantRequestSchema.parse({ viewport }),
+    ),
+  );
+}
+
+export async function createWorkerObservationGrant(
+  sessionId: string,
+  topics: Array<"chat-progress" | "filesystem" | "worktree" | "runtime">,
+) {
+  return workerLinkResourceGrantSchema.parse(
+    await post(
+      `/api/worker-links/${encodeURIComponent(sessionId)}/observations/grant`,
+      workerLinkObservationGrantRequestSchema.parse({ topics }),
     ),
   );
 }

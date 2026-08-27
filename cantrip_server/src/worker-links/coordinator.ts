@@ -21,6 +21,7 @@ import {
   type WorkerLinkCoordinatorCommand,
   type WorkerLinkLease,
   type WorkerLinkOperationalRoute,
+  type WorkerLinkObservationInstallation,
   type WorkerLinkPeerCandidateAdvertisement,
   type WorkerLinkPeerConfiguration,
   type WorkerLinkPeerCoordinatorCommand,
@@ -99,6 +100,7 @@ export interface WorkerLinkGrantIssueInput {
   leaseMs?: number;
   maxChannels?: number;
   operations: WorkerLinkGrantOperation[];
+  observation?: WorkerLinkObservationInstallation;
   resourceId: string;
   resourceKind: WorkerLinkResourceKind;
   sessionId: string;
@@ -251,6 +253,7 @@ export class WorkerLinkCoordinator {
     const token = randomBytes(32).toString("base64url");
     const installedGrant = installedWorkerLinkGrantSchema.parse({
       binding,
+      ...(input.observation ? { observation: input.observation } : {}),
       tokenHash: tokenHash(token),
     });
     const grantState: WorkerLinkGrantState = {
