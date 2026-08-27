@@ -218,6 +218,7 @@ describe("WorkerObservationClient", () => {
 
     expect(value.sink.recoverWorkerObservations).toHaveBeenCalledWith(
       "worker-one",
+      "unbounded",
     );
     expect(value.stream.close).toHaveBeenCalledWith("protocol-error");
     await vi.advanceTimersByTimeAsync(250);
@@ -237,6 +238,7 @@ describe("WorkerObservationClient", () => {
     expect(value.release).not.toHaveBeenCalled();
     expect(value.sink.recoverWorkerObservations).toHaveBeenCalledWith(
       "worker-one",
+      "affected",
     );
     await vi.advanceTimersByTimeAsync(250);
 
@@ -245,6 +247,36 @@ describe("WorkerObservationClient", () => {
     expect(value.openEventSubscription).toHaveBeenCalledTimes(2);
     client.stop();
     expect(value.release).toHaveBeenCalledOnce();
+  });
+
+  it("reconciles an in-flight observation after route promotion", async () => {
+    vi.useFakeTimers();
+    const value = setup();
+    let finishObservation: (() => void) | undefined;
+    vi.mocked(value.sink.handleWorkerObservation).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishObservation = resolve;
+        }),
+    );
+    const client = new WorkerObservationClient(value.sink, value.dependencies);
+    activate(client);
+    await vi.advanceTimersByTimeAsync(0);
+
+    value.emitData(envelope(0));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(value.sink.handleWorkerObservation).toHaveBeenCalledOnce();
+    value.emitClose("route-replaced");
+    expect(value.sink.recoverWorkerObservations).toHaveBeenCalledOnce();
+
+    finishObservation?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(value.sink.recoverWorkerObservations).toHaveBeenCalledTimes(2);
+    expect(value.sink.recoverWorkerObservations).toHaveBeenLastCalledWith(
+      "worker-one",
+      "affected",
+    );
+    client.stop();
   });
 
   it("recovers an observation that was applied before credit acknowledgement failed", async () => {
@@ -259,6 +291,7 @@ describe("WorkerObservationClient", () => {
     await vi.waitFor(() =>
       expect(value.sink.recoverWorkerObservations).toHaveBeenCalledWith(
         "worker-one",
+        "unbounded",
       ),
     );
     client.stop();
@@ -278,6 +311,7 @@ describe("WorkerObservationClient", () => {
     client.updateAvailableWorkers([]);
     expect(value.sink.recoverWorkerObservations).toHaveBeenCalledWith(
       "worker-one",
+      "unbounded",
     );
     expect(value.dependencies.revokeGrant).toHaveBeenCalledWith(
       value.session.sessionId,
@@ -385,6 +419,8 @@ describe("WorkerObservationClient", () => {
       { topics: ["chat-progress"], workerId: "worker-one" },
     ]);
     await vi.advanceTimersByTimeAsync(0);
+    value.emitData(envelope(0));
+    await vi.advanceTimersByTimeAsync(0);
     const releaseFilesystem = client.retainDemands([
       { topics: ["filesystem"], workerId: "worker-one" },
     ]);
@@ -401,6 +437,14 @@ describe("WorkerObservationClient", () => {
       ["chat-progress", "filesystem"],
     );
     expect(value.dependencies.revokeGrant).toHaveBeenCalledOnce();
+    expect(value.sink.recoverWorkerObservations).toHaveBeenCalledWith(
+      "worker-one",
+      "affected",
+    );
+    expect(value.sink.recoverWorkerObservations).not.toHaveBeenCalledWith(
+      "worker-one",
+      "unbounded",
+    );
     releaseFilesystem();
     await vi.advanceTimersByTimeAsync(WORKER_OBSERVATION_DEMAND_GRACE_MS);
     expect(value.dependencies.createGrant).toHaveBeenNthCalledWith(

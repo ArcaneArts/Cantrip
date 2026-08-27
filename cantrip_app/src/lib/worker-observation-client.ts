@@ -37,12 +37,17 @@ const MIN_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
+export type WorkerObservationRecoveryMode = "affected" | "unbounded";
+
 export interface WorkerObservationSink {
   handleWorkerObservation(
     workerId: string,
     envelope: WorkerObservationEnvelope,
   ): Promise<void> | void;
-  recoverWorkerObservations(workerId: string): Promise<void> | void;
+  recoverWorkerObservations(
+    workerId: string,
+    mode: WorkerObservationRecoveryMode,
+  ): Promise<void> | void;
 }
 
 export interface WorkerObservationClientDependencies {
@@ -75,6 +80,7 @@ interface WorkerObservationState {
   reconnectAttempt: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   reference: WorkerLinkReference | null;
+  recoveryModes: Map<number, WorkerObservationRecoveryMode>;
   renewTimer: ReturnType<typeof setTimeout> | null;
   sessionId: string | null;
   stream: WorkerLinkStream | null;
@@ -150,7 +156,6 @@ export class WorkerObservationClient {
     for (const demand of mergeWorkerObservationDemands(demands)) {
       retained.set(demand.workerId, new Set(demand.topics));
     }
-
     for (const [workerId, topics] of retained) {
       let workerDemands = this.#demands.get(workerId);
       if (!workerDemands) {
@@ -208,7 +213,7 @@ export class WorkerObservationClient {
     this.#stopped = true;
     for (const state of this.#states.values()) {
       state.desired = false;
-      this.#retire(state, "normal", true, false);
+      this.#retire(state, "normal", true, false, "affected");
     }
     this.#states.clear();
     for (const workerDemands of this.#demands.values()) {
@@ -230,14 +235,20 @@ export class WorkerObservationClient {
     if (!shouldConnect) {
       if (!state) return;
       state.desired = false;
-      this.#retire(state, "normal", true, false);
+      this.#retire(
+        state,
+        "normal",
+        true,
+        false,
+        topics.size > 0 ? "unbounded" : "affected",
+      );
       this.#states.delete(workerId);
       return;
     }
     if (state && setsEqual(state.topics, topics)) return;
     if (state) {
       state.desired = false;
-      this.#retire(state, "normal", true, false, true);
+      this.#retire(state, "normal", true, false, "affected", true);
       state.desired = true;
       state.topics = topics;
       void this.#connect(state);
@@ -256,6 +267,7 @@ export class WorkerObservationClient {
       reconnectAttempt: 0,
       reconnectTimer: null,
       reference: null,
+      recoveryModes: new Map(),
       renewTimer: null,
       sessionId: null,
       stream: null,
@@ -371,11 +383,20 @@ export class WorkerObservationClient {
             throw new Error("Worker observation continuity was lost.");
           }
           await this.sink.handleWorkerObservation(state.workerId, envelope);
+          if (!this.#isCurrent(state, generation)) {
+            const recoveryMode = state.recoveryModes.get(generation);
+            if (recoveryMode) {
+              await this.sink.recoverWorkerObservations(
+                state.workerId,
+                recoveryMode,
+              );
+            }
+            throw new Error(
+              "Worker observation changed routes while applying an event.",
+            );
+          }
           state.receivedData = true;
-          if (
-            !this.#isCurrent(state, generation) ||
-            !state.stream.acknowledge(payload.byteLength)
-          ) {
+          if (!state.stream.acknowledge(payload.byteLength)) {
             throw new Error(
               "Worker observation credit acknowledgement failed.",
             );
@@ -388,6 +409,7 @@ export class WorkerObservationClient {
           this.#retire(state, "protocol-error", true, true);
         }
       } finally {
+        state.recoveryModes.delete(generation);
         state.draining = false;
         if (this.#isCurrent(state, generation) && state.inbound.length > 0) {
           this.#drain(state, generation);
@@ -422,9 +444,14 @@ export class WorkerObservationClient {
     code: Parameters<WorkerLinkStream["close"]>[0] = "normal",
     closeStream: boolean,
     reconnect: boolean,
+    recoveryMode: WorkerObservationRecoveryMode = code === "route-replaced"
+      ? "affected"
+      : "unbounded",
     preserveReference = false,
   ): void {
+    const retiredGeneration = state.generation;
     const hadData = state.receivedData;
+    const wasDraining = state.draining;
     state.generation += 1;
     state.connecting = false;
     state.receivedData = false;
@@ -459,8 +486,11 @@ export class WorkerObservationClient {
         .catch(() => undefined);
     }
     if (!keepReference) reference?.release();
+    if (wasDraining) {
+      state.recoveryModes.set(retiredGeneration, recoveryMode);
+    }
     if (hadData || code === "route-replaced") {
-      void this.sink.recoverWorkerObservations(state.workerId);
+      void this.sink.recoverWorkerObservations(state.workerId, recoveryMode);
     }
     if (reconnect && state.desired && !this.#stopped) {
       this.#scheduleReconnect(state);

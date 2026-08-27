@@ -480,6 +480,8 @@ export class WorktreeManager {
         if (target) {
           this.observationEmitter({
             type: "worktree.filesystem.changed",
+            projectId: target.projectId,
+            worktreeId: target.worktreeId,
             sourcePath: target.sourcePath,
             worktreePath: target.worktreePath,
           });
@@ -557,6 +559,10 @@ export class WorktreeManager {
     if (!sourcePath) return;
     try {
       const inventory = await this.list(sourcePath);
+      const targets = [...this.observationTargets.entries()].filter(
+        ([, target]) => target.sourcePath === sourcePath,
+      );
+      const projectIds = new Set(targets.map(([, target]) => target.projectId));
       const inventoryFingerprint = JSON.stringify(inventory);
       if (
         (force ||
@@ -564,6 +570,10 @@ export class WorktreeManager {
             this.observationInventoryFingerprints.get(sourcePath)) &&
         this.observationEmitter({
           type: "worktree.inventory.observed",
+          projectId:
+            projectIds.size === 1
+              ? projectIds.values().next().value
+              : undefined,
           sourcePath,
           inventory,
         })
@@ -573,9 +583,6 @@ export class WorktreeManager {
           inventoryFingerprint,
         );
       }
-      const targets = [...this.observationTargets.entries()].filter(
-        ([, target]) => target.sourcePath === sourcePath,
-      );
       for (const [key, target] of targets) {
         target.worktree =
           inventory.worktrees.find(
@@ -619,6 +626,8 @@ export class WorktreeManager {
       (force || fingerprint !== this.observationFingerprints.get(key)) &&
       this.observationEmitter({
         type: "worktree.status.observed",
+        projectId: target.projectId,
+        worktreeId: target.worktreeId,
         sourcePath: target.sourcePath,
         worktreePath: target.worktreePath,
         result,

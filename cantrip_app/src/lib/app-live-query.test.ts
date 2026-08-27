@@ -11,7 +11,7 @@ import type {
   GitManagedOperationResponse,
   GitStatus,
 } from "@cantrip/protocol";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { clientEncryption } from "./client-encryption";
@@ -54,7 +54,42 @@ const event = (
   ...input,
 });
 
-afterEach(() => clearClientSession());
+const directProjectId = "55555555-5555-4555-8555-555555555555";
+const directWorktreeId = "worktree-one";
+
+function directFilesystemObservation(
+  continuitySequence: number,
+  projectId = directProjectId,
+  worktreeId = directWorktreeId,
+) {
+  return workerObservationEnvelopeSchema.parse({
+    protocolVersion: 1,
+    subscriptionId: "77777777-7777-4777-8777-777777777777",
+    continuitySequence,
+    observedAt: "2026-08-09T12:00:00.000Z",
+    identity: {
+      operationId: "filesystem-one",
+      turnId: null,
+      messageId: "filesystem-one",
+      sequence: continuitySequence,
+    },
+    payload: {
+      topic: "filesystem",
+      notification: {
+        type: "worktree.filesystem.changed",
+        projectId,
+        worktreeId,
+        sourcePath: "/repo",
+        worktreePath: "/repo/worktree",
+      },
+    },
+  });
+}
+
+afterEach(() => {
+  clearClientSession();
+  vi.useRealTimers();
+});
 
 describe("application live query bridge", () => {
   it("projects direct chat messages provisionally and removes them when canonical state arrives", async () => {
@@ -286,7 +321,133 @@ describe("application live query bridge", () => {
     ).toEqual(progress);
   });
 
-  it("routes direct filesystem hints through existing query families", async () => {
+  it("coalesces 1,000 exact filesystem hints into one bounded refetch", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const affectedQueryFn = vi.fn(async () => ({ entries: [] }));
+    const unrelatedQueryFn = vi.fn(async () => ({ theme: "dark" }));
+    const affectedQueryKey = [
+      "explorer-directory",
+      directProjectId,
+      directWorktreeId,
+      "explorer-one",
+      "src",
+      "binding-one",
+    ] as const;
+    const unrelatedQueryKey = ["settings"] as const;
+    await queryClient.fetchQuery({
+      queryFn: affectedQueryFn,
+      queryKey: affectedQueryKey,
+      staleTime: Number.POSITIVE_INFINITY,
+    });
+    await queryClient.fetchQuery({
+      queryFn: unrelatedQueryFn,
+      queryKey: unrelatedQueryKey,
+      staleTime: Number.POSITIVE_INFINITY,
+    });
+    const affectedObserver = new QueryObserver(queryClient, {
+      queryFn: affectedQueryFn,
+      queryKey: affectedQueryKey,
+      staleTime: Number.POSITIVE_INFINITY,
+    });
+    const unrelatedObserver = new QueryObserver(queryClient, {
+      queryFn: unrelatedQueryFn,
+      queryKey: unrelatedQueryKey,
+      staleTime: Number.POSITIVE_INFINITY,
+    });
+    const unsubscribeAffected = affectedObserver.subscribe(() => undefined);
+    const unsubscribeUnrelated = unrelatedObserver.subscribe(() => undefined);
+    affectedQueryFn.mockClear();
+    unrelatedQueryFn.mockClear();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    await Promise.all(
+      Array.from({ length: 1_000 }, (_, sequence) =>
+        bridge.handleWorkerObservation(
+          "worker-one",
+          directFilesystemObservation(sequence),
+        ),
+      ),
+    );
+    await vi.waitFor(() => expect(affectedQueryFn).toHaveBeenCalledOnce());
+
+    expect(invalidate).toHaveBeenCalledTimes(4);
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["explorer-directory", directProjectId, directWorktreeId],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: [
+        "explorer-directory-commits",
+        directProjectId,
+        directWorktreeId,
+      ],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["explorer-file"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["project-repository-stats", directProjectId],
+    });
+    expect(unrelatedQueryFn).not.toHaveBeenCalled();
+    expect(bridge.stats()).toMatchObject({
+      coalescedInvalidationCount: 3_996,
+      invalidatedQueryCount: 4,
+      invalidationFlushCount: 1,
+    });
+    unsubscribeAffected();
+    unsubscribeUnrelated();
+  });
+
+  it("reconciles only a promoted worker's affected query families", async () => {
+    const otherProjectId = "66666666-6666-4666-8666-666666666666";
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    await bridge.handleWorkerObservation(
+      "worker-one",
+      directFilesystemObservation(0),
+    );
+    await bridge.handleWorkerObservation(
+      "worker-two",
+      directFilesystemObservation(0, otherProjectId, "worktree-two"),
+    );
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalledTimes(7));
+    invalidate.mockClear();
+
+    await bridge.recoverWorkerObservations("worker-one", "affected");
+
+    expect(invalidate).toHaveBeenCalledTimes(4);
+    expect(invalidate).not.toHaveBeenCalledWith();
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["settings"] });
+    expect(
+      invalidate.mock.calls.some(([input]) =>
+        input?.queryKey?.includes(otherProjectId),
+      ),
+    ).toBe(false);
+    invalidate.mockClear();
+    await bridge.recoverWorkerObservations("worker-one", "affected");
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("reserves app-wide recovery for unbounded continuity loss", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    await bridge.handleWorkerObservation(
+      "worker-one",
+      directFilesystemObservation(0),
+    );
+
+    await bridge.recoverWorkerObservations("worker-one", "unbounded");
+
+    expect(invalidate).toHaveBeenCalledOnce();
+    expect(invalidate).toHaveBeenCalledWith();
+  });
+
+  it("removes provisional chat state with an exact scoped reconciliation", async () => {
     const queryClient = new QueryClient();
     const invalidate = vi
       .spyOn(queryClient, "invalidateQueries")
@@ -300,29 +461,51 @@ describe("application live query bridge", () => {
         continuitySequence: 0,
         observedAt: "2026-08-09T12:00:00.000Z",
         identity: {
-          operationId: "filesystem-one",
-          turnId: null,
-          messageId: "filesystem-one",
+          operationId: "user-message-route",
+          turnId: "turn-route",
+          messageId: "agent-message-route",
           sequence: 0,
         },
         payload: {
-          topic: "filesystem",
-          notification: {
-            type: "worktree.filesystem.changed",
-            sourcePath: "/repo",
-            worktreePath: "/repo/worktree",
+          topic: "chat-progress",
+          chatId: "chat-route",
+          clientMessageId: "user-message-route",
+          executionLaneId: "lane-route",
+          contextKind: "project",
+          worktreeId: directWorktreeId,
+          scratchRootId: null,
+          event: {
+            type: "agent.message",
+            message: {
+              id: "agent-message-route",
+              text: "Moving routes",
+              phase: "commentary",
+              streaming: true,
+            },
           },
         },
       }),
     );
+    expect(
+      Object.values(
+        queryClient.getQueryData<ChatMessageLiveOverlay>(
+          chatMessageProvisionalQueryKey("chat-route"),
+        )?.upserts ?? {},
+      ),
+    ).toHaveLength(1);
+
+    await bridge.recoverWorkerObservations("worker-one", "affected");
+
+    expect(
+      Object.values(
+        queryClient.getQueryData<ChatMessageLiveOverlay>(
+          chatMessageProvisionalQueryKey("chat-route"),
+        )?.upserts ?? {},
+      ),
+    ).toEqual([]);
+    expect(invalidate).toHaveBeenCalledOnce();
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ["explorer-directory"],
-    });
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ["explorer-file"],
-    });
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ["project-repository-stats"],
+      queryKey: ["messages", "chat-route", "pages"],
     });
   });
 

@@ -513,12 +513,13 @@ identities so clients can deduplicate them. If the observation channel loses
 continuity, the client drops uncertain provisional state and fetches the
 authoritative server snapshot.
 
-The supported application owns one feature-neutral observation client for each
-online worker. This runs inside the shared renderer application, so browser,
-Capacitor, and Tauri clients inherit the same LOCAL, LAN, WAN, and RELAY route
-selection without feature branches. Each client acquires all four initial
-topics through one read-only event subscription, renews the exact grant, and
-reopens the subscription through WorkerLink after mobility, revocation, worker
+The supported application owns one feature-neutral observation client. It
+retains one read-only subscription per worker only while visible IDE surfaces
+or cached running work demand that worker's topics, with a short grace window
+across project switches. Because the client runs inside the shared renderer,
+browser, Capacitor, and Tauri clients inherit the same LOCAL, LAN, WAN, and
+RELAY route selection without feature branches. Each subscription renews its
+exact grant and reopens through WorkerLink after mobility, revocation, worker
 restart, or transport failure.
 
 Direct chat messages use a separate provisional query overlay. Plaintext worker
@@ -528,15 +529,17 @@ protected-content revision. A delayed canonical inference event cannot replace
 a newer direct sequence. The committed app-live event removes the matching
 provisional revision; an authoritative final removes remaining provisional
 state for that turn. Direct filesystem, worktree, Git, terminal, CodeGraph, and
-run-configuration notifications feed the existing query families as immediate
-hints rather than introducing feature-owned listeners.
+run-configuration notifications feed the existing query families as short,
+coalesced hints rather than introducing feature-owned listeners.
 
 The client validates the subscription attachment and every continuity sequence
-before acknowledging credit. A gap, malformed envelope, half-close, queue
-overflow, grant-renewal failure, or channel loss closes the attempt, removes
-that worker's uncertain provisional messages and inference traces, invalidates
-the authoritative query snapshot, and retries through WorkerLink's current
-LOCAL -> LAN -> WAN -> RELAY priority.
+before acknowledging credit. A routine `route-replaced` promotion closes the
+old attempt, removes that worker's uncertain provisional messages and
+inference traces, and reconciles only the query families directly observed on
+that worker. A gap, malformed envelope, half-close, queue overflow,
+grant-renewal failure, or other unbounded channel loss additionally invalidates
+the full active authoritative query snapshot. Both paths retry through
+WorkerLink's current LOCAL -> LAN -> WAN -> RELAY priority.
 
 The worker fans eligible events to every authorized subscription while keeping
 the existing server delivery unchanged. Protocol validation excludes final

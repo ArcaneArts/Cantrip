@@ -57,6 +57,7 @@ export interface AppLiveQueryBridgeStats {
 const MAX_TRACKED_WORKFLOW_SEQUENCES = 4_096;
 const MAX_TRACKED_CODEGRAPH_REVISIONS = 4_096;
 const MAX_TRACKED_PROVIDER_AUTH_REVISIONS = 4_096;
+const DEFERRED_INVALIDATION_MS = 100;
 
 function projectScopeId(scope: AppLiveScope): string | null {
   return scope.kind === "project" ? scope.projectId : null;
@@ -599,24 +600,47 @@ function directObservationQueryKeys(
   if (envelope.payload.topic === "chat-progress") return [];
   const notification = envelope.payload.notification;
   switch (notification.type) {
-    case "worktree.filesystem.changed":
+    case "worktree.filesystem.changed": {
+      const projectScope = notification.projectId
+        ? [notification.projectId]
+        : [];
+      const worktreeScope =
+        notification.projectId && notification.worktreeId
+          ? [notification.projectId, notification.worktreeId]
+          : projectScope;
       return [
-        ["explorer-directory"],
-        ["explorer-directory-commits"],
+        ["explorer-directory", ...worktreeScope],
+        ["explorer-directory-commits", ...worktreeScope],
         ["explorer-file"],
-        ["project-repository-stats"],
+        ["project-repository-stats", ...projectScope],
       ];
-    case "worktree.inventory.observed":
-      return [["worktrees"], ["worktree-status"]];
-    case "worktree.status.observed":
+    }
+    case "worktree.inventory.observed": {
+      const projectScope = notification.projectId
+        ? [notification.projectId]
+        : [];
       return [
-        ["worktrees"],
-        ["worktree-status"],
-        ["worktree-history"],
-        ["git-graph-snapshot"],
-        ["git-graph-metrics"],
-        ["git-graph-commit-overlay"],
+        ["worktrees", ...projectScope],
+        ["worktree-status", ...projectScope],
       ];
+    }
+    case "worktree.status.observed": {
+      const projectScope = notification.projectId
+        ? [notification.projectId]
+        : [];
+      const worktreeScope =
+        notification.projectId && notification.worktreeId
+          ? [notification.projectId, notification.worktreeId]
+          : projectScope;
+      return [
+        ["worktrees", ...projectScope],
+        ["worktree-status", ...worktreeScope],
+        ["worktree-history", ...worktreeScope],
+        ["git-graph-snapshot", ...worktreeScope],
+        ["git-graph-metrics", ...worktreeScope],
+        ["git-graph-commit-overlay", ...worktreeScope],
+      ];
+    }
     case "git.operation.observed":
       return [
         ["git-operation", notification.projectId],
@@ -667,6 +691,10 @@ export class AppLiveQueryBridge {
   readonly #provisionalMessages = new Map<string, ProvisionalMessageState>();
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
+  readonly #workerObservationKeys = new Map<
+    string,
+    { queryKey: QueryKey; workerId: string }
+  >();
   readonly #workflowRunSequences = new Map<string, number>();
   #coalescedInvalidationCount = 0;
   #coalescedFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -695,14 +723,19 @@ export class AppLiveQueryBridge {
         status,
       );
     }
-    for (const queryKey of directObservationQueryKeys(envelope)) {
-      void this.#queryClient.invalidateQueries({ queryKey });
-    }
+    const queryKeys = directObservationQueryKeys(envelope);
+    this.#rememberWorkerObservationKeys(workerId, queryKeys);
+    this.#enqueueInvalidations(queryKeys, true);
   }
 
-  async recoverWorkerObservations(workerId: string): Promise<void> {
+  async recoverWorkerObservations(
+    workerId: string,
+    mode: "affected" | "unbounded" = "unbounded",
+  ): Promise<void> {
+    const queryKeys = this.#takeWorkerObservationKeys(workerId);
     for (const [key, state] of [...this.#provisionalMessages]) {
       if (state.workerId !== workerId) continue;
+      queryKeys.push(chatMessagePagesQueryKey(state.chatId));
       this.#removeProvisionalMessage(state.chatId, state.messageId);
       this.#provisionalMessages.delete(key);
     }
@@ -731,7 +764,21 @@ export class AppLiveQueryBridge {
       }
       this.#provisionalInference.delete(key);
     }
-    await this.#queryClient.invalidateQueries();
+    if (mode === "unbounded") {
+      if (this.#coalescedFlushTimer) {
+        clearTimeout(this.#coalescedFlushTimer);
+        this.#coalescedFlushTimer = null;
+      }
+      this.#pendingKeys.clear();
+      await this.#queryClient.invalidateQueries();
+      return;
+    }
+    this.#enqueueInvalidations(uniqueQueryKeys(queryKeys), false);
+    if (this.#coalescedFlushTimer) {
+      clearTimeout(this.#coalescedFlushTimer);
+      this.#coalescedFlushTimer = null;
+    }
+    await this.#flush();
   }
 
   handleEvent(event: AppLiveEvent): void {
@@ -750,9 +797,9 @@ export class AppLiveQueryBridge {
       this.#directlyAppliedEventCount += 1;
       if (event.resource !== "worktree-status") return;
     }
-    for (const key of appLiveEventQueryKeys(event)) {
-      if (directlyApplied && key[0] === "worktree-status") continue;
-      if (
+    const queryKeys = appLiveEventQueryKeys(event).filter((key) => {
+      if (directlyApplied && key[0] === "worktree-status") return false;
+      return !(
         worktreeStatus.applied &&
         !worktreeStatus.revisionChanged &&
         [
@@ -761,17 +808,10 @@ export class AppLiveQueryBridge {
           "git-graph-metrics",
           "git-graph-commit-overlay",
         ].includes(String(key[0]))
-      ) {
-        continue;
-      }
-      const serialized = JSON.stringify(key);
-      if (this.#pendingKeys.has(serialized)) {
-        this.#coalescedInvalidationCount += 1;
-      }
-      this.#pendingKeys.set(serialized, key);
-    }
-    if (this.#pendingKeys.size === 0) return;
-    if (
+      );
+    });
+    this.#enqueueInvalidations(
+      queryKeys,
       [
         "customization",
         "workflow-definition",
@@ -779,23 +819,8 @@ export class AppLiveQueryBridge {
         "workflow-node",
         "workflow-run",
         "workflow-trigger",
-      ].includes(event.resource)
-    ) {
-      if (this.#flushScheduled || this.#coalescedFlushTimer) return;
-      this.#coalescedFlushTimer = setTimeout(() => {
-        this.#coalescedFlushTimer = null;
-        void this.#flush();
-      }, 100);
-      return;
-    }
-    if (this.#flushScheduled) return;
-    this.#flushScheduled = true;
-    queueMicrotask(() => {
-      this.#flushScheduled = false;
-      if (this.#coalescedFlushTimer) clearTimeout(this.#coalescedFlushTimer);
-      this.#coalescedFlushTimer = null;
-      void this.#flush();
-    });
+      ].includes(event.resource),
+    );
   }
 
   async #applyDirectChatObservation(
@@ -1572,6 +1597,59 @@ export class AppLiveQueryBridge {
     await Promise.all(
       keys.map((queryKey) => this.#queryClient.invalidateQueries({ queryKey })),
     );
+  }
+
+  #enqueueInvalidations(queryKeys: QueryKey[], deferred: boolean): void {
+    for (const queryKey of queryKeys) {
+      const serialized = JSON.stringify(queryKey);
+      if (this.#pendingKeys.has(serialized)) {
+        this.#coalescedInvalidationCount += 1;
+      }
+      this.#pendingKeys.set(serialized, queryKey);
+    }
+    if (this.#pendingKeys.size === 0) return;
+    if (deferred) {
+      if (this.#flushScheduled || this.#coalescedFlushTimer) return;
+      this.#coalescedFlushTimer = setTimeout(() => {
+        this.#coalescedFlushTimer = null;
+        void this.#flush();
+      }, DEFERRED_INVALIDATION_MS);
+      return;
+    }
+    if (this.#flushScheduled) return;
+    this.#flushScheduled = true;
+    queueMicrotask(() => {
+      this.#flushScheduled = false;
+      if (this.#coalescedFlushTimer) clearTimeout(this.#coalescedFlushTimer);
+      this.#coalescedFlushTimer = null;
+      void this.#flush();
+    });
+  }
+
+  #rememberWorkerObservationKeys(
+    workerId: string,
+    queryKeys: QueryKey[],
+  ): void {
+    for (const queryKey of queryKeys) {
+      const key = `${workerId}\0${JSON.stringify(queryKey)}`;
+      this.#workerObservationKeys.delete(key);
+      this.#workerObservationKeys.set(key, { queryKey, workerId });
+    }
+    while (this.#workerObservationKeys.size > MAX_DIRECT_OBSERVATION_STATE) {
+      const oldest = this.#workerObservationKeys.keys().next().value;
+      if (oldest === undefined) break;
+      this.#workerObservationKeys.delete(oldest);
+    }
+  }
+
+  #takeWorkerObservationKeys(workerId: string): QueryKey[] {
+    const queryKeys: QueryKey[] = [];
+    for (const [key, tracked] of this.#workerObservationKeys) {
+      if (tracked.workerId !== workerId) continue;
+      queryKeys.push(tracked.queryKey);
+      this.#workerObservationKeys.delete(key);
+    }
+    return queryKeys;
   }
 
   stats(): AppLiveQueryBridgeStats {
