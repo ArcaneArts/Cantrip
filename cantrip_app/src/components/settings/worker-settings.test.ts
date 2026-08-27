@@ -6,12 +6,12 @@ import {
   desktopWorkerEnrollmentStopped,
   formatWorkerLastSeen,
   managedRuntimeLabel,
-  offlineDesktopRecoveryWorkerId,
-  recoverableDesktopWorkerId,
-  resolveDesktopWorkerPairingId,
-  staleDesktopWorkerIds,
   workerPairingCommands,
 } from "./worker-settings";
+import {
+  recoverableDesktopWorkerId,
+  staleDesktopWorkerIds,
+} from "@/lib/desktop-worker-recovery";
 
 describe("worker settings helpers", () => {
   it("formats managed web runtime state without exposing failure detail", () => {
@@ -175,44 +175,6 @@ describe("worker settings helpers", () => {
         ],
       }),
     ).toEqual(["desktop-stale"]);
-  });
-
-  it("only reuses a worker identity authorized by the server", () => {
-    expect(
-      resolveDesktopWorkerPairingId({
-        serverSelectedWorkerId: "desktop-server-selection",
-      }),
-    ).toBe("desktop-server-selection");
-    expect(
-      resolveDesktopWorkerPairingId({
-        serverSelectedWorkerId: null,
-      }),
-    ).toBeNull();
-  });
-
-  it("retires only the offline retained worker before desktop recovery", () => {
-    const workers = [
-      { online: false, workerId: "desktop-source-owner" },
-      { online: true, workerId: "desktop-current" },
-    ];
-    expect(
-      offlineDesktopRecoveryWorkerId({
-        recoveryWorkerId: "desktop-source-owner",
-        workers,
-      }),
-    ).toBe("desktop-source-owner");
-    expect(
-      offlineDesktopRecoveryWorkerId({
-        recoveryWorkerId: "desktop-current",
-        workers,
-      }),
-    ).toBeNull();
-    expect(
-      offlineDesktopRecoveryWorkerId({
-        recoveryWorkerId: "desktop-already-unlinked",
-        workers,
-      }),
-    ).toBeNull();
   });
 
   it("detects an enrollment worker that stopped before pairing", () => {

@@ -25,6 +25,7 @@ import {
 } from "react";
 
 import { ApplicationLoadingSplash } from "@/components/auth/application-loading-splash";
+import { DesktopWorkerRecoverySession } from "@/components/auth/desktop-worker-recovery-session";
 import { MobileSignInScanner } from "@/components/auth/mobile-sign-in-scanner";
 import { SessionWindowDragRegion } from "@/components/auth/session-window-drag-region";
 import { AddServerForm } from "@/components/servers/add-server-form";
@@ -734,6 +735,7 @@ function AuthenticatedApplication({
     <QueryClientProvider client={queryClient}>
       <AppLiveProvider client={liveClient}>
         <WorkerObservationSession client={observationClient} />
+        <DesktopWorkerRecoverySession />
         <RouterProvider router={router} />
       </AppLiveProvider>
     </QueryClientProvider>
