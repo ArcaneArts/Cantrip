@@ -68,10 +68,13 @@ import {
   getDesktopAutostart,
   listDesktopWorkerCandidates,
   listDesktopWorkers,
-  pairDesktopWorker,
   setDesktopAutostart,
   supportsDesktopWorkers,
 } from "@/lib/desktop-worker";
+import {
+  connectDesktopWorker,
+  recoverableDesktopWorkerId,
+} from "@/lib/desktop-worker-recovery";
 import {
   getActiveServerConnection,
   getActiveServerUrl,
@@ -125,69 +128,6 @@ export function canAddThisMachine(input: {
     (!input.linkedWorkerId ||
       !input.serverWorkerIds.includes(input.linkedWorkerId))
   );
-}
-
-export function recoverableDesktopWorkerId(input: {
-  candidates: Array<{ repositoryCount: number; workerId: string }>;
-  linkedWorkerId: string | null;
-  serverWorkerIds: string[];
-}): string | null {
-  if (input.linkedWorkerId) {
-    const linkedWorker = input.candidates.find(
-      (candidate) => candidate.workerId === input.linkedWorkerId,
-    );
-    if (linkedWorker && !input.serverWorkerIds.includes(input.linkedWorkerId)) {
-      return linkedWorker.workerId;
-    }
-    if (!linkedWorker || linkedWorker.repositoryCount > 0) return null;
-  }
-  return (
-    input.candidates.find(
-      (candidate) =>
-        candidate.repositoryCount > 0 &&
-        candidate.workerId !== input.linkedWorkerId,
-    )?.workerId ?? null
-  );
-}
-
-export function staleDesktopWorkerIds(input: {
-  candidates: Array<{ workerId: string }>;
-  selectedWorkerId: string;
-  workers: Array<{
-    online: boolean;
-    sources: readonly unknown[];
-    workerId: string;
-  }>;
-}): string[] {
-  const candidates = new Set(
-    input.candidates.map((candidate) => candidate.workerId),
-  );
-  return input.workers
-    .filter(
-      (worker) =>
-        worker.workerId !== input.selectedWorkerId &&
-        candidates.has(worker.workerId) &&
-        !worker.online &&
-        worker.sources.length === 0,
-    )
-    .map((worker) => worker.workerId);
-}
-
-export function resolveDesktopWorkerPairingId(input: {
-  serverSelectedWorkerId: string | null;
-}): string | null {
-  return input.serverSelectedWorkerId;
-}
-
-export function offlineDesktopRecoveryWorkerId(input: {
-  recoveryWorkerId: string | null;
-  workers: Array<{ online: boolean; workerId: string }>;
-}): string | null {
-  if (!input.recoveryWorkerId) return null;
-  const worker = input.workers.find(
-    (candidate) => candidate.workerId === input.recoveryWorkerId,
-  );
-  return worker && !worker.online ? worker.workerId : null;
 }
 
 export function desktopWorkerEnrollmentStopped(input: {
@@ -593,53 +533,13 @@ export function WorkerSettings() {
         linkedWorkerId: current?.workerId ?? null,
         serverWorkerIds: (workers.data ?? []).map((worker) => worker.workerId),
       });
-      const recoveryWorker = (workers.data ?? []).find(
-        (worker) => worker.workerId === recoveryWorkerId,
-      );
-      if (recoveryWorker?.online) {
-        throw new Error(
-          "The retained worker is already online and cannot be replaced.",
-        );
-      }
-      const offlineRecoveryWorkerId = offlineDesktopRecoveryWorkerId({
-        recoveryWorkerId,
-        workers: workers.data ?? [],
-      });
-      if (offlineRecoveryWorkerId) {
-        // The signed-in account can retire an unreachable worker without the
-        // old process participating. Its now-unlinked identity is then the
-        // server-authorized enrollment candidate below.
-        await unlinkWorker(offlineRecoveryWorkerId);
-      }
-      const enrollment = await createWorkerEnrollmentCode({
-        label: "This machine",
-        expiresInSeconds: 300,
-        candidateWorkerIds: candidates.map((candidate) => candidate.workerId),
-      });
-      // Only the server can authorize recovery of an existing identity. A
-      // null selection must create a fresh identity because a retained local
-      // candidate may belong to a different account on this server.
-      const workerId = resolveDesktopWorkerPairingId({
-        serverSelectedWorkerId: enrollment.workerId,
-      });
-      const desktopWorker = await pairDesktopWorker({
-        enrollmentCode: enrollment.code,
-        name: "This machine",
-        serverUrl,
-        workerId,
-      });
-      const staleWorkerIds = staleDesktopWorkerIds({
+      return connectDesktopWorker({
         candidates,
-        selectedWorkerId: desktopWorker.workerId,
+        currentWorkerId: current?.workerId ?? null,
+        recoveryWorkerId,
+        serverUrl,
         workers: workers.data ?? [],
       });
-      await Promise.allSettled(
-        staleWorkerIds.map(async (staleWorkerId) => {
-          await unlinkWorker(staleWorkerId);
-          await forgetDesktopWorker(staleWorkerId);
-        }),
-      );
-      return { desktopWorker, enrollment };
     },
     onSuccess: ({ desktopWorker, enrollment }) => {
       setDesktopEnrollment(enrollment);
