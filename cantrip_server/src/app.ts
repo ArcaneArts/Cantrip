@@ -137,8 +137,6 @@ import {
   encryptedChatUpdateSchema,
   chatWorktreeUpdateSchema,
   explorerCodeAttachmentCreateSchema,
-  explorerWireSummarySchema,
-  encryptedExplorerWorktreeUpdateSchema,
   executionTargetResourceKindSchema,
   executionTargetSchema,
   githubPullRequestListSchema,
@@ -635,6 +633,11 @@ import {
   installExplorerListRoute,
   installExplorerViewStateRoute,
 } from "./app/routes/explorer-management.js";
+import {
+  installExplorerDeleteRoute,
+  installExplorerOperationRoute,
+  installExplorerWorktreeRoute,
+} from "./app/routes/explorer-runtime.js";
 import { installRemoteDesktopReadRoutes } from "./app/routes/remote-desktop-read.js";
 import { installRemoteDesktopManagementRoutes } from "./app/routes/remote-desktop-management.js";
 import { installRemoteSurfaceManagementRoutes } from "./app/routes/remote-surface-management.js";
@@ -19989,57 +19992,23 @@ export async function buildApp({
     },
   });
 
-  app.patch<{ Params: { explorerId: string } }>(
-    "/api/explorers/:explorerId/worktree",
-    async (request, reply) => {
-      const input = encryptedExplorerWorktreeUpdateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = applicationOwnerId();
-      const context = await repository.getExplorerExecutionContext(
-        ownerId,
-        request.params.explorerId,
-      );
-      if (context) await requireProjectWorktrees(context.projectId);
-      const explorer = await codeTunnel.mutateExplorer(
-        ownerId,
-        request.params.explorerId,
-        () =>
-          repository.updateExplorerWorktree(
-            ownerId,
-            request.params.explorerId,
-            input.data,
-          ),
-        (result) => result !== null,
-      );
-      return explorer
-        ? reply.send(explorerWireSummarySchema.parse(explorer))
-        : reply.code(404).send({ error: "Explorer or worktree not found." });
-    },
-  );
+  installExplorerWorktreeRoute(app, {
+    applicationOwnerId,
+    lifecycle: codeTunnel,
+    repository,
+    requireProjectWorktrees,
+  });
 
   installExplorerViewStateRoute(app, {
     applicationOwnerId,
     repository,
   });
 
-  app.delete<{ Params: { explorerId: string } }>(
-    "/api/explorers/:explorerId",
-    async (request, reply) => {
-      const ownerId = applicationOwnerId();
-      return (await codeTunnel.mutateExplorer(
-        ownerId,
-        request.params.explorerId,
-        () => repository.deleteExplorer(ownerId, request.params.explorerId),
-        () => true,
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Explorer not found." });
-    },
-  );
+  installExplorerDeleteRoute(app, {
+    applicationOwnerId,
+    lifecycle: codeTunnel,
+    repository,
+  });
 
   app.post<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId/protected-code-attachments",
@@ -20487,35 +20456,12 @@ export async function buildApp({
     },
   );
 
-  app.post<{ Params: { explorerId: string } }>(
-    "/api/explorers/:explorerId/operation",
-    { bodyLimit: 4 * 1_024 * 1_024 },
-    async (request, reply) => {
-      const input = surfaceStreamWireRequestSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.getExplorerExecutionContext(
-        applicationOwnerId(),
-        request.params.explorerId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Explorer not found." });
-      }
-      try {
-        const result = await bridge.request(context.workerId, {
-          type: "explorer.operation",
-          explorerId: context.explorerId,
-          serverId,
-          root: context.root,
-          ...input.data,
-        });
-        return reply.send(surfaceStreamWireResponseSchema.parse(result));
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+  installExplorerOperationRoute(app, {
+    applicationOwnerId,
+    bridge,
+    repository,
+    serverId,
+  });
 
   app.post<{ Params: { sessionId: string } }>(
     "/api/worker-links/:sessionId/observations/grant",
