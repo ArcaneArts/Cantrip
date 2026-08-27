@@ -555,7 +555,7 @@ function ChatFilePreview({
       ) : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {mode === "preview" && entry.markdown ? (
-          <div className="h-full overflow-auto p-4 text-sm">
+          <div className="h-full overflow-auto">
             <Markdown>{content}</Markdown>
           </div>
         ) : mode === "visual" && format ? (
