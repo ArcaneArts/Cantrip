@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ModelCombobox } from "@/components/chat/model-combobox";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
@@ -630,27 +631,23 @@ export function ExternalChatImportSettings({
                     </NativeSelect>
                   </label>
                 )}
-                <label className="grid gap-1.5 text-xs font-medium">
-                  Model for future messages
-                  <NativeSelect
+                <div className="grid gap-1.5 text-xs font-medium">
+                  <span>Model for future messages</span>
+                  <ModelCombobox
+                    ariaLabel="Model for future messages"
                     className="bg-transparent"
                     value={modelId}
-                    onChange={(event) => {
-                      setModelId(event.target.value);
+                    disabled={!models.length}
+                    emptyMessage="No models are configured."
+                    models={models}
+                    placeholder="No model is configured"
+                    onValueChange={(nextModelId) => {
+                      setModelId(nextModelId);
                       setRouteId("automatic");
                       setAccountId("automatic");
                     }}
-                  >
-                    {!models.length ? (
-                      <option value="">No model is configured</option>
-                    ) : null}
-                    {models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </label>
+                  />
+                </div>
                 <label className="grid gap-1.5 text-xs font-medium">
                   Provider route
                   <NativeSelect
