@@ -45,6 +45,8 @@
     "audit:server-boundaries:write": "node scripts/audit-server-boundaries.mjs --write",
     "verify:network-tranche-one": "node scripts/verify-network-tranche-one.mjs",
     "verify:network-tranche-two": "node scripts/verify-network-tranche-two.mjs",
+    "network:acceptance": "node scripts/network-tranche-two-acceptance.mjs",
+    "network:acceptance:check": "node scripts/network-tranche-two-acceptance.mjs --check",
     "dev:server": "pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && concurrently --kill-others --names database,server --prefix-colors yellow,blue \"docker compose -f compose.dev-server.yml up\" \"cross-env FORCE_COLOR=1 node scripts/dev-account-server.mjs\"",
     "dev:postgres": "pnpm run dev:prepare && cross-env DATABASE_URL=postgresql://cantrip:cantrip@127.0.0.1:54329/cantrip concurrently --kill-others --names database,glitch,protocol,server,worker,app --prefix-colors yellow,cyan,gray,blue,magenta,green \"docker compose -f compose.dev.yml up\" \"pnpm --filter @cantrip/glitch dev\" \"pnpm --filter @cantrip/protocol dev\" \"cross-env FORCE_COLOR=1 pnpm --filter @cantrip/server dev\" \"node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev\" \"node scripts/wait-for-server.mjs && pnpm --filter @cantrip/app dev\"",
     "package:server": "node scripts/package-distributions.mjs server",
@@ -59,7 +61,7 @@
     "build": "pnpm cli:build && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "node --test scripts/*.test.mjs scripts/managed-runtimes/*.test.mjs scripts/cantrip-code/*.test.mjs scripts/cantrip-cli/*.test.mjs && pnpm cli:test && pnpm code:extension:test && pnpm -r --if-present test",
-    "check": "pnpm check:large-files && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm code:source:verify && pnpm codex:verify && pnpm cli:check && pnpm typecheck && pnpm test && pnpm format:check",
+    "check": "pnpm check:large-files && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm network:acceptance:check && pnpm code:source:verify && pnpm codex:verify && pnpm cli:check && pnpm typecheck && pnpm test && pnpm format:check",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

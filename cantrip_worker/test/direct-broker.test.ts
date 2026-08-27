@@ -649,26 +649,28 @@ describe("DirectBroker", () => {
       ),
     );
     await expect(closed).resolves.toBe(1003);
-    expect(records).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          context: expect.objectContaining({
-            event: "direct.capability.disconnected",
-            diagnosticTraceId,
+    await vi.waitFor(() => {
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            context: expect.objectContaining({
+              event: "direct.capability.disconnected",
+              diagnosticTraceId,
+            }),
           }),
-        }),
-        expect.objectContaining({
-          context: expect.objectContaining({
-            event: "direct.frame.rejected",
-            reasonCode: "capability-binding-mismatch",
-            diagnosticTraceId,
-            tunnelId,
-            attachmentId,
-            connectionId: escapedConnectionId,
+          expect.objectContaining({
+            context: expect.objectContaining({
+              event: "direct.frame.rejected",
+              reasonCode: "capability-binding-mismatch",
+              diagnosticTraceId,
+              tunnelId,
+              attachmentId,
+              connectionId: escapedConnectionId,
+            }),
           }),
-        }),
-      ]),
-    );
+        ]),
+      );
+    });
     const captured = JSON.stringify(records);
     expect(captured).not.toContain(grant.capabilityId);
     expect(captured).not.toContain(secret);

@@ -290,6 +290,67 @@ describe("WorkerLinkManager", () => {
     await manager.close();
   });
 
+  it("keeps simultaneous workers isolated beneath one client manager", async () => {
+    const setup = dependencies();
+    const carriers = new Map<string, FakeCarrier>();
+    let sessionIndex = 0;
+    setup.dependency.createSession = vi.fn(
+      async (workerId, clientInstanceId) => {
+        const created = session(clientInstanceId);
+        sessionIndex += 1;
+        return {
+          ...created,
+          sessionId: `aaaaaaaa-bbbb-4ccc-8ddd-${String(sessionIndex).padStart(12, "0")}`,
+          identity: { ...created.identity, workerId },
+        };
+      },
+    );
+    setup.dependency.openLocal = vi.fn(async (activeSession) => {
+      const carrier = new FakeCarrier("local");
+      carriers.set(activeSession.identity.workerId, carrier);
+      return carrier;
+    });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const [first, second] = await Promise.all([
+      manager.acquire("worker-1"),
+      manager.acquire("worker-2"),
+    ]);
+
+    expect(first.link).not.toBe(second.link);
+    expect(first.link.session.sessionId).not.toBe(
+      second.link.session.sessionId,
+    );
+    expect(
+      manager
+        .getStatusSnapshot()
+        .map((status) => status.workerId)
+        .sort(),
+    ).toEqual(["worker-1", "worker-2"]);
+
+    const firstOpening = first.link.openStream(
+      grant(first.link.session),
+      "interactive",
+    );
+    const secondOpening = second.link.openStream(
+      grant(second.link.session),
+      "interactive",
+    );
+    await vi.waitFor(() =>
+      expect(
+        [...carriers.values()].every((carrier) => carrier.sent.length > 0),
+      ).toBe(true),
+    );
+    acceptOpen(carriers.get("worker-1")!);
+    acceptOpen(carriers.get("worker-2")!);
+    await expect(
+      Promise.all([firstOpening, secondOpening]),
+    ).resolves.toHaveLength(2);
+
+    first.release();
+    second.release();
+    await manager.close();
+  });
+
   it("honors LOCAL-only and RELAY-only policy without rewriting authority", async () => {
     const local = vi.fn(
       async () => new FakeCarrier("local") as WorkerLinkCarrier,
@@ -328,6 +389,90 @@ describe("WorkerLinkManager", () => {
     relayReference.release();
     await relayManager.close();
   });
+
+  it.each([
+    {
+      availablePeer: null,
+      expected: "local" as const,
+      expectedPeerAttempts: [] as Array<"lan" | "wan">,
+      id: "same-machine-local",
+      localAvailable: true,
+      localSupported: true,
+    },
+    {
+      availablePeer: "lan" as const,
+      expected: "lan" as const,
+      expectedPeerAttempts: ["lan"] as Array<"lan" | "wan">,
+      id: "same-lan",
+      localAvailable: false,
+      localSupported: false,
+    },
+    {
+      availablePeer: "wan" as const,
+      expected: "wan" as const,
+      expectedPeerAttempts: ["lan", "wan"] as Array<"lan" | "wan">,
+      id: "public-stun-wan",
+      localAvailable: false,
+      localSupported: false,
+    },
+    {
+      availablePeer: null,
+      expected: "relay" as const,
+      expectedPeerAttempts: ["lan", "wan"] as Array<"lan" | "wan">,
+      id: "udp-blocked-relay",
+      localAvailable: false,
+      localSupported: false,
+    },
+    {
+      availablePeer: null,
+      expected: "relay" as const,
+      expectedPeerAttempts: ["lan", "wan"] as Array<"lan" | "wan">,
+      id: "listener-blocked-relay",
+      localAvailable: false,
+      localSupported: false,
+    },
+  ])(
+    "$id selects $expected through the shared priority ladder",
+    async (testCase) => {
+      const peerAttempts: Array<"lan" | "wan"> = [];
+      const relay = new FakeCarrier("relay", 50);
+      const setup = dependencies({
+        enabled: ["local", "lan", "wan", "relay"],
+        local: async () => {
+          if (!testCase.localAvailable) throw new Error("loopback unavailable");
+          return new FakeCarrier("local", 1);
+        },
+        localSupported: testCase.localSupported,
+        peer: async (route) => {
+          peerAttempts.push(route);
+          if (route !== testCase.availablePeer) {
+            throw new Error(`${route} unavailable`);
+          }
+          return new FakeCarrier(route, route === "lan" ? 5 : 15);
+        },
+        relay: async () => relay,
+      });
+      const manager = new WorkerLinkManager(setup.dependency);
+      const reference = await manager.acquire("worker-1");
+
+      await vi.waitFor(() =>
+        expect(peerAttempts).toEqual(testCase.expectedPeerAttempts),
+      );
+      await vi.waitFor(() =>
+        expect(reference.link.preferredRoute).toBe(testCase.expected),
+      );
+      expect(reference.link.session.routePolicy.priority).toEqual([
+        "local",
+        "lan",
+        "wan",
+        "relay",
+      ]);
+      expect(relay.closed).toBe(false);
+
+      reference.release();
+      await manager.close();
+    },
+  );
 
   it("projects feature-neutral route, channel, consumer, and last-used status", async () => {
     vi.useFakeTimers();
@@ -1026,6 +1171,68 @@ describe("WorkerLinkManager", () => {
     expect(replacementLocal.closed).toBe(true);
     expect(resumedLocal.closed).toBe(false);
     expect(relay.closed).toBe(false);
+
+    reference.release();
+    await manager.close();
+  });
+
+  it("moves cellular to Wi-Fi to cellular through LAN, WAN, then RELAY", async () => {
+    vi.useFakeTimers();
+    type NetworkPhase = "cellular" | "wifi" | "blocked";
+    let phase: NetworkPhase = "cellular";
+    const attempts: string[] = [];
+    const relay = new FakeCarrier("relay", 60);
+    const setup = dependencies({
+      enabled: ["lan", "wan", "relay"],
+      localSupported: false,
+      peer: async (route) => {
+        attempts.push(`${phase}:${route}`);
+        if (phase === "wifi" && route === "lan") {
+          return new FakeCarrier("lan", 4);
+        }
+        if (phase === "cellular" && route === "wan") {
+          return new FakeCarrier("wan", 18);
+        }
+        throw new Error(`${route} unavailable during ${phase}`);
+      },
+      preferredRoute: "lan",
+      relay: async () => relay,
+    });
+    const manager = new WorkerLinkManager(setup.dependency, {
+      environmentReprobeDebounceMs: 0,
+    });
+    const reference = await manager.acquire("worker-1");
+    await vi.waitFor(() => expect(reference.link.preferredRoute).toBe("wan"));
+
+    phase = "wifi";
+    setup.triggerEnvironment("network-change");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(reference.link.preferredRoute).toBe("lan"));
+
+    phase = "cellular";
+    setup.triggerEnvironment("network-change");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(reference.link.preferredRoute).toBe("wan"));
+
+    phase = "blocked";
+    setup.triggerEnvironment("network-change");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() =>
+      expect(attempts).toEqual(
+        expect.arrayContaining(["blocked:lan", "blocked:wan"]),
+      ),
+    );
+    await vi.waitFor(() => expect(reference.link.preferredRoute).toBe("relay"));
+    expect(relay.closed).toBe(false);
+    expect(attempts).toEqual(
+      expect.arrayContaining([
+        "cellular:lan",
+        "cellular:wan",
+        "wifi:lan",
+        "blocked:lan",
+        "blocked:wan",
+      ]),
+    );
 
     reference.release();
     await manager.close();

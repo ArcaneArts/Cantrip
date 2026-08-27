@@ -638,6 +638,8 @@ describe("WorkerLink protocol", () => {
     ).toBe(false);
     expect(workerLinkPeerInterfaceIsVpn("utun4")).toBe(true);
     expect(workerLinkPeerInterfaceIsVpn("tailscale0")).toBe(true);
+    expect(workerLinkPeerInterfaceIsVpn("ztabcdef12")).toBe(true);
+    expect(workerLinkPeerInterfaceIsVpn("zerotier-one")).toBe(true);
     expect(workerLinkPeerInterfaceIsVpn("en0")).toBe(false);
   });
 

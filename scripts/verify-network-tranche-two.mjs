@@ -89,16 +89,29 @@ for (const removed of removedClientFiles) {
   }
 }
 
-const [api, desktopTunnel, server, compatibility, metrics, protocol, network] =
-  await Promise.all([
-    read("cantrip_app/src/lib/api.ts"),
-    read("cantrip_app/src/lib/desktop-tunnel.ts"),
-    read("cantrip_server/src/app.ts"),
-    read("cantrip_server/src/operations/legacy-feature-transports.ts"),
-    read("cantrip_server/src/operations/metrics.ts"),
-    read("packages/protocol/src/index.ts"),
-    read("docs/NETWORK.md"),
-  ]);
+const [
+  api,
+  desktopTunnel,
+  server,
+  compatibility,
+  metrics,
+  protocol,
+  network,
+  acceptance,
+  progress,
+  packageManifest,
+] = await Promise.all([
+  read("cantrip_app/src/lib/api.ts"),
+  read("cantrip_app/src/lib/desktop-tunnel.ts"),
+  read("cantrip_server/src/app.ts"),
+  read("cantrip_server/src/operations/legacy-feature-transports.ts"),
+  read("cantrip_server/src/operations/metrics.ts"),
+  read("packages/protocol/src/index.ts"),
+  read("docs/NETWORK.md"),
+  read("docs/NETWORK_ACCEPTANCE.md"),
+  read("docs/NETWORK_PROGRESS.md"),
+  read("package.json"),
+]);
 
 for (const marker of [
   "createDirectTerminalAttachment",
@@ -109,6 +122,41 @@ for (const marker of [
 ]) {
   if (api.includes(marker)) {
     violations.push(`cantrip_app/src/lib/api.ts retains unused ${marker}`);
+  }
+}
+for (const marker of [
+  "Tranche One and Tranche Two stabilized",
+  "NETWORK_ACCEPTANCE.md",
+  "pnpm network:acceptance",
+]) {
+  if (!network.includes(marker)) {
+    violations.push(
+      `network architecture is missing final status marker ${marker}`,
+    );
+  }
+}
+for (const marker of [
+  "Tauri and worker on the same machine",
+  "Ordinary LAN, cellular, and restrictive public NAT",
+  "Physical validation",
+  "Not run",
+]) {
+  if (!acceptance.includes(marker)) {
+    violations.push(`network acceptance record is missing ${marker}`);
+  }
+}
+for (const marker of [
+  "Tranche Two: Stabilized",
+  "T2.11 — Full acceptance and stabilization gate",
+  "No Tranche Two implementation pass remains",
+]) {
+  if (!progress.includes(marker)) {
+    violations.push(`network progress ledger is missing ${marker}`);
+  }
+}
+for (const marker of ["network:acceptance", "network:acceptance:check"]) {
+  if (!packageManifest.includes(marker)) {
+    violations.push(`package scripts are missing ${marker}`);
   }
 }
 if (desktopTunnel.includes("startDirectDesktopTunnel")) {
