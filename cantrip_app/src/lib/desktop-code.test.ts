@@ -71,6 +71,7 @@ import {
   directCodeAttachmentHealthy,
   directCodeAttachmentHealthyWithin,
   desktopCodeStateForRuntime,
+  openDirectCodeAttachmentExtensions,
   openDirectCodeAttachmentFile,
   openDirectCodeAttachmentSettings,
   preferProtectedCodeAttachment,
@@ -731,6 +732,50 @@ describe("openDirectCodeAttachmentSettings", () => {
 
     await expect(
       openDirectCodeAttachmentSettings(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        { signal: controller.signal },
+      ),
+    ).rejects.toThrow();
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+});
+
+describe("openDirectCodeAttachmentExtensions", () => {
+  it("opens Extensions through the protected local Code tunnel", async () => {
+    mocks.fetch.mockResolvedValue({
+      json: async () => ({ opened: true }),
+      ok: true,
+    });
+
+    await expect(
+      openDirectCodeAttachmentExtensions({
+        url: "http://127.0.0.1:52345/code/",
+      } as CodeAttachment),
+    ).resolves.toEqual({ opened: true });
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:52345/code/_cantrip/open-extensions"),
+      {
+        body: "{}",
+        credentials: "omit",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+  });
+
+  it("rejects malformed acknowledgements and forwards cancellation", async () => {
+    const controller = new AbortController();
+    mocks.fetch.mockResolvedValue({
+      json: async () => ({ opened: false }),
+      ok: true,
+    });
+
+    await expect(
+      openDirectCodeAttachmentExtensions(
         { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
         { signal: controller.signal },
       ),

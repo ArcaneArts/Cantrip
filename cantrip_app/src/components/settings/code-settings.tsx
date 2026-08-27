@@ -7,7 +7,13 @@ import type {
   WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Blocks,
+  Loader2,
+  RefreshCw,
+  Settings2,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -18,6 +24,8 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
+import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
 import {
   createProtectedCodeSettingsAttachment,
@@ -35,6 +43,7 @@ import {
   isCodeWorkbenchReadyEvent,
 } from "@/lib/code-workbench-frame";
 import {
+  openDirectCodeAttachmentExtensions,
   openDirectCodeAttachmentSettings,
   preferProtectedCodeAttachment,
   stopDirectCodeAttachment,
@@ -50,6 +59,13 @@ import { cn } from "@/lib/utils";
 
 const WORKER_REFRESH_MS = 5_000;
 const SETTINGS_STATUS_REFRESH_MS = 3_000;
+
+type CodeCustomizationView = "extensions" | "settings";
+
+const customizationTabs = [
+  { id: "settings", label: "Settings", icon: Settings2 },
+  { id: "extensions", label: "Extensions", icon: Blocks },
+] as const;
 
 function workerCanHostCodeSettings(worker: WorkerSummary): boolean {
   return (
@@ -107,9 +123,12 @@ export function CodeSettings({
       WORKER_REFRESH_MS,
     ),
   });
-  const eligibleWorkers = (workers.data ?? []).filter(
-    workerCanHostCodeSettings,
+  const eligibleWorkers = useMemo(
+    () => (workers.data ?? []).filter(workerCanHostCodeSettings),
+    [workers.data],
   );
+  const [customizationView, setCustomizationView] =
+    useState<CodeCustomizationView>("settings");
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
   const [attachment, setAttachment] = useState<CodeAttachment | null>(null);
   const [synchronization, setSynchronization] =
@@ -119,7 +138,10 @@ export function CodeSettings({
   const [frameDocumentVersion, setFrameDocumentVersion] = useState(0);
   const [frameError, setFrameError] = useState<string | null>(null);
   const [frameReadyNonce, setFrameReadyNonce] = useState<string | null>(null);
-  const [openedNonce, setOpenedNonce] = useState<string | null>(null);
+  const [openedView, setOpenedView] = useState<{
+    nonce: string;
+    view: CodeCustomizationView;
+  } | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
@@ -138,12 +160,24 @@ export function CodeSettings({
     );
 
   useEffect(() => {
-    if (selectedWorkerId !== null || workers.isLoading) return;
+    if (workers.isLoading) return;
+    if (
+      selectedWorkerId !== null &&
+      eligibleWorkers.some(({ workerId }) => workerId === selectedWorkerId)
+    ) {
+      return;
+    }
     setSelectedWorkerId(
       selectCodeSettingsWorker(workers.data ?? [], defaultWorkerId)?.workerId ??
         null,
     );
-  }, [defaultWorkerId, selectedWorkerId, workers.data, workers.isLoading]);
+  }, [
+    defaultWorkerId,
+    eligibleWorkers,
+    selectedWorkerId,
+    workers.data,
+    workers.isLoading,
+  ]);
 
   const selectedWorker = (workers.data ?? []).find(
     ({ workerId }) => workerId === selectedWorkerId,
@@ -189,7 +223,7 @@ export function CodeSettings({
     setConnectionError(null);
     setFrameError(null);
     setFrameReadyNonce(null);
-    setOpenedNonce(null);
+    setOpenedView(null);
     setConnecting(true);
 
     const connect = async () => {
@@ -198,10 +232,10 @@ export function CodeSettings({
           () =>
             createProtectedCodeSettingsAttachment(selectedWorkerId, appearance),
           async (wire, signal) => {
-            if (wire.synchronization.state === "conflict") {
-              return { preferred: null, wire };
-            }
-            if (wire.synchronization.state !== "ready") {
+            if (
+              wire.synchronization.state !== "ready" &&
+              wire.synchronization.state !== "conflict"
+            ) {
               throw new Error(statusMessage(wire.synchronization));
             }
             return {
@@ -221,7 +255,6 @@ export function CodeSettings({
         }
         setSynchronization(selected.wire.synchronization);
         setConnecting(false);
-        if (!selected.preferred) return;
         setAttachment(selected.preferred.attachment);
         unsubscribeUnavailable = subscribePreferredCodeAttachmentUnavailable(
           selected.preferred,
@@ -266,14 +299,11 @@ export function CodeSettings({
   useLayoutEffect(() => {
     if (!attachment || !frameMount) return;
     let settled = false;
-    let opening = false;
-    const controller = new AbortController();
     setFrameReadyNonce(null);
-    setOpenedNonce(null);
+    setOpenedView(null);
     const receiveReady = (event: MessageEvent<unknown>) => {
       if (
         settled ||
-        opening ||
         !isCodeWorkbenchReadyEvent(
           event,
           frameRef.current?.contentWindow ?? null,
@@ -282,38 +312,65 @@ export function CodeSettings({
       ) {
         return;
       }
-      opening = true;
+      settled = true;
+      clearTimeout(timeout);
       setFrameReadyNonce(frameMount.nonce);
-      void openDirectCodeAttachmentSettings(attachment, {
-        signal: controller.signal,
-      }).then(
-        () => {
-          if (settled) return;
-          settled = true;
-          setFrameError(null);
-          setOpenedNonce(frameMount.nonce);
-        },
-        (error) => {
-          if (settled || controller.signal.aborted) return;
-          settled = true;
-          setFrameError(errorMessage(error));
-        },
-      );
     };
     window.addEventListener("message", receiveReady);
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
+      setFrameError("The embedded Code customization workbench timed out.");
+    }, CODE_WORKBENCH_READY_TIMEOUT_MS);
+    return () => {
+      settled = true;
+      clearTimeout(timeout);
+      window.removeEventListener("message", receiveReady);
+    };
+  }, [attachment, frameMount]);
+
+  useLayoutEffect(() => {
+    if (!attachment || !frameMount || frameReadyNonce !== frameMount.nonce) {
+      return;
+    }
+    let settled = false;
+    const controller = new AbortController();
+    setOpenedView((current) =>
+      current?.nonce === frameMount.nonce && current.view === customizationView
+        ? current
+        : null,
+    );
+    setFrameError(null);
+    const opening =
+      customizationView === "extensions"
+        ? openDirectCodeAttachmentExtensions
+        : openDirectCodeAttachmentSettings;
+    void opening(attachment, { signal: controller.signal }).then(
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        setOpenedView({ nonce: frameMount.nonce, view: customizationView });
+      },
+      (error) => {
+        if (settled || controller.signal.aborted) return;
+        settled = true;
+        clearTimeout(timeout);
+        setFrameError(errorMessage(error));
+      },
+    );
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
       controller.abort();
-      setFrameError("The embedded Code settings workbench timed out.");
+      setFrameError(`The embedded Code ${customizationView} view timed out.`);
     }, CODE_WORKBENCH_READY_TIMEOUT_MS);
     return () => {
       settled = true;
       controller.abort();
       clearTimeout(timeout);
-      window.removeEventListener("message", receiveReady);
     };
-  }, [attachment, frameMount]);
+  }, [attachment, customizationView, frameMount, frameReadyNonce]);
 
   const resolveConflict = useMutation({
     mutationFn: (resolution: CodeSettingsResolution) =>
@@ -327,8 +384,11 @@ export function CodeSettings({
     },
   });
 
-  const ready = openedNonce !== null && openedNonce === frameMount?.nonce;
+  const ready =
+    openedView?.nonce === frameMount?.nonce &&
+    openedView?.view === customizationView;
   const conflict = synchronization?.state === "conflict";
+  const settingsConflict = customizationView === "settings" && conflict;
   const noWorker = !workers.isLoading && eligibleWorkers.length === 0;
 
   return (
@@ -340,16 +400,58 @@ export function CodeSettings({
         active ? "flex flex-col" : "hidden",
       )}
     >
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b px-3 sm:px-4">
+        <NavigationTabBar<CodeCustomizationView>
+          activeTab={customizationView}
+          ariaLabel="Code customization sections"
+          className="min-w-0"
+          tabs={customizationTabs}
+          onTabChange={setCustomizationView}
+        />
+        <label className="flex min-w-0 items-center gap-2 py-1 text-xs text-muted-foreground">
+          <span className="shrink-0">Worker</span>
+          <NativeSelect
+            aria-label="Code customization worker"
+            className="max-w-56 min-w-36"
+            disabled={workers.isLoading || eligibleWorkers.length === 0}
+            size="sm"
+            value={selectedWorkerId ?? ""}
+            onChange={(event) =>
+              setSelectedWorkerId(event.target.value || null)
+            }
+          >
+            {eligibleWorkers.length === 0 ? (
+              <option value="">No compatible worker</option>
+            ) : null}
+            {eligibleWorkers.map((worker) => (
+              <option key={worker.workerId} value={worker.workerId}>
+                {worker.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+      </div>
+      {customizationView === "extensions" ? (
+        <div
+          className="shrink-0 border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground"
+          role="note"
+        >
+          Treat extensions as trusted code: they run with the same filesystem
+          and process access as this worker&apos;s terminal. Installs from Open
+          VSX or VSIX stay on {selectedWorker?.name ?? "the selected worker"}{" "}
+          and apply to its default Cantrip Code profile.
+        </div>
+      ) : null}
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         {attachment && frameMount ? (
           <iframe
             key={frameMount.nonce}
             allow="clipboard-read; clipboard-write"
-            aria-hidden={!ready}
+            aria-hidden={!ready || settingsConflict}
             className="size-full min-h-0 min-w-0 border-0 bg-background"
             onError={() =>
               setFrameError(
-                "The embedded Code settings document failed to load.",
+                "The embedded Code customization document failed to load.",
               )
             }
             onLoad={() => {
@@ -360,15 +462,15 @@ export function CodeSettings({
             ref={frameRef}
             referrerPolicy="no-referrer"
             src={frameMount.url}
-            tabIndex={active && ready ? 0 : -1}
-            title="VS Code settings"
+            tabIndex={active && ready && !settingsConflict ? 0 : -1}
+            title={`VS Code ${customizationView}`}
           />
         ) : null}
 
-        {!ready || conflict || connectionError || frameError ? (
+        {!ready || settingsConflict || connectionError || frameError ? (
           <div className="absolute inset-0 z-10 grid place-items-center bg-background p-6 text-center">
             <div className="grid max-w-lg justify-items-center gap-3">
-              {conflict || connectionError || frameError || noWorker ? (
+              {settingsConflict || connectionError || frameError || noWorker ? (
                 <AlertTriangle className="size-6 text-destructive" />
               ) : (
                 <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -377,33 +479,33 @@ export function CodeSettings({
                 <p className="text-sm font-medium">
                   {noWorker
                     ? "No compatible Code worker is available"
-                    : conflict
+                    : settingsConflict
                       ? "Global Code settings need a decision"
                       : connectionError || frameError
-                        ? "Code settings could not open"
+                        ? `Code ${customizationView} could not open`
                         : connecting
                           ? "Synchronizing encrypted Code settings…"
                           : frameReadyNonce
-                            ? "Opening graphical settings…"
-                            : "Starting the Code settings workbench…"}
+                            ? `Opening ${customizationView}…`
+                            : "Starting the Code customization workbench…"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {noWorker
                     ? "Connect an encryption-capable worker with Cantrip Code installed."
-                    : conflict
+                    : settingsConflict
                       ? statusMessage(synchronization)
                       : (connectionError ??
                         frameError ??
                         statusMessage(synchronization))}
                 </p>
-                {conflict && synchronization?.backupCreated ? (
+                {settingsConflict && synchronization?.backupCreated ? (
                   <p className="mt-1 text-xs text-muted-foreground">
                     The original pre-sync recovery copy is available on this
                     worker.
                   </p>
                 ) : null}
               </div>
-              {conflict ? (
+              {settingsConflict ? (
                 <div className="flex flex-wrap justify-center gap-2">
                   <Button
                     disabled={resolveConflict.isPending}

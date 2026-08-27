@@ -20,6 +20,7 @@ const api = vi.hoisted(() => ({
 
 const desktopCode = vi.hoisted(() => ({
   directCodeAttachmentHealthyWithin: vi.fn(),
+  openDirectCodeAttachmentExtensions: vi.fn(),
   openDirectCodeAttachmentSettings: vi.fn(),
   preferProtectedCodeAttachment: vi.fn(),
   recoverPreferredCodeAttachmentRoute: vi.fn(),
@@ -76,6 +77,11 @@ const worker = {
     state: "ready",
     grants: [{ component: "customization-content", keyRevision: 1 }],
   },
+} as WorkerSummary;
+const secondWorker = {
+  ...worker,
+  workerId: "worker-2",
+  name: "Remote Worker",
 } as WorkerSummary;
 const attachment = {
   attachmentId: "attachment-1",
@@ -234,6 +240,9 @@ beforeEach(() => {
   desktopCode.openDirectCodeAttachmentSettings.mockResolvedValue({
     opened: true,
   });
+  desktopCode.openDirectCodeAttachmentExtensions.mockResolvedValue({
+    opened: true,
+  });
   desktopCode.stopDirectCodeAttachment.mockResolvedValue(undefined);
 });
 
@@ -373,6 +382,78 @@ describe("CodeSettings retained workbench lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("switches native customization views without replacing the retained iframe", async () => {
+    const { frameWindow, renderer } = await mount(true);
+    const initialFrame = renderer.root.findByType("iframe");
+
+    await act(async () => {
+      (window as unknown as FakeWindow).sendMessage(
+        readyEvent(renderer, frameWindow),
+      );
+    });
+    await settle();
+    expect(desktopCode.openDirectCodeAttachmentSettings).toHaveBeenCalledOnce();
+
+    const extensionsTab = renderer.root
+      .findAllByType("button")
+      .find(
+        (button) =>
+          button.props.role === "tab" && button.children.includes("Extensions"),
+      );
+    expect(extensionsTab).toBeDefined();
+    await act(async () => extensionsTab!.props.onClick());
+    await settle();
+
+    expect(desktopCode.openDirectCodeAttachmentExtensions).toHaveBeenCalledWith(
+      attachment,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
+    expect(renderedText(renderer)).toContain("filesystem and process access");
+
+    const settingsTab = renderer.root
+      .findAllByType("button")
+      .find(
+        (button) =>
+          button.props.role === "tab" && button.children.includes("Settings"),
+      );
+    await act(async () => settingsTab!.props.onClick());
+    await settle();
+    expect(desktopCode.openDirectCodeAttachmentSettings).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("uses the visible worker selector to replace the worker-local attachment", async () => {
+    api.getWorkers.mockResolvedValue([worker, secondWorker]);
+    api.createProtectedCodeSettingsAttachment.mockImplementation(
+      async (workerId: string) => ({ ...wire, workerId }),
+    );
+    const { renderer } = await mount(true);
+    const selector = renderer.root.findByProps({
+      "aria-label": "Code customization worker",
+    });
+
+    expect(selector.props.value).toBe(worker.workerId);
+    await act(async () =>
+      selector.props.onChange({ target: { value: secondWorker.workerId } }),
+    );
+    await settle();
+
+    expect(api.createProtectedCodeSettingsAttachment).toHaveBeenLastCalledWith(
+      secondWorker.workerId,
+      "dark",
+    );
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
+    expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
   it("retires the local tunnel and server attachment exactly once", async () => {
     const { renderer } = await mount(true);
 
@@ -390,26 +471,70 @@ describe("CodeSettings retained workbench lifecycle", () => {
   });
 
   it("maps both conflict decisions to the selected worker", async () => {
+    api.getCodeSettingsWorkerStatus.mockResolvedValue(conflictStatus);
     api.createProtectedCodeSettingsAttachment.mockResolvedValue({
       ...wire,
       synchronization: conflictStatus,
     });
     const { renderer } = await mount(true);
-    const buttons = () => renderer.root.findAllByType("button");
+    const button = (label: string) =>
+      renderer.root
+        .findAllByType("button")
+        .find((candidate) => candidate.children.includes(label))!;
 
-    await act(async () => buttons()[0]!.props.onClick());
+    await act(async () => button("Use synced settings").props.onClick());
     await settle();
     expect(api.resolveCodeSettingsWorker).toHaveBeenCalledWith(
       worker.workerId,
       "accept-canonical",
     );
 
-    await act(async () => buttons()[1]!.props.onClick());
+    await act(async () =>
+      button("Keep this worker’s settings").props.onClick(),
+    );
     await settle();
     expect(api.resolveCodeSettingsWorker).toHaveBeenCalledWith(
       worker.workerId,
       "publish-local",
     );
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("keeps Extensions usable while encrypted Settings are conflicted", async () => {
+    api.getCodeSettingsWorkerStatus.mockResolvedValue(conflictStatus);
+    api.createProtectedCodeSettingsAttachment.mockResolvedValue({
+      ...wire,
+      synchronization: conflictStatus,
+    });
+    const { frameWindow, renderer } = await mount(true);
+
+    await act(async () => {
+      (window as unknown as FakeWindow).sendMessage(
+        readyEvent(renderer, frameWindow),
+      );
+    });
+    await settle();
+    expect(renderedText(renderer)).toContain(
+      "Global Code settings need a decision",
+    );
+
+    const extensionsTab = renderer.root
+      .findAllByType("button")
+      .find(
+        (button) =>
+          button.props.role === "tab" && button.children.includes("Extensions"),
+      );
+    await act(async () => extensionsTab!.props.onClick());
+    await settle();
+
+    expect(
+      desktopCode.openDirectCodeAttachmentExtensions,
+    ).toHaveBeenCalledOnce();
+    expect(renderedText(renderer)).not.toContain(
+      "Global Code settings need a decision",
+    );
+    expect(renderer.root.findByType("iframe").props.tabIndex).toBe(0);
 
     await act(async () => renderer.unmount());
   });
