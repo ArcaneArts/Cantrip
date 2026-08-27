@@ -295,8 +295,6 @@ import {
   modelProviderAccountWireListSchema,
   modelProviderAccountWireSummarySchema,
   encryptedModelProviderCreateSchema,
-  providerCredentialUploadSchema,
-  providerCredentialWireRecordSchema,
   providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
   providerQuotaSnapshotSchema,
@@ -359,7 +357,6 @@ import {
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
-  projectTabLayoutWireSummarySchema,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
   projectWorktreeLockSchema,
@@ -409,10 +406,6 @@ import {
   skillAudienceListSchema,
   skillAudienceSummarySchema,
   skillAudienceUpdateSchema,
-  tabGroupMemberMoveSchema,
-  tabGroupMemberOrderSchema,
-  tabGroupOrderSchema,
-  encryptedTabGroupUpdateSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
   encryptedTerminalCreateSchema,
@@ -540,7 +533,6 @@ import {
   runConfigurationRuntimeWorkerReconciliationSchema,
 } from "@cantrip/protocol/run-configuration-runtime";
 import {
-  runConfigurationSecretListResultSchema,
   runConfigurationSecretSetRequestSchema,
   runConfigurationSecretSetResultSchema,
   type RunConfigurationProtectedSecret,
@@ -650,20 +642,8 @@ import {
 import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
 import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 import {
-  effectivePolicyWireListSchema,
-  encryptedPolicyBootstrapSchema,
-  encryptedPolicyCreateSchema,
-  encryptedPolicyUpdateSchema,
   policyCliWireListResultSchema,
   policyCliWireReadResultSchema,
-  policyAssignmentWireListSchema,
-  policyAssignmentUpdateSchema,
-  policyDeleteSchema,
-  policyOrderUpdateSchema,
-  policyTemplateDetailSchema,
-  policyTemplateListSchema,
-  policyWireDetailSchema,
-  policyWireListSchema,
 } from "@cantrip/protocol/policies";
 import {
   taskEncryptedOperationStartSchema,
@@ -787,10 +767,7 @@ import {
   parseTaskOperationRelayResult,
   taskOperationRelayTurnFields,
 } from "./tasks/encrypted-relay.js";
-import {
-  TabLayoutConflictError,
-  TabLayoutInvariantError,
-} from "./db/tab-layouts.js";
+import { TabLayoutInvariantError } from "./db/tab-layouts.js";
 import {
   AgentInteractionConflictError,
   CodeCapabilityUnavailableError,
@@ -801,7 +778,6 @@ import {
   ARCHIVED_CHAT_RETENTION_MS,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
-  ProviderCredentialRevisionConflictError,
   TunnelManagementError,
   WorkerEnrollmentError,
   WORKER_ONLINE_WINDOW_MS,
@@ -814,10 +790,6 @@ import {
 } from "./db/repository.js";
 import type { FocusedExecutionTargetResourceKind } from "./execution-targets/catalog.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
-import {
-  PolicyConflictError,
-  PolicyScopeNotFoundError,
-} from "./db/policies.js";
 import {
   configurationReasoningStateForRuntimes,
   prepareRuntimesForReasoning,
@@ -904,6 +876,10 @@ import {
 } from "./app/http/route-guards.js";
 import { createApplicationServer } from "./app/http/server.js";
 import { installTransportSecurity } from "./app/http/transport-security.js";
+import { installInternalProviderCredentialRoutes } from "./app/routes/internal-provider-credentials.js";
+import { installPolicyRoutes } from "./app/routes/policies.js";
+import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
+import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
 import {
   sendWorkerConflictFailure,
   sendWorkerRequestFailure,
@@ -11659,129 +11635,7 @@ export async function buildApp({
     },
   );
 
-  app.get<{
-    Params: { accountId: string; providerId: string };
-    Querystring: { workerId?: string };
-  }>(
-    "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const workerId = request.query.workerId;
-      if (!workerId) {
-        return reply.code(400).send({ error: "workerId is required." });
-      }
-      const workerAuth = await authenticateWorkerRequest(
-        repository,
-        config,
-        request,
-        workerId,
-        "worker:connect",
-      );
-      if (!workerAuth) return reply.code(401).send({ error: "Unauthorized" });
-      const worker = await repository.getWorker(workerAuth.ownerId, workerId);
-      if (!worker) return reply.code(404).send({ error: "Worker not found." });
-      if (
-        !worker.encryption.grants.some(
-          ({ component }) => component === "provider-credential",
-        )
-      ) {
-        return reply
-          .code(403)
-          .send({ error: "Worker lacks provider credential authorization." });
-      }
-      const record = await repository.getModelProviderAccountCredential(
-        workerAuth.ownerId,
-        request.params.providerId,
-        request.params.accountId,
-      );
-      if (record?.state === "reauth-required") {
-        return reply.code(409).send({
-          code: "reauth-required",
-          error: PROVIDER_REAUTH_REQUIRED_MESSAGE,
-        });
-      }
-      if (record?.state === "conflict") {
-        return reply.code(409).send({
-          code: "identity-conflict",
-          error: "The provider account has a credential identity conflict.",
-        });
-      }
-      return record
-        ? reply.send(
-            providerCredentialWireRecordSchema.parse({
-              accountId: record.accountId,
-              credential: record.credential,
-              credentialRevision: record.revision,
-              providerId: record.providerId,
-              providerKind: record.providerKind,
-            }),
-          )
-        : reply.code(404).send({ error: "Provider credential not found." });
-    },
-  );
-
-  app.put<{
-    Body: unknown;
-    Params: { accountId: string; providerId: string };
-    Querystring: { workerId?: string };
-  }>(
-    "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const workerId = request.query.workerId;
-      if (!workerId) {
-        return reply.code(400).send({ error: "workerId is required." });
-      }
-      const workerAuth = await authenticateWorkerRequest(
-        repository,
-        config,
-        request,
-        workerId,
-        "worker:connect",
-      );
-      if (!workerAuth) return reply.code(401).send({ error: "Unauthorized" });
-      const worker = await repository.getWorker(workerAuth.ownerId, workerId);
-      if (
-        !worker?.encryption.grants.some(
-          ({ component }) => component === "provider-credential",
-        )
-      ) {
-        return reply
-          .code(403)
-          .send({ error: "Worker lacks provider credential authorization." });
-      }
-      const input = providerCredentialUploadSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const stored = await repository.storeModelProviderAccountCredential(
-          workerAuth.ownerId,
-          request.params.providerId,
-          request.params.accountId,
-          input.data.credential,
-          input.data.metadata,
-          input.data.expectedRevision,
-        );
-        return stored
-          ? reply.send(
-              providerCredentialWireRecordSchema.parse({
-                accountId: stored.accountId,
-                credential: stored.credential,
-                credentialRevision: stored.revision,
-                providerId: stored.providerId,
-                providerKind: stored.providerKind,
-              }),
-            )
-          : reply.code(404).send({ error: "Provider account not found." });
-      } catch (error) {
-        if (error instanceof ProviderCredentialRevisionConflictError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
+  installInternalProviderCredentialRoutes(app, { config, repository });
 
   app.post<{
     Headers: { "x-cantrip-bootstrap-token"?: string };
@@ -25666,64 +25520,17 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/run-configuration-secrets",
-    async (request, reply) => {
-      const ownerId = applicationOwnerId();
-      if (!(await repository.getProject(ownerId, request.params.projectId))) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      return reply.send(
-        runConfigurationSecretListResultSchema.parse({
-          projectId: request.params.projectId,
-          secrets: await repository.listRunConfigurationSecretSummaries(
-            ownerId,
-            request.params.projectId,
-          ),
-        }),
-      );
-    },
-  );
-
-  app.put<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/run-configuration-secrets",
-    async (request, reply) => {
-      const input = runConfigurationSecretSetRequestSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = applicationOwnerId();
-      if (!(await repository.getProject(ownerId, request.params.projectId))) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      try {
-        const result = runConfigurationSecretSetResultSchema.parse(
-          await repository.setRunConfigurationSecret(
-            ownerId,
-            request.params.projectId,
-            input.data,
-          ),
-        );
-        publishLiveInvalidation("run-configuration", {
-          entityId: null,
-          projectId: request.params.projectId,
-        });
-        await appendAudit(request, {
-          action: "run.configuration.secret.app.set",
-          resourceId: input.data.reference,
-          resourceType: "run-configuration-secret",
-          result: "succeeded",
-        });
-        return reply
-          .code(!result.replayed && result.secret.revision === 1 ? 201 : 200)
-          .send(result);
-      } catch (error) {
-        return sendRunApiFailure(reply, error);
-      }
-    },
-  );
+  installRunConfigurationSecretRoutes(app, {
+    appendAudit,
+    applicationOwnerId,
+    publishRunConfigurationInvalidation: (projectId) =>
+      publishLiveInvalidation("run-configuration", {
+        entityId: null,
+        projectId,
+      }),
+    repository,
+    sendRunApiFailure,
+  });
 
   app.get<{
     Params: { projectId: string };
@@ -30377,147 +30184,7 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/tab-groups",
-    async (request, reply) => {
-      try {
-        const layout = await repository.tabLayouts.get(
-          applicationOwnerId(),
-          request.params.projectId,
-        );
-        return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
-          : reply.code(404).send({ error: "Project not found." });
-      } catch (error) {
-        if (error instanceof TabLayoutInvariantError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.patch<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/tab-groups/order",
-    async (request, reply) => {
-      const input = tabGroupOrderSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const layout = await repository.tabLayouts.reorderGroups(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-        );
-        return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
-          : reply.code(404).send({ error: "Project not found." });
-      } catch (error) {
-        if (
-          error instanceof TabLayoutConflictError ||
-          error instanceof TabLayoutInvariantError
-        ) {
-          return reply
-            .code(error instanceof TabLayoutConflictError ? 409 : 400)
-            .send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.patch<{ Params: { projectId: string; groupId: string } }>(
-    "/api/projects/:projectId/tab-groups/:groupId",
-    async (request, reply) => {
-      const input = encryptedTabGroupUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const layout = await repository.tabLayouts.updateGroup(
-          applicationOwnerId(),
-          request.params.projectId,
-          request.params.groupId,
-          input.data,
-        );
-        return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
-          : reply.code(404).send({ error: "Project not found." });
-      } catch (error) {
-        if (
-          error instanceof TabLayoutConflictError ||
-          error instanceof TabLayoutInvariantError
-        ) {
-          return reply
-            .code(error instanceof TabLayoutConflictError ? 409 : 400)
-            .send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.patch<{ Params: { projectId: string; groupId: string } }>(
-    "/api/projects/:projectId/tab-groups/:groupId/members/order",
-    async (request, reply) => {
-      const input = tabGroupMemberOrderSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const layout = await repository.tabLayouts.reorderMembers(
-          applicationOwnerId(),
-          request.params.projectId,
-          request.params.groupId,
-          input.data,
-        );
-        return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
-          : reply.code(404).send({ error: "Project not found." });
-      } catch (error) {
-        if (
-          error instanceof TabLayoutConflictError ||
-          error instanceof TabLayoutInvariantError
-        ) {
-          return reply
-            .code(error instanceof TabLayoutConflictError ? 409 : 400)
-            .send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.patch<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/tab-groups/member",
-    async (request, reply) => {
-      const input = tabGroupMemberMoveSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const layout = await repository.tabLayouts.moveMember(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-        );
-        return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
-          : reply.code(404).send({ error: "Project not found." });
-      } catch (error) {
-        if (
-          error instanceof TabLayoutConflictError ||
-          error instanceof TabLayoutInvariantError
-        ) {
-          return reply
-            .code(error instanceof TabLayoutConflictError ? 409 : 400)
-            .send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
+  installTabLayoutRoutes(app, { applicationOwnerId, repository });
 
   app.patch<{ Params: { chatId: string } }>(
     "/api/chats/:chatId",
@@ -35091,243 +34758,7 @@ export async function buildApp({
     },
   );
 
-  app.get("/api/policy-templates", async (_request, reply) =>
-    reply.send(
-      policyTemplateListSchema.parse(repository.policies.listTemplates()),
-    ),
-  );
-
-  app.get<{ Params: { templateKey: string } }>(
-    "/api/policy-templates/:templateKey",
-    async (request, reply) => {
-      const template = repository.policies.getTemplate(
-        request.params.templateKey,
-      );
-      return template
-        ? reply.send(policyTemplateDetailSchema.parse(template))
-        : reply.code(404).send({ error: "Policy template not found." });
-    },
-  );
-
-  app.get("/api/policies", async (_request, reply) =>
-    reply.send(
-      policyWireListSchema.parse(
-        await repository.policies.list(applicationOwnerId()),
-      ),
-    ),
-  );
-
-  app.post("/api/policies/bootstrap", async (request, reply) => {
-    const input = encryptedPolicyBootstrapSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      return reply.send(
-        policyWireListSchema.parse(
-          await repository.policies.bootstrap(applicationOwnerId(), input.data),
-        ),
-      );
-    } catch (error) {
-      const status = error instanceof PolicyConflictError ? 409 : 500;
-      return reply.code(status).send({ error: errorMessage(error) });
-    }
-  });
-
-  app.post("/api/policies", async (request, reply) => {
-    const input = encryptedPolicyCreateSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      const policy = await repository.policies.create(
-        applicationOwnerId(),
-        input.data,
-      );
-      return reply.code(201).send(policyWireDetailSchema.parse(policy));
-    } catch (error) {
-      const status = error instanceof PolicyConflictError ? 409 : 500;
-      return reply.code(status).send({ error: errorMessage(error) });
-    }
-  });
-
-  app.patch("/api/policies/order", async (request, reply) => {
-    const input = policyOrderUpdateSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      const policies = await repository.policies.reorder(
-        applicationOwnerId(),
-        input.data,
-      );
-      return reply.send(policyWireListSchema.parse(policies));
-    } catch (error) {
-      const status = error instanceof PolicyConflictError ? 409 : 500;
-      return reply.code(status).send({ error: errorMessage(error) });
-    }
-  });
-
-  app.get<{ Params: { policyId: string } }>(
-    "/api/policies/:policyId",
-    async (request, reply) => {
-      const policy = await repository.policies.get(
-        applicationOwnerId(),
-        request.params.policyId,
-      );
-      return policy
-        ? reply.send(policyWireDetailSchema.parse(policy))
-        : reply.code(404).send({ error: "Policy not found." });
-    },
-  );
-
-  app.patch<{ Params: { policyId: string } }>(
-    "/api/policies/:policyId",
-    async (request, reply) => {
-      const input = encryptedPolicyUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const policy = await repository.policies.update(
-          applicationOwnerId(),
-          request.params.policyId,
-          input.data,
-        );
-        return policy
-          ? reply.send(policyWireDetailSchema.parse(policy))
-          : reply.code(404).send({ error: "Policy not found." });
-      } catch (error) {
-        const status = error instanceof PolicyConflictError ? 409 : 500;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.delete<{ Params: { policyId: string } }>(
-    "/api/policies/:policyId",
-    async (request, reply) => {
-      const input = policyDeleteSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        return (await repository.policies.delete(
-          applicationOwnerId(),
-          request.params.policyId,
-          input.data.rowVersion,
-        ))
-          ? reply.code(204).send()
-          : reply.code(404).send({ error: "Policy not found." });
-      } catch (error) {
-        const status = error instanceof PolicyConflictError ? 409 : 500;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.get<{ Params: { workspaceId: string } }>(
-    "/api/workspaces/:workspaceId/policies",
-    async (request, reply) => {
-      const assignments = await repository.policies.listWorkspaceAssignments(
-        applicationOwnerId(),
-        request.params.workspaceId,
-      );
-      return assignments
-        ? reply.send(policyAssignmentWireListSchema.parse(assignments))
-        : reply.code(404).send({ error: "Workspace not found." });
-    },
-  );
-
-  app.patch<{ Params: { workspaceId: string } }>(
-    "/api/workspaces/:workspaceId/policies",
-    async (request, reply) => {
-      const input = policyAssignmentUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        await repository.policies.replaceWorkspaceAssignments(
-          applicationOwnerId(),
-          request.params.workspaceId,
-          input.data,
-        );
-        const assignments = await repository.policies.listWorkspaceAssignments(
-          applicationOwnerId(),
-          request.params.workspaceId,
-        );
-        return assignments
-          ? reply.send(policyAssignmentWireListSchema.parse(assignments))
-          : reply.code(404).send({ error: "Workspace not found." });
-      } catch (error) {
-        const status =
-          error instanceof PolicyScopeNotFoundError
-            ? 404
-            : error instanceof PolicyConflictError
-              ? 409
-              : 500;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/policies",
-    async (request, reply) => {
-      const assignments = await repository.policies.listProjectAssignments(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      return assignments
-        ? reply.send(policyAssignmentWireListSchema.parse(assignments))
-        : reply.code(404).send({ error: "Project not found." });
-    },
-  );
-
-  app.patch<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/policies",
-    async (request, reply) => {
-      const input = policyAssignmentUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        await repository.policies.replaceProjectAssignments(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-        );
-        const assignments = await repository.policies.listProjectAssignments(
-          applicationOwnerId(),
-          request.params.projectId,
-        );
-        return assignments
-          ? reply.send(policyAssignmentWireListSchema.parse(assignments))
-          : reply.code(404).send({ error: "Project not found." });
-      } catch (error) {
-        const status =
-          error instanceof PolicyScopeNotFoundError
-            ? 404
-            : error instanceof PolicyConflictError
-              ? 409
-              : 500;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/effective-policies",
-    async (request, reply) => {
-      const effective = await repository.policies.resolveEffective(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      return effective
-        ? reply.send(effectivePolicyWireListSchema.parse(effective))
-        : reply.code(404).send({ error: "Project not found." });
-    },
-  );
+  installPolicyRoutes(app, { applicationOwnerId, repository });
 
   app.addHook("onClose", async () => {
     livePublishingEnabled = false;
