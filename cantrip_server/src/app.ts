@@ -825,6 +825,7 @@ import {
   WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
   type ChatExecutionAttribution,
+  type ChatLiveRouting,
   type ModelRuntime,
   type TunnelAttachmentAuthorization,
   toChatAttachmentOpaqueSummary,
@@ -915,6 +916,10 @@ import {
 } from "./http/worker-request-failures.js";
 import { AppLiveHub } from "./live/hub.js";
 import { CoalescedInvalidations } from "./live/coalesced-invalidations.js";
+import {
+  isTaskWorkloadLiveResource,
+  TaskLiveInvalidationRouter,
+} from "./live/task-live-routing.js";
 import { createCantripAgentOperationExecutor } from "./agent-tools/executor.js";
 import {
   assertCantripMcpBinding,
@@ -1718,6 +1723,13 @@ export async function buildApp({
       );
     }
   };
+  const taskLiveInvalidationRouter = new TaskLiveInvalidationRouter(
+    (ownerId, chatId) => repository.getChatLiveRouting(ownerId, chatId),
+    ({ entityId, ownerId, projectId, resource }) =>
+      runAsOwner(ownerId, () =>
+        publishLiveInvalidation(resource, { entityId, projectId }),
+      ),
+  );
   const projectTokenUsageLiveInvalidations = new CoalescedInvalidations<{
     ownerId: string;
     projectId: string;
@@ -2871,6 +2883,7 @@ export async function buildApp({
     chatId: string,
     resource: ChatLiveResource,
     entityId: string | null = null,
+    routing?: ChatLiveRouting,
   ): void => {
     if (!livePublishingEnabled) return;
     const ownerId = applicationOwnerId();
@@ -2890,24 +2903,9 @@ export async function buildApp({
         "Could not publish chat live invalidation",
       );
     }
-    if (
-      resource === "task" ||
-      resource === "chat-message" ||
-      resource === "chat-plan" ||
-      resource === "chat-goal" ||
-      resource === "agent-interaction"
-    ) {
-      void repository
-        .getChatExecutionContext(ownerId, chatId)
-        .then((context) => {
-          if (context?.experience !== "task") return;
-          runAsOwner(ownerId, () =>
-            publishLiveInvalidation(resource, {
-              entityId: entityId ?? chatId,
-              projectId: context.projectId,
-            }),
-          );
-        })
+    if (isTaskWorkloadLiveResource(resource)) {
+      void taskLiveInvalidationRouter
+        .route({ chatId, entityId, ownerId, resource, routing })
         .catch((error) => {
           app.log.warn(
             { chatId, err: error, resource },
@@ -2962,7 +2960,10 @@ export async function buildApp({
       );
     }
   };
-  const publishTaskMessage = (message: TaskMessageOpaqueSummary): void => {
+  const publishTaskMessage = (
+    message: TaskMessageOpaqueSummary,
+    routing?: ChatLiveRouting,
+  ): void => {
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
@@ -2982,7 +2983,7 @@ export async function buildApp({
         "Could not publish encrypted Task message",
       );
     }
-    publishChatInvalidation(message.chatId, "task", message.id);
+    publishChatInvalidation(message.chatId, "task", message.id, routing);
   };
   const publishEncryptedChatMessage = (
     message: ChatMessageOpaqueSummary,
@@ -3089,6 +3090,7 @@ export async function buildApp({
     chatId: string,
     message: TaskMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
+    routing?: ChatLiveRouting,
   ) => {
     const saved = await repository.appendTaskMessage(
       ownerId,
@@ -3096,7 +3098,7 @@ export async function buildApp({
       message,
       attribution,
     );
-    if (saved) publishTaskMessage(saved);
+    if (saved) publishTaskMessage(saved, routing);
     return saved;
   };
   const upsertLiveTaskMessage = async (
@@ -3104,6 +3106,7 @@ export async function buildApp({
     chatId: string,
     message: TaskMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
+    routing?: ChatLiveRouting,
   ) => {
     const saved = await repository.upsertTaskMessage(
       ownerId,
@@ -3111,14 +3114,28 @@ export async function buildApp({
       message,
       attribution,
     );
-    if (saved) publishTaskMessage(saved);
+    if (saved) publishTaskMessage(saved, routing);
     return saved;
   };
   const setLiveTaskMessageModelRoute = async (
-    ...input: Parameters<typeof repository.setTaskMessageModelRoute>
+    ownerId: string,
+    messageId: string,
+    modelId: string,
+    runtime: ModelRuntime,
+    reasoning?: {
+      appliedReasoningEffort: ReasoningEffort | null;
+      reasoningAdjusted: boolean;
+    },
+    routing?: ChatLiveRouting,
   ) => {
-    const message = await repository.setTaskMessageModelRoute(...input);
-    if (message) publishTaskMessage(message);
+    const message = await repository.setTaskMessageModelRoute(
+      ownerId,
+      messageId,
+      modelId,
+      runtime,
+      reasoning,
+    );
+    if (message) publishTaskMessage(message, routing);
     return message;
   };
   const appendLiveEncryptedChatMessage = async (
@@ -3194,11 +3211,12 @@ export async function buildApp({
   const publishChatTurnBoundary = (
     chatId: string,
     projectId: string | null,
+    routing?: ChatLiveRouting,
   ): void => {
     publishChatSummary(chatId, projectId);
     publishChatInvalidation(chatId, "chat");
-    publishChatInvalidation(chatId, "chat-goal");
-    publishChatInvalidation(chatId, "chat-plan");
+    publishChatInvalidation(chatId, "chat-goal", null, routing);
+    publishChatInvalidation(chatId, "chat-plan", null, routing);
   };
   const recordLiveAgentInteractionRequest = async (
     ...input: Parameters<typeof repository.recordAgentInteractionRequest>
@@ -9971,6 +9989,7 @@ export async function buildApp({
             notification.chatId,
             relayResult.assistantMessage,
             attribution,
+            laneContext.chat,
           );
           if (!assistantMessage) {
             throw new Error("Task Chat was not found.");
@@ -9981,7 +10000,12 @@ export async function buildApp({
             taskOperation.round.id,
             assistantMessage.id,
           );
-          publishChatInvalidation(notification.chatId, "task");
+          publishChatInvalidation(
+            notification.chatId,
+            "task",
+            null,
+            laneContext.chat,
+          );
         } catch (error) {
           recoveredOutcomeOk = false;
           await repository.tasks.failOperation(
@@ -9989,7 +10013,12 @@ export async function buildApp({
             notification.chatId,
             taskOperation.round.id,
           );
-          publishChatInvalidation(notification.chatId, "task");
+          publishChatInvalidation(
+            notification.chatId,
+            "task",
+            null,
+            laneContext.chat,
+          );
         }
       } else {
         recoveredOutcomeOk = false;
@@ -9998,7 +10027,12 @@ export async function buildApp({
           notification.chatId,
           taskOperation.round.id,
         );
-        publishChatInvalidation(notification.chatId, "task");
+        publishChatInvalidation(
+          notification.chatId,
+          "task",
+          null,
+          laneContext.chat,
+        );
       }
     }
     if (taskDispatchFence) {
@@ -10049,6 +10083,7 @@ export async function buildApp({
             notification.chatId,
             encrypted.message,
             attribution,
+            laneContext.chat,
           );
         } catch {
           recoveredOutcomeOk = false;
@@ -10145,7 +10180,11 @@ export async function buildApp({
         recoveredOutcomeOk ? "completed" : "failed",
       );
     }
-    publishChatTurnBoundary(notification.chatId, laneContext.chat.projectId);
+    publishChatTurnBoundary(
+      notification.chatId,
+      laneContext.chat.projectId,
+      laneContext.chat,
+    );
     if (recoveredFinalizationOperationId && recoveredOutcomeOk) {
       try {
         await launchPreparedTaskGoal(
@@ -10508,6 +10547,7 @@ export async function buildApp({
           execution.chatId,
           encryptedTaskMessages.userMessage,
           attribution,
+          execution,
         );
         if (!appended) throw new Error("Encrypted Task Chat not found.");
         userMessage = taskMessageServerStub(appended);
@@ -10520,6 +10560,7 @@ export async function buildApp({
             appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
             reasoningAdjusted: preparedRuntimes[0]!.adjusted,
           },
+          execution,
         );
       } else {
         throw new Error("Chat turn content was not encrypted.");
@@ -11117,6 +11158,7 @@ export async function buildApp({
                         execution.chatId,
                         event.message,
                         attribution,
+                        execution,
                       );
                       if (!saved) {
                         throw new Error("Encrypted Task message was rejected.");
@@ -11501,6 +11543,7 @@ export async function buildApp({
                   execution.chatId,
                   encryptedResult.message,
                   attribution,
+                  execution,
                 );
                 if (!assistant) {
                   throw new Error("Encrypted Task Chat not found.");
@@ -11510,6 +11553,8 @@ export async function buildApp({
                   assistant.id,
                   modelId,
                   runtime,
+                  undefined,
+                  execution,
                 );
               }
             } else if (encryptedChatMessages) {
@@ -11567,7 +11612,11 @@ export async function buildApp({
               executionLaneId,
               "idle",
             );
-            publishChatTurnBoundary(execution.chatId, execution.projectId);
+            publishChatTurnBoundary(
+              execution.chatId,
+              execution.projectId,
+              execution,
+            );
             if (options.structuredResult?.afterCompleted) {
               try {
                 await options.structuredResult.afterCompleted({
@@ -11805,7 +11854,11 @@ export async function buildApp({
           execution.chatId,
           userMessage.id,
         );
-        publishChatTurnBoundary(execution.chatId, execution.projectId);
+        publishChatTurnBoundary(
+          execution.chatId,
+          execution.projectId,
+          execution,
+        );
         if (options.afterTurnFailed) {
           try {
             await options.afterTurnFailed({ error, execution, userMessage });
@@ -12064,7 +12117,7 @@ export async function buildApp({
       }),
     );
     if (!result.goal) throw new Error("Codex did not create the goal.");
-    publishChatInvalidation(context.chatId, "chat-goal");
+    publishChatInvalidation(context.chatId, "chat-goal", null, context);
     await repository.updateChatRuntime(
       context.chatId,
       context.workerId,
@@ -12261,7 +12314,7 @@ export async function buildApp({
       { rowVersion: task.rowVersion, task: result.task },
     );
     if (synchronized && synchronized.rowVersion !== task.rowVersion) {
-      publishChatInvalidation(context.chatId, "task");
+      publishChatInvalidation(context.chatId, "task", null, context);
     }
     const nextTask = synchronized ?? task;
     await reconcileTaskGoalDispatch(task, nextTask.state);
@@ -12292,7 +12345,7 @@ export async function buildApp({
           throw dispatchError;
         }
       }
-      publishChatInvalidation(chatId, "task");
+      publishChatInvalidation(chatId, "task", null, context);
       queueTaskScheduleTick();
     }
   };
@@ -25047,7 +25100,12 @@ export async function buildApp({
           return reply.code(404).send({ error: "Project source not found" });
         }
         publishChatSummary(created.chat.id, created.chat.projectId);
-        publishChatInvalidation(created.chat.id, "task", created.chat.id);
+        publishChatInvalidation(
+          created.chat.id,
+          "task",
+          created.chat.id,
+          created.chat,
+        );
         return reply.code(201).send(taskWireCreateResultSchema.parse(created));
       } catch (error) {
         if (error instanceof ExecutionPlacementUnavailableError) {
@@ -25112,7 +25170,7 @@ export async function buildApp({
       input,
     );
     if (!started) return null;
-    publishChatInvalidation(context.chatId, "task");
+    publishChatInvalidation(context.chatId, "task", null, context);
     if (started.idempotent) return started.task;
 
     try {
@@ -25148,6 +25206,7 @@ export async function buildApp({
                 context.chatId,
                 relayResult.assistantMessage,
                 attribution,
+                context,
               );
               if (!assistantMessage) {
                 throw new Error("Task Chat was not found.");
@@ -25158,7 +25217,7 @@ export async function buildApp({
                 request.operationId,
                 assistantMessage.id,
               );
-              publishChatInvalidation(context.chatId, "task");
+              publishChatInvalidation(context.chatId, "task", null, context);
             },
             async afterCompleted() {
               if (request.classification.kind !== "finalize") return;
@@ -25181,7 +25240,7 @@ export async function buildApp({
                 context.chatId,
                 request.operationId,
               );
-              publishChatInvalidation(context.chatId, "task");
+              publishChatInvalidation(context.chatId, "task", null, context);
             },
           },
         },
@@ -25207,7 +25266,7 @@ export async function buildApp({
         context.chatId,
         request.operationId,
       );
-      publishChatInvalidation(context.chatId, "task");
+      publishChatInvalidation(context.chatId, "task", null, context);
       throw error;
     }
   }
@@ -25531,7 +25590,10 @@ export async function buildApp({
         }
         await repository.taskDispatch.settle(claim.lease, "failed");
       }
-      publishChatInvalidation(claim.cycle.chatId, "task");
+      publishChatInvalidation(claim.cycle.chatId, "task", null, {
+        experience: "task",
+        projectId: claim.projectId,
+      });
     } catch (error) {
       if (!(error instanceof TaskDispatchConflictError)) throw error;
     } finally {
@@ -25614,7 +25676,7 @@ export async function buildApp({
                   throw dispatchError;
                 }
               }
-              publishChatInvalidation(context.chatId, "task");
+              publishChatInvalidation(context.chatId, "task", null, context);
               queueTaskScheduleTick();
             }
           }
@@ -25625,7 +25687,7 @@ export async function buildApp({
           } else {
             await repository.taskDispatch.heartbeat(claim.lease);
             await repository.taskDispatch.settle(claim.lease, "succeeded");
-            publishChatInvalidation(context.chatId, "task");
+            publishChatInvalidation(context.chatId, "task", null, context);
             queueTaskScheduleTick();
           }
           return;
@@ -25653,7 +25715,7 @@ export async function buildApp({
           if (!started) throw new Error("The claimed Task no longer exists.");
           request = started.relayRequest;
           startedTask = started.task;
-          publishChatInvalidation(context.chatId, "task");
+          publishChatInvalidation(context.chatId, "task", null, context);
         }
 
         const userMessage = await beginTurn(
@@ -25698,6 +25760,7 @@ export async function buildApp({
                   context.chatId,
                   relayResult.assistantMessage,
                   attribution,
+                  context,
                 );
                 if (!assistantMessage) {
                   throw new Error("Task Chat was not found.");
@@ -25715,7 +25778,7 @@ export async function buildApp({
                   );
                   queueTaskScheduleTick();
                 }
-                publishChatInvalidation(context.chatId, "task");
+                publishChatInvalidation(context.chatId, "task", null, context);
               },
               async afterCompleted() {
                 if (request.classification.kind !== "finalize") return;
@@ -25805,7 +25868,7 @@ export async function buildApp({
         if (claim.cycle.operationKind === "finalize") {
           await retainTaskGoalLease(claim.lease);
         }
-        publishChatInvalidation(context.chatId, "task");
+        publishChatInvalidation(context.chatId, "task", null, context);
       } catch (error) {
         if (context && bridge.isConnected(context.workerId)) {
           await bridge
@@ -25826,7 +25889,12 @@ export async function buildApp({
             throw dispatchError;
           }
         }
-        publishChatInvalidation(claim.cycle.chatId, "task");
+        publishChatInvalidation(
+          claim.cycle.chatId,
+          "task",
+          null,
+          context ?? undefined,
+        );
         throw error;
       }
     });
@@ -25902,7 +25970,7 @@ export async function buildApp({
               context.threadId,
             turnId: paused.active?.turnId ?? cycle.turnId,
           });
-          publishChatInvalidation(context.chatId, "task");
+          publishChatInvalidation(context.chatId, "task", null, context);
         } catch (error) {
           if (!(error instanceof TaskDispatchConflictError)) throw error;
         }
@@ -26241,7 +26309,10 @@ export async function buildApp({
           return reply.code(404).send({ error: "Task not found." });
         }
         publishChatSummary(request.params.chatId, deleted.projectId);
-        publishChatInvalidation(request.params.chatId, "task");
+        publishChatInvalidation(request.params.chatId, "task", null, {
+          experience: "task",
+          projectId: deleted.projectId,
+        });
         return reply.code(204).send();
       } catch (error) {
         const response = taskMutationError(error, reply);
@@ -32794,13 +32865,13 @@ export async function buildApp({
     }
     await reconcileChatThread(context);
     if (changes.includes("goal")) {
-      publishChatInvalidation(chatId, "chat-goal");
+      publishChatInvalidation(chatId, "chat-goal", null, context);
     }
     if (changes.includes("queue")) {
       publishChatInvalidation(chatId, "chat-queue");
     }
     if (changes.includes("plan")) {
-      publishChatInvalidation(chatId, "chat-plan");
+      publishChatInvalidation(chatId, "chat-plan", null, context);
     }
   };
 
