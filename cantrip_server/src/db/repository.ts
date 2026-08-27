@@ -541,6 +541,11 @@ export interface StandaloneChatExecutionContext extends ChatExecutionContextBase
 export type ChatExecutionContext =
   ProjectChatExecutionContext | StandaloneChatExecutionContext;
 
+export interface ChatLiveRouting {
+  experience: ChatWireSummary["experience"];
+  projectId: string | null;
+}
+
 export interface ChatAttachmentRecord extends ChatAttachmentOpaqueSummary {
   workerId: string;
 }
@@ -18315,6 +18320,33 @@ export class ServerRepository {
         updatedAt: new Date(),
       })
       .where(eq(schema.chats.id, chatId));
+  }
+
+  async getChatLiveRouting(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ChatLiveRouting | null> {
+    const rows = await this.database
+      .select({
+        experience: schema.chats.experience,
+        projectId: schema.chats.projectId,
+      })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          experience: row.experience as ChatWireSummary["experience"],
+          projectId: row.projectId,
+        }
+      : null;
   }
 
   async getChatExecutionContext(
