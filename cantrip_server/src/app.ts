@@ -157,7 +157,6 @@ import {
   executionTargetResourceKindSchema,
   executionTargetSchema,
   githubPullRequestListSchema,
-  gitCommitDetailSchema,
   gitConflictListSchema,
   gitManagedOperationResponseSchema,
   gitManagedOperationWorkerStateSchema,
@@ -662,6 +661,7 @@ import { installProjectWorkspaceRoutes } from "./app/routes/project-workspaces.j
 import { installProjectWorktreeStatusRoute } from "./app/routes/project-worktree-status.js";
 import { installProjectWorktreeRoutes } from "./app/routes/project-worktrees.js";
 import { installProjectWorktreeGitCommitActionRoutes } from "./app/routes/project-worktree-git-commit-actions.js";
+import { installProjectWorktreeGitCommitSignatureRoute } from "./app/routes/project-worktree-git-commit-signature.js";
 import { installProjectWorktreeGitHistoryAndGraphRoutes } from "./app/routes/project-worktree-git-history-and-graph.js";
 import { installProjectWorktreeGitInspectionAndRecoveryRoutes } from "./app/routes/project-worktree-git-inspection-and-recovery.js";
 import { installProjectWorktreeGitManagedOperationRoutes } from "./app/routes/project-worktree-git-managed-operations.js";
@@ -27348,38 +27348,11 @@ export async function buildApp({
     },
   );
 
-  app.get<{
-    Params: { projectId: string; worktreeId: string; revision: string };
-  }>(
-    "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
-    async (request, reply) => {
-      if (!/^[0-9a-f]{40,64}$/u.test(request.params.revision)) {
-        return reply
-          .code(400)
-          .send({ error: "A full commit hash is required." });
-      }
-      const context = await repository.getProjectWorktreeContext(
-        applicationOwnerId(),
-        request.params.projectId,
-        request.params.worktreeId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Worktree not found." });
-      }
-      try {
-        const signature = await bridge.request(context.workerId, {
-          type: "git.commit.signature.get",
-          cwd: context.worktree.path,
-          revision: request.params.revision,
-        });
-        return reply.send(
-          gitCommitDetailSchema.shape.signature.unwrap().parse(signature),
-        );
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+  installProjectWorktreeGitCommitSignatureRoute(app, {
+    applicationOwnerId,
+    bridge,
+    repository,
+  });
 
   app.post<{
     Params: { projectId: string };
