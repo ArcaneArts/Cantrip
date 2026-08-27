@@ -1,0 +1,16 @@
+{
+  "id": "0011-harden-cantrip-extension-actions",
+  "title": "Harden Cantrip extension lifecycle actions",
+  "reason": "Cantrip's worker-local extension profile deliberately disables automatic updates and has no workspace scope in the Settings workbench. Code-OSS otherwise exposes auto-update controls and disabled workspace-only menu entries that conflict with those product semantics. The extension API cannot remove native extension-editor and manage-dropdown actions, so presentation-aware filtering must occur in the workbench action layer.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": [
+    "src/vs/workbench/contrib/extensions/browser/extensions.contribution.ts",
+    "src/vs/workbench/contrib/extensions/browser/extensionsActions.ts"
+  ],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:extension:test",
+    "Confirm manual Check for Updates and Update All remain available while auto-update and workspace-only enablement actions are absent from Cantrip's Extensions presentation"
+  ],
+  "removal": "Remove if Code-OSS exposes product configuration for hiding auto-update and workspace-only lifecycle actions in an embedded, folderless Extensions presentation."
+}

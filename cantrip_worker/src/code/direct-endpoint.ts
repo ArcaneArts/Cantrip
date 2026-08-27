@@ -7,10 +7,14 @@ import {
   type ServerResponse,
 } from "node:http";
 import { randomUUID } from "node:crypto";
+import { lstat, mkdtemp, open, realpath, rm } from "node:fs/promises";
 import type { Socket } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import {
   CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
+  codeInstallVsixResultSchema,
   codeOpenExtensionsRequestSchema,
   codeOpenExtensionsResultSchema,
   codeOpenFileRequestSchema,
@@ -126,11 +130,13 @@ interface EndpointCreationContext {
 export interface CodeDirectEndpointManagerOptions {
   readonly now?: () => number;
   readonly serverControlPlaneGeneration?: string;
+  readonly vsixTempDirectory?: string;
   readonly workerProcessGeneration?: string;
 }
 
 const BASE_PATH = "/code";
 const MAX_CONTROL_REQUEST_BYTES = 16 * 1_024;
+const MAX_VSIX_UPLOAD_BYTES = 16 * 1_024 * 1_024;
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
 const MAX_ENDPOINT_DIAGNOSTIC_TRACES = 128;
 const MAX_SHARED_TRANSPORTS = 128;
@@ -241,6 +247,104 @@ async function readControlRequest(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+class VsixUploadError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+  ) {
+    super(message);
+  }
+}
+
+async function createVsixUploadDirectory(root: string): Promise<string> {
+  const resolvedRoot = path.resolve(root);
+  const rootState = await lstat(resolvedRoot);
+  if (!rootState.isDirectory() || rootState.isSymbolicLink()) {
+    throw new VsixUploadError(
+      "Cantrip Code VSIX upload storage is unavailable.",
+      503,
+    );
+  }
+  const canonicalRoot = await realpath(resolvedRoot);
+  const uploadDirectory = await mkdtemp(
+    path.join(resolvedRoot, "cantrip-code-vsix-"),
+  );
+  const uploadState = await lstat(uploadDirectory);
+  const canonicalUpload = await realpath(uploadDirectory);
+  if (
+    !uploadState.isDirectory() ||
+    uploadState.isSymbolicLink() ||
+    path.dirname(canonicalUpload) !== canonicalRoot
+  ) {
+    await rm(uploadDirectory, { recursive: true, force: true });
+    throw new VsixUploadError(
+      "Cantrip Code VSIX upload storage is unavailable.",
+      503,
+    );
+  }
+  return uploadDirectory;
+}
+
+async function writeVsixUpload(
+  request: IncomingMessage,
+  destination: string,
+): Promise<number> {
+  if (request.headers["content-encoding"]) {
+    throw new VsixUploadError(
+      "Cantrip Code VSIX uploads cannot use content encoding.",
+      415,
+    );
+  }
+  const declaredLength = request.headers["content-length"];
+  if (declaredLength && !/^\d+$/u.test(declaredLength)) {
+    throw new VsixUploadError(
+      "Cantrip Code VSIX upload length is invalid.",
+      400,
+    );
+  }
+  if (declaredLength && Number(declaredLength) > MAX_VSIX_UPLOAD_BYTES) {
+    throw new VsixUploadError(
+      "Cantrip Code VSIX uploads cannot exceed 16 MiB.",
+      413,
+    );
+  }
+
+  const file = await open(destination, "wx", 0o600);
+  let bytes = 0;
+  try {
+    for await (const chunk of request) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bytes += buffer.byteLength;
+      if (bytes > MAX_VSIX_UPLOAD_BYTES) {
+        request.resume();
+        throw new VsixUploadError(
+          "Cantrip Code VSIX uploads cannot exceed 16 MiB.",
+          413,
+        );
+      }
+      let offset = 0;
+      while (offset < buffer.byteLength) {
+        const { bytesWritten } = await file.write(
+          buffer,
+          offset,
+          buffer.byteLength - offset,
+        );
+        if (bytesWritten <= 0) {
+          throw new Error("Cantrip Code could not write the VSIX upload.");
+        }
+        offset += bytesWritten;
+      }
+    }
+    if (bytes === 0) {
+      throw new VsixUploadError("Cantrip Code received an empty VSIX.", 400);
+    }
+    await file.sync();
+    return bytes;
+  } finally {
+    await file.close();
+  }
+}
+
 export class CodeDirectEndpointManager {
   readonly #endpoints = new Map<string, Endpoint>();
   readonly #controlTails = new Map<string, Promise<void>>();
@@ -251,6 +355,7 @@ export class CodeDirectEndpointManager {
   readonly #revokedSharedTransports = new Map<string, number>();
 
   readonly #now: () => number;
+  readonly #vsixTempDirectory: string;
   readonly #workerProcessGeneration: string;
   #activeSecurityIdentity:
     ActiveCodeTransportSecurityIdentity | null | undefined;
@@ -265,6 +370,7 @@ export class CodeDirectEndpointManager {
     options: CodeDirectEndpointManagerOptions = {},
   ) {
     this.#now = options.now ?? Date.now;
+    this.#vsixTempDirectory = options.vsixTempDirectory ?? tmpdir();
     this.#activeControlPlaneGeneration =
       options.serverControlPlaneGeneration ?? null;
     this.#workerProcessGeneration =
@@ -1431,6 +1537,10 @@ export class CodeDirectEndpointManager {
       void this.#openExtensions(context, request, response);
       return;
     }
+    if (pathname === `${basePath}/_cantrip/install-vsix`) {
+      void this.#installVsix(context, request, response);
+      return;
+    }
     if (pathname === `${basePath}/_cantrip/presentation`) {
       void this.#setPresentation(context, request, response);
       return;
@@ -1814,6 +1924,104 @@ export class CodeDirectEndpointManager {
             ? error.message
             : "Cantrip Code could not open extensions.",
       });
+    }
+  }
+
+  async #installVsix(
+    context: CodeEndpointContext,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const { sessionId } = context;
+    const sessionGeneration = this.#sessionGenerations.get(sessionId) ?? 0;
+    if (request.method === "OPTIONS") {
+      writeControlResponse(response, 204);
+      return;
+    }
+    if (request.method !== "POST") {
+      writeControlResponse(response, 405, {
+        error: "Cantrip Code VSIX uploads require POST.",
+      });
+      return;
+    }
+
+    let uploadDirectory: string | null = null;
+    try {
+      this.#assertRouteActive(context);
+      uploadDirectory = await createVsixUploadDirectory(
+        this.#vsixTempDirectory,
+      );
+      const vsixPath = path.join(uploadDirectory, "upload.vsix");
+      const bytes = await writeVsixUpload(request, vsixPath);
+      this.#assertRouteActive(context);
+      const result = codeInstallVsixResultSchema.parse(
+        await this.#enqueueControl(sessionId, () => {
+          this.#assertRouteActive(context);
+          return (this.#sessionGenerations.get(sessionId) ?? 0) ===
+            sessionGeneration
+            ? this.supervisor.installVsix(sessionId, vsixPath)
+            : Promise.reject(new Error("Cantrip Code session stopped."));
+        }),
+      );
+      try {
+        await rm(uploadDirectory, { recursive: true, force: true });
+        uploadDirectory = null;
+      } catch (error) {
+        workerLogger.event("warn", "Cantrip Code VSIX cleanup failed", {
+          event: "code.direct.vsix-cleanup-failed",
+          subsystem: "code",
+          operation: "install-vsix",
+          reasonCode: "cleanup-failed",
+          status: "failed",
+          ...this.#logContext(context),
+          ...workerLogErrorIdentity(error),
+        });
+      }
+      writeControlResponse(response, 200, result);
+      workerLogger.event("info", "Cantrip Code VSIX installed", {
+        event: "code.direct.vsix-installed",
+        subsystem: "code",
+        operation: "install-vsix",
+        status: "completed",
+        counts: { bytes },
+        ...this.#logContext(context),
+      });
+    } catch (error) {
+      const statusCode =
+        error instanceof VsixUploadError ? error.statusCode : 503;
+      workerLogger.event("warn", "Cantrip Code VSIX install failed", {
+        event: "code.direct.vsix-install-failed",
+        subsystem: "code",
+        operation: "install-vsix",
+        reasonCode:
+          error instanceof VsixUploadError
+            ? "upload-invalid"
+            : "install-failed",
+        status: "failed",
+        ...this.#logContext(context),
+        ...workerLogErrorIdentity(error),
+      });
+      writeControlResponse(response, statusCode, {
+        error:
+          error instanceof VsixUploadError
+            ? error.message
+            : "Cantrip Code could not install this VSIX.",
+      });
+    } finally {
+      if (uploadDirectory) {
+        await rm(uploadDirectory, { recursive: true, force: true }).catch(
+          (error) =>
+            workerLogger.event("warn", "Cantrip Code VSIX cleanup failed", {
+              event: "code.direct.vsix-cleanup-failed",
+              subsystem: "code",
+              operation: "install-vsix",
+              reasonCode: "cleanup-failed",
+              status: "failed",
+              ...this.#logContext(context),
+              ...workerLogErrorIdentity(error),
+            }),
+        );
+      }
     }
   }
 

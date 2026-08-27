@@ -20,6 +20,7 @@ const api = vi.hoisted(() => ({
 
 const desktopCode = vi.hoisted(() => ({
   directCodeAttachmentHealthyWithin: vi.fn(),
+  installDirectCodeAttachmentVsix: vi.fn(),
   openDirectCodeAttachmentExtensions: vi.fn(),
   openDirectCodeAttachmentSettings: vi.fn(),
   preferProtectedCodeAttachment: vi.fn(),
@@ -243,6 +244,9 @@ beforeEach(() => {
   desktopCode.openDirectCodeAttachmentExtensions.mockResolvedValue({
     opened: true,
   });
+  desktopCode.installDirectCodeAttachmentVsix.mockResolvedValue({
+    installed: true,
+  });
   desktopCode.stopDirectCodeAttachment.mockResolvedValue(undefined);
 });
 
@@ -410,7 +414,9 @@ describe("CodeSettings retained workbench lifecycle", () => {
     );
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
     expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
-    expect(renderedText(renderer)).toContain("filesystem and process access");
+    expect(renderedText(renderer)).toContain(
+      "files, processes, credentials, and network",
+    );
 
     const settingsTab = renderer.root
       .findAllByType("button")
@@ -424,6 +430,48 @@ describe("CodeSettings retained workbench lifecycle", () => {
       2,
     );
     expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("uploads a VSIX through the retained worker attachment with visible completion", async () => {
+    const { frameWindow, renderer } = await mount(true);
+    await act(async () => {
+      (window as unknown as FakeWindow).sendMessage(
+        readyEvent(renderer, frameWindow),
+      );
+    });
+    await settle();
+    const extensionsTab = renderer.root
+      .findAllByType("button")
+      .find(
+        (button) =>
+          button.props.role === "tab" && button.children.includes("Extensions"),
+      )!;
+    await act(async () => extensionsTab.props.onClick());
+    await settle();
+
+    const file = new File(["vsix"], "example.vsix");
+    const input = renderer.root.findByProps({
+      "aria-label": "Choose a VSIX extension package",
+    });
+    await act(async () =>
+      input.props.onChange({
+        target: { files: [file], value: "example.vsix" },
+      }),
+    );
+    await settle();
+
+    expect(desktopCode.installDirectCodeAttachmentVsix).toHaveBeenCalledWith(
+      attachment,
+      file,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(renderedText(renderer)).toContain("Installed ");
+    expect(renderedText(renderer)).toContain("example.vsix");
+    expect(renderedText(renderer)).toContain(
+      "reload or extension-host restart is needed",
+    );
 
     await act(async () => renderer.unmount());
   });

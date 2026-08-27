@@ -15,7 +15,7 @@ const {
   setWorkbenchPresentation,
 } = require("./layout.js");
 const { observeSocketErrors } = require("./socket.js");
-const { openGraphicalExtensions } = require("./extensions.js");
+const { installVsix, openGraphicalExtensions } = require("./extensions.js");
 const { openGraphicalSettings } = require("./settings.js");
 
 function configuration() {
@@ -483,6 +483,9 @@ class WorkbenchCoordinator {
         vscode.ConfigurationTarget.Workspace,
       );
       return openGraphicalExtensions(vscode.commands);
+    }
+    if (method === "installVsix") {
+      return installVsix(vscode, params.path);
     }
     if (method === "agentTurnState") return this.agentTurnState(params);
     if (method === "ping") return { connected: true };

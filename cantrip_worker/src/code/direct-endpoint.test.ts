@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { randomBytes, randomUUID } from "node:crypto";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+} from "node:fs/promises";
+import { request as requestHttp } from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
+import { subscribeWorkerLogs } from "../logger.js";
 import {
   CodeDirectEndpointManager,
   forwardableCodeWebSocketClose,
@@ -1251,6 +1263,213 @@ describe("CodeDirectEndpointManager extensions control", () => {
       expect(openExtensions).toHaveBeenCalledWith("settings-session");
     } finally {
       manager.close();
+    }
+  });
+});
+
+describe("CodeDirectEndpointManager VSIX upload fallback", () => {
+  it("installs through Code-OSS and removes the bounded worker temporary file", async () => {
+    const tempDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-vsix-test-"),
+    );
+    const installVsix = vi.fn(async (_sessionId: string, vsixPath: string) => {
+      await expect(readFile(vsixPath, "utf8")).resolves.toBe("test-vsix");
+      expect(vsixPath).toMatch(/cantrip-code-vsix-.*\/upload\.vsix$/u);
+      return { installed: true };
+    });
+    const manager = new CodeDirectEndpointManager(
+      { installVsix } as unknown as CodeSupervisor,
+      { vsixTempDirectory: tempDirectory },
+    );
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "vsix-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/install-vsix`,
+        {
+          body: Buffer.from("test-vsix"),
+          headers: { "content-type": "application/octet-stream" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ installed: true });
+      expect(installVsix).toHaveBeenCalledWith(
+        "settings-session",
+        expect.stringMatching(/upload\.vsix$/u),
+      );
+      await expect(readdir(tempDirectory)).resolves.toEqual([]);
+    } finally {
+      manager.close();
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects encoded uploads before invoking the installer", async () => {
+    const installVsix = vi.fn();
+    const manager = new CodeDirectEndpointManager({
+      installVsix,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "encoded-vsix-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/install-vsix`,
+        {
+          body: Buffer.from("encoded"),
+          headers: {
+            "content-encoding": "gzip",
+            "content-type": "application/octet-stream",
+          },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(415);
+      expect(installVsix).not.toHaveBeenCalled();
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("removes a partial upload when the client cancels", async () => {
+    const tempDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-vsix-cancel-test-"),
+    );
+    const installVsix = vi.fn();
+    const manager = new CodeDirectEndpointManager(
+      { installVsix } as unknown as CodeSupervisor,
+      { vsixTempDirectory: tempDirectory },
+    );
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "cancelled-vsix-tunnel",
+        "settings-session",
+      );
+      const request = requestHttp(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/install-vsix`,
+        {
+          headers: {
+            "content-length": "1024",
+            "content-type": "application/octet-stream",
+          },
+          method: "POST",
+        },
+      );
+      request.on("error", () => undefined);
+      const closed = new Promise<void>((resolve) =>
+        request.once("close", () => resolve()),
+      );
+      request.write("partial-vsix");
+      await vi.waitFor(async () => {
+        expect(await readdir(tempDirectory)).toHaveLength(1);
+      });
+      request.destroy();
+      await closed;
+      await vi.waitFor(async () => {
+        expect(await readdir(tempDirectory)).toEqual([]);
+      });
+      expect(installVsix).not.toHaveBeenCalled();
+    } finally {
+      manager.close();
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an upload root replaced by a symlink", async () => {
+    const tempDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-vsix-symlink-test-"),
+    );
+    const uploadRoot = path.join(tempDirectory, "uploads");
+    const outsideDirectory = path.join(tempDirectory, "outside");
+    await mkdir(outsideDirectory);
+    await symlink(
+      outsideDirectory,
+      uploadRoot,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const installVsix = vi.fn();
+    const manager = new CodeDirectEndpointManager(
+      { installVsix } as unknown as CodeSupervisor,
+      { vsixTempDirectory: uploadRoot },
+    );
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "symlink-vsix-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/install-vsix`,
+        {
+          body: Buffer.from("test-vsix"),
+          headers: { "content-type": "application/octet-stream" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(installVsix).not.toHaveBeenCalled();
+      await expect(readdir(outsideDirectory)).resolves.toEqual([]);
+    } finally {
+      manager.close();
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not expose VSIX paths or installer details in logs or responses", async () => {
+    const tempDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-vsix-private-test-"),
+    );
+    const sensitiveDetail = "worker-private-install-detail";
+    const records: unknown[] = [];
+    const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
+    const manager = new CodeDirectEndpointManager(
+      {
+        installVsix: vi.fn(async (_sessionId: string, vsixPath: string) => {
+          throw new Error(`${sensitiveDetail}: ${vsixPath}`);
+        }),
+      } as unknown as CodeSupervisor,
+      { vsixTempDirectory: tempDirectory },
+    );
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "private-vsix-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/install-vsix`,
+        {
+          body: Buffer.from("private-vsix-content"),
+          headers: { "content-type": "application/octet-stream" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({
+        error: "Cantrip Code could not install this VSIX.",
+      });
+      const serializedRecords = JSON.stringify(records);
+      expect(serializedRecords).not.toContain(sensitiveDetail);
+      expect(serializedRecords).not.toContain("private-vsix-content");
+      expect(serializedRecords).not.toContain(tempDirectory);
+      await vi.waitFor(async () => {
+        expect(await readdir(tempDirectory)).toEqual([]);
+      });
+    } finally {
+      unsubscribe();
+      manager.close();
+      await rm(tempDirectory, { recursive: true, force: true });
     }
   });
 });

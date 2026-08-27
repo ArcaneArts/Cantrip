@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
+  codeInstallVsixResultSchema,
   codeOpenExtensionsResultSchema,
   codeOpenFileResultSchema,
   codeOpenSettingsResultSchema,
@@ -127,6 +128,8 @@ const CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS = 2_500;
 const CODE_ATTACHMENT_ROUTE_PROBE_TIMEOUT_MS = 1_000;
 const CODE_ATTACHMENT_ROUTE_RECOVERY_TIMEOUT_MS = 10_000;
 export const CODE_CONTROL_OPERATION_TIMEOUT_MS = 10_000;
+export const CODE_MAX_VSIX_UPLOAD_BYTES = 16 * 1_024 * 1_024;
+export const CODE_VSIX_INSTALL_TIMEOUT_MS = 2 * 60_000;
 const MAX_CODE_ATTACHMENT_HEALTH_ATTEMPTS = 100;
 const MAX_CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS = 5_000;
 const MAX_CODE_ATTACHMENT_HEALTH_RETRY_MS = 1_000;
@@ -249,7 +252,7 @@ export class CodeControlOperationTimeoutError extends Error {
 
 async function boundedCodeControlOperation<T>(
   operation: (signal: AbortSignal) => Promise<T>,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<T> {
   options.signal?.throwIfAborted();
   const timeoutController = new AbortController();
@@ -268,8 +271,10 @@ async function boundedCodeControlOperation<T>(
   signal.addEventListener("abort", onAbort, { once: true });
   if (signal.aborted) onAbort();
   const timeout = setTimeout(() => {
-    timeoutController.abort(new CodeControlOperationTimeoutError());
-  }, CODE_CONTROL_OPERATION_TIMEOUT_MS);
+    timeoutController.abort(
+      new CodeControlOperationTimeoutError(options.timeoutMs),
+    );
+  }, options.timeoutMs ?? CODE_CONTROL_OPERATION_TIMEOUT_MS);
   try {
     return await Promise.race([operation(signal), aborted]);
   } finally {
@@ -1130,6 +1135,47 @@ export async function openDirectCodeAttachmentExtensions(
     throw new Error(message);
   }
   return codeOpenExtensionsResultSchema.parse(body);
+}
+
+export async function installDirectCodeAttachmentVsix(
+  attachment: CodeAttachment,
+  file: File,
+  options: { signal?: AbortSignal } = {},
+) {
+  if (!file.name.toLowerCase().endsWith(".vsix")) {
+    throw new Error("Choose a .vsix extension package.");
+  }
+  if (file.size === 0) {
+    throw new Error("The selected VSIX is empty.");
+  }
+  if (file.size > CODE_MAX_VSIX_UPLOAD_BYTES) {
+    throw new Error("Fallback VSIX uploads cannot exceed 16 MiB.");
+  }
+  const endpoint = new URL("_cantrip/install-vsix", attachment.url);
+  return boundedCodeControlOperation(
+    async (signal) => {
+      const response = await fetch(endpoint, {
+        body: file,
+        credentials: "omit",
+        headers: { "content-type": "application/octet-stream" },
+        method: "POST",
+        signal,
+      });
+      const body = (await response.json().catch(() => null)) as unknown;
+      if (!response.ok) {
+        const message =
+          body &&
+          typeof body === "object" &&
+          "error" in body &&
+          typeof body.error === "string"
+            ? body.error
+            : "Cantrip Code could not install this VSIX.";
+        throw new Error(message);
+      }
+      return codeInstallVsixResultSchema.parse(body);
+    },
+    { ...options, timeoutMs: CODE_VSIX_INSTALL_TIMEOUT_MS },
+  );
 }
 
 export async function setDirectCodeAttachmentPresentation(

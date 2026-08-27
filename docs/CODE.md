@@ -424,7 +424,8 @@ not be mistaken for a compatibility fallback inside the v2 Explorer path.
 
 Cantrip Code and its extensions execute with the same practical trust level as
 a worker terminal. The UI must communicate that the editor can read, modify,
-execute, and delete files available to the worker account.
+execute, and delete files, start processes, read credentials available to the
+worker account, and use the worker's network.
 
 Required controls include:
 
@@ -480,6 +481,44 @@ incompatible storage, accidental credential copying, and corruption.
 Open VSX is the default extension registry. Users may install a local VSIX after
 an explicit action. Microsoft Marketplace access and proprietary Microsoft
 extensions require separate licensing review and are not assumed by this plan.
+
+### Global customization surface
+
+**Settings → Code** owns a sub-tab bar for native Code OSS **Settings** and
+**Extensions**. Both presentations share one retained folderless settings
+session, iframe, protected attachment, worker connection, and Code process.
+Authenticated bridge controls switch the existing workbench in place and
+restore the selected presentation after reload, recovery, or reconnect. The
+visible worker selector chooses the worker-local profile; changing it retires
+the previous attachment before opening the replacement.
+
+The Extensions presentation exposes only the primary Extensions sidebar,
+extension detail editors, and required native dialogs, progress, notifications,
+and reload/restart prompts. Other workbench chrome remains hidden. A settings
+CAS conflict blocks only the Settings presentation and cannot block worker-local
+extension management.
+
+Extension lifecycle is native Code OSS: Open VSX search, install/uninstall,
+global enable/disable, manual update checking and Update All, prerelease
+selection, and VSIX installation. Auto-check and auto-install are pinned off,
+recommendations are suppressed, and workspace-only enablement actions are
+removed from this folderless presentation. Required Cantrip bridge and theme
+extensions are forced enabled and protected below the UI against disable,
+uninstall, replacement, downgrade, VSIX/gallery collision, and profile import.
+
+Native VSIX selection remains preferred. Because it relies on browser file
+system APIs unavailable on supported WebKit/mobile surfaces, Cantrip provides a
+16 MiB single-file fallback matching the protected browser request boundary. It
+sends the package directly through the authenticated attachment to a
+mode-`0600` worker temporary file, invokes the
+native Code OSS installer for validation and installation, then removes the
+temporary directory on success, failure, or cancellation. Worker startup
+clears crash remnants and replaces a stale upload-root symlink without following
+it. The fallback accepts bytes from an explicit file choice, never an arbitrary
+worker path or remote URL. Neither the package nor raw extension state crosses
+the Cantrip server persistence boundary. See
+[`CODE_SETTINGS.md`](CODE_SETTINGS.md) for the detailed data flow and validation
+checklist.
 
 ## 12. Tabs, workers, and worktrees
 

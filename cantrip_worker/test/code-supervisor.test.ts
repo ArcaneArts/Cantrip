@@ -466,6 +466,54 @@ describe("Cantrip Code functional HTTP health", () => {
 });
 
 describe("Cantrip Code supervisor", () => {
+  it("clears incomplete VSIX uploads and stale symlinks on restart", async () => {
+    const { capabilities, dataDirectory, installation, supervisor } =
+      await fixture();
+    await supervisor.close();
+
+    const vsixTempDirectory = supervisor.vsixTempDirectory();
+    const incompleteUpload = path.join(
+      vsixTempDirectory,
+      "cantrip-code-vsix-incomplete",
+    );
+    await mkdir(incompleteUpload, { recursive: true });
+    await writeFile(path.join(incompleteUpload, "upload.vsix"), "private");
+
+    const restarted = new CodeSupervisor({
+      capabilities,
+      dataDirectory,
+      installation,
+      readinessTimeoutMs: 3_000,
+    });
+    supervisors.push(restarted);
+    await restarted.start();
+    expect(await readdir(vsixTempDirectory)).toEqual([]);
+    await restarted.close();
+
+    const outsideDirectory = path.join(dataDirectory, "outside-vsix");
+    await mkdir(outsideDirectory, { recursive: true });
+    await writeFile(path.join(outsideDirectory, "must-remain.txt"), "safe");
+    await rm(vsixTempDirectory, { recursive: true, force: true });
+    await symlink(
+      outsideDirectory,
+      vsixTempDirectory,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    const recovered = new CodeSupervisor({
+      capabilities,
+      dataDirectory,
+      installation,
+      readinessTimeoutMs: 3_000,
+    });
+    supervisors.push(recovered);
+    await recovered.start();
+    expect(await readdir(vsixTempDirectory)).toEqual([]);
+    await expect(
+      readFile(path.join(outsideDirectory, "must-remain.txt"), "utf8"),
+    ).resolves.toBe("safe");
+  });
+
   it("does not block reopening on an unresponsive workbench surface", async () => {
     const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 1_000 });
     const { repository, supervisor } = await fixture({ bridge });
@@ -1756,13 +1804,24 @@ describe("Cantrip Code supervisor", () => {
   });
 
   it("evicts a warm profile after its idle timeout", async () => {
-    const { repository, supervisor } = await fixture({
+    const { dataDirectory, repository, supervisor } = await fixture({
       idleSweepIntervalMs: 60_000,
       profileIdleTimeoutMs: 1_000,
     });
+    const extensionMarker = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "extensions",
+      "example.publisher",
+      "installed.txt",
+    );
     const first = await supervisor.open(
       openCommand("first-idle-editor", repository, "primary"),
     );
+    await mkdir(path.dirname(extensionMarker), { recursive: true });
+    await writeFile(extensionMarker, "persistent extension\n");
     await supervisor.stop("first-idle-editor");
     await supervisor.evictIdleSessions(Date.now() + 2_000);
 
@@ -1770,6 +1829,9 @@ describe("Cantrip Code supervisor", () => {
       openCommand("second-idle-editor", repository, "primary"),
     );
     expect(second.processInstanceId).not.toBe(first.processInstanceId);
+    await expect(readFile(extensionMarker, "utf8")).resolves.toBe(
+      "persistent extension\n",
+    );
   });
 
   it("shares a persistent profile process and always writes the Cantrip theme", async () => {
@@ -1819,6 +1881,8 @@ describe("Cantrip Code supervisor", () => {
       "window.title": "Command Palette",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "workbench.colorTheme": "Cantrip Dark",
+      "extensions.autoCheckUpdates": false,
+      "extensions.autoUpdate": false,
     });
     await expect(readFile(staleExtensionCache, "utf8")).rejects.toThrow();
     await expect(
@@ -2422,6 +2486,78 @@ describe("Cantrip Code supervisor", () => {
       }),
     );
     await expect(extensionsOpening).resolves.toEqual({ opened: true });
+    expect(
+      JSON.parse(await readFile(new URL(target.workspaceUri), "utf8")).settings,
+    ).toMatchObject({
+      "cantrip.presentation": "extensions",
+      "extensions.autoCheckUpdates": false,
+      "extensions.autoUpdate": false,
+      "extensions.ignoreRecommendations": true,
+    });
+    const themeRequestPromise = bridge.nextRequest();
+    const themeUpdate = supervisor.setTheme(
+      sessionId,
+      "follow-cantrip",
+      "light",
+    );
+    const themeRequest = await themeRequestPromise;
+    expect(themeRequest).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "light" },
+    });
+    bridge.socket.send(
+      JSON.stringify({
+        type: "response",
+        id: themeRequest.id,
+        ok: true,
+        result: { applied: true },
+      }),
+    );
+    await expect(themeUpdate).resolves.toMatchObject({ status: "running" });
+    expect(
+      JSON.parse(await readFile(new URL(target.workspaceUri), "utf8")).settings,
+    ).toMatchObject({
+      "cantrip.appearance": "light",
+      "cantrip.presentation": "extensions",
+    });
+    const vsixRequestPromise = bridge.nextRequest();
+    const vsixInstallation = supervisor.installVsix(
+      sessionId,
+      "/tmp/cantrip-upload.vsix",
+    );
+    const vsixRequest = await vsixRequestPromise;
+    expect(vsixRequest).toMatchObject({
+      method: "installVsix",
+      params: { path: "/tmp/cantrip-upload.vsix" },
+    });
+    bridge.socket.send(
+      JSON.stringify({
+        type: "response",
+        id: vsixRequest.id,
+        ok: true,
+        result: { installed: true },
+      }),
+    );
+    await expect(vsixInstallation).resolves.toEqual({ installed: true });
+    const settingsAgainRequestPromise = bridge.nextRequest();
+    const settingsAgain = supervisor.openSettings(sessionId);
+    const settingsAgainRequest = await settingsAgainRequestPromise;
+    expect(settingsAgainRequest).toMatchObject({
+      method: "openSettings",
+      params: {},
+    });
+    bridge.socket.send(
+      JSON.stringify({
+        type: "response",
+        id: settingsAgainRequest.id,
+        ok: true,
+        result: { opened: true },
+      }),
+    );
+    await expect(settingsAgain).resolves.toEqual({ opened: true });
+    expect(
+      JSON.parse(await readFile(new URL(target.workspaceUri), "utf8")).settings,
+    ).toMatchObject({ "cantrip.presentation": "editor" });
     await expect(supervisor.openFile(sessionId, "anything.ts")).rejects.toThrow(
       "settings sessions cannot open files",
     );

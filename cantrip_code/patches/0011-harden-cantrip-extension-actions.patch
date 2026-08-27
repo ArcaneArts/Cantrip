@@ -1,0 +1,119 @@
+--- a/src/vs/workbench/contrib/extensions/browser/extensions.contribution.ts
++++ b/src/vs/workbench/contrib/extensions/browser/extensions.contribution.ts
+@@ -83,6 +83,8 @@
+ import './media/extensionManagement.css';
+ import { UnsupportedExtensionsMigrationContrib } from './unsupportedExtensionsMigrationContribution.js';
+ 
++const NOT_CANTRIP_EXTENSIONS_PRESENTATION = ContextKeyExpr.notEquals('config.cantrip.presentation', 'extensions');
++
+ // Singletons
+ registerSingleton(IExtensionsWorkbenchService, ExtensionsWorkbenchService, InstantiationType.Eager /* Auto updates extensions */);
+ registerSingleton(IExtensionRecommendationNotificationService, ExtensionRecommendationNotificationService, InstantiationType.Delayed);
+@@ -699,7 +701,7 @@
+ 			}
+ 		});
+ 
+-		const enableAutoUpdateWhenCondition = ContextKeyExpr.equals(`config.${AutoUpdateConfigurationKey}`, false);
++		const enableAutoUpdateWhenCondition = ContextKeyExpr.and(NOT_CANTRIP_EXTENSIONS_PRESENTATION, ContextKeyExpr.equals(`config.${AutoUpdateConfigurationKey}`, false));
+ 		this.registerExtensionAction({
+ 			id: 'workbench.extensions.action.enableAutoUpdate',
+ 			title: localize2('enableAutoUpdate', 'Enable Auto Update for All Extensions'),
+@@ -716,7 +718,7 @@
+ 			run: (accessor: ServicesAccessor) => accessor.get(IExtensionsWorkbenchService).updateAutoUpdateForAllExtensions(true)
+ 		});
+ 
+-		const disableAutoUpdateWhenCondition = ContextKeyExpr.notEquals(`config.${AutoUpdateConfigurationKey}`, false);
++		const disableAutoUpdateWhenCondition = ContextKeyExpr.and(NOT_CANTRIP_EXTENSIONS_PRESENTATION, ContextKeyExpr.notEquals(`config.${AutoUpdateConfigurationKey}`, false));
+ 		this.registerExtensionAction({
+ 			id: 'workbench.extensions.action.disableAutoUpdate',
+ 			title: localize2('disableAutoUpdate', 'Disable Auto Update for All Extensions'),
+@@ -1411,7 +1413,7 @@
+ 			id: ToggleAutoUpdateForExtensionAction.ID,
+ 			title: ToggleAutoUpdateForExtensionAction.LABEL,
+ 			category: ExtensionsLocalizedLabel,
+-			precondition: ContextKeyExpr.and(ContextKeyExpr.or(ContextKeyExpr.notEquals(`config.${AutoUpdateConfigurationKey}`, 'onlyEnabledExtensions'), ContextKeyExpr.equals('isExtensionEnabled', true)), ContextKeyExpr.not('extensionDisallowInstall'), ContextKeyExpr.has('isExtensionAllowed')),
++			precondition: ContextKeyExpr.and(NOT_CANTRIP_EXTENSIONS_PRESENTATION, ContextKeyExpr.or(ContextKeyExpr.notEquals(`config.${AutoUpdateConfigurationKey}`, 'onlyEnabledExtensions'), ContextKeyExpr.equals('isExtensionEnabled', true)), ContextKeyExpr.not('extensionDisallowInstall'), ContextKeyExpr.has('isExtensionAllowed')),
+ 			menu: {
+ 				id: MenuId.ExtensionContext,
+ 				group: UPDATE_ACTIONS_GROUP,
+@@ -1419,6 +1421,7 @@
+ 				when: ContextKeyExpr.and(
+ 					ContextKeyExpr.not('inExtensionEditor'),
+ 					ContextKeyExpr.equals('extensionStatus', 'installed'),
++					NOT_CANTRIP_EXTENSIONS_PRESENTATION,
+ 					ContextKeyExpr.not('isBuiltinExtension'),
+ 				)
+ 			},
+@@ -1438,12 +1441,12 @@
+ 			id: ToggleAutoUpdatesForPublisherAction.ID,
+ 			title: { value: ToggleAutoUpdatesForPublisherAction.LABEL, original: 'Auto Update (Publisher)' },
+ 			category: ExtensionsLocalizedLabel,
+-			precondition: ContextKeyExpr.equals(`config.${AutoUpdateConfigurationKey}`, false),
++			precondition: ContextKeyExpr.and(NOT_CANTRIP_EXTENSIONS_PRESENTATION, ContextKeyExpr.equals(`config.${AutoUpdateConfigurationKey}`, false)),
+ 			menu: {
+ 				id: MenuId.ExtensionContext,
+ 				group: UPDATE_ACTIONS_GROUP,
+ 				order: 2,
+-				when: ContextKeyExpr.and(ContextKeyExpr.equals('extensionStatus', 'installed'), ContextKeyExpr.not('isBuiltinExtension'))
++				when: ContextKeyExpr.and(NOT_CANTRIP_EXTENSIONS_PRESENTATION, ContextKeyExpr.equals('extensionStatus', 'installed'), ContextKeyExpr.not('isBuiltinExtension'))
+ 			},
+ 			run: async (accessor: ServicesAccessor, id: string) => {
+ 				const instantiationService = accessor.get(IInstantiationService);
+--- a/src/vs/workbench/contrib/extensions/browser/extensionsActions.ts
++++ b/src/vs/workbench/contrib/extensions/browser/extensionsActions.ts
+@@ -1058,11 +1058,11 @@
+ 		@IExtensionsWorkbenchService private readonly extensionsWorkbenchService: IExtensionsWorkbenchService,
+ 		@IWorkbenchExtensionEnablementService private readonly extensionEnablementService: IWorkbenchExtensionEnablementService,
+ 		@IAllowedExtensionsService private readonly allowedExtensionsService: IAllowedExtensionsService,
+-		@IConfigurationService configurationService: IConfigurationService,
++		@IConfigurationService private readonly configurationService: IConfigurationService,
+ 	) {
+ 		super(ToggleAutoUpdateForExtensionAction.ID, ToggleAutoUpdateForExtensionAction.LABEL.value, ToggleAutoUpdateForExtensionAction.DisabledClass);
+ 		this._register(configurationService.onDidChangeConfiguration(e => {
+-			if (e.affectsConfiguration(AutoUpdateConfigurationKey)) {
++			if (e.affectsConfiguration(AutoUpdateConfigurationKey) || e.affectsConfiguration('cantrip.presentation')) {
+ 				this.update();
+ 			}
+ 		}));
+@@ -1073,6 +1073,9 @@
+ 	override update() {
+ 		this.enabled = false;
+ 		this.class = ToggleAutoUpdateForExtensionAction.DisabledClass;
++		if (this.configurationService.getValue('cantrip.presentation') === 'extensions') {
++			return;
++		}
+ 		if (!this.extension) {
+ 			return;
+ 		}
+@@ -1343,6 +1346,7 @@
+ 		@IInstantiationService instantiationService: IInstantiationService,
+ 		@IExtensionService private readonly extensionService: IExtensionService,
+ 		@IContextKeyService private readonly contextKeyService: IContextKeyService,
++		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
+ 	) {
+ 
+ 		super(ManageExtensionAction.ID, '', '', true, instantiationService);
+@@ -1372,14 +1376,15 @@
+ 			groups.push(themeActions);
+ 		}
+ 
+-		groups.push([
+-			this.instantiationService.createInstance(EnableGloballyAction),
+-			this.instantiationService.createInstance(EnableForWorkspaceAction)
+-		]);
+-		groups.push([
+-			this.instantiationService.createInstance(DisableGloballyAction),
+-			this.instantiationService.createInstance(DisableForWorkspaceAction)
+-		]);
++		const hasWorkspace = this.workspaceContextService.getWorkbenchState() !== WorkbenchState.EMPTY;
++		groups.push([
++			this.instantiationService.createInstance(EnableGloballyAction),
++			...(hasWorkspace ? [this.instantiationService.createInstance(EnableForWorkspaceAction)] : [])
++		]);
++		groups.push([
++			this.instantiationService.createInstance(DisableGloballyAction),
++			...(hasWorkspace ? [this.instantiationService.createInstance(DisableForWorkspaceAction)] : [])
++		]);
+ 		if (updateActions.length) {
+ 			groups.push(updateActions);
+ 		}

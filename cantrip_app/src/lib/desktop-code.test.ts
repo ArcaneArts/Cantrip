@@ -71,6 +71,7 @@ import {
   directCodeAttachmentHealthy,
   directCodeAttachmentHealthyWithin,
   desktopCodeStateForRuntime,
+  installDirectCodeAttachmentVsix,
   openDirectCodeAttachmentExtensions,
   openDirectCodeAttachmentFile,
   openDirectCodeAttachmentSettings,
@@ -784,6 +785,51 @@ describe("openDirectCodeAttachmentExtensions", () => {
       expect.any(URL),
       expect.objectContaining({ signal: controller.signal }),
     );
+  });
+});
+
+describe("installDirectCodeAttachmentVsix", () => {
+  it("uploads a VSIX directly through the protected worker attachment", async () => {
+    const file = new File(["vsix"], "example.vsix", {
+      type: "application/octet-stream",
+    });
+    mocks.fetch.mockResolvedValue({
+      json: async () => ({ installed: true }),
+      ok: true,
+    });
+
+    await expect(
+      installDirectCodeAttachmentVsix(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        file,
+      ),
+    ).resolves.toEqual({ installed: true });
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:52345/code/_cantrip/install-vsix"),
+      expect.objectContaining({
+        body: file,
+        credentials: "omit",
+        headers: { "content-type": "application/octet-stream" },
+        method: "POST",
+      }),
+    );
+  });
+
+  it("rejects invalid packages before touching the worker", async () => {
+    await expect(
+      installDirectCodeAttachmentVsix(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        new File(["zip"], "example.zip"),
+      ),
+    ).rejects.toThrow(".vsix");
+    await expect(
+      installDirectCodeAttachmentVsix(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        { name: "huge.vsix", size: 17 * 1_024 * 1_024 } as File,
+      ),
+    ).rejects.toThrow("16 MiB");
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 });
 

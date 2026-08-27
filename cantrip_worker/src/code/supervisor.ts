@@ -325,6 +325,7 @@ export class CodeSupervisor {
   readonly #workerId: string;
   readonly #workerName: string;
   readonly #workerProcessGeneration: string;
+  readonly #vsixTempDirectory: string;
   #closed = false;
   #closeOperation: Promise<void> | null = null;
   #idleSweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -390,15 +391,21 @@ export class CodeSupervisor {
     this.#workerName = options.workerName ?? "Cantrip Worker";
     this.#workerProcessGeneration =
       options.workerProcessGeneration ?? randomUUID();
+    this.#vsixTempDirectory = path.join(this.#codeRoot, "temporary", "vsix");
   }
 
   async start(): Promise<void> {
+    // Uploads are deliberately ephemeral. Recreate this worker-owned directory
+    // before any direct endpoint becomes reachable so a crash cannot retain an
+    // uploaded VSIX (or leave a stale symlink in its place) across restarts.
+    await rm(this.#vsixTempDirectory, { recursive: true, force: true });
     await Promise.all([
       mkdir(path.join(this.#codeRoot, "profiles"), { recursive: true }),
       mkdir(path.join(this.#codeRoot, "workspaces"), { recursive: true }),
       mkdir(path.join(this.#codeRoot, "sessions"), { recursive: true }),
       mkdir(path.join(this.#codeRoot, "state"), { recursive: true }),
       mkdir(path.join(this.#codeRoot, "logs"), { recursive: true }),
+      mkdir(this.#vsixTempDirectory, { recursive: true, mode: 0o700 }),
       this.#bridge.start(),
     ]);
     await this.#restoreState();
@@ -417,6 +424,10 @@ export class CodeSupervisor {
       editorBuild: this.#installation?.editorBuild ?? null,
       workerProcessGeneration: this.#workerProcessGeneration,
     };
+  }
+
+  vsixTempDirectory(): string {
+    return this.#vsixTempDirectory;
   }
 
   profileSettingsPath(profileId: string): string {
@@ -898,6 +909,11 @@ export class CodeSupervisor {
           "Cantrip Code graphical settings require a settings session.",
         );
       }
+      if (session.presentation !== "editor") {
+        session.presentation = "editor";
+        await this.#writeWorkspace(session);
+        this.#assertCurrentOperation(sessionId, generation, session);
+      }
       this.#touch(session);
       const result = await this.#bridge.openSettings(sessionId, signal);
       this.#assertCurrentOperation(sessionId, generation, session);
@@ -914,8 +930,35 @@ export class CodeSupervisor {
       if (session.kind !== "settings") {
         throw new Error("Cantrip Code extensions require a settings session.");
       }
+      if (session.presentation !== "extensions") {
+        session.presentation = "extensions";
+        await this.#writeWorkspace(session);
+        this.#assertCurrentOperation(sessionId, generation, session);
+      }
       this.#touch(session);
       const result = await this.#bridge.openExtensions(sessionId, signal);
+      this.#assertCurrentOperation(sessionId, generation, session);
+      return result;
+    });
+  }
+
+  async installVsix(sessionId: string, vsixPath: string) {
+    const generation = this.#sessionGeneration(sessionId);
+    const signal = this.#sessionOperationSignal(sessionId, generation);
+    return this.#enqueueSessionOperation(sessionId, async () => {
+      this.#assertCurrentOperation(sessionId, generation);
+      const session = this.#requireSession(sessionId);
+      if (session.kind !== "settings") {
+        throw new Error(
+          "Cantrip Code VSIX installs require a settings session.",
+        );
+      }
+      this.#touch(session);
+      const result = await this.#bridge.installVsix(
+        sessionId,
+        vsixPath,
+        signal,
+      );
       this.#assertCurrentOperation(sessionId, generation, session);
       return result;
     });
@@ -1183,9 +1226,9 @@ export class CodeSupervisor {
 
   #isIdle(session: CodeSession, now: number): boolean {
     const idleTimeoutMs =
-      session.presentation === "editor"
-        ? this.#editorIdleTimeoutMs
-        : this.#idleTimeoutMs;
+      session.presentation === "workbench"
+        ? this.#idleTimeoutMs
+        : this.#editorIdleTimeoutMs;
     return (
       session.status !== "starting" &&
       session.status !== "stopping" &&
@@ -1977,12 +2020,14 @@ export class CodeSupervisor {
       "window.title": "Command Palette",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
     };
+    if (session.presentation !== "workbench") {
+      settings["extensions.ignoreRecommendations"] = true;
+    }
     if (session.presentation === "editor") {
       Object.assign(settings, {
         "breadcrumbs.enabled": false,
         "debug.toolBarLocation": "hidden",
         "editor.minimap.enabled": false,
-        "extensions.ignoreRecommendations": true,
         "window.commandCenter": false,
         "workbench.activityBar.location": "hidden",
         "workbench.editor.editorActionsLocation": "hidden",
@@ -2144,7 +2189,7 @@ export class CodeSupervisor {
     for (const record of records) {
       if (typeof record !== "object" || record === null) continue;
       const candidate = record as Record<string, unknown>;
-      if (candidate.presentation === "editor") continue;
+      if (candidate.presentation !== "workbench") continue;
       const appearance = codeAppearanceSchema.safeParse(candidate.appearance);
       const requiredStrings = [
         "codeTabId",

@@ -10,6 +10,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Blocks,
+  CheckCircle2,
+  FileUp,
   Loader2,
   RefreshCw,
   Settings2,
@@ -43,6 +45,7 @@ import {
   isCodeWorkbenchReadyEvent,
 } from "@/lib/code-workbench-frame";
 import {
+  installDirectCodeAttachmentVsix,
   openDirectCodeAttachmentExtensions,
   openDirectCodeAttachmentSettings,
   preferProtectedCodeAttachment,
@@ -143,7 +146,15 @@ export function CodeSettings({
     view: CodeCustomizationView;
   } | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [vsixInstall, setVsixInstall] = useState<
+    | { state: "idle" }
+    | { state: "installing"; name: string }
+    | { state: "installed"; name: string }
+    | { state: "failed"; message: string }
+  >({ state: "idle" });
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const vsixInputRef = useRef<HTMLInputElement>(null);
+  const vsixInstallControllerRef = useRef<AbortController | null>(null);
   const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
   const connectionGeneration = useRef(0);
   const lifecycleRef =
@@ -285,6 +296,16 @@ export function CodeSettings({
     [attachment?.attachmentId, attachment?.url, frameDocumentVersion],
   );
 
+  useEffect(() => {
+    setVsixInstall({ state: "idle" });
+    return () => {
+      vsixInstallControllerRef.current?.abort(
+        new DOMException("The Code attachment changed.", "AbortError"),
+      );
+      vsixInstallControllerRef.current = null;
+    };
+  }, [attachment?.attachmentId]);
+
   useLayoutEffect(() => {
     if (!attachment || !frameMount) return;
     const frame = frameRef.current?.contentWindow;
@@ -384,6 +405,36 @@ export function CodeSettings({
     },
   });
 
+  const installVsix = useCallback(
+    async (file: File) => {
+      if (!attachment) return;
+      vsixInstallControllerRef.current?.abort();
+      const controller = new AbortController();
+      vsixInstallControllerRef.current = controller;
+      setVsixInstall({ state: "installing", name: file.name });
+      try {
+        await installDirectCodeAttachmentVsix(attachment, file, {
+          signal: controller.signal,
+        });
+        if (vsixInstallControllerRef.current !== controller) return;
+        setVsixInstall({ state: "installed", name: file.name });
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          vsixInstallControllerRef.current !== controller
+        ) {
+          return;
+        }
+        setVsixInstall({ state: "failed", message: errorMessage(error) });
+      } finally {
+        if (vsixInstallControllerRef.current === controller) {
+          vsixInstallControllerRef.current = null;
+        }
+      }
+    },
+    [attachment],
+  );
+
   const ready =
     openedView?.nonce === frameMount?.nonce &&
     openedView?.view === customizationView;
@@ -433,13 +484,63 @@ export function CodeSettings({
       </div>
       {customizationView === "extensions" ? (
         <div
-          className="shrink-0 border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground"
+          className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground"
           role="note"
         >
-          Treat extensions as trusted code: they run with the same filesystem
-          and process access as this worker&apos;s terminal. Installs from Open
-          VSX or VSIX stay on {selectedWorker?.name ?? "the selected worker"}{" "}
-          and apply to its default Cantrip Code profile.
+          <p className="min-w-64 flex-1">
+            Treat extensions as trusted code: they can access this worker&apos;s
+            files, processes, credentials, and network with the same authority
+            as its terminal. Installs from Open VSX or VSIX stay on{" "}
+            {selectedWorker?.name ?? "the selected worker"} and apply to its
+            default Cantrip Code profile.
+          </p>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <input
+              accept=".vsix,application/vsix,application/octet-stream"
+              aria-label="Choose a VSIX extension package"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void installVsix(file);
+              }}
+              ref={vsixInputRef}
+              type="file"
+            />
+            <Button
+              disabled={
+                !attachment || !ready || vsixInstall.state === "installing"
+              }
+              onClick={() => vsixInputRef.current?.click()}
+              size="sm"
+              title="Fallback when the native Code-OSS VSIX picker is unavailable"
+              type="button"
+              variant="outline"
+            >
+              {vsixInstall.state === "installing" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <FileUp className="size-3.5" />
+              )}
+              Upload VSIX
+            </Button>
+            {vsixInstall.state === "installing" ? (
+              <span className="max-w-56 truncate" role="status">
+                Installing {vsixInstall.name}…
+              </span>
+            ) : vsixInstall.state === "installed" ? (
+              <span className="flex max-w-64 items-center gap-1" role="status">
+                <CheckCircle2 className="size-3.5 shrink-0" />
+                <span className="truncate">Installed {vsixInstall.name}.</span>
+                Code will prompt if a reload or extension-host restart is
+                needed.
+              </span>
+            ) : vsixInstall.state === "failed" ? (
+              <span className="max-w-72 text-destructive" role="alert">
+                {vsixInstall.message}
+              </span>
+            ) : null}
+          </div>
         </div>
       ) : null}
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">

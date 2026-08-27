@@ -680,6 +680,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
   });
   const codeDirectEndpoints = new CodeDirectEndpointManager(code, {
+    vsixTempDirectory: code.vsixTempDirectory(),
     workerProcessGeneration,
   });
   const cliBroker = new CantripCliBroker(config);
