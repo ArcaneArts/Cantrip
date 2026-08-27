@@ -24,10 +24,7 @@ import {
   auditEventListSchema,
   auditEventQuerySchema,
   encryptedBrowserCreateSchema,
-  browserWireListSchema,
   browserServiceListSchema,
-  browserWireSummarySchema,
-  browserTunnelWireRequestSchema,
   browserPrivateStateOpaqueSchema,
   encryptedBrowserUpdateSchema,
   cantripAgentOperationResultSchema,
@@ -540,7 +537,6 @@ import {
   ARCHIVED_CHAT_RETENTION_MS,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
-  TunnelManagementError,
   WorkerEnrollmentError,
   WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
@@ -616,6 +612,10 @@ import {
 import { createApplicationServer } from "./app/http/server.js";
 import { installTransportSecurity } from "./app/http/transport-security.js";
 import { installBrowserServiceDiscoveryRoutes } from "./app/routes/browser-service-discovery.js";
+import {
+  installBrowserListRoute,
+  installBrowserManagementRoutes,
+} from "./app/routes/browser-management.js";
 import { installChatRelocationRoutes } from "./app/routes/chat-relocations.js";
 import { installInternalProviderCredentialRoutes } from "./app/routes/internal-provider-credentials.js";
 import { installPolicyRoutes } from "./app/routes/policies.js";
@@ -19706,18 +19706,10 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/browsers",
-    async (request, reply) =>
-      reply.send(
-        browserWireListSchema.parse(
-          await repository.listBrowsers(
-            applicationOwnerId(),
-            request.params.projectId,
-          ),
-        ),
-      ),
-  );
+  installBrowserListRoute(app, {
+    applicationOwnerId,
+    repository,
+  });
 
   installProjectExportRoutes(app, {
     applicationOwnerId,
@@ -19737,205 +19729,14 @@ export async function buildApp({
     repository,
   });
 
-  app.post<{ Params: { browserId: string } }>(
-    "/api/browsers/:browserId/tunnel",
-    async (request, reply) => {
-      const input = browserTunnelWireRequestSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const ownerId = applicationOwnerId();
-      const context = await repository.getRemoteSurfaceExecutionContext(
-        ownerId,
-        request.params.browserId,
-      );
-      if (!context || context.surface.kind !== "browser") {
-        return reply.code(404).send({ error: "Browser not found." });
-      }
-      const workerId = input.data.workerId;
-      const project = await repository.getProject(
-        ownerId,
-        context.surface.projectId,
-      );
-      if (
-        project?.originKind === "managed-folder" &&
-        workerId !== project.preferredWorkerId
-      ) {
-        return reply.code(409).send({
-          code: "target-mismatch",
-          error: "This worker-managed folder is bound to its owning worker.",
-        });
-      }
-      const workerOwned = (await repository.listWorkers(ownerId)).some(
-        (worker) => worker.workerId === workerId,
-      );
-      if (!workerOwned) {
-        return reply.code(404).send({ error: "Destination worker not found." });
-      }
-      const managedBy = {
-        kind: "browser" as const,
-        id: context.surface.id,
-      };
-      const existing = await repository.getManagedTunnel(ownerId, managedBy);
-      const targetChanged = Boolean(
-        existing &&
-        (input.data.resetAttachments ||
-          existing.destination.kind !== "worker-tcp" ||
-          existing.destination.workerId !== workerId ||
-          existing.protocolHint !== input.data.protocolHint),
-      );
-      let tunnel;
-      try {
-        tunnel = await repository.registerManagedTunnel(
-          ownerId,
-          {
-            name: "Browser tunnel",
-            description: null,
-            projectId: context.surface.projectId,
-            origin: "browser",
-            management: "managed-ephemeral",
-            protocolHint: input.data.protocolHint,
-            source: { kind: "desktop-loopback" },
-            destination: { kind: "worker-tcp", workerId },
-            managedBy,
-            desiredState: "started",
-            status:
-              existing && !targetChanged
-                ? existing.status
-                : bridge.isConnected(workerId)
-                  ? "stopped"
-                  : "offline",
-          },
-          {
-            id: input.data.tunnelId,
-            protectedRecord: input.data.protectedRecord,
-          },
-        );
-      } catch (error) {
-        if (error instanceof TunnelManagementError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-      if (targetChanged && existing && tunnel) {
-        await Promise.all(
-          existing.attachments.map(({ id }) =>
-            tunnelRuntime.revoke(ownerId, id, {
-              preserveTunnelState: true,
-            }),
-          ),
-        );
-        tunnel = await repository.getManagedTunnel(ownerId, managedBy);
-      }
-      return tunnel
-        ? reply.send(tunnelWireSummarySchema.parse(tunnel))
-        : reply.code(404).send({
-            error: "Browser project or destination worker not found.",
-          });
-    },
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/browsers",
-    async (request, reply) => {
-      const input = encryptedBrowserCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const browser = await repository.createBrowser(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-          (workerId) => bridge.isConnected(workerId),
-        );
-        return browser
-          ? reply.code(201).send(browserWireSummarySchema.parse(browser))
-          : reply.code(404).send({ error: "Project source not found." });
-      } catch (error) {
-        if (error instanceof ExecutionPlacementUnavailableError) {
-          return reply
-            .code(error.code === "project-not-found" ? 404 : 409)
-            .send({ code: error.code, error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.patch<{ Params: { browserId: string } }>(
-    "/api/browsers/:browserId",
-    async (request, reply) => {
-      const input = encryptedBrowserUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const browser = await applyBrowserUpdate(
-          applicationOwnerId(),
-          request.params.browserId,
-          input.data,
-        );
-        return browser
-          ? reply.send(browserWireSummarySchema.parse(browser))
-          : reply.code(404).send({ error: "Browser not found." });
-      } catch (error) {
-        if (error instanceof SurfacePrivateStateConflictError) {
-          return reply.code(409).send({
-            code: "stale-state",
-            error: "Browser state changed before this update.",
-          });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.delete<{ Params: { browserId: string } }>(
-    "/api/browsers/:browserId",
-    async (request, reply) => {
-      const ownerId = applicationOwnerId();
-      const context = await repository.getRemoteSurfaceExecutionContext(
-        ownerId,
-        request.params.browserId,
-      );
-      const managedTunnel = await repository.getManagedTunnel(ownerId, {
-        kind: "browser",
-        id: request.params.browserId,
-      });
-      if (
-        !(await repository.deleteBrowser(ownerId, request.params.browserId))
-      ) {
-        return reply.code(404).send({ error: "Browser not found." });
-      }
-      await workerLinks.revokeResource(
-        ownerId,
-        "browser",
-        request.params.browserId,
-        "resource-deleted",
-      );
-      if (managedTunnel) {
-        await Promise.all(
-          managedTunnel.attachments.map(({ id }) =>
-            tunnelRuntime.revoke(ownerId, id),
-          ),
-        );
-        await repository.removeManagedTunnel(ownerId, {
-          kind: "browser",
-          id: request.params.browserId,
-        });
-      }
-      if (context && bridge.isConnected(context.workerId)) {
-        void bridge
-          .request(context.workerId, {
-            type: "surface.close",
-            surfaceId: context.surface.id,
-          })
-          .catch(() => undefined);
-      }
-      return reply.code(204).send();
-    },
-  );
+  installBrowserManagementRoutes(app, {
+    applicationOwnerId,
+    applyBrowserUpdate,
+    bridge,
+    repository,
+    tunnelRuntime,
+    workerLinks,
+  });
 
   installRemoteDesktopReadRoutes(app, {
     applicationOwnerId,
