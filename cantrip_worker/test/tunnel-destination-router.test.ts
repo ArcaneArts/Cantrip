@@ -4,10 +4,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const tunnelContent = vi.hoisted(() => ({
   open: vi.fn(),
 }));
+const tunnelProtection = vi.hoisted(() => ({
+  seal: vi.fn(),
+}));
 
 vi.mock("../src/tunnel-content-encryption.js", () => ({
   openWorkerTunnelContentRecord: tunnelContent.open,
 }));
+vi.mock("../src/tunnel-data-protection.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/tunnel-data-protection.js")>();
+  tunnelProtection.seal.mockImplementation(actual.sealTunnelDataFrame);
+  return { ...actual, sealTunnelDataFrame: tunnelProtection.seal };
+});
 
 import type { CodeDirectEndpointManager } from "../src/code/direct-endpoint.js";
 import { subscribeWorkerLogs } from "../src/logger.js";
@@ -99,6 +108,7 @@ function fixture() {
     close: vi.fn(),
     disconnect: vi.fn(),
     failProtectedFrame: vi.fn(),
+    failProtectedOutputFrame: vi.fn(),
     handleFrame: vi.fn(),
     setFrameEmitter: vi.fn(),
   } as unknown as TunnelTcpDestinationAdapter;
@@ -189,6 +199,39 @@ function chatShareContent() {
 }
 
 describe("TunnelDestinationRouter protected target diagnostics", () => {
+  it("closes an unsealable protected response without retrying it as congestion", async () => {
+    tunnelContent.open.mockResolvedValue(codeContent());
+    const { codeEndpoints, emitted, router, tcp } = fixture();
+    vi.mocked(codeEndpoints.prepareProtected).mockResolvedValue({
+      kind: "tcp",
+      host: "127.0.0.1",
+      port: 43_210,
+    });
+    const connect = protectedConnect();
+    router.handleFrame(connect, new Uint8Array());
+    await vi.waitFor(() => expect(tcp.handleFrame).toHaveBeenCalledOnce());
+    const emitTcp = vi.mocked(tcp.setFrameEmitter).mock.calls[0]?.[0];
+    if (!emitTcp) throw new Error("TCP emitter was not installed.");
+    const response: TunnelDataPlaneFrameHeader = {
+      protocolVersion: 1,
+      tunnelId: connect.tunnelId,
+      attachmentId: connect.attachmentId,
+      sourceEndpointId: connect.sourceEndpointId,
+      destinationEndpointId: connect.destinationEndpointId,
+      connectionId: connect.connectionId,
+      sequence: 1,
+      kind: "data",
+      direction: "destination-to-source",
+    };
+    tunnelProtection.seal.mockImplementationOnce(() => {
+      throw new Error("seal unavailable");
+    });
+
+    expect(emitTcp(response, new Uint8Array([1]))).toBe(true);
+    expect(tcp.failProtectedOutputFrame).toHaveBeenCalledWith(response);
+    expect(emitted).not.toHaveBeenCalled();
+  });
+
   it("uses relay correlation carried by the destination connect frame", async () => {
     tunnelContent.open.mockRejectedValue(new Error("record unavailable"));
     const { emitted, records, router } = fixture();

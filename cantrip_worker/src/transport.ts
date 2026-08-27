@@ -228,6 +228,7 @@ export class WorkerConnection {
   #transportLossGeneration = 0;
   #transportState: "inactive" | "connected" | "grace" | "disconnected" =
     "inactive";
+  #workerLinkCapacityWait: Promise<boolean> | null = null;
 
   constructor(
     private readonly config: WorkerConfig,
@@ -905,6 +906,7 @@ export class WorkerConnection {
       });
       return true;
     } catch {
+      socket.terminate();
       return false;
     }
   }
@@ -920,8 +922,42 @@ export class WorkerConnection {
       socket.send(encodeWorkerLinkFrame(header, payload));
       return true;
     } catch {
+      socket.terminate();
       return false;
     }
+  }
+
+  waitForWorkerLinkCapacity(): Promise<boolean> {
+    if (this.#workerLinkCapacityWait) return this.#workerLinkCapacityWait;
+    const waiting = (async () => {
+      while (!this.#closed) {
+        if (
+          this.#transportState === "inactive" ||
+          this.#transportState === "disconnected"
+        ) {
+          return false;
+        }
+        const socket = this.#readySocket;
+        if (
+          socket?.readyState === WebSocket.OPEN &&
+          socket.bufferedAmount <= TUNNEL_DATA_PLANE_LOW_WATER_BYTES
+        ) {
+          return true;
+        }
+        // Keep authorized WorkerLink channels alive through the bounded
+        // reconnect grace. A replacement ready socket wakes this coalesced
+        // low-water poll without waiting for unrelated protocol credit.
+        await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      }
+      return false;
+    })();
+    this.#workerLinkCapacityWait = waiting;
+    void waiting.then(() => {
+      if (this.#workerLinkCapacityWait === waiting) {
+        this.#workerLinkCapacityWait = null;
+      }
+    });
+    return waiting;
   }
 
   sendNotification(notification: WorkerNotification): boolean {

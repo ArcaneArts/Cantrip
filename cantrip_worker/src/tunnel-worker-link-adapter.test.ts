@@ -105,7 +105,7 @@ function protectedTarget() {
 }
 
 describe("TunnelWorkerLinkAdapter", () => {
-  it("routes exact nested tunnel frames and releases attachment streams", async () => {
+  it("keeps accepted nested frames writable and releases attachment streams", async () => {
     const destinations = {
       handleFrame: vi.fn(),
       revokeAttachment: vi.fn(() => 1),
@@ -156,18 +156,14 @@ describe("TunnelWorkerLinkAdapter", () => {
       kind: "accepted",
       initialCreditBytes: 1024,
     };
-    expect(adapter.routeFrame(accepted, new Uint8Array())).toBe(true);
+    for (let sequence = 0; sequence < 4; sequence += 1) {
+      expect(
+        adapter.routeFrame({ ...accepted, sequence }, new Uint8Array()),
+      ).toBe(true);
+    }
     expect(decodeTunnelDataPlaneFrame(emitted[0]!).header).toEqual(accepted);
-    expect(emittedFormats).toEqual(["tunnel-data-plane-v1"]);
-    const capacity = adapter.waitForCapacity(attachmentId)!;
-    let settled = false;
-    void capacity.then(() => {
-      settled = true;
-    });
-    await Promise.resolve();
-    expect(settled).toBe(false);
-    await channel.credit?.(emitted[0]!.byteLength);
-    await expect(capacity).resolves.toBe(true);
+    expect(emittedFormats).toEqual(Array(4).fill("tunnel-data-plane-v1"));
+    await expect(adapter.waitForCapacity(attachmentId)!).resolves.toBe(true);
 
     await channel.close?.("normal");
     expect(destinations.revokeAttachment).toHaveBeenCalledWith(attachmentId);
@@ -206,17 +202,55 @@ describe("TunnelWorkerLinkAdapter", () => {
     };
 
     expect(adapter.routeFrame(accepted, new Uint8Array())).toBe(false);
-    const capacity = adapter.waitForCapacity(attachmentId)!;
+    const carrierCapacity = adapter.waitForCapacity(attachmentId)!;
     let settled = false;
-    void capacity.then(() => {
+    void carrierCapacity.then(() => {
       settled = true;
     });
     await Promise.resolve();
     expect(settled).toBe(false);
 
+    await channel.carrierWritable?.();
+    await expect(carrierCapacity).resolves.toBe(true);
+
+    expect(adapter.routeFrame(accepted, new Uint8Array())).toBe(false);
+    const protocolCapacity = adapter.waitForCapacity(attachmentId)!;
     await channel.credit?.(1024);
-    await expect(capacity).resolves.toBe(true);
+    await expect(protocolCapacity).resolves.toBe(true);
     await channel.close?.("normal");
+  });
+
+  it("releases rejected-frame capacity waits when the channel closes", async () => {
+    const adapter = new TunnelWorkerLinkAdapter({
+      handleFrame: vi.fn(),
+      revokeAttachment: vi.fn(() => 1),
+    } as unknown as TunnelDestinationRouter);
+    const { grant, session } = authority();
+    const channel = await adapter.open({
+      channel: {
+        channelId: "33333333-3333-4333-8333-333333333333",
+        connectionId: "44444444-4444-4444-8444-444444444444",
+      },
+      grant,
+      lane: "stream",
+      emit: {
+        close: vi.fn(async () => true),
+        data: vi.fn(() => false),
+        error: vi.fn(() => true),
+        halfClose: vi.fn(() => true),
+      },
+      session,
+    });
+    const accepted: TunnelDataPlaneFrameHeader = {
+      ...base(),
+      kind: "accepted",
+      initialCreditBytes: 1024,
+    };
+
+    expect(adapter.routeFrame(accepted, new Uint8Array())).toBe(false);
+    const capacity = adapter.waitForCapacity(attachmentId)!;
+    await channel.close?.("normal");
+    await expect(capacity).resolves.toBe(false);
   });
 
   it("rejects nested frames outside the exact grant identity", async () => {

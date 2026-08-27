@@ -498,7 +498,12 @@ export class TunnelDestinationRouter {
             ...workerLogErrorIdentity(error),
           },
         );
-        return false;
+        // Sealing failures are terminal, not carrier congestion. Retrying the
+        // same plaintext cannot succeed and would otherwise hot-loop whenever
+        // the outer carrier is already below its low-water mark.
+        this.#protections.delete(key);
+        this.tcp.failProtectedOutputFrame(header);
+        return true;
       }
     }
     const sent = this.#emit?.(emittedHeader, emittedPayload) ?? false;

@@ -17,6 +17,7 @@ import {
   type WorkerLinkFrameHeader,
   type WorkerLinkOperationalRoute,
   type WorkerLinkPayloadFormat,
+  type WorkerLinkQosLane,
   type WorkerLinkPeerSession,
   type WorkerLinkResourceKind,
   type WorkerLinkSession,
@@ -46,7 +47,9 @@ interface InstalledGrantState {
 }
 
 interface ActiveChannel {
+  acceptDelivered: boolean;
   adapter: WorkerLinkAdapterChannel;
+  carrierCapacityWait: Promise<void> | null;
   grantId: string;
   identity: Extract<WorkerLinkFrameHeader, { kind: "open" }>["channel"];
   inboundCreditBytes: number;
@@ -58,9 +61,12 @@ interface ActiveChannel {
   outboundCreditBytes: number;
   outboundSequence: number;
   outputReady: boolean;
+  pendingCarrierControls: PendingCarrierControl[];
   pendingOutput: PendingAdapterEmission[];
   pendingOutputBytes: number;
   respond: WorkerLinkFrameResponder;
+  retire(): void;
+  retired: Promise<void>;
   route: Extract<WorkerLinkFrameHeader, { kind: "open" }>["effectiveRoute"];
   routeGeneration: number;
   sessionId: string;
@@ -76,17 +82,32 @@ type PendingAdapterEmission =
   | { kind: "error"; code: WorkerLinkChannelErrorCode }
   | { kind: "half-close" };
 
+type PendingCarrierControl =
+  | {
+      kind: "credit";
+      direction: "client-to-worker" | "worker-to-client";
+      bytes: number;
+    }
+  | { kind: "half-close"; direction: "worker-to-client" }
+  | { kind: "error"; code: WorkerLinkChannelErrorCode };
+
+type ReliableControlResult = "queued" | "sent" | false;
+
 export interface WorkerLinkAdapterChannel {
+  carrierWritable?(): Promise<void> | void;
   close?(code: WorkerLinkChannelCloseCode): Promise<void> | void;
   credit?(bytes: number): Promise<void> | void;
   halfClose?(): Promise<void> | void;
   write?(payload: Uint8Array): Promise<void> | void;
 }
 
-export type WorkerLinkFrameResponder = (
-  header: WorkerLinkFrameHeader,
-  payload: Uint8Array,
-) => boolean;
+export interface WorkerLinkFrameResponder {
+  (header: WorkerLinkFrameHeader, payload: Uint8Array): boolean;
+  waitForCapacity?(
+    lane: WorkerLinkQosLane,
+    channelId?: string,
+  ): Promise<boolean>;
+}
 
 export interface WorkerLinkAdapterEmitter {
   close(code?: WorkerLinkChannelCloseCode): Promise<boolean>;
@@ -261,7 +282,23 @@ export class WorkerLinkGateway {
     if (header.kind === "open") {
       try {
         const accepted = await this.openChannel(header, respond, true);
-        const sent = respond(accepted, EMPTY_PAYLOAD);
+        const openingChannel = this.#channels.get(header.channel.channelId);
+        if (!openingChannel) return false;
+        const sent = await this.#respondWithCapacity(
+          respond,
+          header.lane,
+          header.channel.channelId,
+          accepted,
+          EMPTY_PAYLOAD,
+          {
+            cancel: openingChannel.retired,
+            onAccepted: () => {
+              openingChannel.acceptDelivered = true;
+            },
+            stillValid: () =>
+              this.#channels.get(header.channel.channelId) === openingChannel,
+          },
+        );
         if (!sent) {
           await this.#closeChannel(
             header.channel.channelId,
@@ -273,7 +310,10 @@ export class WorkerLinkGateway {
         return sent;
       } catch (error) {
         if (!(error instanceof WorkerLinkChannelRejectedError)) throw error;
-        return respond(
+        return this.#respondWithCapacity(
+          respond,
+          header.lane,
+          header.channel.channelId,
           {
             protocolVersion: header.protocolVersion,
             sessionId: header.sessionId,
@@ -285,7 +325,6 @@ export class WorkerLinkGateway {
             kind: "reject",
             code: error.code,
           },
-          EMPTY_PAYLOAD,
         );
       }
     }
@@ -593,8 +632,14 @@ export class WorkerLinkGateway {
         "WorkerLink authority changed while opening the channel.",
       );
     }
+    let retire!: () => void;
+    const retired = new Promise<void>((resolve) => {
+      retire = resolve;
+    });
     const channel: ActiveChannel = {
+      acceptDelivered: !deferAdapterOutput,
       adapter: adapterChannel,
+      carrierCapacityWait: null,
       grantId: installed.grant.binding.grantId,
       identity: parsed.channel,
       inboundCreditBytes: parsed.initialCreditBytes,
@@ -606,9 +651,12 @@ export class WorkerLinkGateway {
       outboundCreditBytes: parsed.initialCreditBytes,
       outboundSequence: 1,
       outputReady: false,
+      pendingCarrierControls: [],
       pendingOutput,
       pendingOutputBytes,
       respond,
+      retire,
+      retired,
       route: parsed.effectiveRoute,
       routeGeneration: parsed.routeGeneration,
       sessionId: parsed.sessionId,
@@ -804,10 +852,21 @@ export class WorkerLinkGateway {
         }
         channel.inboundCreditBytes -= payload.byteLength;
         await channel.adapter.write(payload);
-        if (this.#emitCredit(channel, "client-to-worker", payload.byteLength)) {
+        if (this.#channels.get(channel.identity.channelId) !== channel) return;
+        const credit = this.#emitCredit(
+          channel,
+          "client-to-worker",
+          payload.byteLength,
+        );
+        if (credit === "sent") {
           channel.inboundCreditBytes = Math.min(
             WORKER_LINK_MAX_CREDIT_BYTES,
             channel.inboundCreditBytes + payload.byteLength,
+          );
+        } else if (credit === false) {
+          await this.#closeChannel(
+            channel.identity.channelId,
+            "endpoint-disconnected",
           );
         }
         return;
@@ -964,7 +1023,8 @@ export class WorkerLinkGateway {
       !grantAllowsWorkerOutput(grant?.grant) ||
       payload.byteLength === 0 ||
       payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
-      payload.byteLength > channel.outboundCreditBytes
+      payload.byteLength > channel.outboundCreditBytes ||
+      channel.pendingCarrierControls.length > 0
     ) {
       return false;
     }
@@ -977,16 +1037,65 @@ export class WorkerLinkGateway {
       },
       payload,
     );
-    if (sent) channel.outboundCreditBytes -= payload.byteLength;
+    if (sent) {
+      channel.outboundCreditBytes -= payload.byteLength;
+    } else {
+      this.#waitForCarrierCapacity(channel);
+    }
     return sent;
+  }
+
+  #waitForCarrierCapacity(channel: ActiveChannel): void {
+    const waitForCapacity = channel.respond.waitForCapacity;
+    if (
+      !waitForCapacity ||
+      channel.carrierCapacityWait ||
+      this.#channels.get(channel.identity.channelId) !== channel
+    ) {
+      return;
+    }
+    const channelId = channel.identity.channelId;
+    const lane = channel.lane;
+    let waiting!: Promise<void>;
+    waiting = Promise.resolve()
+      .then(() => waitForCapacity(lane, channelId))
+      .then(async (available) => {
+        const current = this.#channels.get(channelId);
+        if (!current || current.carrierCapacityWait !== waiting) return;
+        current.carrierCapacityWait = null;
+        if (!available) {
+          await this.#closeChannel(channelId, "endpoint-disconnected");
+          return;
+        }
+        if (!this.#flushCarrierControls(current)) {
+          this.#waitForCarrierCapacity(current);
+          return;
+        }
+        try {
+          await current.adapter.carrierWritable?.();
+        } catch {
+          await this.#closeChannel(channelId, "endpoint-disconnected");
+        }
+      })
+      .catch(async () => {
+        const current = this.#channels.get(channelId);
+        if (!current || current.carrierCapacityWait !== waiting) return;
+        current.carrierCapacityWait = null;
+        await this.#closeChannel(channelId, "endpoint-disconnected");
+      });
+    channel.carrierCapacityWait = waiting;
   }
 
   #emitCredit(
     channel: ActiveChannel,
     direction: "client-to-worker" | "worker-to-client",
     bytes: number,
-  ): boolean {
-    return this.#respond(channel, { kind: "credit", direction, bytes });
+  ): ReliableControlResult {
+    return this.#emitReliableControl(channel, {
+      kind: "credit",
+      direction,
+      bytes,
+    });
   }
 
   #emitHalfClose(channelId: string): boolean {
@@ -996,16 +1105,70 @@ export class WorkerLinkGateway {
       : null;
     return channel &&
       grant?.grant.binding.operations.includes("stream:half-close")
-      ? this.#respond(channel, {
+      ? this.#emitReliableControl(channel, {
           kind: "half-close",
           direction: "worker-to-client",
-        })
+        }) !== false
       : false;
   }
 
   #emitError(channelId: string, code: WorkerLinkChannelErrorCode): boolean {
     const channel = this.#channels.get(channelId);
-    return channel ? this.#respond(channel, { kind: "error", code }) : false;
+    return channel
+      ? this.#emitReliableControl(channel, { kind: "error", code }) !== false
+      : false;
+  }
+
+  #emitReliableControl(
+    channel: ActiveChannel,
+    detail: PendingCarrierControl,
+  ): ReliableControlResult {
+    if (channel.pendingCarrierControls.length === 0) {
+      if (this.#respond(channel, detail)) return "sent";
+      if (!channel.respond.waitForCapacity) return false;
+    }
+    if (!this.#queueCarrierControl(channel, detail)) return false;
+    this.#waitForCarrierCapacity(channel);
+    return "queued";
+  }
+
+  #queueCarrierControl(
+    channel: ActiveChannel,
+    detail: PendingCarrierControl,
+  ): boolean {
+    const last = channel.pendingCarrierControls.at(-1);
+    if (
+      channel.pendingCarrierControls.length > 1 &&
+      last?.kind === "credit" &&
+      detail.kind === "credit" &&
+      last.direction === detail.direction &&
+      last.bytes + detail.bytes <= WORKER_LINK_MAX_CREDIT_BYTES
+    ) {
+      last.bytes += detail.bytes;
+      return true;
+    }
+    if (
+      channel.pendingCarrierControls.length >= MAX_PENDING_ADAPTER_EMISSIONS
+    ) {
+      return false;
+    }
+    channel.pendingCarrierControls.push(detail);
+    return true;
+  }
+
+  #flushCarrierControls(channel: ActiveChannel): boolean {
+    while (channel.pendingCarrierControls.length > 0) {
+      const detail = channel.pendingCarrierControls[0]!;
+      if (!this.#respond(channel, detail)) return false;
+      channel.pendingCarrierControls.shift();
+      if (detail.kind === "credit" && detail.direction === "client-to-worker") {
+        channel.inboundCreditBytes = Math.min(
+          WORKER_LINK_MAX_CREDIT_BYTES,
+          channel.inboundCreditBytes + detail.bytes,
+        );
+      }
+    }
+    return true;
   }
 
   #respond(
@@ -1047,6 +1210,41 @@ export class WorkerLinkGateway {
       channel.lastActivityAtMs = this.#now();
     }
     return sent;
+  }
+
+  async #respondWithCapacity(
+    respond: WorkerLinkFrameResponder,
+    lane: WorkerLinkQosLane,
+    channelId: string,
+    header: WorkerLinkFrameHeader,
+    payload: Uint8Array = EMPTY_PAYLOAD,
+    options: {
+      cancel?: Promise<void>;
+      onAccepted?(): void;
+      stillValid?(): boolean;
+    } = {},
+  ): Promise<boolean> {
+    while (true) {
+      if (options.stillValid && !options.stillValid()) return false;
+      try {
+        if (respond(header, payload)) {
+          options.onAccepted?.();
+          return true;
+        }
+      } catch {
+        // A responder exception is equivalent to transient carrier rejection.
+      }
+      if (!respond.waitForCapacity) return false;
+      try {
+        const capacity = respond.waitForCapacity(lane, channelId);
+        const available = options.cancel
+          ? await Promise.race([capacity, options.cancel.then(() => false)])
+          : await capacity;
+        if (!available) return false;
+      } catch {
+        return false;
+      }
+    }
   }
 
   async #installSession(input: WorkerLinkSession): Promise<void> {
@@ -1274,11 +1472,29 @@ export class WorkerLinkGateway {
   ): Promise<boolean> {
     const channel = this.#channels.get(channelId);
     if (!channel) return false;
+    const closeHeader = workerLinkFrameHeaderSchema.parse({
+      protocolVersion: 1,
+      sessionId: channel.sessionId,
+      routeGeneration: channel.routeGeneration,
+      effectiveRoute: channel.route,
+      channel: channel.identity,
+      lane: channel.lane,
+      sequence: channel.acceptDelivered ? channel.outboundSequence : 0,
+      ...(channel.acceptDelivered
+        ? { kind: "close", code }
+        : { kind: "reject", code: rejectCodeForPreAcceptClose(code) }),
+    });
+    void this.#respondWithCapacity(
+      channel.respond,
+      channel.lane,
+      channel.identity.channelId,
+      closeHeader,
+    );
     this.#channels.delete(channelId);
+    channel.retire();
     const state = this.#sessions.get(channel.sessionId);
     state?.channels.delete(channelId);
     state?.grants.get(channel.grantId)?.activeChannels.delete(channelId);
-    this.#respond(channel, { kind: "close", code });
     try {
       await channel.adapter.close?.(code);
     } catch {
@@ -1393,6 +1609,27 @@ function grantAllowsWorkerOutput(
     grant?.binding.operations.includes("stream:read") ||
     grant?.binding.operations.includes("events:subscribe"),
   );
+}
+
+function rejectCodeForPreAcceptClose(
+  code: WorkerLinkChannelCloseCode,
+): WorkerLinkChannelRejectCode {
+  switch (code) {
+    case "revoked":
+      return "grant-revoked";
+    case "route-replaced":
+      return "route-generation-stale";
+    case "lifetime-expired":
+      return "grant-expired";
+    case "congested":
+      return "limit-exceeded";
+    case "protocol-error":
+      return "protocol-error";
+    case "normal":
+    case "endpoint-disconnected":
+    case "idle-timeout":
+      return "resource-unavailable";
+  }
 }
 
 function resolveIdentityPart(

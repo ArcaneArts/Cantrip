@@ -167,7 +167,10 @@ import {
 } from "./mcp/profile.js";
 import { readWorkerConfig, resolveWorkerDataDirectory } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
-import { WorkerLinkGateway } from "./worker-link-gateway.js";
+import {
+  WorkerLinkGateway,
+  type WorkerLinkFrameResponder,
+} from "./worker-link-gateway.js";
 import { WorkerLinkPeerGateway } from "./worker-link-peer-gateway.js";
 import { createWorkerLinkWebRtcTransportFactory } from "./worker-link-webrtc.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
@@ -5460,6 +5463,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
     }
   };
+  let commandWorkerLinkRespond: WorkerLinkFrameResponder;
   const commandConnection = new WorkerConnection(
     config,
     async (command, emit) => {
@@ -5510,16 +5514,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         await workerLinkGateway.handleFrame(
           header,
           payload,
-          (responseHeader, responsePayload) =>
-            commandConnection.sendWorkerLinkFrame(
-              responseHeader,
-              responsePayload,
-            ),
+          commandWorkerLinkRespond,
         );
       },
       observeEvent: (command, event) => {
         workerObservationHub.publishCommandEvent(command, event);
       },
+    },
+  );
+  commandWorkerLinkRespond = Object.assign(
+    (
+      responseHeader: Parameters<WorkerLinkFrameResponder>[0],
+      responsePayload: Parameters<WorkerLinkFrameResponder>[1],
+    ) => commandConnection.sendWorkerLinkFrame(responseHeader, responsePayload),
+    {
+      waitForCapacity: () => commandConnection.waitForWorkerLinkCapacity(),
     },
   );
   directBroker.setTunnelFrameHandler((header, payload, diagnostics) =>

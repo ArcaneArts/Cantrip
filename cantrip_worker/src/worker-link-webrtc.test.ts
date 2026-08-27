@@ -28,6 +28,7 @@ class FakeEvent<T extends unknown[]> {
 
 class FakeDataChannel {
   bufferedAmount = 0;
+  readonly bufferedAmountLow = new FakeEvent<[]>();
   readonly onMessage = new FakeEvent<[string | Buffer]>();
   readyState = "open";
   readonly sent: Array<string | Buffer> = [];
@@ -288,6 +289,289 @@ describe("worker WorkerLink WebRTC transport", () => {
     );
     await vi.waitFor(() => expect(peer.close).toHaveBeenCalled());
     expect(reportInvalidHandshake).toHaveBeenCalledTimes(1);
+    await transport.close("test-complete");
+  });
+
+  it("coalesces lane low-water waits and resolves them on capacity or close", async () => {
+    const peer = new FakePeerConnection();
+    let receivedResponder: WorkerLinkFrameResponder | null = null;
+    const transport = await createWorkerLinkWebRtcTransportFactory({
+      createPeerConnection: () => peer as unknown as RTCPeerConnection,
+      disconnectResponder: async () => 0,
+      handleFrame: async (_header, _payload, respond) => {
+        receivedResponder = respond;
+        return true;
+      },
+    }).open({
+      advertiseCandidates: () => true,
+      configuration,
+      emitSignal: () => true,
+      peerSession,
+      reportInvalidHandshake: () => true,
+    });
+    await transport.handleSignal({ type: "offer", sdp: "v=0\r\n" });
+    const control = new FakeDataChannel(WORKER_LINK_PEER_CONTROL_CHANNEL);
+    peer.onDataChannel.emit(control as unknown as RTCDataChannel);
+    const channels = new Map<string, FakeDataChannel>();
+    for (const lane of [
+      "events",
+      "interactive",
+      "stream",
+      "realtime",
+      "bulk",
+    ] as const) {
+      const channel = new FakeDataChannel(workerLinkPeerLaneChannelLabel(lane));
+      channels.set(lane, channel);
+      peer.onDataChannel.emit(channel as unknown as RTCDataChannel);
+    }
+    control.onMessage.emit(
+      JSON.stringify(
+        workerLinkPeerHandshakeSchema.parse({
+          type: "worker-link-peer-handshake",
+          protocolVersion: 1,
+          role: "client",
+          peerSessionId: peerSession.peerSessionId,
+          sessionId: peerSession.sessionId,
+          routeGeneration: peerSession.routeGeneration,
+          route: peerSession.route,
+          identity: peerSession.identity,
+          challenge: "b".repeat(43),
+        }),
+      ),
+    );
+    const header: WorkerLinkFrameHeader = {
+      protocolVersion: 1,
+      sessionId: peerSession.sessionId,
+      routeGeneration: peerSession.routeGeneration,
+      effectiveRoute: "lan",
+      channel: {
+        channelId: "33333333-3333-4333-8333-333333333333",
+        connectionId: "44444444-4444-4444-8444-444444444444",
+      },
+      lane: "interactive",
+      sequence: 1,
+      kind: "data",
+      direction: "client-to-worker",
+      payloadFormat: "raw",
+    };
+    channels
+      .get("interactive")!
+      .onMessage.emit(
+        Buffer.from(encodeWorkerLinkFrame(header, new Uint8Array([1]))),
+      );
+    await vi.waitFor(() => expect(receivedResponder).not.toBeNull());
+    const respond = receivedResponder as unknown as WorkerLinkFrameResponder;
+    const interactive = channels.get("interactive")!;
+    interactive.bufferedAmount = laneLimit.maxQueuedBytes - 512;
+    expect(
+      respond(
+        { ...header, direction: "worker-to-client", sequence: 2 },
+        new Uint8Array(2 * 1_024),
+      ),
+    ).toBe(false);
+
+    const first = respond.waitForCapacity!(
+      "interactive",
+      header.channel.channelId,
+    );
+    const second = respond.waitForCapacity!(
+      "interactive",
+      header.channel.channelId,
+    );
+    expect(second).toBe(first);
+    expect(
+      respond(
+        { ...header, direction: "worker-to-client", sequence: 3 },
+        new Uint8Array([3]),
+      ),
+    ).toBe(true);
+    let prematurelyWritable = false;
+    void first.then(() => {
+      prematurelyWritable = true;
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(prematurelyWritable).toBe(false);
+    interactive.bufferedAmount = 0;
+    await expect(first).resolves.toBe(true);
+    expect(
+      respond(
+        { ...header, direction: "worker-to-client", sequence: 2 },
+        new Uint8Array(2 * 1_024),
+      ),
+    ).toBe(true);
+
+    interactive.bufferedAmount = laneLimit.maxQueuedBytes;
+    expect(
+      respond(
+        { ...header, direction: "worker-to-client", sequence: 3 },
+        new Uint8Array([3]),
+      ),
+    ).toBe(false);
+    const closed = respond.waitForCapacity!(
+      "interactive",
+      header.channel.channelId,
+    );
+    await transport.close("test-complete");
+    await expect(closed).resolves.toBe(false);
+    await expect(
+      respond.waitForCapacity!("interactive", header.channel.channelId),
+    ).resolves.toBe(false);
+  });
+
+  it("fails a capacity wait for a frame that cannot fit legal lane ceilings", async () => {
+    const peer = new FakePeerConnection();
+    let receivedResponder: WorkerLinkFrameResponder | null = null;
+    const constrainedLane = {
+      ...laneLimit,
+      maxQueuedBytes: 64 * 1_024,
+      maxBytesPerSecond: 64 * 1_024,
+    };
+    const constrainedConfiguration: WorkerLinkPeerConfiguration = {
+      ...configuration,
+      laneLimits: {
+        events: constrainedLane,
+        interactive: constrainedLane,
+        stream: constrainedLane,
+        realtime: constrainedLane,
+        bulk: constrainedLane,
+      },
+    };
+    const transport = await createWorkerLinkWebRtcTransportFactory({
+      createPeerConnection: () => peer as unknown as RTCPeerConnection,
+      disconnectResponder: async () => 0,
+      handleFrame: async (_header, _payload, respond) => {
+        receivedResponder = respond;
+        return true;
+      },
+    }).open({
+      advertiseCandidates: () => true,
+      configuration: constrainedConfiguration,
+      emitSignal: () => true,
+      peerSession,
+      reportInvalidHandshake: () => true,
+    });
+    await transport.handleSignal({ type: "offer", sdp: "v=0\r\n" });
+    const control = new FakeDataChannel(WORKER_LINK_PEER_CONTROL_CHANNEL);
+    peer.onDataChannel.emit(control as unknown as RTCDataChannel);
+    const channels = new Map<string, FakeDataChannel>();
+    for (const lane of [
+      "events",
+      "interactive",
+      "stream",
+      "realtime",
+      "bulk",
+    ] as const) {
+      const channel = new FakeDataChannel(workerLinkPeerLaneChannelLabel(lane));
+      channels.set(lane, channel);
+      peer.onDataChannel.emit(channel as unknown as RTCDataChannel);
+    }
+    control.onMessage.emit(
+      JSON.stringify(
+        workerLinkPeerHandshakeSchema.parse({
+          type: "worker-link-peer-handshake",
+          protocolVersion: 1,
+          role: "client",
+          peerSessionId: peerSession.peerSessionId,
+          sessionId: peerSession.sessionId,
+          routeGeneration: peerSession.routeGeneration,
+          route: peerSession.route,
+          identity: peerSession.identity,
+          challenge: "c".repeat(43),
+        }),
+      ),
+    );
+    const header: WorkerLinkFrameHeader = {
+      protocolVersion: 1,
+      sessionId: peerSession.sessionId,
+      routeGeneration: peerSession.routeGeneration,
+      effectiveRoute: "lan",
+      channel: {
+        channelId: "33333333-3333-4333-8333-333333333333",
+        connectionId: "44444444-4444-4444-8444-444444444444",
+      },
+      lane: "interactive",
+      sequence: 1,
+      kind: "data",
+      direction: "client-to-worker",
+      payloadFormat: "raw",
+    };
+    channels
+      .get("interactive")!
+      .onMessage.emit(
+        Buffer.from(encodeWorkerLinkFrame(header, new Uint8Array([1]))),
+      );
+    await vi.waitFor(() => expect(receivedResponder).not.toBeNull());
+    const respond = receivedResponder as unknown as WorkerLinkFrameResponder;
+    vi.useFakeTimers();
+    try {
+      expect(
+        respond(
+          { ...header, direction: "worker-to-client", sequence: 2 },
+          new Uint8Array(60 * 1_024),
+        ),
+      ).toBe(true);
+      expect(
+        respond(
+          { ...header, direction: "worker-to-client", sequence: 3 },
+          new Uint8Array(8 * 1_024),
+        ),
+      ).toBe(false);
+      const siblingHeader: WorkerLinkFrameHeader = {
+        ...header,
+        channel: {
+          channelId: "55555555-5555-4555-8555-555555555555",
+          connectionId: "66666666-6666-4666-8666-666666666666",
+        },
+      };
+      const rateCapacity = respond.waitForCapacity!(
+        "interactive",
+        header.channel.channelId,
+      );
+      expect(
+        respond(
+          { ...siblingHeader, direction: "worker-to-client", sequence: 2 },
+          new Uint8Array(8 * 1_024),
+        ),
+      ).toBe(false);
+      const siblingCapacity = respond.waitForCapacity!(
+        "interactive",
+        siblingHeader.channel.channelId,
+      );
+      expect(siblingCapacity).not.toBe(rateCapacity);
+      expect(
+        respond(
+          { ...header, direction: "worker-to-client", sequence: 4 },
+          new Uint8Array(64 * 1_024),
+        ),
+      ).toBe(false);
+      let rateReady = false;
+      void siblingCapacity.then(() => {
+        rateReady = true;
+      });
+      let smallerFrameSent = false;
+      setTimeout(() => {
+        smallerFrameSent = respond(
+          { ...siblingHeader, direction: "worker-to-client", sequence: 3 },
+          new Uint8Array(1 * 1_024),
+        );
+      }, 1_000);
+      await vi.advanceTimersByTimeAsync(5);
+      await expect(rateCapacity).resolves.toBe(false);
+      expect(rateReady).toBe(false);
+      await vi.advanceTimersByTimeAsync(994);
+      expect(rateReady).toBe(false);
+      await vi.advanceTimersByTimeAsync(5);
+      expect(smallerFrameSent).toBe(true);
+      await expect(siblingCapacity).resolves.toBe(true);
+      expect(
+        respond(
+          { ...siblingHeader, direction: "worker-to-client", sequence: 2 },
+          new Uint8Array(8 * 1_024),
+        ),
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
     await transport.close("test-complete");
   });
 

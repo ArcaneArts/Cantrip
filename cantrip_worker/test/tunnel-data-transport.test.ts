@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import {
+  decodeWorkerLinkFrame,
   decodeWorkerServerEnvelope,
   decodeTunnelDataPlaneFrame,
   encodeWorkerConnectionEnvelope,
@@ -9,6 +10,7 @@ import {
   encodeTunnelDataPlaneFrame,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
+  type WorkerLinkFrameHeader,
   type WorkerServerEnvelope,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
   WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
@@ -36,6 +38,22 @@ const frame: TunnelDataPlaneFrameHeader = {
   sequence: 0,
   kind: "data",
   direction: "source-to-destination",
+};
+
+const workerLinkFrame: WorkerLinkFrameHeader = {
+  protocolVersion: 1,
+  sessionId: "11111111-1111-4111-8111-111111111111",
+  routeGeneration: 1,
+  effectiveRoute: "relay",
+  channel: {
+    channelId: "22222222-2222-4222-8222-222222222222",
+    connectionId: "33333333-3333-4333-8333-333333333333",
+  },
+  lane: "stream",
+  sequence: 1,
+  kind: "data",
+  direction: "worker-to-client",
+  payloadFormat: "raw",
 };
 
 const chatTurnCommand = (): WorkerCommand => ({
@@ -1250,5 +1268,54 @@ describe("worker generic tunnel data transport", () => {
       ).toBe(true);
     });
     expect(connected).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces WorkerLink capacity waits through reconnect grace", async () => {
+    const server = await commandServer({ autoReady: false });
+    const connected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      10,
+      connected,
+      {
+        reconnectDelayMs: 10,
+        transportDisconnectGraceMs: 500,
+      },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const firstSocket = await server.nextSocket();
+    sendConnectionReady(firstSocket, server.requestUrls[0]!);
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce());
+    const reconnect = server.nextSocket();
+    const payload = new Uint8Array([3, 1, 4, 1, 5]);
+    firstSocket.terminate();
+    await vi.waitFor(() =>
+      expect(connection.sendWorkerLinkFrame(workerLinkFrame, payload)).toBe(
+        false,
+      ),
+    );
+
+    const first = connection.waitForWorkerLinkCapacity();
+    const second = connection.waitForWorkerLinkCapacity();
+    expect(second).toBe(first);
+    const secondSocket = await reconnect;
+    const retried = new Promise<Uint8Array>((resolve) => {
+      secondSocket.once("message", (data) =>
+        resolve(new Uint8Array(Buffer.from(data as Buffer))),
+      );
+    });
+    sendConnectionReady(secondSocket, server.requestUrls[1]!);
+    await expect(first).resolves.toBe(true);
+    expect(connection.sendWorkerLinkFrame(workerLinkFrame, payload)).toBe(true);
+    const decoded = decodeWorkerLinkFrame(await retried);
+    expect(decoded.header).toEqual(workerLinkFrame);
+    expect(decoded.payload).toEqual(payload);
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledTimes(2));
   });
 });

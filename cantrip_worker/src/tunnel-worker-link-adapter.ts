@@ -60,6 +60,7 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
     };
     this.#attachments.set(attachmentId, active);
     return {
+      carrierWritable: () => this.#markWritable(active),
       close: () => this.#close(active),
       credit: () => this.#markWritable(active),
       write: (payload) => this.#write(active, payload),
@@ -83,10 +84,11 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
       encodeTunnelDataPlaneFrame(header, payload),
       "tunnel-data-plane-v1",
     );
-    // A rejected emission means the shared outer channel has no capacity at
-    // this instant. Keep it non-writable until the gateway reports fresh
-    // credit so competing nested TCP streams can retain and retry their frame.
-    active.writable = false;
+    // Accepted frames keep draining the shared outer byte window. Only a
+    // rejected emission blocks nested streams; the gateway distinguishes
+    // protocol credit from carrier capacity and wakes the adapter from the
+    // matching source.
+    if (!sent) active.writable = false;
     return sent;
   }
 

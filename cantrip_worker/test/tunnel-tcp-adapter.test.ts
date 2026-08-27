@@ -1,4 +1,5 @@
-import { createServer, type Server } from "node:net";
+import { EventEmitter } from "node:events";
+import { createServer, type Server, type Socket } from "node:net";
 
 import type { TunnelDataPlaneFrameHeader } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
@@ -66,6 +67,30 @@ async function listenPayload(payload: Buffer): Promise<number> {
   const address = server.address();
   if (!address || typeof address === "string") {
     throw new Error("Burst server did not bind a TCP port.");
+  }
+  return address.port;
+}
+
+async function listenSynchronizedPayload(
+  payload: Buffer,
+  connectionCount: number,
+): Promise<number> {
+  const sockets: import("node:net").Socket[] = [];
+  const server = createServer((socket) => {
+    socket.on("error", () => undefined);
+    sockets.push(socket);
+    if (sockets.length === connectionCount) {
+      for (const connected of sockets) connected.end(payload);
+    }
+  });
+  servers.push(server);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Synchronized server did not bind a TCP port.");
   }
   return address.port;
 }
@@ -175,6 +200,63 @@ describe("worker TCP tunnel destination", () => {
     adapter.close();
   });
 
+  it("retains and retries nested credit when the outer carrier is congested", async () => {
+    const port = await listenEcho();
+    const adapter = new TunnelTcpDestinationAdapter();
+    const attempts: Array<{
+      header: TunnelDataPlaneFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    const output: Array<{
+      header: TunnelDataPlaneFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    let rejectFirstCredit = true;
+    let releaseCapacity!: (available: boolean) => void;
+    const capacity = new Promise<boolean>((resolve) => {
+      releaseCapacity = resolve;
+    });
+    adapter.setFrameEmitter(
+      (header, payload) => {
+        attempts.push({ header, payload: payload.slice() });
+        if (header.kind === "credit" && rejectFirstCredit) {
+          rejectFirstCredit = false;
+          return false;
+        }
+        output.push({ header, payload: payload.slice() });
+        return true;
+      },
+      () => capacity,
+    );
+
+    adapter.handleFrame(connectHeader("credit-retry", port), EMPTY_PAYLOAD);
+    await waitFor(() =>
+      output.some(({ header }) => header.kind === "accepted"),
+    );
+    adapter.handleFrame(
+      nextHeader("credit-retry", 1, {
+        kind: "data",
+        direction: "source-to-destination",
+      }),
+      new Uint8Array([2, 7, 1, 8]),
+    );
+    await waitFor(
+      () =>
+        attempts.filter(({ header }) => header.kind === "credit").length > 0,
+    );
+    expect(output.some(({ header }) => header.kind === "credit")).toBe(false);
+
+    releaseCapacity(true);
+    await waitFor(() => output.some(({ header }) => header.kind === "credit"));
+    const creditAttempts = attempts.filter(
+      ({ header }) => header.kind === "credit",
+    );
+    expect(creditAttempts).toHaveLength(2);
+    expect(creditAttempts[1]).toEqual(creditAttempts[0]);
+    await waitFor(() => output.some(({ header }) => header.kind === "data"));
+    adapter.close();
+  });
+
   it("supports multiple simultaneous target connections", async () => {
     const port = await listenEcho();
     const adapter = new TunnelTcpDestinationAdapter();
@@ -229,8 +311,17 @@ describe("worker TCP tunnel destination", () => {
     const firstCapacity = new Promise<boolean>((resolve) => {
       releaseFirstCapacity = resolve;
     });
+    let rejectFirstStream = true;
     adapter.setFrameEmitter(
       (header, payload) => {
+        if (
+          header.kind === "data" &&
+          header.connectionId === "connection-a" &&
+          rejectFirstStream
+        ) {
+          rejectFirstStream = false;
+          return false;
+        }
         output.push({ header, payload: payload.slice() });
         return true;
       },
@@ -251,9 +342,217 @@ describe("worker TCP tunnel destination", () => {
           new TextDecoder().decode(payload) === "ready",
       ),
     );
-
-    expect(capacityWaits).toBeGreaterThanOrEqual(2);
+    expect(capacityWaits).toBe(1);
     releaseFirstCapacity(true);
+    adapter.close();
+  });
+
+  it("interleaves sustained sibling streams within the shared byte window", async () => {
+    const expected = Buffer.allocUnsafe(1 * 1_024 * 1_024);
+    for (let index = 0; index < expected.byteLength; index += 1) {
+      expected[index] = (index * 13 + 7) & 0xff;
+    }
+    const port = await listenSynchronizedPayload(expected, 2);
+    const adapter = new TunnelTcpDestinationAdapter();
+    const output: Array<{
+      header: TunnelDataPlaneFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    const inputSequences = new Map([
+      ["connection-a", 1],
+      ["connection-b", 1],
+    ]);
+    adapter.setFrameEmitter((header, payload) => {
+      output.push({ header, payload: payload.slice() });
+      if (header.kind === "data") {
+        const sequence = inputSequences.get(header.connectionId)!;
+        inputSequences.set(header.connectionId, sequence + 1);
+        adapter.handleFrame(
+          nextHeader(header.connectionId, sequence, {
+            kind: "credit",
+            direction: "destination-to-source",
+            bytes: payload.byteLength,
+          }),
+          EMPTY_PAYLOAD,
+        );
+      }
+      return true;
+    });
+
+    adapter.handleFrame(connectHeader("connection-a", port), EMPTY_PAYLOAD);
+    adapter.handleFrame(connectHeader("connection-b", port), EMPTY_PAYLOAD);
+    await waitFor(
+      () =>
+        output.filter(({ header }) => header.kind === "half-close").length ===
+        2,
+      10_000,
+    );
+
+    const data = output.filter(({ header }) => header.kind === "data");
+    adapter.close();
+    expect(
+      new Set(data.slice(0, 4).map(({ header }) => header.connectionId)),
+    ).toEqual(new Set(["connection-a", "connection-b"]));
+    for (const connectionId of ["connection-a", "connection-b"]) {
+      const actual = Buffer.concat(
+        data
+          .filter(({ header }) => header.connectionId === connectionId)
+          .map(({ payload }) => Buffer.from(payload)),
+      );
+      expect(actual.equals(expected)).toBe(true);
+    }
+  });
+
+  it("allows exactly the pending-output cap and closes at one byte over", async () => {
+    class FakeSocket extends EventEmitter {
+      localPort = 43_210;
+      writableLength = 0;
+
+      destroy(): this {
+        return this;
+      }
+
+      end(): this {
+        return this;
+      }
+
+      pause(): this {
+        return this;
+      }
+
+      resume(): this {
+        return this;
+      }
+
+      setNoDelay(): this {
+        return this;
+      }
+
+      setTimeout(): this {
+        return this;
+      }
+
+      write(_payload: Uint8Array, callback?: () => void): boolean {
+        callback?.();
+        return true;
+      }
+    }
+
+    const socket = new FakeSocket();
+    const adapter = new TunnelTcpDestinationAdapter(
+      () => socket as unknown as Socket,
+    );
+    const output: TunnelDataPlaneFrameHeader[] = [];
+    adapter.setFrameEmitter(
+      (header) => {
+        output.push(header);
+        return header.kind !== "data";
+      },
+      () => new Promise<boolean>(() => undefined),
+    );
+    adapter.handleFrame(connectHeader("queue-boundary", 43_210), EMPTY_PAYLOAD);
+    socket.emit("connect");
+
+    socket.emit("data", Buffer.alloc(1 * 1_024 * 1_024));
+    await waitFor(() => output.some((header) => header.kind === "data"));
+    expect(output.some((header) => header.kind === "close")).toBe(false);
+
+    socket.emit("data", Buffer.from([1]));
+    await waitFor(() =>
+      output.some(
+        (header) => header.kind === "close" && header.code === "congested",
+      ),
+    );
+    adapter.close();
+  });
+
+  it("keeps destination reads paused while queued output has no byte credit", async () => {
+    class FakeSocket extends EventEmitter {
+      localPort = 43_210;
+      pauseCalls = 0;
+      resumeCalls = 0;
+      writableLength = 0;
+
+      destroy(): this {
+        return this;
+      }
+
+      end(): this {
+        return this;
+      }
+
+      pause(): this {
+        this.pauseCalls += 1;
+        return this;
+      }
+
+      resume(): this {
+        this.resumeCalls += 1;
+        return this;
+      }
+
+      setNoDelay(): this {
+        return this;
+      }
+
+      setTimeout(): this {
+        return this;
+      }
+
+      write(_payload: Uint8Array, callback?: () => void): boolean {
+        callback?.();
+        return true;
+      }
+    }
+
+    const socket = new FakeSocket();
+    const adapter = new TunnelTcpDestinationAdapter(
+      () => socket as unknown as Socket,
+    );
+    const output: Array<{
+      header: TunnelDataPlaneFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    adapter.setFrameEmitter((header, payload) => {
+      output.push({ header, payload: payload.slice() });
+      return true;
+    });
+    adapter.handleFrame(
+      {
+        ...connectHeader("zero-credit-pause", 43_210),
+        initialCreditBytes: 64 * 1_024,
+      },
+      EMPTY_PAYLOAD,
+    );
+    socket.emit("connect");
+
+    socket.emit("data", Buffer.alloc(128 * 1_024, 19));
+    await waitFor(
+      () =>
+        output
+          .filter(({ header }) => header.kind === "data")
+          .reduce((total, { payload }) => total + payload.byteLength, 0) ===
+        64 * 1_024,
+    );
+    expect(socket.pauseCalls).toBe(1);
+    expect(socket.resumeCalls).toBe(0);
+
+    adapter.handleFrame(
+      nextHeader("zero-credit-pause", 1, {
+        kind: "credit",
+        direction: "destination-to-source",
+        bytes: 64 * 1_024,
+      }),
+      EMPTY_PAYLOAD,
+    );
+    await waitFor(
+      () =>
+        output
+          .filter(({ header }) => header.kind === "data")
+          .reduce((total, { payload }) => total + payload.byteLength, 0) ===
+        128 * 1_024,
+    );
+    await waitFor(() => socket.resumeCalls === 1);
     adapter.close();
   });
 
@@ -311,6 +610,51 @@ describe("worker TCP tunnel destination", () => {
     adapter.close();
   });
 
+  it("drains the initial byte window without a carrier round trip per frame", async () => {
+    const expected = Buffer.allocUnsafe(256 * 1_024);
+    for (let index = 0; index < expected.byteLength; index += 1) {
+      expected[index] = (index * 17 + 29) & 0xff;
+    }
+    const port = await listenPayload(expected);
+    const adapter = new TunnelTcpDestinationAdapter();
+    const output: Array<{
+      header: TunnelDataPlaneFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    let capacityWaits = 0;
+    adapter.setFrameEmitter(
+      (header, payload) => {
+        output.push({ header, payload: payload.slice() });
+        return true;
+      },
+      () => {
+        capacityWaits += 1;
+        return new Promise<boolean>(() => undefined);
+      },
+    );
+
+    adapter.handleFrame(connectHeader("window-drain", port), EMPTY_PAYLOAD);
+    await waitFor(
+      () => output.some(({ header }) => header.kind === "half-close"),
+      15_000,
+    );
+
+    const dataFrames = output.filter(({ header }) => header.kind === "data");
+    expect(dataFrames.length).toBeGreaterThanOrEqual(4);
+    expect(capacityWaits).toBe(0);
+    expect(
+      Buffer.concat(
+        dataFrames.map(({ payload }) => Buffer.from(payload)),
+      ).equals(expected),
+    ).toBe(true);
+    expect(
+      output.findIndex(({ header }) => header.kind === "half-close"),
+    ).toBeGreaterThan(
+      output.findLastIndex(({ header }) => header.kind === "data"),
+    );
+    adapter.close();
+  });
+
   it("relays a fast 16 MiB response in order while WebSocket capacity is delayed", async () => {
     const expected = Buffer.allocUnsafe(16 * 1_024 * 1_024);
     for (let index = 0; index < expected.byteLength; index += 1) {
@@ -329,8 +673,13 @@ describe("worker TCP tunnel destination", () => {
     const initialCapacity = new Promise<boolean>((resolve) => {
       releaseInitialCapacity = resolve;
     });
+    let rejectFirstData = true;
     adapter.setFrameEmitter(
       (header, payload) => {
+        if (header.kind === "data" && rejectFirstData) {
+          rejectFirstData = false;
+          return false;
+        }
         output.push({ header, payload: payload.slice() });
         if (header.kind === "data") {
           adapter.handleFrame(
@@ -441,9 +790,7 @@ describe("worker TCP tunnel destination", () => {
       ({ header }) => header.kind === "data",
     );
     expect(dataAttempts).toHaveLength(2);
-    expect(dataAttempts[0]!.header.sequence).toBe(
-      dataAttempts[1]!.header.sequence,
-    );
+    expect(dataAttempts[1]).toEqual(dataAttempts[0]);
     expect(
       new TextDecoder().decode(
         output.find(({ header }) => header.kind === "data")!.payload,
@@ -470,7 +817,7 @@ describe("worker TCP tunnel destination", () => {
     adapter.setFrameEmitter(
       (header) => {
         output.push(header);
-        return true;
+        return header.kind !== "data";
       },
       async () => false,
     );
@@ -498,6 +845,11 @@ describe("worker TCP tunnel destination", () => {
     expect(context).not.toHaveProperty("port");
     expect(context).not.toHaveProperty("target");
     expect(context).not.toHaveProperty("payload");
+    const rejectedData = output.find((header) => header.kind === "data");
+    const terminal = output.find(
+      (header) => header.kind === "close" && header.code === "congested",
+    );
+    expect(terminal?.sequence).toBe(rejectedData?.sequence);
     adapter.close();
   });
 
