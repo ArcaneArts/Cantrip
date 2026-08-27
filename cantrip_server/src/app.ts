@@ -136,13 +136,8 @@ import {
   chatTurnCreateSchema,
   encryptedChatUpdateSchema,
   chatWorktreeUpdateSchema,
-  encryptedExplorerCreateSchema,
-  encryptedExplorerPinSchema,
   explorerCodeAttachmentCreateSchema,
-  explorerWireListSchema,
   explorerWireSummarySchema,
-  encryptedExplorerUpdateSchema,
-  encryptedExplorerViewStateUpdateSchema,
   encryptedExplorerWorktreeUpdateSchema,
   executionTargetResourceKindSchema,
   executionTargetSchema,
@@ -519,7 +514,6 @@ import {
   parseTaskOperationRelayResult,
   taskOperationRelayTurnFields,
 } from "./tasks/encrypted-relay.js";
-import { TabLayoutInvariantError } from "./db/tab-layouts.js";
 import {
   AgentInteractionConflictError,
   ExecutionLaneConflictError,
@@ -636,6 +630,11 @@ import { installProjectNetworkShareRoutes } from "./app/routes/project-network-s
 import { installProjectRemovalRoute } from "./app/routes/project-removal.js";
 import { installProjectReplicaRoutes } from "./app/routes/project-replicas.js";
 import { installProjectViewRoutes } from "./app/routes/project-views.js";
+import {
+  installExplorerBasicManagementRoutes,
+  installExplorerListRoute,
+  installExplorerViewStateRoute,
+} from "./app/routes/explorer-management.js";
 import { installRemoteDesktopReadRoutes } from "./app/routes/remote-desktop-read.js";
 import { installRemoteDesktopManagementRoutes } from "./app/routes/remote-desktop-management.js";
 import { installRemoteSurfaceManagementRoutes } from "./app/routes/remote-surface-management.js";
@@ -19206,16 +19205,10 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/explorers",
-    async (request, reply) => {
-      const explorers = await repository.listExplorers(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      return reply.send(explorerWireListSchema.parse(explorers));
-    },
-  );
+  installExplorerListRoute(app, {
+    applicationOwnerId,
+    repository,
+  });
 
   installCodeTabManagementRoutes(app, {
     applicationOwnerId,
@@ -19988,76 +19981,13 @@ export async function buildApp({
     workerLinks,
   });
 
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/explorers",
-    async (request, reply) => {
-      const input = encryptedExplorerCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const explorer = await repository.createExplorer(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-          (workerId) => bridge.isConnected(workerId),
-        );
-        return explorer
-          ? reply.code(201).send(explorerWireSummarySchema.parse(explorer))
-          : reply.code(404).send({ error: "Project source not found." });
-      } catch (error) {
-        if (error instanceof ExecutionPlacementUnavailableError) {
-          return reply
-            .code(error.code === "project-not-found" ? 404 : 409)
-            .send({ code: error.code, error: error.message });
-        }
-        throw error;
-      }
+  installExplorerBasicManagementRoutes(app, {
+    applicationOwnerId,
+    repository,
+    runtime: {
+      isWorkerConnected: (workerId) => bridge.isConnected(workerId),
     },
-  );
-
-  app.patch<{ Params: { explorerId: string } }>(
-    "/api/explorers/:explorerId",
-    async (request, reply) => {
-      const input = encryptedExplorerUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const explorer = await repository.updateExplorer(
-        applicationOwnerId(),
-        request.params.explorerId,
-        input.data,
-      );
-      return explorer
-        ? reply.send(explorerWireSummarySchema.parse(explorer))
-        : reply.code(404).send({ error: "Explorer not found." });
-    },
-  );
-
-  app.post<{ Params: { explorerId: string } }>(
-    "/api/explorers/:explorerId/pin",
-    async (request, reply) => {
-      const input = encryptedExplorerPinSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const explorer = await repository.pinExplorer(
-          applicationOwnerId(),
-          request.params.explorerId,
-          input.data,
-        );
-        return explorer
-          ? reply.send(explorerWireSummarySchema.parse(explorer))
-          : reply.code(404).send({ error: "Explorer not found." });
-      } catch (error) {
-        if (error instanceof TabLayoutInvariantError) {
-          return reply.code(400).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
+  });
 
   app.patch<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId/worktree",
@@ -20091,25 +20021,10 @@ export async function buildApp({
     },
   );
 
-  app.patch<{ Params: { explorerId: string } }>(
-    "/api/explorers/:explorerId/view-state",
-    async (request, reply) => {
-      const input = encryptedExplorerViewStateUpdateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const explorer = await repository.updateExplorerViewState(
-        applicationOwnerId(),
-        request.params.explorerId,
-        input.data,
-      );
-      return explorer
-        ? reply.send(explorerWireSummarySchema.parse(explorer))
-        : reply.code(404).send({ error: "Explorer not found." });
-    },
-  );
+  installExplorerViewStateRoute(app, {
+    applicationOwnerId,
+    repository,
+  });
 
   app.delete<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId",
