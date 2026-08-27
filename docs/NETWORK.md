@@ -649,10 +649,27 @@ coexist with a relayed native tunnel until that tunnel can reconnect directly.
 
 ## Server relay and replicated servers
 
-The server should expose a `WorkerLinkRelay` behind the same carrier contract.
-It can replace separate Terminal, Code, tunnel, and Remote Surface relay paths
-incrementally. The logical relay is unified, although implementations may keep
-separate bounded physical queues or sockets for reliable and realtime traffic.
+The server exposes `WorkerLinkRelay` behind the same carrier contract used by
+LOCAL, LAN, and WAN. Supported Terminal, Code, tunnel, Browser, Remote Desktop,
+and observation clients therefore reach one logical RELAY carrier instead of
+choosing a feature-owned topology. Compatibility endpoints remain available to
+older clients during the separately documented soak period.
+
+The common relay preserves feature-specific operational controls without
+leaking them into adapters:
+
+- account and worker relay-byte quotas apply to payloads in both directions;
+- ingress and egress usage is attributed to the bounded Terminal, Code,
+  tunnel, project-share, Remote Surface, or observation usage channel;
+- Browser and Remote Desktop lanes from one grant share one active Remote
+  Surface quota; and
+- each QoS lane has its own bounded output queue. Latency-sensitive interactive
+  and realtime frames drain before events, stream, and bulk frames, while an
+  overflowing lane or a client that stops draining fails closed.
+
+Aggregate relay connection, channel, queued-byte, and per-lane queued-frame
+counts are available in operations diagnostics. They contain no account,
+worker, resource, candidate, or address labels.
 
 In a replicated deployment:
 
@@ -793,8 +810,10 @@ None of these WorkerLink controls permits TURN.
 
 ### Phase 7: Relay consolidation and cleanup
 
-- Move remaining relay endpoints behind `WorkerLinkRelay`.
-- Retain separate QoS queues where needed.
+- Route supported feature clients through `WorkerLinkRelay`. Complete in
+  T2.10A.
+- Retain independently bounded QoS queues and feature quota/metering parity.
+  Complete in T2.10A.
 - Deprecate legacy feature-specific relay endpoints after compatibility soak.
 - Preserve the deployment-wide relay-only switch.
 

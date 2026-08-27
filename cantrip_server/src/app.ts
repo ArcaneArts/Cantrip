@@ -3829,7 +3829,14 @@ export async function buildApp({
     }),
     coordinator,
   );
-  const workerLinkRelay = new WorkerLinkRelay(bridge);
+  const workerLinkRelay = new WorkerLinkRelay(bridge, {
+    acquireRemoteSurface: (ownerId, workerId) =>
+      relayQuotas.acquireRemoteSurface(ownerId, workerId),
+    consumeRelayBytes: (ownerId, workerId, bytes) =>
+      relayQuotas.consumeRelay(ownerId, workerId, bytes),
+    laneLimits: config.workerLinkPeer.laneLimits,
+    usageRecorder: accountUsageMeter,
+  });
   const unsubscribeWorkerLinkRelayRevocations =
     workerLinks.subscribeRelayRevocations((scope) => {
       switch (scope.kind) {
@@ -13865,6 +13872,7 @@ export async function buildApp({
           coordination: coordinationStats(),
           quotas: relayQuotas.stats(),
           tunnels: tunnelRuntime.stats(),
+          workerLinkRelay: workerLinkRelay.stats(),
           workerCommands: bridge.stats(),
           accountUsage: {
             bandwidthMeter: {

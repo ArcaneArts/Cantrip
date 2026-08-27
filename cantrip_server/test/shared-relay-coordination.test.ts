@@ -11,6 +11,7 @@ import {
   type AppLiveServerMessage,
   type RemoteSurfaceFrameHeader,
   type WorkerLinkFrameHeader,
+  type WorkerLinkSession,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
@@ -19,6 +20,7 @@ import {
   InMemoryRelayCoordinator,
 } from "../src/coordination/relay-coordinator.js";
 import { AppLiveHub, type AppLiveSocket } from "../src/live/hub.js";
+import { WorkerLinkRelay } from "../src/worker-links/relay.js";
 import { CoordinatedWorkerBridge } from "../src/workers/coordinated-bridge.js";
 import type { WorkerConnectionContinuityIdentity } from "../src/workers/bridge.js";
 
@@ -214,6 +216,96 @@ describe("shared relay coordination", () => {
       ),
     );
 
+    const relaySession: WorkerLinkSession = {
+      sessionId: "55555555-5555-4555-8555-555555555555",
+      identity: {
+        serverId: "server-1",
+        serverGeneration: "server-generation-1",
+        ownerId: "owner-1",
+        accountSessionId: "account-session-1",
+        clientInstanceId: "client-instance-1",
+        workerId: "worker-1",
+        workerProcessGeneration: "worker-generation-1",
+      },
+      lease: {
+        issuedAt: "2026-08-26T12:00:00.000Z",
+        expiresAt: "2099-08-26T12:05:00.000Z",
+        absoluteExpiresAt: "2099-08-26T13:00:00.000Z",
+      },
+      routePolicy: {
+        priority: ["local", "lan", "wan", "relay"],
+        enabled: ["local", "lan", "wan", "relay"],
+      },
+      routeGeneration: 1,
+      preferredRoute: "relay",
+    };
+    const relay = new WorkerLinkRelay(bridgeA);
+    const clientSocket = new TestWorkerSocket();
+    const relayOpen: Extract<WorkerLinkFrameHeader, { kind: "open" }> = {
+      protocolVersion: 1,
+      sessionId: relaySession.sessionId,
+      routeGeneration: relaySession.routeGeneration,
+      effectiveRoute: "relay",
+      channel: {
+        channelId: "66666666-6666-4666-8666-666666666666",
+        connectionId: "77777777-7777-4777-8777-777777777777",
+      },
+      lane: "interactive",
+      sequence: 0,
+      kind: "open",
+      openNonce: "88888888-8888-4888-8888-888888888888",
+      channelKind: "reliable-stream",
+      grant: {
+        binding: {
+          grantId: "99999999-9999-4999-8999-999999999999",
+          grantGeneration: 1,
+          sessionId: relaySession.sessionId,
+          identity: relaySession.identity,
+          resource: {
+            kind: "terminal",
+            resourceId: "terminal-1",
+            attachmentId: null,
+          },
+          lanes: ["interactive"],
+          operations: ["stream:open", "stream:read", "stream:write"],
+          maxChannels: 1,
+          lease: relaySession.lease,
+        },
+        token: "a".repeat(43),
+      },
+      initialCreditBytes: 1_024,
+    };
+    expect(relay.attach(relaySession, clientSocket)).toBe(true);
+    clientSocket.emit(
+      "message",
+      encodeWorkerLinkFrame(relayOpen, new Uint8Array()),
+      true,
+    );
+    await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(4));
+    expect(
+      decodeWorkerLinkFrame(workerSocket.sent[3] as Uint8Array).header,
+    ).toEqual(relayOpen);
+    const relayAccept: WorkerLinkFrameHeader = {
+      protocolVersion: 1,
+      sessionId: relayOpen.sessionId,
+      routeGeneration: relayOpen.routeGeneration,
+      effectiveRoute: "relay",
+      channel: relayOpen.channel,
+      lane: relayOpen.lane,
+      sequence: 0,
+      kind: "accept",
+      initialCreditBytes: 1_024,
+    };
+    workerSocket.emit(
+      "message",
+      encodeWorkerLinkFrame(relayAccept, new Uint8Array()),
+      true,
+    );
+    await vi.waitFor(() => expect(clientSocket.sent).toHaveLength(1));
+    expect(
+      decodeWorkerLinkFrame(clientSocket.sent[0] as Uint8Array).header,
+    ).toEqual(relayAccept);
+
     const notificationReceived = vi.fn();
     bridgeA.subscribeNotifications("worker-1", notificationReceived);
     const peerNotification = workerNotificationSchema.parse({
@@ -237,6 +329,7 @@ describe("shared relay coordination", () => {
       expect(notificationReceived).toHaveBeenCalledWith(peerNotification),
     );
 
+    relay.close();
     await bridgeA.close();
     await bridgeB.close();
     await Promise.all([coordinatorA.close(), coordinatorB.close()]);
