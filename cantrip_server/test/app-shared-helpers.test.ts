@@ -18,6 +18,7 @@ import {
   hasFinal,
   recordFinal,
 } from "../src/app/shared/streamed-final-tracker.js";
+import { worktreeStatusFromGitStatus } from "../src/app/shared/worktree-status.js";
 
 describe("application request policy helpers", () => {
   it("validates UUID route parameters without accepting partial values", () => {
@@ -95,6 +96,75 @@ describe("chat mutation live resources", () => {
     expect(mutationChatLiveResources("/api/chats/:chatId/messages")).toEqual(
       [],
     );
+  });
+});
+
+describe("worktree status projection", () => {
+  it("derives worker metadata from the durable worktree and Git status", () => {
+    const status = {
+      branch: "feature/refactor",
+      head: "abc123",
+      upstream: null,
+      ahead: 1,
+      behind: 0,
+      files: [],
+      branches: [],
+    };
+    const worktree = {
+      id: "worktree-1",
+      projectSourceId: "source-1",
+      projectId: "project-1",
+      rootKind: "git-worktree" as const,
+      workerId: "worker-1",
+      name: "Feature",
+      path: "/workspace/feature",
+      displayPath: "/workspace/feature",
+      isPrimary: false,
+      isDefault: false,
+      origin: "cantrip" as const,
+      lifecycleState: "prunable" as const,
+      branch: "stale-branch",
+      head: "stale-head",
+      detached: false,
+      locked: true,
+      lockReason: "In use",
+      lastScannedAt: null,
+      createdAt: "2026-08-27T00:00:00.000Z",
+      updatedAt: "2026-08-27T00:00:00.000Z",
+    };
+
+    expect(worktreeStatusFromGitStatus(worktree, status)).toEqual({
+      worktree: {
+        path: "/workspace/feature",
+        head: "abc123",
+        branch: "feature/refactor",
+        detached: false,
+        isPrimary: false,
+        managed: true,
+        locked: true,
+        lockReason: "In use",
+        prunable: true,
+        pruneReason: null,
+        missing: false,
+      },
+      status,
+    });
+    expect(
+      worktreeStatusFromGitStatus(
+        {
+          ...worktree,
+          origin: "external",
+          lifecycleState: "missing",
+        },
+        { ...status, branch: "", head: null },
+      ).worktree,
+    ).toMatchObject({
+      branch: null,
+      detached: true,
+      managed: false,
+      missing: true,
+      prunable: false,
+    });
   });
 });
 
