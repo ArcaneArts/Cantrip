@@ -565,8 +565,6 @@ import {
   encryptedWorkflowGateDecisionSchema,
   encryptedWorkflowNodeRetrySchema,
   encryptedWorkflowRunCancelSchema,
-  encryptedWorkflowGitEventDeliveryCreateSchema,
-  encryptedWorkflowTriggerDeliveryCreateSchema,
   protectedWorkflowTriggerPrepareResultSchema,
   encryptedWorkflowRunCreateSchema,
   encryptedWorkflowRunPauseSchema,
@@ -578,7 +576,6 @@ import {
   workflowRunQuerySchema,
   workflowTriggerDeliveryWireResultSchema,
   workflowTriggerProvenanceSchema,
-  workflowWebhookDeliveryCreateSchema,
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
 import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
@@ -772,10 +769,7 @@ import {
   WorkflowExecutor,
   type WorkflowRunLiveChange,
 } from "./workflows/executor.js";
-import {
-  safeCredentialMatch,
-  triggerDeliveryIdempotencyKey,
-} from "./workflows/trigger-helpers.js";
+import { triggerDeliveryIdempotencyKey } from "./workflows/trigger-helpers.js";
 import {
   ProjectWorktreeCoordinator,
   WorktreeCreateMutationError,
@@ -824,6 +818,7 @@ import { installWorkerCredentialRoutes } from "./app/routes/worker-credentials.j
 import { installWorkerEnrollmentCodeRoutes } from "./app/routes/worker-enrollment-codes.js";
 import { installWorkerManagementRoutes } from "./app/routes/worker-management.js";
 import { installWorkflowDefinitionRoutes } from "./app/routes/workflow-definitions.js";
+import { installWorkflowTriggerDeliveryRoutes } from "./app/routes/workflow-trigger-delivery.js";
 import { installWorkflowTriggerManagementRoutes } from "./app/routes/workflow-trigger-management.js";
 import {
   sendWorkerConflictFailure,
@@ -17589,211 +17584,12 @@ export async function buildApp({
     repository,
   });
 
-  app.post<{ Params: { triggerId: string } }>(
-    "/api/workflow-triggers/:triggerId/deliver",
-    async (request, reply) => {
-      const input = encryptedWorkflowTriggerDeliveryCreateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const result = await deliverWorkflowTrigger({
-          actorId: applicationOwnerId(),
-          actorType: "api",
-          allowOfflineQueue: false,
-          allowedType: "api",
-          idempotencyKey: input.data.idempotencyKey,
-          protectedPayload: input.data.protectedPayload,
-          triggerId: request.params.triggerId,
-        });
-        return reply
-          .code(result.replayed ? 200 : 201)
-          .send(workflowTriggerDeliveryWireResultSchema.parse(result));
-      } catch (error) {
-        if (error instanceof WorkflowTriggerRateLimitError) {
-          return reply
-            .header("retry-after", String(error.retryAfterSeconds))
-            .code(429)
-            .send({ error: error.message });
-        }
-        const status =
-          error instanceof WorkerUnavailableError
-            ? 503
-            : error instanceof WorkflowTriggerConflictError ||
-                error instanceof WorkflowRunConflictError
-              ? 409
-              : 502;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.post<{
-    Headers: { "x-cantrip-webhook-token"?: string };
-    Params: { triggerId: string };
-  }>("/api/workflow-hooks/:triggerId", async (request, reply) => {
-    const context = await repository.workflowTriggers.getWebhookDeliveryContext(
-      request.params.triggerId,
-    );
-    const token = request.headers["x-cantrip-webhook-token"];
-    if (
-      !context ||
-      context.trigger.type !== "webhook" ||
-      !context.credentialHash ||
-      typeof token !== "string" ||
-      !safeCredentialMatch(token, context.credentialHash)
-    ) {
-      return reply.code(404).send({ error: "Webhook not found." });
-    }
-    const input = workflowWebhookDeliveryCreateSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      const result = await runAsOwner(context.trigger.ownerId, () =>
-        deliverWorkflowTrigger({
-          actorId: null,
-          actorType: "webhook",
-          allowOfflineQueue: false,
-          allowedType: "webhook",
-          idempotencyKey: input.data.idempotencyKey,
-          protectedPayload: null,
-          triggerId: request.params.triggerId,
-        }),
-      );
-      return reply
-        .code(result.replayed ? 200 : 201)
-        .send(workflowTriggerDeliveryWireResultSchema.parse(result));
-    } catch (error) {
-      if (error instanceof WorkflowTriggerRateLimitError) {
-        return reply
-          .header("retry-after", String(error.retryAfterSeconds))
-          .code(429)
-          .send({ error: error.message });
-      }
-      const status =
-        error instanceof WorkerUnavailableError
-          ? 503
-          : error instanceof WorkflowTriggerConflictError ||
-              error instanceof WorkflowRunConflictError
-            ? 409
-            : 502;
-      return reply.code(status).send({ error: errorMessage(error) });
-    }
+  installWorkflowTriggerDeliveryRoutes(app, {
+    applicationOwnerId,
+    deliverWorkflowTrigger,
+    repository,
+    runAsOwner,
   });
-
-  app.post<{ Params: { triggerId: string } }>(
-    "/api/workflow-triggers/:triggerId/git-event",
-    async (request, reply) => {
-      const input = encryptedWorkflowGitEventDeliveryCreateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.workflowTriggers.getDeliveryContext(
-        applicationOwnerId(),
-        request.params.triggerId,
-      );
-      if (
-        !context ||
-        context.trigger.type !== "git" ||
-        context.trigger.publicConfiguration.type !== "git" ||
-        context.trigger.publicConfiguration.event !== input.data.event
-      ) {
-        return reply
-          .code(409)
-          .send({ error: "Git event does not match this workflow trigger." });
-      }
-      const project = await repository.getProject(
-        applicationOwnerId(),
-        context.trigger.projectId,
-      );
-      if (!project) {
-        return reply.code(404).send({ error: "Project not found." });
-      }
-      requireProjectCapability(project, "git");
-      try {
-        const result = await deliverWorkflowTrigger({
-          actorId: null,
-          actorType: "git",
-          allowOfflineQueue: false,
-          allowedType: "git",
-          idempotencyKey: input.data.deliveryId,
-          protectedPayload: input.data.protectedPayload,
-          triggerId: request.params.triggerId,
-        });
-        return reply
-          .code(result.replayed ? 200 : 201)
-          .send(workflowTriggerDeliveryWireResultSchema.parse(result));
-      } catch (error) {
-        if (error instanceof WorkflowTriggerRateLimitError) {
-          return reply
-            .header("retry-after", String(error.retryAfterSeconds))
-            .code(429)
-            .send({ error: error.message });
-        }
-        const status =
-          error instanceof WorkerUnavailableError
-            ? 503
-            : error instanceof WorkflowTriggerConflictError ||
-                error instanceof WorkflowRunConflictError
-              ? 409
-              : 502;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.post<{ Params: { triggerId: string } }>(
-    "/api/workflow-triggers/:triggerId/invoke",
-    async (request, reply) => {
-      const input = encryptedWorkflowTriggerDeliveryCreateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.workflowTriggers.getDeliveryContext(
-        applicationOwnerId(),
-        request.params.triggerId,
-      );
-      if (!context || context.trigger.type !== "saved-command") {
-        return reply.code(404).send({ error: "Saved command not found." });
-      }
-      try {
-        const result = await deliverWorkflowTrigger({
-          actorId: applicationOwnerId(),
-          actorType: "user",
-          allowOfflineQueue: false,
-          allowedType: "saved-command",
-          idempotencyKey: input.data.idempotencyKey,
-          protectedPayload: input.data.protectedPayload,
-          triggerId: request.params.triggerId,
-        });
-        return reply
-          .code(result.replayed ? 200 : 201)
-          .send(workflowTriggerDeliveryWireResultSchema.parse(result));
-      } catch (error) {
-        if (error instanceof WorkflowTriggerRateLimitError) {
-          return reply
-            .header("retry-after", String(error.retryAfterSeconds))
-            .code(429)
-            .send({ error: error.message });
-        }
-        const status =
-          error instanceof WorkerUnavailableError
-            ? 503
-            : error instanceof WorkflowTriggerConflictError ||
-                error instanceof WorkflowRunConflictError
-              ? 409
-              : 502;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
 
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/workflow-generation",
