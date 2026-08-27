@@ -4,7 +4,11 @@ import { describe, expect, it } from "vitest";
 import { mutationChatLiveResources } from "../src/app/shared/live-resources.js";
 import {
   auditResourceId,
+  csrfExemptRoute,
   mutationAuditDescriptor,
+  publicRoute,
+  removedPlaintextRepositoryRoute,
+  standaloneChatFeatureForbidden,
   tunnelAttachmentSocketSecret,
   validUuidPathParameter,
 } from "../src/app/shared/request-policy.js";
@@ -58,6 +62,28 @@ describe("application request policy helpers", () => {
     } as unknown as Parameters<typeof auditResourceId>[0];
 
     expect(auditResourceId(request)).toBe("worker-1");
+  });
+
+  it("classifies public, removed, and standalone-only routes", () => {
+    expect(publicRoute("/api/auth/session")).toBe(true);
+    expect(csrfExemptRoute("/api/auth/session")).toBe(true);
+    expect(publicRoute("/api/projects/:projectId")).toBe(false);
+    expect(
+      removedPlaintextRepositoryRoute(
+        "/api/projects/:projectId/worktrees/:worktreeId/git/status",
+      ),
+    ).toBe(true);
+    expect(
+      removedPlaintextRepositoryRoute(
+        "/api/projects/:projectId/worktrees/:worktreeId/git/agent/drafts",
+      ),
+    ).toBe(false);
+    expect(standaloneChatFeatureForbidden("/api/chats/:chatId/goal")).toBe(
+      true,
+    );
+    expect(standaloneChatFeatureForbidden("/api/chats/:chatId/messages")).toBe(
+      false,
+    );
   });
 });
 
