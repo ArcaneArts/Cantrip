@@ -69,6 +69,7 @@ pub struct DesktopWorkers {
     launch: WorkerLaunch,
     logs_directory: PathBuf,
     profiles: Mutex<Vec<DesktopWorkerProfile>>,
+    retained_profile_directories: HashMap<String, PathBuf>,
     profiles_path: PathBuf,
 }
 
@@ -192,43 +193,101 @@ fn read_profiles(path: &Path) -> Vec<DesktopWorkerProfile> {
     })
 }
 
+fn read_retained_profile(
+    profile_directory: &Path,
+) -> Option<(Option<std::time::SystemTime>, DesktopWorkerProfile)> {
+    let worker_id = profile_directory.file_name()?.to_str()?.to_string();
+    if !valid_desktop_worker_id(&worker_id) {
+        return None;
+    }
+    let path = profile_directory.join("desktop-profile.json");
+    let contents = fs::read_to_string(&path).ok()?;
+    let stored = serde_json::from_str::<RetainedDesktopWorkerProfile>(&contents).ok()?;
+    let server_url = normalize_server_url(&stored.server_url).ok()?;
+    let name = stored.name.trim();
+    if stored.version != 1 || stored.worker_id != worker_id || name.is_empty() || name.len() > 120 {
+        return None;
+    }
+    Some((
+        fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .ok(),
+        DesktopWorkerProfile {
+            name: name.to_string(),
+            server_url,
+            worker_id,
+        },
+    ))
+}
+
 fn read_retained_profiles(data_directory: &Path) -> Vec<DesktopWorkerProfile> {
     let Ok(entries) = fs::read_dir(data_directory) else {
         return Vec::new();
     };
     let mut retained = entries
         .flatten()
-        .filter_map(|entry| {
-            let worker_id = entry.file_name().to_str()?.to_string();
-            if !valid_desktop_worker_id(&worker_id) {
-                return None;
-            }
-            let path = entry.path().join("desktop-profile.json");
-            let contents = fs::read_to_string(&path).ok()?;
-            let stored = serde_json::from_str::<RetainedDesktopWorkerProfile>(&contents).ok()?;
-            let server_url = normalize_server_url(&stored.server_url).ok()?;
-            let name = stored.name.trim();
-            if stored.version != 1
-                || stored.worker_id != worker_id
-                || name.is_empty()
-                || name.len() > 120
-            {
-                return None;
-            }
-            Some((
-                fs::metadata(path)
-                    .and_then(|metadata| metadata.modified())
-                    .ok(),
-                DesktopWorkerProfile {
-                    name: name.to_string(),
-                    server_url,
-                    worker_id,
-                },
-            ))
-        })
+        .filter_map(|entry| read_retained_profile(&entry.path()))
         .collect::<Vec<_>>();
     retained.sort_by(|left, right| right.0.cmp(&left.0));
     retained.into_iter().map(|(_, profile)| profile).collect()
+}
+
+fn cantrip_app_data_directory_name(name: &str) -> bool {
+    if name == "art.cantrip" {
+        return true;
+    }
+    name.strip_prefix("art.cantrip.dev.h")
+        .is_some_and(|suffix| {
+            suffix.len() == 32
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+}
+
+fn sibling_profile_directories(app_data_directory: &Path) -> Vec<PathBuf> {
+    let current = app_data_directory.join("linked-workers").join("profiles");
+    let mut directories = vec![current.clone()];
+    let Some(parent) = app_data_directory.parent() else {
+        return directories;
+    };
+    let Ok(entries) = fs::read_dir(parent) else {
+        return directories;
+    };
+    let mut siblings = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let name = name.to_str()?;
+            if !cantrip_app_data_directory_name(name) {
+                return None;
+            }
+            let profiles = entry.path().join("linked-workers").join("profiles");
+            (profiles != current && profiles.is_dir()).then_some(profiles)
+        })
+        .collect::<Vec<_>>();
+    siblings.sort();
+    directories.extend(siblings);
+    directories
+}
+
+fn retained_profile_directories(data_directories: &[PathBuf]) -> HashMap<String, PathBuf> {
+    let mut profiles = HashMap::new();
+    for data_directory in data_directories {
+        let Ok(entries) = fs::read_dir(data_directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let profile_directory = entry.path();
+            let Some((_, profile)) = read_retained_profile(&profile_directory) else {
+                continue;
+            };
+            profiles
+                .entry(profile.worker_id)
+                .or_insert(profile_directory);
+        }
+    }
+    profiles
 }
 
 fn recover_profiles(
@@ -294,7 +353,10 @@ fn write_profiles(path: &Path, profiles: &[DesktopWorkerProfile]) -> Result<(), 
 
 impl DesktopWorkers {
     fn profile_directory(&self, worker_id: &str) -> PathBuf {
-        self.data_directory.join(worker_id)
+        self.retained_profile_directories
+            .get(worker_id)
+            .cloned()
+            .unwrap_or_else(|| self.data_directory.join(worker_id))
     }
 
     fn has_stored_credential(&self, worker_id: &str) -> bool {
@@ -538,6 +600,14 @@ impl DesktopWorkers {
                 }
             }
         }
+        for (worker_id, profile_directory) in &self.retained_profile_directories {
+            let Some((_, profile)) = read_retained_profile(profile_directory) else {
+                continue;
+            };
+            if profile.server_url == server_url {
+                candidates.insert(worker_id.clone());
+            }
+        }
         let mut candidates = candidates
             .into_iter()
             .map(|worker_id| DesktopWorkerCandidate {
@@ -648,16 +718,18 @@ pub(crate) fn resolve_chat_scratch_directory(
 }
 
 pub fn build(app: &App, active_local_server_url: &str) -> Result<DesktopWorkers, String> {
-    let root = app
+    let app_data_directory = app
         .path()
         .app_data_dir()
-        .map_err(|error| format!("Could not resolve application data: {error}"))?
-        .join("linked-workers");
+        .map_err(|error| format!("Could not resolve application data: {error}"))?;
+    let root = app_data_directory.join("linked-workers");
     let logs_directory = root.join("logs");
     fs::create_dir_all(&logs_directory)
         .map_err(|error| format!("Could not create {}: {error}", logs_directory.display()))?;
     let profiles_path = root.join("desktop-workers.json");
     let data_directory = root.join("profiles");
+    let retained_profile_directories =
+        retained_profile_directories(&sibling_profile_directories(&app_data_directory));
     let configured_profiles = read_profiles(&profiles_path);
     let profiles = recover_profiles(
         configured_profiles.clone(),
@@ -698,6 +770,7 @@ pub fn build(app: &App, active_local_server_url: &str) -> Result<DesktopWorkers,
         launch,
         logs_directory,
         profiles: Mutex::new(profiles.clone()),
+        retained_profile_directories,
         profiles_path,
     };
     let linked_worker_autostart_enabled = linked_worker_autostart_enabled(
@@ -975,9 +1048,10 @@ mod tests {
     use super::{
         linked_worker_autostart_enabled, normalize_server_url, read_retained_profiles,
         recover_profiles, replacement_credential_required, replacement_profile, repository_count,
-        resolve_chat_scratch_directory, should_autostart_profile, sort_worker_candidates,
-        DesktopWorkerCandidate, DesktopWorkerProfile, DesktopWorkerProjectStorage, DesktopWorkers,
-        WorkerLaunch,
+        resolve_chat_scratch_directory, retained_profile_directories, should_autostart_profile,
+        sibling_profile_directories, sort_worker_candidates, DesktopWorkerCandidate,
+        DesktopWorkerProfile, DesktopWorkerProjectStorage, DesktopWorkers,
+        RetainedDesktopWorkerProfile, WorkerLaunch,
     };
 
     fn test_manager(root: &Path) -> DesktopWorkers {
@@ -991,8 +1065,30 @@ mod tests {
             },
             logs_directory: root.join("logs"),
             profiles: Mutex::new(Vec::new()),
+            retained_profile_directories: HashMap::new(),
             profiles_path: root.join("desktop-workers.json"),
         }
+    }
+
+    fn write_retained_profile(
+        data_directory: &Path,
+        worker_id: &str,
+        server_url: &str,
+    ) -> std::path::PathBuf {
+        let profile_directory = data_directory.join(worker_id);
+        fs::create_dir_all(&profile_directory).unwrap();
+        fs::write(
+            profile_directory.join("desktop-profile.json"),
+            serde_json::to_vec(&RetainedDesktopWorkerProfile {
+                name: "This machine".into(),
+                server_url: server_url.into(),
+                version: 1,
+                worker_id: worker_id.into(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        profile_directory
     }
 
     #[test]
@@ -1362,6 +1458,54 @@ mod tests {
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].worker_id, worker_id);
         assert_eq!(candidates[0].repository_count, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discovers_and_uses_a_retained_profile_from_another_cantrip_desktop_identity() {
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-worker-sibling-profile-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let current_app = root.join("art.cantrip.dev.haaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        let packaged_app = root.join("art.cantrip");
+        let unrelated_app = root.join("example.unrelated");
+        let current_profiles = current_app.join("linked-workers/profiles");
+        let packaged_profiles = packaged_app.join("linked-workers/profiles");
+        let unrelated_profiles = unrelated_app.join("linked-workers/profiles");
+        fs::create_dir_all(&current_profiles).unwrap();
+        fs::create_dir_all(&unrelated_profiles).unwrap();
+        let worker_id = "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2";
+        let retained = write_retained_profile(
+            &packaged_profiles,
+            worker_id,
+            "https://winterhold.cantrip.art",
+        );
+        fs::create_dir_all(retained.join("repositories/VolmitSoftware/Iris/.git")).unwrap();
+        write_retained_profile(
+            &unrelated_profiles,
+            "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f3",
+            "https://winterhold.cantrip.art",
+        );
+
+        let data_directories = sibling_profile_directories(&current_app);
+        let locations = retained_profile_directories(&data_directories);
+        let manager = DesktopWorkers {
+            retained_profile_directories: locations,
+            ..test_manager(&current_app.join("linked-workers"))
+        };
+
+        assert!(data_directories.contains(&current_profiles));
+        assert!(data_directories.contains(&packaged_profiles));
+        assert!(!data_directories.contains(&unrelated_profiles));
+        assert_eq!(manager.profile_directory(worker_id), retained);
+        assert_eq!(
+            manager.reusable_workers("https://winterhold.cantrip.art"),
+            vec![DesktopWorkerCandidate {
+                repository_count: 1,
+                worker_id: worker_id.into(),
+            }]
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -6,6 +6,7 @@ import {
   desktopWorkerEnrollmentStopped,
   formatWorkerLastSeen,
   managedRuntimeLabel,
+  offlineDesktopRecoveryWorkerId,
   recoverableDesktopWorkerId,
   resolveDesktopWorkerPairingId,
   staleDesktopWorkerIds,
@@ -185,6 +186,31 @@ describe("worker settings helpers", () => {
     expect(
       resolveDesktopWorkerPairingId({
         serverSelectedWorkerId: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("retires only the offline retained worker before desktop recovery", () => {
+    const workers = [
+      { online: false, workerId: "desktop-source-owner" },
+      { online: true, workerId: "desktop-current" },
+    ];
+    expect(
+      offlineDesktopRecoveryWorkerId({
+        recoveryWorkerId: "desktop-source-owner",
+        workers,
+      }),
+    ).toBe("desktop-source-owner");
+    expect(
+      offlineDesktopRecoveryWorkerId({
+        recoveryWorkerId: "desktop-current",
+        workers,
+      }),
+    ).toBeNull();
+    expect(
+      offlineDesktopRecoveryWorkerId({
+        recoveryWorkerId: "desktop-already-unlinked",
+        workers,
       }),
     ).toBeNull();
   });

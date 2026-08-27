@@ -179,6 +179,17 @@ export function resolveDesktopWorkerPairingId(input: {
   return input.serverSelectedWorkerId;
 }
 
+export function offlineDesktopRecoveryWorkerId(input: {
+  recoveryWorkerId: string | null;
+  workers: Array<{ online: boolean; workerId: string }>;
+}): string | null {
+  if (!input.recoveryWorkerId) return null;
+  const worker = input.workers.find(
+    (candidate) => candidate.workerId === input.recoveryWorkerId,
+  );
+  return worker && !worker.online ? worker.workerId : null;
+}
+
 export function desktopWorkerEnrollmentStopped(input: {
   enrollmentPending: boolean;
   pairingWorkerId: string | null;
@@ -574,6 +585,32 @@ export function WorkerSettings() {
   const addThisMachine = useMutation({
     mutationFn: async () => {
       const candidates = await listDesktopWorkerCandidates(serverUrl);
+      const current = desktopWorkers.data?.find(
+        (worker) => worker.serverUrl === serverUrl,
+      );
+      const recoveryWorkerId = recoverableDesktopWorkerId({
+        candidates,
+        linkedWorkerId: current?.workerId ?? null,
+        serverWorkerIds: (workers.data ?? []).map((worker) => worker.workerId),
+      });
+      const recoveryWorker = (workers.data ?? []).find(
+        (worker) => worker.workerId === recoveryWorkerId,
+      );
+      if (recoveryWorker?.online) {
+        throw new Error(
+          "The retained worker is already online and cannot be replaced.",
+        );
+      }
+      const offlineRecoveryWorkerId = offlineDesktopRecoveryWorkerId({
+        recoveryWorkerId,
+        workers: workers.data ?? [],
+      });
+      if (offlineRecoveryWorkerId) {
+        // The signed-in account can retire an unreachable worker without the
+        // old process participating. Its now-unlinked identity is then the
+        // server-authorized enrollment candidate below.
+        await unlinkWorker(offlineRecoveryWorkerId);
+      }
       const enrollment = await createWorkerEnrollmentCode({
         label: "This machine",
         expiresInSeconds: 300,
@@ -585,19 +622,6 @@ export function WorkerSettings() {
       const workerId = resolveDesktopWorkerPairingId({
         serverSelectedWorkerId: enrollment.workerId,
       });
-      const current = desktopWorkers.data?.find(
-        (worker) => worker.serverUrl === serverUrl,
-      );
-      if (
-        current &&
-        workerId &&
-        current.workerId !== workerId &&
-        (workers.data ?? []).some(
-          (worker) => worker.workerId === current.workerId,
-        )
-      ) {
-        await unlinkWorker(current.workerId);
-      }
       const desktopWorker = await pairDesktopWorker({
         enrollmentCode: enrollment.code,
         name: "This machine",
