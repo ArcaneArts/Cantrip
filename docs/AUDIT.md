@@ -1,8 +1,9 @@
 # Cantrip performance and reliability audit
 
 - Date: 2026-08-27
-- Baseline: origin/main at ad6cc1b4bbb54dd27078dabed028654d700b7beb
-- Status: third independent audit complete; resolved records removed from the active inventory
+- Audit baseline: origin/main at ad6cc1b4bbb54dd27078dabed028654d700b7beb
+- Reconciliation updated through: origin/main at a5fe041d62447876e94134289e92385799a79756
+- Status: third independent audit complete; T0-01 through T0-08 fixed and removed from the active inventory
 - Scope: cantrip_app, cantrip_server, cantrip_worker, packages/protocol, and their cross-layer paths
 
 ## Executive result
@@ -12,50 +13,34 @@ converge on WorkerLink, healthy AppLive replaces ordinary resource polling, and 
 and scheduler hot paths have been fixed. This pass removed every completed record from the active
 inventory and audited the replacement architecture rather than carrying legacy evidence forward.
 
-The deeper pass found 14 strong new opportunities. The highest-upside group is unusually concrete:
+The deeper pass originally found 14 strong new opportunities. T0-01 through T0-08 are now fixed in
+PRs #1220, #1221, and #1223 through #1228. Six third-pass opportunities remain active:
 
-- a WorkerLink tunnel adapter collapses a 256 KiB byte-credit window into one frame per credit
-  round trip;
-- ordinary Explorer, Terminal, and Browser tool actions hydrate an entire project execution-target
-  catalog before performing their focused authoritative lookup;
-- direct WorkerObservation invalidations bypass the existing coalescer, and routine route promotion
-  can refetch every active query in the IDE;
-- one authenticated client opens all-topic observation grants against every online worker, even if
-  it uses only one worker;
-- Task AppLive invalidations fully hydrate chat execution context merely to recover experience and
-  projectId;
-- WorkerLink frame, telemetry, signaling, lease, and expiry paths retain avoidable per-frame,
-  per-signal, per-grant, or global-scan work;
-- the worker rewrites its lifetime-growing routing registry for unchanged protected results;
-- Chat archive preparation performs synchronous bit-at-a-time CRC32. A local 16 MiB benchmark
-  measured a roughly 885 times lower median for Node's native implementation with the same checksum.
+- WorkerLink peer signaling still polls and processes nominal batches one signal at a time;
+- the worker still rewrites its lifetime-growing routing registry for unchanged protected results;
+- Chat archive preparation still performs synchronous bit-at-a-time CRC32;
+- observation envelopes still incur repeated parsing, serialization, encoding, and copies;
+- ordinary WorkerLink control operations still trigger global expiry scans; and
+- each WorkerLink grant still renews through an independent authenticated request and worker command.
 
-There are 57 actionable opportunities after reconciliation: 14 new third-pass findings and 43
-still-valid carryovers. Four additional items remain measure-first candidates. The priority table is
-intentionally narrower than the full inventory.
+There are 49 actionable opportunities after reconciliation: six remaining third-pass findings and
+43 still-valid carryovers. Four additional items remain measure-first candidates. The priority table
+is intentionally narrower than the full inventory.
 
-| Rank | Opportunity                                                      | Gain                      | Risk       | Dominant avoided work                                         |
-| ---: | ---------------------------------------------------------------- | ------------------------- | ---------- | ------------------------------------------------------------- |
-|    1 | T0-01 use WorkerLink's full tunnel byte window                   | very high interactive     | low-medium | one credit round trip after every nested frame                |
-|    2 | T0-02 resolve one execution target without hydrating all targets | high interactive          | low-medium | 11-plus broad loaders before every focused tool action        |
-|    3 | T0-03 coalesce direct invalidations and scope recovery           | very high burst/recovery  | low-medium | repeated refetches and app-wide recovery invalidation         |
-|    4 | T0-04 demand-scope WorkerObservation grants                      | very high fleet-wide      | medium     | all topics and a renewable grant for every online worker      |
-|    5 | T0-05 route Task invalidations with a narrow projection          | high Task streaming       | low        | full execution-context hydration per invalidation             |
-|    6 | T0-06 preserve and reuse validated WorkerLink bytes              | very high interactive     | low-medium | repeated frame copies, codecs, parsing, and relay re-encoding |
-|    7 | T0-07 stop healthy worker-list HTTP polling                      | high fleet-wide idle      | low        | one list request per client every 30 seconds                  |
-|    8 | T0-08 aggregate WorkerLink telemetry before posting              | high streaming            | low        | per-frame timestamp objects and duplicate byte counters       |
-|    9 | T0-09 make peer signaling waitable and actually batched          | high connection setup     | low-medium | 40 ms HTTP polling and per-signal authority round trips       |
-|   10 | T0-10 skip unchanged routing-registry snapshots                  | high Git/worktree         | low        | full JSON write and rename for warm read-only results         |
-|   11 | T0-11 use native or table-driven CRC32                           | high archive preparation  | low        | eight synchronous JavaScript bit steps per byte               |
-|   12 | T0-12 encode and parse observation envelopes once                | high streamed observation | low-medium | repeated schema walks, stringify, encode, and copies          |
-|   13 | T0-13 remove global WorkerLink sweeps from hot operations        | high at scale             | low-medium | scans of all sessions, grants, and peers per renewal          |
-|   14 | T0-14 centralize and batch WorkerLink grant renewal              | high multi-resource idle  | low-medium | one authenticated request and worker command per grant        |
-|   15 | N0-01 watcher-first Run-configuration reconciliation             | very high idle            | low        | full repository scan every 500 ms while watcher is healthy    |
-|   16 | N0-03 linear, low-copy Browser Code framing                      | high interactive          | low-medium | cumulative receive-buffer and fragmentation copies            |
-|   17 | P0-04 narrow AppLive subscription authorization                  | high reconnect            | low        | full resource hydration for as many as 128 scopes             |
-|   18 | P0-06 collapse worker-management 1 + 2N queries                  | high fleet-wide           | low        | pool-consuming list and mutation fanout                       |
-|   19 | N0-15 batch Task dispatch preparation                            | high Task backlog         | low-medium | repeated snapshot/route work and no-op reason writes          |
-|   20 | P0-07 coalesce worktree observation                              | high idle                 | low-medium | per-target SQL, Git probes, and duplicate watchers            |
+| Rank | Opportunity                                               | Gain                      | Risk       | Dominant avoided work                                   |
+| ---: | --------------------------------------------------------- | ------------------------- | ---------- | ------------------------------------------------------- |
+|    1 | T0-09 make peer signaling waitable and actually batched   | high connection setup     | low-medium | 40 ms HTTP polling and per-signal authority round trips |
+|    2 | T0-10 skip unchanged routing-registry snapshots           | high Git/worktree         | low        | full JSON write and rename for warm read-only results   |
+|    3 | T0-11 use native or table-driven CRC32                    | high archive preparation  | low        | eight synchronous JavaScript bit steps per byte         |
+|    4 | T0-12 encode and parse observation envelopes once         | high streamed observation | low-medium | repeated schema walks, stringify, encode, and copies    |
+|    5 | T0-13 remove global WorkerLink sweeps from hot operations | high at scale             | low-medium | scans of all sessions, grants, and peers per renewal    |
+|    6 | T0-14 centralize and batch WorkerLink grant renewal       | high multi-resource idle  | low-medium | one authenticated request and worker command per grant  |
+|    7 | N0-01 watcher-first Run-configuration reconciliation      | very high idle            | low        | full repository scan every 500 ms while watcher healthy |
+|    8 | N0-03 linear, low-copy Browser Code framing               | high interactive          | low-medium | cumulative receive-buffer and fragmentation copies      |
+|    9 | P0-04 narrow AppLive subscription authorization           | high reconnect            | low        | full resource hydration for up to 128 scopes            |
+|   10 | P0-06 collapse worker-management 1 + 2N queries           | high fleet-wide           | low        | pool-consuming list and mutation fanout                 |
+|   11 | N0-15 batch Task dispatch preparation                     | high Task backlog         | low-medium | repeated snapshot/route work and no-op reason writes    |
+|   12 | P0-07 coalesce worktree observation                       | high idle                 | low-medium | per-target SQL, Git probes, and duplicate watchers      |
 
 ## Scope and method
 
@@ -64,8 +49,8 @@ management. A fourth cross-layer pass followed WorkerLink, AppLive, Browser Code
 and routing paths end to end. cantrip_code, cantrip_codex, and cantrip_site were deliberately excluded.
 
 The optimization scout was run as a locator only. Its output was dominated by generated, minified,
-vendored, and patched-upstream files, so it was discarded. Every retained opportunity below was
-manually reread in current source. No product source was changed.
+vendored, and patched-upstream files, so it was discarded. Every opportunity retained by the
+third-pass audit was manually reread against the audit baseline. No product source was changed.
 
 This is a static audit plus one focused microbenchmark, not a production profile. Findings are
 therefore labeled opportunity. Each actionable item states category, gain, risk, complexity,
@@ -83,7 +68,8 @@ STATE_OR_CACHE_STRATEGY.
 - Durable expiry watchdogs must remain. The optimization is to make them single-flight and avoid
   redundant global scans on ordinary request paths, not to weaken deadline enforcement.
 - Direct WorkerObservation is an accelerator; canonical AppLive and durable queries remain the
-  recovery source. Demand-scoping it must preserve background chats, Tasks, failover, and gaps.
+  recovery source. Its scoped demand and recovery paths must continue to preserve background chats,
+  Tasks, failover, and gaps.
 - WorkerLink sequence, route generation, grant, identity, credit, usage accounting, and replay
   checks are security and correctness boundaries. Low-copy paths may reuse bytes only after those
   checks and must retain explicit ownership.
@@ -94,8 +80,8 @@ STATE_OR_CACHE_STRATEGY.
 
 ## Reconciliation with the prior report
 
-Completed findings no longer occupy the active inventory. Superseded findings are removed and their
-remaining current-architecture work is represented by new IDs.
+Completed findings no longer occupy the active inventory. Superseded findings are removed; later
+work that resolved their replacement architecture is recorded below.
 
 | Prior ID | Disposition                        | Current proof                                                                                                                               |
 | -------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -103,8 +89,8 @@ remaining current-architecture work is represented by new IDs.
 | N0-04    | resolved; removed                  | app-live-client.ts:333-341,1071-1086 separates status fanout and coalesces cursor persistence; tests cover 10,000 advances                  |
 | N0-05    | resolved; removed                  | use-provider-catalog.ts:21-35 and provider-catalog-cache.ts:32,74-94 avoid disabled-query parsing and hydrate once per scope                |
 | N0-06    | resolved; removed                  | agent-trajectory.tsx:242-264 and agent-inspect-content.tsx:452-484 stop hidden projection/render/clock work                                 |
-| P0-02    | supported path superseded; removed | legacy client modules are gone; Browser and Remote Desktop use WorkerLink; residual current copies are T0-06                                |
-| P1-19    | common path superseded; removed    | old direct-tunnel scans are compatibility-only; the active WorkerLink tunnel problem is T0-01                                               |
+| P0-02    | supported path superseded; removed | legacy client modules are gone; Browser and Remote Desktop use WorkerLink; #1226 addressed the remaining active frame copies                |
+| P1-19    | common path superseded; removed    | old direct-tunnel scans are compatibility-only; #1221 addressed the active WorkerLink tunnel window                                         |
 
 P0-03 remains active: the encryption work landed in #1136 coalesces concurrent readiness but does
 not skip an unchanged heartbeat bootstrap. P1-04 remains active with narrower wording: #1137 removed
@@ -112,235 +98,23 @@ heartbeat-triggered statistics scans, while filesystem and Git bursts can still 
 large scans. P1-10 also remains active: source files were split, but the authenticated shell is not
 meaningfully lazy-loaded.
 
-## New third-pass opportunities
+## Fixed after the third-pass audit
 
-### T0-01 — opportunity — Stop collapsing WorkerLink's byte window into one-frame stop-and-wait
+The detailed descriptions for these completed opportunities have been removed from the active
+inventory.
 
-- Category: N_PLUS_ONE_OR_CHATTER, STATE_OR_CACHE_STRATEGY
-- Expected gain: very high for Browser Code, project sharing, and tunnel throughput
-- Risk: low-medium
-- Complexity: low-medium
-- Confidence: high
+| ID    | Status | Landed change                                 |
+| ----- | ------ | --------------------------------------------- |
+| T0-01 | fixed  | #1221 drains the WorkerLink byte window       |
+| T0-02 | fixed  | #1220 focuses execution-target resolution     |
+| T0-03 | fixed  | #1224 scopes direct-observation recovery      |
+| T0-04 | fixed  | #1223 scopes WorkerObservation demand         |
+| T0-05 | fixed  | #1225 narrows Task live-routing lookups       |
+| T0-06 | fixed  | #1226 reuses validated WorkerLink frame bytes |
+| T0-07 | fixed  | #1227 gates worker polling on AppLive health  |
+| T0-08 | fixed  | #1228 aggregates WorkerLink client telemetry  |
 
-Evidence:
-
-- cantrip_app/src/lib/worker-link.ts:52-54,1662-1671 establishes a 256 KiB initial credit window.
-- cantrip_worker/src/tunnel-worker-link-adapter.ts:69-99 sets writable false after every emission,
-  even when the emission was accepted, then waits for fresh outer credit.
-- cantrip_worker/src/tunnel-tcp-adapter.ts:362-396 awaits capacity after every successful nested
-  frame. The current expectation is encoded in tunnel-worker-link-adapter.test.ts:154-170.
-- cantrip_worker/src/worker-link-gateway.ts:953-981 already decrements exact bytes only on accepted
-  sends, so the byte window has the accounting needed to drain more than one frame.
-
-Hypothesis: on relay or high-RTT paths, throughput approaches nested-frame-size divided by RTT rather
-than using the 256 KiB window. A carrier-only rejection can also wait for unrelated client credit.
-
-Suggested change: retain writable state after accepted emissions, mark it blocked only on actual
-rejection, and drain until protocol credit or carrier capacity is exhausted. Expose a coalesced
-carrier low-water wakeup so carrier congestion does not depend on protocol-credit arrival.
-
-Validation: accept four 64 KiB frames from a 256 KiB window before blocking; preserve byte and
-sequence accounting across rejection/retry. Measure local, peer, and relay paths at 0/50/150 ms RTT,
-including multiple nested streams, carrier-only congestion, fairness, queue caps, half-close, and
-byte-identical delivery.
-
-### T0-02 — opportunity — Avoid full execution-target hydration before a focused tool action
-
-- Category: N_PLUS_ONE_OR_CHATTER, REDUNDANT_COMPUTATION, ALGORITHM_COMPLEXITY
-- Expected gain: high interactive
-- Risk: low-medium
-- Complexity: medium
-- Confidence: high
-
-Evidence:
-
-- cantrip_server/src/app.ts:8129-8152 loads the complete target catalog before selection. Fourteen
-  call sites at 8721-8824 and 8869 include Explorer list/read/write, Terminal read/send/restart,
-  Browser services/open, and target resolution.
-- cantrip_server/src/db/repository.ts:10379-10403 starts eleven broad loaders: project, replicas,
-  workers, worktrees, chats, terminals, Explorers, Code tabs, browsers, desktops, and remote surfaces.
-  getProject reloads replicas at 9007-9026.
-- The selected exact identity is then authoritatively resolved again at
-  cantrip_server/src/app.ts:5591-5601,6038-6145; cantrip_server/src/db/repository.ts:10055-10063
-  reloads replicas and getProject.
-- execution-targets/catalog.ts:164-205,293-316,362-370 adds repeated linear searches and JSON
-  serialization during sorting. The PostgreSQL pool is five connections at db/index.ts:229-233.
-
-Hypothesis: a single Terminal snapshot or Explorer read creates several pool waves whose work is
-unrelated to the requested resource.
-
-Suggested change: add resolveExecutionTargetSelector(ownerId, projectId, resourceKind, selector).
-Fast-path exact IDs and query only the requested resource kind for names, partial matches, and
-defaults. Return the exact target identity, then retain one authoritative resolve immediately before
-I/O. Keep the full catalog for target.list and UI inventory.
-
-Validation: measure SQL and p50/p95 with 1/100/2,000 targets. Preserve exact/partial ambiguity,
-current Terminal/Worktree defaults, folder-root fallback, explicit worker selection, title
-protection, ownership, lifecycle, capability/offline decisions, and concurrent move/delete checks.
-
-### T0-03 — opportunity — Coalesce direct invalidations and eliminate app-wide recovery refetches
-
-- Category: N_PLUS_ONE_OR_CHATTER, STATE_OR_CACHE_STRATEGY
-- Expected gain: very high during filesystem bursts and route mobility
-- Risk: low-medium
-- Complexity: medium
-- Confidence: high
-
-Evidence:
-
-- cantrip_app/src/lib/app-live-query.ts:596-656 maps direct observations to broad query prefixes,
-  while 683-700 invalidates each event immediately instead of using the existing pending-key
-  coalescer at 737-798.
-- app-live-query.ts:703-735 ends recovery with bare invalidateQueries(), which targets all active
-  query families.
-- worker-observation-client.ts:289-333 invokes recovery after gaps and on routine route-replaced.
-  worker-observation-client.test.ts:216-235 proves route promotion takes this path.
-
-Hypothesis: a filesystem burst creates repeated refetches, and normal LOCAL/LAN/WAN promotion can
-refetch unrelated state across the IDE.
-
-Suggested change: route direct keys through the current coalescer, include exact resource identities
-where available, and track the affected query families per worker. Reconcile only those families and
-provisional chat state; reserve broad recovery for genuinely unbounded continuity loss.
-
-Validation: 1,000 filesystem events must produce bounded invalidations/refetches, route replacement
-must not refetch unrelated queries, and sequence gaps, reconnect, missed events, and provisional
-message reconciliation must remain exact.
-
-### T0-04 — opportunity — Make direct WorkerObservation demand- and topic-scoped
-
-- Category: N_PLUS_ONE_OR_CHATTER, STATE_OR_CACHE_STRATEGY
-- Expected gain: very high fleet-wide
-- Risk: medium
-- Complexity: medium
-- Confidence: high
-
-Evidence:
-
-- cantrip_app/src/components/auth/application-session.tsx:758-763 gives every online worker to the
-  observation client.
-- cantrip_app/src/lib/worker-observation-client.ts:20-25 requests all four topics. Lines 101-133
-  create state for every worker; 146-188 acquires a WorkerLink, grant, subscription, and renewal for
-  each one.
-
-Hypothesis: an idle client using one project still maintains observation authority across an entire
-worker fleet, multiplying grants, renewals, streams, server state, and worker fanout.
-
-Suggested change: maintain a short-grace demand registry keyed by worker and topic. Demand should
-come from visible surfaces plus actively running background chats/Tasks. AppLive remains canonical,
-so direct observation can retire when no accelerator consumer remains.
-
-Validation: use 1/32/256 online workers with one active project. Count WorkerLinks, grants, renewals,
-subscriptions, and events; cover project switching, hidden but running Tasks, background chats,
-worker failover, route replacement, and grace expiration.
-
-### T0-05 — opportunity — Stop full chat execution hydration on Task live invalidation fanout
-
-- Category: N_PLUS_ONE_OR_CHATTER, REDUNDANT_COMPUTATION
-- Expected gain: high for Task streaming and mutation bursts
-- Risk: low
-- Complexity: low-medium
-- Confidence: high
-
-Evidence:
-
-- cantrip_server/src/app.ts:2869-2915 calls getChatExecutionContext only to test experience and
-  recover projectId for Task workload invalidation.
-- There are 50 publishChatInvalidation call sites; many already hold context or projectId, including
-  cantrip_server/src/app.ts:25203,25744,25896.
-- cantrip_server/src/db/repository.ts:17391-17483 first queries context kind and then performs a wide
-  chat/project/settings/worktree/runtime/lane join.
-
-Hypothesis: message-frequency and Task-state invalidations add two broad queries merely to route an
-otherwise tiny live notification. This is separate from subscription authorization and recovery.
-
-Suggested change: add a single-query getChatLiveRouting projection returning only experience and
-projectId. Let callers pass already-known routing metadata. For ID-only bursts, use request- or
-microtask-scoped single-flight rather than a stale TTL cache.
-
-Validation: count SQL for one Task cycle and a 100-invalidation burst. Preserve chat-scoped events,
-project workload invalidation, standalone/non-Task exclusion, ownership, archival behavior, event
-ordering, and entityId.
-
-### T0-06 — opportunity — Preserve validated WorkerLink bytes and remove universal frame copies
-
-- Category: HOT_PATH_ALLOCATION, REDUNDANT_COMPUTATION, REGEX_OR_PARSING_HOT_PATH
-- Expected gain: very high interactive, especially on RELAY
-- Risk: low-medium
-- Complexity: medium
-- Confidence: high
-
-Evidence:
-
-- cantrip_app/src/lib/worker-link.ts:1495-1512 copies every scheduled payload.
-  worker-link-carriers.ts:91-103 copies the newly encoded WebSocket frame again, and
-  worker-link-peer-carrier.ts:226-254 stringifies for accounting before encode/copy.
-- packages/protocol/src/worker-link.ts:1259-1309 validates, JSON encodes/decodes, constructs codecs,
-  and allocates a payload-sized frame.
-- cantrip_server/src/workers/bridge.ts:389-405 decodes worker frames but discards the original bytes;
-  worker-links/relay.ts:172-209 re-encodes worker-to-client frames. Client-to-worker relay decodes at
-  291-305, re-encodes at 349-350, and bridge.ts:648-658 encodes again.
-- account-usage/frame-bandwidth.ts:5-30 needs only byte length. remote-surface-canvas.tsx:74-84,
-  144-169 adds canvas-side copies and backing-store resets.
-
-Hypothesis: every Terminal, Code, surface, tunnel, and observation frame pays unnecessary owned
-copies; RELAY repeats work at multiple internal boundaries and increases GC on the fallback path.
-
-Suggested change: encode once, send the returned Uint8Array directly, use encoded byteLength for
-accounting, and reuse module codecs. Add a branded internal validated-frame type so relay/bridge can
-retain original bytes after identity/sequence checks. Keep the scheduler ownership copy until
-caller-mutation tests prove a safe transfer contract. Optimize canvas dimensions separately.
-
-Validation: run 1 KiB, 64 KiB, 1 MiB, and 4 MiB frames over LOCAL/RELAY/LAN/WAN. Count schema,
-encode/decode, allocated/copied bytes, GC, throughput, and FPS; preserve malformed rejection,
-identity, generation, sequence, quota accounting, backpressure, and caller-buffer mutation safety.
-
-### T0-07 — opportunity — Gate the worker-list fallback by AppLive health
-
-- Category: N_PLUS_ONE_OR_CHATTER, STATE_OR_CACHE_STRATEGY
-- Expected gain: high fleet-wide idle reduction
-- Risk: low
-- Complexity: low
-- Confidence: high
-
-Evidence: cantrip_app/src/components/auth/application-session.tsx:733-764 mounts AppLive and still
-polls getWorkers every 30 seconds unconditionally. app-live-query.ts:86-102 already invalidates the
-workers query for worker and availability events.
-
-Hypothesis: every healthy authenticated client continues a redundant list request even though the
-live path already owns freshness.
-
-Suggested change: use AppLive status with the existing liveResourceRefreshInterval pattern. Keep the
-30-second fallback only while live transport is degraded or stopped.
-
-Validation: ten healthy minutes should issue only the initial request; online/offline events must
-update immediately; degraded mode must poll; recovery must stop polling without losing a final
-reconciliation.
-
-### T0-08 — opportunity — Aggregate WorkerLink telemetry before posting
-
-- Category: HOT_PATH_ALLOCATION, REDUNDANT_COMPUTATION, N_PLUS_ONE_OR_CHATTER
-- Expected gain: high during WorkerLink streaming
-- Risk: low
-- Complexity: low-medium
-- Confidence: high
-
-Evidence:
-
-- cantrip_app/src/lib/worker-link.ts:242-257 creates a timestamped object per event and caps pending
-  telemetry at 128. Lines 1435-1466 record byte traffic plus another relay-bytes-avoided sample.
-- cantrip_server/src/operations/metrics.ts:207-237 immediately aggregates the same dimensions.
-  cantrip_server/src/app.ts:14759-14784 retains no individual byte samples.
-
-Hypothesis: high-frame-rate surface traffic creates many short-lived objects and can drop older
-telemetry before the one-second flush, even though the server only needs summed counters.
-
-Suggested change: aggregate additive counters in the client by route generation, event, route, lane,
-and reason. Preserve individual route transition and latency samples with their timestamps.
-
-Validation: stream 1080p frames plus Terminal traffic. Compare object count, payload size, CPU,
-dropped samples, and exact server counters; preserve generation boundaries, transitions, latency,
-close flush, and retry behavior.
+## Remaining third-pass opportunities
 
 ### T0-09 — opportunity — Make WorkerLink peer signaling waitable and actually batched
 
@@ -516,8 +290,9 @@ Evidence:
 - cantrip_app/src/lib/api.ts:1005-1011 sends one HTTP request per grant.
   cantrip_server/src/app.ts:15099-15138 authenticates and renews one grant;
   cantrip_server/src/worker-links/coordinator.ts:656-690 performs a full sweep and one worker command for it.
-- Protocol permits 128 grants per session. T0-04 reduces unnecessary observation grants but does not
-  remove renewal churn for legitimate Terminal, Code, surface, and tunnel resources.
+- Protocol permits 128 grants per session. The demand-scoping work in #1223 reduces unnecessary
+  observation grants but does not remove renewal churn for legitimate Terminal, Code, surface, and
+  tunnel resources.
 
 Hypothesis: multi-surface sessions produce synchronized idle HTTP/auth/schema/sweep/worker-command
 waves every roughly 40 seconds.
@@ -968,18 +743,12 @@ only then narrow observation boundaries, batch a frame, and cap timers while pre
   and HTTP fallback. Use for peer signaling before inventing another transport.
 - Session lease manager: keyed grant deadlines, jitter, per-entry batch results, lifecycle flush, and
   individual revocation. Use across Terminal, tunnel, surface, and observation grants.
-- Validated encoded-frame ownership: original immutable bytes plus parsed header/payload and branded
-  trust boundary. Use across WorkerLink carriers, bridge, relay, and accounting.
 - Head-index byte deque: O(1) push/evict/read, exact byte accounting, stable order, and occasional
   compaction. Use for replay and command queues.
 - Ordered bounded mapper: deterministic order with a concurrency cap. Use for discovery, validation,
   presence, and startup probes.
-- Narrow routing projection: explicit ownership/lifecycle predicates and only fields required for
-  notification, selection, or authorization. Use instead of full domain hydration.
 - Coalesced durable revision writer: immediate in-memory revision, callers wait for required durable
   revision, latest-snapshot coalescing, and atomic replace. Use for the routing registry.
-- Demand registry with grace: worker/topic references from visible and background-active consumers,
-  deterministic release, and canonical recovery source. Use for direct observation.
 - Incremental bounded stream accumulator: immutable chunks, exact bytes, O(1) head trim, and
   materialization only at delivery. Use for Browser Code and Codex output.
 
@@ -989,27 +758,27 @@ These should remain small internal utilities tied to the listed callers, not a g
 
 ### Wave 0 — add proof counters and deterministic fixtures
 
-- WorkerLink: frames accepted per credit window, copied bytes, codecs, telemetry objects, HTTP/Redis
-  signaling operations, renewal requests, sweep scans, and route-recovery invalidations.
-- Database: statements and pool occupancy for target selection, Task invalidation, workload listing,
-  AppLive authorization, worker management, and Task dispatch.
+- WorkerLink: HTTP/Redis signaling operations, renewal requests, sweep scans, and observation-envelope
+  parse, encode, and copied-byte counts.
+- Database: statements and pool occupancy for workload listing, AppLive authorization, worker
+  management, and Task dispatch.
 - Worker: routing-registry writes/bytes, CRC/event-loop delay, Run-configuration reads, Git children,
   attachment handles/bytes, and Codex clone/materialization counts.
-- UI: query invalidations/refetches, direct observation grants by topic, React commits, overlay
-  copies/sorts, anchor layout reads, CSV parses, DOM nodes, and bundle chunks.
+- UI: React commits, overlay copies/sorts, anchor layout reads, CSV parses, DOM nodes, and bundle
+  chunks.
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement T0-01, T0-07, T0-08, T0-10, T0-11, N0-19, P0-06, P0-08, P1-01,
-P1-06, P1-07, P1-11, P1-15, and P1-18. These primarily remove invisible work, replace an
-equivalent local primitive, or make an existing batching contract effective.
+Implement T0-10, T0-11, N0-19, P0-06, P0-08, P1-01, P1-06, P1-07, P1-11,
+P1-15, and P1-18. These primarily remove invisible work, replace an equivalent local primitive, or
+make an existing batching contract effective.
 
 ### Wave 2 — bounded batching, routing, and ownership
 
-Implement T0-02 through T0-06, T0-09, T0-12 through T0-14, N0-01, N0-03, N0-07 through
-N0-18, N0-20, P0-03, P0-04, P0-07, P0-10, P0-13, P0-14, and P1-02 through
-P1-05, P1-08 through P1-10, P1-12 through P1-14, P1-16, P1-17, and P1-20. Land each
-behind its equivalence, security, deadline, and bounded-cache/queue tests.
+Implement T0-09, T0-12 through T0-14, N0-01, N0-03, N0-07 through N0-18, N0-20,
+P0-03, P0-04, P0-07, P0-10, P0-13, P0-14, and P1-02 through P1-05, P1-08 through
+P1-10, P1-12 through P1-14, P1-16, P1-17, and P1-20. Land each behind its equivalence,
+security, deadline, and bounded-cache/queue tests.
 
 ### Wave 3 — conditional architecture
 
@@ -1018,24 +787,20 @@ admission, coordination transport, or global DOM architecture without production
 
 ## Success metrics
 
-| Surface                  | Primary metric                                                  | Guardrail                                           |
-| ------------------------ | --------------------------------------------------------------- | --------------------------------------------------- |
-| WorkerLink tunnel        | accepted bytes per credit window; throughput/p95 by RTT         | exact credit, sequence, fairness, no loss           |
-| WorkerLink framing       | copied/encoded bytes, allocations, GC, frame p95                | identity, generation, quota, malformed rejection    |
-| WorkerLink authority     | HTTP/Redis/commands per negotiation or renewal; records scanned | deadline, revocation, idempotency, fallback         |
-| Direct observation       | grants/topics per client; invalidations/refetches per burst     | background activity, continuity, canonical recovery |
-| Targeted tool actions    | SQL and pool waves per Explorer/Terminal/Browser action         | ambiguity, defaults, ownership, revalidation        |
-| Task live/workload       | SQL per invalidation/cycle and dashboard p95                    | event scope/order, FIFO, fencing, encryption        |
-| Run configurations       | reads/parses per minute and detect/list p95                     | watcher-loss recovery                               |
-| Codex/Browser Code       | copied bytes, allocations, event-loop delay                     | UTF-8, truncation, framing, ordering                |
-| Routing registry         | writes and serialized bytes per protected result                | durability, token stability, atomic failure         |
-| Chat archives            | checksum time and event-loop delay at 1/16/128 MiB              | identical CRC and ZIP compatibility                 |
-| Project/worker inventory | HTTP, commands, SQL, p95 by fleet size                          | exact fail-closed protected metadata                |
-| UI rendering             | commits, parses, layout reads, DOM/heap, cold TTI               | focus, scroll, actions, visual parity               |
-| Failure/shutdown         | retry distribution, cleanup completion, bounded exit            | manual immediacy; every cleanup attempted           |
+| Surface                  | Primary metric                                                  | Guardrail                                   |
+| ------------------------ | --------------------------------------------------------------- | ------------------------------------------- |
+| WorkerLink authority     | HTTP/Redis/commands per negotiation or renewal; records scanned | deadline, revocation, idempotency, fallback |
+| Task workload            | SQL per workload cycle and dashboard p95                        | FIFO, fencing, encryption                   |
+| Run configurations       | reads/parses per minute and detect/list p95                     | watcher-loss recovery                       |
+| Codex/Browser Code       | copied bytes, allocations, event-loop delay                     | UTF-8, truncation, framing, ordering        |
+| Routing registry         | writes and serialized bytes per protected result                | durability, token stability, atomic failure |
+| Chat archives            | checksum time and event-loop delay at 1/16/128 MiB              | identical CRC and ZIP compatibility         |
+| Project/worker inventory | HTTP, commands, SQL, p95 by fleet size                          | exact fail-closed protected metadata        |
+| UI rendering             | commits, parses, layout reads, DOM/heap, cold TTI               | focus, scroll, actions, visual parity       |
+| Failure/shutdown         | retry distribution, cleanup completion, bounded exit            | manual immediacy; every cleanup attempted   |
 
-The desired end state is behavioral: idle clients and workers should become quiet; ordinary tool
-actions should touch only the requested resource; route changes should not make the whole IDE
-refetch; tunnels should use their byte window; long chats should type like short chats; relay traffic
-should avoid repeated frame-sized work; and degraded services should recover without creating their
-own load spike.
+The desired end state is behavioral: idle clients and workers should become quiet; WorkerLink
+authority paths should batch signaling and leases without scanning global state; routing reads should
+not rewrite unchanged registries; archive preparation should not block the worker event loop; long
+chats should type like short chats; and degraded services should recover without creating their own
+load spike.
