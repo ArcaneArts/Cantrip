@@ -910,7 +910,7 @@ describe("application live query bridge", () => {
     });
   });
 
-  it("refreshes repository statistics for availability changes", () => {
+  it("refreshes worker-backed project data for availability changes", () => {
     expect(
       appLiveEventQueryKeys(
         event({
@@ -926,6 +926,7 @@ describe("application live query bridge", () => {
       ["desktop-worker-enrollment-status"],
       ["chat-sync"],
       ["project-repository-stats"],
+      ["run-configurations"],
     ]);
   });
 
