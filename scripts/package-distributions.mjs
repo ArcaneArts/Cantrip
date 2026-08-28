@@ -235,6 +235,7 @@ async function packageDesktopRuntime() {
       });
       await rm(path.join(serviceRoot, "start.sh"), { force: true });
       await rm(path.join(serviceRoot, "start.cmd"), { force: true });
+      await assertPackagedWorkspaceRuntime(serviceRoot);
     }
   } else {
     buildCodex();
