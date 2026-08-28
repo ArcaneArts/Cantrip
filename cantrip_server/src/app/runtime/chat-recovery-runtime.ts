@@ -6,9 +6,6 @@ import {
   codeAgentTurnPreparationResultSchema,
   worktreeStatusResultSchema,
   type ChatMessage,
-  type ChatMessageOpaqueContent,
-  type ChatTurnCreate,
-  type ReasoningEffort,
   type WorkerNotification,
 } from "@cantrip/protocol";
 import { taskMessageRelayResultSchema } from "@cantrip/protocol/tasks";
@@ -30,29 +27,10 @@ import { parseTaskOperationRelayResult } from "../../tasks/encrypted-relay.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
 import type { createLiveMutationRuntime } from "./live-mutation-runtime.js";
 import type { createModelRoutingRuntime } from "./model-routing-runtime.js";
+import type { BeginChatTurn } from "./chat-turn-runtime.js";
 
 type LiveMutationRuntime = ReturnType<typeof createLiveMutationRuntime>;
 type ModelRoutingRuntime = ReturnType<typeof createModelRoutingRuntime>;
-
-type BeginTurn = (
-  context: ChatExecutionContext,
-  input: Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
-    attachmentIds?: string[];
-    customSubagentModel?: boolean;
-    mode?: ChatTurnCreate["mode"];
-    subagentModelId?: string | null;
-    subagentReasoningEffort?: ReasoningEffort | null;
-  },
-  options?: {
-    acquiringActor?: "agent" | "user";
-    encryptedChatMessages?: {
-      userMessage: ChatMessageOpaqueContent;
-      response: { id: string; idempotencyKey: string };
-    };
-    messageRole?: "system" | "user";
-    purpose?: string;
-  },
-) => Promise<ChatMessage>;
 
 type OwnerRunner = <T>(ownerId: string, operation: () => T) => T;
 
@@ -77,7 +55,7 @@ export interface ChatRecoveryRuntimeDependencies
   extends ChatRecoveryMutationDependencies, ChatRecoveryModelDependencies {
   app: Pick<FastifyInstance, "log">;
   applicationOwnerId: () => string;
-  beginTurn: BeginTurn;
+  beginTurn: BeginChatTurn;
   bridge: LimitedWorkerCommandBus;
   failTaskGoalLaunch: (
     chatId: string,
