@@ -36,12 +36,6 @@ import {
   tunnelWireSummarySchema,
 } from "@cantrip/protocol";
 import { endpointContentOpaqueSchema } from "@cantrip/protocol/endpoint-content";
-import {
-  codeSettingsProfileIdSchema,
-  codeSettingsRevisionConflictSchema,
-  codeSettingsStoredProfileSchema,
-  codeSettingsUploadSchema,
-} from "@cantrip/protocol/code-settings";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
   AppLiveResource,
@@ -101,14 +95,12 @@ import {
   type TunnelAttachmentAuthorization,
 } from "./db/repository.js";
 import { prepareRuntimesForReasoning } from "./models/reasoning.js";
-import { CodeSettingsRevisionConflictError } from "./db/code-settings.js";
 import {
   WorkflowTriggerConflictError,
   WorkflowTriggerRateLimitError,
 } from "./db/workflow-triggers.js";
 import { WorkerBridge, WorkerUnavailableError } from "./workers/bridge.js";
 import { workerPresenceFingerprint } from "./workers/presence.js";
-import { authenticateWorkerRequest } from "./workers/credentials.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { WorktreeCreateMutationError } from "./worktrees/coordinator.js";
 import { errorMessage, invalidBody } from "./http/request-helpers.js";
@@ -135,6 +127,7 @@ import {
 } from "./app/routes/browser-management.js";
 import { installChatRelocationRoutes } from "./app/routes/chat-relocations.js";
 import { installInternalProviderCredentialRoutes } from "./app/routes/internal-provider-credentials.js";
+import { installInternalWorkerCodeSettingsRoutes } from "./app/routes/internal-worker-code-settings.js";
 import { installPolicyRoutes } from "./app/routes/policies.js";
 import { installProjectAutomationRoutes } from "./app/routes/project-automations.js";
 import { installProjectCatalogAndPlacementRoutes } from "./app/routes/project-catalog-and-placement.js";
@@ -1910,30 +1903,6 @@ export async function buildApp({
       .send({ error: "Too many authentication attempts. Try again later." });
   };
 
-  const workerHasActiveCodeSettingsGrant = async (
-    ownerId: string,
-    workerId: string,
-    keyRevision?: number,
-  ): Promise<boolean> => {
-    const principal =
-      await repository.encryptionRegistry.findActiveWorkerPrincipal(
-        ownerId,
-        workerId,
-      );
-    if (!principal) return false;
-    const result = await repository.encryptionRegistry.listActiveGrants(
-      ownerId,
-      principal.id,
-    );
-    return (
-      result.status === "ok" &&
-      result.grants.some(
-        ({ component, keyRevision: grantedRevision }) =>
-          component === "customization-content" &&
-          (keyRevision === undefined || grantedRevision === keyRevision),
-      )
-    );
-  };
   let registrationTail = Promise.resolve();
   const withRegistrationLock = async <T>(operation: () => Promise<T>) => {
     const predecessor = registrationTail;
@@ -1949,180 +1918,13 @@ export async function buildApp({
     }
   };
 
-  app.get<{
-    Params: { profileId: string; workerId: string };
-  }>(
-    "/api/internal/workers/:workerId/code-settings/profiles/:profileId",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const profileId = codeSettingsProfileIdSchema.safeParse(
-        request.params.profileId,
-      );
-      if (!profileId.success) {
-        return reply.code(400).send(invalidBody(profileId.error.issues));
-      }
-      const workerAuth = await authenticateWorkerRequest(
-        repository,
-        config,
-        request,
-        request.params.workerId,
-        "worker:connect",
-      );
-      if (!workerAuth) return reply.code(401).send({ error: "Unauthorized" });
-      const worker = await repository.getWorker(
-        workerAuth.ownerId,
-        request.params.workerId,
-      );
-      if (!worker) return reply.code(404).send({ error: "Worker not found." });
-      const stored = await repository.codeSettings.get(
-        workerAuth.ownerId,
-        profileId.data,
-      );
-      if (
-        !(await workerHasActiveCodeSettingsGrant(
-          workerAuth.ownerId,
-          request.params.workerId,
-          stored?.record.protectedContent.keyRevision,
-        ))
-      ) {
-        return reply.code(403).send({
-          error: "Worker lacks Code settings encryption authorization.",
-        });
-      }
-      reply.header("cache-control", "no-store");
-      return stored
-        ? reply.send(codeSettingsStoredProfileSchema.parse(stored))
-        : reply
-            .code(404)
-            .send({ error: "Global Code settings are not initialized." });
-    },
-  );
-
-  app.put<{
-    Body: unknown;
-    Params: { profileId: string; workerId: string };
-  }>(
-    "/api/internal/workers/:workerId/code-settings/profiles/:profileId",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const profileId = codeSettingsProfileIdSchema.safeParse(
-        request.params.profileId,
-      );
-      if (!profileId.success) {
-        return reply.code(400).send(invalidBody(profileId.error.issues));
-      }
-      const workerAuth = await authenticateWorkerRequest(
-        repository,
-        config,
-        request,
-        request.params.workerId,
-        "worker:connect",
-      );
-      if (!workerAuth) return reply.code(401).send({ error: "Unauthorized" });
-      const worker = await repository.getWorker(
-        workerAuth.ownerId,
-        request.params.workerId,
-      );
-      if (!worker) return reply.code(404).send({ error: "Worker not found." });
-      const input = codeSettingsUploadSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      if (
-        !(await workerHasActiveCodeSettingsGrant(
-          workerAuth.ownerId,
-          request.params.workerId,
-          input.data.record.protectedContent.keyRevision,
-        ))
-      ) {
-        return reply.code(403).send({
-          error: "Worker lacks this Code settings encryption key revision.",
-        });
-      }
-      try {
-        const stored = await repository.codeSettings.compareAndSwap(
-          workerAuth.ownerId,
-          request.params.workerId,
-          profileId.data,
-          input.data,
-        );
-        runAsOwner(workerAuth.ownerId, () =>
-          publishLiveInvalidation("settings", {
-            entityId: `code:${profileId.data}`,
-          }),
-        );
-        void repository
-          .listWorkers(workerAuth.ownerId)
-          .then(async (workers) =>
-            Promise.all(
-              workers
-                .filter(
-                  (worker) =>
-                    worker.workerId !== request.params.workerId &&
-                    bridge.isConnected(worker.workerId),
-                )
-                .map(async (worker) =>
-                  (await workerHasActiveCodeSettingsGrant(
-                    workerAuth.ownerId,
-                    worker.workerId,
-                    stored.profile.record.protectedContent.keyRevision,
-                  ))
-                    ? worker
-                    : null,
-                ),
-            ),
-          )
-          .then((workers) =>
-            Promise.allSettled(
-              workers
-                .filter((worker) => worker !== null)
-                .map((worker) =>
-                  bridge.request(
-                    worker.workerId,
-                    {
-                      type: "code.settings.invalidate",
-                      profileId: profileId.data,
-                      revision: stored.profile.record.revision,
-                    },
-                    { ownerId: workerAuth.ownerId, timeoutMs: 20_000 },
-                  ),
-                ),
-            ),
-          )
-          .catch((error) => {
-            serverLogger.rateLimited(
-              `code-settings-invalidation:${workerAuth.ownerId}`,
-              "warn",
-              "Code settings worker invalidation was not delivered",
-              {
-                event: "code.settings.invalidation-failed",
-                subsystem: "code-settings",
-                operation: "invalidate-workers",
-                reasonCode: "delivery-failed",
-                status: "degraded",
-                error,
-              },
-            );
-          });
-        reply.header("cache-control", "no-store");
-        return reply
-          .code(stored.created ? 201 : 200)
-          .send(codeSettingsStoredProfileSchema.parse(stored.profile));
-      } catch (error) {
-        if (error instanceof CodeSettingsRevisionConflictError) {
-          return reply.code(409).send(
-            codeSettingsRevisionConflictSchema.parse({
-              code: "revision-conflict",
-              profileId: profileId.data,
-              currentRevision: error.currentRevision,
-              error: error.message,
-            }),
-          );
-        }
-        throw error;
-      }
-    },
-  );
+  installInternalWorkerCodeSettingsRoutes(app, {
+    bridge,
+    config,
+    publishLiveInvalidation,
+    repository,
+    runAsOwner,
+  });
 
   installInternalProviderCredentialRoutes(app, { config, repository });
 
