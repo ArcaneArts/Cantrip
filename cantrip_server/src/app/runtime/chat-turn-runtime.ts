@@ -1799,7 +1799,9 @@ export function createChatTurnRuntime({
         const finished = await repository.finishChatExecutionLane(
           execution.chatId,
           executionLaneId,
-          interrupted ? "idle" : "failed",
+          interrupted || execution.contextKind === "standalone"
+            ? "idle"
+            : "failed",
         );
         cancelChatTurnOutcomeRecovery(
           execution.workerId,

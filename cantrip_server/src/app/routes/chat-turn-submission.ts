@@ -103,14 +103,16 @@ export function installChatTurnSubmissionRoutes(
       }
       if (
         context.contextKind === "standalone" &&
-        (context.status === "offline" || context.status === "failed")
+        context.scratchRootStatus !== "ready"
       ) {
         return reply.code(409).send({
           code: "standalone-scratch-unavailable",
           error:
-            context.status === "failed"
+            context.scratchRootStatus === "failed"
               ? "This Chat's scratch folder could not be prepared. Retry provisioning before sending."
-              : "This Chat's scratch folder is still being prepared.",
+              : context.scratchRootStatus === "provisioning"
+                ? "This Chat's scratch folder is still being prepared."
+                : "This Chat's scratch folder is unavailable.",
         });
       }
       if (context.automationPaused || chatIsExecuting(context.status)) {
