@@ -6,6 +6,12 @@ import type {
   ExplorerSummary,
 } from "@cantrip/protocol";
 
+import {
+  defaultExplorerFileMode,
+  monacoLanguageForPath,
+  structuredFileFormatForPath,
+} from "@/components/explorer/explorer-file-language";
+
 export const desktopExplorerWindowLaunchParameter = "cantrip-explorer-launch";
 
 export interface DesktopExplorerWindowContext {
@@ -87,18 +93,19 @@ export function desktopExplorerWindowChannelName(launchId: string): string {
 }
 
 export function desktopExplorerWindowModes(path: string): ExplorerFileMode[] {
-  const filename = path.split("/").at(-1)?.toLowerCase() ?? "";
-  const extension = filename.split(".").at(-1);
-  const visual =
-    filename === ".env" ||
-    extension === "env" ||
-    extension === "json" ||
-    extension === "toml" ||
-    extension === "yaml" ||
-    extension === "yml" ||
-    extension === "csv" ||
-    extension === "properties";
-  return visual ? ["preview", "visual", "edit"] : ["preview", "edit"];
+  const modes: ExplorerFileMode[] = ["preview"];
+  if (structuredFileFormatForPath(path)) modes.push("visual");
+  if (monacoLanguageForPath(path)) modes.push("edit");
+  return modes;
+}
+
+export function desktopExplorerWindowInitialMode(
+  path: string,
+): ExplorerFileMode {
+  const preferred = defaultExplorerFileMode(path);
+  return desktopExplorerWindowModes(path).includes(preferred)
+    ? preferred
+    : "preview";
 }
 
 export function isDesktopExplorerWindowRequest(

@@ -36,6 +36,7 @@ import {
 } from "@/lib/code-workbench-frame";
 import { DesktopExplorerWindowClient } from "@/lib/desktop-explorer-window-client";
 import {
+  desktopExplorerWindowInitialMode,
   desktopExplorerWindowModes,
   type DesktopExplorerWindowContext,
 } from "@/lib/desktop-explorer-window-protocol";
@@ -387,7 +388,9 @@ export function DesktopExplorerFileWindow({
   const [context, setContext] = useState<DesktopExplorerWindowContext | null>(
     null,
   );
-  const [mode, setMode] = useState<ExplorerFileMode>("edit");
+  const [mode, setMode] = useState<ExplorerFileMode>(() =>
+    desktopExplorerWindowInitialMode(initialPath),
+  );
   const [attachment, setAttachment] = useState<CodeAttachment | null>(null);
   const [preparedAtMs, setPreparedAtMs] = useState<number | null>(null);
   const [configuredAtMs, setConfiguredAtMs] = useState<number | null>(null);
@@ -404,7 +407,7 @@ export function DesktopExplorerFileWindow({
     () =>
       new DesktopExplorerWindowClient(launchId, {
         onContext: (next) => {
-          setMode("edit");
+          setMode(desktopExplorerWindowInitialMode(next.path));
           setContext(next);
           setConfiguredAtMs(null);
           setEditorError(null);
@@ -461,9 +464,7 @@ export function DesktopExplorerFileWindow({
   const structuredFormat: VisualFileFormat | null = context
     ? structuredFileFormatForPath(path)
     : null;
-  const availableModes = context
-    ? desktopExplorerWindowModes(path)
-    : (["preview", "edit"] satisfies ExplorerFileMode[]);
+  const availableModes = desktopExplorerWindowModes(path);
   useEffect(() => {
     if (!context || mode === "edit") return;
     if ((mediaType && media) || (!mediaType && file)) return;
@@ -554,14 +555,16 @@ export function DesktopExplorerFileWindow({
                   Visual
                 </ModeButton>
               ) : null}
-              <ModeButton
-                active={mode === "edit"}
-                disabled={!context}
-                onClick={() => setMode("edit")}
-              >
-                <Code2 className="size-3.5" />
-                Editor
-              </ModeButton>
+              {availableModes.includes("edit") ? (
+                <ModeButton
+                  active={mode === "edit"}
+                  disabled={!context}
+                  onClick={() => setMode("edit")}
+                >
+                  <Code2 className="size-3.5" />
+                  Editor
+                </ModeButton>
+              ) : null}
             </div>
             {mode === "visual" && dirty ? (
               <Button
