@@ -22,7 +22,6 @@ import {
   tunnelWireSummarySchema,
 } from "@cantrip/protocol";
 import { endpointContentOpaqueSchema } from "@cantrip/protocol/endpoint-content";
-import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
   AppLiveResource,
   CodeGraphProjectStatus,
@@ -294,13 +293,11 @@ import {
   WORKFLOW_GATE_EXPIRY_SWEEP_MS,
 } from "./app/shared/constants.js";
 import { ProviderAccountReconnectRequiredError } from "./app/shared/errors.js";
-import {
-  mutationChatLiveResources,
-  mutationLiveResources,
-} from "./app/shared/live-resources.js";
+import { createAuthRouteSupport } from "./app/http/auth-route-support.js";
+import { installMutationLiveInvalidationHook } from "./app/http/mutation-live-invalidation.js";
 
 export type { BuildAppOptions } from "./app/options.js";
-export { mutationLiveResources };
+export { mutationLiveResources } from "./app/shared/live-resources.js";
 
 export async function buildApp({
   config,
@@ -1231,62 +1228,9 @@ export async function buildApp({
     repository,
   });
 
-  app.addHook("onResponse", async (request, reply) => {
-    if (
-      ["GET", "HEAD", "OPTIONS"].includes(request.method) ||
-      reply.statusCode >= 400
-    ) {
-      return;
-    }
-    const route = request.routeOptions.url ?? "";
-    const repositoryAccess =
-      request.body !== null &&
-      typeof request.body === "object" &&
-      "access" in request.body &&
-      request.body.access === "read"
-        ? "read"
-        : "write";
-    const resources = mutationLiveResources(route, repositoryAccess);
-    const chatResources = mutationChatLiveResources(route);
-    if (resources.length === 0 && chatResources.length === 0) return;
-    const params = request.params as Record<string, unknown>;
-    const projectId =
-      typeof params.projectId === "string" ? params.projectId : null;
-    const entityId = [
-      params.configurationId,
-      params.worktreeId,
-      params.chatId,
-      params.terminalId,
-      params.explorerId,
-      params.browserId,
-      params.codeTabId,
-      params.desktopId,
-      params.surfaceId,
-      params.viewId,
-      params.workerId,
-      params.policyId,
-      params.workspaceId,
-      params.tunnelId,
-      params.attachmentId,
-      params.projectId,
-    ].find((value): value is string => typeof value === "string");
-    for (const resource of resources) {
-      publishLiveInvalidation(resource, {
-        entityId:
-          resource === "policy"
-            ? typeof params.policyId === "string"
-              ? params.policyId
-              : null
-            : entityId,
-        projectId: resource === "policy" ? null : projectId,
-      });
-    }
-    const chatId = typeof params.chatId === "string" ? params.chatId : null;
-    if (chatId) {
-      for (const resource of chatResources) {
-        publishChatInvalidation(chatId, resource);
-      }
-    }
+  installMutationLiveInvalidationHook(app, {
+    publishChatInvalidation,
+    publishLiveInvalidation,
   });
 
   const routeCooldowns = new Map<string, number>();
@@ -1566,47 +1510,11 @@ export async function buildApp({
 
   installApiMetadataRoute(app);
 
-  const rejectUnapprovedAuthOrigin = (
-    request: FastifyRequest,
-    reply: FastifyReply,
-  ): unknown | null => {
-    const origin = request.headers.origin;
-    if (origin && !config.appOrigins.includes(origin)) {
-      return reply.code(403).send({ error: "Origin is not allowed." });
-    }
-    return null;
-  };
-
-  const consumeAuthAttempt = (
-    request: FastifyRequest,
-    scope: string,
-    identity: string,
-    reply: FastifyReply,
-  ): unknown | null => {
-    const retryAfter = authRateLimiter.consume(
-      `${scope}:${request.ip}:${identity}`,
-    );
-    if (retryAfter === null) return null;
-    reply.header("retry-after", String(retryAfter));
-    return reply
-      .code(429)
-      .send({ error: "Too many authentication attempts. Try again later." });
-  };
-
-  let registrationTail = Promise.resolve();
-  const withRegistrationLock = async <T>(operation: () => Promise<T>) => {
-    const predecessor = registrationTail;
-    let release!: () => void;
-    registrationTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await predecessor;
-    try {
-      return await operation();
-    } finally {
-      release();
-    }
-  };
+  const {
+    consumeAuthAttempt,
+    rejectUnapprovedAuthOrigin,
+    withRegistrationLock,
+  } = createAuthRouteSupport({ authRateLimiter, config });
 
   installInternalWorkerCodeSettingsRoutes(app, {
     bridge,
