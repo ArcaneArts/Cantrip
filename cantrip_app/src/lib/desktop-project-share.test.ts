@@ -18,6 +18,7 @@ const project = {
     displayPath: "ArcaneArts/Cantrip",
     id: "source-1",
     path: "/worker/repositories/ArcaneArts/Cantrip",
+    placementMode: "managed",
     sourceKind: "git",
     workerId: "desktop-worker-1",
   },
@@ -130,6 +131,7 @@ describe("desktop project reveal", () => {
     ).toEqual({
       folderManagement: null,
       path: "/worker/repositories/ArcaneArts/Cantrip",
+      placementMode: "managed",
       relativePath: "",
       serverUrl: "https://cantrip.example",
       sourceKind: "git",
@@ -156,10 +158,32 @@ describe("desktop project reveal", () => {
     ).toEqual({
       folderManagement: "external",
       path: "/Users/example/Documents/notes",
+      placementMode: "managed",
       relativePath: "",
       serverUrl: "https://cantrip.example",
       sourceKind: "folder",
       workerId: "desktop-worker-1",
+    });
+  });
+
+  it("marks directly placed repositories for local path resolution", () => {
+    expect(
+      nativeLocalProjectFolderRequest(
+        {
+          ...project,
+          source: {
+            ...project.source!,
+            displayPath: "D:\\Projects\\Cantrip",
+            path: "D:\\Projects\\Cantrip",
+            placementMode: "direct",
+          },
+        },
+        "https://cantrip.example",
+      ),
+    ).toMatchObject({
+      path: "D:\\Projects\\Cantrip",
+      placementMode: "direct",
+      sourceKind: "git",
     });
   });
 

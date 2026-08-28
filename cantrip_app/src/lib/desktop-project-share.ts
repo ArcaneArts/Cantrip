@@ -85,6 +85,7 @@ export function nativeLocalProjectFolderRequest(
   return {
     folderManagement: project.folderManagement ?? null,
     path: source.path,
+    placementMode: source.placementMode,
     relativePath,
     serverUrl,
     sourceKind: source.sourceKind,
