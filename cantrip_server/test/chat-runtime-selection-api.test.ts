@@ -31,6 +31,7 @@ const context: ChatExecutionContext = {
   providerAccountId: "account-two",
   reasoningEffort: null,
   rootKind: null,
+  scratchRootStatus: "ready",
   scratchRootId: "scratch-one",
   status: "idle",
   threadId: "thread-one",

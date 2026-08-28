@@ -294,6 +294,7 @@ const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
 const standaloneChatTurnCommands: Array<
   Extract<WorkerCommand, { type: "chat.turn" }>
 > = [];
+let standaloneChatTurnErrorOnce: Error | null = null;
 const standaloneChatFileOperationCommands: Array<
   Extract<WorkerCommand, { type: "chat.scratch.files.operation" }>
 > = [];
@@ -1924,6 +1925,11 @@ const workerBridge = {
               "Standalone Chat did not request an encrypted result.",
             );
           }
+          if (standaloneChatTurnErrorOnce) {
+            const error = standaloneChatTurnErrorOnce;
+            standaloneChatTurnErrorOnce = null;
+            throw error;
+          }
           return {
             threadId: `thread-${command.scratchRootId}`,
             text: "",
@@ -2139,7 +2145,11 @@ describe.sequential("server worktree control plane", () => {
         );
         return context?.contextKind === "standalone" ? context : null;
       })
-      .toMatchObject({ contextKind: "standalone", status: "idle" });
+      .toMatchObject({
+        contextKind: "standalone",
+        scratchRootStatus: "ready",
+        status: "idle",
+      });
     const context = await database.repository.getChatExecutionContext(
       LOCAL_USER_ID,
       chat.id,
@@ -2399,6 +2409,55 @@ describe.sequential("server worktree control plane", () => {
           message.scratchRootId === fork.activeScratchRootId,
       ),
     ).toBe(true);
+
+    await database.repository.setChatStatus(chat.id, "failed");
+    await expect(
+      database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
+    ).resolves.toMatchObject({
+      contextKind: "standalone",
+      scratchRootStatus: "ready",
+      status: "failed",
+    });
+    const recoveredTurnCount = standaloneChatTurnCommands.length;
+    const recoveredSend = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/turns`,
+      payload: protectedStandaloneTurn(context.modelId),
+    });
+    expect(recoveredSend.statusCode, recoveredSend.body).toBe(202);
+    await expect
+      .poll(() => standaloneChatTurnCommands.length, { timeout: 4_000 })
+      .toBe(recoveredTurnCount + 1);
+    await expect
+      .poll(async () => {
+        const current = await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        );
+        return current?.status;
+      })
+      .toBe("idle");
+
+    standaloneChatTurnErrorOnce = new Error("Managed web search unavailable.");
+    const failedTurnCount = standaloneChatTurnCommands.length;
+    const failedSend = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/turns`,
+      payload: protectedStandaloneTurn(context.modelId),
+    });
+    expect(failedSend.statusCode, failedSend.body).toBe(202);
+    await expect
+      .poll(() => standaloneChatTurnCommands.length, { timeout: 4_000 })
+      .toBe(failedTurnCount + 1);
+    await expect
+      .poll(async () => {
+        const current = await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        );
+        return current?.status;
+      })
+      .toBe("idle");
 
     connected = false;
     try {

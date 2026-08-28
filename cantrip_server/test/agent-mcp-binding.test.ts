@@ -62,6 +62,7 @@ const standaloneContext: ChatExecutionContext = {
   contextKind: "standalone",
   projectId: null,
   rootKind: null,
+  scratchRootStatus: "ready",
   scratchRootId: "scratch-one",
   worktreeId: null,
   worktreeMode: null,

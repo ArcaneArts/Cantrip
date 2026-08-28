@@ -87,6 +87,7 @@ import type {
   ChatWireSummary,
   ContextualChatWireSummary,
   StandaloneChatWireSummary,
+  StandaloneChatRootStatus,
   ArchivedStandaloneChatWireSummary,
   StandaloneChatRootJobSummary,
   ChatModelConfigurationUpdate,
@@ -532,6 +533,7 @@ export interface StandaloneChatExecutionContext extends ChatExecutionContextBase
   contextKind: "standalone";
   projectId: null;
   rootKind: null;
+  scratchRootStatus: StandaloneChatRootStatus;
   scratchRootId: string;
   worktreeId: null;
   worktreeMode: null;
@@ -13634,6 +13636,7 @@ export class ServerRepository {
         planMode: "default",
         projectId: null,
         rootKind: null,
+        scratchRootStatus: "ready",
         scratchRootId: row.root.id,
         threadId: runtime.codexThreadId,
         workerId: row.root.workerId,
@@ -18529,6 +18532,7 @@ export class ServerRepository {
       planMode: "default",
       projectId: null,
       rootKind: null,
+      scratchRootStatus: row.root.status as StandaloneChatRootStatus,
       scratchRootId: row.root.id,
       threadId: row.runtime?.codexThreadId ?? null,
       workerId: row.root.workerId,
