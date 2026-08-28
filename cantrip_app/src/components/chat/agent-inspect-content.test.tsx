@@ -150,6 +150,7 @@ describe("AgentInspectPresentation", () => {
               expiresAtMs: 12_000,
               kind: "update",
               latestLine: "const latest = '<safe>';",
+              diffPreview: "-const latest = 'old';\n+const latest = '<safe>';",
               path: "src/path with spaces.ts",
               turnId: "turn-1",
               updatedAtMs: 2_000,
@@ -199,10 +200,12 @@ describe("AgentInspectPresentation", () => {
     expect(markup).toContain("Waiting for its result.");
     expect(markup).toContain("line-clamp-3");
     expect(markup).toContain("src/path with spaces.ts");
-    expect(markup).toContain("const latest = &#x27;&lt;safe&gt;&#x27;;");
+    expect(markup).toContain('data-slot="file-change-preview"');
+    expect(markup).toContain('data-language="typescript"');
+    expect(markup).toContain("&#x27;old&#x27;");
+    expect(markup).toContain("&#x27;&lt;safe&gt;&#x27;");
     expect(markup).toContain("File deleted");
-    expect(markup).toContain("overflow-x-auto");
-    expect(markup).toContain("whitespace-pre");
+    expect(markup).toContain("Preview of changes in src/path with spaces.ts");
     expect(markup).toContain("git status --short");
     expect(markup).toContain("latest 256 KiB retained");
     expect(markup).toContain("latest output");

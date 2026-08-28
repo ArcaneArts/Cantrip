@@ -2917,6 +2917,21 @@ export function latestChangedLine(
   return latest === null ? null : boundedFilePreview(latest);
 }
 
+export function changedLinesPreview(
+  diff: string | null | undefined,
+): string | null {
+  if (!diff) return null;
+  const preview = diff
+    .split("\n")
+    .filter(
+      (line) =>
+        (line.startsWith("+") && !line.startsWith("+++ ")) ||
+        (line.startsWith("-") && !line.startsWith("--- ")),
+    )
+    .join("\n");
+  return preview ? boundedFilePreview(preview) : null;
+}
+
 export function changedFiles(
   diff: string,
   lastActivityAtMs?: number,
@@ -2931,6 +2946,7 @@ export function changedFiles(
         return [];
       }
       const latestLine = latestChangedLine(section);
+      const diffPreview = changedLinesPreview(section);
       return [
         {
           path: match[2],
@@ -2940,6 +2956,7 @@ export function changedFiles(
               ? ("delete" as const)
               : ("update" as const),
           ...(latestLine === null ? {} : { latestLine }),
+          ...(diffPreview === null ? {} : { diffPreview }),
           ...(lastActivityAtMs === undefined ? {} : { lastActivityAtMs }),
         },
       ];
@@ -3292,10 +3309,12 @@ export function normalizeCodexThreadItem(
       telemetry.fileChanges ??
       item.changes.map((change) => {
         const latestLine = latestChangedLine(change.diff);
+        const diffPreview = changedLinesPreview(change.diff);
         return {
           path: displayPath(cwd, change.path),
           kind: change.kind.type,
           ...(latestLine === null ? {} : { latestLine }),
+          ...(diffPreview === null ? {} : { diffPreview }),
           ...(telemetry.updatedAtMs === undefined
             ? {}
             : { lastActivityAtMs: telemetry.updatedAtMs }),

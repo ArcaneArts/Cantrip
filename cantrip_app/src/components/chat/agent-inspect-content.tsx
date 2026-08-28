@@ -8,9 +8,6 @@ import {
   Check,
   CircleX,
   FileDiff,
-  FileMinus2,
-  FilePenLine,
-  FilePlus2,
   Loader2,
   SquareTerminal,
 } from "lucide-react";
@@ -23,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { AgentTrajectory } from "./agent-trajectory";
 import type { AgentTurnProjection } from "./agent-turn-projection";
 import { displayCommand } from "./command-display";
+import { FileChangePreview } from "./file-change-preview";
 import {
   buildAgentInspectorProjectionSource,
   projectAgentInspector,
@@ -98,87 +96,13 @@ export function inspectorCommandLayout(commandCount: number): {
   };
 }
 
-function filePreview(file: AgentInspectorFile): string {
-  if (file.latestLine !== null) return inspectorSingleLine(file.latestLine);
-  if (file.kind === "delete") return "File deleted";
-  return "Preview unavailable";
-}
-
-function FileActivityIcon({ kind }: { kind: AgentInspectorFile["kind"] }) {
-  if (kind === "add") {
-    return <FilePlus2 className="size-3.5 shrink-0 text-emerald-500" />;
-  }
-  if (kind === "delete") {
-    return <FileMinus2 className="size-3.5 shrink-0 text-destructive" />;
-  }
-  return <FilePenLine className="size-3.5 shrink-0 text-amber-500" />;
-}
-
-function FileLine({ file }: { file: AgentInspectorFile }) {
-  const line = filePreview(file);
-  const [transition, setTransition] = useState<{
-    current: string;
-    previous: string | null;
-  }>({ current: line, previous: null });
-  const scrollerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setTransition((current) =>
-      current.current === line
-        ? current
-        : { current: line, previous: current.current },
-    );
-  }, [line]);
-
-  useEffect(() => {
-    const scroller = scrollerRef.current;
-    if (scroller) scroller.scrollLeft = scroller.scrollWidth;
-  }, [transition.current]);
-
-  return (
-    <div
-      aria-label={`Latest change in ${file.path}`}
-      className="overflow-x-auto overscroll-x-contain"
-      ref={scrollerRef}
-    >
-      <div className="relative h-5 min-w-max overflow-hidden pr-2 font-mono text-[11px] leading-5 text-muted-foreground">
-        {transition.previous !== null ? (
-          <span
-            aria-hidden="true"
-            className="absolute left-0 top-0 whitespace-pre animate-out fade-out slide-out-to-top-1 duration-150 motion-reduce:hidden"
-            onAnimationEnd={() =>
-              setTransition((current) => ({ ...current, previous: null }))
-            }
-          >
-            {transition.previous}
-          </span>
-        ) : null}
-        <span
-          className="block whitespace-pre animate-in fade-in slide-in-from-bottom-1 duration-150 motion-reduce:animate-none"
-          key={`${file.id}:${file.updatedAtMs}:${transition.current}`}
-        >
-          {transition.current}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function ActiveFileRow({ file }: { file: AgentInspectorFile }) {
   return (
     <li
       className="min-w-0 animate-in fade-in slide-in-from-right-1 duration-150 motion-reduce:animate-none"
       data-file-path={file.path}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <FileActivityIcon kind={file.kind} />
-        <span className="min-w-0 truncate text-xs" title={file.path}>
-          {file.path}
-        </span>
-      </div>
-      <div className="ml-[1.375rem] mt-0.5 min-w-0">
-        <FileLine file={file} />
-      </div>
+      <FileChangePreview changes={[file]} />
     </li>
   );
 }

@@ -492,6 +492,7 @@ describe("agent inspector projection", () => {
             path: "src/path with spaces.ts",
             kind: "update",
             latestLine: "const oldValue = true;",
+            diffPreview: "-const oldValue = false;\n+const oldValue = true;",
             lastActivityAtMs: 1_900,
           },
           {
@@ -516,6 +517,7 @@ describe("agent inspector projection", () => {
             path: "src/path with spaces.ts",
             kind: "update",
             latestLine: "const newValue = true;",
+            diffPreview: "-const newValue = false;\n+const newValue = true;",
             lastActivityAtMs: 2_100,
           },
         ],
@@ -532,6 +534,7 @@ describe("agent inspector projection", () => {
       {
         path: "src/path with spaces.ts",
         latestLine: "const newValue = true;",
+        diffPreview: "-const newValue = false;\n+const newValue = true;",
       },
     ]);
     expect(
