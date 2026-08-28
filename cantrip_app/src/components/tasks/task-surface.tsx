@@ -792,7 +792,7 @@ export function TaskSurface({
         >
           {autosaveLabel}
         </span>
-        {taskCanBeDeleted(task.data, chat.status) && onDelete ? (
+        {taskCanBeDeleted(task.data) && onDelete ? (
           <Button
             aria-label="Delete Task"
             className="size-7"

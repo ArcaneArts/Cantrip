@@ -117,7 +117,7 @@ describe("project Task workload", () => {
     expect(projectTaskIsUnqueuedDraft(undefined)).toBe(false);
   });
 
-  it("allows deletion only for unqueued drafts, queued Tasks, and failed Tasks", () => {
+  it("allows the owner to delete every Task lifecycle state", () => {
     const draft = task({
       chatId: "draft",
       createdAt: "2026-08-24T12:00:00.000Z",
@@ -162,8 +162,8 @@ describe("project Task workload", () => {
     expect(taskCanBeDeleted(queued)).toBe(true);
     expect(taskCanBeDeleted(failed)).toBe(true);
     expect(taskCanBeDeleted(staleFailed)).toBe(true);
-    expect(taskCanBeDeleted(running)).toBe(false);
-    expect(taskCanBeDeleted(complete, "failed")).toBe(false);
+    expect(taskCanBeDeleted(running)).toBe(true);
+    expect(taskCanBeDeleted(complete)).toBe(true);
     expect(taskCanBeDeleted(undefined)).toBe(false);
   });
 

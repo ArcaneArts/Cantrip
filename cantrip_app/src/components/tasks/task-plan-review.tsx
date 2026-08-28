@@ -595,7 +595,7 @@ export function TaskPlanReview({
                 <Pencil className="size-3.5" /> Edit Plan
               </Button>
             )}
-            {onDelete && taskCanBeDeleted(task, chat.status) ? (
+            {onDelete && taskCanBeDeleted(task) ? (
               <Button
                 aria-label="Delete Task"
                 className="size-8"

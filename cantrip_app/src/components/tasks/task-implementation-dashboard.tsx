@@ -282,7 +282,7 @@ export function TaskImplementationDashboard({
             />
             <span className="sr-only">Refresh dashboard</span>
           </Button>
-          {onDelete && taskCanBeDeleted(task, chat.status) ? (
+          {onDelete && taskCanBeDeleted(task) ? (
             <Button
               aria-label="Delete Task"
               className="size-8"

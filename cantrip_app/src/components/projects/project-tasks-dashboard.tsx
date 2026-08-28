@@ -397,7 +397,7 @@ function TaskWorkloadRow({
         </div>
       </div>
       <div className="flex items-center gap-1 self-center">
-        {taskCanBeDeleted(task, chat?.status) && onDeleteTask ? (
+        {taskCanBeDeleted(task) && onDeleteTask ? (
           <Button
             aria-label={`Delete ${chat?.title ?? "Task"}`}
             className="size-8 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
