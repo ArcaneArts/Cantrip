@@ -712,7 +712,96 @@ afterAll(async () => {
 });
 
 describe.sequential("Task E2EE closure lifecycle", () => {
+  it("dispatches the agent turn without waiting on a redundant launch heartbeat", async () => {
+    const chatId = randomUUID();
+    const initialTask = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} launch fence test`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const createdResponse = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task: initialTask,
+      },
+    });
+    expect(createdResponse.statusCode).toBe(201);
+    const created = taskWireCreateResultSchema.parse(createdResponse.json());
+
+    const dispatch = database.repository.taskDispatch;
+    const originalHeartbeat = dispatch.heartbeat.bind(dispatch);
+    let heartbeatBlocked = false;
+    let releaseHeartbeat: (() => void) | null = null;
+    const heldHeartbeat = new Promise<void>((resolve) => {
+      releaseHeartbeat = resolve;
+    });
+    dispatch.heartbeat = async (lease, options) => {
+      if (!heartbeatBlocked) {
+        heartbeatBlocked = true;
+        await heldHeartbeat;
+      }
+      return originalHeartbeat(lease, options);
+    };
+
+    try {
+      const started = await app!.inject({
+        method: "POST",
+        url: `/api/tasks/${chatId}/start`,
+        payload: {
+          operationId: randomUUID(),
+          rowVersion: created.task.rowVersion,
+        },
+      });
+      expect(started.statusCode).toBe(202);
+
+      let workerReceivedTurn = false;
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        workerReceivedTurn = serverObservedPayloads.some((payload) =>
+          payload.includes(chatId),
+        );
+        if (workerReceivedTurn) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(workerReceivedTurn).toBe(true);
+      for (let attempt = 0; attempt < 200 && !heartbeatBlocked; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(heartbeatBlocked).toBe(true);
+      expect((await taskSummary(chatId)).dispatch?.state).toBe("running");
+
+      releaseHeartbeat?.();
+      await waitForTask(chatId, "complete");
+    } finally {
+      releaseHeartbeat?.();
+      dispatch.heartbeat = originalHeartbeat;
+    }
+  });
+
   it("fails a blocked launch without retaining Task Worker capacity", async () => {
+    taskOperationPrepareTimeouts.length = 0;
+    codeAgentPrepareTimeouts.length = 0;
     rejectNextAgentTurnPreparation = true;
     const blockedChatId = randomUUID();
     const blockedTask = await sealTask(blockedChatId, {

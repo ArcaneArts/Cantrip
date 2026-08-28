@@ -388,8 +388,13 @@ export function createChatTurnRuntime({
             context.workerId,
             context.contextKind === "project" ? "ide" : "chat",
           );
+    // Scheduled callers retain the fresh claim while this preflight runs. Use
+    // the authoritative state transition as the single launch fence instead
+    // of first awaiting a redundant heartbeat and only marking the Task later.
+    // This also prevents a preflight that was paused in-flight from acquiring
+    // an execution lane after its fencing token has been advanced.
     if (options.taskDispatchLease) {
-      await repository.taskDispatch.heartbeat(options.taskDispatchLease);
+      await repository.taskDispatch.markRunning(options.taskDispatchLease);
     }
     const execution = await repository.startChatExecutionLane(
       ownerId,
@@ -544,9 +549,6 @@ export function createChatTurnRuntime({
         },
         "Agent turn accepted",
       );
-      if (options.taskDispatchLease) {
-        await repository.taskDispatch.markRunning(options.taskDispatchLease);
-      }
     } catch (error) {
       await repository.finishChatExecutionLane(
         execution.chatId,

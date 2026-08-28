@@ -4,17 +4,69 @@ import type { FastifyInstance } from "fastify";
 export type TaskLaunchStage =
   | "attach-execution"
   | "begin-turn"
+  | "load-operation"
   | "persist-operation"
   | "prepare-operation"
   | "resolve-context"
   | "resolve-runtime";
 
-export function observeTaskLaunchStage(
-  logger: Pick<FastifyInstance["log"], "debug">,
+type TaskLaunchLogger = Pick<FastifyInstance["log"], "info" | "warn">;
+
+interface ObserveTaskLaunchStageOptions {
+  slowWarningMs?: number | null;
+  timeoutMs?: number | null;
+}
+
+export class TaskLaunchStageTimeoutError extends Error {
+  constructor(
+    readonly stage: TaskLaunchStage,
+    readonly timeoutMs: number,
+  ) {
+    super(
+      `Scheduled Task launch timed out during ${stage} after ${timeoutMs}ms.`,
+    );
+    this.name = "TaskLaunchStageTimeoutError";
+  }
+}
+
+export async function withTaskLaunchStageTimeout<T>(
+  stage: TaskLaunchStage,
+  timeoutMs: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise<never>((_resolve, reject) => {
+        timeoutTimer = setTimeout(
+          () => reject(new TaskLaunchStageTimeoutError(stage, timeoutMs)),
+          timeoutMs,
+        );
+        timeoutTimer.unref();
+      }),
+    ]);
+  } finally {
+    if (timeoutTimer) clearTimeout(timeoutTimer);
+  }
+}
+
+/**
+ * Emits a complete launch-stage lifecycle and prevents remote/read-only
+ * preflight work from retaining Task Worker capacity forever.
+ */
+export async function observeTaskLaunchStage<T>(
+  logger: TaskLaunchLogger,
   cycle: Pick<TaskDispatchCycleSummary, "chatId" | "id">,
   stage: TaskLaunchStage,
-): void {
-  logger.debug(
+  operation: () => Promise<T>,
+  {
+    slowWarningMs = 5_000,
+    timeoutMs = null,
+  }: ObserveTaskLaunchStageOptions = {},
+): Promise<T> {
+  const startedAt = Date.now();
+  logger.info(
     {
       event: "task.operation.launch-stage",
       subsystem: "task-scheduler",
@@ -26,4 +78,68 @@ export function observeTaskLaunchStage(
     },
     "Scheduled Task launch stage started",
   );
+
+  let slowTimer: ReturnType<typeof setTimeout> | null = null;
+  if (slowWarningMs !== null) {
+    slowTimer = setTimeout(() => {
+      logger.warn(
+        {
+          event: "task.operation.launch-stage",
+          subsystem: "task-scheduler",
+          operation: "launch-operation",
+          status: "waiting",
+          reasonCode: "slow-stage",
+          chatId: cycle.chatId,
+          cycleId: cycle.id,
+          durationMs: Date.now() - startedAt,
+          stage,
+        },
+        "Scheduled Task launch stage is still waiting",
+      );
+    }, slowWarningMs);
+    slowTimer.unref();
+  }
+
+  try {
+    const result =
+      timeoutMs === null
+        ? await operation()
+        : await withTaskLaunchStageTimeout(stage, timeoutMs, operation);
+    logger.info(
+      {
+        event: "task.operation.launch-stage",
+        subsystem: "task-scheduler",
+        operation: "launch-operation",
+        status: "completed",
+        chatId: cycle.chatId,
+        cycleId: cycle.id,
+        durationMs: Date.now() - startedAt,
+        stage,
+      },
+      "Scheduled Task launch stage completed",
+    );
+    return result;
+  } catch (error) {
+    logger.warn(
+      {
+        event: "task.operation.launch-stage",
+        subsystem: "task-scheduler",
+        operation: "launch-operation",
+        status: "failed",
+        reasonCode:
+          error instanceof TaskLaunchStageTimeoutError
+            ? "stage-timeout"
+            : "stage-failed",
+        chatId: cycle.chatId,
+        cycleId: cycle.id,
+        durationMs: Date.now() - startedAt,
+        stage,
+        err: error,
+      },
+      "Scheduled Task launch stage failed",
+    );
+    throw error;
+  } finally {
+    if (slowTimer) clearTimeout(slowTimer);
+  }
 }
