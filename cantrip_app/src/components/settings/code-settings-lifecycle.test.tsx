@@ -22,7 +22,6 @@ const desktopCode = vi.hoisted(() => ({
   directCodeAttachmentHealthyWithin: vi.fn(),
   installDirectCodeAttachmentVsix: vi.fn(),
   openDirectCodeAttachmentExtensions: vi.fn(),
-  openDirectCodeAttachmentSettings: vi.fn(),
   preferProtectedCodeAttachment: vi.fn(),
   recoverPreferredCodeAttachmentRoute: vi.fn(),
   stopDirectCodeAttachment: vi.fn(),
@@ -238,9 +237,6 @@ beforeEach(() => {
       return () => availability.listeners.delete(listener);
     },
   );
-  desktopCode.openDirectCodeAttachmentSettings.mockResolvedValue({
-    opened: true,
-  });
   desktopCode.openDirectCodeAttachmentExtensions.mockResolvedValue({
     opened: true,
   });
@@ -347,13 +343,15 @@ describe("CodeSettings retained workbench lifecycle", () => {
 
   it("waits for the authenticated frame-ready event and gates interaction on the acknowledgement", async () => {
     const opening = deferred<{ opened: true }>();
-    desktopCode.openDirectCodeAttachmentSettings.mockReturnValue(
+    desktopCode.openDirectCodeAttachmentExtensions.mockReturnValue(
       opening.promise,
     );
     const { frameWindow, renderer } = await mount(true);
     let iframe = renderer.root.findByType("iframe");
 
-    expect(desktopCode.openDirectCodeAttachmentSettings).not.toHaveBeenCalled();
+    expect(
+      desktopCode.openDirectCodeAttachmentExtensions,
+    ).not.toHaveBeenCalled();
     expect(iframe.props["aria-hidden"]).toBe(true);
     expect(iframe.props.tabIndex).toBe(-1);
 
@@ -363,14 +361,16 @@ describe("CodeSettings retained workbench lifecycle", () => {
         origin: "http://127.0.0.1:9999",
       });
     });
-    expect(desktopCode.openDirectCodeAttachmentSettings).not.toHaveBeenCalled();
+    expect(
+      desktopCode.openDirectCodeAttachmentExtensions,
+    ).not.toHaveBeenCalled();
 
     await act(async () => {
       (window as unknown as FakeWindow).sendMessage(
         readyEvent(renderer, frameWindow),
       );
     });
-    expect(desktopCode.openDirectCodeAttachmentSettings).toHaveBeenCalledWith(
+    expect(desktopCode.openDirectCodeAttachmentExtensions).toHaveBeenCalledWith(
       attachment,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -386,7 +386,7 @@ describe("CodeSettings retained workbench lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("switches native customization views without replacing the retained iframe", async () => {
+  it("opens the combined settings and extensions view without internal tabs", async () => {
     const { frameWindow, renderer } = await mount(true);
     const initialFrame = renderer.root.findByType("iframe");
 
@@ -396,40 +396,25 @@ describe("CodeSettings retained workbench lifecycle", () => {
       );
     });
     await settle();
-    expect(desktopCode.openDirectCodeAttachmentSettings).toHaveBeenCalledOnce();
 
-    const extensionsTab = renderer.root
-      .findAllByType("button")
-      .find(
-        (button) =>
-          button.props.role === "tab" && button.children.includes("Extensions"),
-      );
-    expect(extensionsTab).toBeDefined();
-    await act(async () => extensionsTab!.props.onClick());
-    await settle();
-
+    expect(
+      desktopCode.openDirectCodeAttachmentExtensions,
+    ).toHaveBeenCalledOnce();
     expect(desktopCode.openDirectCodeAttachmentExtensions).toHaveBeenCalledWith(
       attachment,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
     expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
+    expect(
+      renderer.root.findAll((node) => node.props.role === "tab"),
+    ).toHaveLength(0);
+    expect(renderer.root.findByType("iframe").props.title).toBe(
+      "VS Code settings and extensions",
+    );
     expect(renderedText(renderer)).toContain(
       "files, processes, credentials, and network",
     );
-
-    const settingsTab = renderer.root
-      .findAllByType("button")
-      .find(
-        (button) =>
-          button.props.role === "tab" && button.children.includes("Settings"),
-      );
-    await act(async () => settingsTab!.props.onClick());
-    await settle();
-    expect(desktopCode.openDirectCodeAttachmentSettings).toHaveBeenCalledTimes(
-      2,
-    );
-    expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
 
     await act(async () => renderer.unmount());
   });
@@ -441,14 +426,6 @@ describe("CodeSettings retained workbench lifecycle", () => {
         readyEvent(renderer, frameWindow),
       );
     });
-    await settle();
-    const extensionsTab = renderer.root
-      .findAllByType("button")
-      .find(
-        (button) =>
-          button.props.role === "tab" && button.children.includes("Extensions"),
-      )!;
-    await act(async () => extensionsTab.props.onClick());
     await settle();
 
     const file = new File(["vsix"], "example.vsix");
@@ -549,7 +526,7 @@ describe("CodeSettings retained workbench lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("keeps Extensions usable while encrypted Settings are conflicted", async () => {
+  it("keeps conflict resolution visible in the combined view", async () => {
     api.getCodeSettingsWorkerStatus.mockResolvedValue(conflictStatus);
     api.createProtectedCodeSettingsAttachment.mockResolvedValue({
       ...wire,
@@ -566,23 +543,12 @@ describe("CodeSettings retained workbench lifecycle", () => {
     expect(renderedText(renderer)).toContain(
       "Global Code settings need a decision",
     );
-
-    const extensionsTab = renderer.root
-      .findAllByType("button")
-      .find(
-        (button) =>
-          button.props.role === "tab" && button.children.includes("Extensions"),
-      );
-    await act(async () => extensionsTab!.props.onClick());
-    await settle();
-
     expect(
       desktopCode.openDirectCodeAttachmentExtensions,
     ).toHaveBeenCalledOnce();
-    expect(renderedText(renderer)).not.toContain(
-      "Global Code settings need a decision",
-    );
-    expect(renderer.root.findByType("iframe").props.tabIndex).toBe(0);
+    expect(renderedText(renderer)).toContain("Use synced settings");
+    expect(renderedText(renderer)).toContain("Keep this worker’s settings");
+    expect(renderer.root.findByType("iframe").props.tabIndex).toBe(-1);
 
     await act(async () => renderer.unmount());
   });
