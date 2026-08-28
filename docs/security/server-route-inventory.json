@@ -119,6 +119,7 @@
       "cantrip_server/src/app/routes/workflow-trigger-delivery.ts",
       "cantrip_server/src/app/routes/workflow-trigger-management.ts",
       "cantrip_server/src/app/runtime/agent-operation-runtime.ts",
+      "cantrip_server/src/app/runtime/application-service-foundation.ts",
       "cantrip_server/src/app/runtime/background-job-runtime.ts",
       "cantrip_server/src/app/runtime/chat-recovery-runtime.ts",
       "cantrip_server/src/app/runtime/chat-thread-sync-runtime.ts",
