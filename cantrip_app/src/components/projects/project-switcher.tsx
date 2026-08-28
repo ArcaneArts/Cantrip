@@ -209,6 +209,7 @@ export function ProjectSwitcher({
               </CommandList>
               <div className="border-t p-1">
                 <ProjectCreateMenu
+                  contentClassName="z-[90]"
                   onSelect={(source) => {
                     setOpen(false);
                     onAddProject(source);

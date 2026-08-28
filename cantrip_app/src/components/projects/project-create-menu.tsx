@@ -6,14 +6,17 @@ import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
+import { cn } from "@/lib/utils";
 
 export type ProjectCreateSource = "folder" | "github";
 
 export function ProjectCreateMenu({
   children,
+  contentClassName,
   onSelect,
 }: {
   children: ReactNode;
+  contentClassName?: string;
   onSelect(source: ProjectCreateSource): void;
 }) {
   return (
@@ -24,7 +27,7 @@ export function ProjectCreateMenu({
       <DropdownMenuPrimitive.Portal>
         <StyledDropdownMenuContent
           align="end"
-          className="min-w-52"
+          className={cn("min-w-52", contentClassName)}
           sideOffset={4}
         >
           <StyledDropdownMenuItem onSelect={() => onSelect("github")}>
