@@ -627,6 +627,7 @@ describe("application live query bridge", () => {
     ).toEqual([
       ["standalone-chats"],
       ["messages", "chat-one"],
+      ["chat-runtime-selection", "chat-one"],
       ["task-dashboard", "chat-one"],
     ]);
     expect(
@@ -1012,6 +1013,9 @@ describe("application live query bridge", () => {
     });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["messages", "chat-one"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["chat-runtime-selection", "chat-one"],
     });
   });
 

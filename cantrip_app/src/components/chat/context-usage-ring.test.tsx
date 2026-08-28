@@ -13,6 +13,7 @@ import {
   formatQuotaReset,
   latestContextUsage,
   quotaProviderLabel,
+  selectedQuotaAccount,
   selectedQuotaProvider,
   signedInQuotaAccounts,
 } from "./context-usage-ring";
@@ -250,9 +251,43 @@ describe("context usage ring", () => {
     expect(selectedQuotaProvider(model, [grok])).toBe(grok);
     expect(quotaProviderLabel(grok)).toBe("SuperGrok");
     const markup = renderToStaticMarkup(
-      <ContextUsageRing messages={[]} model={model} providers={[grok]} />,
+      <ContextUsageRing
+        messages={[]}
+        model={model}
+        providerAccountId="grok-account"
+        providers={[grok]}
+      />,
     );
     expect(markup).toContain("100% total 7-day available across 1 account");
+    expect(markup).not.toContain("Current account");
+  });
+
+  it("uses the runtime route instead of assuming the first model route", () => {
+    const bundle = settings();
+    const grok = {
+      ...bundle.providers[0]!,
+      id: "grok-1",
+      name: "Grok",
+      kind: "grok" as const,
+      accounts: [],
+    };
+    const model = {
+      ...bundle.models[0]!,
+      routes: [
+        bundle.models[0]!.routes[0]!,
+        {
+          ...bundle.models[0]!.routes[0]!,
+          id: "grok-route",
+          providerId: grok.id,
+          providerName: grok.name,
+          position: 1,
+        },
+      ],
+    };
+
+    expect(
+      selectedQuotaProvider(model, [...bundle.providers, grok], "grok-route"),
+    ).toBe(grok);
   });
 
   it("orders only enabled signed-in accounts for the detail dialog", () => {
@@ -268,6 +303,7 @@ describe("context usage ring", () => {
       "one",
       "two",
     ]);
+    expect(selectedQuotaAccount(provider, "two")?.label).toBe("two");
   });
 
   it("renders accessible context and combined account capacity on the ring", () => {
@@ -276,6 +312,8 @@ describe("context usage ring", () => {
       <ContextUsageRing
         messages={[usageMessage(1, 25_000, 100_000)]}
         model={bundle.models[0]}
+        modelRouteId="route-1"
+        providerAccountId="two"
         providers={bundle.providers}
       />,
     );
@@ -284,6 +322,7 @@ describe("context usage ring", () => {
     expect(markup).toContain("25,000 of 100,000 tokens used");
     expect(markup).toContain('stroke-dasharray="25 100"');
     expect(markup).toContain("72% total 7-day available across 2 accounts");
+    expect(markup).toContain("current account two");
     expect(markup).toContain('aria-expanded="false"');
   });
 

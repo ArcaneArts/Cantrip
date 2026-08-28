@@ -129,6 +129,7 @@ import {
   getChatPermissionProfiles,
   getChatPlan,
   getChatReasoning,
+  getChatRuntimeSelection,
   getCodeGraphWorktreeStatus,
   getGithubIssues,
   getAgentInteractionRequests,
@@ -657,6 +658,15 @@ export function useChatTranscriptController({
     retry: false,
     staleTime: 30_000,
   });
+  const runtimeSelection = useQuery({
+    queryFn: () => getChatRuntimeSelection(chat.id),
+    queryKey: ["chat-runtime-selection", chat.id],
+    refetchInterval:
+      chat.status === "running" || chat.status === "waiting-for-approval"
+        ? 3_000
+        : false,
+    retry: false,
+  });
   const loadModelReasoningState = useCallback(
     (modelId: string) => getChatReasoning(chat.id, modelId),
     [chat.id],
@@ -1137,6 +1147,9 @@ export function useChatTranscriptController({
         queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["plan", chat.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["chat-runtime-selection", chat.id],
+        }),
       ]);
     },
   });
@@ -1177,6 +1190,9 @@ export function useChatTranscriptController({
         queryClient.invalidateQueries({ queryKey: projectChatQueryKey }),
         queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["plan", chat.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["chat-runtime-selection", chat.id],
+        }),
       ]);
     },
     onError: (error: unknown) => {
@@ -1258,6 +1274,9 @@ export function useChatTranscriptController({
         }),
         queryClient.invalidateQueries({
           queryKey: ["chat-reasoning", chat.id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["chat-runtime-selection", chat.id],
         }),
       ]);
     },
@@ -1891,6 +1910,7 @@ export function useChatTranscriptController({
     restoreDraftAttachmentText,
     retrySentMessage,
     revisePlan,
+    runtimeSelection,
     scrollTranscriptToBottom,
     selectModelConfiguration,
     selectPermissionProfile,
