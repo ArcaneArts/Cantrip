@@ -17,12 +17,7 @@ function parseWorkspaceRoot(vscode, expectedWorkspaceRootUri) {
   } catch {
     throw new Error("Cantrip Code rejected its configured workspace root.");
   }
-  if (
-    root.scheme !== "file" ||
-    root.query ||
-    root.fragment ||
-    root.toString() !== expectedWorkspaceRootUri
-  ) {
+  if (root.scheme !== "file" || root.query || root.fragment) {
     throw new Error("Cantrip Code rejected its configured workspace root.");
   }
   return root;

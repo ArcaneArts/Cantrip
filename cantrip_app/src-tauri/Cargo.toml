@@ -45,6 +45,7 @@ zeroize = "1"
 tauri-plugin-window-state = "2"
 
 [target.'cfg(windows)'.dependencies]
+dunce = "1"
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_NetworkManagement_WebDav",
