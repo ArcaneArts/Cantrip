@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
+import { taskCanBeDeleted } from "@/components/tasks/task-deletion";
 import {
   EmptyState,
   EmptyStateActions,
@@ -41,7 +42,7 @@ import {
 } from "@/components/ui/empty-state";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import {
-  deleteTaskDraft,
+  deleteTask,
   getProjectTaskPauseState,
   getProjectTaskWorkload,
   getTaskWorkers,
@@ -290,14 +291,14 @@ function TaskTrajectoryBar({ item }: { item: ProjectTaskWorkloadItem }) {
 function TaskWorkloadRow({
   chat,
   item,
-  onDeleteDraft,
+  onDeleteTask,
   onOpen,
   paused,
   taskWorkers,
 }: {
   chat: ChatSummary | undefined;
   item: ProjectTaskWorkloadItem;
-  onDeleteDraft?(): void;
+  onDeleteTask?(): void;
   onOpen(): void;
   paused: boolean;
   taskWorkers: ReadonlyMap<string, TaskWorkerSummary>;
@@ -396,16 +397,16 @@ function TaskWorkloadRow({
         </div>
       </div>
       <div className="flex items-center gap-1 self-center">
-        {projectTaskIsUnqueuedDraft(task) && onDeleteDraft ? (
+        {taskCanBeDeleted(task, chat?.status) && onDeleteTask ? (
           <Button
-            aria-label={`Delete draft ${chat?.title ?? "Task"}`}
+            aria-label={`Delete ${chat?.title ?? "Task"}`}
             className="size-8 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
             size="icon"
-            title="Delete draft Task"
+            title="Delete Task"
             variant="ghost"
             onClick={(event) => {
               event.stopPropagation();
-              onDeleteDraft();
+              onDeleteTask();
             }}
           >
             <Trash2 className="size-4" />
@@ -465,7 +466,7 @@ function WorkloadList({
               item={item}
               paused={paused}
               taskWorkers={taskWorkers}
-              onDeleteDraft={() =>
+              onDeleteTask={() =>
                 onDeleteTask(
                   item.task.chatId,
                   chats.get(item.task.chatId)?.title ?? "Task",
@@ -566,10 +567,13 @@ export function ProjectTasksDashboard({
       });
     },
   });
-  const deleteDraftMutation = useMutation({
-    mutationFn: deleteTaskDraft,
+  const deleteTaskMutation = useMutation({
+    mutationFn: deleteTask,
     onSuccess: async (_result, chatId) => {
-      queryClient.removeQueries({ exact: true, queryKey: ["task", chatId] });
+      queryClient.removeQueries({ queryKey: ["task", chatId] });
+      queryClient.removeQueries({ queryKey: ["task-dashboard", chatId] });
+      queryClient.removeQueries({ queryKey: ["task-attachments", chatId] });
+      queryClient.removeQueries({ queryKey: ["messages", chatId] });
       if (activeTaskChatId === chatId) onCloseTask();
       setDeleteTarget(null);
       await Promise.all([
@@ -604,37 +608,37 @@ export function ProjectTasksDashboard({
       ),
     [chatMap, pauseState.data?.paused, workload.data?.items],
   );
-  const requestDeleteDraft = (chatId: string, title: string) => {
-    deleteDraftMutation.reset();
+  const requestDeleteTask = (chatId: string, title: string) => {
+    deleteTaskMutation.reset();
     setDeleteTarget({ chatId, title });
   };
-  const deleteDraftDialog = (
+  const deleteTaskDialog = (
     <ConfirmDialog
       confirmDisabled={!deleteTarget}
       confirmLabel={
         <>
-          <Trash2 className="size-4" /> Delete draft
+          <Trash2 className="size-4" /> Delete Task
         </>
       }
       confirmPendingLabel="Deleting…"
-      description={`${deleteTarget?.title ?? "This Task"} and its draft attachments will be permanently deleted. This cannot be undone.`}
+      description={`${deleteTarget?.title ?? "This Task"}, its conversation history, attachments, and execution records will be permanently deleted. This cannot be undone.`}
       error={
-        deleteDraftMutation.isError
-          ? errorMessage(deleteDraftMutation.error)
+        deleteTaskMutation.isError
+          ? errorMessage(deleteTaskMutation.error)
           : undefined
       }
       onConfirm={() =>
-        deleteTarget && deleteDraftMutation.mutate(deleteTarget.chatId)
+        deleteTarget && deleteTaskMutation.mutate(deleteTarget.chatId)
       }
       open={Boolean(deleteTarget)}
       onOpenChange={(open) => {
         if (!open) {
           setDeleteTarget(null);
-          deleteDraftMutation.reset();
+          deleteTaskMutation.reset();
         }
       }}
-      pending={deleteDraftMutation.isPending}
-      title="Delete draft Task?"
+      pending={deleteTaskMutation.isPending}
+      title="Delete Task?"
     />
   );
 
@@ -643,13 +647,13 @@ export function ProjectTasksDashboard({
       <div className="flex min-h-0 flex-1 flex-col">
         <PersistentTaskViews
           activeTask={{ chat: activeTask, worker: activeTaskWorker }}
-          deleting={deleteDraftMutation.isPending}
+          deleting={deleteTaskMutation.isPending}
           settings={settings}
           onClose={onCloseTask}
-          onDelete={() => requestDeleteDraft(activeTask.id, activeTask.title)}
+          onDelete={() => requestDeleteTask(activeTask.id, activeTask.title)}
           onRename={onRenameTask}
         />
-        {deleteDraftDialog}
+        {deleteTaskDialog}
       </div>
     );
   }
@@ -763,7 +767,7 @@ export function ProjectTasksDashboard({
             chats={chatMap}
             items={sorted.active}
             label="Active"
-            onDeleteTask={requestDeleteDraft}
+            onDeleteTask={requestDeleteTask}
             paused={pauseState.data?.paused ?? false}
             taskWorkers={workerMap}
             onOpenTask={onOpenTask}
@@ -772,14 +776,14 @@ export function ProjectTasksDashboard({
             chats={chatMap}
             items={sorted.completed}
             label="Completed"
-            onDeleteTask={requestDeleteDraft}
+            onDeleteTask={requestDeleteTask}
             paused={false}
             taskWorkers={workerMap}
             onOpenTask={onOpenTask}
           />
         </div>
       </div>
-      {deleteDraftDialog}
+      {deleteTaskDialog}
     </div>
   );
 }

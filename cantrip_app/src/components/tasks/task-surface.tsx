@@ -77,6 +77,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { TaskImplementationDashboard } from "./task-implementation-dashboard";
+import { taskCanBeDeleted } from "./task-deletion";
 import { TaskListBackButton } from "./task-list-back-button";
 import { TaskPlanReview } from "./task-plan-review";
 
@@ -661,7 +662,9 @@ export function TaskSurface({
     return (
       <TaskPlanReview
         chat={chat}
+        deleting={deleting}
         onClose={onClose}
+        onDelete={onDelete}
         task={task.data}
         worker={worker}
         onReload={async () => (await task.refetch()).data ?? null}
@@ -673,8 +676,10 @@ export function TaskSurface({
     return (
       <TaskImplementationDashboard
         chat={chat}
+        deleting={deleting}
         initialTask={task.data}
         onClose={onClose}
+        onDelete={onDelete}
         workerName={workerName}
       />
     );
@@ -787,15 +792,13 @@ export function TaskSurface({
         >
           {autosaveLabel}
         </span>
-        {task.data.state === "draft" &&
-        task.data.dispatch === null &&
-        onDelete ? (
+        {taskCanBeDeleted(task.data, chat.status) && onDelete ? (
           <Button
-            aria-label="Delete draft Task"
+            aria-label="Delete Task"
             className="size-7"
             disabled={deleting}
             size="icon"
-            title="Delete draft Task"
+            title="Delete Task"
             variant="ghost"
             onClick={onDelete}
           >

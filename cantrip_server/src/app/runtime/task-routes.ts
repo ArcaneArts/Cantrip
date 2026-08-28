@@ -1531,7 +1531,7 @@ export function installTaskRouteRuntime(
     "/api/tasks/:chatId",
     async (request, reply) => {
       try {
-        const deleted = await repository.tasks.deleteDraft(
+        const deleted = await repository.tasks.deleteEligible(
           applicationOwnerId(),
           request.params.chatId,
         );

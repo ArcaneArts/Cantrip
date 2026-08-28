@@ -4933,7 +4933,7 @@ export async function getTask(chatId: string) {
   );
 }
 
-export async function deleteTaskDraft(chatId: string) {
+export async function deleteTask(chatId: string) {
   await request(`/api/tasks/${encodeURIComponent(chatId)}`, {
     method: "DELETE",
   });
