@@ -512,6 +512,20 @@ export function LogSettings() {
           : undefined,
       });
     }
+    if (
+      localServer &&
+      !available.some((source) => source.id === "worker:desktop-local")
+    ) {
+      available.push({
+        id: "worker:desktop-local",
+        kind: "worker",
+        label: "Worker · Local Worker",
+        online: false,
+        subtitle: "Local startup diagnostics",
+        workerId: "desktop-local",
+        fallback: { source: "worker" },
+      });
+    }
     return available;
   }, [
     activeServerUrl,

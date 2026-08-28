@@ -1,5 +1,8 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+let importCheckSequence = 0;
 
 export const serviceWorkspaceBuilds = [
   "@cantrip/version",
@@ -41,11 +44,24 @@ export async function assertPackagedWorkspaceRuntime(serviceRoot) {
         `Packaged runtime dependency ${dependency} has no importable root export.`,
       );
     }
+    const entryPath = path.resolve(dependencyRoot, target);
     try {
-      await access(path.resolve(dependencyRoot, target));
+      await access(entryPath);
     } catch (error) {
       throw new Error(
         `Packaged runtime dependency ${dependency} is missing ${target}: ${error.message}`,
+      );
+    }
+    try {
+      const entryUrl = pathToFileURL(entryPath);
+      entryUrl.searchParams.set(
+        "cantripPackageCheck",
+        String((importCheckSequence += 1)),
+      );
+      await import(entryUrl.href);
+    } catch (error) {
+      throw new Error(
+        `Packaged runtime dependency ${dependency} cannot import ${target}: ${error.message}`,
       );
     }
   }

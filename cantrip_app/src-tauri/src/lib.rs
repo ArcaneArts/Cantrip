@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::{BufRead, BufReader},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -262,10 +263,15 @@ fn spawn_node_service(
     node: &Path,
     directory: &Path,
     environment: &[(&str, String)],
+    capture_stderr: bool,
 ) -> Result<Child, String> {
     let mut command = node_service_command(node, directory);
     configure_desktop_child(&mut command);
-    command.stdout(Stdio::null()).stderr(Stdio::null());
+    command.stdout(Stdio::null()).stderr(if capture_stderr {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    });
     for (key, value) in environment {
         command.env(key, value);
     }
@@ -275,6 +281,47 @@ fn spawn_node_service(
             directory.display()
         )
     })
+}
+
+fn capture_child_stderr(app: tauri::AppHandle, child: &mut Child, service: &'static str) {
+    let Some(stderr) = child.stderr.take() else {
+        return;
+    };
+    thread::spawn(move || {
+        for line in BufReader::new(stderr).lines() {
+            match line {
+                Ok(line) if !line.trim().is_empty() => {
+                    app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                        "error",
+                        "Bundled desktop service stderr",
+                        Some(json!({
+                            "event": "desktop.child.stderr",
+                            "operation": "capture-stderr",
+                            "output": line,
+                            "service": service,
+                            "subsystem": "desktop-runtime"
+                        })),
+                    );
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                        "warn",
+                        "Bundled desktop service stderr could not be read",
+                        Some(json!({
+                            "event": "desktop.child.stderr.failed",
+                            "operation": "capture-stderr",
+                            "reasonCode": "stream-read-failed",
+                            "service": service,
+                            "subsystem": "desktop-runtime",
+                            "error": error.to_string()
+                        })),
+                    );
+                    break;
+                }
+            }
+        }
+    });
 }
 
 fn wait_for_server(child: &mut Child, port: u16) -> Result<(), String> {
@@ -757,6 +804,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
                 logs.join("server").to_string_lossy().into_owned(),
             ),
         ],
+        false,
     )?;
     service_logs.runtime_event(
         "info",
@@ -798,7 +846,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         })),
     );
 
-    let worker = match spawn_node_service(
+    let mut worker = match spawn_node_service(
         &node,
         &worker_directory,
         &[
@@ -818,6 +866,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
                     .into_owned(),
             ),
         ],
+        true,
     ) {
         Ok(worker) => worker,
         Err(error) => {
@@ -825,6 +874,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
             return Err(error);
         }
     };
+    capture_child_stderr(app.handle().clone(), &mut worker, "worker");
 
     service_logs.runtime_event(
         "info",
