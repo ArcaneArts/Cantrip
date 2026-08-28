@@ -117,6 +117,7 @@
       "cantrip_server/src/app/runtime/settings-routes.ts",
       "cantrip_server/src/app/runtime/task-routes.ts",
       "cantrip_server/src/app/runtime/worker-notification-runtime.ts",
+      "cantrip_server/src/app/runtime/workflow-scheduling-runtime.ts",
       "cantrip_server/src/app/shared/constants.ts",
       "cantrip_server/src/app/shared/errors.ts",
       "cantrip_server/src/app/shared/git-managed-operations.ts",
@@ -663,7 +664,7 @@
     {
       "boundary": "public-bootstrap",
       "file": "cantrip_server/src/app.ts",
-      "line": 5241,
+      "line": 4811,
       "method": "GET",
       "ownerEvidence": "public",
       "path": "/api",
@@ -793,7 +794,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 5685,
+      "line": 5255,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests",
@@ -806,7 +807,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 5704,
+      "line": 5274,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId",
@@ -819,7 +820,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 5718,
+      "line": 5288,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId/respond",
@@ -1157,7 +1158,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 5583,
+      "line": 5153,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats",
@@ -1170,7 +1171,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 5616,
+      "line": 5186,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats",
@@ -1274,7 +1275,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6311,
+      "line": 5881,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/console",
@@ -1846,7 +1847,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 5995,
+      "line": 5565,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/chats/:chatId/workflow-generation",
@@ -1872,7 +1873,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 5598,
+      "line": 5168,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/archived",
@@ -1885,7 +1886,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6220,
+      "line": 5790,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/archives/cleanup",
@@ -1898,7 +1899,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 7062,
+      "line": 6632,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/code-attachments/:attachmentId",
@@ -1937,7 +1938,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 7080,
+      "line": 6650,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId",
@@ -1963,7 +1964,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6710,
+      "line": 6280,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/protected-attachment-intents",
@@ -1976,7 +1977,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6904,
+      "line": 6474,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/protected-attachments",
@@ -2054,7 +2055,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6647,
+      "line": 6217,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/worktree",
@@ -2509,7 +2510,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 5312,
+      "line": 4882,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/:workerId/code-settings/profiles/:profileId",
@@ -2522,7 +2523,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 5361,
+      "line": 4931,
       "method": "PUT",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/:workerId/code-settings/profiles/:profileId",
@@ -2639,7 +2640,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 1450,
+      "line": 1438,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/live",
@@ -2886,7 +2887,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6209,
+      "line": 5779,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/archived-chats",
@@ -2990,7 +2991,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6198,
+      "line": 5768,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chats",
@@ -3003,7 +3004,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6243,
+      "line": 5813,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chats",
@@ -3770,7 +3771,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6476,
+      "line": 6046,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/script-commands",
@@ -5122,7 +5123,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 7177,
+      "line": 6747,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/remote-surfaces/:surfaceId/connect",
@@ -5876,7 +5877,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6585,
+      "line": 6155,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId",
@@ -5928,7 +5929,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6419,
+      "line": 5989,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId/script-commands",
@@ -5967,7 +5968,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 6537,
+      "line": 6107,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/terminals/:terminalId/worktree",
