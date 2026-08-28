@@ -102,6 +102,10 @@ import {
 } from "./app/http/route-guards.js";
 import { createApplicationServer } from "./app/http/server.js";
 import { installTransportSecurity } from "./app/http/transport-security.js";
+import {
+  installApiMetadataRoute,
+  installRemovedWorkflowGenerationRoute,
+} from "./app/routes/api-meta-and-removed-routes.js";
 import { installBrowserServiceDiscoveryRoutes } from "./app/routes/browser-service-discovery.js";
 import {
   installBrowserListRoute,
@@ -1857,10 +1861,7 @@ export async function buildApp({
     taskGoalDispatchLease,
   } = taskGoalRuntime;
 
-  app.get("/api", async () => ({
-    name: "cantrip_server",
-    version: "0.0.0",
-  }));
+  installApiMetadataRoute(app);
 
   const rejectUnapprovedAuthOrigin = (
     request: FastifyRequest,
@@ -2170,14 +2171,7 @@ export async function buildApp({
     runAsOwner,
   });
 
-  app.post<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/workflow-generation",
-    async (_request, reply) =>
-      reply.code(410).send({
-        error:
-          "This plaintext workflow generation path was removed pending the protected worker relay.",
-      }),
-  );
+  installRemovedWorkflowGenerationRoute(app);
 
   installProjectWorktreePullRequestRoutes(app, {
     applicationOwnerId,
