@@ -141,6 +141,7 @@ export function ChatTranscriptView({
     restoreDraftAttachmentText,
     retrySentMessage,
     revisePlan,
+    runtimeSelection,
     scrollTranscriptToBottom,
     selectModelConfiguration,
     selectPermissionProfile,
@@ -988,6 +989,8 @@ export function ChatTranscriptView({
                 <ContextUsageRing
                   messages={messages.data ?? []}
                   model={selectedModel}
+                  modelRouteId={runtimeSelection.data?.modelRouteId}
+                  providerAccountId={runtimeSelection.data?.providerAccountId}
                   providers={settings?.providers ?? []}
                 />
               </div>

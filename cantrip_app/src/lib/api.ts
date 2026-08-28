@@ -83,6 +83,7 @@ import {
   encryptedQueuedPromptSchema,
   chatReasoningStateSchema,
   chatReasoningUpdateSchema,
+  chatRuntimeSelectionSchema,
   codeProtectedAttachmentCreateSchema,
   codeProtectedAttachmentIntentSchema,
   codeProtectedAttachmentWireSchema,
@@ -7571,6 +7572,12 @@ export async function getChatReasoning(chatId: string, modelId?: string) {
         modelId,
       }),
     ),
+  );
+}
+
+export async function getChatRuntimeSelection(chatId: string) {
+  return chatRuntimeSelectionSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/runtime-selection`),
   );
 }
 

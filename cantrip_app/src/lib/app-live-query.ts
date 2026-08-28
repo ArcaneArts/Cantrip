@@ -212,6 +212,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           ? [
               ["standalone-chats"],
               ["messages", event.scope.chatId],
+              ["chat-runtime-selection", event.scope.chatId],
               ["task-dashboard", event.scope.chatId],
             ]
           : event.scope.kind === "current-user"

@@ -1,4 +1,5 @@
 import {
+  chatRuntimeSelectionSchema,
   contextualChatWireSummarySchema,
   encryptedChatComposerDraftUpdateSchema,
   encryptedChatComposerDraftWireStateSchema,
@@ -44,6 +45,24 @@ export function installChatBasicRoutes(
     serverId,
   }: ChatBasicRouteDependencies,
 ): void {
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/runtime-selection",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      return context
+        ? reply.send(
+            chatRuntimeSelectionSchema.parse({
+              modelRouteId: context.modelRouteId,
+              providerAccountId: context.providerAccountId,
+            }),
+          )
+        : reply.code(404).send({ error: "Chat not found." });
+    },
+  );
+
   app.patch<{ Params: { chatId: string } }>(
     "/api/chats/:chatId",
     async (request, reply) => {

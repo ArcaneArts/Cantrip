@@ -87,15 +87,24 @@ export function latestContextUsage(
 export function selectedQuotaProvider(
   model: ModelProfileSummary | undefined,
   providers: readonly ModelProviderSummary[],
+  modelRouteId: string | null = null,
 ): ModelProviderSummary | null {
-  const primaryRoute = model?.routes.reduce<
-    ModelProfileSummary["routes"][number] | null
-  >((selected, route) => {
-    if (!route.enabled) return selected;
-    return !selected || route.position < selected.position ? route : selected;
-  }, null);
-  if (!primaryRoute) return null;
-  const provider = providers.find(({ id }) => id === primaryRoute.providerId);
+  const runtimeRoute = modelRouteId
+    ? model?.routes.find(({ id }) => id === modelRouteId)
+    : undefined;
+  const selectedRoute =
+    runtimeRoute ??
+    model?.routes.reduce<ModelProfileSummary["routes"][number] | null>(
+      (selected, route) => {
+        if (!route.enabled) return selected;
+        return !selected || route.position < selected.position
+          ? route
+          : selected;
+      },
+      null,
+    );
+  if (!selectedRoute) return null;
+  const provider = providers.find(({ id }) => id === selectedRoute.providerId);
   return provider?.kind === "chatgpt" || provider?.kind === "grok"
     ? provider
     : null;
@@ -113,6 +122,16 @@ export function signedInQuotaAccounts(
       (account) => account.enabled && account.credentialState === "signed-in",
     )
     .sort((left, right) => left.position - right.position);
+}
+
+export function selectedQuotaAccount(
+  provider: ModelProviderSummary,
+  providerAccountId: string | null,
+): ModelProviderAccountSummary | null {
+  if (!providerAccountId) return null;
+  const accounts = signedInQuotaAccounts(provider);
+  if (accounts.length < 2) return null;
+  return accounts.find(({ id }) => id === providerAccountId) ?? null;
 }
 
 export function formatQuotaReset(value: string | null): string {
@@ -177,13 +196,29 @@ function ContextSummary({ usage }: { usage: ContextUsageSummary | null }) {
   );
 }
 
-function QuotaSummary({ provider }: { provider: ModelProviderSummary }) {
+function QuotaSummary({
+  provider,
+  selectedAccount,
+}: {
+  provider: ModelProviderSummary;
+  selectedAccount: ModelProviderAccountSummary | null;
+}) {
   return (
     <div className="grid gap-0.5 border-t pt-2.5">
       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {quotaProviderLabel(provider)} quota
       </p>
       <p className="text-xs leading-5">{quotaAvailabilityText(provider)}</p>
+      {selectedAccount ? (
+        <div className="flex min-w-0 items-baseline justify-between gap-3 pt-1 text-xs">
+          <span className="shrink-0 text-muted-foreground">
+            Current account
+          </span>
+          <span className="truncate font-medium" title={selectedAccount.label}>
+            {selectedAccount.label}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -294,16 +329,27 @@ function QuotaDialog({
 export function ContextUsageRing({
   messages,
   model,
+  modelRouteId = null,
+  providerAccountId = null,
   providers,
 }: {
   messages: readonly ChatMessage[];
   model: ModelProfileSummary | undefined;
+  modelRouteId?: string | null;
+  providerAccountId?: string | null;
   providers: readonly ModelProviderSummary[];
 }) {
   const usage = useMemo(() => latestContextUsage(messages), [messages]);
   const quotaProvider = useMemo(
-    () => selectedQuotaProvider(model, providers),
-    [model, providers],
+    () => selectedQuotaProvider(model, providers, modelRouteId),
+    [model, modelRouteId, providers],
+  );
+  const quotaAccount = useMemo(
+    () =>
+      quotaProvider
+        ? selectedQuotaAccount(quotaProvider, providerAccountId)
+        : null,
+    [providerAccountId, quotaProvider],
   );
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false);
@@ -336,6 +382,9 @@ export function ContextUsageRing({
   const quotaLabel = quotaProvider
     ? `, ${quotaAvailabilityText(quotaProvider)}`
     : "";
+  const accountLabel = quotaAccount
+    ? `, current account ${quotaAccount.label}`
+    : "";
 
   const handlePointerEnter = (event: PointerEvent<HTMLElement>) => {
     if (event.pointerType !== "mouse") return;
@@ -355,7 +404,7 @@ export function ContextUsageRing({
             size="icon"
             variant="ghost"
             className="size-7 shrink-0 text-muted-foreground"
-            aria-label={`${contextLabel}${quotaLabel}`}
+            aria-label={`${contextLabel}${quotaLabel}${accountLabel}`}
             aria-expanded={popoverOpen}
             aria-haspopup="dialog"
             onBlur={scheduleClose}
@@ -434,7 +483,10 @@ export function ContextUsageRing({
           <ContextSummary usage={usage} />
           {quotaProvider ? (
             <>
-              <QuotaSummary provider={quotaProvider} />
+              <QuotaSummary
+                provider={quotaProvider}
+                selectedAccount={quotaAccount}
+              />
               <div className="flex justify-start border-t pt-1.5">
                 <Button
                   type="button"

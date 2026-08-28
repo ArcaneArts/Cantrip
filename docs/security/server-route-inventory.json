@@ -162,15 +162,15 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 471,
+    "application-principal": 472,
     "external-credential": 2,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 13,
-    "http": 485,
+    "http": 486,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 415,
-    "total": 492,
+    "requestPrincipalRoutes": 416,
+    "total": 493,
     "websocket": 7,
     "workerCredentialRoutes": 13,
     "durableTables": 97,
@@ -191,7 +191,7 @@
   },
   "contractSetDigests": {
     "agentOperations": "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
-    "applicationRoutes": "7cc5a3800c3577e0f7ea9fe6f8fc0603b247c554146c50fc271778cdd0f979f3",
+    "applicationRoutes": "7201e4017e116b25c080119821c248327f7cd37b800b19793798b5e3f4683266",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "80c1b1ba37b9a45e90eb42afd3a754b8e222442e8420cb4f82f8c5e350b09f7b",
@@ -1222,7 +1222,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 47,
+      "line": 66,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId",
@@ -1261,7 +1261,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 119,
+      "line": 138,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/completion/read",
@@ -1274,7 +1274,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 134,
+      "line": 153,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/composer-draft",
@@ -1287,7 +1287,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 147,
+      "line": 166,
       "method": "PUT",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/composer-draft",
@@ -1482,7 +1482,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
-      "line": 65,
+      "line": 84,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/files/operation",
@@ -1811,6 +1811,19 @@
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/restore",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "opaque or endpoint-protected route contract"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/chat-basic-routes.ts",
+      "line": 48,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/runtime-selection",
       "transport": "http",
       "contentBoundary": {
         "classification": "endpoint-protected",

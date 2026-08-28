@@ -10289,6 +10289,11 @@ export const chatModelConfigurationUpdateSchema =
     },
   );
 
+export const chatRuntimeSelectionSchema = z.object({
+  modelRouteId: z.string().min(1).nullable(),
+  providerAccountId: z.string().min(1).nullable(),
+});
+
 export const chatReasoningOptionSchema = modelReasoningEffortOptionSchema;
 
 export const chatReasoningStateSchema = z.object({
@@ -17481,6 +17486,7 @@ export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
 export type ChatModelConfigurationUpdate = z.infer<
   typeof chatModelConfigurationUpdateSchema
 >;
+export type ChatRuntimeSelection = z.infer<typeof chatRuntimeSelectionSchema>;
 export type ChatReasoningOption = z.infer<typeof chatReasoningOptionSchema>;
 export type ChatReasoningState = z.infer<typeof chatReasoningStateSchema>;
 export type ChatReasoningUpdate = z.infer<typeof chatReasoningUpdateSchema>;
