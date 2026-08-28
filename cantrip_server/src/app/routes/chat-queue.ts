@@ -7,10 +7,7 @@ import {
   encryptedQueuedPromptUpdateSchema,
   queuedPromptOpaqueContentSchema,
   queuedPromptOrderSchema,
-  type ChatMessageOpaqueContent,
   type ChatMessageOpaqueSummary,
-  type ChatTurnCreate,
-  type ReasoningEffort,
 } from "@cantrip/protocol";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
@@ -23,30 +20,14 @@ import {
 } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
-
-type BeginQueuedPromptTurn = (
-  context: ChatExecutionContext,
-  input: Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
-    attachmentIds?: string[];
-    customSubagentModel?: boolean;
-    mode?: ChatTurnCreate["mode"];
-    subagentModelId?: string | null;
-    subagentReasoningEffort?: ReasoningEffort | null;
-  },
-  options?: {
-    encryptedChatMessages?: {
-      userMessage: ChatMessageOpaqueContent;
-      response: { id: string; idempotencyKey: string };
-    };
-  },
-) => Promise<unknown>;
+import type { ChatTurnStarter } from "./chat-turn-contracts.js";
 
 export interface ChatQueueRouteDependencies {
   appendLiveEncryptedChatMessage: (
     ...input: Parameters<ServerRepository["appendEncryptedMessage"]>
   ) => ReturnType<ServerRepository["appendEncryptedMessage"]>;
   applicationOwnerId: () => string;
-  beginTurn: BeginQueuedPromptTurn;
+  beginTurn: ChatTurnStarter;
   bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   deleteLiveQueuedPrompt: (
     ...input: Parameters<ServerRepository["deleteQueuedPrompt"]>

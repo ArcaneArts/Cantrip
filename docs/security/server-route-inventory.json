@@ -30,6 +30,8 @@
       "cantrip_server/src/app/routes/chat-queue.ts",
       "cantrip_server/src/app/routes/chat-relocations.ts",
       "cantrip_server/src/app/routes/chat-runtime-configuration.ts",
+      "cantrip_server/src/app/routes/chat-turn-contracts.ts",
+      "cantrip_server/src/app/routes/chat-turn-submission.ts",
       "cantrip_server/src/app/routes/chat-worktree-and-execution-lanes.ts",
       "cantrip_server/src/app/routes/code-tab-management.ts",
       "cantrip_server/src/app/routes/code-tab-worker-controls.ts",
@@ -1067,7 +1069,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 21957,
+      "line": 21661,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chat-imports/:jobId",
@@ -1080,7 +1082,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 21970,
+      "line": 21674,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chat-imports/:jobId/retry",
@@ -1665,7 +1667,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-queue.ts",
-      "line": 103,
+      "line": 84,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/queue",
@@ -1678,7 +1680,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-queue.ts",
-      "line": 126,
+      "line": 107,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/queue",
@@ -1691,7 +1693,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-queue.ts",
-      "line": 183,
+      "line": 164,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/queue/order",
@@ -1794,8 +1796,8 @@
     },
     {
       "boundary": "application-principal",
-      "file": "cantrip_server/src/app.ts",
-      "line": 20261,
+      "file": "cantrip_server/src/app/routes/chat-turn-submission.ts",
+      "line": 63,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/turns",
@@ -1807,8 +1809,8 @@
     },
     {
       "boundary": "application-principal",
-      "file": "cantrip_server/src/app.ts",
-      "line": 20420,
+      "file": "cantrip_server/src/app/routes/chat-turn-submission.ts",
+      "line": 222,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/turns/:messageId/retry",
@@ -2445,7 +2447,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 21031,
+      "line": 20735,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/agent-operations",
@@ -2458,7 +2460,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 20991,
+      "line": 20695,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/agent-operations/capabilities",
@@ -2471,7 +2473,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 21225,
+      "line": 20929,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/cli",
@@ -2510,7 +2512,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 20668,
+      "line": 20372,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/automations",
@@ -2523,7 +2525,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 20704,
+      "line": 20408,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/automations/:automationId/dispatch",
@@ -2536,7 +2538,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 21551,
+      "line": 21255,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/connect",
@@ -2549,7 +2551,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 21373,
+      "line": 21077,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/encryption/bootstrap",
@@ -2562,7 +2564,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 20568,
+      "line": 20272,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/enroll",
@@ -2575,7 +2577,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app.ts",
-      "line": 21498,
+      "line": 21202,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/heartbeat",
@@ -2939,7 +2941,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 21944,
+      "line": 21648,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chat-imports",
@@ -2952,7 +2954,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 21867,
+      "line": 21571,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chat-imports",
@@ -5006,7 +5008,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-queue.ts",
-      "line": 252,
+      "line": 233,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId",
@@ -5019,7 +5021,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-queue.ts",
-      "line": 201,
+      "line": 182,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId",
@@ -5032,7 +5034,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-queue.ts",
-      "line": 265,
+      "line": 246,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId/steer",
@@ -12038,6 +12040,7 @@
       "cantrip_server/src/app/routes/chat-queue.ts",
       "cantrip_server/src/app/routes/chat-relocations.ts",
       "cantrip_server/src/app/routes/chat-runtime-configuration.ts",
+      "cantrip_server/src/app/routes/chat-turn-contracts.ts",
       "cantrip_server/src/app/routes/project-network-shares.ts",
       "cantrip_server/src/chat-relocations/executor.ts",
       "cantrip_server/src/chats/execution-helpers.ts",
