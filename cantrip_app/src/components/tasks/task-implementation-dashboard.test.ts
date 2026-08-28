@@ -83,4 +83,10 @@ describe("Task implementation dashboard presentation", () => {
       ),
     ).toBe(false);
   });
+
+  it("does not label a failed Task chat as still starting", () => {
+    expect(taskImplementationStatusLabel(task, null, false, true)).toBe(
+      "Failed",
+    );
+  });
 });

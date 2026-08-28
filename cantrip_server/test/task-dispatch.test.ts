@@ -586,6 +586,54 @@ describe("Task dispatch scheduling", () => {
     }
   });
 
+  it("fences a delayed unstarted launch when pausing its claim", async () => {
+    const value = await fixture();
+    try {
+      await value.repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("Preflight pause worker"),
+      );
+      const task = await addTask(value, {
+        createdAt: new Date("2026-08-24T10:00:00.000Z"),
+      });
+      await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        task.chatId,
+        "preflight-pause-operation",
+        "direct",
+        1,
+      );
+      const claimed = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler-a",
+        eligible,
+      );
+      const paused = await value.repository.taskDispatch.pauseUnstarted(
+        claimed!.lease,
+        { threadId: null, turnId: null },
+      );
+      expect(paused).toMatchObject({
+        state: "paused",
+        fencingToken: claimed!.lease.fencingToken + 1,
+      });
+      await expect(
+        value.repository.taskDispatch.markRunning(claimed!.lease),
+      ).rejects.toMatchObject<Partial<TaskDispatchConflictError>>({
+        code: "stale-lease",
+      });
+
+      const resumed = await value.repository.taskDispatch.resumeNextPaused(
+        LOCAL_USER_ID,
+        "scheduler-b",
+        async () => ({ eligible: true }),
+      );
+      expect(resumed?.lease.fencingToken).toBe(paused.fencingToken);
+      await value.repository.taskDispatch.markRunning(resumed!.lease);
+    } finally {
+      await value.client.close();
+    }
+  });
+
   it("keeps queued Tasks editable until an atomic claim", async () => {
     const value = await fixture();
     try {

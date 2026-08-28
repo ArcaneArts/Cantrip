@@ -381,6 +381,9 @@ export function createChatTurnRuntime({
             context.workerId,
             context.contextKind === "project" ? "ide" : "chat",
           );
+    if (options.taskDispatchLease) {
+      await repository.taskDispatch.heartbeat(options.taskDispatchLease);
+    }
     const execution = await repository.startChatExecutionLane(
       ownerId,
       context.chatId,

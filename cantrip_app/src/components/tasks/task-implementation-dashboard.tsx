@@ -57,8 +57,9 @@ export function taskImplementationStatusLabel(
   task: TaskDetail,
   goal: TaskGoalSnapshot | null,
   active = false,
+  chatFailed = false,
 ): string {
-  if (task.state === "failed") return "Failed";
+  if (task.state === "failed" || chatFailed) return "Failed";
   if (task.state === "paused") return "Paused";
   if (task.state === "blocked")
     return goal ? goalLabels[goal.status] : "Blocked";
@@ -215,7 +216,12 @@ export function TaskImplementationDashboard({
   });
   const controlError = pause.error ?? resume.error ?? stop.error;
   const controlPending = pause.isPending || resume.isPending || stop.isPending;
-  const statusLabel = taskImplementationStatusLabel(task, goal, active);
+  const statusLabel = taskImplementationStatusLabel(
+    task,
+    goal,
+    active,
+    chat.status === "failed",
+  );
   const tokenProgress =
     goal?.tokenBudget && goal.tokenBudget > 0
       ? Math.min(100, (goal.tokensUsed / goal.tokenBudget) * 100)
