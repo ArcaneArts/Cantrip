@@ -3,33 +3,14 @@ import {
   codeSaveAllResultSchema,
   codeTabWireSummarySchema,
   codeThemeUpdateSchema,
-  type CodeRuntimeStatus,
-  type CodeThemeUpdate,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
+import type { CodeTabWorkerRuntime } from "../runtime/interactive-surface-runtime.js";
 
-export interface CodeTabWorkerRuntime {
-  isWorkerConnected: (workerId: string) => boolean;
-  readStatus: (workerId: string, sessionId: string) => Promise<unknown>;
-  saveAll: (workerId: string, sessionId: string) => Promise<unknown>;
-  stop: (workerId: string, sessionId: string) => Promise<unknown>;
-  setTheme: (
-    workerId: string,
-    sessionId: string,
-    appearance: CodeThemeUpdate["appearance"],
-  ) => Promise<unknown>;
-  revokeTunnelSession: (sessionId: string) => Promise<void>;
-  revokeDirectSession: (ownerId: string, sessionId: string) => Promise<void>;
-  recordSessionRuntime: (
-    ownerId: string,
-    codeTabId: string,
-    sessionId: string,
-    runtime: CodeRuntimeStatus,
-  ) => Promise<unknown>;
-}
+export type { CodeTabWorkerRuntime } from "../runtime/interactive-surface-runtime.js";
 
 export interface CodeTabWorkerControlRouteDependencies {
   applicationOwnerId: () => string;
