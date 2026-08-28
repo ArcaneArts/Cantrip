@@ -68,17 +68,8 @@ import {
 } from "./app/http/route-guards.js";
 import { createApplicationServer } from "./app/http/server.js";
 import { installTransportSecurity } from "./app/http/transport-security.js";
-import { installBrowserServiceDiscoveryRoutes } from "./app/routes/browser-service-discovery.js";
-import {
-  installBrowserListRoute,
-  installBrowserManagementRoutes,
-} from "./app/routes/browser-management.js";
 import { installAgentInteractionRoutes } from "./app/routes/agent-interactions.js";
 import { installPolicyRoutes } from "./app/routes/policies.js";
-import {
-  installCodeTabManagementRoutes,
-  installCodeTabSessionListRoute,
-} from "./app/routes/code-tab-management.js";
 import { installChatBasicRoutes } from "./app/routes/chat-basic-routes.js";
 import { installChatArchiveLifecycleRoutes } from "./app/routes/chat-archive-lifecycle.js";
 import { installChatForkRoute } from "./app/routes/chat-forks.js";
@@ -103,54 +94,8 @@ import { installInternalWorkerWebsocketRoute } from "./app/routes/internal-worke
 import { installLiveRoute } from "./app/routes/live.js";
 import { installWorkerEnrollmentRoute } from "./app/routes/worker-enrollment.js";
 import { installChatWorktreeAndExecutionLaneRoutes } from "./app/routes/chat-worktree-and-execution-lanes.js";
-import {
-  installCodeTabRuntimeReadRoute,
-  installCodeTabWorkerControlRoutes,
-} from "./app/routes/code-tab-worker-controls.js";
-import {
-  installCodeTabDeleteRoute,
-  installCodeTabProtectedAttachmentRoutes,
-  installCodeTabWorktreeRoute,
-} from "./app/routes/code-tab-attachments.js";
-import { installProjectExportRoutes } from "./app/routes/project-exports.js";
-import { installProjectExternalChatHistoryRoute } from "./app/routes/project-external-chat-history.js";
 import { installProviderAccountAuthRoutes } from "./app/routes/provider-account-auth.js";
-import { installProjectViewRoutes } from "./app/routes/project-views.js";
-import {
-  installExplorerBasicManagementRoutes,
-  installExplorerListRoute,
-  installExplorerViewStateRoute,
-} from "./app/routes/explorer-management.js";
-import {
-  installExplorerDeleteRoute,
-  installExplorerOperationRoute,
-  installExplorerWorktreeRoute,
-} from "./app/routes/explorer-runtime.js";
-import { installExplorerProtectedCodeAttachmentRoute } from "./app/routes/explorer-protected-code-attachments.js";
-import { installSharedCodeSessionAttachmentRoutes } from "./app/routes/shared-code-session-attachments.js";
-import { installTerminalDirectAttachmentRoute } from "./app/routes/terminal-direct-attachments.js";
-import { installTerminalRelayWebSocketRoute } from "./app/routes/terminal-relay-websocket.js";
-import { installWorkerLinkObservationGrantRoute } from "./app/routes/worker-link-observation-grants.js";
-import { installWorkerLinkRemoteSurfaceGrantRoute } from "./app/routes/worker-link-remote-surface-grants.js";
-import { installWorkerLinkTerminalGrantRoute } from "./app/routes/worker-link-terminal-grants.js";
-import { installWorkerLinkTunnelAttachmentGrantRoute } from "./app/routes/worker-link-tunnel-attachment-grants.js";
-import { installRemoteDesktopReadRoutes } from "./app/routes/remote-desktop-read.js";
-import { installRemoteDesktopManagementRoutes } from "./app/routes/remote-desktop-management.js";
-import { installRemoteSurfaceManagementRoutes } from "./app/routes/remote-surface-management.js";
-import { installRemoteSurfaceConnectionRoute } from "./app/routes/remote-surface-connection.js";
 import { installProjectWorktreeGitCommitSignatureRoute } from "./app/routes/project-worktree-git-commit-signature.js";
-import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
-import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
-import {
-  installTerminalCreateRoute,
-  installTerminalListRoute,
-  installTerminalManagementRoutes,
-} from "./app/routes/terminal-management.js";
-import {
-  installChatLinkedConsoleRoute,
-  installProtectedScriptCommandRoutes,
-  installTerminalWorktreeLifecycleRoutes,
-} from "./app/routes/terminal-context.js";
 import { CliCommandRequestError } from "./agent-tools/errors.js";
 import { encodedFrameBytes } from "./account-usage/frame-bandwidth.js";
 import { WorkerLinkCoordinator } from "./worker-links/coordinator.js";
@@ -192,6 +137,7 @@ import {
 import { ProviderAccountReconnectRequiredError } from "./app/shared/errors.js";
 import { installMutationLiveInvalidationHook } from "./app/http/mutation-live-invalidation.js";
 import { installCoreInfrastructureRoutes } from "./app/routes/core-infrastructure-registry.js";
+import { installInteractiveWorkspaceRoutes } from "./app/routes/interactive-workspace-registry.js";
 import { installProjectWorkflowRoutes } from "./app/routes/project-workflow-registry.js";
 
 export type { BuildAppOptions } from "./app/options.js";
@@ -1111,10 +1057,29 @@ export async function buildApp({
     taskDispatchCycleLease,
   });
   const { queueTaskScheduleTick, taskScheduleTimer } = taskRouteRuntime;
-  const terminalContextRouteDependencies = {
+  installInteractiveWorkspaceRoutes(app, {
+    accountUsageMeter,
+    appendAudit,
     applicationOwnerId,
     bridge,
+    codeTunnel,
+    codeTabWorkerRuntime,
+    config,
     directAttachments,
+    installProjectRunConfigurationRoutes: (routeApp) =>
+      runConfigurationRuntime.installProjectRoutes(routeApp),
+    isWorkerConnected: (workerId) => bridge.isConnected(workerId),
+    lifecycle: codeTunnel,
+    publishRunConfigurationInvalidation: (projectId) =>
+      publishLiveInvalidation("run-configuration", {
+        entityId: null,
+        projectId,
+      }),
+    publishTunnelRuntimeChange,
+    registerAuthenticatedSocket,
+    registerSessionSocket,
+    relayCoordinationEnabled: Boolean(coordinator),
+    relayQuotas,
     repository,
     requireProjectWorktrees,
     resolveAppRunContext,
@@ -1123,273 +1088,16 @@ export async function buildApp({
     runtimeForContext,
     sendRunApiFailure,
     serverId,
-    workerLinks,
-  };
-  installChatLinkedConsoleRoute(app, terminalContextRouteDependencies);
-
-  installTerminalListRoute(app, {
-    applicationOwnerId,
-    repository,
-  });
-
-  installRunConfigurationSecretRoutes(app, {
-    appendAudit,
-    applicationOwnerId,
-    publishRunConfigurationInvalidation: (projectId) =>
-      publishLiveInvalidation("run-configuration", {
-        entityId: null,
-        projectId,
-      }),
-    repository,
-    sendRunApiFailure,
-  });
-
-  runConfigurationRuntime.installProjectRoutes(app);
-
-  installTerminalCreateRoute(app, {
-    applicationOwnerId,
-    repository,
-    runtime: terminalServiceRuntime,
-  });
-
-  installProtectedScriptCommandRoutes(app, terminalContextRouteDependencies);
-
-  installTerminalManagementRoutes(app, {
-    applicationOwnerId,
-    repository,
-    runtime: terminalServiceRuntime,
-  });
-
-  installTerminalWorktreeLifecycleRoutes(app, terminalContextRouteDependencies);
-
-  installExplorerListRoute(app, {
-    applicationOwnerId,
-    repository,
-  });
-
-  installCodeTabManagementRoutes(app, {
-    applicationOwnerId,
-    repository,
-    runtime: {
-      isWorkerConnected: (workerId) => bridge.isConnected(workerId),
-    },
-  });
-
-  const codeTabAttachmentRouteDependencies = {
-    applicationOwnerId,
-    bridge,
-    codeTunnel,
-    directAttachments,
-    repository,
-    requireProjectWorktrees,
-    serverId,
-    updateCodeSessionRuntime,
-  };
-  installCodeTabWorktreeRoute(app, codeTabAttachmentRouteDependencies);
-
-  installCodeTabSessionListRoute(app, {
-    applicationOwnerId,
-    repository,
-  });
-
-  installCodeTabRuntimeReadRoute(app, {
-    applicationOwnerId,
-    repository,
-    runtime: codeTabWorkerRuntime,
-  });
-
-  installCodeTabProtectedAttachmentRoutes(
-    app,
-    codeTabAttachmentRouteDependencies,
-  );
-
-  installCodeTabWorkerControlRoutes(app, {
-    applicationOwnerId,
-    repository,
-    runtime: codeTabWorkerRuntime,
-  });
-
-  installCodeTabDeleteRoute(app, codeTabAttachmentRouteDependencies);
-
-  installBrowserListRoute(app, {
-    applicationOwnerId,
-    repository,
-  });
-
-  installProjectExportRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-  });
-
-  installProjectExternalChatHistoryRoute(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-  });
-
-  installBrowserServiceDiscoveryRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-  });
-
-  installBrowserManagementRoutes(app, {
-    applicationOwnerId,
-    applyBrowserUpdate,
-    bridge,
-    repository,
-    tunnelRuntime,
-    workerLinks,
-  });
-
-  installRemoteDesktopReadRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-    serverId,
-  });
-
-  installRemoteDesktopManagementRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-    serverId,
-    updateRemoteSurfaceStatus,
-  });
-
-  installRemoteSurfaceManagementRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-    updateRemoteSurfaceStatus,
-    workerLinks,
-  });
-
-  installRemoteSurfaceConnectionRoute(app, {
-    accountUsageMeter,
-    bridge,
-    config,
-    registerAuthenticatedSocket,
-    registerSessionSocket,
-    relayQuotas,
-    repository,
-    serverId,
     surfaceAttachmentCounts,
     surfaceRelay,
+    terminalServiceRuntime,
+    updateCodeSessionRuntime,
+    applyBrowserUpdate,
+    tunnelRuntime,
     updateRemoteSurfaceStatus,
-  });
-
-  installProjectViewRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-    requireProjectWorktrees,
-    workerLinks,
-  });
-
-  installExplorerBasicManagementRoutes(app, {
-    applicationOwnerId,
-    repository,
-    runtime: {
-      isWorkerConnected: (workerId) => bridge.isConnected(workerId),
-    },
-  });
-
-  installExplorerWorktreeRoute(app, {
-    applicationOwnerId,
-    lifecycle: codeTunnel,
-    repository,
-    requireProjectWorktrees,
-  });
-
-  installExplorerViewStateRoute(app, {
-    applicationOwnerId,
-    repository,
-  });
-
-  installExplorerDeleteRoute(app, {
-    applicationOwnerId,
-    lifecycle: codeTunnel,
-    repository,
-  });
-
-  installExplorerProtectedCodeAttachmentRoute(app, {
-    applicationOwnerId,
-    bridge,
-    codeTunnel,
-    repository,
-    serverId,
-  });
-
-  installSharedCodeSessionAttachmentRoutes(app, {
-    bridge,
-    codeTunnel,
-    relayCoordinationEnabled: Boolean(coordinator),
-    repository,
-    serverId,
-  });
-
-  installExplorerOperationRoute(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-    serverId,
-  });
-
-  installWorkerLinkObservationGrantRoute(app, {
-    bridge,
-    repository,
-    workerLinks,
-  });
-
-  installWorkerLinkTunnelAttachmentGrantRoute(app, {
-    bridge,
-    directAttachments,
-    publishTunnelRuntimeChange,
-    repository,
-    workerLinks,
-  });
-
-  installWorkerLinkRemoteSurfaceGrantRoute(app, {
-    bridge,
-    repository,
-    serverId,
-    updateRemoteSurfaceStatus,
-    workerLinks,
-  });
-
-  installWorkerLinkTerminalGrantRoute(app, {
-    bridge,
-    repository,
-    runtimeForContext,
-    serverId,
     updateTerminalStatus,
     workerLinks,
   });
-
-  installTerminalDirectAttachmentRoute(app, {
-    bridge,
-    directAttachments,
-    repository,
-    runtimeForContext,
-    serverId,
-    updateTerminalStatus,
-  });
-
-  installTerminalRelayWebSocketRoute(app, {
-    appOrigins: config.appOrigins,
-    bridge,
-    registerAuthenticatedSocket,
-    registerSessionSocket,
-    repository,
-    runtimeForContext,
-    serverId,
-    updateTerminalStatus,
-    usageRecorder: accountUsageMeter,
-  });
-
-  installTabLayoutRoutes(app, { applicationOwnerId, repository });
 
   installChatBasicRoutes(app, {
     applicationOwnerId,

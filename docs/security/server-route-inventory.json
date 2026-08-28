@@ -50,6 +50,7 @@
       "cantrip_server/src/app/routes/explorer-protected-code-attachments.ts",
       "cantrip_server/src/app/routes/explorer-runtime.ts",
       "cantrip_server/src/app/routes/github-repository-catalog.ts",
+      "cantrip_server/src/app/routes/interactive-workspace-registry.ts",
       "cantrip_server/src/app/routes/internal-agent-tools.ts",
       "cantrip_server/src/app/routes/internal-provider-credentials.ts",
       "cantrip_server/src/app/routes/internal-worker-automations.ts",
