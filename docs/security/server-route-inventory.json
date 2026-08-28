@@ -134,6 +134,7 @@
       "cantrip_server/src/app/runtime/task-goal-runtime.ts",
       "cantrip_server/src/app/runtime/task-routes.ts",
       "cantrip_server/src/app/runtime/worker-notification-runtime.ts",
+      "cantrip_server/src/app/runtime/worker-observation-publication-runtime.ts",
       "cantrip_server/src/app/runtime/workflow-scheduling-runtime.ts",
       "cantrip_server/src/app/shared/constants.ts",
       "cantrip_server/src/app/shared/errors.ts",
@@ -12076,7 +12077,6 @@
     "productionCryptoImports": 0,
     "prohibitedTrustedLabelImports": 0,
     "opaqueProtocolSources": [
-      "cantrip_server/src/app.ts",
       "cantrip_server/src/app/routes/browser-management.ts",
       "cantrip_server/src/app/routes/chat-archive-lifecycle.ts",
       "cantrip_server/src/app/routes/chat-basic-routes.ts",
