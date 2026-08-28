@@ -132,11 +132,15 @@ export function projectTaskWorkloadPresentation(
       tone: "muted",
     };
   }
-  if (
-    dispatch?.state === "claimed" ||
-    dispatch?.state === "running" ||
-    dispatch?.state === "paused"
-  ) {
+  if (dispatch?.state === "claimed") {
+    return {
+      band: "running",
+      label: "Starting",
+      paused: false,
+      tone: "running",
+    };
+  }
+  if (dispatch?.state === "running" || dispatch?.state === "paused") {
     const paused = dispatch.state === "paused";
     return {
       band: "running",
