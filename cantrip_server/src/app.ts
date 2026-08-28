@@ -33,9 +33,6 @@ import {
   queuedPromptListSchema,
   queuedPromptSchema,
   queuedPromptUpdateSchema,
-  remoteSurfaceAttachResultSchema,
-  remoteSurfaceConnectionMessageSchema,
-  remoteSurfaceViewportSchema,
   tunnelWireSummarySchema,
 } from "@cantrip/protocol";
 import { endpointContentOpaqueSchema } from "@cantrip/protocol/endpoint-content";
@@ -64,7 +61,6 @@ import { cantripVersion } from "@cantrip/version";
 import {
   authenticatedPrincipal,
   installRequestPrincipal,
-  principalOwnerId,
 } from "./auth/principal.js";
 import {
   hashSecret,
@@ -114,7 +110,6 @@ import { WorkerBridge, WorkerUnavailableError } from "./workers/bridge.js";
 import { workerPresenceFingerprint } from "./workers/presence.js";
 import { authenticateWorkerRequest } from "./workers/credentials.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
-import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
 import { WorktreeCreateMutationError } from "./worktrees/coordinator.js";
 import { errorMessage, invalidBody } from "./http/request-helpers.js";
 import {
@@ -221,6 +216,7 @@ import { installWorkerLinkTunnelAttachmentGrantRoute } from "./app/routes/worker
 import { installRemoteDesktopReadRoutes } from "./app/routes/remote-desktop-read.js";
 import { installRemoteDesktopManagementRoutes } from "./app/routes/remote-desktop-management.js";
 import { installRemoteSurfaceManagementRoutes } from "./app/routes/remote-surface-management.js";
+import { installRemoteSurfaceConnectionRoute } from "./app/routes/remote-surface-connection.js";
 import {
   installProjectInsightRoutes,
   installProjectOrderRoute,
@@ -277,10 +273,7 @@ import { serverLogger } from "./logger.js";
 import { StorageReconciliationService } from "./account-usage/storage-reconciler.js";
 import { AccountUsageMeter } from "./account-usage/bandwidth-meter.js";
 import { AccountUsageHistoryMaintenanceService } from "./account-usage/history-maintenance.js";
-import {
-  encodedFrameBytes,
-  recordEncodedFrame,
-} from "./account-usage/frame-bandwidth.js";
+import { encodedFrameBytes } from "./account-usage/frame-bandwidth.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
 import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
 import { MeteredWorkerCommandBus } from "./workers/metered-command-bus.js";
@@ -3110,230 +3103,19 @@ export async function buildApp({
     workerLinks,
   });
 
-  app.get<{
-    Params: { surfaceId: string };
-    Querystring: { width?: string; height?: string; devicePixelRatio?: string };
-  }>(
-    "/api/remote-surfaces/:surfaceId/connect",
-    { websocket: true },
-    (socket, request) => {
-      if (
-        !request.headers.origin ||
-        !config.appOrigins.includes(request.headers.origin)
-      ) {
-        socket.close(1008, "Origin not allowed");
-        return;
-      }
-      if (!registerAuthenticatedSocket(socket, request)) return;
-      registerSessionSocket(socket, request);
-      const ownerId = principalOwnerId(request);
-      const viewport = remoteSurfaceViewportSchema.safeParse({
-        width: Number(request.query.width ?? 1_280),
-        height: Number(request.query.height ?? 720),
-        devicePixelRatio: Number(request.query.devicePixelRatio ?? 1),
-      });
-      if (!viewport.success) {
-        socket.close(1008, "Invalid viewport");
-        return;
-      }
-
-      const attachmentId = randomUUID();
-      let attached = false;
-      let closed = false;
-      let releaseSurfaceQuota: (() => void) | null = null;
-      let surfaceId: string | null = null;
-      let workerId: string | null = null;
-
-      const send = (message: unknown) => {
-        if (socket.readyState === 1) {
-          const encoded = JSON.stringify(
-            remoteSurfaceConnectionMessageSchema.parse(message),
-          );
-          socket.send(encoded);
-          recordEncodedFrame(accountUsageMeter, {
-            ownerId,
-            direction: "egress",
-            channel: "remote-surface-relay",
-            data: encoded,
-          });
-        }
-      };
-
-      socket.on("close", () => {
-        closed = true;
-        releaseSurfaceQuota?.();
-        releaseSurfaceQuota = null;
-        if (!attached || !surfaceId || !workerId) return;
-        attached = false;
-        const remaining = Math.max(
-          0,
-          (surfaceAttachmentCounts.get(surfaceId) ?? 1) - 1,
-        );
-        if (remaining === 0) surfaceAttachmentCounts.delete(surfaceId);
-        else surfaceAttachmentCounts.set(surfaceId, remaining);
-        if (bridge.isConnected(workerId)) {
-          void bridge
-            .request(workerId, {
-              type: "surface.detach",
-              surfaceId,
-              attachmentId,
-            })
-            .catch(() => undefined);
-        }
-        if (remaining === 0) {
-          void updateRemoteSurfaceStatus(
-            surfaceId,
-            bridge.isConnected(workerId) ? "idle" : "offline",
-            bridge.isConnected(workerId) ? null : "Worker is offline.",
-          );
-        }
-      });
-
-      void (async () => {
-        const context = await repository.getRemoteSurfaceExecutionContext(
-          ownerId,
-          request.params.surfaceId,
-        );
-        if (!context) {
-          send({
-            type: "error",
-            message: "Remote Surface not found.",
-            recoverable: false,
-          });
-          socket.close(1008, "Remote Surface not found");
-          return;
-        }
-        surfaceId = context.surface.id;
-        workerId = context.workerId;
-        try {
-          releaseSurfaceQuota = relayQuotas.acquireRemoteSurface(
-            ownerId,
-            workerId,
-          );
-        } catch (error) {
-          send({
-            type: "error",
-            message: errorMessage(error),
-            recoverable: true,
-          });
-          socket.close(1013, "Remote Surface quota reached");
-          return;
-        }
-        if (closed) {
-          releaseSurfaceQuota();
-          releaseSurfaceQuota = null;
-          return;
-        }
-        const desktopStream =
-          context.surface.kind === "desktop"
-            ? await repository.getUserSettings(ownerId).then((preferences) => ({
-                targetFps: preferences.desktopFrameRate,
-                quality: preferences.desktopStreamQuality,
-              }))
-            : null;
-        if (!bridge.isConnected(workerId)) {
-          await updateRemoteSurfaceStatus(
-            surfaceId,
-            "offline",
-            "Worker is offline.",
-          );
-          send({
-            type: "error",
-            message: "Worker is offline.",
-            recoverable: true,
-          });
-          socket.close(1013, "Worker offline");
-          return;
-        }
-
-        await updateRemoteSurfaceStatus(surfaceId, "connecting");
-        const webRtcConfiguration =
-          context.surface.preferredTransport === "webrtc" &&
-          context.remoteSurfaceCapabilities.transports.includes("webrtc") &&
-          config.remoteSurfaceWebRtc &&
-          context.remoteSurfaceCapabilities.iceTransportPolicies.includes(
-            config.remoteSurfaceWebRtc.iceTransportPolicy,
-          )
-            ? createRemoteSurfaceWebRtcConfiguration(
-                config.remoteSurfaceWebRtc,
-                ownerId,
-              )
-            : null;
-        const cleanupRelay = surfaceRelay.bind(socket, {
-          surfaceId,
-          attachmentId,
-          ownerId,
-          workerId,
-        });
-        try {
-          const result = remoteSurfaceAttachResultSchema.parse(
-            await bridge.request(
-              workerId,
-              {
-                type: "surface.attach",
-                surfaceId,
-                attachmentId,
-                projectId: context.surface.projectId,
-                serverId,
-                configuration: context.surface.configuration,
-                stateResource:
-                  context.surface.kind === "browser"
-                    ? context.surface.titleProtection.classification
-                        .recordKind === "browser"
-                      ? "browser-row"
-                      : "browser-remote-surface"
-                    : "remote-desktop-row",
-                stateRevision: context.surface.stateRevision,
-                stateProtection: context.surface.stateProtection,
-                preferredTransport: context.surface.preferredTransport,
-                webrtc: webRtcConfiguration,
-                viewport: viewport.data,
-                desktopStream,
-              },
-              { timeoutMs: 30_000 },
-            ),
-          );
-          if (closed) {
-            cleanupRelay();
-            void bridge
-              .request(workerId, {
-                type: "surface.detach",
-                surfaceId,
-                attachmentId,
-              })
-              .catch(() => undefined);
-            return;
-          }
-          attached = true;
-          surfaceAttachmentCounts.set(
-            surfaceId,
-            (surfaceAttachmentCounts.get(surfaceId) ?? 0) + 1,
-          );
-          await updateRemoteSurfaceStatus(surfaceId, "active");
-          send({
-            type: "ready",
-            surfaceId,
-            attachmentId,
-            transport: result.transport,
-            webrtc: result.transport === "webrtc" ? webRtcConfiguration : null,
-          });
-        } catch (error) {
-          cleanupRelay();
-          const message =
-            error instanceof WorkerUnavailableError
-              ? "Worker is offline."
-              : "Remote Surface could not be opened.";
-          await updateRemoteSurfaceStatus(
-            surfaceId,
-            error instanceof WorkerUnavailableError ? "offline" : "error",
-            message,
-          );
-          send({ type: "error", message, recoverable: true });
-          socket.close(1013, "Remote Surface unavailable");
-        }
-      })();
-    },
-  );
+  installRemoteSurfaceConnectionRoute(app, {
+    accountUsageMeter,
+    bridge,
+    config,
+    registerAuthenticatedSocket,
+    registerSessionSocket,
+    relayQuotas,
+    repository,
+    serverId,
+    surfaceAttachmentCounts,
+    surfaceRelay,
+    updateRemoteSurfaceStatus,
+  });
 
   installProjectViewRoutes(app, {
     applicationOwnerId,
