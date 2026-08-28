@@ -45,6 +45,7 @@ import {
   taskOperationRunningClassification,
 } from "../../packages/crypto/src/index.js";
 import { buildApp } from "../src/app.js";
+import { TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS } from "../src/app/shared/constants.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { DEFAULT_MODEL_ID, LOCAL_USER_ID } from "../src/db/repository.js";
@@ -93,6 +94,8 @@ let releaseHeldAgentTurnPreparation: (() => void) | null = null;
 const pauseCommands: boolean[] = [];
 const serverObservedPayloads: string[] = [];
 const workerErrors: string[] = [];
+const taskOperationPrepareTimeouts: Array<number | null | undefined> = [];
+const codeAgentPrepareTimeouts: Array<number | null | undefined> = [];
 
 function workerComponentKey() {
   return { key: new Uint8Array(workerTaskKey), keyRevision: 1 };
@@ -410,7 +413,7 @@ const workerBridge: WorkerCommandBus = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
-  async request(_workerId, command) {
+  async request(_workerId, command, options) {
     if (command.type === "project.folder.materialize") {
       return {
         status: "ready",
@@ -425,6 +428,7 @@ const workerBridge: WorkerCommandBus = {
       return { notifiedSessions: 0, refreshed: [], conflicts: [] };
     }
     if (command.type === "code.prepareAgentTurn") {
+      codeAgentPrepareTimeouts.push(options?.timeoutMs);
       if (holdNextAgentTurnPreparation) {
         holdNextAgentTurnPreparation = false;
         heldAgentTurnPreparationStarted = true;
@@ -459,6 +463,7 @@ const workerBridge: WorkerCommandBus = {
       return { prepared: true, sessions: [] };
     }
     if (command.type === "task.operation.prepare") {
+      taskOperationPrepareTimeouts.push(options?.timeoutMs);
       try {
         return await prepareEncryptedTaskOperation({
           getComponentKey: workerComponentKey,
@@ -804,6 +809,14 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     expect(followingStart.statusCode).toBe(202);
     const completed = await waitForTask(followingChatId, "complete");
     expect(completed.dispatch?.state).toBe("succeeded");
+    expect(taskOperationPrepareTimeouts).toEqual([
+      TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
+      TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
+    ]);
+    expect(codeAgentPrepareTimeouts).toEqual([
+      TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
+      TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
+    ]);
   });
 
   it("pauses a claimed Task while launch preflight has no runtime", async () => {

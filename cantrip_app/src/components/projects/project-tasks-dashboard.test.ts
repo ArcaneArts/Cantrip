@@ -255,6 +255,19 @@ describe("project Task workload", () => {
     ).toMatchObject({ band: "queued", label: "Paused · queued", paused: true });
   });
 
+  it("labels a claimed Task as starting until its execution lane is running", () => {
+    const value = task({
+      chatId: "claimed",
+      createdAt: "2026-08-24T12:00:00.000Z",
+      state: "implementing",
+    });
+    dispatch(value, "claimed");
+
+    expect(
+      projectTaskWorkloadPresentation(value, undefined, false),
+    ).toMatchObject({ band: "running", label: "Starting", paused: false });
+  });
+
   it("surfaces an expired started cycle as needing recovery", () => {
     const value = task({
       chatId: "expired-running",

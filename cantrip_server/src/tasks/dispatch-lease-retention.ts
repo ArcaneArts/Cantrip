@@ -21,19 +21,20 @@ export async function withTaskDispatchLeaseRetention<T>({
   operation,
   intervalMs = Math.floor(TASK_DISPATCH_LEASE_MS / 3),
 }: TaskDispatchLeaseRetentionOptions<T>): Promise<T> {
-  await heartbeat(lease);
-  let pendingHeartbeat = Promise.resolve();
+  let heartbeatActive = false;
   const timer = setInterval(() => {
-    pendingHeartbeat = pendingHeartbeat
-      .then(() => heartbeat(lease))
-      .then(() => undefined)
-      .catch(onHeartbeatError);
+    if (heartbeatActive) return;
+    heartbeatActive = true;
+    void heartbeat(lease)
+      .catch(onHeartbeatError)
+      .finally(() => {
+        heartbeatActive = false;
+      });
   }, intervalMs);
   timer.unref();
   try {
     return await operation();
   } finally {
     clearInterval(timer);
-    await pendingHeartbeat;
   }
 }

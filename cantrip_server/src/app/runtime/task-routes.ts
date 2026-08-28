@@ -73,11 +73,16 @@ import {
 } from "../../tasks/dashboard.js";
 import { parseTaskOperationRelayResult } from "../../tasks/encrypted-relay.js";
 import { withTaskDispatchLeaseRetention } from "../../tasks/dispatch-lease-retention.js";
+import {
+  observeTaskLaunchStage,
+  type TaskLaunchStage,
+} from "../../tasks/launch-observation.js";
 import { TaskStateTransitionError } from "../../tasks/state.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
 import {
   STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+  TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
   TASK_SCHEDULE_POLL_MS,
 } from "../shared/constants.js";
 import type { ChatLiveResource } from "../shared/live-resources.js";
@@ -104,6 +109,7 @@ interface TaskTurnOptions {
   };
   purpose?: string;
   runtimes?: ModelRuntime[];
+  preflightWorkerCommandTimeoutMs?: number | null;
   structuredResult?: {
     taskOperation: TaskOperationRelayRequest;
     afterCompleted?(input: TaskTurnCallbackInput): Promise<void>;
@@ -792,11 +798,12 @@ export function installTaskRouteRuntime(
     claim: ClaimedTaskDispatch,
   ): Promise<void> => {
     await runAsOwner(ownerId, async () => {
-      const context = await repository.getChatExecutionContext(
-        ownerId,
-        claim.cycle.chatId,
-      );
+      let launchStage: TaskLaunchStage = "resolve-context";
       try {
+        const context = await repository.getChatExecutionContext(
+          ownerId,
+          claim.cycle.chatId,
+        );
         if (
           !context ||
           context.experience !== "task" ||
@@ -806,6 +813,7 @@ export function installTaskRouteRuntime(
         ) {
           throw new Error("The claimed Task placement is no longer available.");
         }
+        launchStage = "resolve-runtime";
         const taskModelConfiguration = claim.cycle.modelConfiguration;
         const taskModelId = taskModelConfiguration?.modelId;
         if (
@@ -886,14 +894,22 @@ export function installTaskRouteRuntime(
           request = prior.relayRequest;
           startedTask = prior.task;
         } else {
+          launchStage = "prepare-operation";
+          observeTaskLaunchStage(app.log, claim.cycle, launchStage);
           const prepared = taskEncryptedOperationStartSchema.parse(
-            await bridge.request(context.workerId, {
-              type: "task.operation.prepare",
-              operationId: claim.cycle.operationId,
-              operationKind: claim.cycle.operationKind,
-              task,
-            }),
+            await bridge.request(
+              context.workerId,
+              {
+                type: "task.operation.prepare",
+                operationId: claim.cycle.operationId,
+                operationKind: claim.cycle.operationKind,
+                task,
+              },
+              { timeoutMs: TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS },
+            ),
           );
+          launchStage = "persist-operation";
+          observeTaskLaunchStage(app.log, claim.cycle, launchStage);
           const started = await repository.tasks.beginOperation(
             ownerId,
             context.chatId,
@@ -905,6 +921,8 @@ export function installTaskRouteRuntime(
           publishChatInvalidation(context.chatId, "task", null, context);
         }
 
+        launchStage = "begin-turn";
+        observeTaskLaunchStage(app.log, claim.cycle, launchStage);
         const userMessage = await withTaskDispatchLeaseRetention({
           heartbeat: (lease) => repository.taskDispatch.heartbeat(lease),
           lease: claim.lease,
@@ -940,6 +958,8 @@ export function installTaskRouteRuntime(
               {
                 purpose: "Scheduled encrypted Task operation",
                 encryptedTaskMessages: { userMessage: request.userMessage },
+                preflightWorkerCommandTimeoutMs:
+                  TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
                 runtimes: [runtime],
                 taskDispatchLease: claim.lease,
                 structuredResult: {
@@ -1006,6 +1026,8 @@ export function installTaskRouteRuntime(
         if (!userMessage.executionLaneId) {
           throw new Error("Encrypted Task operation did not acquire a lane.");
         }
+        launchStage = "attach-execution";
+        observeTaskLaunchStage(app.log, claim.cycle, launchStage);
         await repository.tasks.attachOperationExecution(
           ownerId,
           context.chatId,
@@ -1023,6 +1045,7 @@ export function installTaskRouteRuntime(
             operation: "launch-operation",
             status: "failed",
             reasonCode: "preflight-failed",
+            stage: launchStage,
             chatId: claim.cycle.chatId,
             cycleId: claim.cycle.id,
             err: error,
@@ -1039,11 +1062,12 @@ export function installTaskRouteRuntime(
     claim: ClaimedTaskDispatch,
   ): Promise<void> => {
     await runAsOwner(ownerId, async () => {
-      const context = await repository.getChatExecutionContext(
-        ownerId,
-        claim.cycle.chatId,
-      );
+      let context: ChatExecutionContext | null = null;
       try {
+        context = await repository.getChatExecutionContext(
+          ownerId,
+          claim.cycle.chatId,
+        );
         if (
           !context ||
           context.experience !== "task" ||

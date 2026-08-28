@@ -274,12 +274,17 @@ export function createChatRecoveryRuntime({
 
   const prepareCodeEditorsForTurn = async (
     context: ChatExecutionContext,
+    timeoutMs?: number | null,
   ): Promise<void> => {
     const result = codeAgentTurnPreparationResultSchema.parse(
-      await bridge.request(context.workerId, {
-        type: "code.prepareAgentTurn",
-        cwd: context.cwd,
-      }),
+      await bridge.request(
+        context.workerId,
+        {
+          type: "code.prepareAgentTurn",
+          cwd: context.cwd,
+        },
+        timeoutMs === undefined ? undefined : { timeoutMs },
+      ),
     );
     if (result.prepared) return;
     const blocked = result.sessions.filter((session) => !session.allowed);

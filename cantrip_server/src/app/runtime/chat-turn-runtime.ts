@@ -91,6 +91,7 @@ export interface ChatTurnOptions {
   purpose?: string;
   retryMessageId?: string;
   runtimes?: ModelRuntime[];
+  preflightWorkerCommandTimeoutMs?: number | null;
   structuredResult?: {
     outputSchema?: WorkflowJsonObject;
     taskOperation?: TaskOperationRelayRequest;
@@ -184,7 +185,10 @@ export interface ChatTurnRuntimeDependencies
     phase: "started" | "completed" | "failed",
     paths?: Iterable<string>,
   ) => Promise<void>;
-  prepareCodeEditorsForTurn: (context: ChatExecutionContext) => Promise<void>;
+  prepareCodeEditorsForTurn: (
+    context: ChatExecutionContext,
+    timeoutMs?: number | null,
+  ) => Promise<void>;
   repository: ServerRepository;
   resolvePromptAttachments: (
     context: ChatExecutionContext,
@@ -370,7 +374,10 @@ export function createChatTurnRuntime({
       context.contextKind === "project" &&
       (!options.structuredResult || directTaskOperation)
     ) {
-      await prepareCodeEditorsForTurn(context);
+      await prepareCodeEditorsForTurn(
+        context,
+        options.preflightWorkerCommandTimeoutMs,
+      );
     }
     const mcpServers =
       options.structuredResult && !directTaskOperation

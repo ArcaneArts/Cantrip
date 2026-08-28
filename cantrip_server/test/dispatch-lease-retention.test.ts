@@ -32,22 +32,21 @@ describe("Task dispatch lease retention", () => {
       intervalMs: 1_000,
     });
     await vi.advanceTimersByTimeAsync(0);
-    expect(heartbeat).toHaveBeenCalledTimes(1);
+    expect(heartbeat).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(3_000);
-    expect(heartbeat).toHaveBeenCalledTimes(4);
+    expect(heartbeat).toHaveBeenCalledTimes(3);
 
     finishPreflight?.();
     await retained;
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(heartbeat).toHaveBeenCalledTimes(4);
+    expect(heartbeat).toHaveBeenCalledTimes(3);
   });
 
   it("reports a periodic heartbeat failure without hiding the operation result", async () => {
     vi.useFakeTimers();
     const heartbeat = vi
       .fn<() => Promise<void>>()
-      .mockResolvedValueOnce()
       .mockRejectedValueOnce(new Error("lease renewal failed"));
     const onHeartbeatError = vi.fn();
     let finishPreflight: (() => void) | null = null;
@@ -69,5 +68,55 @@ describe("Task dispatch lease retention", () => {
 
     finishPreflight?.();
     await expect(retained).resolves.toBe("ready");
+  });
+
+  it("starts launch without waiting for a redundant lease renewal", async () => {
+    vi.useFakeTimers();
+    const heartbeat = vi.fn(async () => undefined);
+
+    const retained = withTaskDispatchLeaseRetention({
+      heartbeat,
+      lease,
+      onHeartbeatError: vi.fn(),
+      operation: async () => "launched",
+      intervalMs: 1_000,
+    });
+
+    await expect(retained).resolves.toBe("launched");
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(heartbeat).not.toHaveBeenCalled();
+  });
+
+  it("skips overlapping heartbeat intervals instead of building a backlog", async () => {
+    vi.useFakeTimers();
+    let finishHeartbeat: (() => void) | null = null;
+    let finishPreflight: (() => void) | null = null;
+    const heartbeat = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishHeartbeat = resolve;
+        }),
+    );
+    const retained = withTaskDispatchLeaseRetention({
+      heartbeat,
+      lease,
+      onHeartbeatError: vi.fn(),
+      operation: () =>
+        new Promise<void>((resolve) => {
+          finishPreflight = resolve;
+        }),
+      intervalMs: 1_000,
+    });
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(heartbeat).toHaveBeenCalledTimes(1);
+    finishHeartbeat?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(heartbeat).toHaveBeenCalledTimes(2);
+
+    finishPreflight?.();
+    await retained;
+    expect(heartbeat).toHaveBeenCalledTimes(2);
+    finishHeartbeat?.();
   });
 });

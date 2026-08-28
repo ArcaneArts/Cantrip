@@ -34,6 +34,7 @@ export const REMOTE_DESKTOP_FLEET_TARGET_LIMIT = 4_096;
 export const REMOTE_DESKTOP_FLEET_SURFACE_LIMIT = 64;
 export const FINITE_WORKER_COMMAND_TIMEOUT_MS = 30 * 60_000;
 export const STREAMING_WORKER_COMMAND_TIMEOUT_MS = null;
+export const TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS = 30_000;
 
 export const CONFIGURABLE_PERMISSION_PROFILES = [
   { id: ":read-only", description: "Inspection only", allowed: true },
