@@ -121,6 +121,50 @@ describe("chat activity timeline", () => {
     );
   });
 
+  it("does not complete a turn from assistant text that is still streaming", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect the repository" },
+      ]),
+      message("command", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-1",
+            command: "rg --files",
+            cwd: ".",
+            status: "completed",
+            exitCode: 0,
+            output: "README.md",
+          },
+        },
+      ]),
+      message("stream", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "text",
+          text: "I’ll inspect one more file.",
+          phase: "final_answer",
+          streaming: true,
+        },
+      ]),
+    ]);
+
+    expect(timeline).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "activityGroup", kind: "turn" }),
+      ]),
+    );
+    expect(timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "message",
+          message: expect.objectContaining({ id: "stream" }),
+        }),
+      ]),
+    );
+  });
+
   it("does not keep completed trailing plan and file changes live", () => {
     const planTimeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [

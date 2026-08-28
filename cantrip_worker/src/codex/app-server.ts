@@ -521,6 +521,19 @@ function clearStreamingAgentMessage(active: AgentEventState): void {
   active.streamingAgentMessage = null;
 }
 
+export function normalizeStreamingAgentMessage(
+  message: Omit<NormalizedAgentMessage, "phase" | "streaming">,
+): NormalizedAgentMessage {
+  return normalizedAgentMessageSchema.parse({
+    ...message,
+    // An agent message item can be followed by more tools or messages. Keep
+    // streamed text provisional until the authoritative turn boundary decides
+    // whether it was commentary or the final answer.
+    phase: "commentary",
+    streaming: true,
+  });
+}
+
 function emitStreamingAgentMessage(active: AgentEventState): void {
   const streaming = active.streamingAgentMessage;
   if (!streaming) return;
@@ -539,11 +552,9 @@ function emitStreamingAgentMessage(active: AgentEventState): void {
   }
   streaming.lastEmittedText = text;
   active.onMessage?.(
-    normalizedAgentMessageSchema.parse({
+    normalizeStreamingAgentMessage({
       id: streaming.id,
       text,
-      phase: "final_answer",
-      streaming: true,
       correlation: streaming.correlation,
       ...(active.agentScope ? { agentScope: active.agentScope } : {}),
     }),

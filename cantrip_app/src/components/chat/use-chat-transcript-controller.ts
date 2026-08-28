@@ -807,16 +807,13 @@ export function useChatTranscriptController({
     () => mergeAgentCardsIntoTimeline(timeline, agentProjection.agents),
     [agentProjection.agents, timeline],
   );
-  const hasStreamingFinalAnswer = useMemo(
+  const hasStreamingResponse = useMemo(
     () =>
       agentProjection.rootMessages.some(
         (message) =>
           message.role === "assistant" &&
           message.content.some(
-            (item) =>
-              item.type === "text" &&
-              item.phase !== "commentary" &&
-              item.streaming === true,
+            (item) => item.type === "text" && item.streaming === true,
           ),
       ),
     [agentProjection.rootMessages],
@@ -1855,7 +1852,7 @@ export function useChatTranscriptController({
     goalState,
     handleChatTranscriptScroll,
     handleInspectOpenChange,
-    hasStreamingFinalAnswer,
+    hasStreamingResponse,
     highlightedDraft,
     inferenceProgress,
     inferenceProgressHistory,

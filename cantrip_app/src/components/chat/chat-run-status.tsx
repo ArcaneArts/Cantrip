@@ -19,7 +19,7 @@ import { useDeadReckonedPrefillPercent } from "./prefill-dead-reckoning";
 interface ChatRunStatusProps {
   automationPaused: boolean;
   hasLiveActivity: boolean;
-  hasStreamingFinalAnswer: boolean;
+  hasStreamingResponse: boolean;
   inferenceProgress: InferenceProgressSnapshot | null;
   syncingCodeGraph: boolean;
   status: ChatSummary["status"];
@@ -191,7 +191,7 @@ function PrefillProgressStatus({
 export function ChatRunStatus({
   automationPaused,
   hasLiveActivity,
-  hasStreamingFinalAnswer,
+  hasStreamingResponse,
   inferenceProgress,
   syncingCodeGraph,
   status,
@@ -200,10 +200,10 @@ export function ChatRunStatus({
   if (status !== "running" && status !== "waiting-for-approval") return null;
 
   if (status === "running" && !automationPaused && !waitingForPlanAnswer) {
-    if (hasLiveActivity && !hasStreamingFinalAnswer && !inferenceProgress) {
+    if (hasLiveActivity && !hasStreamingResponse && !inferenceProgress) {
       return null;
     }
-    if (hasStreamingFinalAnswer) {
+    if (hasStreamingResponse) {
       return (
         <div
           aria-live="polite"
@@ -211,7 +211,7 @@ export function ChatRunStatus({
           data-elite-ignore=""
           role="status"
         >
-          <span className="chat-working-shimmer">Finishing...</span>
+          <span className="chat-working-shimmer">Responding...</span>
         </div>
       );
     }

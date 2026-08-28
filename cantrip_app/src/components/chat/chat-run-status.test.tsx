@@ -9,7 +9,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
-        hasStreamingFinalAnswer={false}
+        hasStreamingResponse={false}
         inferenceProgress={null}
         syncingCodeGraph={false}
         status="running"
@@ -30,7 +30,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
-        hasStreamingFinalAnswer={false}
+        hasStreamingResponse={false}
         inferenceProgress={null}
         syncingCodeGraph
         status="running"
@@ -48,7 +48,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
-        hasStreamingFinalAnswer={false}
+        hasStreamingResponse={false}
         inferenceProgress={null}
         syncingCodeGraph={false}
         status="waiting-for-approval"
@@ -59,7 +59,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused
         hasLiveActivity={false}
-        hasStreamingFinalAnswer={false}
+        hasStreamingResponse={false}
         inferenceProgress={null}
         syncingCodeGraph={false}
         status="running"
@@ -79,7 +79,7 @@ describe("ChatRunStatus", () => {
         <ChatRunStatus
           automationPaused={false}
           hasLiveActivity={false}
-          hasStreamingFinalAnswer={false}
+          hasStreamingResponse={false}
           inferenceProgress={null}
           syncingCodeGraph={false}
           status="idle"
@@ -95,7 +95,7 @@ describe("ChatRunStatus", () => {
         <ChatRunStatus
           automationPaused={false}
           hasLiveActivity
-          hasStreamingFinalAnswer={false}
+          hasStreamingResponse={false}
           inferenceProgress={null}
           syncingCodeGraph={false}
           status="running"
@@ -105,12 +105,12 @@ describe("ChatRunStatus", () => {
     ).toBe("");
   });
 
-  it("shows finishing beneath a streaming final answer", () => {
+  it("shows responding while assistant text is still streaming", () => {
     const markup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity
-        hasStreamingFinalAnswer
+        hasStreamingResponse
         inferenceProgress={null}
         syncingCodeGraph={false}
         status="running"
@@ -118,9 +118,10 @@ describe("ChatRunStatus", () => {
       />,
     );
 
-    expect(markup).toContain("Finishing...");
+    expect(markup).toContain("Responding...");
     expect(markup).toContain("chat-working-shimmer");
     expect(markup).not.toContain("Working...");
+    expect(markup).not.toContain("Finishing...");
   });
 
   it("shows determinate Ollama prefill progress over generic activity", () => {
@@ -128,7 +129,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity
-        hasStreamingFinalAnswer={false}
+        hasStreamingResponse={false}
         inferenceProgress={{
           kind: "progress",
           requestId: "message-one",
@@ -162,7 +163,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
-        hasStreamingFinalAnswer={false}
+        hasStreamingResponse={false}
         inferenceProgress={{
           kind: "progress",
           requestId: "message-one",
