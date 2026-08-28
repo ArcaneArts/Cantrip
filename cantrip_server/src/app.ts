@@ -68,10 +68,7 @@ import {
 } from "./app/http/route-guards.js";
 import { createApplicationServer } from "./app/http/server.js";
 import { installTransportSecurity } from "./app/http/transport-security.js";
-import {
-  installApiMetadataRoute,
-  installRemovedWorkflowGenerationRoute,
-} from "./app/routes/api-meta-and-removed-routes.js";
+import { installRemovedWorkflowGenerationRoute } from "./app/routes/api-meta-and-removed-routes.js";
 import { installBrowserServiceDiscoveryRoutes } from "./app/routes/browser-service-discovery.js";
 import {
   installBrowserListRoute,
@@ -79,8 +76,6 @@ import {
 } from "./app/routes/browser-management.js";
 import { installAgentInteractionRoutes } from "./app/routes/agent-interactions.js";
 import { installChatRelocationRoutes } from "./app/routes/chat-relocations.js";
-import { installInternalProviderCredentialRoutes } from "./app/routes/internal-provider-credentials.js";
-import { installInternalWorkerCodeSettingsRoutes } from "./app/routes/internal-worker-code-settings.js";
 import { installPolicyRoutes } from "./app/routes/policies.js";
 import { installProjectAutomationRoutes } from "./app/routes/project-automations.js";
 import { installProjectCatalogAndPlacementRoutes } from "./app/routes/project-catalog-and-placement.js";
@@ -89,10 +84,7 @@ import {
   installCodeTabSessionListRoute,
 } from "./app/routes/code-tab-management.js";
 import { installChatBasicRoutes } from "./app/routes/chat-basic-routes.js";
-import {
-  installProjectChatCatalogRoutes,
-  installStandaloneChatCatalogRoutes,
-} from "./app/routes/chat-catalogs.js";
+import { installProjectChatCatalogRoutes } from "./app/routes/chat-catalogs.js";
 import { installChatArchiveLifecycleRoutes } from "./app/routes/chat-archive-lifecycle.js";
 import { installChatForkRoute } from "./app/routes/chat-forks.js";
 import { installChatExecutionControlRoutes } from "./app/routes/chat-execution-control.js";
@@ -109,10 +101,6 @@ import { installChatRuntimeConfigurationRoutes } from "./app/routes/chat-runtime
 import { installChatQueueRoutes } from "./app/routes/chat-queue.js";
 import { installChatTurnSubmissionRoutes } from "./app/routes/chat-turn-submission.js";
 import { installChatImportRoutes } from "./app/routes/chat-imports.js";
-import { installAuthSessionRoutes } from "./app/routes/auth-sessions.js";
-import { installAccountSecurityRoutes } from "./app/routes/account-security.js";
-import { installSystemStatusRoutes } from "./app/routes/system-status.js";
-import { installWorkerMaintenanceRoutes } from "./app/routes/worker-maintenance.js";
 import { installInternalWorkerAutomationRoutes } from "./app/routes/internal-worker-automations.js";
 import { installInternalAgentToolRoutes } from "./app/routes/internal-agent-tools.js";
 import { installInternalWorkerHttpControlRoutes } from "./app/routes/internal-worker-http-control.js";
@@ -160,7 +148,6 @@ import { installTerminalDirectAttachmentRoute } from "./app/routes/terminal-dire
 import { installTerminalRelayWebSocketRoute } from "./app/routes/terminal-relay-websocket.js";
 import { installWorkerLinkObservationGrantRoute } from "./app/routes/worker-link-observation-grants.js";
 import { installWorkerLinkRemoteSurfaceGrantRoute } from "./app/routes/worker-link-remote-surface-grants.js";
-import { installWorkerLinkSessionRoutes } from "./app/routes/worker-link-sessions.js";
 import { installWorkerLinkTerminalGrantRoute } from "./app/routes/worker-link-terminal-grants.js";
 import { installWorkerLinkTunnelAttachmentGrantRoute } from "./app/routes/worker-link-tunnel-attachment-grants.js";
 import { installRemoteDesktopReadRoutes } from "./app/routes/remote-desktop-read.js";
@@ -186,8 +173,6 @@ import { installProjectWorktreeGitRevisionAndPatchRoutes } from "./app/routes/pr
 import { installProjectWorktreeGitStashRoutes } from "./app/routes/project-worktree-git-stashes.js";
 import { installProjectWorktreePullRequestRoutes } from "./app/routes/project-worktree-pull-requests.js";
 import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
-import { installRepositoryOperationRoutes } from "./app/routes/repository-operations.js";
-import { installWorkerLogRoutes } from "./app/routes/worker-logs.js";
 import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
 import {
   installTerminalCreateRoute,
@@ -199,17 +184,6 @@ import {
   installProtectedScriptCommandRoutes,
   installTerminalWorktreeLifecycleRoutes,
 } from "./app/routes/terminal-context.js";
-import { installDirectAttachmentControlRoutes } from "./app/routes/direct-attachment-control.js";
-import {
-  installTunnelListRoute,
-  installTunnelMutationRoutes,
-  installTunnelReadAndCreateRoutes,
-} from "./app/routes/tunnel-management.js";
-import { installTunnelAttachmentRoutes } from "./app/routes/tunnel-attachments.js";
-import { installWorkerCatalogRoutes } from "./app/routes/worker-catalog.js";
-import { installWorkerCredentialRoutes } from "./app/routes/worker-credentials.js";
-import { installWorkerEnrollmentCodeRoutes } from "./app/routes/worker-enrollment-codes.js";
-import { installWorkerManagementRoutes } from "./app/routes/worker-management.js";
 import { installWorkflowDefinitionRoutes } from "./app/routes/workflow-definitions.js";
 import { installWorkflowRunRoutes } from "./app/routes/workflow-runs.js";
 import { installWorkflowTriggerDeliveryRoutes } from "./app/routes/workflow-trigger-delivery.js";
@@ -253,8 +227,8 @@ import {
   WORKFLOW_GATE_EXPIRY_SWEEP_MS,
 } from "./app/shared/constants.js";
 import { ProviderAccountReconnectRequiredError } from "./app/shared/errors.js";
-import { createAuthRouteSupport } from "./app/http/auth-route-support.js";
 import { installMutationLiveInvalidationHook } from "./app/http/mutation-live-invalidation.js";
+import { installCoreInfrastructureRoutes } from "./app/routes/core-infrastructure-registry.js";
 
 export type { BuildAppOptions } from "./app/options.js";
 export { mutationLiveResources } from "./app/shared/live-resources.js";
@@ -998,161 +972,54 @@ export async function buildApp({
     taskGoalDispatchLease,
   } = taskGoalRuntime;
 
-  installApiMetadataRoute(app);
-
-  const {
-    consumeAuthAttempt,
-    rejectUnapprovedAuthOrigin,
-    withRegistrationLock,
-  } = createAuthRouteSupport({ authRateLimiter, config });
-
-  installInternalWorkerCodeSettingsRoutes(app, {
-    bridge,
-    config,
-    publishLiveInvalidation,
-    repository,
-    runAsOwner,
-  });
-
-  installInternalProviderCredentialRoutes(app, { config, repository });
-
-  installAuthSessionRoutes(app, {
+  installCoreInfrastructureRoutes(app, {
+    accountUsageMeter,
+    acquireAuthorizedCodeAttachmentRootLease,
     appendAudit,
+    applicationOwnerId,
+    authRateLimiter,
+    authorizedCodeAttachmentRootIdentity,
+    availableModelRuntimes,
+    bridge,
     closeSessionSockets,
     codeTunnel,
     config,
-    consumeAuthAttempt,
+    coordinationStats,
+    coordinator,
+    database,
     directAttachments,
     licenseWhitelistConfigured,
     licenseWhitelistEnabled,
     liveHub,
     localUser,
+    markCredentialRevoked: (credentialId) => {
+      revokedWorkerCredentialIds.add(credentialId);
+    },
     normalizedAdminEmail,
-    rejectUnapprovedAuthOrigin,
-    repository,
-    sessionService,
-    withRegistrationLock,
-    workerLinks,
-  });
-
-  installAccountSecurityRoutes(app, {
-    appendAudit,
-    codeTunnel,
-    config,
-    consumeAuthAttempt,
-    licenseWhitelistEnabled,
-    normalizedAdminEmail,
-    repository,
-    sessionSockets,
-  });
-
-  installSystemStatusRoutes(app, {
-    accountUsageMeter,
-    bridge,
-    config,
-    coordinationStats,
-    coordinator,
-    database,
-    licenseWhitelistConfigured,
-    licenseWhitelistEnabled,
-    liveHub,
     operationalMetrics,
+    publishChatSummary,
+    publishLiveInvalidation,
+    publishTunnelRuntimeChange,
+    publishWorkerAvailability: (workerId) =>
+      publishLiveInvalidation("worker-availability", { entityId: workerId }),
+    recordRuntimeTokenUsage,
+    registerAccountSocket,
+    registerAuthenticatedSocket,
+    registerSessionSocket,
     relayQuotas,
     repository,
+    runAsOwner,
     serverId,
+    sessionService,
+    sessionSockets,
+    standaloneChatRootJobExecutor,
     storageReconciler,
+    synchronizeTerminalServicesForWorker,
     tunnelRuntime,
     usageHistoryMaintenance,
     workerLinkRelay,
-  });
-
-  installWorkerCatalogRoutes(app, { bridge, repository });
-
-  installWorkerMaintenanceRoutes(app, {
-    bridge,
-    repository,
-    synchronizeTerminalServicesForWorker,
-  });
-
-  installRepositoryOperationRoutes(app, {
-    availableModelRuntimes,
-    bridge,
-    recordRuntimeTokenUsage,
-    repository,
-    serverId,
+    workerLinks,
     worktreeCoordinator,
-  });
-
-  installWorkerLogRoutes(app, {
-    accountUsageMeter,
-    bridge,
-    config,
-    registerAuthenticatedSocket,
-    registerSessionSocket,
-    repository,
-  });
-  installWorkerLinkSessionRoutes(app, {
-    bridge,
-    config,
-    directAttachments,
-    operationalMetrics,
-    registerAuthenticatedSocket,
-    registerSessionSocket,
-    repository,
-    workerLinkRelay,
-    workerLinks,
-  });
-  installDirectAttachmentControlRoutes(app, {
-    directAttachments,
-    operationalMetrics,
-    repository,
-  });
-
-  installTunnelListRoute(app, { repository });
-
-  installStandaloneChatCatalogRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishChatSummary,
-    repository,
-    standaloneChatRootJobExecutor,
-  });
-
-  installTunnelReadAndCreateRoutes(app, { repository });
-
-  installTunnelAttachmentRoutes(app, {
-    accountUsageMeter,
-    acquireAuthorizedCodeAttachmentRootLease,
-    authorizedCodeAttachmentRootIdentity,
-    codeTunnel,
-    directAttachments,
-    publishTunnelRuntimeChange,
-    registerAccountSocket,
-    repository,
-    tunnelRuntime,
-    workerLinks,
-  });
-  installTunnelMutationRoutes(app, { repository });
-
-  installWorkerManagementRoutes(app, {
-    bridge,
-    config,
-    markCredentialRevoked: (credentialId) => {
-      revokedWorkerCredentialIds.add(credentialId);
-    },
-    publishWorkerAvailability: (workerId) =>
-      publishLiveInvalidation("worker-availability", { entityId: workerId }),
-    repository,
-  });
-
-  installWorkerEnrollmentCodeRoutes(app, { repository });
-
-  installWorkerCredentialRoutes(app, {
-    bridge,
-    markCredentialRevoked: (credentialId) => {
-      revokedWorkerCredentialIds.add(credentialId);
-    },
-    repository,
   });
 
   runConfigurationRuntime.installAppRuntimeRoutes(app);

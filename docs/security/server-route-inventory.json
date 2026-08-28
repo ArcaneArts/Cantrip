@@ -44,6 +44,7 @@
       "cantrip_server/src/app/routes/code-tab-attachments.ts",
       "cantrip_server/src/app/routes/code-tab-management.ts",
       "cantrip_server/src/app/routes/code-tab-worker-controls.ts",
+      "cantrip_server/src/app/routes/core-infrastructure-registry.ts",
       "cantrip_server/src/app/routes/direct-attachment-control.ts",
       "cantrip_server/src/app/routes/explorer-management.ts",
       "cantrip_server/src/app/routes/explorer-protected-code-attachments.ts",
