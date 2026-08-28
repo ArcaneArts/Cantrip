@@ -40,6 +40,8 @@ pub struct RevealLocalProjectFolderRequest {
     folder_management: Option<LocalProjectFolderManagement>,
     path: String,
     #[serde(default)]
+    placement_mode: LocalProjectPlacementMode,
+    #[serde(default)]
     relative_path: String,
     server_url: String,
     source_kind: LocalProjectSourceKind,
@@ -84,16 +86,29 @@ enum LocalProjectFolderManagement {
     Managed,
 }
 
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum LocalProjectPlacementMode {
+    Direct,
+    #[default]
+    Managed,
+    ManagedLink,
+}
+
 fn local_project_storage(
     source_kind: LocalProjectSourceKind,
     folder_management: Option<LocalProjectFolderManagement>,
+    placement_mode: LocalProjectPlacementMode,
 ) -> DesktopWorkerProjectStorage {
-    match (source_kind, folder_management) {
-        (LocalProjectSourceKind::Folder, Some(LocalProjectFolderManagement::External)) => {
+    match (source_kind, folder_management, placement_mode) {
+        (LocalProjectSourceKind::Folder, Some(LocalProjectFolderManagement::External), _) => {
             DesktopWorkerProjectStorage::ExternalFolder
         }
-        (LocalProjectSourceKind::Folder, _) => DesktopWorkerProjectStorage::Folders,
-        (LocalProjectSourceKind::Git, _) => DesktopWorkerProjectStorage::Repositories,
+        (LocalProjectSourceKind::Folder, _, _) => DesktopWorkerProjectStorage::Folders,
+        (LocalProjectSourceKind::Git, _, LocalProjectPlacementMode::Direct) => {
+            DesktopWorkerProjectStorage::ExternalFolder
+        }
+        (LocalProjectSourceKind::Git, _, _) => DesktopWorkerProjectStorage::Repositories,
     }
 }
 
@@ -189,7 +204,11 @@ pub async fn reveal_local_project_folder(
     let Ok(server_url) = normalize_server_url(&request.server_url) else {
         return Ok(false);
     };
-    let storage = local_project_storage(request.source_kind, request.folder_management);
+    let storage = local_project_storage(
+        request.source_kind,
+        request.folder_management,
+        request.placement_mode,
+    );
     let requested_path = std::path::Path::new(&request.path);
     let bundled_project = runtime
         .local_worker_data_directory(&server_url, &request.worker_id)
@@ -1058,11 +1077,12 @@ mod tests {
     }
 
     #[test]
-    fn resolves_only_explicit_external_folders_outside_managed_storage() {
+    fn classifies_local_project_storage_boundaries() {
         assert_eq!(
             local_project_storage(
                 LocalProjectSourceKind::Folder,
                 Some(LocalProjectFolderManagement::External),
+                LocalProjectPlacementMode::Managed,
             ),
             DesktopWorkerProjectStorage::ExternalFolder
         );
@@ -1070,12 +1090,33 @@ mod tests {
             local_project_storage(
                 LocalProjectSourceKind::Folder,
                 Some(LocalProjectFolderManagement::Managed),
+                LocalProjectPlacementMode::Managed,
             ),
             DesktopWorkerProjectStorage::Folders
         );
         assert_eq!(
-            local_project_storage(LocalProjectSourceKind::Git, None),
+            local_project_storage(
+                LocalProjectSourceKind::Git,
+                None,
+                LocalProjectPlacementMode::Managed,
+            ),
             DesktopWorkerProjectStorage::Repositories
+        );
+        assert_eq!(
+            local_project_storage(
+                LocalProjectSourceKind::Git,
+                None,
+                LocalProjectPlacementMode::ManagedLink,
+            ),
+            DesktopWorkerProjectStorage::Repositories
+        );
+        assert_eq!(
+            local_project_storage(
+                LocalProjectSourceKind::Git,
+                None,
+                LocalProjectPlacementMode::Direct,
+            ),
+            DesktopWorkerProjectStorage::ExternalFolder
         );
     }
 
