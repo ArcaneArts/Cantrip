@@ -345,6 +345,7 @@ function terminalMessage(message: ChatMessage): boolean {
       (content) =>
         content.type === "text" &&
         content.phase !== "commentary" &&
+        content.streaming !== true &&
         (content.agentScope?.isRoot ?? true),
     )
   );

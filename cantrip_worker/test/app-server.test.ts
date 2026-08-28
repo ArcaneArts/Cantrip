@@ -48,6 +48,7 @@ import {
   normalizeCodexThreadItem,
   normalizeNoticeActivity,
   normalizeRateLimitActivity,
+  normalizeStreamingAgentMessage,
   normalizeTokenUsageActivity,
   latestChangedLine,
   managedMcpToolRequirements,
@@ -180,6 +181,20 @@ const correlation = {
 };
 
 describe("Codex rich event normalization", () => {
+  it("keeps streamed agent text provisional until the turn completes", () => {
+    expect(
+      normalizeStreamingAgentMessage({
+        id: "message-streaming",
+        text: "I’ll inspect one more file.",
+        correlation: { ...correlation, itemId: "message-streaming" },
+      }),
+    ).toMatchObject({
+      id: "message-streaming",
+      phase: "commentary",
+      streaming: true,
+    });
+  });
+
   it("recovers final messages and commands from an authoritative completed turn", () => {
     const turn = completedCodexThreadTurnFromRead(
       {

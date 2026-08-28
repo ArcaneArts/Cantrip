@@ -130,7 +130,10 @@ function terminalMessage(message: ChatMessage | undefined): boolean {
   if (message.role === "system") return true;
   if (message.role !== "assistant") return false;
   return message.content.some(
-    (item) => item.type === "text" && item.phase !== "commentary",
+    (item) =>
+      item.type === "text" &&
+      item.phase !== "commentary" &&
+      item.streaming !== true,
   );
 }
 

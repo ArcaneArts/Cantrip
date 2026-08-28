@@ -105,7 +105,7 @@ export function ChatTranscriptView({
     goalState,
     handleChatTranscriptScroll,
     handleInspectOpenChange,
-    hasStreamingFinalAnswer,
+    hasStreamingResponse,
     highlightedDraft,
     inferenceProgress,
     inferenceProgressHistory,
@@ -336,7 +336,7 @@ export function ChatTranscriptView({
           <ChatRunStatus
             automationPaused={chat.automationPaused}
             hasLiveActivity={latestLiveActivityGroupKey !== null}
-            hasStreamingFinalAnswer={hasStreamingFinalAnswer}
+            hasStreamingResponse={hasStreamingResponse}
             inferenceProgress={inferenceProgress.data}
             syncingCodeGraph={syncingCodeGraph}
             status={chat.status}
