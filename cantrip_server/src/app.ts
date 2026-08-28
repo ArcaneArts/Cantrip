@@ -4,18 +4,10 @@ import {
   appLiveEventPayloadSchema,
   encryptedBrowserUpdateSchema,
   providerAuthLiveStatusSchema,
-  archivedChatCleanupResultSchema,
-  archivedChatWireListSchema,
-  encryptedChatCreateSchema,
-  encryptedStandaloneChatCreateSchema,
-  chatWireListSchema,
   chatMessageCreateSchema,
   chatMessageListSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
-  chatWireSummarySchema,
-  standaloneChatWireSummarySchema,
-  archivedStandaloneChatWireSummarySchema,
   chatTurnCreateSchema,
   explorerCodeAttachmentCreateSchema,
   gitConflictListSchema,
@@ -74,11 +66,7 @@ import { requireProjectCapability } from "./projects/capabilities.js";
 import { TunnelRuntimeManager } from "./tunnels/runtime.js";
 import { TunnelStreamBroker } from "./tunnels/broker.js";
 import {
-  ExecutionLaneConflictError,
-  ExecutionPlacementUnavailableError,
-  StandaloneChatPlacementUnavailableError,
   SurfacePrivateStateConflictError,
-  ARCHIVED_CHAT_RETENTION_MS,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
   WORKER_ONLINE_WINDOW_MS,
@@ -131,6 +119,10 @@ import {
   installCodeTabSessionListRoute,
 } from "./app/routes/code-tab-management.js";
 import { installChatBasicRoutes } from "./app/routes/chat-basic-routes.js";
+import {
+  installProjectChatCatalogRoutes,
+  installStandaloneChatCatalogRoutes,
+} from "./app/routes/chat-catalogs.js";
 import { installChatArchiveLifecycleRoutes } from "./app/routes/chat-archive-lifecycle.js";
 import { installChatForkRoute } from "./app/routes/chat-forks.js";
 import { installChatExecutionControlRoutes } from "./app/routes/chat-execution-control.js";
@@ -2016,67 +2008,12 @@ export async function buildApp({
 
   installTunnelListRoute(app, { repository });
 
-  app.get<{ Querystring: { context?: string } }>(
-    "/api/chats",
-    async (request, reply) => {
-      if (request.query.context !== "standalone") {
-        return reply.code(400).send({
-          error: "Standalone Chat lists require context=standalone.",
-        });
-      }
-      const chats = await repository.listStandaloneChats(applicationOwnerId());
-      return reply.send(
-        chats.map((chat) => standaloneChatWireSummarySchema.parse(chat)),
-      );
-    },
-  );
-
-  app.get<{ Querystring: { context?: string } }>(
-    "/api/chats/archived",
-    async (request, reply) => {
-      if (request.query.context !== "standalone") {
-        return reply.code(400).send({
-          error: "Archived standalone Chat lists require context=standalone.",
-        });
-      }
-      const chats =
-        await repository.listArchivedStandaloneChats(applicationOwnerId());
-      return reply.send(
-        chats.map((chat) =>
-          archivedStandaloneChatWireSummarySchema.parse(chat),
-        ),
-      );
-    },
-  );
-
-  app.post("/api/chats", async (request, reply) => {
-    const input = encryptedStandaloneChatCreateSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      const created = await repository.createStandaloneChat(
-        applicationOwnerId(),
-        input.data,
-        (workerId) => bridge.isConnected(workerId),
-      );
-      publishChatSummary(created.chat.id, null);
-      standaloneChatRootJobExecutor.queueAvailable();
-      return reply
-        .code(202)
-        .send(standaloneChatWireSummarySchema.parse(created.chat));
-    } catch (error) {
-      if (error instanceof StandaloneChatPlacementUnavailableError) {
-        return reply.code(409).send({
-          code: "standalone-worker-unavailable",
-          error: error.message,
-        });
-      }
-      if (/unique|duplicate/i.test(errorMessage(error))) {
-        return reply.code(409).send({ error: "Chat already exists." });
-      }
-      throw error;
-    }
+  installStandaloneChatCatalogRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    publishChatSummary,
+    repository,
+    standaloneChatRootJobExecutor,
   });
 
   installTunnelReadAndCreateRoutes(app, { repository });
@@ -2436,90 +2373,13 @@ export async function buildApp({
     repository,
   });
 
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/chats",
-    async (request, reply) => {
-      const chats = await repository.listChats(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      return reply.send(chatWireListSchema.parse(chats));
-    },
-  );
-
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/archived-chats",
-    async (request, reply) => {
-      const chats = await repository.listArchivedChats(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      return reply.send(archivedChatWireListSchema.parse(chats));
-    },
-  );
-
-  app.post("/api/chats/archives/cleanup", async (_request, reply) => {
-    const ownerId = applicationOwnerId();
-    const deleted = await repository.purgeExpiredArchivedChats(
-      ownerId,
-      new Date(Date.now() - ARCHIVED_CHAT_RETENTION_MS),
-    );
-    const standaloneJobs =
-      await repository.standaloneChatRootJobs.purgeExpiredArchivedChats(
-        ownerId,
-      );
-    for (const job of standaloneJobs) {
-      publishStandaloneChatRootJobChange({ ownerId, job });
-    }
-    if (standaloneJobs.length > 0) {
-      standaloneChatRootJobExecutor.queueAvailable();
-    }
-    return reply.send(
-      archivedChatCleanupResultSchema.parse({
-        deleted: deleted + standaloneJobs.length,
-      }),
-    );
+  installProjectChatCatalogRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    publishStandaloneChatRootJobChange,
+    repository,
+    standaloneChatRootJobExecutor,
   });
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/chats",
-    async (request, reply) => {
-      const input = encryptedChatCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const chat = await repository.createChat(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data,
-          (workerId) => bridge.isConnected(workerId),
-        );
-        if (!chat) {
-          return reply.code(404).send({ error: "Project source not found" });
-        }
-        return reply.code(201).send(chatWireSummarySchema.parse(chat));
-      } catch (error) {
-        if (error instanceof ExecutionPlacementUnavailableError) {
-          if (error.code === "project-not-found") {
-            return reply.code(404).send({ error: "Project source not found" });
-          }
-          return reply
-            .code(409)
-            .send({ code: error.code, error: error.message });
-        }
-        if (
-          error instanceof ExecutionLaneConflictError ||
-          /unique|duplicate/i.test(errorMessage(error))
-        ) {
-          return reply.code(409).send({
-            error: "This worktree is already leased by another chat.",
-          });
-        }
-        throw error;
-      }
-    },
-  );
 
   const taskRouteRuntime = installTaskRouteRuntime(app, {
     appendLiveTaskMessage,
