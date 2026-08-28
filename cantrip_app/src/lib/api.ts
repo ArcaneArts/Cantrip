@@ -5110,6 +5110,13 @@ export async function getProjectScriptCommands(
   });
 }
 
+export function terminalCreatePlacement(
+  worktreeId: string | undefined,
+  target: ExecutionTarget | undefined,
+) {
+  return target ? { target } : worktreeId ? { worktreeId } : {};
+}
+
 export async function createTerminal(
   projectId: string,
   title: string,
@@ -5129,15 +5136,18 @@ export async function createTerminal(
     directoryPath,
     "",
   );
+  // Execution targets supersede the legacy worktree placement. Keeping this
+  // normalization at the API boundary prevents callers from emitting the
+  // mutually exclusive pair rejected by encryptedTerminalCreateSchema.
+  const placement = terminalCreatePlacement(worktreeId, target);
   return surfaceTitleEncryption.openTerminal(
     terminalWireSummarySchema.parse(
       await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
         id,
         titleProtection,
         stateProtection,
-        ...(worktreeId ? { worktreeId } : {}),
+        ...placement,
         ...(tabGroupId ? { tabGroupId } : {}),
-        ...(target ? { target } : {}),
       }),
     ),
   );

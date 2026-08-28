@@ -442,7 +442,6 @@ export function createSidebarExplorerCommands({
       directoryPath: entry.path,
       tabGroupId: sidebarFileGroupId(explorer) ?? undefined,
       title: `Terminal · ${entry.name}`,
-      worktreeId: explorer.worktreeId,
       target: {
         kind: "worktree",
         projectId: explorer.projectId,
