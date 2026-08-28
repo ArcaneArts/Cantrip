@@ -218,6 +218,49 @@ describe("desktop Explorer window broker", () => {
     ).toHaveBeenCalledWith(wire);
   });
 
+  it("keeps preview-only media out of the protected text editor", async () => {
+    const onContext = vi.fn();
+    const broker = createDesktopExplorerWindowBroker({
+      appearance: "dark",
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-media",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+      path: "assets/photo.png",
+    });
+    const client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext,
+      onEditorEndpoint: vi.fn(),
+      onEditorError: vi.fn(),
+      onEditorReady: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+    client.editorWorkbenchMounted(frameNonce);
+    client.editorWorkbenchReady(frameNonce);
+
+    await broker.ready;
+    await vi.waitFor(() => expect(onContext).toHaveBeenCalledOnce());
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledWith(
+      "explorer-media",
+      null,
+      "worker-one",
+      "worktree-one",
+      "dark",
+    );
+    expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+
+    await broker.openFile("assets/next.png", 123_456);
+    expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+
+    client.dispose();
+    await broker.dispose();
+  });
+
   it("reuses the protected workbench for later file navigation", async () => {
     const broker = createDesktopExplorerWindowBroker(
       {

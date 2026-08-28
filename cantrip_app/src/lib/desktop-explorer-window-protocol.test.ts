@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   desktopExplorerWindowChannelName,
+  desktopExplorerWindowInitialMode,
   desktopExplorerWindowModes,
   isDesktopExplorerWindowRequest,
   isDesktopExplorerWindowResponse,
@@ -14,7 +15,7 @@ describe("desktop Explorer window protocol", () => {
     );
   });
 
-  it("keeps read-only and editor modes available around optional visuals", () => {
+  it("offers only modes supported by the shared Explorer file classifier", () => {
     expect(desktopExplorerWindowModes("src/index.ts")).toEqual([
       "preview",
       "edit",
@@ -24,6 +25,19 @@ describe("desktop Explorer window protocol", () => {
       "visual",
       "edit",
     ]);
+    expect(desktopExplorerWindowModes("README.md")).toEqual([
+      "preview",
+      "edit",
+    ]);
+    expect(desktopExplorerWindowModes("assets/photo.png")).toEqual(["preview"]);
+  });
+
+  it("opens files in the same default mode as the embedded Explorer", () => {
+    expect(desktopExplorerWindowInitialMode("src/index.ts")).toBe("edit");
+    expect(desktopExplorerWindowInitialMode("README.md")).toBe("preview");
+    expect(desktopExplorerWindowInitialMode("assets/photo.png")).toBe(
+      "preview",
+    );
   });
 
   it("accepts only complete child requests", () => {

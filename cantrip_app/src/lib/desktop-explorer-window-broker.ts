@@ -20,6 +20,7 @@ import {
 } from "@/lib/desktop-code";
 import {
   desktopExplorerWindowChannelName,
+  desktopExplorerWindowModes,
   isDesktopExplorerWindowRequest,
   type DesktopExplorerWindowContext,
   type DesktopExplorerWindowResponse,
@@ -179,7 +180,10 @@ export function createDesktopExplorerWindowBroker(
   let expectedWorkbenchNonce: string | null = null;
   let activeWorkbenchNonce: string | null = null;
   let presentationNonce: string | null = null;
-  let hasFileTarget = configureInitialFile;
+  const initialFileSupportsEditor = desktopExplorerWindowModes(
+    context.path,
+  ).includes("edit");
+  let hasFileTarget = configureInitialFile && initialFileSupportsEditor;
   let navigationRevision = 0;
   let navigationController: AbortController | null = null;
   let recoveryPromise: Promise<void> | null = null;
@@ -494,12 +498,20 @@ export function createDesktopExplorerWindowBroker(
 
   const openFile = (path: string, requestedAtMs = Date.now()) => {
     preparationController.signal.throwIfAborted();
-    hasFileTarget = true;
+    hasFileTarget = desktopExplorerWindowModes(path).includes("edit");
     context = { ...context, path, requestedAtMs };
     configuredAtMs = null;
     configuredWorkbenchNonce = null;
     editorError = null;
     send({ context, launchId, type: "launch.ready" });
+    if (!hasFileTarget) {
+      navigationRevision += 1;
+      navigationController?.abort(
+        new DOMException("Explorer Code navigation superseded.", "AbortError"),
+      );
+      navigationController = null;
+      return Promise.resolve();
+    }
     return scheduleConfiguration(path, requestedAtMs);
   };
   recoverEditorAttachment = (reason: unknown): Promise<void> => {
@@ -604,11 +616,17 @@ export function createDesktopExplorerWindowBroker(
       });
     return transportRecoveryPromise;
   };
-  const ready = configureInitialFile
-    ? openFile(context.path, context.requestedAtMs)
-    : scheduleConfiguration(null, context.requestedAtMs);
+  const ready =
+    configureInitialFile && initialFileSupportsEditor
+      ? openFile(context.path, context.requestedAtMs)
+      : scheduleConfiguration(null, context.requestedAtMs);
   void ready.catch(async (error: unknown) => {
-    reportEditorError(error, configureInitialFile ? "file" : "presentation");
+    reportEditorError(
+      error,
+      configureInitialFile && initialFileSupportsEditor
+        ? "file"
+        : "presentation",
+    );
     await releaseOwnedEditor();
   });
 
