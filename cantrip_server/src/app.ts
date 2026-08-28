@@ -1,19 +1,14 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
-  appLiveEventPayloadSchema,
   encryptedBrowserUpdateSchema,
-  providerAuthLiveStatusSchema,
   chatMessageCreateSchema,
   chatMessageListSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
   chatTurnCreateSchema,
   explorerCodeAttachmentCreateSchema,
-  gitConflictListSchema,
-  gitManagedOperationResponseSchema,
   gitManagedOperationWorkerStateSchema,
   gitRelativePathSchema,
-  gitStatusSchema,
   orderedIdsSchema,
   queuedPromptCreateSchema,
   queuedPromptListSchema,
@@ -22,15 +17,7 @@ import {
   tunnelWireSummarySchema,
 } from "@cantrip/protocol";
 import { endpointContentOpaqueSchema } from "@cantrip/protocol/endpoint-content";
-import type {
-  CodeGraphProjectStatus,
-  GitStatus,
-  GitConflictList,
-  GitManagedOperationRecord,
-  GitOperationObservationState,
-  ProviderAuthLiveStatus,
-  WorktreeStatusResult,
-} from "@cantrip/protocol";
+import type { GitOperationObservationState } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
 
 import { installRequestPrincipal } from "./auth/principal.js";
@@ -275,6 +262,7 @@ import {
 import { installSettingsRouteRuntime } from "./app/runtime/settings-routes.js";
 import { installTaskRouteRuntime } from "./app/runtime/task-routes.js";
 import { createWorkerNotificationRuntime } from "./app/runtime/worker-notification-runtime.js";
+import { createWorkerObservationPublicationRuntime } from "./app/runtime/worker-observation-publication-runtime.js";
 import { createWorkflowSchedulingRuntime } from "./app/runtime/workflow-scheduling-runtime.js";
 import {
   AGENT_INTERACTION_EXPIRY_SWEEP_MS,
@@ -615,220 +603,24 @@ export async function buildApp({
     const key = chatTurnOutcomeRecoveryKey(workerId, chatId, clientMessageId);
     chatTurnOutcomeRecoveryScheduler.settle(key);
   };
-  const runningGitOperationRequests = new Set<string>();
-  const gitOperationRequestRuntime = {
-    isRequestRunning: (operationId: string): boolean =>
-      runningGitOperationRequests.has(operationId),
-    withRequestRunning: async <T>(
-      operationId: string,
-      request: () => Promise<T>,
-    ): Promise<T> => {
-      runningGitOperationRequests.add(operationId);
-      try {
-        return await request();
-      } finally {
-        runningGitOperationRequests.delete(operationId);
-      }
-    },
-  };
-  let gitLiveRevision = Date.now() * 1_000;
-  let providerAuthLiveRevision = Date.now() * 1_000;
-  const activeProviderAuthObservations = new Map<
-    string,
-    {
-      accountId: string;
-      expiresAt: number;
-      lastSequence: number;
-      ownerId: string;
-      providerId: string;
-      providerKind: "chatgpt" | "grok";
-      startedAt: number;
-      workerId: string;
-    }
-  >();
-  const nextProviderAuthLiveRevision = (): number => {
-    providerAuthLiveRevision = Math.max(
-      providerAuthLiveRevision + 1,
-      Date.now() * 1_000,
-    );
-    return providerAuthLiveRevision;
-  };
-  const publishProviderAuthStatus = (
-    status: Omit<ProviderAuthLiveStatus, "revision">,
-  ): ProviderAuthLiveStatus => {
-    const payload = providerAuthLiveStatusSchema.parse({
-      ...status,
-      revision: nextProviderAuthLiveRevision(),
-    });
-    if (isLivePublishingEnabled()) {
-      liveHub.publish({
-        ownerId: applicationOwnerId(),
-        scope: { kind: "current-user" },
-        resource: "provider-auth",
-        action: "status",
-        entityId: payload.providerAccountId,
-        revision: payload.revision,
-        payload: appLiveEventPayloadSchema.parse(payload),
-      });
-    }
-    return payload;
-  };
-  const activeProviderAuthObservation = (
-    ownerId: string,
-    providerId: string,
-    accountId: string,
-  ) =>
-    [...activeProviderAuthObservations.entries()].find(
-      ([, observation]) =>
-        observation.ownerId === ownerId &&
-        observation.providerId === providerId &&
-        observation.accountId === accountId,
-    ) ?? null;
-  const removeProviderAuthObservations = (
-    ownerId: string,
-    providerId: string,
-    accountId: string,
-  ): void => {
-    for (const [observationId, observation] of activeProviderAuthObservations) {
-      if (
-        observation.ownerId === ownerId &&
-        observation.providerId === providerId &&
-        observation.accountId === accountId
-      ) {
-        activeProviderAuthObservations.delete(observationId);
-      }
-    }
-  };
-  const nextGitLiveRevision = (): number => {
-    gitLiveRevision = Math.max(gitLiveRevision + 1, Date.now() * 1_000);
-    return gitLiveRevision;
-  };
-  const publishWorktreeStatus = (
-    projectId: string,
-    worktreeId: string,
-    status: GitStatus,
-  ): void => {
-    if (!isLivePublishingEnabled()) return;
-    try {
-      liveHub.publish({
-        ownerId: applicationOwnerId(),
-        scope: { kind: "project", projectId },
-        resource: "worktree-status",
-        action: "updated",
-        entityId: worktreeId,
-        revision: null,
-        payload: appLiveEventPayloadSchema.parse(gitStatusSchema.parse(status)),
-      });
-    } catch (error) {
-      app.log.error(
-        { err: error, projectId, worktreeId },
-        "Could not publish worktree status",
-      );
-    }
-  };
-  const publishCodeGraphStatus = (
-    status: CodeGraphProjectStatus,
-    revision: number,
-  ): void => {
-    if (!isLivePublishingEnabled()) return;
-    try {
-      liveHub.publish({
-        ownerId: applicationOwnerId(),
-        scope: { kind: "project", projectId: status.projectId },
-        resource: "codegraph-status",
-        action: "updated",
-        entityId: status.worktreeId,
-        revision,
-        payload: appLiveEventPayloadSchema.parse(status),
-      });
-    } catch (error) {
-      app.log.error(
-        {
-          err: error,
-          projectId: status.projectId,
-          worktreeId: status.worktreeId,
-        },
-        "Could not publish CodeGraph status",
-      );
-    }
-  };
-  const publishGitOperation = (operation: GitManagedOperationRecord): void => {
-    if (!isLivePublishingEnabled()) return;
-    try {
-      liveHub.publish({
-        ownerId: applicationOwnerId(),
-        scope: { kind: "project", projectId: operation.projectId },
-        resource: "git-operation",
-        action: "updated",
-        entityId: operation.id,
-        revision: nextGitLiveRevision(),
-        payload: appLiveEventPayloadSchema.parse(
-          gitManagedOperationResponseSchema.parse({ operation }),
-        ),
-      });
-    } catch (error) {
-      app.log.warn(
-        {
-          err: error,
-          operationId: operation.id,
-          projectId: operation.projectId,
-        },
-        "Could not publish exact Git operation state",
-      );
-      publishLiveInvalidation("git-operation", {
-        entityId: operation.id,
-        projectId: operation.projectId,
-      });
-    }
-  };
-  const publishGitConflicts = (
-    projectId: string,
-    worktreeId: string,
-    conflicts: GitConflictList,
-  ): void => {
-    if (!isLivePublishingEnabled()) return;
-    try {
-      liveHub.publish({
-        ownerId: applicationOwnerId(),
-        scope: { kind: "project", projectId },
-        resource: "git-conflict",
-        action: "updated",
-        entityId: worktreeId,
-        revision: nextGitLiveRevision(),
-        payload: appLiveEventPayloadSchema.parse(
-          gitConflictListSchema.parse(conflicts),
-        ),
-      });
-    } catch (error) {
-      app.log.warn(
-        { err: error, projectId, worktreeId },
-        "Could not publish exact Git conflict summary",
-      );
-      publishLiveInvalidation("git-conflict", {
-        entityId: worktreeId,
-        projectId,
-      });
-    }
-  };
-  const recordLiveWorktreeStatus = async (
-    projectId: string,
-    worktreeId: string,
-    status: WorktreeStatusResult,
-  ): Promise<void> => {
-    const recorded = await repository.recordProjectWorktreeStatus(
-      applicationOwnerId(),
-      projectId,
-      worktreeId,
-      status,
-    );
-    if (!recorded) return;
-    if (recorded.snapshotChanged) {
-      publishWorktreeStatus(projectId, worktreeId, recorded.status.status);
-    }
-    if (recorded.metadataChanged) {
-      publishLiveInvalidation("worktree", { entityId: worktreeId, projectId });
-    }
-  };
+  const {
+    activeProviderAuthObservation,
+    activeProviderAuthObservations,
+    gitOperationRequestRuntime,
+    publishCodeGraphStatus,
+    publishGitConflicts,
+    publishGitOperation,
+    publishProviderAuthStatus,
+    recordLiveWorktreeStatus,
+    removeProviderAuthObservations,
+  } = createWorkerObservationPublicationRuntime({
+    app,
+    applicationOwnerId,
+    isLivePublishingEnabled,
+    liveHub,
+    publishLiveInvalidation,
+    repository,
+  });
   const workerNotificationRuntime = createWorkerNotificationRuntime({
     activeProviderAuthObservations,
     app,
