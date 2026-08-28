@@ -17,6 +17,7 @@
       "cantrip_server/src/app/options.ts",
       "cantrip_server/src/app/routes/account-security.ts",
       "cantrip_server/src/app/routes/agent-interactions.ts",
+      "cantrip_server/src/app/routes/api-meta-and-removed-routes.ts",
       "cantrip_server/src/app/routes/auth-sessions.ts",
       "cantrip_server/src/app/routes/browser-management.ts",
       "cantrip_server/src/app/routes/browser-service-discovery.ts",
@@ -672,8 +673,8 @@
   "routes": [
     {
       "boundary": "public-bootstrap",
-      "file": "cantrip_server/src/app.ts",
-      "line": 1860,
+      "file": "cantrip_server/src/app/routes/api-meta-and-removed-routes.ts",
+      "line": 5,
       "method": "GET",
       "ownerEvidence": "public",
       "path": "/api",
@@ -1855,8 +1856,8 @@
     },
     {
       "boundary": "application-principal",
-      "file": "cantrip_server/src/app.ts",
-      "line": 2173,
+      "file": "cantrip_server/src/app/routes/api-meta-and-removed-routes.ts",
+      "line": 15,
       "method": "POST",
       "ownerEvidence": "delegated-or-missing-review",
       "path": "/api/chats/:chatId/workflow-generation",
@@ -2649,7 +2650,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app.ts",
-      "line": 1334,
+      "line": 1338,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/live",
