@@ -300,7 +300,7 @@ export class TaskRepository {
     return toTaskOpaqueSummary(rows[0].task, dispatchRows[0] ?? null);
   }
 
-  async deleteDraft(
+  async deleteEligible(
     ownerId: string,
     chatId: string,
   ): Promise<{ projectId: string } | null> {
@@ -314,7 +314,11 @@ export class TaskRepository {
       if (!ownerRows[0]) return null;
 
       const rows = await transaction
-        .select({ projectId: schema.projects.id, task: schema.tasks })
+        .select({
+          chatStatus: schema.chats.status,
+          projectId: schema.projects.id,
+          task: schema.tasks,
+        })
         .from(schema.tasks)
         .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
         .innerJoin(
@@ -333,13 +337,27 @@ export class TaskRepository {
       if (!row) return null;
 
       const dispatchRows = await transaction
-        .select({ id: schema.taskDispatchCycles.id })
+        .select({
+          id: schema.taskDispatchCycles.id,
+          state: schema.taskDispatchCycles.state,
+        })
         .from(schema.taskDispatchCycles)
         .where(eq(schema.taskDispatchCycles.chatId, chatId))
+        .orderBy(
+          desc(schema.taskDispatchCycles.createdAt),
+          desc(schema.taskDispatchCycles.id),
+        )
         .limit(1);
-      if (row.task.state !== "draft" || dispatchRows[0]) {
+      const latestDispatch = dispatchRows[0];
+      const unqueuedDraft = row.task.state === "draft" && !latestDispatch;
+      const queued = latestDispatch?.state === "queued";
+      const failed =
+        row.task.state === "failed" ||
+        latestDispatch?.state === "failed" ||
+        (row.chatStatus === "failed" && row.task.state !== "complete");
+      if (!unqueuedDraft && !queued && !failed) {
         throw new TaskConflictError(
-          "Only an unqueued Task draft can be deleted.",
+          "Only unqueued drafts, queued Tasks, and failed Tasks can be deleted.",
           "operation-active",
         );
       }

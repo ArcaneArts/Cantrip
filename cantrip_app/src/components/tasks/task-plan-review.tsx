@@ -15,6 +15,7 @@ import {
   Play,
   RefreshCw,
   Save,
+  Trash2,
   Undo2,
   WifiOff,
 } from "lucide-react";
@@ -47,6 +48,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { TaskListBackButton } from "./task-list-back-button";
+import { taskCanBeDeleted } from "./task-deletion";
 import { TaskQuestionList } from "./task-question-list";
 import {
   taskReviewInputSignature,
@@ -103,13 +105,17 @@ export function taskReviewSaveLabel(input: {
 
 export function TaskPlanReview({
   chat,
+  deleting = false,
   onClose,
+  onDelete,
   onReload,
   task,
   worker,
 }: {
   chat: ChatSummary;
+  deleting?: boolean;
   onClose?(): void;
+  onDelete?(): void;
   onReload(): Promise<TaskDetail | null>;
   task: TaskDetail;
   worker?: WorkerSummary;
@@ -589,6 +595,24 @@ export function TaskPlanReview({
                 <Pencil className="size-3.5" /> Edit Plan
               </Button>
             )}
+            {onDelete && taskCanBeDeleted(task, chat.status) ? (
+              <Button
+                aria-label="Delete Task"
+                className="size-8"
+                disabled={deleting}
+                size="icon"
+                title="Delete Task"
+                type="button"
+                variant="ghost"
+                onClick={onDelete}
+              >
+                {deleting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Trash2 className="size-4" />
+                )}
+              </Button>
+            ) : null}
           </div>
 
           <div

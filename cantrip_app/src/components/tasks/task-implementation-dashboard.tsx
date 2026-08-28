@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Server,
   Target,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -42,6 +43,7 @@ import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import { cn } from "@/lib/utils";
 
+import { taskCanBeDeleted } from "./task-deletion";
 import { TaskListBackButton } from "./task-list-back-button";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
@@ -137,13 +139,17 @@ function PullRequestRow({
 
 export function TaskImplementationDashboard({
   chat,
+  deleting = false,
   initialTask,
   onClose,
+  onDelete,
   workerName,
 }: {
   chat: ChatSummary;
+  deleting?: boolean;
   initialTask: TaskDetail;
   onClose?(): void;
+  onDelete?(): void;
   workerName?: string;
 }) {
   const queryClient = useQueryClient();
@@ -276,6 +282,23 @@ export function TaskImplementationDashboard({
             />
             <span className="sr-only">Refresh dashboard</span>
           </Button>
+          {onDelete && taskCanBeDeleted(task, chat.status) ? (
+            <Button
+              aria-label="Delete Task"
+              className="size-8"
+              disabled={deleting}
+              size="icon"
+              title="Delete Task"
+              variant="ghost"
+              onClick={onDelete}
+            >
+              {deleting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+            </Button>
+          ) : null}
           {showResume ? (
             <Button
               size="sm"
