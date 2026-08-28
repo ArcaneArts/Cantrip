@@ -26,14 +26,12 @@ import { endpointContentOpaqueSchema } from "@cantrip/protocol/endpoint-content"
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
   AppLiveResource,
-  EncryptedBrowserUpdate,
   CodeGraphProjectStatus,
   GitStatus,
   GitConflictList,
   GitManagedOperationRecord,
   GitOperationObservationState,
   ProviderAuthLiveStatus,
-  WorkerSummary,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
@@ -65,7 +63,6 @@ import {
   SurfacePrivateStateConflictError,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
-  WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
   type ChatExecutionAttribution,
   type ChatLiveRouting,
@@ -78,7 +75,6 @@ import {
   WorkflowTriggerRateLimitError,
 } from "./db/workflow-triggers.js";
 import { WorkerBridge, WorkerUnavailableError } from "./workers/bridge.js";
-import { workerPresenceFingerprint } from "./workers/presence.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { WorktreeCreateMutationError } from "./worktrees/coordinator.js";
 import { errorMessage, invalidBody } from "./http/request-helpers.js";
@@ -153,7 +149,6 @@ import { installChatWorktreeAndExecutionLaneRoutes } from "./app/routes/chat-wor
 import {
   installCodeTabRuntimeReadRoute,
   installCodeTabWorkerControlRoutes,
-  type CodeTabWorkerRuntime,
 } from "./app/routes/code-tab-worker-controls.js";
 import {
   installCodeTabDeleteRoute,
@@ -278,6 +273,7 @@ import { createChatRecoveryRuntime } from "./app/runtime/chat-recovery-runtime.j
 import { createChatTurnRuntime } from "./app/runtime/chat-turn-runtime.js";
 import { createCliOperationRuntime } from "./app/runtime/cli-operation-runtime.js";
 import { createLiveMutationRuntime } from "./app/runtime/live-mutation-runtime.js";
+import { createInteractiveSurfaceRuntime } from "./app/runtime/interactive-surface-runtime.js";
 import { createModelRoutingRuntime } from "./app/runtime/model-routing-runtime.js";
 import { createTaskGoalRuntime } from "./app/runtime/task-goal-runtime.js";
 import { createSessionSocketRuntime } from "./app/runtime/session-socket-runtime.js";
@@ -1301,194 +1297,28 @@ export async function buildApp({
     isAccountProviderKind(runtime.provider.kind) && runtime.provider.accountId
       ? `${runtime.routeId}:account:${runtime.provider.accountId}`
       : runtime.routeId;
-  const surfaceAttachmentCounts = new Map<string, number>();
-  const workerOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const workerPresenceFingerprints = new Map<string, string>();
-
-  const publishWorkerPresence = (
-    ownerId: string,
-    worker: WorkerSummary,
-  ): void => {
-    runAsOwner(ownerId, () => {
-      const fingerprint = workerPresenceFingerprint(worker);
-      if (workerPresenceFingerprints.get(worker.workerId) === fingerprint)
-        return;
-      workerPresenceFingerprints.set(worker.workerId, fingerprint);
-      publishLiveInvalidation("worker", { entityId: worker.workerId });
-    });
-  };
-  const scheduleWorkerOfflineInvalidation = (
-    ownerId: string,
-    workerId: string,
-  ): void => {
-    const existing = workerOfflineTimers.get(workerId);
-    if (existing) clearTimeout(existing);
-    const timer = setTimeout(() => {
-      workerOfflineTimers.delete(workerId);
-      workerPresenceFingerprints.delete(workerId);
-      runAsOwner(ownerId, () =>
-        publishLiveInvalidation("worker-availability", { entityId: workerId }),
-      );
-    }, WORKER_ONLINE_WINDOW_MS + 50);
-    timer.unref();
-    workerOfflineTimers.set(workerId, timer);
-  };
-  const updateRemoteSurfaceStatus = async (
-    surfaceId: string,
-    status: Parameters<typeof repository.setRemoteSurfaceStatus>[1],
-    error: string | null = null,
-  ) => {
-    const result = await repository.setRemoteSurfaceStatus(
-      surfaceId,
-      status,
-      error,
-    );
-    publishLiveInvalidation("browser", { entityId: surfaceId });
-    publishLiveInvalidation("remote-desktop", { entityId: surfaceId });
-    publishLiveInvalidation("project-view", { entityId: surfaceId });
-    return result;
-  };
-  const applyBrowserUpdate = async (
-    ownerId: string,
-    browserId: string,
-    input: EncryptedBrowserUpdate,
-    options: { expectedWorkerId?: string; requireOnline?: boolean } = {},
-  ) => {
-    const context = await repository.getRemoteSurfaceExecutionContext(
-      ownerId,
-      browserId,
-    );
-    if (
-      !context ||
-      context.surface.kind !== "browser" ||
-      (options.expectedWorkerId &&
-        context.workerId !== options.expectedWorkerId)
-    ) {
-      return null;
-    }
-    const browser = await repository.updateBrowser(ownerId, browserId, input);
-    if (!browser || input.stateProtection === undefined) return browser;
-    publishLiveInvalidation("browser", {
-      entityId: browserId,
-      projectId: browser.projectId,
-    });
-    const updatedContext = await repository.getRemoteSurfaceExecutionContext(
-      ownerId,
-      browserId,
-    );
-    if (
-      !updatedContext ||
-      updatedContext.workerId !== context.workerId ||
-      updatedContext.surface.configuration.kind !== "browser"
-    ) {
-      throw new Error("Browser placement changed before configuration.");
-    }
-    if (!bridge.isConnected(context.workerId)) {
-      await updateRemoteSurfaceStatus(
-        browserId,
-        "offline",
-        "Worker is offline. The saved URL will be restored when it reconnects.",
-      );
-      if (options.requireOnline) {
-        throw new WorkerUnavailableError("Browser worker is offline.");
-      }
-      return browser;
-    }
-    try {
-      await bridge.request(
-        context.workerId,
-        {
-          type: "surface.configure",
-          surfaceId: browserId,
-          serverId,
-          configuration: updatedContext.surface.configuration,
-          stateResource: "browser-row",
-          stateRevision: updatedContext.surface.stateRevision,
-          stateProtection: updatedContext.surface.stateProtection,
-        },
-        { timeoutMs: 20_000 },
-      );
-    } catch (error) {
-      await updateRemoteSurfaceStatus(
-        browserId,
-        "error",
-        "Browser private state could not be applied.",
-      );
-      if (options.requireOnline) throw error;
-    }
-    return browser;
-  };
-  const updateTerminalStatus = async (
-    terminalId: string,
-    status: Parameters<typeof repository.setTerminalStatus>[1],
-  ) => {
-    const result = await repository.setTerminalStatus(terminalId, status);
-    publishLiveInvalidation("terminal", { entityId: terminalId });
-    return result;
-  };
-  const synchronizeTerminalServicesForWorker = async (
-    workerId: string,
-  ): Promise<void> => {
-    if (!bridge.isConnected(workerId)) return;
-    const services = await repository.listTerminalServicesForWorker(
-      workerId,
-      serverId,
-    );
-    await bridge.request(
-      workerId,
-      { type: "terminal.services.reconcile", services },
-      { timeoutMs: 30_000 },
-    );
-    await Promise.all(
-      services.map(({ terminalId }) =>
-        updateTerminalStatus(terminalId, "running"),
-      ),
-    );
-  };
-  const terminalServiceRuntime = {
-    isWorkerConnected: (workerId: string): boolean =>
-      bridge.isConnected(workerId),
-    reconcileServicesForWorker: synchronizeTerminalServicesForWorker,
-    recordStatus: updateTerminalStatus,
-    restartService: async (
-      workerId: string,
-      terminalId: string,
-    ): Promise<void> => {
-      await bridge.request(
-        workerId,
-        { type: "terminal.service.restart", terminalId },
-        { timeoutMs: 30_000 },
-      );
-    },
-  };
-  const updateCodeSessionRuntime = async (
-    ...input: Parameters<typeof repository.updateCodeSessionRuntime>
-  ) => {
-    const result = await repository.updateCodeSessionRuntime(...input);
-    publishLiveInvalidation("code-tab");
-    return result;
-  };
-  const codeTabWorkerRuntime: CodeTabWorkerRuntime = {
-    isWorkerConnected: (workerId) => bridge.isConnected(workerId),
-    readStatus: (workerId, sessionId) =>
-      bridge.request(workerId, { type: "code.status", sessionId }),
-    saveAll: (workerId, sessionId) =>
-      bridge.request(workerId, { type: "code.saveAll", sessionId }),
-    stop: (workerId, sessionId) =>
-      bridge.request(workerId, { type: "code.stop", sessionId }),
-    setTheme: (workerId, sessionId, appearance) =>
-      bridge.request(workerId, {
-        type: "code.setTheme",
-        sessionId,
-        themeMode: "follow-cantrip",
-        appearance,
-      }),
-    revokeTunnelSession: (sessionId) => codeTunnel.revokeSession(sessionId),
-    revokeDirectSession: async (ownerId, sessionId) => {
-      await directAttachments.revokeResource(ownerId, "code", sessionId);
-    },
-    recordSessionRuntime: updateCodeSessionRuntime,
-  };
+  const interactiveSurfaceRuntime = createInteractiveSurfaceRuntime({
+    bridge,
+    codeTunnel,
+    directAttachments,
+    publishLiveInvalidation,
+    repository,
+    runAsOwner,
+    serverId,
+  });
+  const {
+    applyBrowserUpdate,
+    codeTabWorkerRuntime,
+    publishWorkerPresence,
+    scheduleWorkerOfflineInvalidation,
+    surfaceAttachmentCounts,
+    synchronizeTerminalServicesForWorker,
+    terminalServiceRuntime,
+    updateCodeSessionRuntime,
+    updateRemoteSurfaceStatus,
+    updateTerminalStatus,
+    workerPresenceFingerprints,
+  } = interactiveSurfaceRuntime;
   const workflowSchedulingRuntime = createWorkflowSchedulingRuntime({
     app,
     applicationOwnerId,
@@ -2947,8 +2777,7 @@ export async function buildApp({
     workerNotificationRuntime.close();
     chatTurnOutcomeRecoveryScheduler.clear();
     chatThreadChangeReconciler.clear();
-    for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
-    workerOfflineTimers.clear();
+    interactiveSurfaceRuntime.close();
     projectReplicaJobExecutor.stop();
     projectFolderSetupJobExecutor.stop();
     standaloneChatRootJobExecutor.stop();

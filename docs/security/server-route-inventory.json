@@ -121,6 +121,7 @@
       "cantrip_server/src/app/runtime/chat-recovery-runtime.ts",
       "cantrip_server/src/app/runtime/chat-turn-runtime.ts",
       "cantrip_server/src/app/runtime/cli-operation-runtime.ts",
+      "cantrip_server/src/app/runtime/interactive-surface-runtime.ts",
       "cantrip_server/src/app/runtime/live-mutation-runtime.ts",
       "cantrip_server/src/app/runtime/model-routing-runtime.ts",
       "cantrip_server/src/app/runtime/run-configuration-runtime.ts",
@@ -2002,7 +2003,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/code-tab-worker-controls.ts",
-      "line": 103,
+      "line": 84,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/save-all",
@@ -2028,7 +2029,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/code-tab-worker-controls.ts",
-      "line": 52,
+      "line": 33,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/sessions/:sessionId/runtime",
@@ -2041,7 +2042,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/code-tab-worker-controls.ts",
-      "line": 139,
+      "line": 120,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/stop",
@@ -2054,7 +2055,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/code-tab-worker-controls.ts",
-      "line": 180,
+      "line": 161,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/code-tabs/:codeTabId/theme",
@@ -12071,7 +12072,6 @@
     "productionCryptoImports": 0,
     "prohibitedTrustedLabelImports": 0,
     "opaqueProtocolSources": [
-      "cantrip_server/src/app.ts",
       "cantrip_server/src/app/routes/browser-management.ts",
       "cantrip_server/src/app/routes/chat-archive-lifecycle.ts",
       "cantrip_server/src/app/routes/chat-basic-routes.ts",
@@ -12085,6 +12085,7 @@
       "cantrip_server/src/app/routes/project-network-shares.ts",
       "cantrip_server/src/app/runtime/agent-operation-runtime.ts",
       "cantrip_server/src/app/runtime/chat-turn-runtime.ts",
+      "cantrip_server/src/app/runtime/interactive-surface-runtime.ts",
       "cantrip_server/src/app/runtime/live-mutation-runtime.ts",
       "cantrip_server/src/app/runtime/task-routes.ts",
       "cantrip_server/src/chat-relocations/executor.ts",
@@ -12297,9 +12298,9 @@
     "productionCryptoImports": 0,
     "prohibitedTrustedSurfaceStateImports": 0,
     "opaqueProtocolSources": [
-      "cantrip_server/src/app.ts",
       "cantrip_server/src/app/routes/browser-management.ts",
       "cantrip_server/src/app/runtime/agent-operation-runtime.ts",
+      "cantrip_server/src/app/runtime/interactive-surface-runtime.ts",
       "cantrip_server/src/db/repository.ts",
       "cantrip_server/src/db/schema.ts"
     ],
