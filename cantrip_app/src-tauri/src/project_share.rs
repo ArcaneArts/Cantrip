@@ -882,12 +882,28 @@ fn reveal_native_target(target: &NativeRevealTarget) -> Result<(), String> {
 
 #[cfg(any(windows, test))]
 fn windows_reveal_argument(target: &NativeRevealTarget) -> std::ffi::OsString {
+    let path = windows_explorer_compatible_path(&target.path);
     if target.kind == NativeRevealTargetKind::Directory {
-        return target.path.as_os_str().to_owned();
+        return path.as_os_str().to_owned();
     }
     let mut selection = std::ffi::OsString::from("/select,");
-    selection.push(&target.path);
+    selection.push(path);
     selection
+}
+
+#[cfg(any(windows, test))]
+fn windows_explorer_compatible_path(path: &std::path::Path) -> &std::path::Path {
+    #[cfg(windows)]
+    {
+        // Rust canonicalization returns verbatim `\\?\` paths on Windows.
+        // Explorer's shell parser does not consistently accept them, so use
+        // the compatible DOS form whenever it is safe to do so.
+        dunce::simplified(path)
+    }
+    #[cfg(not(windows))]
+    {
+        path
+    }
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
@@ -1007,6 +1023,28 @@ mod tests {
             .starts_with("/select,"));
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn removes_verbatim_drive_prefixes_before_opening_file_explorer() {
+        let directory = NativeRevealTarget {
+            kind: NativeRevealTargetKind::Directory,
+            path: PathBuf::from(r"\\?\C:\Users\example\Cantrip"),
+        };
+        assert_eq!(
+            windows_reveal_argument(&directory),
+            std::ffi::OsString::from(r"C:\Users\example\Cantrip")
+        );
+
+        let file = NativeRevealTarget {
+            kind: NativeRevealTargetKind::File,
+            path: PathBuf::from(r"\\?\C:\Users\example\Cantrip\README.md"),
+        };
+        assert_eq!(
+            windows_reveal_argument(&file),
+            std::ffi::OsString::from(r"/select,C:\Users\example\Cantrip\README.md")
+        );
     }
 
     #[test]

@@ -446,6 +446,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "ctrlc",
+ "dunce",
  "ed25519-dalek",
  "flate2",
  "futures-util",

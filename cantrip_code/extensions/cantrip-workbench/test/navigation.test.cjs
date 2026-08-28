@@ -103,6 +103,30 @@ test("opens and confirms the exact requested workspace file", async () => {
   ]);
 });
 
+test("accepts a worker-authorized Windows file URL after VS Code canonicalizes it", async () => {
+  const workerRootUri = "file:///C:/Users/example/Cantrip";
+  const vscodeRootUri = "file:///c%3A/Users/example/Cantrip";
+  const shownUri = `${vscodeRootUri}/src/index.ts`;
+  const { calls, vscode } = fixture({
+    joinedUri: shownUri,
+    rootUri: workerRootUri,
+    shownUri,
+    workspaceFolderUris: [vscodeRootUri],
+  });
+  vscode.Uri.parse = (value) => {
+    assert.equal(value, workerRootUri);
+    return uri(vscodeRootUri);
+  };
+
+  await assert.doesNotReject(
+    openWorkspaceFile(vscode, workerRootUri, "src/index.ts"),
+  );
+  assert.deepEqual(calls.slice(0, 2), [
+    ["open", shownUri],
+    ["show", shownUri, { preserveFocus: false, preview: true }],
+  ]);
+});
+
 test("collapses editor groups only when more than one group exists", async () => {
   const { calls, rootUri, vscode } = fixture();
   vscode.window.tabGroups.all.push({
