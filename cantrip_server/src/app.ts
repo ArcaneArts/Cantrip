@@ -85,9 +85,6 @@ import {
   chatMessageCreateSchema,
   chatMessageOpaqueContentSchema,
   chatMessageListSchema,
-  chatMessagePageQuerySchema,
-  chatMessageWireListSchema,
-  chatMessageWirePageSchema,
   chatMessageSchema,
   chatMessageRelayResultSchema,
   chatModelConfigurationUpdateSchema,
@@ -583,6 +580,10 @@ import { installChatAutomationPauseRoute } from "./app/routes/chat-automation-pa
 import { installChatPlanRoutes } from "./app/routes/chat-plan.js";
 import { installChatGoalRoutes } from "./app/routes/chat-goals.js";
 import { installChatCustomizationRoutes } from "./app/routes/chat-customizations.js";
+import {
+  installChatMessageCreateRoute,
+  installChatSyncAndMessageReadRoutes,
+} from "./app/routes/chat-messages-and-sync.js";
 import { installChatWorktreeAndExecutionLaneRoutes } from "./app/routes/chat-worktree-and-execution-lanes.js";
 import {
   installCodeTabRuntimeReadRoute,
@@ -20270,87 +20271,12 @@ export async function buildApp({
     }
   };
 
-  app.post<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/sync",
-    async (request, reply) => {
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-      if (context.experience === "task") {
-        return reply.code(409).send({
-          error: "Encrypted Task reconstruction uses worker relocation.",
-        });
-      }
-      if (!context.threadId) {
-        return reply.send(await reconcileChatThread(context));
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      const runtime = await runtimeForContext(context);
-      if (!runtime) {
-        return reply.code(400).send({ error: "Selected model was not found." });
-      }
-      return reply.send(await reconcileChatThread(context, runtime));
-    },
-  );
-
-  app.get<{
-    Params: { chatId: string };
-    Querystring: { beforeSequence?: string; limit?: string };
-  }>("/api/chats/:chatId/messages", async (request, reply) => {
-    const context = await repository.getChatExecutionContext(
-      applicationOwnerId(),
-      request.params.chatId,
-    );
-    if (!context) {
-      return reply.code(404).send({ error: "Chat source not found." });
-    }
-    const task = context.experience === "task";
-    const paginated =
-      request.query.beforeSequence !== undefined ||
-      request.query.limit !== undefined;
-    if (paginated) {
-      const query = chatMessagePageQuerySchema.parse(request.query);
-      const result = task
-        ? await repository.listTaskMessagePage(
-            applicationOwnerId(),
-            request.params.chatId,
-            query,
-          )
-        : await repository.listEncryptedMessagePage(
-            applicationOwnerId(),
-            request.params.chatId,
-            query,
-          );
-      return reply.send(
-        chatMessageWirePageSchema.parse({
-          kind: task ? "task-encrypted" : "chat-encrypted",
-          messages: result.messages,
-          page: result.page,
-        }),
-      );
-    }
-    const messages = task
-      ? await repository.listTaskMessages(
-          applicationOwnerId(),
-          request.params.chatId,
-        )
-      : await repository.listEncryptedMessages(
-          applicationOwnerId(),
-          request.params.chatId,
-        );
-    return reply.send(
-      chatMessageWireListSchema.parse(
-        task
-          ? { kind: "task-encrypted", messages }
-          : { kind: "chat-encrypted", messages },
-      ),
-    );
+  installChatSyncAndMessageReadRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    reconcileChatThread,
+    repository,
+    runtimeForContext,
   });
 
   installChatCustomizationRoutes(app, {
@@ -20365,36 +20291,11 @@ export async function buildApp({
     serverId,
   });
 
-  app.post<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/messages",
-    async (request, reply) => {
-      const input = chatMessageOpaqueContentSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat not found" });
-      }
-      if (context.experience === "task") {
-        return reply.code(409).send({
-          error: "Task messages must be encrypted by a trusted endpoint.",
-        });
-      }
-      const message = await appendLiveEncryptedChatMessage(
-        applicationOwnerId(),
-        request.params.chatId,
-        input.data,
-      );
-      if (!message) {
-        return reply.code(404).send({ error: "Chat not found" });
-      }
-      return reply.code(201).send(message);
-    },
-  );
+  installChatMessageCreateRoute(app, {
+    applicationOwnerId,
+    appendLiveEncryptedChatMessage,
+    repository,
+  });
 
   app.post<{ Body: Buffer; Params: { chatId: string } }>(
     "/api/chats/:chatId/attachments",
