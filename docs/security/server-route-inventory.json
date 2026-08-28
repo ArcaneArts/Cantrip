@@ -74,6 +74,7 @@
       "cantrip_server/src/app/routes/project-replicas.ts",
       "cantrip_server/src/app/routes/project-settings-and-insights.ts",
       "cantrip_server/src/app/routes/project-views.ts",
+      "cantrip_server/src/app/routes/project-workflow-registry.ts",
       "cantrip_server/src/app/routes/project-workspaces.ts",
       "cantrip_server/src/app/routes/project-worktree-git-commit-actions.ts",
       "cantrip_server/src/app/routes/project-worktree-git-commit-signature.ts",
