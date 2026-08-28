@@ -84,9 +84,7 @@ import {
   chatPlanUpdateSchema,
   chatPermissionProfileStateSchema,
   chatPermissionProfileUpdateSchema,
-  chatPauseStateSchema,
   chatPauseRuntimeStateSchema,
-  chatPauseUpdateSchema,
   encryptedChatCreateSchema,
   encryptedStandaloneChatCreateSchema,
   chatWireListSchema,
@@ -587,6 +585,7 @@ import { installChatBasicRoutes } from "./app/routes/chat-basic-routes.js";
 import { installChatArchiveLifecycleRoutes } from "./app/routes/chat-archive-lifecycle.js";
 import { installChatForkRoute } from "./app/routes/chat-forks.js";
 import { installChatExecutionControlRoutes } from "./app/routes/chat-execution-control.js";
+import { installChatAutomationPauseRoute } from "./app/routes/chat-automation-pause.js";
 import { installChatWorktreeAndExecutionLaneRoutes } from "./app/routes/chat-worktree-and-execution-lanes.js";
 import {
   installCodeTabRuntimeReadRoute,
@@ -20110,146 +20109,13 @@ export async function buildApp({
     runtimeForContext,
   });
 
-  app.patch<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/pause",
-    async (request, reply) => {
-      const input = chatPauseUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-
-      if (
-        !input.data.paused &&
-        !bridge.isConnected(context.workerId) &&
-        (context.threadId ||
-          (
-            await repository.listQueuedPrompts(
-              applicationOwnerId(),
-              context.chatId,
-            )
-          ).length > 0)
-      ) {
-        return reply.code(503).send({
-          error:
-            "The project worker is offline. This chat remains paused so its next action is not lost.",
-        });
-      }
-
-      const workerConnected = bridge.isConnected(context.workerId);
-      if (!input.data.paused && workerConnected) {
-        try {
-          await bridge.request(
-            context.workerId,
-            {
-              type: "chat.pause.set",
-              chatId: context.chatId,
-              paused: false,
-            },
-            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-          );
-        } catch (error) {
-          return reply.code(502).send({
-            error: `The worker could not resume this chat: ${errorMessage(error)}`,
-          });
-        }
-      }
-
-      if (input.data.paused && workerConnected) {
-        try {
-          await bridge.request(
-            context.workerId,
-            {
-              type: "chat.pause.set",
-              chatId: context.chatId,
-              paused: true,
-            },
-            { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-          );
-        } catch (error) {
-          return reply.code(502).send({
-            error: `The worker could not pause this chat at a safe boundary: ${errorMessage(error)}`,
-          });
-        }
-      }
-
-      const updated = await repository.setChatAutomationPaused(
-        applicationOwnerId(),
-        context.chatId,
-        input.data.paused,
-      );
-      if (!updated) {
-        if (workerConnected) {
-          await bridge
-            .request(
-              context.workerId,
-              {
-                type: "chat.pause.set",
-                chatId: context.chatId,
-                paused: !input.data.paused,
-              },
-              { timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS },
-            )
-            .catch(() => undefined);
-        }
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-
-      publishChatSummary(context.chatId, context.projectId);
-
-      if (!input.data.paused) {
-        try {
-          await resumeChatAutomation(context.chatId);
-        } catch (error) {
-          await repository.setChatAutomationPaused(
-            applicationOwnerId(),
-            context.chatId,
-            true,
-          );
-          publishChatSummary(context.chatId, context.projectId);
-          if (bridge.isConnected(context.workerId)) {
-            await bridge
-              .request(context.workerId, {
-                type: "chat.pause.set",
-                chatId: context.chatId,
-                paused: true,
-              })
-              .catch(() => undefined);
-          }
-          return reply.code(409).send({
-            error: `This chat remains paused because its next action could not start: ${errorMessage(error)}`,
-          });
-        }
-      }
-
-      app.log.info(
-        {
-          event: input.data.paused
-            ? "chat.automation.paused"
-            : "chat.automation.resumed",
-          subsystem: "chat-execution",
-          operation: input.data.paused ? "pause" : "resume",
-          status: input.data.paused ? "paused" : "active",
-          chatId: context.chatId,
-          projectId: context.projectId,
-          workerId: context.workerId,
-        },
-        input.data.paused
-          ? "Chat automation paused"
-          : "Chat automation resumed",
-      );
-
-      return reply.send(
-        chatPauseStateSchema.parse({ paused: input.data.paused }),
-      );
-    },
-  );
+  installChatAutomationPauseRoute(app, {
+    applicationOwnerId,
+    bridge,
+    publishChatSummary,
+    repository,
+    resumeChatAutomation,
+  });
 
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/plan",
