@@ -16,6 +16,8 @@ import { errorMessage } from "@/lib/error-message";
 import {
   cameraRequestErrorMessage,
   requestQrCamera,
+  scanNativeQrCode,
+  shouldUseNativeQrScanner,
   stopCameraStream,
 } from "@/lib/mobile-sign-in-camera";
 import {
@@ -39,27 +41,7 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
   const controlsRef = useRef<IScannerControls | null>(null);
   const cameraRequestRef = useRef<Promise<MediaStream> | null>(null);
   const acceptingRef = useRef(false);
-
-  const startCamera = useCallback(() => {
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-    acceptingRef.current = false;
-    setCameraError(null);
-    setStatus("Requesting camera access…");
-    setOpen(true);
-    if (!navigator.mediaDevices?.getUserMedia) {
-      cameraRequestRef.current = null;
-      setStatus(null);
-      setCameraError("Camera scanning is unavailable in this app environment.");
-      return;
-    }
-    // Start getUserMedia in the click handler so mobile browsers retain the
-    // user gesture while deciding whether to show their permission prompt.
-    const cameraRequest = requestQrCamera(navigator.mediaDevices);
-    void cameraRequest.catch(() => undefined);
-    cameraRequestRef.current = cameraRequest;
-    setCameraAttempt((attempt) => attempt + 1);
-  }, []);
+  const nativeScanner = shouldUseNativeQrScanner();
 
   const acceptPayload = useCallback(async (raw: string) => {
     if (acceptingRef.current) return;
@@ -96,6 +78,46 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
       acceptingRef.current = false;
     }
   }, []);
+
+  const startCamera = useCallback(() => {
+    controlsRef.current?.stop();
+    controlsRef.current = null;
+    acceptingRef.current = false;
+    setCameraError(null);
+
+    if (nativeScanner) {
+      cameraRequestRef.current = null;
+      setOpen(false);
+      setStatus(null);
+      void scanNativeQrCode()
+        .then((raw) => {
+          if (!raw) return;
+          setOpen(true);
+          void acceptPayload(raw);
+        })
+        .catch((error) => {
+          setStatus(null);
+          setCameraError(cameraRequestErrorMessage(error));
+          setOpen(true);
+        });
+      return;
+    }
+
+    setStatus("Requesting camera access…");
+    setOpen(true);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      cameraRequestRef.current = null;
+      setStatus(null);
+      setCameraError("Camera scanning is unavailable in this app environment.");
+      return;
+    }
+    // Start getUserMedia in the click handler so mobile browsers retain the
+    // user gesture while deciding whether to show their permission prompt.
+    const cameraRequest = requestQrCamera(navigator.mediaDevices);
+    void cameraRequest.catch(() => undefined);
+    cameraRequestRef.current = cameraRequest;
+    setCameraAttempt((attempt) => attempt + 1);
+  }, [acceptPayload, nativeScanner]);
 
   useEffect(() => {
     if (!open) {
@@ -173,23 +195,35 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
               Sign in mobile device.
             </DialogDescription>
           </DialogHeader>
-          <div className="relative aspect-square overflow-hidden rounded-xl bg-black">
-            <video
-              className="size-full object-cover"
-              autoPlay
-              muted
-              playsInline
-              ref={videoRef}
-            />
-            <div className="pointer-events-none absolute inset-[14%] rounded-2xl border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.35)]" />
-            {status ? (
-              <div className="absolute inset-0 grid place-items-center bg-black/75 p-6 text-center text-sm text-white">
+          {nativeScanner ? (
+            <div className="grid min-h-36 place-items-center rounded-xl border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+              {status ? (
                 <span className="grid justify-items-center gap-3">
                   <Loader2 className="size-6 animate-spin" /> {status}
                 </span>
-              </div>
-            ) : null}
-          </div>
+              ) : (
+                <Camera className="size-8" />
+              )}
+            </div>
+          ) : (
+            <div className="relative aspect-square overflow-hidden rounded-xl bg-black">
+              <video
+                className="size-full object-cover"
+                autoPlay
+                muted
+                playsInline
+                ref={videoRef}
+              />
+              <div className="pointer-events-none absolute inset-[14%] rounded-2xl border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.35)]" />
+              {status ? (
+                <div className="absolute inset-0 grid place-items-center bg-black/75 p-6 text-center text-sm text-white">
+                  <span className="grid justify-items-center gap-3">
+                    <Loader2 className="size-6 animate-spin" /> {status}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          )}
           {cameraError ? (
             <div className="grid gap-3">
               <p className="text-sm leading-5 text-destructive">
@@ -199,17 +233,17 @@ export function MobileSignInScanner({ className }: MobileSignInScannerProps) {
                 <Camera className="size-4" /> Try camera again
               </Button>
             </div>
-          ) : status?.startsWith("Requesting") ? (
+          ) : !nativeScanner && status?.startsWith("Requesting") ? (
             <p className="text-xs leading-5 text-muted-foreground">
               Approve the browser camera prompt. If no prompt appears, allow
               Camera for this site in the browser settings, then reopen the
               scanner.
             </p>
-          ) : (
+          ) : !nativeScanner ? (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Camera className="size-3.5" /> Point the camera at the QR code.
             </p>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
     </>

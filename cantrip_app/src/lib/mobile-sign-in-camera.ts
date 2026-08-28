@@ -1,3 +1,5 @@
+import { Capacitor } from "@capacitor/core";
+
 const cameraRequestTimeoutMs = 12_000;
 
 export class CameraRequestTimeoutError extends Error {
@@ -16,6 +18,29 @@ function errorName(error: unknown): string | null {
 
 export function stopCameraStream(stream: MediaStream): void {
   for (const track of stream.getTracks()) track.stop();
+}
+
+export function shouldUseNativeQrScanner(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
+export async function scanNativeQrCode(): Promise<string | null> {
+  const {
+    CapacitorBarcodeScanner,
+    CapacitorBarcodeScannerCameraDirection,
+    CapacitorBarcodeScannerScanOrientation,
+    CapacitorBarcodeScannerTypeHint,
+  } = await import("@capacitor/barcode-scanner");
+  const result = await CapacitorBarcodeScanner.scanBarcode({
+    cameraDirection: CapacitorBarcodeScannerCameraDirection.BACK,
+    cancelButtonAccessibilityLabel: "Cancel QR scan",
+    hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
+    scanInstructions: "Scan a Cantrip sign-in code",
+    scanOrientation: CapacitorBarcodeScannerScanOrientation.ADAPTIVE,
+    torchButtonOffAccessibilityLabel: "Turn flashlight on",
+    torchButtonOnAccessibilityLabel: "Turn flashlight off",
+  });
+  return result.ScanResult.trim() || null;
 }
 
 function requestWithTimeout(
