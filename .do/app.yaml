@@ -41,7 +41,7 @@ ingress:
 static_sites:
   - name: app
     environment_slug: node-js
-    build_command: pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/crypto build && pnpm --filter @cantrip/app build
+    build_command: pnpm --filter @cantrip/app... build
     github:
       branch: release
       deploy_on_push: true
@@ -52,7 +52,7 @@ static_sites:
     catchall_document: index.html
   - name: site
     environment_slug: node-js
-    build_command: pnpm --filter @cantrip/site build
+    build_command: pnpm --filter @cantrip/site... build
     github:
       branch: release
       deploy_on_push: true
