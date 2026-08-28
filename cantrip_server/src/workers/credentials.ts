@@ -62,7 +62,7 @@ function bearerCredential(request: FastifyRequest): string | null {
 }
 
 export async function authenticateWorkerRequest(
-  repository: ServerRepository,
+  repository: Pick<ServerRepository, "authenticateWorkerCredential">,
   config: ServerConfig,
   request: FastifyRequest,
   workerId: string,
