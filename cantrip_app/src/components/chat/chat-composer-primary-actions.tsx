@@ -1,21 +1,59 @@
 import { Clock3, Loader2, Pause, Play, Send, Square } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { formatRunningAgentDuration } from "@/components/chat/chat-run-duration";
 import { cn } from "@/lib/utils";
 
-function RunningAgentDuration({ startedAtMs }: { startedAtMs: number | null }) {
-  const [nowMs, setNowMs] = useState(() => Date.now());
+function RunningAgentDuration({
+  paused,
+  startedAtMs,
+}: {
+  paused: boolean;
+  startedAtMs: number | null;
+}) {
+  const [elapsedMs, setElapsedMs] = useState(() =>
+    startedAtMs === null ? 0 : Math.max(0, Date.now() - startedAtMs),
+  );
+  const timingRef = useRef({
+    pausedAtMs: paused && startedAtMs !== null ? Date.now() : null,
+    startedAtMs,
+    totalPausedMs: 0,
+  });
+
   useEffect(() => {
-    if (startedAtMs === null) return;
-    setNowMs(Date.now());
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    const nowMs = Date.now();
+    const timing = timingRef.current;
+    if (timing.startedAtMs !== startedAtMs) {
+      timing.startedAtMs = startedAtMs;
+      timing.totalPausedMs = 0;
+      timing.pausedAtMs = paused && startedAtMs !== null ? nowMs : null;
+    } else if (paused) {
+      timing.pausedAtMs ??= nowMs;
+    } else if (timing.pausedAtMs !== null) {
+      timing.totalPausedMs += Math.max(0, nowMs - timing.pausedAtMs);
+      timing.pausedAtMs = null;
+    }
+
+    const updateElapsed = () => {
+      if (startedAtMs === null) {
+        setElapsedMs(0);
+        return;
+      }
+      const current = timingRef.current;
+      const sampledAtMs = current.pausedAtMs ?? Date.now();
+      setElapsedMs(
+        Math.max(0, sampledAtMs - startedAtMs - current.totalPausedMs),
+      );
+    };
+    updateElapsed();
+    if (startedAtMs === null || paused) return;
+    const timer = window.setInterval(updateElapsed, 1_000);
     return () => window.clearInterval(timer);
-  }, [startedAtMs]);
+  }, [paused, startedAtMs]);
 
   if (startedAtMs === null) return null;
-  const elapsed = formatRunningAgentDuration(nowMs - startedAtMs);
+  const elapsed = formatRunningAgentDuration(elapsedMs);
   return (
     <span
       className="flex shrink-0 items-center gap-1 px-1 text-xs text-muted-foreground tabular-nums"
@@ -73,7 +111,7 @@ export function ChatComposerPrimaryActions({
 
   return (
     <>
-      <RunningAgentDuration startedAtMs={agentStartedAtMs} />
+      <RunningAgentDuration paused={paused} startedAtMs={agentStartedAtMs} />
       <Button
         type="button"
         size="icon"
