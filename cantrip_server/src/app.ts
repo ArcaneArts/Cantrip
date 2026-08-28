@@ -68,23 +68,18 @@ import {
 } from "./app/http/route-guards.js";
 import { createApplicationServer } from "./app/http/server.js";
 import { installTransportSecurity } from "./app/http/transport-security.js";
-import { installRemovedWorkflowGenerationRoute } from "./app/routes/api-meta-and-removed-routes.js";
 import { installBrowserServiceDiscoveryRoutes } from "./app/routes/browser-service-discovery.js";
 import {
   installBrowserListRoute,
   installBrowserManagementRoutes,
 } from "./app/routes/browser-management.js";
 import { installAgentInteractionRoutes } from "./app/routes/agent-interactions.js";
-import { installChatRelocationRoutes } from "./app/routes/chat-relocations.js";
 import { installPolicyRoutes } from "./app/routes/policies.js";
-import { installProjectAutomationRoutes } from "./app/routes/project-automations.js";
-import { installProjectCatalogAndPlacementRoutes } from "./app/routes/project-catalog-and-placement.js";
 import {
   installCodeTabManagementRoutes,
   installCodeTabSessionListRoute,
 } from "./app/routes/code-tab-management.js";
 import { installChatBasicRoutes } from "./app/routes/chat-basic-routes.js";
-import { installProjectChatCatalogRoutes } from "./app/routes/chat-catalogs.js";
 import { installChatArchiveLifecycleRoutes } from "./app/routes/chat-archive-lifecycle.js";
 import { installChatForkRoute } from "./app/routes/chat-forks.js";
 import { installChatExecutionControlRoutes } from "./app/routes/chat-execution-control.js";
@@ -119,18 +114,7 @@ import {
 } from "./app/routes/code-tab-attachments.js";
 import { installProjectExportRoutes } from "./app/routes/project-exports.js";
 import { installProjectExternalChatHistoryRoute } from "./app/routes/project-external-chat-history.js";
-import { installGithubRepositoryCatalogRoutes } from "./app/routes/github-repository-catalog.js";
-import { installProjectFolderSetupRoutes } from "./app/routes/project-folder-setup.js";
-import { installProjectGitActionAndHistoryRoutes } from "./app/routes/project-git-actions-and-history.js";
-import { installProjectGitStatusAndActionRoutes } from "./app/routes/project-git-status-and-actions.js";
-import { installProjectGithubContentRoutes } from "./app/routes/project-github-content.js";
-import { installProjectGithubConversionRoutes } from "./app/routes/project-github-conversion.js";
-import { installProjectGithubImportRoute } from "./app/routes/project-github-import.js";
-import { installProjectMcpServerRoutes } from "./app/routes/project-mcp-servers.js";
 import { installProviderAccountAuthRoutes } from "./app/routes/provider-account-auth.js";
-import { installProjectNetworkShareRoutes } from "./app/routes/project-network-shares.js";
-import { installProjectRemovalRoute } from "./app/routes/project-removal.js";
-import { installProjectReplicaRoutes } from "./app/routes/project-replicas.js";
 import { installProjectViewRoutes } from "./app/routes/project-views.js";
 import {
   installExplorerBasicManagementRoutes,
@@ -154,24 +138,7 @@ import { installRemoteDesktopReadRoutes } from "./app/routes/remote-desktop-read
 import { installRemoteDesktopManagementRoutes } from "./app/routes/remote-desktop-management.js";
 import { installRemoteSurfaceManagementRoutes } from "./app/routes/remote-surface-management.js";
 import { installRemoteSurfaceConnectionRoute } from "./app/routes/remote-surface-connection.js";
-import {
-  installProjectInsightRoutes,
-  installProjectOrderRoute,
-  installProjectPreferenceRoutes,
-} from "./app/routes/project-settings-and-insights.js";
-import { installProjectWorkspaceRoutes } from "./app/routes/project-workspaces.js";
-import { installProjectWorktreeStatusRoute } from "./app/routes/project-worktree-status.js";
-import { installProjectWorktreeRoutes } from "./app/routes/project-worktrees.js";
-import { installProjectWorktreeGitCommitActionRoutes } from "./app/routes/project-worktree-git-commit-actions.js";
 import { installProjectWorktreeGitCommitSignatureRoute } from "./app/routes/project-worktree-git-commit-signature.js";
-import { installProjectWorktreeGitHistoryAndGraphRoutes } from "./app/routes/project-worktree-git-history-and-graph.js";
-import { installProjectWorktreeGitInspectionAndRecoveryRoutes } from "./app/routes/project-worktree-git-inspection-and-recovery.js";
-import { installProjectWorktreeGitManagedOperationRoutes } from "./app/routes/project-worktree-git-managed-operations.js";
-import { installProjectWorktreeGitPublishingRoutes } from "./app/routes/project-worktree-git-publishing.js";
-import { installProjectWorktreeGitResourceRoutes } from "./app/routes/project-worktree-git-resources.js";
-import { installProjectWorktreeGitRevisionAndPatchRoutes } from "./app/routes/project-worktree-git-revisions-and-patches.js";
-import { installProjectWorktreeGitStashRoutes } from "./app/routes/project-worktree-git-stashes.js";
-import { installProjectWorktreePullRequestRoutes } from "./app/routes/project-worktree-pull-requests.js";
 import { installRunConfigurationSecretRoutes } from "./app/routes/run-configuration-secrets.js";
 import { installTabLayoutRoutes } from "./app/routes/tab-layouts.js";
 import {
@@ -184,10 +151,6 @@ import {
   installProtectedScriptCommandRoutes,
   installTerminalWorktreeLifecycleRoutes,
 } from "./app/routes/terminal-context.js";
-import { installWorkflowDefinitionRoutes } from "./app/routes/workflow-definitions.js";
-import { installWorkflowRunRoutes } from "./app/routes/workflow-runs.js";
-import { installWorkflowTriggerDeliveryRoutes } from "./app/routes/workflow-trigger-delivery.js";
-import { installWorkflowTriggerManagementRoutes } from "./app/routes/workflow-trigger-management.js";
 import { CliCommandRequestError } from "./agent-tools/errors.js";
 import { encodedFrameBytes } from "./account-usage/frame-bandwidth.js";
 import { WorkerLinkCoordinator } from "./worker-links/coordinator.js";
@@ -229,6 +192,7 @@ import {
 import { ProviderAccountReconnectRequiredError } from "./app/shared/errors.js";
 import { installMutationLiveInvalidationHook } from "./app/http/mutation-live-invalidation.js";
 import { installCoreInfrastructureRoutes } from "./app/routes/core-infrastructure-registry.js";
+import { installProjectWorkflowRoutes } from "./app/routes/project-workflow-registry.js";
 
 export type { BuildAppOptions } from "./app/options.js";
 export { mutationLiveResources } from "./app/shared/live-resources.js";
@@ -1080,267 +1044,43 @@ export async function buildApp({
     workerCatalogRefreshTimer,
   } = settingsRouteRuntime;
 
-  installGithubRepositoryCatalogRoutes(app, {
+  installProjectWorkflowRoutes(app, {
     applicationOwnerId,
     bridge,
-    repository,
-  });
-
-  installProjectCatalogAndPlacementRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-  });
-
-  installProjectReplicaRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishProjectReplicaJobChange,
-    queueProjectReplicaJobs: () => projectReplicaJobExecutor.queueAvailable(),
-    repository,
-  });
-
-  installChatRelocationRoutes(app, {
-    applicationOwnerId,
-    isWorkerConnected: (workerId) => bridge.isConnected(workerId),
-    publishChatRelocationChange,
-    queueChatRelocationJobs: () => chatRelocationJobExecutor.queueAvailable(),
-    repository,
-    requireProjectRelocation,
-  });
-
-  installProjectAutomationRoutes(app, {
-    applicationOwnerId,
-    publishProjectAutomationChange,
-    repository,
-  });
-
-  installProjectMcpServerRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-  });
-
-  installProjectWorkspaceRoutes(app, {
-    applicationOwnerId,
-    repository,
-  });
-
-  installWorkflowTriggerManagementRoutes(app, {
-    applicationOwnerId,
-    publishWorkflowTriggerChange,
-    repository,
-  });
-
-  installWorkflowTriggerDeliveryRoutes(app, {
-    applicationOwnerId,
     deliverWorkflowTrigger,
-    repository,
-    runAsOwner,
-  });
-
-  installRemovedWorkflowGenerationRoute(app);
-
-  installProjectWorktreePullRequestRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-    worktreeCoordinator,
-  });
-
-  installProjectWorktreeGitInspectionAndRecoveryRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishGitOperation,
-    publishLiveInvalidation,
-    recordLiveWorktreeStatus,
-    repository,
-    worktreeCoordinator,
-  });
-
-  installWorkflowDefinitionRoutes(app, {
-    applicationOwnerId,
-    publishWorkflowDefinitionChange,
-    repository,
-  });
-
-  installWorkflowRunRoutes(app, {
-    applicationOwnerId,
-    publishWorkflowRunChange,
-    repository,
-    workflowExecutor,
-    worktreeCoordinator,
-  });
-
-  installProjectNetworkShareRoutes(app, {
-    applicationOwnerId,
     directAttachments,
-    projectShareTunnel,
-    repository,
-    tunnelRuntime,
-  });
-
-  installProjectPreferenceRoutes(app, {
-    applicationOwnerId,
-    repository,
-  });
-
-  installProjectWorktreeRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-    retireRunConfigurationRuntimes,
-    worktreeCoordinator,
-  });
-
-  installProjectWorktreeStatusRoute(app, {
-    applicationOwnerId,
-    bridge,
-    recordLiveWorktreeStatus,
-    repository,
-  });
-
-  installProjectWorktreeGitHistoryAndGraphRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-  });
-
-  installProjectWorktreeGitCommitActionRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishGitOperation,
-    publishLiveInvalidation,
-    recordLiveWorktreeStatus,
-    repository,
-    scheduleWorkerWorktreeObservation,
-    worktreeCoordinator,
-  });
-
-  installProjectWorktreeGitManagedOperationRoutes(app, {
-    applicationOwnerId,
-    bridge,
     gitOperationRequestRuntime,
-    publishGitOperation,
-    publishLiveInvalidation,
-    recordLiveWorktreeStatus,
-    repository,
-    scheduleProjectWorktreeObservation,
-    scheduleWorkerWorktreeObservation,
-    worktreeCoordinator,
-  });
-
-  installProjectWorktreeGitRevisionAndPatchRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    recordLiveWorktreeStatus,
-    repository,
-    worktreeCoordinator,
-  });
-
-  installProjectWorktreeGitStashRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishGitOperation,
-    publishLiveInvalidation,
-    recordLiveWorktreeStatus,
-    repository,
-    scheduleWorkerWorktreeObservation,
-    worktreeCoordinator,
-  });
-
-  installProjectWorktreeGitResourceRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishLiveInvalidation,
-    recordLiveWorktreeStatus,
-    repository,
-    worktreeCoordinator,
-  });
-
-  installProjectWorktreeGitPublishingRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishLiveInvalidation,
-    recordLiveWorktreeStatus,
-    repository,
-    scheduleProjectWorktreeObservation,
-    worktreeCoordinator,
-  });
-
-  installProjectGitActionAndHistoryRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    recordLiveWorktreeStatus,
-    repository,
-    worktreeCoordinator,
-  });
-
-  installProjectInsightRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-  });
-
-  installProjectGithubContentRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    repository,
-    worktreeCoordinator,
-  });
-
-  installProjectGitStatusAndActionRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    recordLiveWorktreeStatus,
-    repository,
-  });
-
-  installProjectOrderRoute(app, {
-    applicationOwnerId,
-    repository,
-  });
-
-  installProjectRemovalRoute(app, {
-    applicationOwnerId,
-    bridge,
+    isWorkerConnected: (workerId) => bridge.isConnected(workerId),
     projectShareTunnel,
-    repository,
-    retireRunConfigurationRuntimes,
-    workerLinks,
-    worktreeCoordinator,
-  });
-
-  installProjectFolderSetupRoutes(app, {
-    applicationOwnerId,
+    publishChatRelocationChange,
+    publishGitOperation,
+    publishLiveInvalidation,
+    publishProjectAutomationChange,
     publishProjectFolderSetupChange,
+    publishProjectGithubConversionChange,
+    publishProjectReplicaJobChange,
+    publishStandaloneChatRootJobChange,
+    publishWorkflowDefinitionChange,
+    publishWorkflowRunChange,
+    publishWorkflowTriggerChange,
+    queueChatRelocationJobs: () => chatRelocationJobExecutor.queueAvailable(),
     queueProjectFolderSetupJobs: () =>
       projectFolderSetupJobExecutor.queueAvailable(),
-    repository,
-  });
-
-  installProjectGithubConversionRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishProjectGithubConversionChange,
     queueProjectGithubConversionJobs: () =>
       projectGithubConversionJobExecutor.queueAvailable(),
-    repository,
-  });
-
-  installProjectGithubImportRoute(app, {
-    applicationOwnerId,
-    publishProjectReplicaJobChange,
     queueProjectReplicaJobs: () => projectReplicaJobExecutor.queueAvailable(),
+    recordLiveWorktreeStatus,
     repository,
-  });
-
-  installProjectChatCatalogRoutes(app, {
-    applicationOwnerId,
-    bridge,
-    publishStandaloneChatRootJobChange,
-    repository,
+    requireProjectRelocation,
+    retireRunConfigurationRuntimes,
+    runAsOwner,
+    scheduleProjectWorktreeObservation,
+    scheduleWorkerWorktreeObservation,
     standaloneChatRootJobExecutor,
+    tunnelRuntime,
+    workerLinks,
+    workflowExecutor,
+    worktreeCoordinator,
   });
 
   const taskRouteRuntime = installTaskRouteRuntime(app, {
