@@ -71,6 +71,7 @@ import {
   type TaskWorktreeObservation,
 } from "../../tasks/dashboard.js";
 import { parseTaskOperationRelayResult } from "../../tasks/encrypted-relay.js";
+import { withTaskDispatchLeaseRetention } from "../../tasks/dispatch-lease-retention.js";
 import { TaskStateTransitionError } from "../../tasks/state.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
@@ -734,34 +735,55 @@ export function installTaskRouteRuntime(
     ownerId: string,
     claim: ClaimedTaskDispatch,
   ): Promise<void> => {
+    let cleanupError: unknown = null;
     try {
       await repository.taskDispatch.heartbeat(claim.lease);
-      const operation = await repository.tasks.getOperationContext(
-        ownerId,
-        claim.cycle.chatId,
-        { operationId: claim.cycle.operationId },
-      );
-      if (operation?.relayResult) {
-        await repository.taskDispatch.settle(claim.lease, "succeeded");
-      } else {
-        if (operation) {
+      let completed = false;
+      try {
+        const operation = await repository.tasks.getOperationContext(
+          ownerId,
+          claim.cycle.chatId,
+          { operationId: claim.cycle.operationId },
+        );
+        completed = Boolean(operation?.relayResult);
+        if (operation && !completed) {
           await repository.tasks.failOperation(
             ownerId,
             claim.cycle.chatId,
             claim.cycle.operationId,
           );
         }
-        await repository.taskDispatch.settle(claim.lease, "failed");
+      } catch (error) {
+        cleanupError = error;
+        app.log.error(
+          {
+            event: "task.operation.failure-persistence-failed",
+            subsystem: "task-scheduler",
+            operation: "settle-failed-operation",
+            status: "failed",
+            chatId: claim.cycle.chatId,
+            cycleId: claim.cycle.id,
+            err: error,
+          },
+          "Could not persist the failed Task operation",
+        );
       }
+      await repository.taskDispatch.settle(
+        claim.lease,
+        completed ? "succeeded" : "failed",
+      );
       publishChatInvalidation(claim.cycle.chatId, "task", null, {
         experience: "task",
         projectId: claim.projectId,
       });
     } catch (error) {
-      if (!(error instanceof TaskDispatchConflictError)) throw error;
+      if (!(error instanceof TaskDispatchConflictError)) {
+        cleanupError ??= error;
+      }
     } finally {
       queueTaskScheduleTick();
     }
+    if (cleanupError) throw cleanupError;
   };
 
   const runClaimedTaskOperation = async (
@@ -783,14 +805,15 @@ export function installTaskRouteRuntime(
         ) {
           throw new Error("The claimed Task placement is no longer available.");
         }
+        const taskModelConfiguration = claim.cycle.modelConfiguration;
+        const taskModelId = taskModelConfiguration?.modelId;
         if (
           claim.cycle.operationKind === "goal-continuation" ||
           !claim.cycle.modelRouteId ||
-          !claim.cycle.modelConfiguration?.modelId
+          !taskModelId
         ) {
           throw new Error("The claimed Task cycle is not executable yet.");
         }
-        const taskModelId = claim.cycle.modelConfiguration.modelId;
         const task = await repository.tasks.get(ownerId, context.chatId);
         if (!task) throw new Error("The claimed Task no longer exists.");
 
@@ -881,78 +904,104 @@ export function installTaskRouteRuntime(
           publishChatInvalidation(context.chatId, "task", null, context);
         }
 
-        const userMessage = await beginTurn(
-          context,
-          {
-            text: "Run the encrypted Task operation.",
-            attachmentIds: startedTask.draftAttachmentIds,
-            idempotencyKey: `task-operation:${request.operationId}`,
-            modelId: taskModelId,
-            reasoningEffort: claim.cycle.modelConfiguration.reasoningEffort,
-            customSubagentModel:
-              claim.cycle.modelConfiguration.customSubagentModel,
-            subagentModelId: claim.cycle.modelConfiguration.subagentModelId,
-            subagentReasoningEffort:
-              claim.cycle.modelConfiguration.subagentReasoningEffort,
+        const userMessage = await withTaskDispatchLeaseRetention({
+          heartbeat: (lease) => repository.taskDispatch.heartbeat(lease),
+          lease: claim.lease,
+          onHeartbeatError: (error) => {
+            if (error instanceof TaskDispatchConflictError) return;
+            app.log.warn(
+              {
+                event: "task.dispatch.preflight-heartbeat-failed",
+                subsystem: "task-scheduler",
+                operation: "launch-preflight",
+                status: "degraded",
+                chatId: claim.cycle.chatId,
+                cycleId: claim.cycle.id,
+                err: error,
+              },
+              "Could not retain the Task dispatch lease during launch preflight",
+            );
           },
-          {
-            purpose: "Scheduled encrypted Task operation",
-            encryptedTaskMessages: { userMessage: request.userMessage },
-            runtimes: [runtime],
-            taskDispatchLease: claim.lease,
-            structuredResult: {
-              taskOperation: request,
-              async onCompleted({ attribution, result }) {
-                await repository.taskDispatch.heartbeat(claim.lease);
-                const relayResult = parseTaskOperationRelayResult(
-                  result.structuredResult,
-                  request,
-                );
-                const completed = await repository.tasks.completeOperation(
-                  ownerId,
-                  context.chatId,
-                  request.operationId,
-                  relayResult,
-                  result.turnId ?? null,
-                );
-                if (!completed) {
-                  throw new Error("Encrypted Task operation was not found.");
-                }
-                const assistantMessage = await appendLiveTaskMessage(
-                  ownerId,
-                  context.chatId,
-                  relayResult.assistantMessage,
-                  attribution,
-                  context,
-                );
-                if (!assistantMessage) {
-                  throw new Error("Task Chat was not found.");
-                }
-                await repository.tasks.attachOperationAssistantMessage(
-                  ownerId,
-                  context.chatId,
-                  request.operationId,
-                  assistantMessage.id,
-                );
-                if (request.classification.kind !== "finalize") {
-                  await repository.taskDispatch.settle(
-                    claim.lease,
-                    "succeeded",
-                  );
-                  queueTaskScheduleTick();
-                }
-                publishChatInvalidation(context.chatId, "task", null, context);
+          operation: () =>
+            beginTurn(
+              context,
+              {
+                text: "Run the encrypted Task operation.",
+                attachmentIds: startedTask.draftAttachmentIds,
+                idempotencyKey: `task-operation:${request.operationId}`,
+                modelId: taskModelId,
+                reasoningEffort: taskModelConfiguration.reasoningEffort,
+                customSubagentModel: taskModelConfiguration.customSubagentModel,
+                subagentModelId: taskModelConfiguration.subagentModelId,
+                subagentReasoningEffort:
+                  taskModelConfiguration.subagentReasoningEffort,
               },
-              async afterCompleted() {
-                if (request.classification.kind !== "finalize") return;
-                await launchClaimedGoal(request.operationId);
+              {
+                purpose: "Scheduled encrypted Task operation",
+                encryptedTaskMessages: { userMessage: request.userMessage },
+                runtimes: [runtime],
+                taskDispatchLease: claim.lease,
+                structuredResult: {
+                  taskOperation: request,
+                  async onCompleted({ attribution, result }) {
+                    await repository.taskDispatch.heartbeat(claim.lease);
+                    const relayResult = parseTaskOperationRelayResult(
+                      result.structuredResult,
+                      request,
+                    );
+                    const completed = await repository.tasks.completeOperation(
+                      ownerId,
+                      context.chatId,
+                      request.operationId,
+                      relayResult,
+                      result.turnId ?? null,
+                    );
+                    if (!completed) {
+                      throw new Error(
+                        "Encrypted Task operation was not found.",
+                      );
+                    }
+                    const assistantMessage = await appendLiveTaskMessage(
+                      ownerId,
+                      context.chatId,
+                      relayResult.assistantMessage,
+                      attribution,
+                      context,
+                    );
+                    if (!assistantMessage) {
+                      throw new Error("Task Chat was not found.");
+                    }
+                    await repository.tasks.attachOperationAssistantMessage(
+                      ownerId,
+                      context.chatId,
+                      request.operationId,
+                      assistantMessage.id,
+                    );
+                    if (request.classification.kind !== "finalize") {
+                      await repository.taskDispatch.settle(
+                        claim.lease,
+                        "succeeded",
+                      );
+                      queueTaskScheduleTick();
+                    }
+                    publishChatInvalidation(
+                      context.chatId,
+                      "task",
+                      null,
+                      context,
+                    );
+                  },
+                  async afterCompleted() {
+                    if (request.classification.kind !== "finalize") return;
+                    await launchClaimedGoal(request.operationId);
+                  },
+                  async onFailed() {
+                    await finishClaimedTaskFailure(ownerId, claim);
+                  },
+                },
               },
-              async onFailed() {
-                await finishClaimedTaskFailure(ownerId, claim);
-              },
-            },
-          },
-        );
+            ),
+        });
         if (!userMessage.executionLaneId) {
           throw new Error("Encrypted Task operation did not acquire a lane.");
         }
@@ -968,6 +1017,11 @@ export function installTaskRouteRuntime(
       } catch (error) {
         app.log.warn(
           {
+            event: "task.operation.launch-failed",
+            subsystem: "task-scheduler",
+            operation: "launch-operation",
+            status: "failed",
+            reasonCode: "preflight-failed",
             chatId: claim.cycle.chatId,
             cycleId: claim.cycle.id,
             err: error,
@@ -1111,6 +1165,19 @@ export function installTaskRouteRuntime(
         if (!context || context.experience !== "task") return;
         const lease = taskDispatchCycleLease(cycle);
         if (!lease) return;
+        if (cycle.state === "claimed" && !chatIsExecuting(context.status)) {
+          releaseTaskGoalLease(cycle.id);
+          try {
+            await repository.taskDispatch.pauseUnstarted(lease, {
+              threadId: cycle.codexThreadId ?? context.threadId,
+              turnId: cycle.turnId,
+            });
+            publishChatInvalidation(context.chatId, "task", null, context);
+          } catch (error) {
+            if (!(error instanceof TaskDispatchConflictError)) throw error;
+          }
+          return;
+        }
         if (!bridge.isConnected(context.workerId)) {
           throw new Error("A running Task's physical Worker is offline.");
         }

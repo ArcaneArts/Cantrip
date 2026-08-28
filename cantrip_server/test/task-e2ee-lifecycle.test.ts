@@ -86,6 +86,10 @@ let continuedPromptSawAnswer = false;
 let pauseTestEnabled = false;
 let pauseTestTurnStarted = false;
 let resumePauseTestTurn: (() => void) | null = null;
+let rejectNextAgentTurnPreparation = false;
+let holdNextAgentTurnPreparation = false;
+let heldAgentTurnPreparationStarted = false;
+let releaseHeldAgentTurnPreparation: (() => void) | null = null;
 const pauseCommands: boolean[] = [];
 const serverObservedPayloads: string[] = [];
 const workerErrors: string[] = [];
@@ -421,6 +425,37 @@ const workerBridge: WorkerCommandBus = {
       return { notifiedSessions: 0, refreshed: [], conflicts: [] };
     }
     if (command.type === "code.prepareAgentTurn") {
+      if (holdNextAgentTurnPreparation) {
+        holdNextAgentTurnPreparation = false;
+        heldAgentTurnPreparationStarted = true;
+        await new Promise<void>((resolve) => {
+          releaseHeldAgentTurnPreparation = resolve;
+        });
+      }
+      if (rejectNextAgentTurnPreparation) {
+        rejectNextAgentTurnPreparation = false;
+        return {
+          prepared: false,
+          sessions: [
+            {
+              sessionId: "blocked-code-session",
+              bridgeConnected: false,
+              allowed: false,
+              policy: null,
+              dirtyEditors: [
+                {
+                  uri: "file:///repository/src/unsaved.ts",
+                  relativePath: "src/unsaved.ts",
+                },
+              ],
+              saved: [],
+              failed: [],
+              reason:
+                "Cantrip Code has unsaved editors, but its workbench bridge is not connected.",
+            },
+          ],
+        };
+      }
       return { prepared: true, sessions: [] };
     }
     if (command.type === "task.operation.prepare") {
@@ -672,6 +707,194 @@ afterAll(async () => {
 });
 
 describe.sequential("Task E2EE closure lifecycle", () => {
+  it("fails a blocked launch without retaining Task Worker capacity", async () => {
+    rejectNextAgentTurnPreparation = true;
+    const blockedChatId = randomUUID();
+    const blockedTask = await sealTask(blockedChatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} blocked launch`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const blockedCreate = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId: blockedChatId,
+        planGoalEnabled: false,
+        titleProtection: protectedChatFields(blockedChatId).titleProtection,
+        task: blockedTask,
+      },
+    });
+    expect(blockedCreate.statusCode).toBe(201);
+    const blocked = taskWireCreateResultSchema.parse(blockedCreate.json());
+    const blockedStart = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${blockedChatId}/start`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: blocked.task.rowVersion,
+      },
+    });
+    expect(blockedStart.statusCode).toBe(202);
+    const failed = await waitForTask(blockedChatId, "failed");
+    expect(failed.dispatch?.state).toBe("failed");
+
+    const followingChatId = randomUUID();
+    const followingTask = await sealTask(followingChatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} following launch`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const followingCreate = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId: followingChatId,
+        planGoalEnabled: false,
+        titleProtection: protectedChatFields(followingChatId).titleProtection,
+        task: followingTask,
+      },
+    });
+    expect(followingCreate.statusCode).toBe(201);
+    const following = taskWireCreateResultSchema.parse(followingCreate.json());
+    const followingStart = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${followingChatId}/start`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: following.task.rowVersion,
+      },
+    });
+    expect(followingStart.statusCode).toBe(202);
+    const completed = await waitForTask(followingChatId, "complete");
+    expect(completed.dispatch?.state).toBe("succeeded");
+  });
+
+  it("pauses a claimed Task while launch preflight has no runtime", async () => {
+    holdNextAgentTurnPreparation = true;
+    heldAgentTurnPreparationStarted = false;
+    releaseHeldAgentTurnPreparation = null;
+    pauseCommands.length = 0;
+    const chatId = randomUUID();
+    const initialTask = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} claimed pause test`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const createdResponse = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task: initialTask,
+      },
+    });
+    expect(createdResponse.statusCode).toBe(201);
+    const created = taskWireCreateResultSchema.parse(createdResponse.json());
+    const queued = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/start`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: created.task.rowVersion,
+      },
+    });
+    expect(queued.statusCode).toBe(202);
+    for (
+      let attempt = 0;
+      attempt < 200 && !heldAgentTurnPreparationStarted;
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(heldAgentTurnPreparationStarted).toBe(true);
+
+    const initialPause = await app!.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/tasks/pause`,
+    });
+    const pausedResponse = await app!.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tasks/pause`,
+      payload: { paused: true, rowVersion: initialPause.json().rowVersion },
+    });
+    expect(pausedResponse.statusCode).toBe(200);
+    expect((await waitForDispatchState(chatId, "paused")).dispatch?.state).toBe(
+      "paused",
+    );
+    expect(pauseCommands).toEqual([]);
+    releaseHeldAgentTurnPreparation?.();
+    const resumeResponse = await app!.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tasks/pause`,
+      payload: {
+        paused: false,
+        rowVersion: pausedResponse.json().rowVersion,
+      },
+    });
+    expect(resumeResponse.statusCode).toBe(202);
+    expect((await waitForTask(chatId, "complete")).dispatch?.state).toBe(
+      "succeeded",
+    );
+    expect(pauseCommands).toEqual([false]);
+  });
+
   it("pauses a Project Task turn and resumes its exact resident runtime", async () => {
     pauseTestEnabled = true;
     pauseTestTurnStarted = false;

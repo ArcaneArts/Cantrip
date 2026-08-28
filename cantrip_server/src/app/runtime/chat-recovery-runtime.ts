@@ -295,6 +295,28 @@ export function createChatRecoveryRuntime({
     const reason =
       blocked.find((session) => session.reason)?.reason ??
       "Cantrip Code could not establish a saved-file boundary.";
+    app.log.warn(
+      {
+        event: "code.agent-turn-preparation-blocked",
+        subsystem: "code",
+        operation: "prepare-agent-turn",
+        status: "blocked",
+        reasonCode: "saved-file-boundary-unavailable",
+        chatId: context.chatId,
+        projectId: context.projectId,
+        workerId: context.workerId,
+        counts: {
+          blockedSessions: blocked.length,
+          dirtyEditors: files.length,
+          failedEditors: blocked.reduce(
+            (total, session) => total + session.failed.length,
+            0,
+          ),
+        },
+        err: new Error(reason),
+      },
+      "Cantrip Code blocked agent turn preparation",
+    );
     throw new Error(
       `${reason}${files.length ? ` Dirty editors: ${files.slice(0, 10).join(", ")}${files.length > 10 ? ` and ${files.length - 10} more` : ""}.` : ""}`,
     );

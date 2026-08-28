@@ -802,6 +802,37 @@ export class TaskDispatchRepository {
     return toTaskDispatchCycleSummary(rows[0]);
   }
 
+  async pauseUnstarted(
+    fence: TaskDispatchFence,
+    affinity: { threadId: string | null; turnId: string | null },
+    options: { now?: Date } = {},
+  ): Promise<TaskDispatchCycleSummary> {
+    const now = options.now ?? new Date();
+    // A delayed preflight still holds the prior fence. Advance it here so that
+    // attempt cannot acquire a lane after this paused cycle is resumed.
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "paused",
+        codexThreadId: affinity.threadId,
+        turnId: affinity.turnId,
+        lastHeartbeatAt: now,
+        pausedAt: now,
+        fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          eq(schema.taskDispatchCycles.state, "claimed"),
+          isNull(schema.taskDispatchCycles.startedAt),
+        ),
+      )
+      .returning();
+    if (!rows[0]) throw this.staleLease();
+    return toTaskDispatchCycleSummary(rows[0]);
+  }
+
   async resumeNextPaused(
     ownerId: string,
     leaseOwner: string,
