@@ -59,6 +59,9 @@ importers:
       "@capacitor/app-launcher":
         specifier: ^8.0.1
         version: 8.0.1(@capacitor/core@8.5.0)
+      "@capacitor/barcode-scanner":
+        specifier: ^3.1.1
+        version: 3.1.1(@capacitor/core@8.5.0)
       "@capacitor/core":
         specifier: ^8.5.0
         version: 8.5.0
@@ -652,6 +655,14 @@ packages:
     resolution:
       {
         integrity: sha512-xM2ZTX5jK60tFtmjsmJv+Cdj1Qsb6NcavkqmdEnCPQBeya9oKhamZJxYOnQNj1ZvcJM7sWfG6BEtSLx42pisbA==,
+      }
+    peerDependencies:
+      "@capacitor/core": ">=8.0.0"
+
+  "@capacitor/barcode-scanner@3.1.1":
+    resolution:
+      {
+        integrity: sha512-IftToRn2YTirzw2K8nkp+p7Mcq41vwcZyqcSYLUeyMbznJS2IbEj1snbRIcTXa+iSuAU6zKY7tNXzwDqyzcx+Q==,
       }
     peerDependencies:
       "@capacitor/core": ">=8.0.0"
@@ -5893,6 +5904,12 @@ packages:
         integrity: sha512-ol6UPyBWqsrO6EJySPz2O7ZSr856WDrEzM5zMqp+FJJLGMW35cLYmmZnl0vztAZxRUoNZJFTCohfjuIJ8I4QBQ==,
       }
 
+  html5-qrcode@2.3.8:
+    resolution:
+      {
+        integrity: sha512-jsr4vafJhwoLVEDW3n1KvPnCCXWaQfRng0/EEYk1vNcQGcG/htAdhJX0be8YyqMoSz7+hZvOZSTAepsabiuhiQ==,
+      }
+
   htmlparser2@10.1.0:
     resolution:
       {
@@ -9296,6 +9313,11 @@ snapshots:
     dependencies:
       "@capacitor/core": 8.5.0
 
+  "@capacitor/barcode-scanner@3.1.1(@capacitor/core@8.5.0)":
+    dependencies:
+      "@capacitor/core": 8.5.0
+      html5-qrcode: 2.3.8
+
   "@capacitor/cli@8.5.0(supports-color@10.2.2)":
     dependencies:
       "@ionic/cli-framework-output": 2.2.8(supports-color@10.2.2)
@@ -12604,6 +12626,8 @@ snapshots:
   html-escaper@3.0.3: {}
 
   html-url-attributes@3.0.1: {}
+
+  html5-qrcode@2.3.8: {}
 
   htmlparser2@10.1.0:
     dependencies:
