@@ -125,6 +125,7 @@
       "cantrip_server/src/app/runtime/chat-turn-runtime.ts",
       "cantrip_server/src/app/runtime/cli-operation-runtime.ts",
       "cantrip_server/src/app/runtime/interactive-surface-runtime.ts",
+      "cantrip_server/src/app/runtime/live-infrastructure-runtime.ts",
       "cantrip_server/src/app/runtime/live-mutation-runtime.ts",
       "cantrip_server/src/app/runtime/model-routing-runtime.ts",
       "cantrip_server/src/app/runtime/run-configuration-runtime.ts",
@@ -12075,6 +12076,7 @@
     "productionCryptoImports": 0,
     "prohibitedTrustedLabelImports": 0,
     "opaqueProtocolSources": [
+      "cantrip_server/src/app.ts",
       "cantrip_server/src/app/routes/browser-management.ts",
       "cantrip_server/src/app/routes/chat-archive-lifecycle.ts",
       "cantrip_server/src/app/routes/chat-basic-routes.ts",
