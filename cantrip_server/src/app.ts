@@ -179,8 +179,6 @@ import {
   tunnelAttachmentReadySchema,
   userSettingsUpdateSchema,
   workerLogReadQuerySchema,
-  workerEnrollmentExchangeSchema,
-  workerEnrollmentResultSchema,
   workerEventIsProvisional,
   worktreeRemoveResultSchema,
   worktreeSelectionSchema,
@@ -438,7 +436,6 @@ import {
   ARCHIVED_CHAT_RETENTION_MS,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
-  WorkerEnrollmentError,
   WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
   type ChatExecutionAttribution,
@@ -469,11 +466,7 @@ import {
 import { WorkerBridge, WorkerUnavailableError } from "./workers/bridge.js";
 import { workerLogStreamConsumerIsSlow } from "./workers/log-stream.js";
 import { workerPresenceFingerprint } from "./workers/presence.js";
-import {
-  authenticateWorkerRequest,
-  createWorkerCredential,
-  DEFAULT_WORKER_CREDENTIAL_SCOPES,
-} from "./workers/credentials.js";
+import { authenticateWorkerRequest } from "./workers/credentials.js";
 import { RemoteSurfaceRelay } from "./remote-surfaces/relay.js";
 import { createRemoteSurfaceWebRtcConfiguration } from "./remote-surfaces/webrtc.js";
 import {
@@ -542,6 +535,7 @@ import { installInternalWorkerAutomationRoutes } from "./app/routes/internal-wor
 import { installInternalAgentToolRoutes } from "./app/routes/internal-agent-tools.js";
 import { installInternalWorkerHttpControlRoutes } from "./app/routes/internal-worker-http-control.js";
 import { installInternalWorkerWebsocketRoute } from "./app/routes/internal-worker-websocket.js";
+import { installWorkerEnrollmentRoute } from "./app/routes/worker-enrollment.js";
 import { installChatWorktreeAndExecutionLaneRoutes } from "./app/routes/chat-worktree-and-execution-lanes.js";
 import {
   installCodeTabRuntimeReadRoute,
@@ -20222,105 +20216,16 @@ export async function buildApp({
     sendModelConfigurationResolutionFailure,
   });
 
-  app.post(
-    "/api/internal/workers/enroll",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const input = workerEnrollmentExchangeSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const generated = createWorkerCredential();
-      try {
-        const provision = await repository.exchangeWorkerEnrollmentCode({
-          codeHash: hashSecret(input.data.code),
-          credentialHash: generated.credentialHash,
-          credentialId: generated.credentialId,
-          heartbeat: input.data.heartbeat,
-          replacement: input.data.replacement
-            ? {
-                workerId: input.data.replacement.workerId,
-                credentialHash: hashSecret(input.data.replacement.credential),
-              }
-            : null,
-          scopes: DEFAULT_WORKER_CREDENTIAL_SCOPES,
-        });
-        for (const credentialId of provision.revokedCredentialIds) {
-          revokedWorkerCredentialIds.add(credentialId);
-        }
-        if (provision.replacedWorkerId) {
-          bridge.disconnect?.(
-            provision.replacedWorkerId,
-            "Worker was reassigned to another account",
-          );
-          workerPresenceFingerprints.delete(provision.replacedWorkerId);
-          publishLiveInvalidation("worker", {
-            entityId: provision.replacedWorkerId,
-          });
-          publishLiveInvalidation("worker-availability", {
-            entityId: provision.replacedWorkerId,
-          });
-        }
-        await appendAudit(request, {
-          action: "worker.paired",
-          ownerId: provision.ownerId,
-          resourceId: provision.worker.workerId,
-          resourceType: "worker",
-          result: "succeeded",
-        });
-        publishWorkerPresence(provision.ownerId, provision.worker);
-        scheduleWorkerOfflineInvalidation(
-          provision.ownerId,
-          provision.worker.workerId,
-        );
-        serverLogger.info("Worker enrollment completed", {
-          event: "worker.enrollment.completed",
-          subsystem: "worker-auth",
-          operation: "enroll",
-          status: "completed",
-          requestId: request.id,
-          workerId: provision.worker.workerId,
-          platform: provision.worker.platform,
-          architecture: provision.worker.architecture,
-          replacedWorkerId: provision.replacedWorkerId ?? undefined,
-        });
-        return reply.code(201).send(
-          workerEnrollmentResultSchema.parse({
-            credential: generated.credential,
-            credentialSummary: provision.credential,
-            worker: provision.worker,
-          }),
-        );
-      } catch (error) {
-        if (error instanceof WorkerEnrollmentError) {
-          await appendAudit(request, {
-            action: "worker.pairing-failed",
-            ownerId: null,
-            resourceId: input.data.heartbeat.workerId,
-            resourceType: "worker",
-            result: "denied",
-          });
-          serverLogger.rateLimited(
-            `worker-enrollment-rejected:${input.data.heartbeat.workerId}`,
-            "warn",
-            "Worker enrollment rejected",
-            {
-              event: "worker.enrollment.rejected",
-              subsystem: "worker-auth",
-              operation: "enroll",
-              status: "rejected",
-              reasonCode: "invalid_or_conflicting_enrollment",
-              requestId: request.id,
-              workerId: input.data.heartbeat.workerId,
-            },
-            { summaryEvery: 5, windowMs: 5 * 60_000 },
-          );
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
+  installWorkerEnrollmentRoute(app, {
+    appendAudit,
+    bridge,
+    publishLiveInvalidation,
+    publishWorkerPresence,
+    repository,
+    revokedWorkerCredentialIds,
+    scheduleWorkerOfflineInvalidation,
+    workerPresenceFingerprints,
+  });
 
   installInternalWorkerAutomationRoutes(app, {
     beginTurn,
