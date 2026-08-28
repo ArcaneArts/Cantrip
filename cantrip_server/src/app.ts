@@ -26,7 +26,6 @@ import { endpointContentOpaqueSchema } from "@cantrip/protocol/endpoint-content"
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
   AppLiveResource,
-  AppLiveScope,
   EncryptedBrowserUpdate,
   CodeGraphProjectStatus,
   GitStatus,
@@ -39,10 +38,7 @@ import type {
 } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
 
-import {
-  authenticatedPrincipal,
-  installRequestPrincipal,
-} from "./auth/principal.js";
+import { installRequestPrincipal } from "./auth/principal.js";
 import {
   hashSecret,
   normalizeAccountEmail,
@@ -151,6 +147,7 @@ import { installInternalWorkerAutomationRoutes } from "./app/routes/internal-wor
 import { installInternalAgentToolRoutes } from "./app/routes/internal-agent-tools.js";
 import { installInternalWorkerHttpControlRoutes } from "./app/routes/internal-worker-http-control.js";
 import { installInternalWorkerWebsocketRoute } from "./app/routes/internal-worker-websocket.js";
+import { installLiveRoute } from "./app/routes/live.js";
 import { installWorkerEnrollmentRoute } from "./app/routes/worker-enrollment.js";
 import { installChatWorktreeAndExecutionLaneRoutes } from "./app/routes/chat-worktree-and-execution-lanes.js";
 import {
@@ -283,6 +280,7 @@ import { createCliOperationRuntime } from "./app/runtime/cli-operation-runtime.j
 import { createLiveMutationRuntime } from "./app/runtime/live-mutation-runtime.js";
 import { createModelRoutingRuntime } from "./app/runtime/model-routing-runtime.js";
 import { createTaskGoalRuntime } from "./app/runtime/task-goal-runtime.js";
+import { createSessionSocketRuntime } from "./app/runtime/session-socket-runtime.js";
 import {
   createRunConfigurationRuntime,
   type ExecutionOperationContext,
@@ -1193,13 +1191,6 @@ export async function buildApp({
   const requestLimits = createRequestLimits(config);
   const { authRateLimiter, accountWebsockets, pendingWorkerHandshakes } =
     requestLimits;
-  const sessionSockets = new Map<
-    string,
-    {
-      ownerId: string;
-      sockets: Set<{ close(code?: number, reason?: string): void }>;
-    }
-  >();
   if (config.authMode === "none") {
     installRequestPrincipal(app, { authMode: "none", localUser: localUser! });
   } else {
@@ -1225,141 +1216,26 @@ export async function buildApp({
 
   installApplicationErrorHandler(app, sessionService);
 
-  const publishAccountSessionChange = (
-    ownerId: string,
-    sessionId: string,
-  ): void => {
-    runAsOwner(ownerId, () =>
-      publishLiveInvalidation("account-session", { entityId: sessionId }),
-    );
-  };
-  const registerSessionSocket = (
-    socket: {
-      close(code?: number, reason?: string): void;
-      on(event: "close", listener: () => void): void;
-    },
-    request: FastifyRequest,
-  ): void => {
-    const principal = authenticatedPrincipal(request);
-    if (!principal.sessionId) return;
-    const existing = sessionSockets.get(principal.sessionId);
-    const entry = existing ?? {
-      ownerId: principal.user.id,
-      sockets: new Set(),
-    };
-    const wasConnected = entry.sockets.size > 0;
-    entry.sockets.add(socket);
-    sessionSockets.set(principal.sessionId, entry);
-    if (!wasConnected) {
-      publishAccountSessionChange(principal.user.id, principal.sessionId);
-    }
-    socket.on("close", () => {
-      entry.sockets.delete(socket);
-      if (entry.sockets.size === 0) {
-        sessionSockets.delete(principal.sessionId!);
-        publishAccountSessionChange(principal.user.id, principal.sessionId!);
-      }
-    });
-  };
-  const registerAccountSocket = (
-    socket: {
-      close(code?: number, reason?: string): void;
-      on(event: "close", listener: () => void): void;
-    },
-    ownerId: string,
-  ): boolean => {
-    const release = accountWebsockets.acquire(ownerId);
-    if (!release) {
-      socket.close(1013, "Account WebSocket connection limit reached");
-      return false;
-    }
-    socket.on("close", release);
-    return true;
-  };
-  const registerAuthenticatedSocket = (
-    socket: {
-      close(code?: number, reason?: string): void;
-      on(event: "close", listener: () => void): void;
-    },
-    request: FastifyRequest,
-  ): boolean => {
-    const principal = authenticatedPrincipal(request);
-    return registerAccountSocket(socket, principal.user.id);
-  };
-  const closeSessionSockets = (
-    matches: (sessionId: string, ownerId: string) => boolean,
-    reason: string,
-  ): void => {
-    for (const [sessionId, entry] of [...sessionSockets]) {
-      if (!matches(sessionId, entry.ownerId)) continue;
-      sessionSockets.delete(sessionId);
-      for (const socket of [...entry.sockets]) socket.close(1008, reason);
-    }
-  };
-  const sessionSocketValidationTimer = setInterval(() => {
-    for (const [sessionId, entry] of [...sessionSockets]) {
-      void repository
-        .isUserSessionActive(sessionId, entry.ownerId)
-        .then((active) => {
-          if (!active) {
-            closeSessionSockets(
-              (candidate) => candidate === sessionId,
-              "Session is no longer active",
-            );
-          }
-        })
-        .catch(() => undefined);
-    }
-  }, 30_000);
-  sessionSocketValidationTimer.unref();
+  const sessionSocketRuntime = createSessionSocketRuntime({
+    accountWebsockets,
+    publishLiveInvalidation,
+    repository,
+    runAsOwner,
+  });
+  const {
+    closeSessionSockets,
+    registerAccountSocket,
+    registerAuthenticatedSocket,
+    registerSessionSocket,
+    sessionSockets,
+  } = sessionSocketRuntime;
 
-  const authorizeLiveScope = async (
-    ownerId: string,
-    scope: AppLiveScope,
-  ): Promise<boolean> => {
-    switch (scope.kind) {
-      case "current-user":
-        return true;
-      case "project":
-        return (await repository.listProjects(ownerId)).some(
-          (project) => project.id === scope.projectId,
-        );
-      case "chat":
-        return Boolean(
-          await repository.getChatExecutionContext(ownerId, scope.chatId),
-        );
-      case "workflow-run":
-        return Boolean(
-          await repository.workflowRuns.getRun(ownerId, scope.runId),
-        );
-    }
-  };
-
-  app.get("/api/live", { websocket: true }, (socket, request) => {
-    const origin = request.headers.origin;
-    if (!origin || !config.appOrigins.includes(origin)) {
-      socket.close(1008, "Origin is not allowed");
-      return;
-    }
-    if (request.principal.state !== "authenticated") {
-      socket.close(1008, "Authentication is required");
-      return;
-    }
-    const principal = authenticatedPrincipal(request);
-    if (!registerAccountSocket(socket, principal.user.id)) return;
-    registerSessionSocket(socket, request);
-    liveHub.attach(socket, {
-      ownerId: principal.user.id,
-      sessionId: principal.sessionId,
-      authorizeScope: (scope) => authorizeLiveScope(principal.user.id, scope),
-      isActive: () =>
-        principal.sessionId
-          ? repository.isUserSessionActive(
-              principal.sessionId,
-              principal.user.id,
-            )
-          : true,
-    });
+  installLiveRoute(app, {
+    config,
+    liveHub,
+    registerAccountSocket,
+    registerSessionSocket,
+    repository,
   });
 
   app.addHook("onResponse", async (request, reply) => {
@@ -3057,7 +2933,7 @@ export async function buildApp({
   app.addHook("onClose", async () => {
     livePublishingEnabled = false;
     unsubscribeLiveCoordination?.();
-    clearInterval(sessionSocketValidationTimer);
+    sessionSocketRuntime.stopValidation();
     clearInterval(tunnelAttachmentExpiryTimer);
     closeSessionSockets(() => true, "Server is shutting down");
     clearInterval(agentInteractionExpiryTimer);
