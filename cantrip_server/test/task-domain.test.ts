@@ -199,6 +199,9 @@ const workerBridge: WorkerCommandBus = {
       preparedAgentTurns += 1;
       return { prepared: true, sessions: [] };
     }
+    if (command.type === "chat.interrupt") {
+      return { interrupted: true };
+    }
     if (command.type === "task.operation.prepare") {
       return operation(
         command.task.chatId,
@@ -331,7 +334,7 @@ async function waitForState(chatId: string, state: string) {
 }
 
 describe.sequential("opaque encrypted Task persistence", () => {
-  it("deletes unqueued drafts, queued Tasks, and failed Tasks", async () => {
+  it("deletes any owned Task and interrupts active execution", async () => {
     const draftChatId = randomUUID();
     const createdDraftResponse = await app.inject({
       method: "POST",
@@ -375,6 +378,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
     const queuedChatId = randomUUID();
     const failedChatId = randomUUID();
     const activeChatId = randomUUID();
+    const completedChatId = randomUUID();
     try {
       const createdQueuedResponse = await app.inject({
         method: "POST",
@@ -406,6 +410,70 @@ describe.sequential("opaque encrypted Task persistence", () => {
           await app.inject({
             method: "GET",
             url: `/api/tasks/${queuedChatId}`,
+          })
+        ).statusCode,
+      ).toBe(404);
+
+      const createdCompletedResponse = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/tasks`,
+        payload: {
+          chatId: completedChatId,
+          titleProtection: protectedChatFields(completedChatId).titleProtection,
+          task: taskContent("draft", 0, null),
+        },
+      });
+      expect(createdCompletedResponse.statusCode).toBe(201);
+      const completedTask = taskWireCreateResultSchema.parse(
+        createdCompletedResponse.json(),
+      ).task;
+      const completedOperation = operation(
+        completedChatId,
+        completedTask.rowVersion,
+        "direct",
+      );
+      await database.repository.tasks.beginOperation(
+        LOCAL_USER_ID,
+        completedChatId,
+        completedOperation,
+      );
+      await database.repository.tasks.completeOperation(
+        LOCAL_USER_ID,
+        completedChatId,
+        completedOperation.operation.operationId,
+        {
+          chatId: completedChatId,
+          operationId: completedOperation.operation.operationId,
+          fingerprint: completedOperation.operation.fingerprint,
+          classification: {
+            ...completedOperation.operation.classification,
+            status: "completed",
+          },
+          protectedResult: encrypted,
+          task: taskContent("complete", 1, null),
+          assistantMessage: taskMessage(
+            "assistant",
+            randomUUID(),
+            `task-result:${completedOperation.operation.operationId}`,
+            "default",
+          ),
+          goal: null,
+        },
+        null,
+      );
+      expect(
+        await database.repository.tasks.get(LOCAL_USER_ID, completedChatId),
+      ).toMatchObject({ state: "complete" });
+      const deletedCompletedResponse = await app.inject({
+        method: "DELETE",
+        url: `/api/tasks/${completedChatId}`,
+      });
+      expect(deletedCompletedResponse.statusCode).toBe(204);
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/tasks/${completedChatId}`,
           })
         ).statusCode,
       ).toBe(404);
@@ -469,16 +537,15 @@ describe.sequential("opaque encrypted Task persistence", () => {
         activeOperation,
       );
 
-      const rejectedResponse = await app.inject({
+      const commandsBeforeDelete = observedWorkerCommandTypes.length;
+      const deletedActiveResponse = await app.inject({
         method: "DELETE",
         url: `/api/tasks/${activeChatId}`,
       });
-      expect(rejectedResponse.statusCode).toBe(409);
-      expect(rejectedResponse.json()).toMatchObject({
-        code: "operation-active",
-        error:
-          "Only unqueued drafts, queued Tasks, and failed Tasks can be deleted.",
-      });
+      expect(deletedActiveResponse.statusCode).toBe(204);
+      expect(observedWorkerCommandTypes.slice(commandsBeforeDelete)).toContain(
+        "chat.interrupt",
+      );
       expect(
         (
           await app.inject({
@@ -486,11 +553,12 @@ describe.sequential("opaque encrypted Task persistence", () => {
             url: `/api/tasks/${activeChatId}`,
           })
         ).statusCode,
-      ).toBe(200);
+      ).toBe(404);
     } finally {
       await database.repository.deleteChat(LOCAL_USER_ID, queuedChatId);
       await database.repository.deleteChat(LOCAL_USER_ID, failedChatId);
       await database.repository.deleteChat(LOCAL_USER_ID, activeChatId);
+      await database.repository.deleteChat(LOCAL_USER_ID, completedChatId);
       await database.repository.taskScheduling.setProjectTaskPauseState(
         LOCAL_USER_ID,
         projectId,

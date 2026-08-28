@@ -1,4 +1,5 @@
 import {
+  chatInterruptAcceptedSchema,
   chatModelConfigurationUpdateSchema,
   chatPauseRuntimeStateSchema,
   contextualChatWireSummarySchema,
@@ -1527,12 +1528,110 @@ export function installTaskRouteRuntime(
     return null;
   };
 
+  const interruptTaskForDeletion = async (
+    ownerId: string,
+    chatId: string,
+  ): Promise<void> => {
+    let context: ChatExecutionContext | null = null;
+    try {
+      const [resolvedContext, task] = await Promise.all([
+        repository.getChatExecutionContext(ownerId, chatId),
+        repository.tasks.get(ownerId, chatId),
+      ]);
+      context = resolvedContext;
+      if (!context || !task) return;
+      const dispatchState = task.dispatch?.state;
+      const mayBeRunning =
+        chatIsExecuting(context.status) ||
+        task.state === "planning" ||
+        task.state === "implementing" ||
+        dispatchState === "claimed" ||
+        dispatchState === "running";
+      if (!mayBeRunning) return;
+
+      if (!bridge.isConnected(context.workerId)) {
+        app.log.warn(
+          {
+            event: "task.deletion-interrupt.skipped",
+            subsystem: "task-execution",
+            operation: "interrupt-before-delete",
+            status: "skipped",
+            reasonCode: "worker-offline",
+            chatId,
+            projectId: context.projectId,
+            workerId: context.workerId,
+          },
+          "Task worker is offline; deletion will continue",
+        );
+        return;
+      }
+      const runtime = await runtimeForContext(context);
+      if (!runtime) {
+        app.log.warn(
+          {
+            event: "task.deletion-interrupt.skipped",
+            subsystem: "task-execution",
+            operation: "interrupt-before-delete",
+            status: "skipped",
+            reasonCode: "runtime-unavailable",
+            chatId,
+            projectId: context.projectId,
+            workerId: context.workerId,
+          },
+          "Task runtime is unavailable; deletion will continue",
+        );
+        return;
+      }
+      const result = chatInterruptAcceptedSchema.parse(
+        await bridge.request(context.workerId, {
+          type: "chat.interrupt",
+          executionProfile:
+            context.contextKind === "standalone" ? "standalone-chat" : "ide",
+          chatId,
+          threadId: context.threadId,
+          model: runtime.model,
+          provider: runtime.provider,
+        }),
+      );
+      app.log.info(
+        {
+          event: "task.deletion-interrupt.completed",
+          subsystem: "task-execution",
+          operation: "interrupt-before-delete",
+          status: result.interrupted ? "completed" : "not-active",
+          chatId,
+          projectId: context.projectId,
+          workerId: context.workerId,
+        },
+        result.interrupted
+          ? "Running Task interrupted before deletion"
+          : "Task had no active worker turn before deletion",
+      );
+    } catch (error) {
+      app.log.warn(
+        {
+          event: "task.deletion-interrupt.failed",
+          subsystem: "task-execution",
+          operation: "interrupt-before-delete",
+          status: "failed",
+          chatId,
+          projectId: context?.projectId ?? null,
+          workerId: context?.workerId ?? null,
+          error: errorMessage(error),
+        },
+        "Task interruption failed; deletion will continue",
+      );
+    }
+  };
+
   app.delete<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId",
     async (request, reply) => {
       try {
-        const deleted = await repository.tasks.deleteEligible(
-          applicationOwnerId(),
+        const ownerId = applicationOwnerId();
+        await interruptTaskForDeletion(ownerId, request.params.chatId);
+        const deleted = await repository.tasks.deleteOwned(
+          ownerId,
           request.params.chatId,
         );
         if (!deleted) {
