@@ -20,6 +20,38 @@ export class CantripApiError extends Error {
   }
 }
 
+interface ApiErrorBody {
+  code?: string;
+  error?: string;
+  issues?: unknown;
+}
+
+function validationIssueDetail(issues: unknown): string | null {
+  if (!Array.isArray(issues)) return null;
+  const first = issues[0];
+  if (typeof first !== "object" || first === null) return null;
+  const message = "message" in first ? first.message : null;
+  if (typeof message !== "string" || !message.trim()) return null;
+  const rawPath = "path" in first ? first.path : null;
+  const path = Array.isArray(rawPath)
+    ? rawPath
+        .filter(
+          (segment): segment is number | string =>
+            typeof segment === "number" || typeof segment === "string",
+        )
+        .join(".")
+    : "";
+  return path ? `${path}: ${message}` : message;
+}
+
+function apiErrorMessage(body: ApiErrorBody | null, status: number): string {
+  const fallback = `Cantrip Server returned HTTP ${status}.`;
+  if (!body?.error) return fallback;
+  if (body.error !== "Invalid request body") return body.error;
+  const detail = validationIssueDetail(body.issues);
+  return detail ? `${body.error}: ${detail}` : body.error;
+}
+
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 let csrfRecovery: Promise<boolean> | null = null;
 
@@ -218,10 +250,7 @@ export async function requestResponse(
   }
 
   if (!response.ok && !allowedStatuses.includes(response.status)) {
-    let body = (await response.json().catch(() => null)) as {
-      code?: string;
-      error?: string;
-    } | null;
+    let body = (await response.json().catch(() => null)) as ApiErrorBody | null;
     if (
       response.status === 403 &&
       body?.error === "CSRF validation failed." &&
@@ -241,10 +270,7 @@ export async function requestResponse(
       });
       response = await sendRequest(url, method, init);
       if (response.ok) return response;
-      body = (await response.json().catch(() => null)) as {
-        code?: string;
-        error?: string;
-      } | null;
+      body = (await response.json().catch(() => null)) as ApiErrorBody | null;
     }
     if (response.status === 401) {
       notifyAuthenticationRequired(
@@ -268,7 +294,7 @@ export async function requestResponse(
       },
     );
     throw new CantripApiError(
-      body?.error ?? `Cantrip Server returned HTTP ${response.status}.`,
+      apiErrorMessage(body, response.status),
       response.status,
       body?.code ?? null,
     );

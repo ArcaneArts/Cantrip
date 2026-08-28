@@ -117,6 +117,39 @@ describe("authenticated API client", () => {
     });
   });
 
+  it("includes the first safe schema issue in invalid-body errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: "Invalid request body",
+            issues: [
+              {
+                code: "custom",
+                message:
+                  "Choose either a legacy worktreeId or an execution target.",
+                path: [],
+              },
+            ],
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ),
+    );
+
+    await expect(
+      request("/api/projects/project-one/terminals"),
+    ).rejects.toMatchObject({
+      message:
+        "Invalid request body: Choose either a legacy worktreeId or an execution target.",
+      status: 400,
+    });
+  });
+
   it("retains a sanitized route and status in failed-request diagnostics", async () => {
     vi.stubGlobal(
       "fetch",
