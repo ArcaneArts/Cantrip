@@ -13,7 +13,7 @@
   --accentSolidHover: #7c3aed;
   --accentText: color-mix(in oklab, var(--foreground) 45%, #8b5cf6 55%);
   --accentTextContrast: var(--foreground);
-  --basePageBg: transparent;
+  --basePageBg: var(--popover-solid);
   --baseBase: var(--background);
   --baseBgSubtle: color-mix(in oklab, var(--muted) 45%, transparent);
   --baseBg: color-mix(in oklab, var(--muted) 62%, transparent);
