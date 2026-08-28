@@ -22,6 +22,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InlineAlert } from "@/components/ui/inline-alert";
+import {
+  closeTabOnMiddleClick,
+  preventMiddleMouseDefault,
+} from "@/lib/tab-middle-click";
 import { cn } from "@/lib/utils";
 
 function workerAvailable(
@@ -144,11 +148,12 @@ export function StandaloneChatSidebar({
           <div className="space-y-0.5">
             {chats.map((chat) => {
               const available = workerAvailable(chat, workers);
+              const archiveDisabled =
+                chat.status === "running" ||
+                chat.status === "waiting-for-approval";
               const actions = {
                 deleteLabel: "Archive",
-                deleteDisabled:
-                  chat.status === "running" ||
-                  chat.status === "waiting-for-approval",
+                deleteDisabled: archiveDisabled,
                 onDelete: () => onArchive(chat),
                 onDuplicate: () => onFork(chat),
                 onRename: () => beginRename(chat),
@@ -156,10 +161,20 @@ export function StandaloneChatSidebar({
               return (
                 <ChatContextMenu actions={actions} key={chat.id}>
                   <div
+                    data-standalone-chat-id={chat.id}
                     className={cn(
                       "group flex min-h-9 items-center gap-2 rounded-md px-2 text-sm hover:bg-muted/60",
                       selectedChatId === chat.id && "bg-muted",
                     )}
+                    onAuxClick={
+                      archiveDisabled
+                        ? undefined
+                        : (event) =>
+                            closeTabOnMiddleClick(event, () => onArchive(chat))
+                    }
+                    onMouseDown={
+                      archiveDisabled ? undefined : preventMiddleMouseDefault
+                    }
                   >
                     <button
                       className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left"

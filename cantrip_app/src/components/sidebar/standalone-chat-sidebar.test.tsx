@@ -2,10 +2,21 @@ import {
   standaloneChatSummarySchema,
   type WorkerSummary,
 } from "@cantrip/protocol";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import TestRenderer, { act } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
 
 import { StandaloneChatSidebar } from "./standalone-chat-sidebar";
+
+vi.mock("@/components/chat/chat-menu", () => ({
+  ChatContextMenu: ({ children }: { children: ReactNode }) => children,
+  ChatDropdownMenu: () => null,
+}));
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const chat = standaloneChatSummarySchema.parse({
   id: "00000000-0000-4000-8000-000000000001",
@@ -35,6 +46,51 @@ const chat = standaloneChatSummarySchema.parse({
 });
 
 describe("standalone Chat sidebar", () => {
+  it("archives an idle chat on middle click without selecting it", async () => {
+    const onArchive = vi.fn();
+    const onSelect = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <StandaloneChatSidebar
+          archivedCount={0}
+          archivedSelected={false}
+          chats={[chat]}
+          creating={false}
+          selectedChatId={null}
+          workers={[]}
+          onArchive={onArchive}
+          onFork={() => undefined}
+          onNewChat={() => undefined}
+          onOpenArchived={() => undefined}
+          onOpenSettings={() => undefined}
+          onRename={() => undefined}
+          onSelect={onSelect}
+          onSwitchIde={() => undefined}
+        />,
+      );
+    });
+    const row = renderer.root.findByProps({
+      "data-standalone-chat-id": chat.id,
+    });
+    const mouseDown = { button: 1, preventDefault: vi.fn() };
+    const auxiliaryClick = {
+      button: 1,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+
+    row.props.onMouseDown(mouseDown);
+    row.props.onAuxClick(auxiliaryClick);
+
+    expect(mouseDown.preventDefault).toHaveBeenCalledOnce();
+    expect(auxiliaryClick.preventDefault).toHaveBeenCalledOnce();
+    expect(auxiliaryClick.stopPropagation).toHaveBeenCalledOnce();
+    expect(onArchive).toHaveBeenCalledExactlyOnceWith(chat);
+    expect(onSelect).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+  });
+
   it("shows standalone navigation without project surfaces", () => {
     const markup = renderToStaticMarkup(
       <StandaloneChatSidebar
