@@ -1,11 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   agentThreadSyncSchema,
-  agentInteractionAcceptedSchema,
-  agentInteractionRequestWireListSchema,
-  agentInteractionRequestQuerySchema,
-  agentInteractionRequestWireSchema,
-  agentInteractionResolutionWireCreateSchema,
   appLiveEventPayloadSchema,
   encryptedBrowserUpdateSchema,
   providerAuthLiveStatusSchema,
@@ -79,7 +74,6 @@ import { requireProjectCapability } from "./projects/capabilities.js";
 import { TunnelRuntimeManager } from "./tunnels/runtime.js";
 import { TunnelStreamBroker } from "./tunnels/broker.js";
 import {
-  AgentInteractionConflictError,
   ExecutionLaneConflictError,
   ExecutionPlacementUnavailableError,
   StandaloneChatPlacementUnavailableError,
@@ -125,6 +119,7 @@ import {
   installBrowserListRoute,
   installBrowserManagementRoutes,
 } from "./app/routes/browser-management.js";
+import { installAgentInteractionRoutes } from "./app/routes/agent-interactions.js";
 import { installChatRelocationRoutes } from "./app/routes/chat-relocations.js";
 import { installInternalProviderCredentialRoutes } from "./app/routes/internal-provider-credentials.js";
 import { installInternalWorkerCodeSettingsRoutes } from "./app/routes/internal-worker-code-settings.js";
@@ -257,7 +252,6 @@ import { installWorkflowDefinitionRoutes } from "./app/routes/workflow-definitio
 import { installWorkflowRunRoutes } from "./app/routes/workflow-runs.js";
 import { installWorkflowTriggerDeliveryRoutes } from "./app/routes/workflow-trigger-delivery.js";
 import { installWorkflowTriggerManagementRoutes } from "./app/routes/workflow-trigger-management.js";
-import { sendWorkerConflictFailure } from "./http/worker-request-failures.js";
 import { AppLiveHub } from "./live/hub.js";
 import { CoalescedInvalidations } from "./live/coalesced-invalidations.js";
 import { TaskLiveInvalidationRouter } from "./live/task-live-routing.js";
@@ -2124,210 +2118,15 @@ export async function buildApp({
 
   runConfigurationRuntime.installAppRuntimeRoutes(app);
 
-  app.get<{
-    Querystring: {
-      chatId?: string;
-      workflowRunId?: string;
-      limit?: string;
-      status?: string;
-    };
-  }>("/api/agent-requests", async (request, reply) => {
-    const query = agentInteractionRequestQuerySchema.safeParse(request.query);
-    if (!query.success) {
-      return reply.code(400).send(invalidBody(query.error.issues));
-    }
-    const requests = await repository.listAgentInteractionRequests(
-      applicationOwnerId(),
-      query.data,
-    );
-    return reply.send(agentInteractionRequestWireListSchema.parse(requests));
+  installAgentInteractionRoutes(app, {
+    applicationOwnerId,
+    bridge,
+    repository,
+    resolveLiveAgentInteractionRequest,
+    resolveLiveEncryptedAgentInteractionRequest,
+    runtimeForContext,
+    workflowExecutor,
   });
-
-  app.get<{ Params: { requestId: string } }>(
-    "/api/agent-requests/:requestId",
-    async (request, reply) => {
-      const interaction = await repository.getAgentInteractionRequest(
-        applicationOwnerId(),
-        request.params.requestId,
-      );
-      if (!interaction) {
-        return reply.code(404).send({ error: "Agent request not found." });
-      }
-      return reply.send(agentInteractionRequestWireSchema.parse(interaction));
-    },
-  );
-
-  app.post<{ Params: { requestId: string } }>(
-    "/api/agent-requests/:requestId/respond",
-    async (request, reply) => {
-      const input = agentInteractionResolutionWireCreateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const protectedInput =
-          "protectedResponse" in input.data ? input.data : null;
-        const visibleInput = "response" in input.data ? input.data : null;
-        const existing = protectedInput
-          ? await repository.validateEncryptedAgentInteractionResolution(
-              applicationOwnerId(),
-              request.params.requestId,
-              protectedInput,
-            )
-          : await repository.validateAgentInteractionResolution(
-              applicationOwnerId(),
-              request.params.requestId,
-              visibleInput!,
-            );
-        if (!existing) {
-          return reply.code(404).send({ error: "Agent request not found." });
-        }
-        if (existing.status !== "pending") {
-          const replay = protectedInput
-            ? await resolveLiveEncryptedAgentInteractionRequest(
-                applicationOwnerId(),
-                request.params.requestId,
-                protectedInput,
-              )
-            : await resolveLiveAgentInteractionRequest(
-                applicationOwnerId(),
-                request.params.requestId,
-                visibleInput!,
-              );
-          return reply.send(agentInteractionRequestWireSchema.parse(replay));
-        }
-        if (!existing.provenance.chatId) {
-          if (!protectedInput || !("protectedPayload" in existing)) {
-            return reply.code(409).send({
-              error:
-                "Protected workflow interactions require an encrypted response.",
-            });
-          }
-          if (
-            !existing.provenance.workflowRunId ||
-            !existing.provenance.workflowNodeId
-          ) {
-            return reply.code(409).send({
-              error: "The interaction has no active execution provenance.",
-            });
-          }
-          try {
-            await workflowExecutor.respondToEncryptedInteraction(
-              applicationOwnerId(),
-              existing,
-              {
-                classification: protectedInput.classification,
-                protectedResponse: protectedInput.protectedResponse,
-              },
-            );
-          } catch (error) {
-            return sendWorkerConflictFailure(
-              reply,
-              error,
-              `The workflow runtime no longer accepts this interaction: ${errorMessage(error)}`,
-            );
-          }
-          try {
-            const interaction =
-              await resolveLiveEncryptedAgentInteractionRequest(
-                applicationOwnerId(),
-                request.params.requestId,
-                protectedInput,
-              );
-            return reply.send(
-              agentInteractionRequestWireSchema.parse(interaction),
-            );
-          } finally {
-            workflowExecutor.finishInteractionResponse(existing.requestKey);
-          }
-        }
-        const context = await repository.getChatExecutionContext(
-          applicationOwnerId(),
-          existing.provenance.chatId,
-        );
-        if (
-          !context ||
-          context.workerId !== existing.provenance.workerId ||
-          context.executionLaneId !== existing.provenance.executionLaneId
-        ) {
-          return reply.code(409).send({
-            error: "The interaction execution lane is no longer active.",
-          });
-        }
-        if (!bridge.isConnected(context.workerId)) {
-          return reply.code(503).send({ error: "Project worker is offline." });
-        }
-        const runtime = await runtimeForContext(context);
-        if (!runtime) {
-          return reply
-            .code(409)
-            .send({ error: "Selected model was not found." });
-        }
-        try {
-          agentInteractionAcceptedSchema.parse(
-            await bridge.request(
-              context.workerId,
-              protectedInput
-                ? {
-                    type: "agent.interaction.respond.protected",
-                    executionProfile:
-                      context.contextKind === "standalone"
-                        ? "standalone-chat"
-                        : "ide",
-                    requestKey: existing.requestKey,
-                    response: {
-                      classification: protectedInput.classification,
-                      protectedResponse: protectedInput.protectedResponse,
-                    },
-                    model: runtime.model,
-                    provider: runtime.provider,
-                  }
-                : {
-                    type: "agent.interaction.respond",
-                    executionProfile:
-                      context.contextKind === "standalone"
-                        ? "standalone-chat"
-                        : "ide",
-                    requestKey: existing.requestKey,
-                    response: visibleInput!.response,
-                    model: runtime.model,
-                    provider: runtime.provider,
-                  },
-              { timeoutMs: 30_000 },
-            ),
-          );
-        } catch (error) {
-          return sendWorkerConflictFailure(
-            reply,
-            error,
-            `The runtime no longer accepts this interaction: ${errorMessage(error)}`,
-          );
-        }
-        const interaction = protectedInput
-          ? await resolveLiveEncryptedAgentInteractionRequest(
-              applicationOwnerId(),
-              request.params.requestId,
-              protectedInput,
-            )
-          : await resolveLiveAgentInteractionRequest(
-              applicationOwnerId(),
-              request.params.requestId,
-              visibleInput!,
-            );
-        return reply.send(agentInteractionRequestWireSchema.parse(interaction));
-      } catch (error) {
-        if (error instanceof WorkerUnavailableError) {
-          return reply.code(503).send({ error: error.message });
-        }
-        if (error instanceof AgentInteractionConflictError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
-    },
-  );
 
   const { prepareProviderAccountSignOut, resolveAccountAuthTarget } =
     installProviderAccountAuthRoutes(app, {
