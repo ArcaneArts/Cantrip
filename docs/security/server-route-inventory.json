@@ -4,6 +4,7 @@
     "agentOperations": "packages/protocol/src/index.ts",
     "applicationRoutes": [
       "cantrip_server/src/app.ts",
+      "cantrip_server/src/app/build-app.ts",
       "cantrip_server/src/app/http/audit.ts",
       "cantrip_server/src/app/http/auth-guard.ts",
       "cantrip_server/src/app/http/auth-route-support.ts",
