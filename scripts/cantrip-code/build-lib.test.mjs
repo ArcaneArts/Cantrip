@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   CODE_BUILD_SCHEMA_VERSION,
   codeEntrypoint,
-  createDistributionFileInventory,
   normalizeTarget,
 } from "./build-lib.mjs";
-import {
-  resealPackagedCantripCode,
-  verifyPackagedCantripCode,
-} from "./packaged-manifest.mjs";
+import { verifyPackagedCantripCode } from "./packaged-manifest.mjs";
 
 test("normalizes documented target aliases", () => {
   assert.deepEqual(normalizeTarget("macos-arm64"), {
@@ -37,53 +33,29 @@ test("chooses the packaged server entrypoint for each operating system", () => {
   );
 });
 
-test("distribution inventory is stable and detects executable files", async () => {
-  const directory = await import("node:fs/promises").then(({ mkdtemp }) =>
-    mkdtemp(path.join(os.tmpdir(), "cantrip-code-inventory-")),
-  );
-  try {
-    await mkdir(path.join(directory, "bin"));
-    await writeFile(path.join(directory, "plain.txt"), "plain");
-    await writeFile(path.join(directory, "bin", "cantrip-code"), "run", {
-      mode: 0o755,
-    });
-    const inventory = await createDistributionFileInventory(directory);
-    assert.deepEqual(
-      inventory.map((entry) => entry.path),
-      ["bin/cantrip-code", "plain.txt"],
-    );
-    assert.equal(inventory[0].executable, true);
-    assert.equal(inventory[1].executable, false);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test("reseals a packaged Code manifest after native signing changes files", async () => {
-  const directory = await import("node:fs/promises").then(({ mkdtemp }) =>
-    mkdtemp(path.join(os.tmpdir(), "cantrip-code-reseal-")),
+test("packaged Code validation ignores file additions and changes", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-code-package-"),
   );
   try {
     const nativeLibrary = path.join(directory, "native.dylib");
     await writeFile(nativeLibrary, "unsigned");
-    const files = await createDistributionFileInventory(directory);
     await writeFile(
       path.join(directory, "cantrip-code.manifest.json"),
       JSON.stringify({
         schemaVersion: 3,
         component: "cantrip-code",
         target: "darwin-arm64",
-        files,
       }),
     );
     await writeFile(nativeLibrary, "signed");
+    await writeFile(path.join(directory, "stale-but-harmless.txt"), "extra");
 
-    await assert.rejects(
-      verifyPackagedCantripCode(directory, "darwin-arm64"),
-      /do not match their integrity manifest/u,
-    );
-    await resealPackagedCantripCode(directory);
     await verifyPackagedCantripCode(directory, "darwin-arm64");
+    await assert.rejects(
+      verifyPackagedCantripCode(directory, "linux-x64"),
+      /expected linux-x64/u,
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

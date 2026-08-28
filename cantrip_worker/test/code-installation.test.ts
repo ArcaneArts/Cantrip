@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -35,9 +34,7 @@ async function createInstallation(
   const entrypoint = path.join(root, "bin", "cantrip-code");
   await writeFile(entrypoint, contents);
   await chmod(entrypoint, 0o755);
-  const bytes = Buffer.from(contents);
   const workbenchContents = `${JSON.stringify({ name: "cantrip-workbench", version: "0.1.0" })}\n`;
-  const workbenchBytes = Buffer.from(workbenchContents);
   await writeFile(
     path.join(root, "extensions", "cantrip-workbench", "package.json"),
     workbenchContents,
@@ -58,22 +55,6 @@ async function createInstallation(
         patchset: 1,
         cantripWorkbenchVersion: "0.1.0",
         entrypoint: "bin/cantrip-code",
-        files: [
-          {
-            path: "bin/cantrip-code",
-            type: "file",
-            size: bytes.length,
-            sha256: createHash("sha256").update(bytes).digest("hex"),
-            executable: true,
-          },
-          {
-            path: "extensions/cantrip-workbench/package.json",
-            type: "file",
-            size: workbenchBytes.length,
-            sha256: createHash("sha256").update(workbenchBytes).digest("hex"),
-            executable: false,
-          },
-        ],
       },
       null,
       2,
@@ -83,11 +64,9 @@ async function createInstallation(
 }
 
 describe("Cantrip Code installation discovery", () => {
-  it("accepts a complete target-matching immutable bundle", async () => {
+  it("accepts a complete target-matching bundle", async () => {
     const { root } = await createInstallation();
-    const installation = await verifyCantripCodeInstallation(root, {
-      full: true,
-    });
+    const installation = await verifyCantripCodeInstallation(root);
 
     expect(installation).toMatchObject({
       root,
@@ -109,13 +88,14 @@ describe("Cantrip Code installation discovery", () => {
     });
   });
 
-  it("rejects tampered and target-incompatible bundles", async () => {
+  it("allows file drift but rejects target-incompatible bundles", async () => {
     const { entrypoint, root } = await createInstallation();
     await writeFile(entrypoint, "#!/bin/sh\nexit 9\n");
+    await writeFile(path.join(root, "stale-but-harmless.txt"), "extra");
 
-    await expect(
-      verifyCantripCodeInstallation(root, { full: true }),
-    ).rejects.toThrow("does not match");
+    await expect(verifyCantripCodeInstallation(root)).resolves.toMatchObject({
+      root,
+    });
     await expect(
       verifyCantripCodeInstallation(root, {
         architecture: "definitely-not-this-architecture",
@@ -123,11 +103,21 @@ describe("Cantrip Code installation discovery", () => {
     ).rejects.toThrow("worker requires");
   });
 
-  it("rejects obsolete manifest schemas", async () => {
-    const { root } = await createInstallation(undefined, 2);
+  it("rejects a bundle only when a required runtime file is missing", async () => {
+    const { entrypoint, root } = await createInstallation();
+    await rm(entrypoint);
 
     await expect(verifyCantripCodeInstallation(root)).rejects.toThrow(
-      "Cantrip Code manifest is invalid",
+      "entrypoint is missing",
     );
+  });
+
+  it("accepts obsolete manifest schemas when runtime metadata is compatible", async () => {
+    const { root } = await createInstallation(undefined, 2);
+
+    await expect(verifyCantripCodeInstallation(root)).resolves.toMatchObject({
+      root,
+      manifest: { schemaVersion: 2 },
+    });
   });
 });

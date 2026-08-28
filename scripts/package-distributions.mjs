@@ -141,7 +141,7 @@ async function bundleCantripCode(workerDestination) {
   const identity = await getBuildIdentity(packageTarget);
   let manifest;
   try {
-    manifest = await verifyBuild(identity, { full: true });
+    manifest = await verifyBuild(identity);
   } catch {
     run(process.execPath, [
       path.join(root, "scripts", "cantrip-code", "build.mjs"),
@@ -149,7 +149,7 @@ async function bundleCantripCode(workerDestination) {
       packageTarget.id,
       "--force",
     ]);
-    manifest = await verifyBuild(identity, { full: true });
+    manifest = await verifyBuild(identity);
   }
   const destination = path.join(workerDestination, "resources", "cantrip-code");
   await rm(destination, { recursive: true, force: true });

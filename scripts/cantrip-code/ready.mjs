@@ -9,7 +9,7 @@ import { parseArgs } from "./lib.mjs";
 const args = parseArgs(process.argv.slice(2));
 const target = normalizeTarget(args.optional("target"));
 const identity = await getBuildIdentity(target);
-await verifyBuild(identity, { full: args.flag("full") });
+await verifyBuild(identity);
 if (args.flag("json")) {
   console.log(
     JSON.stringify({
