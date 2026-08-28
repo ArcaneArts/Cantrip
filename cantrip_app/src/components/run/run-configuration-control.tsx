@@ -530,7 +530,11 @@ export function RunConfigurationControl({
                           </button>
                         </DropdownMenu.Trigger>
                         <DropdownMenu.Portal>
-                          <StyledDropdownMenuContent align="end" sideOffset={4}>
+                          <StyledDropdownMenuContent
+                            align="end"
+                            className="z-[70]"
+                            sideOffset={4}
+                          >
                             <StyledDropdownMenuItem
                               disabled={
                                 !item.targets.some(
