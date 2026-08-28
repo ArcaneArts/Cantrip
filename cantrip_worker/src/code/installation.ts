@@ -1,13 +1,12 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
-import { lstat, readdir, readFile, readlink, realpath } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { CodeCapabilities, CodeEditorBuild } from "@cantrip/protocol";
 
 export interface CantripCodeManifest {
-  schemaVersion: 3;
+  schemaVersion: number;
   component: "cantrip-code";
   version: string;
   target: string;
@@ -19,16 +18,6 @@ export interface CantripCodeManifest {
   patchset: number;
   cantripWorkbenchVersion: string;
   entrypoint: string;
-  files: Array<
-    | {
-        path: string;
-        type: "file";
-        size: number;
-        sha256: string;
-        executable: boolean;
-      }
-    | { path: string; type: "symlink"; target: string }
-  >;
 }
 
 export interface CantripCodeInstallation {
@@ -49,7 +38,6 @@ export interface DiscoverCantripCodeOptions {
   architecture?: string;
   platform?: NodeJS.Platform;
   rootOverride?: string;
-  verifyFull?: boolean;
   workerRoot?: string;
 }
 
@@ -73,95 +61,53 @@ function isSafeRelative(candidate: unknown): candidate is string {
 function parseManifest(value: unknown): CantripCodeManifest {
   const candidate = value as Partial<CantripCodeManifest>;
   if (
-    candidate.schemaVersion !== 3 ||
     candidate.component !== "cantrip-code" ||
-    typeof candidate.version !== "string" ||
-    candidate.version.length === 0 ||
     typeof candidate.target !== "string" ||
+    candidate.target.length === 0 ||
     typeof candidate.platform !== "string" ||
+    candidate.platform.length === 0 ||
     typeof candidate.arch !== "string" ||
-    !/^[0-9a-f]{64}$/u.test(candidate.fingerprint ?? "") ||
-    !/^[0-9a-f]{40}$/u.test(candidate.openvscodeServerCommit ?? "") ||
-    !/^[0-9a-f]{40}$/u.test(candidate.vscodeCommit ?? "") ||
-    !Number.isInteger(candidate.patchset) ||
-    (candidate.patchset ?? -1) < 0 ||
+    candidate.arch.length === 0 ||
     typeof candidate.cantripWorkbenchVersion !== "string" ||
     candidate.cantripWorkbenchVersion.length === 0 ||
-    !isSafeRelative(candidate.entrypoint) ||
-    !Array.isArray(candidate.files) ||
-    candidate.files.length === 0
+    !isSafeRelative(candidate.entrypoint)
   ) {
     throw new Error("Cantrip Code manifest is invalid.");
   }
-  const paths = new Set<string>();
-  for (const item of candidate.files) {
-    if (!isSafeRelative(item?.path) || paths.has(item.path)) {
-      throw new Error("Cantrip Code manifest contains an invalid file path.");
-    }
-    paths.add(item.path);
-    if (item.type === "file") {
-      if (
-        !Number.isSafeInteger(item.size) ||
-        item.size < 0 ||
-        !/^[0-9a-f]{64}$/u.test(item.sha256) ||
-        typeof item.executable !== "boolean"
-      ) {
-        throw new Error("Cantrip Code manifest contains an invalid file.");
-      }
-    } else if (item.type === "symlink") {
-      if (typeof item.target !== "string" || item.target.length === 0) {
-        throw new Error("Cantrip Code manifest contains an invalid symlink.");
-      }
-    } else {
-      throw new Error("Cantrip Code manifest contains an unknown entry type.");
-    }
-  }
-  if (!paths.has(candidate.entrypoint)) {
-    throw new Error("Cantrip Code manifest does not contain its entrypoint.");
-  }
-  if (!paths.has(WORKBENCH_PACKAGE)) {
-    throw new Error(
-      "Cantrip Code manifest does not contain cantrip-workbench.",
-    );
-  }
-  return candidate as CantripCodeManifest;
-}
-
-async function sha256File(file: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest("hex");
-}
-
-async function listBundleEntries(
-  root: string,
-  current = root,
-): Promise<string[]> {
-  const entries: string[] = [];
-  for (const entry of await readdir(current, { withFileTypes: true })) {
-    const absolute = path.join(current, entry.name);
-    const relative = path.relative(root, absolute).split(path.sep).join("/");
-    if (relative === MANIFEST_NAME) continue;
-    if (entry.isDirectory()) {
-      entries.push(...(await listBundleEntries(root, absolute)));
-    } else {
-      entries.push(relative);
-    }
-  }
-  return entries.sort();
-}
-
-function constantTimeEqual(left: string, right: string): boolean {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-  return a.length === b.length && timingSafeEqual(a, b);
+  return {
+    schemaVersion: Number.isSafeInteger(candidate.schemaVersion)
+      ? candidate.schemaVersion!
+      : 0,
+    component: "cantrip-code",
+    version:
+      typeof candidate.version === "string" && candidate.version.length > 0
+        ? candidate.version
+        : "unknown",
+    target: candidate.target,
+    platform: candidate.platform,
+    arch: candidate.arch,
+    fingerprint:
+      typeof candidate.fingerprint === "string" ? candidate.fingerprint : "",
+    openvscodeServerCommit:
+      typeof candidate.openvscodeServerCommit === "string"
+        ? candidate.openvscodeServerCommit
+        : "",
+    vscodeCommit:
+      typeof candidate.vscodeCommit === "string" ? candidate.vscodeCommit : "",
+    patchset:
+      Number.isSafeInteger(candidate.patchset) &&
+      (candidate.patchset ?? -1) >= 0
+        ? candidate.patchset!
+        : 0,
+    cantripWorkbenchVersion: candidate.cantripWorkbenchVersion,
+    entrypoint: candidate.entrypoint,
+  };
 }
 
 export async function verifyCantripCodeInstallation(
   root: string,
   options: {
     architecture?: string;
-    full?: boolean;
     manifestPath?: string;
     platform?: NodeJS.Platform;
     source?: CantripCodeInstallation["source"];
@@ -188,7 +134,7 @@ export async function verifyCantripCodeInstallation(
   }
   const entrypoint = path.resolve(root, manifest.entrypoint);
   if (!entrypoint.startsWith(`${path.resolve(root)}${path.sep}`)) {
-    throw new Error("Cantrip Code entrypoint escapes its immutable bundle.");
+    throw new Error("Cantrip Code entrypoint escapes its bundle.");
   }
   if (!existsSync(entrypoint)) {
     throw new Error(
@@ -214,62 +160,7 @@ export async function verifyCantripCodeInstallation(
   }
   const resolvedEntrypoint = await realpath(entrypoint);
   if (!resolvedEntrypoint.startsWith(`${await realpath(root)}${path.sep}`)) {
-    throw new Error(
-      "Cantrip Code entrypoint resolves outside its immutable bundle.",
-    );
-  }
-  if (options.full) {
-    const expectedEntries = manifest.files.map((item) => item.path).sort();
-    const actualEntries = await listBundleEntries(root);
-    if (JSON.stringify(actualEntries) !== JSON.stringify(expectedEntries)) {
-      throw new Error(
-        "Cantrip Code bundle inventory does not match its manifest.",
-      );
-    }
-    for (const item of manifest.files) {
-      const absolute = path.resolve(root, item.path);
-      if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`)) {
-        throw new Error(`Cantrip Code file escapes its bundle: ${item.path}`);
-      }
-      const stat = await lstat(absolute);
-      if (item.type === "symlink") {
-        const resolvedTarget = path.resolve(
-          path.dirname(absolute),
-          item.target,
-        );
-        if (!resolvedTarget.startsWith(`${path.resolve(root)}${path.sep}`)) {
-          throw new Error(
-            `Cantrip Code symlink escapes its bundle: ${item.path}`,
-          );
-        }
-        if (
-          !stat.isSymbolicLink() ||
-          (await readlink(absolute)) !== item.target ||
-          !(await realpath(absolute)).startsWith(
-            `${await realpath(root)}${path.sep}`,
-          )
-        ) {
-          throw new Error(`Cantrip Code symlink does not match: ${item.path}`);
-        }
-        continue;
-      }
-      if (!stat.isFile() || stat.size !== item.size) {
-        throw new Error(`Cantrip Code file does not match: ${item.path}`);
-      }
-      if (
-        item.executable &&
-        process.platform !== "win32" &&
-        (stat.mode & 0o111) === 0
-      ) {
-        throw new Error(
-          `Cantrip Code executable is not executable: ${item.path}`,
-        );
-      }
-      const actual = await sha256File(absolute);
-      if (!constantTimeEqual(actual, item.sha256)) {
-        throw new Error(`Cantrip Code file hash does not match: ${item.path}`);
-      }
-    }
+    throw new Error("Cantrip Code entrypoint resolves outside its bundle.");
   }
   return {
     root,
@@ -339,7 +230,6 @@ export async function discoverCantripCode(
   const workerRoot = options.workerRoot ?? defaultWorkerRoot();
   const override = options.rootOverride ?? process.env.CANTRIP_CODE_ROOT;
   const candidates: Array<{
-    full: boolean;
     manifestPath?: string;
     root: string;
     source: CantripCodeInstallation["source"];
@@ -348,20 +238,17 @@ export async function discoverCantripCode(
     candidates.push({
       root: path.resolve(override),
       source: "override",
-      full: true,
     });
   }
   candidates.push({
     root: path.join(workerRoot, "resources", "cantrip-code"),
     source: "bundle",
-    full: options.verifyFull ?? true,
   });
   const workspaceRoot = await workspaceBuildRoot(workerRoot);
   if (workspaceRoot) {
     candidates.push({
       ...workspaceRoot,
       source: "workspace",
-      full: false,
     });
   }
 
@@ -378,7 +265,6 @@ export async function discoverCantripCode(
     try {
       const installation = await verifyCantripCodeInstallation(candidate.root, {
         architecture: options.architecture,
-        full: candidate.full,
         manifestPath: candidate.manifestPath,
         platform: options.platform,
         source: candidate.source,

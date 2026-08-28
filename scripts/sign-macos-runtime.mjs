@@ -4,8 +4,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { resealPackagedCantripCode } from "./cantrip-code/packaged-manifest.mjs";
-
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -94,13 +92,6 @@ export async function signMacosRuntime({
     arguments_.push(binary);
     run(arguments_);
   }
-  const codeBundle = path.join(
-    directory,
-    "worker",
-    "resources",
-    "cantrip-code",
-  );
-  await resealPackagedCantripCode(codeBundle);
   return binaries;
 }
 

@@ -49,7 +49,7 @@ const identity = await getBuildIdentity(target);
 
 if (!args.flag("force")) {
   try {
-    await verifyBuild(identity, { full: false });
+    await verifyBuild(identity);
     console.log(
       `Reusing Cantrip Code ${target.id} build ${identity.fingerprint.slice(0, 12)}`,
     );
@@ -196,10 +196,9 @@ try {
   await rm(identity.cacheDirectory, { recursive: true, force: true });
   await mkdir(path.dirname(identity.cacheDirectory), { recursive: true });
   await rename(stagedCache, identity.cacheDirectory);
-  await verifyBuild(identity, { full: true });
+  await verifyBuild(identity);
   console.log(
-    `Built Cantrip Code ${target.id} ${identity.fingerprint.slice(0, 12)} ` +
-      `(${manifest.files.length} files)`,
+    `Built Cantrip Code ${target.id} ${identity.fingerprint.slice(0, 12)}`,
   );
 } finally {
   if (!args.flag("keep-prepared")) {

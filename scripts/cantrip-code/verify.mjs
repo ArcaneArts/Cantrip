@@ -13,8 +13,8 @@ await run(process.execPath, [
 ]);
 const target = normalizeTarget(args.optional("target"));
 const identity = await getBuildIdentity(target);
-const manifest = await verifyBuild(identity, { full: true });
+const manifest = await verifyBuild(identity);
 console.log(
   `Verified Cantrip Code ${manifest.version} ${target.id} ` +
-    `${manifest.fingerprint.slice(0, 12)} (${manifest.files.length} files)`,
+    manifest.fingerprint.slice(0, 12),
 );

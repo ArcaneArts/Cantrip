@@ -26,7 +26,7 @@ for (let index = 0; index < commandArguments.length; index += 1) {
 }
 const target = normalizeTarget(targetValue);
 const identity = await getBuildIdentity(target);
-await verifyBuild(identity, { full: false });
+await verifyBuild(identity);
 
 const state = path.join(codeCacheRoot, "dev-state");
 await mkdir(path.join(state, "user-data"), { recursive: true });

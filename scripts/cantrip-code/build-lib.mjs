@@ -8,7 +8,6 @@ import {
   extensionsRoot,
   patchesRoot,
   readJson,
-  sha256File,
   upstreamConfigPath,
   upstreamFilesPath,
   walkFiles,
@@ -132,42 +131,10 @@ export function codeEntrypoint(target, distributionDirectory) {
   );
 }
 
-export async function createDistributionFileInventory(
-  directory,
-  { exclude = [] } = {},
-) {
-  const excludedPaths = new Set(exclude);
-  const files = [];
-  for (const relative of await walkFiles(directory)) {
-    if (excludedPaths.has(relative)) continue;
-    const absolute = path.join(directory, relative);
-    const details = await lstat(absolute);
-    files.push(
-      details.isSymbolicLink()
-        ? {
-            path: relative,
-            type: "symlink",
-            target: await readlink(absolute),
-          }
-        : {
-            path: relative,
-            type: "file",
-            size: details.size,
-            sha256: await sha256File(absolute),
-            executable: (details.mode & 0o111) !== 0,
-          },
-    );
-  }
-  return files;
-}
-
 export async function createBuildManifest(identity) {
   const upstream = await readJson(upstreamConfigPath);
   const workbench = await readJson(
     path.join(extensionsRoot, "cantrip-workbench", "package.json"),
-  );
-  const files = await createDistributionFileInventory(
-    identity.distributionDirectory,
   );
   return {
     schemaVersion: CODE_BUILD_SCHEMA_VERSION,
@@ -188,11 +155,10 @@ export async function createBuildManifest(identity) {
       )
       .split(path.sep)
       .join("/"),
-    files,
   };
 }
 
-export async function verifyBuild(identity, options = {}) {
+export async function verifyBuild(identity) {
   if (!(await exists(identity.manifestPath))) {
     throw new Error(
       `Cantrip Code ${identity.target.id} build is missing or stale. Run pnpm code:build.`,
@@ -239,16 +205,6 @@ export async function verifyBuild(identity, options = {}) {
     throw new Error(
       "Cantrip Code contains an incompatible cantrip-workbench extension. Run pnpm code:build.",
     );
-  }
-  if (options.full) {
-    const actual = await createDistributionFileInventory(
-      identity.distributionDirectory,
-    );
-    if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) {
-      throw new Error(
-        `Cantrip Code ${identity.target.id} build contents do not match its manifest. Run pnpm code:build.`,
-      );
-    }
   }
   return manifest;
 }

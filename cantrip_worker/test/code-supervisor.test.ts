@@ -198,9 +198,7 @@ async function fixture(options: FixtureOptions = {}) {
   const entrypoint = path.join(bundle, "bin", "cantrip-code.cjs");
   await writeFile(entrypoint, source);
   await chmod(entrypoint, 0o755);
-  const bytes = Buffer.from(source);
   const workbenchContents = `${JSON.stringify({ name: "cantrip-workbench", version: "0.1.0" })}\n`;
-  const workbenchBytes = Buffer.from(workbenchContents);
   await writeFile(
     path.join(bundle, "extensions", "cantrip-workbench", "package.json"),
     workbenchContents,
@@ -220,27 +218,9 @@ async function fixture(options: FixtureOptions = {}) {
       patchset: 1,
       cantripWorkbenchVersion: "0.1.0",
       entrypoint: "bin/cantrip-code.cjs",
-      files: [
-        {
-          path: "bin/cantrip-code.cjs",
-          type: "file",
-          size: bytes.length,
-          sha256: createHash("sha256").update(bytes).digest("hex"),
-          executable: true,
-        },
-        {
-          path: "extensions/cantrip-workbench/package.json",
-          type: "file",
-          size: workbenchBytes.length,
-          sha256: createHash("sha256").update(workbenchBytes).digest("hex"),
-          executable: false,
-        },
-      ],
     }),
   );
-  const installation = await verifyCantripCodeInstallation(bundle, {
-    full: true,
-  });
+  const installation = await verifyCantripCodeInstallation(bundle);
   const capabilities = {
     available: true as const,
     version: installation.editorBuild.version,

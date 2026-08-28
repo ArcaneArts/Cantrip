@@ -241,13 +241,13 @@ This guard does not change packaged builds or ordinary non-local debug launches.
 
 The implemented cache lives under ignored `.cantrip-code/cache/builds/`, shared
 through Git's common repository directory so sequential worktrees reuse the
-same immutable artifact. `CANTRIP_CODE_CACHE_DIR` may override the shared state
+same artifact. `CANTRIP_CODE_CACHE_DIR` may override the shared state
 root. The cache is keyed by the pinned source manifest, product overrides,
 ordered patch series, bundled extension tree, build schema, platform, and
-architecture. Each cached distribution has a complete file inventory with
-sizes, executable flags, and SHA-256 hashes. Development startup checks
-identity and its entrypoint; release packaging and `code:verify` validate the
-complete inventory.
+architecture. Its lightweight manifest records build identity, target,
+entrypoint, and workbench compatibility metadata. Startup and packaging reject
+only conditions that prevent the editor from running correctly; they do not
+inventory or hash the distribution's files.
 
 `pnpm code:dev` may run the editor-specific watch workflow when actively
 developing the fork. Clean CI and release builds always compile from the pinned
@@ -548,7 +548,7 @@ communicates with the worker over an authenticated local socket and is the
 preferred location for Cantrip-specific behavior.
 
 The worker compatibility manifest records the bundled extension version and
-the complete editor inventory. Worker startup verifies that the matching
+editor build metadata. Worker startup verifies that the matching
 `extensions/cantrip-workbench/package.json` is present before an editor may
 launch. The extension bridge accepts only its per-session token on a random
 loopback listener and bounds incoming messages.
@@ -871,7 +871,7 @@ parent disappears, including abrupt supervisor or desktop-shell termination.
 ### Phase 4: packaging and supported targets
 
 - Compile Cantrip Code as part of each worker target build.
-- Embed and verify the editor manifest in worker artifacts.
+- Embed and read the editor compatibility manifest in worker artifacts.
 - Exercise macOS, Linux, and Windows targets and supported architectures.
 - Integrate editor compatibility into worker updates and rollback design.
 
