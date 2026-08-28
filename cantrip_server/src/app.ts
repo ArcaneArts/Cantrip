@@ -632,6 +632,7 @@ import {
 } from "./app/routes/explorer-runtime.js";
 import { installExplorerProtectedCodeAttachmentRoute } from "./app/routes/explorer-protected-code-attachments.js";
 import { installSharedCodeSessionAttachmentRoutes } from "./app/routes/shared-code-session-attachments.js";
+import { installWorkerLinkObservationGrantRoute } from "./app/routes/worker-link-observation-grants.js";
 import { installRemoteDesktopReadRoutes } from "./app/routes/remote-desktop-read.js";
 import { installRemoteDesktopManagementRoutes } from "./app/routes/remote-desktop-management.js";
 import { installRemoteSurfaceManagementRoutes } from "./app/routes/remote-surface-management.js";
@@ -722,7 +723,6 @@ import {
   workerLinkDirectActivationSchema,
   workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
-  workerLinkObservationGrantRequestSchema,
   workerLinkPeerMailboxReadRequestSchema,
   workerLinkPeerMailboxSchema,
   workerLinkPeerSessionOpenRequestSchema,
@@ -20024,60 +20024,11 @@ export async function buildApp({
     serverId,
   });
 
-  app.post<{ Params: { sessionId: string } }>(
-    "/api/worker-links/:sessionId/observations/grant",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const input = workerLinkObservationGrantRequestSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const principal = authenticatedPrincipal(request);
-      const accountSessionId =
-        principal.sessionId ?? `local:${principal.user.id}`;
-      const session = await workerLinks.sessionForAuthorization(
-        request.params.sessionId,
-        { accountSessionId, ownerId: principal.user.id },
-      );
-      if (!session) {
-        return reply.code(404).send({ error: "WorkerLink session not found." });
-      }
-      const worker = await repository.getWorker(
-        principal.user.id,
-        session.identity.workerId,
-      );
-      if (!worker) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      if (!bridge.isConnected(session.identity.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      const subscriptionId = randomUUID();
-      try {
-        const grant = await workerLinks.issueGrant({
-          attachmentId: subscriptionId,
-          lanes: ["events"],
-          maxChannels: 1,
-          observation: {
-            subscriptionId,
-            topics: input.data.topics,
-          },
-          operations: ["events:subscribe"],
-          resourceId: session.identity.workerId,
-          resourceKind: "observations",
-          sessionId: session.sessionId,
-        });
-        return reply.code(201).send(workerLinkResourceGrantSchema.parse(grant));
-      } catch (error) {
-        if (error instanceof WorkerLinkUnavailableError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+  installWorkerLinkObservationGrantRoute(app, {
+    bridge,
+    repository,
+    workerLinks,
+  });
 
   app.post<{ Params: { sessionId: string; attachmentId: string } }>(
     "/api/worker-links/:sessionId/tunnel-attachments/:attachmentId/grant",
