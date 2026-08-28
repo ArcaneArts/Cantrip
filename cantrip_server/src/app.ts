@@ -40,8 +40,6 @@ import {
 } from "./code/tunnel.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import { requireProjectCapability } from "./projects/capabilities.js";
-import { TunnelRuntimeManager } from "./tunnels/runtime.js";
-import { TunnelStreamBroker } from "./tunnels/broker.js";
 import {
   SurfacePrivateStateConflictError,
   LOCAL_USER_ID,
@@ -228,7 +226,6 @@ import { encodedFrameBytes } from "./account-usage/frame-bandwidth.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
 import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
 import { MeteredWorkerCommandBus } from "./workers/metered-command-bus.js";
-import { DirectAttachmentCoordinator } from "./direct-attachments/coordinator.js";
 import { WorkerLinkCoordinator } from "./worker-links/coordinator.js";
 import { WorkerLinkRelay } from "./worker-links/relay.js";
 import { WorkerLinkService } from "./worker-links/service.js";
@@ -249,6 +246,7 @@ import { createChatRecoveryRuntime } from "./app/runtime/chat-recovery-runtime.j
 import { createChatThreadSyncRuntime } from "./app/runtime/chat-thread-sync-runtime.js";
 import { createChatTurnRuntime } from "./app/runtime/chat-turn-runtime.js";
 import { createCliOperationRuntime } from "./app/runtime/cli-operation-runtime.js";
+import { createDirectAttachmentRuntime } from "./app/runtime/direct-attachment-runtime.js";
 import { createLiveInfrastructureRuntime } from "./app/runtime/live-infrastructure-runtime.js";
 import { createLiveMutationRuntime } from "./app/runtime/live-mutation-runtime.js";
 import { createInteractiveSurfaceRuntime } from "./app/runtime/interactive-surface-runtime.js";
@@ -261,6 +259,7 @@ import {
 } from "./app/runtime/run-configuration-runtime.js";
 import { installSettingsRouteRuntime } from "./app/runtime/settings-routes.js";
 import { installTaskRouteRuntime } from "./app/runtime/task-routes.js";
+import { createTunnelControlPlaneRuntime } from "./app/runtime/tunnel-control-plane-runtime.js";
 import { createWorkerNotificationRuntime } from "./app/runtime/worker-notification-runtime.js";
 import { createWorkerObservationPublicationRuntime } from "./app/runtime/worker-observation-publication-runtime.js";
 import { createWorkflowSchedulingRuntime } from "./app/runtime/workflow-scheduling-runtime.js";
@@ -268,7 +267,6 @@ import {
   AGENT_INTERACTION_EXPIRY_SWEEP_MS,
   ATTACHMENT_CHUNK_BYTES,
   FINITE_WORKER_COMMAND_TIMEOUT_MS,
-  TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS,
   WORKFLOW_GATE_EXPIRY_SWEEP_MS,
 } from "./app/shared/constants.js";
 import { ProviderAccountReconnectRequiredError } from "./app/shared/errors.js";
@@ -401,42 +399,11 @@ export async function buildApp({
       logger: app.log,
     },
   );
-  let publishDirectTunnelLeaseChange: (change: {
-    attachmentId: string;
-    ownerId: string;
-    projectId: string | null;
-    tunnelId: string;
-  }) => void = () => undefined;
-  const directAttachments = new DirectAttachmentCoordinator(
+  const directAttachmentRuntime = createDirectAttachmentRuntime({
     bridge,
-    serverLogger,
-    {
-      onLeaseFinalized: async (event) => {
-        if (event.mode !== "direct-tunnel" || event.resourceKind !== "tunnel") {
-          return;
-        }
-        const changed = await repository.finalizeDesktopTunnelDirectLease(
-          event.ownerId,
-          event.attachmentId,
-          event.capabilityId,
-          new Date(event.leaseExpiresAt),
-        );
-        if (changed) publishDirectTunnelLeaseChange(changed);
-      },
-      onLeaseRenewed: async (event) => {
-        if (event.mode !== "direct-tunnel" || event.resourceKind !== "tunnel") {
-          return;
-        }
-        const changed = await repository.renewDesktopTunnelDirectLease(
-          event.ownerId,
-          event.attachmentId,
-          event.capabilityId,
-          new Date(event.leaseExpiresAt),
-        );
-        if (changed) publishDirectTunnelLeaseChange(changed);
-      },
-    },
-  );
+    repository,
+  });
+  const { directAttachments } = directAttachmentRuntime;
   const revokedWorkerCredentialIds = new Set<string>();
   const codeTunnel = providedCodeTunnel ?? new CodeTunnelBroker(bridge);
   const projectShareTunnel =
@@ -478,107 +445,22 @@ export async function buildApp({
     taskLiveInvalidationRouter,
     usageHistoryMaintenance,
   } = liveInfrastructureRuntime;
-  const publishTunnelRuntimeChange = (change: {
-    attachmentId: string;
-    ownerId: string;
-    projectId: string | null;
-    tunnelId: string;
-  }): void => {
-    runAsOwner(change.ownerId, () => {
-      publishLiveInvalidation("tunnel", {
-        entityId: change.tunnelId,
-        projectId: change.projectId,
-      });
-    });
-  };
-  publishDirectTunnelLeaseChange = publishTunnelRuntimeChange;
-  const tunnelStreamBroker = new TunnelStreamBroker({
-    consumeRelayBytes: (ownerId, workerId, bytes) =>
-      relayQuotas.consumeRelay(ownerId, workerId, bytes),
-    onActivity: (tunnelId, attachmentId, authoritativeRootRequired) =>
-      !authoritativeRootRequired ||
-      codeTunnel.allowRelayAttachmentActivity(attachmentId, tunnelId),
-  });
-  const tunnelRuntime = new TunnelRuntimeManager(
-    repository,
-    bridge,
-    publishTunnelRuntimeChange,
-    tunnelStreamBroker,
+  const tunnelControlPlaneRuntime = createTunnelControlPlaneRuntime({
     accountUsageMeter,
-  );
-  projectShareTunnel.configureControlPlane(
+    app,
+    bridge,
+    codeTunnel,
+    directAttachments,
+    projectShareTunnel,
+    publishLiveInvalidation,
+    relayQuotas,
     repository,
-    tunnelStreamBroker,
-    publishTunnelRuntimeChange,
-  );
-  const revokeManagedFileShare = async (
-    ownerId: string,
-    managedResourceId: string,
-  ): Promise<boolean> => {
-    const tunnel = await repository.getManagedTunnel(ownerId, {
-      kind: "project-share",
-      id: managedResourceId,
-    });
-    if (!tunnel) return false;
-    return directAttachments.mutateResource(
-      ownerId,
-      "tunnel",
-      tunnel.id,
-      async () => {
-        await Promise.all(
-          tunnel.attachments.map(({ id }) =>
-            tunnelRuntime.revoke(ownerId, id, {
-              preserveTunnelState: true,
-            }),
-          ),
-        );
-        return projectShareTunnel.revokeManagedResource(
-          managedResourceId,
-          ownerId,
-        );
-      },
-    );
-  };
-  codeTunnel.configureControlPlane(
-    repository,
-    publishTunnelRuntimeChange,
-    async (ownerId, tunnelId, reason, code) => {
-      tunnelRuntime.closeTunnel(tunnelId, reason, code);
-      await directAttachments.revokeResource(ownerId, "tunnel", tunnelId);
-    },
-  );
-  const tunnelAttachmentExpiryTimer = setInterval(() => {
-    void repository
-      .expireDesktopTunnelDirectLeases()
-      .then((expired) => {
-        for (const attachment of expired) {
-          publishTunnelRuntimeChange(attachment);
-        }
-      })
-      .catch((error) => {
-        app.log.error(
-          { err: error },
-          "Could not expire direct tunnel attachment leases",
-        );
-      });
-    void repository
-      .expireDesktopTunnelAttachments()
-      .then((expired) => {
-        for (const attachment of expired) {
-          codeTunnel.releaseRelayAttachment(attachment.attachmentId);
-          tunnelRuntime.closeActive(
-            attachment.attachmentId,
-            "Attachment expired",
-            1008,
-          );
-          publishTunnelRuntimeChange(attachment);
-        }
-      })
-      .catch((error) => {
-        app.log.error({ err: error }, "Could not expire tunnel attachments");
-      });
-  }, TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS);
-  tunnelAttachmentExpiryTimer.unref();
+    runAsOwner,
+    setPublishDirectTunnelLeaseChange:
+      directAttachmentRuntime.setPublishDirectTunnelLeaseChange,
+  });
+  const { publishTunnelRuntimeChange, revokeManagedFileShare, tunnelRuntime } =
+    tunnelControlPlaneRuntime;
   const chatTurnOutcomeRecoveryScheduler =
     new ChatTurnOutcomeRecoveryScheduler();
   const chatThreadChangeReconciler = new ChatThreadChangeReconciler(
@@ -2239,7 +2121,7 @@ export async function buildApp({
   app.addHook("onClose", async () => {
     liveInfrastructureRuntime.stopPublishing();
     sessionSocketRuntime.stopValidation();
-    clearInterval(tunnelAttachmentExpiryTimer);
+    tunnelControlPlaneRuntime.stopExpirySweep();
     closeSessionSockets(() => true, "Server is shutting down");
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
