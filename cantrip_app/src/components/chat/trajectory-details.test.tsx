@@ -108,6 +108,37 @@ describe("TrajectoryDetails", () => {
     expect(markup).toContain("A <strong>stable</strong> preview");
   });
 
+  it("renders file changes as syntax-highlighted diff previews", () => {
+    const previewEvent = event();
+    previewEvent.activity = {
+      type: "fileChange",
+      id: "files-1",
+      status: "running",
+      changes: [
+        {
+          path: "src/preview.ts",
+          kind: "update",
+          latestLine: "const current = true;",
+          diffPreview: "-const current = false;\n+const current = true;",
+        },
+      ],
+    };
+    previewEvent.kind = "fileChange";
+
+    const markup = renderToStaticMarkup(
+      <TrajectoryDetails
+        event={previewEvent}
+        initialTab="preview"
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain('data-slot="file-change-preview"');
+    expect(markup).toContain('data-language="typescript"');
+    expect(markup).toContain('class="token boolean"');
+    expect(markup).toContain(">true</span>");
+  });
+
   it("keeps the bounded protected envelope in Raw", () => {
     const markup = renderToStaticMarkup(
       <TrajectoryDetails

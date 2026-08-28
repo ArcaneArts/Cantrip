@@ -7871,6 +7871,11 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
           .max(agentFilePreviewLimitCharacters)
           .nullable()
           .optional(),
+        diffPreview: z
+          .string()
+          .max(agentFilePreviewLimitCharacters)
+          .nullable()
+          .optional(),
         lastActivityAtMs: agentActivityTimestampSchema.optional(),
       }),
     ),

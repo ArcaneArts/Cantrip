@@ -5,6 +5,7 @@ import {
   agentActivityRawRequestLimitBytes,
   agentActivityRawResponseLimitBytes,
   agentActivitySchema,
+  agentFilePreviewLimitCharacters,
   agentTurnResultSchema,
   agentInteractionRequestQuerySchema,
   agentInteractionRequestSchema,
@@ -4240,6 +4241,8 @@ describe("Cantrip protocol", () => {
             path: "src/path with spaces.ts",
             kind: "update",
             latestLine: "export const ready = true;",
+            diffPreview:
+              "-export const ready = false;\n+export const ready = true;",
             lastActivityAtMs: 2_000,
           },
         ],
@@ -4249,9 +4252,25 @@ describe("Cantrip protocol", () => {
         {
           path: "src/path with spaces.ts",
           latestLine: "export const ready = true;",
+          diffPreview:
+            "-export const ready = false;\n+export const ready = true;",
         },
       ],
     });
+    expect(
+      agentActivitySchema.safeParse({
+        type: "fileChange",
+        id: "files-2",
+        status: "running",
+        changes: [
+          {
+            path: "src/oversized.ts",
+            kind: "update",
+            diffPreview: "x".repeat(agentFilePreviewLimitCharacters + 1),
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("validates CLI results and bounded terminal snapshots", () => {

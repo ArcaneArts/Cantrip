@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 
 import { Markdown } from "./markdown";
+import { FileChangePreview } from "./file-change-preview";
 import {
   trajectoryKindLabel,
   trajectoryLaneLabel,
@@ -298,6 +299,13 @@ const PreviewContent = memo(function PreviewContent({
 
 function Preview({ event }: { event: TrajectoryEvent }) {
   const activity = event.activity;
+  if (activity?.type === "fileChange") {
+    return (
+      <div className="p-3">
+        <FileChangePreview changes={activity.changes} />
+      </div>
+    );
+  }
   const command = activity?.type === "command";
   return (
     <PreviewContent

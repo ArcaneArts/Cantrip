@@ -25,10 +25,10 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 import { displayCommand } from "./command-display";
+import { FileChangePreview } from "./file-change-preview";
 import { Markdown } from "./markdown";
 import { formatElapsedTime } from "./timeline";
 
@@ -54,12 +54,6 @@ function ActivityState({ activity }: { activity: AgentActivity }) {
     return <Check className="size-3.5 text-emerald-600" />;
   }
   return <CircleX className="size-3.5 text-destructive" />;
-}
-
-function changeLabel(kind: "add" | "delete" | "update") {
-  if (kind === "add") return "Added";
-  if (kind === "delete") return "Deleted";
-  return "Updated";
 }
 
 function formatDuration(durationMs: number | null | undefined) {
@@ -580,29 +574,7 @@ export function Activity({ activity }: { activity: AgentActivity }) {
           </span>
           <ActivityState activity={activity} />
         </div>
-        {activity.changes.length > 0 ? (
-          <ul className="mt-2 space-y-1.5">
-            {activity.changes.map((change) => (
-              <li
-                key={`${change.kind}:${change.path}`}
-                className="flex min-w-0 items-center gap-2 text-xs"
-              >
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "h-5 shrink-0 px-1.5 text-[10px] font-normal",
-                    change.kind === "delete" && "text-destructive",
-                  )}
-                >
-                  {changeLabel(change.kind)}
-                </Badge>
-                <code className="min-w-0 break-all font-mono text-muted-foreground">
-                  {change.path}
-                </code>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <FileChangePreview changes={activity.changes} className="mt-2" />
         <div className="mt-1 pl-6">
           <CorrelationDetails activity={activity} />
         </div>
@@ -817,6 +789,9 @@ export function ActivityGroup({
   const label = active
     ? latestActivityLabel(latest)
     : activityGroupSummary(activities);
+  const latestFileChange = [...activities]
+    .reverse()
+    .find((activity) => activity.type === "fileChange");
 
   return (
     <div
@@ -859,6 +834,11 @@ export function ActivityGroup({
           </button>
         ) : null}
       </div>
+      {active && !open && latestFileChange?.type === "fileChange" ? (
+        <div className="ml-6 pb-2 pr-2" data-slot="live-file-change-preview">
+          <FileChangePreview changes={latestFileChange.changes} />
+        </div>
+      ) : null}
       {open ? (
         <div className="ml-2 max-h-64 min-w-0 overflow-y-auto overscroll-contain border-l pl-4 pr-2">
           {activities.map((activity) => (

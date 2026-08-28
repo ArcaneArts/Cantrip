@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   CANTRIP_MCP_TOOL_NAMES,
+  agentFilePreviewLimitCharacters,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 
@@ -17,6 +18,7 @@ import {
   agentInteractionRequestFromServerRequest,
   appendBoundedCommandOutput,
   boundedCommandOutput,
+  changedLinesPreview,
   changedFiles,
   chatTurnRollbackBoundary,
   codexChatApprovalPolicy,
@@ -762,12 +764,17 @@ describe("Codex rich event normalization", () => {
         {
           path: "src/path with spaces.ts",
           latestLine: "new value",
+          diffPreview: "-old\n+new value",
           lastActivityAtMs: 2_100,
         },
         { path: "assets/image.png" },
       ],
     });
     expect(latestChangedLine("Binary files differ")).toBeNull();
+    expect(changedLinesPreview("Binary files differ")).toBeNull();
+    expect(changedLinesPreview("@@ -1 +1 @@\n-old\n+new value")).toBe(
+      "-old\n+new value",
+    );
   });
 
   it("normalizes phased messages, token usage, and rate limits", () => {
@@ -1648,6 +1655,9 @@ describe("changedFiles", () => {
       "diff --git a/README.md b/README.md",
       "--- a/README.md",
       "+++ b/README.md",
+      "@@ -1 +1 @@",
+      "-old readme",
+      "+new readme",
       "diff --git a/src/new.ts b/src/new.ts",
       "new file mode 100644",
       "--- /dev/null",
@@ -1659,10 +1669,20 @@ describe("changedFiles", () => {
     ].join("\n");
 
     expect(changedFiles(diff)).toEqual([
-      { path: "README.md", kind: "update" },
+      {
+        path: "README.md",
+        kind: "update",
+        latestLine: "new readme",
+        diffPreview: "-old readme\n+new readme",
+      },
       { path: "src/new.ts", kind: "add" },
       { path: "old.ts", kind: "delete" },
     ]);
+    expect(
+      changedLinesPreview(
+        `+${"x".repeat(agentFilePreviewLimitCharacters + 1)}`,
+      ),
+    ).toHaveLength(agentFilePreviewLimitCharacters);
   });
 });
 

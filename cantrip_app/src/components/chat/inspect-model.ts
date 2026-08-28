@@ -19,6 +19,7 @@ export interface AgentInspectorThought {
 
 export interface AgentInspectorFile {
   id: string;
+  diffPreview?: string | null;
   expiresAtMs: number;
   kind: FileActivity["changes"][number]["kind"];
   latestLine: string | null;
@@ -289,6 +290,9 @@ function indexFiles(records: Iterable<ActivityRecord>): AgentInspectorFile[] {
       const updatedAtMs = change.lastActivityAtMs ?? record.observedAtMs;
       const candidate: AgentInspectorFile = {
         id: `${record.activity.id}:${change.path}`,
+        ...(change.diffPreview === undefined
+          ? {}
+          : { diffPreview: change.diffPreview }),
         expiresAtMs: updatedAtMs + INSPECT_FILE_LIFETIME_MS,
         kind: change.kind,
         latestLine: change.latestLine ?? null,

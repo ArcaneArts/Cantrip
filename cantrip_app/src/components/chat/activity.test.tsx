@@ -238,6 +238,37 @@ describe("rich Codex activity", () => {
     expect(running).not.toContain("git status --short");
   });
 
+  it("shows the latest syntax-highlighted file preview in a collapsed live group", () => {
+    const fileChange: AgentActivity = {
+      type: "fileChange",
+      id: "file-live",
+      status: "running",
+      changes: [
+        {
+          path: "src/live.ts",
+          kind: "update",
+          latestLine: "export const live = true;",
+          diffPreview:
+            "-export const live = false;\n+export const live = true;",
+        },
+      ],
+    };
+    const markup = renderToStaticMarkup(
+      <ActivityGroup
+        active
+        activities={[fileChange]}
+        turnId="turn-live"
+        turnKey="runtime:turn-live"
+      />,
+    );
+
+    expect(markup).toContain('data-slot="live-file-change-preview"');
+    expect(markup).toContain('data-language="typescript"');
+    expect(markup).toContain('class="token boolean"');
+    expect(markup).toContain(">true</span>");
+    expect(markup).toContain('aria-expanded="false"');
+  });
+
   it("collapses completed turn work behind its elapsed time", async () => {
     const completed = (
       <CompletedTurnActivityGroup
