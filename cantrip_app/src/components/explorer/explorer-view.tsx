@@ -1228,11 +1228,11 @@ export function ExplorerView({
                 <div className="h-full overflow-auto">
                   {file.data.markdown &&
                   markdownPreviewUsesPlainText(file.data.path) ? (
-                    <pre className="min-h-full whitespace-pre-wrap break-words font-mono text-xs leading-5">
+                    <pre className="min-h-full whitespace-pre-wrap break-words px-4 font-mono text-xs leading-5">
                       {draft}
                     </pre>
                   ) : file.data.markdown ? (
-                    <article data-elite-ignore="">
+                    <article className="px-4" data-elite-ignore="">
                       <Markdown>{draft}</Markdown>
                     </article>
                   ) : (

@@ -645,7 +645,7 @@ export function DesktopExplorerFileWindow({
           ) : file ? (
             <div className="h-full overflow-auto">
               {file.markdown ? (
-                <article>
+                <article className="px-4">
                   <Markdown>{draft}</Markdown>
                 </article>
               ) : (
