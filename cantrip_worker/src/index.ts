@@ -341,6 +341,7 @@ import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
 import { assertProjectShareDestinationBinding } from "./project-share-binding.js";
+import { reconcileProjectObservationPaths } from "./project-source-path.js";
 import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
 import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
@@ -3271,10 +3272,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "worktree.status":
         return worktrees.status(command.sourcePath, command.worktreePath);
-      case "worktree.observation.configure":
-        worktrees.configureObservation(command.targets);
-        await codegraphObservations
-          .configure(
+      case "worktree.observation.configure": {
+        const worktreeObservationPaths = await reconcileProjectObservationPaths(
+          command.targets,
+        );
+        const codegraphObservationPaths =
+          await reconcileProjectObservationPaths(
             command.codegraphTargets ??
               command.targets.map((target) => ({
                 projectId: target.projectId!,
@@ -3283,7 +3286,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 sourcePath: target.sourcePath,
                 worktreePath: target.worktreePath,
               })),
-          )
+          );
+        worktrees.configureObservation(worktreeObservationPaths.targets);
+        await codegraphObservations
+          .configure(codegraphObservationPaths.targets)
           .catch((error) => {
             workerLogger.event(
               "warn",
@@ -3298,7 +3304,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               },
             );
           });
-        return { accepted: true };
+        return {
+          accepted: true,
+          paths: [
+            ...new Map(
+              [
+                ...worktreeObservationPaths.paths,
+                ...codegraphObservationPaths.paths,
+              ].map((resolved) => [
+                `${resolved.projectId}\0${resolved.worktreeId}`,
+                resolved,
+              ]),
+            ).values(),
+          ],
+        };
+      }
       case "codegraph.status": {
         await ensureCodeGraphCommandTarget(command);
         const status = codegraphProjects?.publicStatus(

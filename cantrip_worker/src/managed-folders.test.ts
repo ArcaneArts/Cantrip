@@ -1,6 +1,7 @@
 import { access, mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -62,5 +63,21 @@ describe("ManagedFolderManager", () => {
         projectId: "019fdcf5-a6e7-75fb-bdf7-22b697df3a57",
       }),
     ).rejects.toThrow();
+  });
+
+  it("accepts an existing directory reported as a file URL", async () => {
+    const root = await temporaryDirectory("cantrip-folder-manager-");
+    const existingPath = path.join(root, "existing-project");
+    await mkdir(existingPath);
+    const manager = new ManagedFolderManager(path.join(root, "worker-data"));
+
+    await expect(
+      manager.materialize({
+        attempt: 1,
+        existingPath: pathToFileURL(existingPath).href,
+        jobId: "019fdcf5-c116-77d0-9588-7c65fc3bc7c2",
+        projectId: "019fdcf5-a6e7-75fb-bdf7-22b697df3a57",
+      }),
+    ).resolves.toMatchObject({ path: await realpath(existingPath) });
   });
 });

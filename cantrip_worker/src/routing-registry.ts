@@ -36,6 +36,7 @@ const protectedResultTypes = new Set([
   "worktree.unlock",
   "worktree.prune",
   "worktree.status",
+  "worktree.observation.configure",
 ]);
 
 const privateResultFields = new Set<string>(REPOSITORY_METADATA_FIELDS);
@@ -93,7 +94,10 @@ export class WorkerRoutingRegistry {
   async protectResult(type: string, result: unknown): Promise<unknown> {
     if (!protectedResultTypes.has(type)) return result;
     await this.#load();
-    const protectedResult = this.#protectValue(result);
+    const protectedResult =
+      type === "worktree.observation.configure"
+        ? this.#protectObservationConfiguration(result)
+        : this.#protectValue(result);
     await this.#persist();
     return protectedResult;
   }
@@ -150,6 +154,29 @@ export class WorkerRoutingRegistry {
         this.#protectValue(item, key),
       ]),
     );
+  }
+
+  #protectObservationConfiguration(value: unknown): unknown {
+    if (!isRecord(value) || !Array.isArray(value.paths)) {
+      return this.#protectValue(value);
+    }
+    return {
+      ...value,
+      paths: value.paths.map((item) => {
+        if (!isRecord(item)) return item;
+        return {
+          ...item,
+          sourcePath:
+            typeof item.sourcePath === "string"
+              ? this.#token("path", item.sourcePath)
+              : item.sourcePath,
+          worktreePath:
+            typeof item.worktreePath === "string"
+              ? this.#token("path", item.worktreePath)
+              : item.worktreePath,
+        };
+      }),
+    };
   }
 
   #resolveValue(value: unknown): unknown {

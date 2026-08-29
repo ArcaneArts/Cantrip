@@ -14,6 +14,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -1151,10 +1152,12 @@ describe("GitHub project files", () => {
         ...operation,
         attempt: 2,
         policy: "fast-forward-primary",
+        sourcePath: pathToFileURL(managed).href,
       }),
     ).resolves.toMatchObject({
       status: "ready",
       changed: true,
+      path: await realpath(managed),
       resolvedRevision: revision,
     });
 

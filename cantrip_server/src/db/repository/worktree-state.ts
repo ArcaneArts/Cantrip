@@ -31,6 +31,15 @@ export interface ProjectWorktreeObservationContext {
   worktreePath: string;
 }
 
+export interface ProjectObservationPathReconciliation {
+  expectedSourcePath: string;
+  expectedWorktreePath: string;
+  projectId: string;
+  sourcePath: string;
+  worktreeId: string;
+  worktreePath: string;
+}
+
 export interface ProjectWorktreeStatusRecord {
   metadataChanged: boolean;
   snapshotChanged: boolean;
@@ -254,6 +263,105 @@ export class WorktreeStateRepository {
       )
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async reconcileWorkerProjectObservationPaths(
+    ownerId: string,
+    workerId: string,
+    reconciliations: readonly ProjectObservationPathReconciliation[],
+  ): Promise<number> {
+    if (reconciliations.length === 0) return 0;
+    const byWorktreeId = new Map(
+      reconciliations.map((reconciliation) => [
+        reconciliation.worktreeId,
+        reconciliation,
+      ]),
+    );
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          projectId: schema.projectSources.projectId,
+          sourceId: schema.projectSources.id,
+          sourcePath: schema.projectSources.absolutePath,
+          worktreeId: schema.projectWorktrees.id,
+          worktreePath: schema.projectWorktrees.absolutePath,
+        })
+        .from(schema.projectWorktrees)
+        .innerJoin(
+          schema.projectSources,
+          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+        )
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.projectSources.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.projectSources.workerId, workerId),
+            eq(schema.projectWorktrees.workerId, workerId),
+            inArray(schema.projectWorktrees.id, [...byWorktreeId.keys()]),
+            isNull(schema.projectSources.removedAt),
+          ),
+        );
+      const accepted = rows.flatMap((row) => {
+        const reconciliation = byWorktreeId.get(row.worktreeId);
+        return reconciliation &&
+          reconciliation.projectId === row.projectId &&
+          reconciliation.expectedSourcePath === row.sourcePath &&
+          reconciliation.expectedWorktreePath === row.worktreePath
+          ? [{ reconciliation, row }]
+          : [];
+      });
+      const sources = new Map<string, { expectedPath: string; path: string }>();
+      const inconsistentSources = new Set<string>();
+      for (const { reconciliation, row } of accepted) {
+        if (inconsistentSources.has(row.sourceId)) continue;
+        const existing = sources.get(row.sourceId);
+        if (existing && existing.path !== reconciliation.sourcePath) {
+          sources.delete(row.sourceId);
+          inconsistentSources.add(row.sourceId);
+          continue;
+        }
+        sources.set(row.sourceId, {
+          expectedPath: row.sourcePath,
+          path: reconciliation.sourcePath,
+        });
+      }
+      let changed = 0;
+      for (const [sourceId, source] of sources) {
+        if (source.expectedPath === source.path) continue;
+        const updated = await transaction
+          .update(schema.projectSources)
+          .set({ absolutePath: source.path, updatedAt: now })
+          .where(
+            and(
+              eq(schema.projectSources.id, sourceId),
+              eq(schema.projectSources.absolutePath, source.expectedPath),
+            ),
+          )
+          .returning({ id: schema.projectSources.id });
+        changed += updated.length;
+      }
+      for (const { reconciliation, row } of accepted) {
+        if (row.worktreePath === reconciliation.worktreePath) continue;
+        const updated = await transaction
+          .update(schema.projectWorktrees)
+          .set({ absolutePath: reconciliation.worktreePath, updatedAt: now })
+          .where(
+            and(
+              eq(schema.projectWorktrees.id, row.worktreeId),
+              eq(schema.projectWorktrees.absolutePath, row.worktreePath),
+            ),
+          )
+          .returning({ id: schema.projectWorktrees.id });
+        changed += updated.length;
+      }
+      return changed;
+    });
   }
 
   async getProjectWorktreeStatusSnapshot(

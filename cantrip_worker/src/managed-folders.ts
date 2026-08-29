@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, realpath, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -7,6 +7,8 @@ import {
   type ManagedFolderDeleteResult,
   type ManagedFolderMaterializeReady,
 } from "@cantrip/protocol";
+
+import { canonicalProjectSourcePath } from "./project-source-path.js";
 
 const PROJECT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -57,7 +59,7 @@ export class ManagedFolderManager {
     if (!entry.isDirectory() || entry.isSymbolicLink()) {
       throw new Error("The managed folders root is not a safe directory.");
     }
-    return realpath(root);
+    return canonicalProjectSourcePath(root);
   }
 
   private async verifiedTarget(projectId: string): Promise<{
@@ -80,7 +82,7 @@ export class ManagedFolderManager {
     if (!entry || !entry.isDirectory() || entry.isSymbolicLink()) {
       throw new Error("The managed folder target is not a safe directory.");
     }
-    const canonicalTarget = await realpath(target);
+    const canonicalTarget = await canonicalProjectSourcePath(target);
     if (path.dirname(canonicalTarget) !== canonicalRoot) {
       throw new Error("The managed folder target escaped its storage root.");
     }
@@ -97,8 +99,9 @@ export class ManagedFolderManager {
     projectId: string;
   }): Promise<ManagedFolderMaterializeReady> {
     if (input.existingPath) {
-      const requestedPath = path.resolve(input.existingPath);
-      const canonicalTarget = await realpath(requestedPath);
+      const canonicalTarget = await canonicalProjectSourcePath(
+        input.existingPath,
+      );
       const targetEntry = await lstat(canonicalTarget);
       if (!targetEntry.isDirectory()) {
         throw new Error("The existing folder path is not a directory.");
@@ -129,7 +132,7 @@ export class ManagedFolderManager {
     if (!targetEntry.isDirectory() || targetEntry.isSymbolicLink()) {
       throw new Error("The managed folder target changed during creation.");
     }
-    const canonicalTarget = await realpath(target);
+    const canonicalTarget = await canonicalProjectSourcePath(target);
     if (path.dirname(canonicalTarget) !== canonicalRoot) {
       throw new Error("The managed folder target escaped its storage root.");
     }
@@ -152,7 +155,7 @@ export class ManagedFolderManager {
     if (!entry.isDirectory() || entry.isSymbolicLink()) {
       throw new Error("The managed folder target is not a safe directory.");
     }
-    const canonicalTarget = await realpath(target);
+    const canonicalTarget = await canonicalProjectSourcePath(target);
     if (path.dirname(canonicalTarget) !== canonicalRoot) {
       throw new Error("The managed folder target escaped its storage root.");
     }
