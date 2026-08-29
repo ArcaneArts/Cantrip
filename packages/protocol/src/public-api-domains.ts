@@ -539,6 +539,7 @@ export {
   codeTransportRouteRevokeResultSchema,
   codeTransportRevokeResultSchema,
   projectShareAttachmentSchema,
+  PROJECT_SHARE_STATE_STALE_CODE,
   projectShareTunnelCreateSchema,
   projectShareDirectCreateSchema,
   projectShareAttachmentWireSchema,

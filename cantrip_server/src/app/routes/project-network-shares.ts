@@ -1,4 +1,5 @@
 import {
+  PROJECT_SHARE_STATE_STALE_CODE,
   projectShareAttachmentWireSchema,
   projectShareTunnelCreateSchema,
   standaloneChatShareAttachmentWireSchema,
@@ -8,7 +9,10 @@ import type { FastifyInstance } from "fastify";
 import type { ServerRepository } from "../../db/repository.js";
 import type { DirectAttachmentCoordinator } from "../../direct-attachments/coordinator.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
-import type { ProjectShareTunnelBroker } from "../../project-shares/tunnel.js";
+import {
+  ProjectShareStateStaleError,
+  type ProjectShareTunnelBroker,
+} from "../../project-shares/tunnel.js";
 import type { TunnelRuntimeManager } from "../../tunnels/runtime.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 
@@ -73,7 +77,7 @@ export function installProjectNetworkShareRoutes(
             });
             if (existing && existing.id !== input.data.tunnelId) {
               return reply.code(409).send({
-                code: "stale-tunnel",
+                code: PROJECT_SHARE_STATE_STALE_CODE,
                 error: "The project share tunnel identity is stale.",
               });
             }
@@ -100,6 +104,12 @@ export function installProjectNetworkShareRoutes(
         );
       } catch (error) {
         const message = errorMessage(error);
+        if (error instanceof ProjectShareStateStaleError) {
+          return reply.code(409).send({
+            code: PROJECT_SHARE_STATE_STALE_CODE,
+            error: message,
+          });
+        }
         return reply
           .code(
             error instanceof WorkerUnavailableError ||
@@ -158,7 +168,7 @@ export function installProjectNetworkShareRoutes(
             });
             if (existing && existing.id !== input.data.tunnelId) {
               return reply.code(409).send({
-                code: "stale-tunnel",
+                code: PROJECT_SHARE_STATE_STALE_CODE,
                 error: "The Chat share tunnel identity is stale.",
               });
             }
@@ -197,6 +207,12 @@ export function installProjectNetworkShareRoutes(
         );
       } catch (error) {
         const message = errorMessage(error);
+        if (error instanceof ProjectShareStateStaleError) {
+          return reply.code(409).send({
+            code: PROJECT_SHARE_STATE_STALE_CODE,
+            error: message,
+          });
+        }
         return reply
           .code(
             error instanceof WorkerUnavailableError ||

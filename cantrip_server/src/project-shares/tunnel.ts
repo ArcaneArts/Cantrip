@@ -1,4 +1,7 @@
-import { workerProjectShareOpenResultSchema } from "@cantrip/protocol";
+import {
+  PROJECT_SHARE_STATE_STALE_CODE,
+  workerProjectShareOpenResultSchema,
+} from "@cantrip/protocol";
 import type { ProtectedTunnelContentRecord } from "@cantrip/protocol/tunnel-content";
 
 import type { ServerRepository } from "../db/repository.js";
@@ -38,6 +41,10 @@ const WORKER_SHARE_COMMAND_TIMEOUT_MS = 30_000;
 const WORKER_SHARE_CLOSE_TIMEOUT_MS = 5_000;
 const MAX_NATIVE_MOUNT_LEASE_MS = 24 * 60 * 60_000;
 const DEFAULT_MOUNT_LEASE_MS = 12 * 60 * 60_000;
+
+export class ProjectShareStateStaleError extends Error {
+  readonly code = PROJECT_SHARE_STATE_STALE_CODE;
+}
 
 /**
  * Project-share control plane. The server retains only authenticated routing
@@ -104,7 +111,9 @@ export class ProjectShareTunnelBroker {
       managedBy,
     );
     if (existing && existing.id !== input.tunnelId) {
-      throw new Error("Project share tunnel identity is stale.");
+      throw new ProjectShareStateStaleError(
+        "Project share tunnel identity is stale.",
+      );
     }
     if (
       (!existing &&
@@ -117,7 +126,9 @@ export class ProjectShareTunnelBroker {
           input.protectedRecord.operationId ===
             existing.protectedRecord.operationId))
     ) {
-      throw new Error("Project share protected content is stale.");
+      throw new ProjectShareStateStaleError(
+        "Project share protected content is stale.",
+      );
     }
 
     if (existing) {
