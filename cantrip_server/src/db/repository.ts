@@ -344,6 +344,10 @@ import {
   type TerminalExecutionContext,
 } from "./repository/terminals.js";
 import {
+  ExplorerRepository,
+  type ExplorerExecutionContext,
+} from "./repository/explorers.js";
+import {
   TelemetryRepository,
   ZERO_AGENT_TIME,
   ZERO_TOKEN_USAGE,
@@ -453,6 +457,7 @@ export {
 } from "./repository/chat-execution-lanes.js";
 export { StandaloneChatPlacementUnavailableError } from "./repository/chat-catalog.js";
 export type { TerminalExecutionContext } from "./repository/terminals.js";
+export type { ExplorerExecutionContext } from "./repository/explorers.js";
 export type {
   ModelBehaviorObservationInput,
   ProviderQuotaObservationInput,
@@ -505,14 +510,6 @@ export type ChatExecutionAttribution =
       scratchRootId: string;
       worktreeId: null;
     };
-
-export interface ExplorerExecutionContext {
-  explorerId: string;
-  projectId: string;
-  root: string;
-  workerId: string;
-  worktreeId: string;
-}
 
 export interface CodeTabExecutionContext {
   capabilities: CodeCapabilities;
@@ -1208,6 +1205,7 @@ export class ServerRepository {
   readonly chatExecutionLanes: ChatExecutionLaneRepository;
   readonly chatCatalog: ChatCatalogRepository;
   readonly terminals: TerminalRepository;
+  readonly explorers: ExplorerRepository;
   readonly telemetry: TelemetryRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
@@ -1366,6 +1364,31 @@ export class ServerRepository {
           allowOfflineExplicit,
         ),
       toTerminalWireSummary,
+    });
+    this.explorers = new ExplorerRepository(database, {
+      getExplorerExecutionContext: (ownerId, explorerId) =>
+        this.getExplorerExecutionContext(ownerId, explorerId),
+      getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
+        this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
+      nextProjectTabPosition: (projectId) =>
+        this.nextProjectTabPosition(projectId),
+      resolveProjectExecutionPlacement: (
+        ownerId,
+        projectId,
+        surfaceKind,
+        target,
+        isWorkerConnected,
+        allowOfflineExplicit,
+      ) =>
+        this.resolveProjectExecutionPlacement(
+          ownerId,
+          projectId,
+          surfaceKind,
+          target,
+          isWorkerConnected,
+          allowOfflineExplicit,
+        ),
+      toExplorerWireSummary,
     });
     this.telemetry = new TelemetryRepository(database);
     this.chatImportJobs = new ChatImportJobRepository(database);
@@ -3940,19 +3963,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
   ): Promise<ExplorerWireSummary[]> {
-    const rows = await this.database
-      .select({ explorer: schema.explorers })
-      .from(schema.explorers)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.explorers.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.explorers.projectId, projectId))
-      .orderBy(asc(schema.explorers.position), asc(schema.explorers.createdAt));
-    return rows.map(({ explorer }) => toExplorerWireSummary(explorer));
+    return this.explorers.listExplorers(ownerId, projectId);
   }
 
   async createExplorer(
@@ -3961,50 +3972,12 @@ export class ServerRepository {
     input: EncryptedExplorerCreate,
     isWorkerConnected?: (workerId: string) => boolean,
   ): Promise<ExplorerWireSummary | null> {
-    const target =
-      input.target ??
-      (input.worktreeId
-        ? ({
-            kind: "worktree",
-            projectId,
-            worktreeId: input.worktreeId,
-          } as const)
-        : undefined);
-    const { placement } = await this.resolveProjectExecutionPlacement(
+    return this.explorers.createExplorer(
       ownerId,
       projectId,
-      "explorer",
-      target,
+      input,
       isWorkerConnected,
     );
-    const workerId = placement.workerId;
-    const worktreeId = placement.worktreeId!;
-    const position = await this.nextProjectTabPosition(projectId);
-    return this.database.transaction(async (transaction) => {
-      const result = await transaction
-        .insert(schema.explorers)
-        .values({
-          id: input.id,
-          projectId,
-          protectedLabel: input.titleProtection,
-          protectedState: input.stateProtection,
-          position,
-          activeWorkerId: workerId,
-          worktreeId,
-          fileMode: input.fileMode ?? "preview",
-        })
-        .returning();
-      const explorer = firstOrThrow(result, "creating an explorer");
-      if (input.attachToTabLayout !== false) {
-        await attachProjectTab(transaction, {
-          projectId,
-          tabGroupId: input.tabGroupId,
-          tabId: explorer.id,
-          tabKind: "explorer",
-        });
-      }
-      return toExplorerWireSummary(explorer);
-    });
   }
 
   async updateExplorerWorktree(
@@ -4012,73 +3985,14 @@ export class ServerRepository {
     explorerId: string,
     input: EncryptedExplorerWorktreeUpdate,
   ): Promise<ExplorerWireSummary | null> {
-    const rows = await this.database
-      .select({ explorer: schema.explorers })
-      .from(schema.explorers)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.explorers.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.explorers.id, explorerId))
-      .limit(1);
-    const explorer = rows[0]?.explorer;
-    if (!explorer) return null;
-    const target = await this.getProjectWorktreeContext(
-      ownerId,
-      explorer.projectId,
-      input.worktreeId,
-    );
-    if (!target || target.worktree.lifecycleState !== "ready") return null;
-    const updated = await this.database
-      .update(schema.explorers)
-      .set({
-        activeWorkerId: target.workerId,
-        worktreeId: target.worktree.id,
-        protectedState: input.stateProtection,
-        fileMode: "preview",
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.explorers.id, explorerId))
-      .returning();
-    return updated[0] ? toExplorerWireSummary(updated[0]) : null;
+    return this.explorers.updateExplorerWorktree(ownerId, explorerId, input);
   }
 
   async getExplorerExecutionContext(
     ownerId: string,
     explorerId: string,
   ): Promise<ExplorerExecutionContext | null> {
-    const rows = await this.database
-      .select({
-        explorer: schema.explorers,
-        worktree: schema.projectWorktrees,
-      })
-      .from(schema.explorers)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.explorers.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .innerJoin(
-        schema.projectWorktrees,
-        eq(schema.projectWorktrees.id, schema.explorers.worktreeId),
-      )
-      .where(eq(schema.explorers.id, explorerId))
-      .limit(1);
-    const row = rows[0];
-    return row
-      ? {
-          explorerId: row.explorer.id,
-          projectId: row.explorer.projectId,
-          root: row.worktree.absolutePath,
-          workerId: row.explorer.activeWorkerId,
-          worktreeId: row.worktree.id,
-        }
-      : null;
+    return this.explorers.getExplorerExecutionContext(ownerId, explorerId);
   }
 
   async updateExplorer(
@@ -4086,14 +4000,7 @@ export class ServerRepository {
     explorerId: string,
     input: EncryptedExplorerUpdate,
   ): Promise<ExplorerWireSummary | null> {
-    if (!(await this.getExplorerExecutionContext(ownerId, explorerId)))
-      return null;
-    const result = await this.database
-      .update(schema.explorers)
-      .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
-      .where(eq(schema.explorers.id, explorerId))
-      .returning();
-    return result[0] ? toExplorerWireSummary(result[0]) : null;
+    return this.explorers.updateExplorer(ownerId, explorerId, input);
   }
 
   async pinExplorer(
@@ -4101,60 +4008,7 @@ export class ServerRepository {
     explorerId: string,
     input: EncryptedExplorerPin,
   ): Promise<ExplorerWireSummary | null> {
-    return this.database.transaction(async (transaction) => {
-      const rows = await transaction
-        .select({ explorer: schema.explorers })
-        .from(schema.explorers)
-        .innerJoin(
-          schema.projects,
-          and(
-            eq(schema.projects.id, schema.explorers.projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .where(eq(schema.explorers.id, explorerId))
-        .limit(1)
-        .for("update");
-      const explorer = rows[0]?.explorer;
-      if (!explorer) return null;
-
-      const tabKey = projectTabKey("explorer", explorerId);
-      const existingMembers = await transaction
-        .select({ tabKey: schema.tabGroupMembers.tabKey })
-        .from(schema.tabGroupMembers)
-        .where(
-          and(
-            eq(schema.tabGroupMembers.projectId, explorer.projectId),
-            eq(schema.tabGroupMembers.tabKey, tabKey),
-          ),
-        )
-        .limit(1);
-      if (existingMembers[0]) {
-        // The operation is retry-safe, but it must never repurpose an
-        // Explorer that is already a tab.
-        return toExplorerWireSummary(explorer);
-      }
-
-      const updatedRows = await transaction
-        .update(schema.explorers)
-        .set({
-          protectedLabel: input.titleProtection,
-          protectedState: input.stateProtection,
-          fileMode: input.fileMode,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.explorers.id, explorerId))
-        .returning();
-      const updated = firstOrThrow(updatedRows, "pinning an explorer");
-      await attachProjectTab(transaction, {
-        projectId: explorer.projectId,
-        tabGroupId: input.tabGroupId,
-        tabId: explorerId,
-        tabKind: "explorer",
-      });
-
-      return toExplorerWireSummary(updated);
-    });
+    return this.explorers.pinExplorer(ownerId, explorerId, input);
   }
 
   async updateExplorerViewState(
@@ -4162,36 +4016,11 @@ export class ServerRepository {
     explorerId: string,
     input: EncryptedExplorerViewStateUpdate,
   ): Promise<ExplorerWireSummary | null> {
-    if (!(await this.getExplorerExecutionContext(ownerId, explorerId))) {
-      return null;
-    }
-    const result = await this.database
-      .update(schema.explorers)
-      .set({
-        protectedState: input.stateProtection,
-        fileMode: input.fileMode,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.explorers.id, explorerId))
-      .returning();
-    return result[0] ? toExplorerWireSummary(result[0]) : null;
+    return this.explorers.updateExplorerViewState(ownerId, explorerId, input);
   }
 
   async deleteExplorer(ownerId: string, explorerId: string): Promise<boolean> {
-    const context = await this.getExplorerExecutionContext(ownerId, explorerId);
-    if (!context) return false;
-    return this.database.transaction(async (transaction) => {
-      await detachProjectTab(
-        transaction,
-        context.projectId,
-        projectTabKey("explorer", explorerId),
-      );
-      const result = await transaction
-        .delete(schema.explorers)
-        .where(eq(schema.explorers.id, explorerId))
-        .returning({ id: schema.explorers.id });
-      return result.length === 1;
-    });
+    return this.explorers.deleteExplorer(ownerId, explorerId);
   }
 
   async listCodeTabs(
