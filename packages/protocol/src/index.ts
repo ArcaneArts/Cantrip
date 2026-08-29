@@ -762,1315 +762,293 @@ export type {
   SettingsBundleWire,
 } from "./settings.js";
 
-export const githubAuthStatusSchema = z.object({
-  authenticated: z.boolean(),
-  login: z.string().min(1).nullable(),
-  source: z.enum(["gh-cli", "token", "none"]),
-});
+import {
+  githubRepositorySchema,
+  githubRepositoryCreateSchema,
+  githubIssueStateSchema,
+  githubIssueKindSchema,
+  githubIssueCreateSchema,
+  githubIssueCommentCreateSchema,
+  githubPullRequestCreateSchema,
+  githubPullRequestReviewSubmitSchema,
+  githubPullRequestInlineCommentCreateSchema,
+  githubPullRequestLifecycleActionSchema,
+  githubPullRequestLifecycleApplySchema,
+  githubReleaseCreateSchema,
+} from "./github.js";
 
-export const githubRepositorySchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  nameWithOwner: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
-  description: z.string().nullable(),
-  isPrivate: z.boolean(),
-  isFork: z.boolean(),
-  url: z.url(),
-  defaultBranch: z.string().min(1),
-  updatedAt: z.string().datetime(),
-  imported: z.boolean().default(false),
-});
-
-export const githubRepositoryListSchema = z.array(githubRepositorySchema);
-
-const githubRepositorySegmentSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(100)
-  .regex(/^[A-Za-z0-9_.-]+$/)
-  .refine((value) => value !== "." && value !== "..", {
-    message: "Repository names cannot be dot path segments.",
-  });
-
-export const githubRepositoryOwnerSchema = z.object({
-  login: githubRepositorySegmentSchema,
-  kind: z.enum(["user", "organization"]),
-});
-
-export const githubRepositoryOwnerListSchema = z.array(
+export {
+  githubAuthStatusSchema,
+  githubRepositorySchema,
+  githubRepositoryListSchema,
   githubRepositoryOwnerSchema,
-);
+  githubRepositoryOwnerListSchema,
+  githubRepositoryVisibilitySchema,
+  githubRepositoryCreateSchema,
+  githubIssueStateSchema,
+  githubIssueKindSchema,
+  githubIssueLabelSchema,
+  githubIssueSummarySchema,
+  githubIssueListSchema,
+  githubIssueCommentSchema,
+  githubIssueDetailSchema,
+  githubIssueCreateSchema,
+  githubIssueCommentCreateSchema,
+  githubIssueCloseSchema,
+  githubPullRequestCreateSchema,
+  githubPullRequestSummarySchema,
+  githubPullRequestListSchema,
+  githubPullRequestCreateResultSchema,
+  githubPullRequestCommitSchema,
+  githubPullRequestFileSchema,
+  githubPullRequestCheckSchema,
+  githubPullRequestReviewSchema,
+  githubPullRequestReviewCommentSchema,
+  githubPullRequestReviewThreadSchema,
+  githubPullRequestReviewSubmitSchema,
+  githubPullRequestInlineCommentCreateSchema,
+  githubPullRequestReviewActionSchema,
+  githubPullRequestLifecycleActionSchema,
+  githubPullRequestLifecyclePreviewSchema,
+  githubPullRequestLifecycleApplySchema,
+  githubPullRequestCheckoutPreparedSchema,
+  githubPullRequestDetailSchema,
+  githubReleaseSummarySchema,
+  githubReleaseListSchema,
+  githubReleaseCreateSchema,
+} from "./github.js";
 
-export const githubRepositoryVisibilitySchema = z.enum(["public", "private"]);
+export type {
+  GithubAuthStatus,
+  GithubRepository,
+  GithubRepositoryOwner,
+  GithubRepositoryVisibility,
+  GithubRepositoryCreate,
+  GithubIssueState,
+  GithubIssueKind,
+  GithubIssueSummary,
+  GithubIssueList,
+  GithubPullRequestList,
+  GithubIssueComment,
+  GithubIssueDetail,
+  GithubIssueCreate,
+  GithubPullRequestCreate,
+  GithubPullRequestSummary,
+  GithubPullRequestCreateResult,
+  GithubPullRequestCommit,
+  GithubPullRequestFile,
+  GithubPullRequestCheck,
+  GithubPullRequestReview,
+  GithubPullRequestReviewComment,
+  GithubPullRequestReviewThread,
+  GithubPullRequestReviewSubmit,
+  GithubPullRequestInlineCommentCreate,
+  GithubPullRequestReviewAction,
+  GithubPullRequestLifecycleAction,
+  GithubPullRequestLifecyclePreview,
+  GithubPullRequestLifecycleApply,
+  GithubPullRequestCheckoutPrepared,
+  GithubPullRequestDetail,
+  GithubReleaseSummary,
+  GithubReleaseList,
+  GithubReleaseCreate,
+} from "./github.js";
 
-export const githubRepositoryCreateSchema = z.object({
-  owner: githubRepositorySegmentSchema,
-  name: githubRepositorySegmentSchema,
-  description: z.string().trim().max(350),
-  visibility: githubRepositoryVisibilitySchema,
-  initialize: z.enum(["readme", "empty"]).default("readme"),
-});
+import { projectRootKindSchema } from "./project-foundation.js";
 
-export const githubIssueStateSchema = z.enum(["open", "closed"]);
-export const githubIssueKindSchema = z.enum(["issue", "pull-request"]);
+export {
+  projectOriginKindSchema,
+  projectFolderManagementSchema,
+  projectSourceKindSchema,
+  projectRootKindSchema,
+  projectCapabilitiesSchema,
+  projectCapabilitySchema,
+  projectCapabilityUnavailableErrorSchema,
+  projectCapabilitiesForOriginKind,
+} from "./project-foundation.js";
 
-export const githubIssueLabelSchema = z.object({
-  name: z.string().min(1),
-  color: z.string().regex(/^[0-9a-fA-F]{6}$/),
-});
+export type {
+  ProjectOriginKind,
+  ProjectFolderManagement,
+  ProjectSourceKind,
+  ProjectRootKind,
+  ProjectCapabilities,
+  ProjectCapability,
+  ProjectCapabilityUnavailableError,
+} from "./project-foundation.js";
 
-export const githubIssueSummarySchema = z.object({
-  number: z.number().int().positive(),
-  title: z.string().min(1),
-  state: githubIssueStateSchema,
-  url: z.url(),
-  author: z.string().min(1),
-  commentCount: z.number().int().nonnegative(),
-  labels: z.array(githubIssueLabelSchema),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  closedAt: z.string().datetime().nullable(),
-});
-
-export const githubIssueListSchema = z.object({
-  kind: githubIssueKindSchema.default("issue"),
-  state: githubIssueStateSchema,
-  total: z.number().int().nonnegative(),
-  issues: z.array(githubIssueSummarySchema),
-  nextPage: z.number().int().positive().nullable().default(null),
-});
-
-export const githubIssueCommentSchema = z.object({
-  id: z.string().min(1),
-  author: z.string().min(1),
-  body: z.string(),
-  url: z.url(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const githubIssueDetailSchema = githubIssueSummarySchema.extend({
-  body: z.string().nullable(),
-  comments: z.array(githubIssueCommentSchema),
-});
-
-export const githubIssueCreateSchema = z.object({
-  title: z.string().trim().min(1).max(256),
-  body: z.string().max(1_000_000).default(""),
-});
-
-export const githubIssueCommentCreateSchema = z.object({
-  body: z.string().trim().min(1).max(65_536),
-});
-
-export const githubIssueCloseSchema = z.object({
-  comment: z.string().trim().min(1).max(65_536).nullable().default(null),
-});
-
-export const githubPullRequestCreateSchema = z
-  .object({
-    base: z
-      .string()
-      .trim()
-      .min(1)
-      .max(255)
-      .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value), {
-        message: "Base branch cannot contain control characters.",
-      }),
-    head: z
-      .string()
-      .trim()
-      .min(1)
-      .max(255)
-      .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value), {
-        message: "Head branch cannot contain control characters.",
-      }),
-    title: z.string().trim().min(1).max(256),
-    body: z.string().max(1_000_000).default(""),
-    draft: z.boolean().default(false),
-    labels: z.array(z.string().trim().min(1).max(100)).max(100).default([]),
-    reviewers: z
-      .array(z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/u))
-      .max(100)
-      .default([]),
-    linkedIssueNumbers: z
-      .array(z.number().int().positive())
-      .max(100)
-      .default([]),
-  })
-  .superRefine((request, context) => {
-    if (request.base === request.head) {
-      context.addIssue({
-        code: "custom",
-        path: ["head"],
-        message: "Pull request head and base branches must differ.",
-      });
-    }
-  });
-
-export const githubPullRequestSummarySchema = githubIssueSummarySchema.extend({
-  body: z.string().nullable(),
-  draft: z.boolean(),
-  merged: z.boolean(),
-  headRef: z.string().min(1),
-  headSha: z.string().regex(/^[0-9a-f]{40}$/u),
-  baseRef: z.string().min(1),
-  baseSha: z.string().regex(/^[0-9a-f]{40}$/u),
-});
-
-export const githubPullRequestListSchema = z.object({
-  state: githubIssueStateSchema,
-  total: z.number().int().nonnegative(),
-  pullRequests: z.array(githubPullRequestSummarySchema),
-  nextPage: z.number().int().positive().nullable().default(null),
-});
-
-export const githubPullRequestCreateResultSchema = z.object({
-  pullRequest: githubPullRequestSummarySchema,
-  warnings: z.array(z.string().min(1).max(1_000)).max(100),
-});
-
-export const githubPullRequestCommitSchema = z.object({
-  sha: z.string().regex(/^[0-9a-f]{40}$/u),
-  shortSha: z.string().regex(/^[0-9a-f]{7,12}$/u),
-  message: z.string().max(1_000_000),
-  author: z.string().min(1).max(1_000),
-  authoredAt: z.string().datetime().nullable(),
-  url: z.url(),
-});
-
-export const githubPullRequestFileSchema = z.object({
-  sha: z.string().regex(/^[0-9a-f]{40}$/u),
-  path: z.string().min(1).max(8_192),
-  previousPath: z.string().min(1).max(8_192).nullable(),
-  status: z.string().min(1).max(64),
-  additions: z.number().int().nonnegative(),
-  deletions: z.number().int().nonnegative(),
-  changes: z.number().int().nonnegative(),
-  blobUrl: z.url(),
-  rawUrl: z.url().nullable(),
-  patch: z.string().max(1_000_000).nullable(),
-  patchTruncated: z.boolean(),
-});
-
-export const githubPullRequestCheckSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1).max(1_000),
-  source: z.enum(["check-run", "commit-status"]),
-  status: z.enum(["queued", "in-progress", "completed"]),
-  conclusion: z.string().min(1).max(100).nullable(),
-  url: z.url().nullable(),
-  startedAt: z.string().datetime().nullable(),
-  completedAt: z.string().datetime().nullable(),
-  summary: z.string().max(100_000).nullable(),
-});
-
-export const githubPullRequestReviewSchema = z.object({
-  id: z.string().min(1),
-  author: z.string().min(1),
-  state: z.enum([
-    "approved",
-    "changes-requested",
-    "commented",
-    "dismissed",
-    "pending",
-  ]),
-  body: z.string().max(1_000_000),
-  commitSha: z
-    .string()
-    .regex(/^[0-9a-f]{40}$/u)
-    .nullable(),
-  submittedAt: z.string().datetime().nullable(),
-  url: z.url().nullable(),
-});
-
-export const githubPullRequestReviewCommentSchema = z.object({
-  id: z.number().int().positive(),
-  reviewId: z.number().int().positive().nullable(),
-  author: z.string().min(1),
-  body: z.string().max(1_000_000),
-  url: z.url(),
-  path: z.string().min(1).max(8_192),
-  line: z.number().int().positive().nullable(),
-  side: z.enum(["LEFT", "RIGHT"]).nullable(),
-  startLine: z.number().int().positive().nullable(),
-  startSide: z.enum(["LEFT", "RIGHT"]).nullable(),
-  diffHunk: z.string().max(100_000),
-  inReplyToId: z.number().int().positive().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const githubPullRequestReviewThreadSchema = z.object({
-  id: z.string().min(1),
-  path: z.string().min(1).max(8_192),
-  line: z.number().int().positive().nullable(),
-  side: z.enum(["LEFT", "RIGHT"]).nullable(),
-  resolved: z.boolean().nullable(),
-  comments: z.array(githubPullRequestReviewCommentSchema).min(1).max(100),
-});
-
-const githubPullRequestReviewPathSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(8_192)
-  .refine(
-    (value) =>
-      !value.startsWith("/") &&
-      !value.includes("\\") &&
-      !value.split("/").some((part) => part === ".." || part === ""),
-    { message: "Review path must be a repository-relative file path." },
-  );
-
-export const githubPullRequestReviewSubmitSchema = z
-  .object({
-    event: z.enum(["approve", "request-changes"]),
-    body: z.string().trim().max(65_536).default(""),
-  })
-  .superRefine((request, context) => {
-    if (request.event === "request-changes" && !request.body) {
-      context.addIssue({
-        code: "custom",
-        path: ["body"],
-        message: "Requesting changes requires an explanation.",
-      });
-    }
-  });
-
-export const githubPullRequestInlineCommentCreateSchema = z
-  .object({
-    body: z.string().trim().min(1).max(65_536),
-    path: githubPullRequestReviewPathSchema,
-    line: z.number().int().positive(),
-    side: z.enum(["LEFT", "RIGHT"]),
-    startLine: z.number().int().positive().nullable().default(null),
-    startSide: z.enum(["LEFT", "RIGHT"]).nullable().default(null),
-  })
-  .superRefine((request, context) => {
-    if ((request.startLine === null) !== (request.startSide === null)) {
-      context.addIssue({
-        code: "custom",
-        path: ["startLine"],
-        message: "A multi-line comment requires both start line and side.",
-      });
-    }
-    if (request.startLine !== null && request.startLine > request.line) {
-      context.addIssue({
-        code: "custom",
-        path: ["startLine"],
-        message: "Review start line cannot be after the end line.",
-      });
-    }
-  });
-
-export const githubPullRequestReviewActionSchema = z.discriminatedUnion(
-  "type",
-  [
-    z.object({
-      type: z.literal("comment"),
-      body: githubIssueCommentCreateSchema.shape.body,
-    }),
-    z.object({
-      type: z.literal("submit-review"),
-      review: githubPullRequestReviewSubmitSchema,
-    }),
-    z.object({
-      type: z.literal("inline-comment"),
-      comment: githubPullRequestInlineCommentCreateSchema,
-    }),
-    z.object({
-      type: z.literal("reply"),
-      commentId: z.number().int().positive(),
-      body: githubIssueCommentCreateSchema.shape.body,
-    }),
-  ],
-);
-
-export const githubPullRequestLifecycleActionSchema = z.discriminatedUnion(
-  "type",
-  [
-    z.object({ type: z.literal("close") }),
-    z.object({ type: z.literal("reopen") }),
-    z.object({ type: z.literal("mark-ready") }),
-    z.object({
-      type: z.literal("merge"),
-      method: z.enum(["merge", "squash", "rebase"]),
-      commitTitle: z.string().trim().min(1).max(256).nullable().default(null),
-      commitMessage: z
-        .string()
-        .trim()
-        .min(1)
-        .max(1_000_000)
-        .nullable()
-        .default(null),
-    }),
-  ],
-);
-
-export const githubPullRequestLifecyclePreviewSchema = z.object({
-  action: githubPullRequestLifecycleActionSchema,
-  number: z.number().int().positive(),
-  title: z.string().min(1).max(10_000),
-  state: githubIssueStateSchema,
-  draft: z.boolean(),
-  headRef: z.string().min(1),
-  headSha: z.string().regex(/^[0-9a-f]{40}$/u),
-  baseRef: z.string().min(1),
-  baseSha: z.string().regex(/^[0-9a-f]{40}$/u),
-  mergeable: z.boolean().nullable(),
-  mergeableState: z.string().min(1).max(100),
-  checksState: z.enum(["success", "failure", "pending", "neutral", "none"]),
-  reviewDecision: z.enum([
-    "approved",
-    "changes-requested",
-    "review-required",
-    "reviewed",
-    "none",
-  ]),
-  destructive: z.boolean(),
-  confirmationPhrase: z.string().min(1).max(100).nullable(),
-  warnings: z.array(z.string().min(1).max(1_000)).max(100),
-  token: z.string().regex(/^[0-9a-f]{64}$/u),
-});
-
-export const githubPullRequestLifecycleApplySchema = z.object({
-  action: githubPullRequestLifecycleActionSchema,
-  token: z.string().regex(/^[0-9a-f]{64}$/u),
-  confirmation: z.string().max(100).default(""),
-});
-
-export const githubPullRequestCheckoutPreparedSchema = z.object({
-  pullRequest: githubPullRequestSummarySchema,
-  branch: z.string().trim().min(1).max(255),
-  name: z.string().trim().min(1).max(200),
-  headSha: z.string().regex(/^[0-9a-f]{40}$/u),
-  remote: z.string().trim().min(1).max(255),
-});
-
-export const githubPullRequestDetailSchema =
-  githubPullRequestSummarySchema.extend({
-    comments: z.array(githubIssueCommentSchema).max(100),
-    commentsTruncated: z.boolean(),
-    requestedReviewers: z.array(z.string().min(1)).max(100),
-    mergeable: z.boolean().nullable(),
-    mergeableState: z.string().min(1).max(100),
-    reviewDecision: z.enum([
-      "approved",
-      "changes-requested",
-      "review-required",
-      "reviewed",
-      "none",
-    ]),
-    checksState: z.enum(["success", "failure", "pending", "neutral", "none"]),
-    additions: z.number().int().nonnegative(),
-    deletions: z.number().int().nonnegative(),
-    changedFileCount: z.number().int().nonnegative(),
-    commitCount: z.number().int().nonnegative(),
-    commits: z.array(githubPullRequestCommitSchema).max(100),
-    commitsTruncated: z.boolean(),
-    files: z.array(githubPullRequestFileSchema).max(100),
-    filesTruncated: z.boolean(),
-    checks: z.array(githubPullRequestCheckSchema).max(200),
-    checksTruncated: z.boolean(),
-    reviews: z.array(githubPullRequestReviewSchema).max(100),
-    reviewsTruncated: z.boolean(),
-    reviewThreads: z.array(githubPullRequestReviewThreadSchema).max(100),
-    reviewThreadsTruncated: z.boolean(),
-  });
-
-export const githubReleaseSummarySchema = z.object({
-  id: z.number().int().positive(),
-  tagName: z.string().min(1).max(1_000),
-  name: z.string().min(1).max(10_000),
-  body: z.string().max(1_000_000),
-  url: z.url(),
-  author: z.string().min(1),
-  draft: z.boolean(),
-  prerelease: z.boolean(),
-  createdAt: z.string().datetime(),
-  publishedAt: z.string().datetime().nullable(),
-});
-
-export const githubReleaseListSchema = z.object({
-  releases: z.array(githubReleaseSummarySchema).max(100),
-  truncated: z.boolean(),
-});
-
-export const githubReleaseCreateSchema = z.object({
-  tagName: z.string().trim().min(1).max(1_000),
-  name: z.string().trim().min(1).max(10_000),
-  body: z.string().max(1_000_000),
-  draft: z.boolean(),
-  prerelease: z.boolean(),
-});
-
-export const projectGithubConversionRepositorySchema = z.object({
-  repositoryId: z.string().min(1),
-  nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
-  url: githubRepositorySchema.shape.url,
-});
-
-export const projectGithubRoutingRepositorySchema = z.object({
-  repositoryId: repositoryRoutingHandleSchema,
-  nameWithOwner: repositoryRoutingHandleSchema,
-  url: repositoryRoutingHandleSchema,
-});
-
-export const projectGithubWireRepositorySchema = z.union([
+import {
   projectGithubConversionRepositorySchema,
   projectGithubRoutingRepositorySchema,
-]);
+  projectGithubWireRepositorySchema,
+  projectReplicaPlacementRequestSchema,
+  projectReplicaPlacementResultSchema,
+  projectReplicaJobErrorSchema,
+  projectReplicaJobProgressEventSchema,
+  gitObjectRevisionSchema,
+  projectReplicaSynchronizationPolicySchema,
+} from "./projects.js";
 
-export const projectReplicaPlacementModeSchema = z.enum([
-  "managed",
-  "managed-link",
-  "direct",
-]);
-
-const projectReplicaManagedPlacementSchema = z
-  .object({ mode: z.literal("managed") })
-  .strict();
-
-const projectReplicaManagedLinkPlacementSchema = z
-  .object({
-    mode: z.literal("managed-link"),
-    path: z.string().trim().min(1).max(8_192),
-  })
-  .strict();
-
-const projectReplicaDirectPlacementSchema = z
-  .object({
-    mode: z.literal("direct"),
-    path: z.string().trim().min(1).max(8_192),
-  })
-  .strict();
-
-export const projectReplicaPlacementRequestSchema = z.discriminatedUnion(
-  "mode",
-  [
-    projectReplicaManagedPlacementSchema,
-    projectReplicaManagedLinkPlacementSchema,
-    projectReplicaDirectPlacementSchema,
-  ],
-);
-
-export const encryptedProjectReplicaPlacementRequestSchema =
-  z.discriminatedUnion("mode", [
-    projectReplicaManagedPlacementSchema,
-    z
-      .object({
-        mode: z.literal("managed-link"),
-        path: repositoryRoutingHandleSchema,
-      })
-      .strict(),
-    z
-      .object({
-        mode: z.literal("direct"),
-        path: repositoryRoutingHandleSchema,
-      })
-      .strict(),
-  ]);
-
-export const projectReplicaMaterializationSchema = z.enum([
-  "cloned",
-  "reused",
-  "attached",
-]);
-
-export const projectReplicaOwnershipKindSchema = z.enum(["cantrip", "user"]);
-
-export const projectReplicaPlacementResultSchema = z
-  .object({
-    mode: projectReplicaPlacementModeSchema,
-    materialization: projectReplicaMaterializationSchema,
-    ownership: projectReplicaOwnershipKindSchema,
-    canonicalPath: z.string().min(1).max(8_192),
-    requestedPath: z.string().min(1).max(8_192).nullable(),
-    linkPath: z.string().min(1).max(8_192).nullable(),
-  })
-  .strict();
-
-export const githubProjectCreateSchema = z.object({
-  workerId: z.string().min(1),
-  repositoryId: z.string().min(1),
-  nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
-  url: z.url(),
-  placement: projectReplicaPlacementRequestSchema.optional(),
-  workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
-});
-
-export const encryptedGithubProjectCreateSchema = githubProjectCreateSchema
-  .omit({ repositoryId: true, nameWithOwner: true, placement: true, url: true })
-  .extend({
-    id: z.string().uuid(),
-    nameProtection: privateDisplayLabelOpaqueSchema,
-    repositoryBlindIndex: encryptionKeyBytesSchema,
-    repositoryId: repositoryRoutingHandleSchema,
-    nameWithOwner: repositoryRoutingHandleSchema,
-    placement: encryptedProjectReplicaPlacementRequestSchema.optional(),
-    url: repositoryRoutingHandleSchema,
-  })
-  .strict();
-
-export const managedFolderProjectCreateSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  workerId: z.string().min(1),
-  existingPath: z.string().trim().min(1).max(8_192).optional(),
-  workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
-});
-
-export const encryptedManagedFolderProjectCreateSchema =
-  managedFolderProjectCreateSchema
-    .omit({ name: true, existingPath: true })
-    .extend({
-      id: z.string().uuid(),
-      nameProtection: privateDisplayLabelOpaqueSchema,
-      existingPath: repositoryRoutingHandleSchema.optional(),
-    })
-    .strict();
-
-export const projectWorkspaceCreateSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-});
-
-export const projectWorkspaceUpdateSchema = z
-  .object({
-    name: z.string().trim().min(1).max(80).optional(),
-    projectIds: z.array(z.string().min(1)).max(10_000).optional(),
-    isDefault: z.literal(true).optional(),
-  })
-  .refine(
-    (input) =>
-      input.name !== undefined ||
-      input.projectIds !== undefined ||
-      input.isDefault !== undefined,
-    { message: "At least one workspace field is required." },
-  );
-
-const projectWorkspaceWireBaseSchema = z
-  .object({
-    id: z.string().min(1).max(255),
-    position: z.number().int().nonnegative(),
-    isDefault: z.boolean(),
-    projectIds: z.array(z.string().min(1)),
-    revision: z.number().int().positive(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict();
-
-export const encryptedProjectWorkspaceNameSchema = z
-  .object({
-    state: z.literal("encrypted"),
-    formatVersion: z.literal(1),
-    keyRevision: z.number().int().positive(),
-    blindIndex: encryptionKeyBytesSchema,
-    envelope: encryptedPayloadEnvelopeSchema.refine(
-      (envelope) => envelope.ciphertext.length <= 448,
-      "Encrypted workspace name is too large.",
-    ),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.envelope.keyRevision !== value.keyRevision) {
-      context.addIssue({
-        code: "custom",
-        message: "Workspace name and envelope key revisions must match.",
-        path: ["envelope", "keyRevision"],
-      });
-    }
-  });
-
-export const systemDefaultProjectWorkspaceNameSchema = z
-  .object({
-    state: z.literal("system-default"),
-  })
-  .strict();
-
-export const projectWorkspaceWireSummarySchema =
-  projectWorkspaceWireBaseSchema.extend({
-    nameProtection: z.discriminatedUnion("state", [
-      encryptedProjectWorkspaceNameSchema,
-      systemDefaultProjectWorkspaceNameSchema,
-    ]),
-  });
-
-export const projectWorkspaceWireListSchema = z
-  .object({
-    workspaces: z.array(projectWorkspaceWireSummarySchema),
-  })
-  .strict();
-
-export const encryptedProjectWorkspaceCreateSchema = z
-  .object({
-    id: z.string().uuid(),
-    nameProtection: encryptedProjectWorkspaceNameSchema,
-  })
-  .strict();
-
-export const encryptedProjectWorkspaceUpdateSchema = z
-  .object({
-    expectedRevision: z.number().int().positive(),
-    nameProtection: encryptedProjectWorkspaceNameSchema.optional(),
-    projectIds: z.array(z.string().min(1)).max(10_000).optional(),
-    isDefault: z.literal(true).optional(),
-  })
-  .strict()
-  .refine(
-    (input) =>
-      input.nameProtection !== undefined ||
-      input.projectIds !== undefined ||
-      input.isDefault !== undefined,
-    { message: "At least one workspace field is required." },
-  );
-
-export const projectWorkspaceSummarySchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  isDefault: z.boolean(),
-  projectIds: z.array(z.string().min(1)),
-  revision: z.number().int().positive(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const projectWorkspaceListSchema = z.array(
+export {
+  projectGithubConversionRepositorySchema,
+  projectGithubRoutingRepositorySchema,
+  projectGithubWireRepositorySchema,
+  projectReplicaPlacementModeSchema,
+  projectReplicaPlacementRequestSchema,
+  encryptedProjectReplicaPlacementRequestSchema,
+  projectReplicaMaterializationSchema,
+  projectReplicaOwnershipKindSchema,
+  projectReplicaPlacementResultSchema,
+  githubProjectCreateSchema,
+  encryptedGithubProjectCreateSchema,
+  managedFolderProjectCreateSchema,
+  encryptedManagedFolderProjectCreateSchema,
+  projectWorkspaceCreateSchema,
+  projectWorkspaceUpdateSchema,
+  encryptedProjectWorkspaceNameSchema,
+  systemDefaultProjectWorkspaceNameSchema,
+  projectWorkspaceWireSummarySchema,
+  projectWorkspaceWireListSchema,
+  encryptedProjectWorkspaceCreateSchema,
+  encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceSummarySchema,
-);
+  projectWorkspaceListSchema,
+  projectSourceSummarySchema,
+  projectReplicaSummarySchema,
+  projectReplicaListSchema,
+  projectReplicaJobKindSchema,
+  projectReplicaJobStateSchema,
+  projectReplicaJobErrorCodeSchema,
+  projectReplicaJobErrorSchema,
+  projectReplicaJobProgressStageSchema,
+  projectReplicaJobProgressSchema,
+  projectReplicaJobProgressEventSchema,
+  projectReplicaJobSummarySchema,
+  projectReplicaJobListSchema,
+  projectReplicaProvisionCreateSchema,
+  encryptedProjectReplicaProvisionCreateSchema,
+  projectReplicaSynchronizationPolicySchema,
+  projectReplicaSynchronizeCreateSchema,
+  encryptedProjectReplicaSynchronizeCreateSchema,
+  projectReplicaRemoveCreateSchema,
+  encryptedProjectReplicaRemoveCreateSchema,
+  projectReplicaJobRetrySchema,
+  projectReplicaJobCancelSchema,
+  projectSetupStatusSchema,
+  projectSummarySchema,
+  projectWireSummarySchema,
+  projectListSchema,
+  projectWireListSchema,
+  projectPreferredWorkerUpdateSchema,
+} from "./projects.js";
 
-export const projectOriginKindSchema = z.enum(["github", "managed-folder"]);
-export const projectFolderManagementSchema = z.enum(["managed", "external"]);
-export const projectSourceKindSchema = z.enum(["git", "folder"]);
-export const projectRootKindSchema = z.enum(["git-worktree", "folder-root"]);
+export type {
+  ProjectReplicaPlacementMode,
+  ProjectReplicaPlacementRequest,
+  EncryptedProjectReplicaPlacementRequest,
+  ProjectReplicaMaterialization,
+  ProjectReplicaOwnershipKind,
+  ProjectReplicaPlacementResult,
+  ProjectSummary,
+  ProjectWireSummary,
+  ProjectPreferredWorkerUpdate,
+  ProjectReplicaSummary,
+  ProjectReplicaJobKind,
+  ProjectReplicaJobState,
+  ProjectReplicaJobErrorCode,
+  ProjectReplicaJobError,
+  ProjectReplicaJobProgress,
+  ProjectReplicaJobProgressEvent,
+  ProjectReplicaJobSummary,
+  ProjectReplicaProvisionCreate,
+  EncryptedProjectReplicaProvisionCreate,
+  ProjectReplicaSynchronizationPolicy,
+  ProjectReplicaSynchronizeCreate,
+  EncryptedProjectReplicaSynchronizeCreate,
+  ProjectReplicaRemoveCreate,
+  EncryptedProjectReplicaRemoveCreate,
+  ProjectReplicaJobRetry,
+  ProjectReplicaJobCancel,
+  ProjectWorkspaceCreate,
+  ProjectWorkspaceUpdate,
+  ProjectWorkspaceSummary,
+  EncryptedProjectWorkspaceName,
+  ProjectWorkspaceWireSummary,
+  ProjectWorkspaceWireList,
+  EncryptedProjectWorkspaceCreate,
+  EncryptedProjectWorkspaceUpdate,
+  GithubProjectCreate,
+  EncryptedGithubProjectCreate,
+  ManagedFolderProjectCreate,
+  EncryptedManagedFolderProjectCreate,
+  ProjectGithubConversionRepository,
+  ProjectGithubRoutingRepository,
+} from "./projects.js";
 
-export const projectCapabilitiesSchema = z
-  .object({
-    git: z.boolean(),
-    github: z.boolean(),
-    worktrees: z.boolean(),
-    replicas: z.boolean(),
-    relocation: z.boolean(),
-  })
-  .strict();
+import {
+  executionResourceIdSchema,
+  executionPlacementSchema,
+  executionTargetSchema,
+  executionTargetResourceKindSchema,
+  executionTargetResolutionSchema,
+  executionTargetDescriptorSchema,
+} from "./execution-targets.js";
 
-export const projectCapabilitySchema = projectCapabilitiesSchema.keyof();
+export {
+  executionSurfaceKindSchema,
+  executionPlacementSchema,
+  executionTargetSchema,
+  executionPlacementSelectionSchema,
+  executionPlacementResolveRequestSchema,
+  executionPlacementResolutionSchema,
+  executionTargetResourceKindSchema,
+  executionTargetAvailabilitySchema,
+  executionTargetResolutionSchema,
+  executionTargetResolveRequestSchema,
+  executionTargetDescriptorSchema,
+  executionTargetWireDescriptorSchema,
+  executionTargetCatalogSchema,
+  executionTargetWireCatalogSchema,
+} from "./execution-targets.js";
 
-export const projectCapabilityUnavailableErrorSchema = z
-  .object({
-    code: z.literal("project-capability-unavailable"),
-    capability: projectCapabilitySchema,
-    error: z.string().min(1).max(1_000),
-  })
-  .strict();
+export type {
+  ExecutionSurfaceKind,
+  ExecutionPlacement,
+  ExecutionTarget,
+  ExecutionPlacementSelection,
+  ExecutionPlacementResolveRequest,
+  ExecutionPlacementResolution,
+  ExecutionTargetResourceKind,
+  ExecutionTargetAvailability,
+  ExecutionTargetResolution,
+  ExecutionTargetResolveRequest,
+  ExecutionTargetDescriptor,
+  ExecutionTargetWireDescriptor,
+  ExecutionTargetCatalog,
+  ExecutionTargetWireCatalog,
+} from "./execution-targets.js";
 
-export function projectCapabilitiesForOriginKind(
-  originKind: z.infer<typeof projectOriginKindSchema>,
-): z.infer<typeof projectCapabilitiesSchema> {
-  const available = originKind === "github";
-  return {
-    git: available,
-    github: available,
-    worktrees: available,
-    replicas: available,
-    relocation: available,
-  };
-}
+import {
+  worktreePolicySchema,
+  projectWorktreeSummarySchema,
+} from "./worktrees.js";
 
-export const projectSourceSummarySchema = z.object({
-  id: z.string().min(1),
-  sourceKind: projectSourceKindSchema.default("git"),
-  workerId: z.string().min(1),
-  path: z.string().min(1),
-  displayPath: z.string().min(1),
-  placementMode: projectReplicaPlacementModeSchema.default("managed"),
-  ownershipKind: projectReplicaOwnershipKindSchema.default("cantrip"),
-  requestedPath: z.string().min(1).nullable().default(null),
-  linkPath: z.string().min(1).nullable().default(null),
-});
+export {
+  worktreePolicySchema,
+  worktreeOriginSchema,
+  worktreeLifecycleStateSchema,
+  projectWorktreeSummarySchema,
+  projectWorktreeListSchema,
+  githubPullRequestCheckoutResultSchema,
+} from "./worktrees.js";
 
-export const projectReplicaSummarySchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  sourceKind: projectSourceKindSchema.default("git"),
-  workerId: z.string().min(1),
-  workerName: z.string().min(1),
-  workerOnline: z.boolean(),
-  path: z.string().min(1),
-  displayPath: z.string().min(1),
-  placementMode: projectReplicaPlacementModeSchema.default("managed"),
-  ownershipKind: projectReplicaOwnershipKindSchema.default("cantrip"),
-  requestedPath: z.string().min(1).nullable().default(null),
-  linkPath: z.string().min(1).nullable().default(null),
-  repositoryFingerprint: z.string().min(1).nullable(),
-  primaryWorktreeId: z.string().min(1).nullable(),
-  branch: z.string().min(1).nullable(),
-  head: z.string().min(1).nullable(),
-  dirty: z.boolean().nullable(),
-  ready: z.boolean(),
-  worktreeCount: z.number().int().nonnegative(),
-  lastObservedAt: z.string().datetime().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const projectReplicaListSchema = z
-  .array(projectReplicaSummarySchema)
-  .max(1_000);
-
-export const projectReplicaJobKindSchema = z.enum([
-  "provision",
-  "synchronize",
-  "remove",
-]);
-
-export const projectReplicaJobStateSchema = z.enum([
-  "queued",
-  "running",
-  "blocked",
-  "succeeded",
-  "failed",
-  "cancelled",
-]);
-
-export const projectReplicaJobErrorCodeSchema = z.enum([
-  "target-not-found",
-  "target-mismatch",
-  "worker-offline",
-  "capability-missing",
-  "replica-not-ready",
-  "worktree-dirty",
-  "revision-diverged",
-  "lease-conflict",
-  "attachment-unavailable",
-  "runtime-incompatible",
-  "stale-attempt",
-  "policy-denied",
-  "remote-unavailable",
-  "windows-long-paths-disabled",
-  "placement-unsupported",
-  "path-invalid",
-  "path-permission-denied",
-  "parent-creation-failed",
-  "target-type-mismatch",
-  "target-repository-mismatch",
-  "target-not-primary-worktree",
-  "target-owned-by-another-project",
-  "target-revision-mismatch",
-  "link-unsupported",
-  "link-target-mismatch",
-  "ownership-proof-missing",
-  "replica-in-use",
-  "unpushed-commits",
-  "worker-error",
-]);
-
-export const projectReplicaJobErrorSchema = z.object({
-  code: projectReplicaJobErrorCodeSchema,
-  retryable: z.boolean(),
-});
-
-export const projectReplicaJobProgressStageSchema = z.enum([
-  "queued",
-  "dispatching",
-  "validating",
-  "validating-placement",
-  "inspecting-existing-checkout",
-  "fetching",
-  "inspecting",
-  "materializing",
-  "resolving-revision",
-  "verifying",
-  "fast-forwarding",
-  "removing",
-  "blocked",
-  "failed",
-  "succeeded",
-  "cancelled",
-]);
-
-export const projectReplicaJobProgressSchema = z.object({
-  stage: projectReplicaJobProgressStageSchema,
-  percent: z.number().int().min(0).max(100),
-  updatedAt: z.string().datetime(),
-});
-
-export const projectReplicaJobProgressEventSchema =
-  projectReplicaJobProgressSchema.omit({ updatedAt: true });
-
-const gitObjectRevisionSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .regex(/^[0-9a-f]{40,64}$/u);
-
-export const projectReplicaJobSummarySchema = z.object({
-  id: z.string().uuid(),
-  projectId: z.string().min(1),
-  projectReplicaId: z.string().min(1).nullable(),
-  workerId: z.string().min(1),
-  kind: projectReplicaJobKindSchema,
-  state: projectReplicaJobStateSchema,
-  stateRevision: z.number().int().positive(),
-  idempotencyKey: z.string().min(1).max(200),
-  repository: z.string().min(1),
-  placementMode: projectReplicaPlacementModeSchema.default("managed"),
-  placementPath: z.string().min(1).nullable().default(null),
-  resolvedMaterialization: projectReplicaMaterializationSchema
-    .nullable()
-    .default(null),
-  resolvedOwnership: projectReplicaOwnershipKindSchema.nullable().default(null),
-  expectedRevision: gitObjectRevisionSchema.nullable(),
-  resolvedRevision: gitObjectRevisionSchema.nullable(),
-  synchronizationPolicy: z
-    .enum(["verify-only", "fast-forward-primary"])
-    .nullable()
-    .default(null),
-  deleteLocalFiles: z.boolean().nullable().default(null),
-  attempt: z.number().int().nonnegative(),
-  progress: projectReplicaJobProgressSchema,
-  error: projectReplicaJobErrorSchema.nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  startedAt: z.string().datetime().nullable(),
-  cancellationUnsafeAt: z.string().datetime().nullable(),
-  completedAt: z.string().datetime().nullable(),
-});
-
-export const projectReplicaJobListSchema = z
-  .array(projectReplicaJobSummarySchema)
-  .max(1_000);
-
-export const projectReplicaProvisionCreateSchema = z.object({
-  workerId: z.string().min(1),
-  placement: projectReplicaPlacementRequestSchema.optional(),
-  expectedRevision: gitObjectRevisionSchema.nullable().default(null),
-  idempotencyKey: z.string().trim().min(1).max(200),
-});
-
-export const encryptedProjectReplicaProvisionCreateSchema =
-  projectReplicaProvisionCreateSchema
-    .omit({ placement: true })
-    .extend({
-      placement: encryptedProjectReplicaPlacementRequestSchema.optional(),
-      repository: repositoryRoutingHandleSchema,
-    })
-    .strict();
-
-export const projectReplicaSynchronizationPolicySchema = z.enum([
-  "verify-only",
-  "fast-forward-primary",
-]);
-
-export const projectReplicaSynchronizeCreateSchema = z.object({
-  expectedRevision: gitObjectRevisionSchema,
-  policy: projectReplicaSynchronizationPolicySchema.default("verify-only"),
-  idempotencyKey: z.string().trim().min(1).max(200),
-});
-
-export const encryptedProjectReplicaSynchronizeCreateSchema =
-  projectReplicaSynchronizeCreateSchema
-    .extend({ repository: repositoryRoutingHandleSchema })
-    .strict();
-
-export const projectReplicaRemoveCreateSchema = z.object({
-  deleteLocalFiles: z.boolean().default(true),
-  idempotencyKey: z.string().trim().min(1).max(200),
-});
-
-export const encryptedProjectReplicaRemoveCreateSchema =
-  projectReplicaRemoveCreateSchema
-    .extend({ repository: repositoryRoutingHandleSchema })
-    .strict();
-
-export const projectReplicaJobRetrySchema = z.object({
-  stateRevision: z.number().int().positive(),
-});
-
-export const projectReplicaJobCancelSchema = z.object({
-  stateRevision: z.number().int().positive(),
-});
-
-const executionResourceIdSchema = z.string().min(1).max(200);
-
-export const executionSurfaceKindSchema = z.enum([
-  "chat",
-  "terminal",
-  "explorer",
-  "code",
-  "browser",
-  "remote-desktop",
-  "remote-surface",
-]);
-
-export const executionPlacementSchema = z
-  .object({
-    projectId: executionResourceIdSchema,
-    workerId: executionResourceIdSchema,
-    projectReplicaId: executionResourceIdSchema.nullable(),
-    worktreeId: executionResourceIdSchema.nullable(),
-    surface: z
-      .object({
-        kind: executionSurfaceKindSchema,
-        id: executionResourceIdSchema,
-      })
-      .strict()
-      .nullable(),
-  })
-  .strict()
-  .superRefine((placement, context) => {
-    if (placement.worktreeId !== null && placement.projectReplicaId === null) {
-      context.addIssue({
-        code: "custom",
-        message: "A worktree placement requires a project replica.",
-        path: ["projectReplicaId"],
-      });
-    }
-  });
-
-export const executionTargetSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("project"),
-      projectId: executionResourceIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("worker"),
-      projectId: executionResourceIdSchema,
-      workerId: executionResourceIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("replica"),
-      projectId: executionResourceIdSchema,
-      projectReplicaId: executionResourceIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("worktree"),
-      projectId: executionResourceIdSchema,
-      worktreeId: executionResourceIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("surface"),
-      projectId: executionResourceIdSchema,
-      surfaceKind: executionSurfaceKindSchema,
-      surfaceId: executionResourceIdSchema,
-    })
-    .strict(),
-]);
-
-export const executionPlacementSelectionSchema = z.enum([
-  "explicit",
-  "project-preference",
-  "default-worker",
-  "fallback",
-]);
-
-export const executionPlacementResolveRequestSchema = z
-  .object({
-    surfaceKind: executionSurfaceKindSchema,
-    target: executionTargetSchema.optional(),
-  })
-  .strict();
-
-export const executionPlacementResolutionSchema = z.object({
-  placement: executionPlacementSchema,
-  selection: executionPlacementSelectionSchema,
-});
-
-export const executionTargetResourceKindSchema = z.enum([
-  "project",
-  "worker",
-  "replica",
-  "worktree",
-  "chat",
-  "terminal",
-  "explorer",
-  "code",
-  "browser",
-  "remote-desktop",
-  "remote-surface",
-]);
-
-export const executionTargetAvailabilitySchema = z.enum([
-  "available",
-  "worker-offline",
-  "capability-unavailable",
-  "resource-unavailable",
-]);
-
-const executionTargetWorkerSchema = z.object({
-  workerId: executionResourceIdSchema,
-  name: z.string().min(1).max(200),
-  online: z.boolean(),
-});
-
-export const executionTargetResolutionSchema = z
-  .object({
-    target: executionTargetSchema,
-    placement: executionPlacementSchema,
-    worker: executionTargetWorkerSchema,
-    availability: executionTargetAvailabilitySchema,
-    unavailableReason: z.string().min(1).max(4_000).nullable(),
-  })
-  .strict();
-
-export const executionTargetResolveRequestSchema = z
-  .object({
-    target: executionTargetSchema,
-    allowUnavailable: z.boolean().default(false),
-  })
-  .strict();
-
-const executionTargetDescriptorBaseSchema = executionTargetResolutionSchema
-  .extend({
-    resourceKind: executionTargetResourceKindSchema,
-    status: z.string().min(1).max(200).nullable(),
-  })
-  .strict();
-
-export const executionTargetDescriptorSchema =
-  executionTargetDescriptorBaseSchema.extend({
-    title: z.string().min(1).max(500),
-  });
-
-export const executionTargetWireDescriptorSchema =
-  executionTargetDescriptorBaseSchema
-    .extend({
-      title: z.string().min(1).max(500).nullable(),
-      titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
-    })
-    .superRefine((descriptor, context) => {
-      const expectedRecordKind =
-        descriptor.resourceKind === "chat"
-          ? "chat"
-          : descriptor.resourceKind === "terminal"
-            ? "terminal"
-            : descriptor.resourceKind === "explorer"
-              ? "explorer"
-              : descriptor.resourceKind === "code"
-                ? "code-tab"
-                : descriptor.resourceKind === "browser"
-                  ? "browser"
-                  : descriptor.resourceKind === "remote-desktop"
-                    ? "project-view"
-                    : descriptor.resourceKind === "remote-surface"
-                      ? "remote-surface"
-                      : null;
-      const protectedResource = expectedRecordKind !== null;
-      if (
-        protectedResource !== (descriptor.titleProtection !== null) ||
-        protectedResource === (descriptor.title !== null)
-      ) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Surface execution targets require an opaque title; placement targets require a plaintext title.",
-          path: ["titleProtection"],
-        });
-      }
-      if (
-        descriptor.titleProtection &&
-        descriptor.titleProtection.classification.recordKind !==
-          expectedRecordKind
-      ) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Execution-target title classification must match its resource kind.",
-          path: ["titleProtection", "classification", "recordKind"],
-        });
-      }
-      if (protectedResource && descriptor.target.kind !== "surface") {
-        context.addIssue({
-          code: "custom",
-          message: "Protected execution targets must identify a surface.",
-          path: ["target"],
-        });
-      }
-      if (
-        protectedResource &&
-        descriptor.target.kind === "surface" &&
-        descriptor.target.surfaceKind !== descriptor.resourceKind
-      ) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Execution-target resource and surface kinds must describe the same surface.",
-          path: ["target", "surfaceKind"],
-        });
-      }
-      if (
-        protectedResource &&
-        descriptor.placement.surface?.kind !== descriptor.resourceKind
-      ) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Execution-target placement must point at the protected surface.",
-          path: ["placement", "surface"],
-        });
-      }
-    });
-
-export const executionTargetCatalogSchema = z
-  .object({
-    projectId: executionResourceIdSchema,
-    targets: z.array(executionTargetDescriptorSchema).max(2_000),
-    truncated: z.boolean(),
-  })
-  .strict();
-
-export const executionTargetWireCatalogSchema = z
-  .object({
-    projectId: executionResourceIdSchema,
-    targets: z.array(executionTargetWireDescriptorSchema).max(2_000),
-    truncated: z.boolean(),
-  })
-  .strict();
-
-export const worktreePolicySchema = z.enum([
-  "direct",
-  "agent-managed",
-  "required-for-writes",
-]);
-export const worktreeOriginSchema = z.enum([
-  "cantrip",
-  "agent",
-  "user",
-  "external",
-]);
-export const worktreeLifecycleStateSchema = z.enum([
-  "creating",
-  "ready",
-  "missing",
-  "prunable",
-  "removing",
-]);
-
-export const projectWorktreeSummarySchema = z.object({
-  id: z.string().min(1),
-  projectSourceId: z.string().min(1),
-  projectId: z.string().min(1),
-  rootKind: projectRootKindSchema.default("git-worktree"),
-  workerId: z.string().min(1),
-  name: z.string().min(1),
-  path: z.string().min(1),
-  displayPath: z.string().min(1),
-  isPrimary: z.boolean(),
-  isDefault: z.boolean(),
-  origin: worktreeOriginSchema,
-  lifecycleState: worktreeLifecycleStateSchema,
-  branch: z.string().min(1).nullable(),
-  head: z.string().min(1).nullable(),
-  detached: z.boolean(),
-  locked: z.boolean(),
-  lockReason: z.string().min(1).nullable(),
-  lastScannedAt: z.string().datetime().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const projectWorktreeListSchema = z.array(projectWorktreeSummarySchema);
-
-export const githubPullRequestCheckoutResultSchema = z.object({
-  pullRequest: githubPullRequestSummarySchema,
-  worktree: projectWorktreeSummarySchema,
-  reused: z.boolean(),
-});
-
-export const projectSetupStatusSchema = z.enum([
-  "preparing",
-  "cloning",
-  "ready",
-  "failed",
-]);
-
-const projectSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  originKind: projectOriginKindSchema.default("github"),
-  folderManagement: projectFolderManagementSchema.nullable().optional(),
-  capabilities: projectCapabilitiesSchema.default(
-    projectCapabilitiesForOriginKind("github"),
-  ),
-  setupStatus: projectSetupStatusSchema,
-  setupError: z.string().min(1).nullable(),
-  worktreePolicy: worktreePolicySchema,
-  preferredWorkerId: z.string().min(1).nullable().optional(),
-  source: projectSourceSummarySchema.nullable(),
-  replicas: projectReplicaListSchema.default([]),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-function refineProjectSummary(
-  project: z.infer<typeof projectSummaryBaseSchema>,
-  context: z.RefinementCtx,
-): void {
-  if (
-    (project.originKind === "github" && project.folderManagement != null) ||
-    (project.originKind === "managed-folder" &&
-      project.folderManagement === null)
-  ) {
-    context.addIssue({
-      code: "custom",
-      message: "folder management must match the project origin",
-      path: ["folderManagement"],
-    });
-  }
-  const expected = projectCapabilitiesForOriginKind(project.originKind);
-  for (const capability of projectCapabilitySchema.options) {
-    if (project.capabilities[capability] !== expected[capability]) {
-      context.addIssue({
-        code: "custom",
-        message: `${capability} capability does not match ${project.originKind} origin`,
-        path: ["capabilities", capability],
-      });
-    }
-  }
-}
-
-export const projectSummarySchema = projectSummaryBaseSchema
-  .extend({
-    name: z.string().min(1).max(1_000),
-    github: projectGithubConversionRepositorySchema.nullable(),
-  })
-  .strict()
-  .superRefine(refineProjectSummary);
-
-export const projectWireSummarySchema = projectSummaryBaseSchema
-  .extend({
-    nameProtection: privateDisplayLabelOpaqueSchema,
-    github: projectGithubWireRepositorySchema.nullable(),
-  })
-  .strict()
-  .superRefine((project, context) => {
-    refineProjectSummary(project, context);
-    if (project.nameProtection.classification.recordKind !== "project") {
-      context.addIssue({
-        code: "custom",
-        message: "Project display-label classification must be project.",
-        path: ["nameProtection", "classification", "recordKind"],
-      });
-    }
-  });
-
-export const projectListSchema = z.array(projectSummarySchema);
-export const projectWireListSchema = z.array(projectWireSummarySchema);
-
-export const projectPreferredWorkerUpdateSchema = z.object({
-  workerId: z.string().min(1).nullable(),
-});
+export type {
+  WorktreePolicy,
+  WorktreeOrigin,
+  WorktreeLifecycleState,
+  ProjectWorktreeSummary,
+  GithubPullRequestCheckoutResult,
+} from "./worktrees.js";
 
 const tunnelResourceIdSchema = z.string().trim().min(1).max(200);
 const tunnelNameSchema = z.string().trim().min(1).max(120);
@@ -14019,87 +12997,6 @@ export const workerServerEnvelopeSchema = z.union([
   workerNotificationEnvelopeSchema,
 ]);
 
-export type ProjectReplicaPlacementMode = z.infer<
-  typeof projectReplicaPlacementModeSchema
->;
-export type ProjectReplicaPlacementRequest = z.infer<
-  typeof projectReplicaPlacementRequestSchema
->;
-export type EncryptedProjectReplicaPlacementRequest = z.infer<
-  typeof encryptedProjectReplicaPlacementRequestSchema
->;
-export type ProjectReplicaMaterialization = z.infer<
-  typeof projectReplicaMaterializationSchema
->;
-export type ProjectReplicaOwnershipKind = z.infer<
-  typeof projectReplicaOwnershipKindSchema
->;
-export type ProjectReplicaPlacementResult = z.infer<
-  typeof projectReplicaPlacementResultSchema
->;
-export type ProjectOriginKind = z.infer<typeof projectOriginKindSchema>;
-export type ProjectFolderManagement = z.infer<
-  typeof projectFolderManagementSchema
->;
-export type ProjectSourceKind = z.infer<typeof projectSourceKindSchema>;
-export type ProjectRootKind = z.infer<typeof projectRootKindSchema>;
-export type ProjectCapabilities = z.infer<typeof projectCapabilitiesSchema>;
-export type ProjectCapability = z.infer<typeof projectCapabilitySchema>;
-export type ProjectCapabilityUnavailableError = z.infer<
-  typeof projectCapabilityUnavailableErrorSchema
->;
-export type ProjectSummary = z.infer<typeof projectSummarySchema>;
-export type ProjectWireSummary = z.infer<typeof projectWireSummarySchema>;
-export type ProjectPreferredWorkerUpdate = z.infer<
-  typeof projectPreferredWorkerUpdateSchema
->;
-export type ProjectReplicaSummary = z.infer<typeof projectReplicaSummarySchema>;
-export type ProjectReplicaJobKind = z.infer<typeof projectReplicaJobKindSchema>;
-export type ProjectReplicaJobState = z.infer<
-  typeof projectReplicaJobStateSchema
->;
-export type ProjectReplicaJobErrorCode = z.infer<
-  typeof projectReplicaJobErrorCodeSchema
->;
-export type ProjectReplicaJobError = z.infer<
-  typeof projectReplicaJobErrorSchema
->;
-export type ProjectReplicaJobProgress = z.infer<
-  typeof projectReplicaJobProgressSchema
->;
-export type ProjectReplicaJobProgressEvent = z.infer<
-  typeof projectReplicaJobProgressEventSchema
->;
-export type ProjectReplicaJobSummary = z.infer<
-  typeof projectReplicaJobSummarySchema
->;
-export type ProjectReplicaProvisionCreate = z.infer<
-  typeof projectReplicaProvisionCreateSchema
->;
-export type EncryptedProjectReplicaProvisionCreate = z.infer<
-  typeof encryptedProjectReplicaProvisionCreateSchema
->;
-export type ProjectReplicaSynchronizationPolicy = z.infer<
-  typeof projectReplicaSynchronizationPolicySchema
->;
-export type ProjectReplicaSynchronizeCreate = z.infer<
-  typeof projectReplicaSynchronizeCreateSchema
->;
-export type EncryptedProjectReplicaSynchronizeCreate = z.infer<
-  typeof encryptedProjectReplicaSynchronizeCreateSchema
->;
-export type ProjectReplicaRemoveCreate = z.infer<
-  typeof projectReplicaRemoveCreateSchema
->;
-export type EncryptedProjectReplicaRemoveCreate = z.infer<
-  typeof encryptedProjectReplicaRemoveCreateSchema
->;
-export type ProjectReplicaJobRetry = z.infer<
-  typeof projectReplicaJobRetrySchema
->;
-export type ProjectReplicaJobCancel = z.infer<
-  typeof projectReplicaJobCancelSchema
->;
 export type ProjectRepositoryStats = z.infer<
   typeof projectRepositoryStatsSchema
 >;
@@ -14131,66 +13028,6 @@ export type ProviderTelemetryExport = z.infer<
 >;
 export type ProviderTelemetryDeleteResult = z.infer<
   typeof providerTelemetryDeleteResultSchema
->;
-export type ProjectWorkspaceCreate = z.infer<
-  typeof projectWorkspaceCreateSchema
->;
-export type ProjectWorkspaceUpdate = z.infer<
-  typeof projectWorkspaceUpdateSchema
->;
-export type ProjectWorkspaceSummary = z.infer<
-  typeof projectWorkspaceSummarySchema
->;
-export type EncryptedProjectWorkspaceName = z.infer<
-  typeof encryptedProjectWorkspaceNameSchema
->;
-export type ProjectWorkspaceWireSummary = z.infer<
-  typeof projectWorkspaceWireSummarySchema
->;
-export type ProjectWorkspaceWireList = z.infer<
-  typeof projectWorkspaceWireListSchema
->;
-export type EncryptedProjectWorkspaceCreate = z.infer<
-  typeof encryptedProjectWorkspaceCreateSchema
->;
-export type EncryptedProjectWorkspaceUpdate = z.infer<
-  typeof encryptedProjectWorkspaceUpdateSchema
->;
-export type ExecutionSurfaceKind = z.infer<typeof executionSurfaceKindSchema>;
-export type ExecutionPlacement = z.infer<typeof executionPlacementSchema>;
-export type ExecutionTarget = z.infer<typeof executionTargetSchema>;
-export type ExecutionPlacementSelection = z.infer<
-  typeof executionPlacementSelectionSchema
->;
-export type ExecutionPlacementResolveRequest = z.infer<
-  typeof executionPlacementResolveRequestSchema
->;
-export type ExecutionPlacementResolution = z.infer<
-  typeof executionPlacementResolutionSchema
->;
-export type ExecutionTargetResourceKind = z.infer<
-  typeof executionTargetResourceKindSchema
->;
-export type ExecutionTargetAvailability = z.infer<
-  typeof executionTargetAvailabilitySchema
->;
-export type ExecutionTargetResolution = z.infer<
-  typeof executionTargetResolutionSchema
->;
-export type ExecutionTargetResolveRequest = z.infer<
-  typeof executionTargetResolveRequestSchema
->;
-export type ExecutionTargetDescriptor = z.infer<
-  typeof executionTargetDescriptorSchema
->;
-export type ExecutionTargetWireDescriptor = z.infer<
-  typeof executionTargetWireDescriptorSchema
->;
-export type ExecutionTargetCatalog = z.infer<
-  typeof executionTargetCatalogSchema
->;
-export type ExecutionTargetWireCatalog = z.infer<
-  typeof executionTargetWireCatalogSchema
 >;
 export type TunnelOrigin = z.infer<typeof tunnelOriginSchema>;
 export type TunnelManagement = z.infer<typeof tunnelManagementSchema>;
@@ -14231,98 +13068,8 @@ export type TunnelActionCapabilities = z.infer<
 >;
 export type TunnelSummary = z.infer<typeof tunnelSummarySchema>;
 export type TunnelWireSummary = z.infer<typeof tunnelWireSummarySchema>;
-export type WorktreePolicy = z.infer<typeof worktreePolicySchema>;
-export type WorktreeOrigin = z.infer<typeof worktreeOriginSchema>;
-export type WorktreeLifecycleState = z.infer<
-  typeof worktreeLifecycleStateSchema
->;
-export type ProjectWorktreeSummary = z.infer<
-  typeof projectWorktreeSummarySchema
->;
-export type GithubAuthStatus = z.infer<typeof githubAuthStatusSchema>;
-export type GithubRepository = z.infer<typeof githubRepositorySchema>;
-export type GithubRepositoryOwner = z.infer<typeof githubRepositoryOwnerSchema>;
-export type GithubRepositoryVisibility = z.infer<
-  typeof githubRepositoryVisibilitySchema
->;
-export type GithubRepositoryCreate = z.infer<
-  typeof githubRepositoryCreateSchema
->;
-export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
-export type GithubIssueKind = z.infer<typeof githubIssueKindSchema>;
-export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
-export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
-export type GithubPullRequestList = z.infer<typeof githubPullRequestListSchema>;
-export type GithubIssueComment = z.infer<typeof githubIssueCommentSchema>;
-export type GithubIssueDetail = z.infer<typeof githubIssueDetailSchema>;
-export type GithubIssueCreate = z.infer<typeof githubIssueCreateSchema>;
-export type GithubPullRequestCreate = z.infer<
-  typeof githubPullRequestCreateSchema
->;
-export type GithubPullRequestSummary = z.infer<
-  typeof githubPullRequestSummarySchema
->;
-export type GithubPullRequestCreateResult = z.infer<
-  typeof githubPullRequestCreateResultSchema
->;
-export type GithubPullRequestCommit = z.infer<
-  typeof githubPullRequestCommitSchema
->;
-export type GithubPullRequestFile = z.infer<typeof githubPullRequestFileSchema>;
-export type GithubPullRequestCheck = z.infer<
-  typeof githubPullRequestCheckSchema
->;
-export type GithubPullRequestReview = z.infer<
-  typeof githubPullRequestReviewSchema
->;
-export type GithubPullRequestReviewComment = z.infer<
-  typeof githubPullRequestReviewCommentSchema
->;
-export type GithubPullRequestReviewThread = z.infer<
-  typeof githubPullRequestReviewThreadSchema
->;
-export type GithubPullRequestReviewSubmit = z.infer<
-  typeof githubPullRequestReviewSubmitSchema
->;
-export type GithubPullRequestInlineCommentCreate = z.infer<
-  typeof githubPullRequestInlineCommentCreateSchema
->;
-export type GithubPullRequestReviewAction = z.infer<
-  typeof githubPullRequestReviewActionSchema
->;
-export type GithubPullRequestLifecycleAction = z.infer<
-  typeof githubPullRequestLifecycleActionSchema
->;
-export type GithubPullRequestLifecyclePreview = z.infer<
-  typeof githubPullRequestLifecyclePreviewSchema
->;
-export type GithubPullRequestLifecycleApply = z.infer<
-  typeof githubPullRequestLifecycleApplySchema
->;
-export type GithubPullRequestCheckoutPrepared = z.infer<
-  typeof githubPullRequestCheckoutPreparedSchema
->;
-export type GithubPullRequestCheckoutResult = z.infer<
-  typeof githubPullRequestCheckoutResultSchema
->;
-export type GithubPullRequestDetail = z.infer<
-  typeof githubPullRequestDetailSchema
->;
-export type GithubReleaseSummary = z.infer<typeof githubReleaseSummarySchema>;
-export type GithubReleaseList = z.infer<typeof githubReleaseListSchema>;
-export type GithubReleaseCreate = z.infer<typeof githubReleaseCreateSchema>;
 export type GithubWorkerRepository = z.infer<
   typeof githubWorkerRepositorySchema
->;
-export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
-export type EncryptedGithubProjectCreate = z.infer<
-  typeof encryptedGithubProjectCreateSchema
->;
-export type ManagedFolderProjectCreate = z.infer<
-  typeof managedFolderProjectCreateSchema
->;
-export type EncryptedManagedFolderProjectCreate = z.infer<
-  typeof encryptedManagedFolderProjectCreateSchema
 >;
 export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
 export type ManagedFolderMaterializeReady = z.infer<
@@ -14369,12 +13116,6 @@ export type ProjectFolderSetupJobError = z.infer<
 >;
 export type ProjectFolderSetupJobSummary = z.infer<
   typeof projectFolderSetupJobSummarySchema
->;
-export type ProjectGithubConversionRepository = z.infer<
-  typeof projectGithubConversionRepositorySchema
->;
-export type ProjectGithubRoutingRepository = z.infer<
-  typeof projectGithubRoutingRepositorySchema
 >;
 export type ProjectGithubConversionError = z.infer<
   typeof projectGithubConversionErrorSchema
