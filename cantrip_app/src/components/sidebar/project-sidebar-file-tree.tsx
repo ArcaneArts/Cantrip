@@ -32,6 +32,15 @@ import {
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_FILE_TREE_INDENT_PX = 6;
+const SIDEBAR_HIDDEN_METADATA_NAMES = new Set([".ds_store", "thumbs.db"]);
+
+function visibleSidebarEntries(
+  entries: readonly ExplorerEntry[],
+): ExplorerEntry[] {
+  return entries.filter(
+    (entry) => !SIDEBAR_HIDDEN_METADATA_NAMES.has(entry.name.toLowerCase()),
+  );
+}
 
 export function sidebarEntryRenameError(value: string): string | null {
   const result = explorerEntryNameSchema.safeParse(value);
@@ -315,6 +324,7 @@ function SidebarDirectoryNode({
     queryScope,
     worktreeId,
   });
+  const visibleEntries = visibleSidebarEntries(entries);
   return (
     <>
       <SidebarFileRow
@@ -366,7 +376,7 @@ function SidebarDirectoryNode({
               Could not load folder
             </button>
           ) : (
-            entries.map((child) =>
+            visibleEntries.map((child) =>
               child.kind === "directory" ? (
                 <SidebarDirectoryNode
                   activePath={activePath}
@@ -506,6 +516,7 @@ export function ProjectSidebarFileTree({
     queryScope: streamEncryption.bindingKey ?? "unavailable",
     worktreeId: explorer?.worktreeId ?? "unavailable",
   });
+  const visibleEntries = visibleSidebarEntries(entries);
   const directoryFailed = Boolean(
     explorer && directory.isError && !directory.data,
   );
@@ -754,7 +765,7 @@ export function ProjectSidebarFileTree({
           </div>
         ) : explorer ? (
           <div role="tree" aria-label="Project files">
-            {entries.map((entry) =>
+            {visibleEntries.map((entry) =>
               entry.kind === "directory" ? (
                 <SidebarDirectoryNode
                   activePath={activePath}
@@ -809,7 +820,7 @@ export function ProjectSidebarFileTree({
                 />
               ),
             )}
-            {entries.length === 0 ? (
+            {visibleEntries.length === 0 ? (
               <p className="px-3 py-4 text-center text-[10px] text-muted-foreground">
                 This folder is empty.
               </p>
