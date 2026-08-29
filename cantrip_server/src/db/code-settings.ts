@@ -10,7 +10,7 @@ import {
 import { and, eq, ne } from "drizzle-orm";
 
 import * as schema from "./schema.js";
-import type { RepositoryDatabase } from "./repository.js";
+import type { RepositoryDatabase } from "./repository/database.js";
 
 type CodeSettingsRow = typeof schema.codeSettingsProfiles.$inferSelect;
 

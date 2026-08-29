@@ -15,7 +15,7 @@ import type {
 import { and, asc, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
 
 import * as schema from "./schema.js";
-import type { RepositoryDatabase } from "./repository.js";
+import type { RepositoryDatabase } from "./repository/database.js";
 
 type PrincipalAccessResult =
   | { status: "missing" }

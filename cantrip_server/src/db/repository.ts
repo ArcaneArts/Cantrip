@@ -251,9 +251,8 @@ import {
   sql,
 } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import type { AnyPgColumn, PgDatabase } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { unionAll } from "drizzle-orm/pg-core";
-import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import {
   buildExecutionTargetCatalog,
@@ -304,6 +303,11 @@ import {
   releaseChatLogicalBranchLease,
 } from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
+import {
+  firstOrThrow,
+  type RepositoryDatabase,
+  type RepositoryTransaction,
+} from "./repository/database.js";
 import { ProjectFolderSetupJobRepository } from "./project-folder-setup-jobs.js";
 import { StandaloneChatRootJobRepository } from "./standalone-chat-root-jobs.js";
 import { ProjectGithubConversionJobRepository } from "./project-github-conversion-jobs.js";
@@ -326,6 +330,8 @@ import {
   projectTabKey,
   ProjectTabLayoutRepository,
 } from "./tab-layouts.js";
+
+export type { RepositoryDatabase } from "./repository/database.js";
 
 export const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 export const DEFAULT_OLLAMA_PROVIDER_ID =
@@ -404,10 +410,6 @@ export interface ProviderModelCatalogWrite {
   rawMetadata: Record<string, unknown>;
 }
 
-export type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
-type RepositoryTransaction = Parameters<
-  Parameters<RepositoryDatabase["transaction"]>[0]
->[0];
 type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
@@ -1037,14 +1039,6 @@ function toWorkerCredentialSummary(
 
 function chatIsExecuting(status: ChatWireSummary["status"]): boolean {
   return status === "running" || status === "waiting-for-approval";
-}
-
-function firstOrThrow<T>(rows: T[], operation: string): T {
-  const row = rows[0];
-  if (!row) {
-    throw new Error(`Database returned no row after ${operation}.`);
-  }
-  return row;
 }
 
 const CATALOG_SENSITIVE_METADATA_KEY =
