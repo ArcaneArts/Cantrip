@@ -22,13 +22,6 @@ import {
   projectWireSummarySchema,
   taskMessageOpaqueContentSchema,
   taskMessageOpaqueSummarySchema,
-  unavailableCodeCapabilities,
-  unavailableCodeGraphWorkerStatus,
-  unavailableManagedFolderCapabilities,
-  unavailableManagedWebRuntimeCapabilities,
-  unavailableProjectReplicaCapabilities,
-  unavailableStandaloneChatCapabilities,
-  unavailableWorkerEncryptionStatus,
 } from "@cantrip/protocol";
 import type {
   RunConfigurationRuntime,
@@ -315,6 +308,14 @@ import {
   type ModelRuntime,
 } from "./repository/model-runtime.js";
 import {
+  WorkerRepository,
+  WORKER_ONLINE_WINDOW_MS,
+  toWorkerSummary,
+  type ActiveWorkerCredential,
+  type WorkerEnrollmentProvision,
+  type WorkerManagementRecord,
+} from "./repository/workers.js";
+import {
   TelemetryRepository,
   ZERO_AGENT_TIME,
   ZERO_TOKEN_USAGE,
@@ -377,6 +378,13 @@ export type {
   ProviderModelCatalogWrite,
 } from "./repository/provider-catalog.js";
 export type { ModelRuntime } from "./repository/model-runtime.js";
+export {
+  WORKER_ONLINE_WINDOW_MS,
+  WorkerEnrollmentError,
+  type ActiveWorkerCredential,
+  type WorkerEnrollmentProvision,
+  type WorkerManagementRecord,
+} from "./repository/workers.js";
 export type {
   ModelBehaviorObservationInput,
   ProviderQuotaObservationInput,
@@ -389,8 +397,6 @@ export const DEFAULT_OLLAMA_PROVIDER_ID =
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
 export const ARCHIVED_CHAT_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
-const SERVER_ID_STATE_KEY = "server-id";
-export const WORKER_ONLINE_WINDOW_MS = 30_000;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
@@ -406,7 +412,6 @@ type RunConfigurationSecretRow =
 type RunConfigurationSecretOperationRow =
   typeof schema.runConfigurationSecretOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
-type WorkerCredentialRow = typeof schema.workerCredentials.$inferSelect;
 type TunnelRow = typeof schema.tunnels.$inferSelect;
 type TunnelAttachmentRow = typeof schema.tunnelAttachments.$inferSelect;
 
@@ -429,29 +434,6 @@ export type RunConfigurationRuntimeOperationRequest =
       definitionRevision: null;
       codexEnvironmentRevision: null;
     });
-
-export interface ActiveWorkerCredential {
-  id: string;
-  ownerId: string;
-  scopes: WorkerCredentialScope[];
-  workerId: string;
-}
-
-export interface WorkerEnrollmentProvision {
-  credential: WorkerCredentialSummary;
-  ownerId: string;
-  replacedWorkerId: string | null;
-  revokedCredentialIds: string[];
-  worker: WorkerSummary;
-}
-
-export interface WorkerManagementRecord {
-  activeCredentialCount: number;
-  credentialCount: number;
-  runtimeName: string;
-  sources: WorkerManagementSource[];
-  worker: WorkerSummary;
-}
 
 interface ChatExecutionContextBase {
   automationPaused: boolean;
@@ -541,7 +523,6 @@ export class ExecutionPlacementUnavailableError extends Error {
 export class AgentInteractionConflictError extends Error {}
 export class CodeCapabilityUnavailableError extends Error {}
 export class ProjectWorkspaceInvariantError extends Error {}
-export class WorkerEnrollmentError extends Error {}
 export class TunnelManagementError extends Error {}
 export class ManagedMcpServerInvariantError extends Error {}
 export class McpServerWorkerBindingError extends Error {}
@@ -723,26 +704,6 @@ export interface RemoteSurfaceExecutionContext {
   remoteSurfaceCapabilities: RemoteSurfaceCapabilities;
   surface: RemoteSurfaceWireSummary;
   workerId: string;
-}
-
-function toWorkerCredentialSummary(
-  credential: WorkerCredentialRow,
-  now = new Date(),
-): WorkerCredentialSummary {
-  return {
-    id: credential.id,
-    workerId: credential.workerId,
-    label: credential.label,
-    scopes: credential.scopes as WorkerCredentialScope[],
-    createdAt: toISOString(credential.createdAt),
-    expiresAt: credential.expiresAt?.toISOString() ?? null,
-    lastUsedAt: credential.lastUsedAt?.toISOString() ?? null,
-    revokedAt: credential.revokedAt?.toISOString() ?? null,
-    revokedReason: credential.revokedReason,
-    active:
-      credential.revokedAt === null &&
-      (credential.expiresAt === null || credential.expiresAt > now),
-  };
 }
 
 function chatIsExecuting(status: ChatWireSummary["status"]): boolean {
@@ -1568,33 +1529,6 @@ function toCodeSessionSummary(
   };
 }
 
-function toWorkerSummary(
-  worker: typeof schema.workers.$inferSelect,
-): WorkerSummary {
-  return {
-    workerId: worker.id,
-    name: worker.displayName ?? worker.name,
-    platform: worker.platform,
-    architecture: worker.architecture,
-    codexVersion: worker.codexVersion,
-    codexRuntime: worker.codexRuntime,
-    remoteSurfaces: worker.remoteSurfaceCapabilities,
-    directBroker: worker.directBrokerAdvertisement,
-    code: worker.codeCapabilities,
-    codegraph: worker.codegraphStatus,
-    webRuntimes: worker.webRuntimeCapabilities,
-    encryption: worker.encryptionStatus,
-    projectReplicas: worker.projectReplicaCapabilities,
-    managedFolders: worker.managedFolderCapabilities,
-    standaloneChat: worker.standaloneChatCapabilities,
-    chatRelocation: worker.chatRelocationCapability,
-    externalCodexHistory: worker.externalCodexHistoryCapability,
-    startedAt: toISOString(worker.startedAt),
-    lastSeenAt: toISOString(worker.lastSeenAt),
-    online: Date.now() - worker.lastSeenAt.getTime() <= WORKER_ONLINE_WINDOW_MS,
-  };
-}
-
 function agentInteractionRequestBase(
   request: typeof schema.agentInteractionRequests.$inferSelect,
 ): Omit<AgentInteractionRequest, "payload" | "response"> {
@@ -1996,6 +1930,7 @@ export class ServerRepository {
   readonly providerAccounts: ProviderAccountRepository;
   readonly providerCatalog: ProviderCatalogRepository;
   readonly models: ModelRepository;
+  readonly workers: WorkerRepository;
   readonly telemetry: TelemetryRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
@@ -2029,6 +1964,7 @@ export class ServerRepository {
     this.models = new ModelRepository(database, {
       readSettings: (ownerId) => this.getSettings(ownerId),
     });
+    this.workers = new WorkerRepository(database);
     this.telemetry = new TelemetryRepository(database);
     this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
@@ -3232,21 +3168,7 @@ export class ServerRepository {
     );
   }
   async getOrCreateServerId(): Promise<string> {
-    await this.database
-      .insert(schema.systemState)
-      .values({ key: SERVER_ID_STATE_KEY, value: { id: randomUUID() } })
-      .onConflictDoNothing({ target: schema.systemState.key });
-    const authoritative = await this.database
-      .select({ value: schema.systemState.value })
-      .from(schema.systemState)
-      .where(eq(schema.systemState.key, SERVER_ID_STATE_KEY))
-      .limit(1);
-    const serverId = (authoritative[0]?.value as { id?: unknown } | undefined)
-      ?.id;
-    if (typeof serverId !== "string" || serverId.length === 0) {
-      throw new Error("The authoritative server identity is unavailable.");
-    }
-    return serverId;
+    return this.workers.getOrCreateServerId();
   }
 
   async createWorkerEnrollmentCode(input: {
@@ -3256,78 +3178,24 @@ export class ServerRepository {
     label: string | null;
     ownerId: string;
   }): Promise<string> {
-    const id = randomUUID();
-    await this.database.insert(schema.workerEnrollmentCodes).values({
-      id,
-      ownerId: input.ownerId,
-      createdBySessionId: input.createdBySessionId,
-      codeHash: input.codeHash,
-      label: input.label,
-      expiresAt: input.expiresAt,
-    });
-    return id;
+    return this.workers.createWorkerEnrollmentCode(input);
   }
 
   async findReusableWorkerId(
     ownerId: string,
     candidateWorkerIds: readonly string[],
   ): Promise<string | null> {
-    const candidates = [...new Set(candidateWorkerIds)].slice(0, 64);
-    if (candidates.length === 0) return null;
-
-    const activeSourceCount = sql<number>`count(${schema.projectSources.id})`;
-    const rows = await this.database
-      .select({
-        id: schema.workers.id,
-        sourceCount: activeSourceCount,
-      })
-      .from(schema.workers)
-      .leftJoin(
-        schema.projectSources,
-        and(
-          eq(schema.projectSources.workerId, schema.workers.id),
-          isNull(schema.projectSources.removedAt),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.workers.ownerId, ownerId),
-          inArray(schema.workers.id, candidates),
-          sql`${schema.workers.unlinkedAt} IS NOT NULL`,
-        ),
-      )
-      .groupBy(schema.workers.id, schema.workers.lastSeenAt)
-      .orderBy(desc(activeSourceCount), desc(schema.workers.lastSeenAt))
-      .limit(1);
-    return rows[0]?.id ?? null;
+    return this.workers.findReusableWorkerId(ownerId, candidateWorkerIds);
   }
 
   async getWorkerEnrollmentCodeStatus(
     ownerId: string,
     enrollmentCodeId: string,
   ): Promise<WorkerEnrollmentCodeStatus | null> {
-    const rows = await this.database
-      .select()
-      .from(schema.workerEnrollmentCodes)
-      .where(
-        and(
-          eq(schema.workerEnrollmentCodes.id, enrollmentCodeId),
-          eq(schema.workerEnrollmentCodes.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    const code = rows[0];
-    if (!code) return null;
-    return {
-      id: code.id,
-      label: code.label,
-      expiresAt: toISOString(code.expiresAt),
-      status: code.consumedAt
-        ? "paired"
-        : code.expiresAt.getTime() <= Date.now()
-          ? "expired"
-          : "pending",
-    };
+    return this.workers.getWorkerEnrollmentCodeStatus(
+      ownerId,
+      enrollmentCodeId,
+    );
   }
 
   async exchangeWorkerEnrollmentCode(input: {
@@ -3338,220 +3206,7 @@ export class ServerRepository {
     replacement: { workerId: string; credentialHash: string } | null;
     scopes: WorkerCredentialScope[];
   }): Promise<WorkerEnrollmentProvision> {
-    const now = new Date();
-    return this.database.transaction(async (transaction) => {
-      const codes = await transaction
-        .select()
-        .from(schema.workerEnrollmentCodes)
-        .where(
-          and(
-            eq(schema.workerEnrollmentCodes.codeHash, input.codeHash),
-            isNull(schema.workerEnrollmentCodes.consumedAt),
-            gt(schema.workerEnrollmentCodes.expiresAt, now),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      const code = codes[0];
-      if (!code) {
-        throw new WorkerEnrollmentError(
-          "This worker link code is invalid, expired, or already used.",
-        );
-      }
-
-      if (input.replacement?.workerId === input.heartbeat.workerId) {
-        throw new WorkerEnrollmentError(
-          "A worker cannot replace its own identity during enrollment.",
-        );
-      }
-      let revokedCredentialIds: string[] = [];
-      if (input.replacement) {
-        const replacementCredentials = await transaction
-          .select()
-          .from(schema.workerCredentials)
-          .where(
-            and(
-              eq(schema.workerCredentials.workerId, input.replacement.workerId),
-              eq(
-                schema.workerCredentials.secretHash,
-                input.replacement.credentialHash,
-              ),
-              isNull(schema.workerCredentials.revokedAt),
-              or(
-                isNull(schema.workerCredentials.expiresAt),
-                gt(schema.workerCredentials.expiresAt, now),
-              ),
-            ),
-          )
-          .for("update")
-          .limit(1);
-        const replacementCredential = replacementCredentials[0];
-        if (!replacementCredential) {
-          throw new WorkerEnrollmentError(
-            "The previous worker credential could not authorize reassignment.",
-          );
-        }
-        const replacementWorkers = await transaction
-          .select()
-          .from(schema.workers)
-          .where(eq(schema.workers.id, input.replacement.workerId))
-          .for("update")
-          .limit(1);
-        const replacementWorker = replacementWorkers[0];
-        if (
-          !replacementWorker ||
-          replacementWorker.ownerId !== replacementCredential.ownerId
-        ) {
-          throw new WorkerEnrollmentError(
-            "The previous worker identity and credential do not match.",
-          );
-        }
-        const revokedRows = await transaction
-          .update(schema.workerCredentials)
-          .set({
-            revokedAt: now,
-            revokedReason: "Worker reassigned to another account.",
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(schema.workerCredentials.workerId, input.replacement.workerId),
-              isNull(schema.workerCredentials.revokedAt),
-            ),
-          )
-          .returning({ id: schema.workerCredentials.id });
-        revokedCredentialIds = revokedRows.map(({ id }) => id);
-        await transaction
-          .update(schema.workers)
-          .set({ unlinkedAt: now, updatedAt: now })
-          .where(eq(schema.workers.id, input.replacement.workerId));
-      }
-
-      const existingWorkers = await transaction
-        .select()
-        .from(schema.workers)
-        .where(eq(schema.workers.id, input.heartbeat.workerId))
-        .for("update")
-        .limit(1);
-      const existingWorker = existingWorkers[0];
-      if (existingWorker && existingWorker.ownerId !== code.ownerId) {
-        throw new WorkerEnrollmentError(
-          "This worker identity is already owned by another account.",
-        );
-      }
-      if (existingWorker) {
-        const activeCredentials = await transaction
-          .select({ id: schema.workerCredentials.id })
-          .from(schema.workerCredentials)
-          .where(
-            and(
-              eq(schema.workerCredentials.workerId, input.heartbeat.workerId),
-              isNull(schema.workerCredentials.revokedAt),
-              or(
-                isNull(schema.workerCredentials.expiresAt),
-                gt(schema.workerCredentials.expiresAt, now),
-              ),
-            ),
-          )
-          .limit(1);
-        if (activeCredentials[0]) {
-          throw new WorkerEnrollmentError(
-            "This worker identity is already enrolled. Rotate its credential instead.",
-          );
-        }
-      }
-
-      const consumed = await transaction
-        .update(schema.workerEnrollmentCodes)
-        .set({ consumedAt: now })
-        .where(
-          and(
-            eq(schema.workerEnrollmentCodes.id, code.id),
-            isNull(schema.workerEnrollmentCodes.consumedAt),
-          ),
-        )
-        .returning({ id: schema.workerEnrollmentCodes.id });
-      if (!consumed[0]) {
-        throw new WorkerEnrollmentError(
-          "This worker link code was already used.",
-        );
-      }
-
-      const workerValues = {
-        name: input.heartbeat.name,
-        platform: input.heartbeat.platform,
-        architecture: input.heartbeat.architecture,
-        codexVersion: input.heartbeat.codexVersion,
-        codexRuntime: input.heartbeat.codexRuntime,
-        remoteSurfaceCapabilities: input.heartbeat.remoteSurfaces,
-        directBrokerAdvertisement: input.heartbeat.directBroker,
-        codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
-        codegraphStatus:
-          input.heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
-        webRuntimeCapabilities:
-          input.heartbeat.webRuntimes ??
-          unavailableManagedWebRuntimeCapabilities,
-        encryptionStatus:
-          input.heartbeat.encryption ?? unavailableWorkerEncryptionStatus,
-        projectReplicaCapabilities:
-          input.heartbeat.projectReplicas ??
-          unavailableProjectReplicaCapabilities,
-        managedFolderCapabilities:
-          input.heartbeat.managedFolders ??
-          unavailableManagedFolderCapabilities,
-        standaloneChatCapabilities:
-          input.heartbeat.standaloneChat ??
-          unavailableStandaloneChatCapabilities,
-        chatRelocationCapability: input.heartbeat.chatRelocation ?? false,
-        externalCodexHistoryCapability:
-          input.heartbeat.externalCodexHistory ?? false,
-        startedAt: new Date(input.heartbeat.startedAt),
-        lastSeenAt: now,
-        unlinkedAt: null,
-        updatedAt: now,
-      };
-      const workerRows = existingWorker
-        ? await transaction
-            .update(schema.workers)
-            .set(workerValues)
-            .where(
-              and(
-                eq(schema.workers.id, input.heartbeat.workerId),
-                eq(schema.workers.ownerId, code.ownerId),
-              ),
-            )
-            .returning()
-        : await transaction
-            .insert(schema.workers)
-            .values({
-              id: input.heartbeat.workerId,
-              ownerId: code.ownerId,
-              ...workerValues,
-            })
-            .returning();
-      const credentialRows = await transaction
-        .insert(schema.workerCredentials)
-        .values({
-          id: input.credentialId,
-          ownerId: code.ownerId,
-          workerId: input.heartbeat.workerId,
-          secretHash: input.credentialHash,
-          label: code.label,
-          scopes: input.scopes,
-          lastUsedAt: now,
-        })
-        .returning();
-      return {
-        ownerId: code.ownerId,
-        replacedWorkerId: input.replacement?.workerId ?? null,
-        revokedCredentialIds,
-        worker: toWorkerSummary(firstOrThrow(workerRows, "enrolling a worker")),
-        credential: toWorkerCredentialSummary(
-          firstOrThrow(credentialRows, "creating a worker credential"),
-          now,
-        ),
-      };
-    });
+    return this.workers.exchangeWorkerEnrollmentCode(input);
   }
 
   async authenticateWorkerCredential(
@@ -3559,57 +3214,18 @@ export class ServerRepository {
     workerId: string,
     requiredScope: WorkerCredentialScope,
   ): Promise<ActiveWorkerCredential | null> {
-    const now = new Date();
-    return this.database.transaction(async (transaction) => {
-      const rows = await transaction
-        .select()
-        .from(schema.workerCredentials)
-        .where(
-          and(
-            eq(schema.workerCredentials.secretHash, secretHash),
-            eq(schema.workerCredentials.workerId, workerId),
-            isNull(schema.workerCredentials.revokedAt),
-            or(
-              isNull(schema.workerCredentials.expiresAt),
-              gt(schema.workerCredentials.expiresAt, now),
-            ),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      const credential = rows[0];
-      if (!credential) return null;
-      const scopes = credential.scopes as WorkerCredentialScope[];
-      if (!scopes.includes(requiredScope)) return null;
-      await transaction
-        .update(schema.workerCredentials)
-        .set({ lastUsedAt: now, updatedAt: now })
-        .where(eq(schema.workerCredentials.id, credential.id));
-      return {
-        id: credential.id,
-        ownerId: credential.ownerId,
-        scopes,
-        workerId: credential.workerId,
-      };
-    });
+    return this.workers.authenticateWorkerCredential(
+      secretHash,
+      workerId,
+      requiredScope,
+    );
   }
 
   async listWorkerCredentials(
     ownerId: string,
     workerId: string,
   ): Promise<WorkerCredentialSummary[] | null> {
-    if (!(await this.getWorker(ownerId, workerId))) return null;
-    const rows = await this.database
-      .select()
-      .from(schema.workerCredentials)
-      .where(
-        and(
-          eq(schema.workerCredentials.ownerId, ownerId),
-          eq(schema.workerCredentials.workerId, workerId),
-        ),
-      )
-      .orderBy(desc(schema.workerCredentials.createdAt));
-    return rows.map((row) => toWorkerCredentialSummary(row));
+    return this.workers.listWorkerCredentials(ownerId, workerId);
   }
 
   async rotateWorkerCredential(input: {
@@ -3620,67 +3236,7 @@ export class ServerRepository {
     scopes: WorkerCredentialScope[];
     workerId: string;
   }): Promise<WorkerCredentialSummary | null> {
-    const now = new Date();
-    return this.database.transaction(async (transaction) => {
-      const workers = await transaction
-        .select({ id: schema.workers.id })
-        .from(schema.workers)
-        .where(
-          and(
-            eq(schema.workers.id, input.workerId),
-            eq(schema.workers.ownerId, input.ownerId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      if (!workers[0]) return null;
-      const active = await transaction
-        .select({ id: schema.workerCredentials.id })
-        .from(schema.workerCredentials)
-        .where(
-          and(
-            eq(schema.workerCredentials.ownerId, input.ownerId),
-            eq(schema.workerCredentials.workerId, input.workerId),
-            isNull(schema.workerCredentials.revokedAt),
-          ),
-        )
-        .orderBy(desc(schema.workerCredentials.createdAt));
-      if (!active[0]) {
-        throw new WorkerEnrollmentError(
-          "Development bootstrap workers do not have rotatable credentials.",
-        );
-      }
-      await transaction
-        .update(schema.workerCredentials)
-        .set({
-          revokedAt: now,
-          revokedReason: "rotated",
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(schema.workerCredentials.ownerId, input.ownerId),
-            eq(schema.workerCredentials.workerId, input.workerId),
-            isNull(schema.workerCredentials.revokedAt),
-          ),
-        );
-      const created = await transaction
-        .insert(schema.workerCredentials)
-        .values({
-          id: input.credentialId,
-          ownerId: input.ownerId,
-          workerId: input.workerId,
-          secretHash: input.credentialHash,
-          label: input.label,
-          scopes: input.scopes,
-          replacesCredentialId: active[0]?.id ?? null,
-        })
-        .returning();
-      return toWorkerCredentialSummary(
-        firstOrThrow(created, "rotating a worker credential"),
-        now,
-      );
-    });
+    return this.workers.rotateWorkerCredential(input);
   }
 
   async revokeWorkerCredential(
@@ -3689,187 +3245,36 @@ export class ServerRepository {
     credentialId: string,
     reason = "revoked by owner",
   ): Promise<WorkerCredentialSummary | null> {
-    const now = new Date();
-    const rows = await this.database
-      .update(schema.workerCredentials)
-      .set({ revokedAt: now, revokedReason: reason, updatedAt: now })
-      .where(
-        and(
-          eq(schema.workerCredentials.id, credentialId),
-          eq(schema.workerCredentials.workerId, workerId),
-          eq(schema.workerCredentials.ownerId, ownerId),
-          isNull(schema.workerCredentials.revokedAt),
-        ),
-      )
-      .returning();
-    return rows[0] ? toWorkerCredentialSummary(rows[0], now) : null;
+    return this.workers.revokeWorkerCredential(
+      ownerId,
+      workerId,
+      credentialId,
+      reason,
+    );
   }
 
   async recordWorker(
     ownerId: string,
     heartbeat: WorkerHeartbeat,
   ): Promise<WorkerSummary> {
-    const now = new Date();
-    const values = {
-      name: heartbeat.name,
-      platform: heartbeat.platform,
-      architecture: heartbeat.architecture,
-      codexVersion: heartbeat.codexVersion,
-      codexRuntime: heartbeat.codexRuntime,
-      remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
-      directBrokerAdvertisement: heartbeat.directBroker,
-      codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
-      codegraphStatus: heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
-      webRuntimeCapabilities:
-        heartbeat.webRuntimes ?? unavailableManagedWebRuntimeCapabilities,
-      encryptionStatus:
-        heartbeat.encryption ?? unavailableWorkerEncryptionStatus,
-      projectReplicaCapabilities:
-        heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
-      managedFolderCapabilities:
-        heartbeat.managedFolders ?? unavailableManagedFolderCapabilities,
-      standaloneChatCapabilities:
-        heartbeat.standaloneChat ?? unavailableStandaloneChatCapabilities,
-      chatRelocationCapability: heartbeat.chatRelocation ?? false,
-      externalCodexHistoryCapability: heartbeat.externalCodexHistory ?? false,
-      startedAt: new Date(heartbeat.startedAt),
-      lastSeenAt: now,
-      unlinkedAt: null,
-      updatedAt: now,
-    };
-    let result = await this.database
-      .update(schema.workers)
-      .set(values)
-      .where(
-        and(
-          eq(schema.workers.id, heartbeat.workerId),
-          eq(schema.workers.ownerId, ownerId),
-        ),
-      )
-      .returning();
-    if (!result[0]) {
-      try {
-        result = await this.database
-          .insert(schema.workers)
-          .values({ id: heartbeat.workerId, ownerId, ...values })
-          .returning();
-      } catch (error) {
-        const currentOwnerId = await this.getWorkerOwnerId(heartbeat.workerId);
-        if (currentOwnerId && currentOwnerId !== ownerId) {
-          throw new WorkerEnrollmentError(
-            "This worker identity belongs to another account.",
-          );
-        }
-        if (currentOwnerId === ownerId) {
-          result = await this.database
-            .update(schema.workers)
-            .set(values)
-            .where(
-              and(
-                eq(schema.workers.id, heartbeat.workerId),
-                eq(schema.workers.ownerId, ownerId),
-              ),
-            )
-            .returning();
-        } else {
-          throw error;
-        }
-      }
-    }
-    return toWorkerSummary(
-      firstOrThrow(result, "recording a worker heartbeat"),
-    );
+    return this.workers.recordWorker(ownerId, heartbeat);
   }
 
   async listWorkers(ownerId: string): Promise<WorkerSummary[]> {
-    const rows = await this.database
-      .select()
-      .from(schema.workers)
-      .where(
-        and(
-          eq(schema.workers.ownerId, ownerId),
-          isNull(schema.workers.unlinkedAt),
-        ),
-      )
-      .orderBy(asc(schema.workers.name));
-    return rows.map(toWorkerSummary);
+    return this.workers.listWorkers(ownerId);
   }
 
   async getWorker(
     ownerId: string,
     workerId: string,
   ): Promise<WorkerSummary | null> {
-    const rows = await this.database
-      .select()
-      .from(schema.workers)
-      .where(
-        and(
-          eq(schema.workers.id, workerId),
-          eq(schema.workers.ownerId, ownerId),
-          isNull(schema.workers.unlinkedAt),
-        ),
-      )
-      .limit(1);
-    return rows[0] ? toWorkerSummary(rows[0]) : null;
+    return this.workers.getWorker(ownerId, workerId);
   }
 
   async listWorkerManagement(
     ownerId: string,
   ): Promise<WorkerManagementRecord[]> {
-    const rows = await this.database
-      .select()
-      .from(schema.workers)
-      .where(
-        and(
-          eq(schema.workers.ownerId, ownerId),
-          isNull(schema.workers.unlinkedAt),
-        ),
-      )
-      .orderBy(asc(schema.workers.name));
-    return Promise.all(
-      rows.map(async (worker) => {
-        const [credentials, sources] = await Promise.all([
-          this.database
-            .select({ revokedAt: schema.workerCredentials.revokedAt })
-            .from(schema.workerCredentials)
-            .where(
-              and(
-                eq(schema.workerCredentials.ownerId, ownerId),
-                eq(schema.workerCredentials.workerId, worker.id),
-              ),
-            ),
-          this.database
-            .select({
-              projectReplicaId: schema.projectSources.id,
-              projectId: schema.projects.id,
-              nameWithOwner: sql<string>`coalesce(${schema.projects.githubRepositoryFullName}, ${schema.projectSources.displayPath})`,
-              displayPath: schema.projectSources.displayPath,
-            })
-            .from(schema.projectSources)
-            .innerJoin(
-              schema.projects,
-              eq(schema.projects.id, schema.projectSources.projectId),
-            )
-            .where(
-              and(
-                eq(schema.projectSources.workerId, worker.id),
-                eq(schema.projects.ownerId, ownerId),
-                isNull(schema.projectSources.removedAt),
-              ),
-            )
-            .orderBy(asc(schema.projects.githubRepositoryFullName)),
-        ]);
-        return {
-          activeCredentialCount: credentials.filter(
-            ({ revokedAt }) => !revokedAt,
-          ).length,
-          credentialCount: credentials.length,
-          runtimeName: worker.name,
-          sources,
-          worker: toWorkerSummary(worker),
-        };
-      }),
-    );
+    return this.workers.listWorkerManagement(ownerId);
   }
 
   async updateWorkerDisplayName(
@@ -3877,79 +3282,20 @@ export class ServerRepository {
     workerId: string,
     name: string,
   ): Promise<WorkerSummary | null> {
-    const rows = await this.database
-      .update(schema.workers)
-      .set({ displayName: name, updatedAt: new Date() })
-      .where(
-        and(
-          eq(schema.workers.id, workerId),
-          eq(schema.workers.ownerId, ownerId),
-          isNull(schema.workers.unlinkedAt),
-        ),
-      )
-      .returning();
-    return rows[0] ? toWorkerSummary(rows[0]) : null;
+    return this.workers.updateWorkerDisplayName(ownerId, workerId, name);
   }
 
   async unlinkWorker(ownerId: string, workerId: string): Promise<boolean> {
-    const now = new Date();
-    return this.database.transaction(async (transaction) => {
-      const workers = await transaction
-        .select({ id: schema.workers.id })
-        .from(schema.workers)
-        .where(
-          and(
-            eq(schema.workers.id, workerId),
-            eq(schema.workers.ownerId, ownerId),
-            isNull(schema.workers.unlinkedAt),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      if (!workers[0]) return false;
-      await transaction
-        .update(schema.workerCredentials)
-        .set({
-          revokedAt: now,
-          revokedReason: "worker unlinked by owner",
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(schema.workerCredentials.ownerId, ownerId),
-            eq(schema.workerCredentials.workerId, workerId),
-            isNull(schema.workerCredentials.revokedAt),
-          ),
-        );
-      const unlinked = await transaction
-        .update(schema.workers)
-        .set({ unlinkedAt: now, updatedAt: now })
-        .where(
-          and(
-            eq(schema.workers.id, workerId),
-            eq(schema.workers.ownerId, ownerId),
-            isNull(schema.workers.unlinkedAt),
-          ),
-        )
-        .returning({ id: schema.workers.id });
-      return Boolean(unlinked[0]);
-    });
+    return this.workers.unlinkWorker(ownerId, workerId);
   }
 
   async getWorkerOwnerId(workerId: string): Promise<string | null> {
-    const rows = await this.database
-      .select({ ownerId: schema.workers.ownerId })
-      .from(schema.workers)
-      .where(eq(schema.workers.id, workerId))
-      .limit(1);
-    return rows[0]?.ownerId ?? null;
+    return this.workers.getWorkerOwnerId(workerId);
   }
 
   async onlineWorkerCount(ownerId: string): Promise<number> {
-    const workers = await this.listWorkers(ownerId);
-    return workers.filter((worker) => worker.online).length;
+    return this.workers.onlineWorkerCount(ownerId);
   }
-
   private async tunnelReferencesAreOwned(
     ownerId: string,
     projectId: string | null,
