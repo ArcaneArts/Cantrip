@@ -58,6 +58,36 @@ test("uses subtle active-line fills without a high-contrast outline", async () =
   }
 });
 
+test("keeps the active line number visible in high-contrast themes", async () => {
+  const expectedColors = new Map([
+    [
+      "cantrip-hc-dark.json",
+      { activeForeground: "#FFFFFF", foreground: "#D0D0D0" },
+    ],
+    [
+      "cantrip-hc-light.json",
+      { activeForeground: "#000000", foreground: "#303030" },
+    ],
+  ]);
+
+  for (const [name, expected] of expectedColors) {
+    const colors = (await theme(name)).colors;
+    assert.equal(
+      colors["editorLineNumber.activeForeground"],
+      expected.activeForeground,
+    );
+    assert.equal(colors["editorLineNumber.foreground"], expected.foreground);
+    assert.notEqual(
+      colors["editorLineNumber.activeForeground"],
+      colors["editorLineNumber.foreground"],
+    );
+    assert.match(
+      colors["editorLineNumber.activeForeground"],
+      /^#[0-9A-F]{6}$/u,
+    );
+  }
+});
+
 test("keeps OLED surfaces pure while softening structural contrast", async () => {
   const dark = (await theme("cantrip-hc-dark.json")).colors;
   const light = (await theme("cantrip-hc-light.json")).colors;
