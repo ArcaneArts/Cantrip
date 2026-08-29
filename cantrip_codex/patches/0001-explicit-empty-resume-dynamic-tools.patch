@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index cf081d7c95..28eba84464 100644
+index da95817..7171d3a 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -189,6 +189,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
+@@ -190,6 +190,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
      }
  }
  
@@ -26,7 +26,7 @@ index cf081d7c95..28eba84464 100644
  fn approvals_reviewer_serializes_auto_review_and_accepts_legacy_guardian_subagent() {
      assert_eq!(
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index fc70dbe6f2..b887a06646 100644
+index dc56a78..db2d8f1 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -395,6 +395,15 @@ pub struct ThreadResumeParams {
@@ -44,12 +44,12 @@ index fc70dbe6f2..b887a06646 100644
 +    pub dynamic_tools: Option<Vec<DynamicToolSpec>>,
      /// When true, return only thread metadata and live-resume state without
      /// populating `thread.turns`. This is useful when the client plans to call
-     /// `thread/turns/list` immediately after resuming.
+     /// `thread/turns/list` immediately after resuming. Full-history hydration
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 686d5dd201..4071372b27 100644
+index 0803fb1..48bb776 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -3596,6 +3596,7 @@ impl ThreadRequestProcessor {
+@@ -3629,6 +3629,7 @@ impl ThreadRequestProcessor {
              base_instructions,
              developer_instructions,
              personality,
@@ -57,7 +57,7 @@ index 686d5dd201..4071372b27 100644
              exclude_turns,
              initial_turns_page,
          } = params;
-@@ -3625,13 +3626,17 @@ impl ThreadRequestProcessor {
+@@ -3658,13 +3659,17 @@ impl ThreadRequestProcessor {
                  Err(error) => Err(error),
              }
          };
@@ -77,7 +77,7 @@ index 686d5dd201..4071372b27 100644
              matches!(thread.history_mode, ThreadHistoryMode::Paginated).then_some(thread.thread_id)
          });
 diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
-index 6e15c01bc8..260ef8919c 100644
+index 6e15c01..260ef89 100644
 --- a/codex-rs/history/src/lib.rs
 +++ b/codex-rs/history/src/lib.rs
 @@ -227,6 +227,23 @@ pub enum InitialHistory {
