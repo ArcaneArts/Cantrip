@@ -8,6 +8,7 @@ const {
   configureWorkbenchPresentation,
   setWorkbenchPresentation,
 } = require("../src/layout.js");
+const manifest = require("../package.json");
 
 function configuration(presentation) {
   return {
@@ -16,6 +17,21 @@ function configuration(presentation) {
     },
   };
 }
+
+test("contributes overridable Cantrip editor defaults", () => {
+  assert.deepEqual(manifest.contributes.configurationDefaults, {
+    "workbench.tips.enabled": false,
+    "editor.cursorSmoothCaretAnimation": "explicit",
+  });
+  assert.equal(
+    EDITOR_CONFIGURATION.some(
+      ([section, key]) =>
+        `${section}.${key}` === "workbench.tips.enabled" ||
+        `${section}.${key}` === "editor.cursorSmoothCaretAnimation",
+    ),
+    false,
+  );
+});
 
 test("hides the secondary side bar through the supported workbench command", async () => {
   const commands = [];
