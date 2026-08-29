@@ -2757,586 +2757,73 @@ export {
   standaloneChatFileOperationCommandSchema,
 } from "./worker-command-shared.js";
 
-export const workerRequestEnvelopeSchema = z.object({
-  kind: z.literal("request"),
-  requestId: z.string().min(1),
-  command: workerCommandSchema,
-});
-
-export const WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL = "cantrip-worker-legacy";
-export const WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL =
-  "cantrip-worker-auth-ready-v1";
-export const WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL =
-  "cantrip-worker-auth-ready-v2";
-export const WORKER_WEBSOCKET_SUBPROTOCOLS = [
+export {
+  workerRequestEnvelopeSchema,
   WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
   WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
-] as const;
-
-const workerConnectionEnvelopeV1Schema = z
-  .object({
-    kind: z.literal("connection"),
-    state: z.enum(["pending", "ready"]),
-    protocolVersion: z.literal(1),
-    connectionGeneration: z.string().uuid(),
-  })
-  .strict();
-
-const workerConnectionEnvelopeV2Schema = z
-  .object({
-    kind: z.literal("connection"),
-    state: z.enum(["pending", "ready"]),
-    protocolVersion: z.literal(2),
-    connectionGeneration: z.string().uuid(),
-    serverControlPlaneGeneration: z.string().uuid(),
-  })
-  .strict();
-
-export const workerConnectionEnvelopeSchema = z.discriminatedUnion(
-  "protocolVersion",
-  [workerConnectionEnvelopeV1Schema, workerConnectionEnvelopeV2Schema],
-);
-
-export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
-  z.object({
-    kind: z.literal("response"),
-    requestId: z.string().min(1),
-    ok: z.literal(true),
-    result: z.unknown(),
-  }),
-  z.object({
-    kind: z.literal("response"),
-    requestId: z.string().min(1),
-    ok: z.literal(false),
-    error: z.object({ message: z.string().min(1) }),
-  }),
-]);
-
-const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("message"),
-    phase: agentMessagePhaseSchema.nullable(),
-    streaming: z.boolean().optional(),
-    turnId: z.string().min(1).nullable(),
-  }),
-  z.object({
-    kind: z.literal("activity"),
-    activityType: z.string().min(1).max(100),
-    turnId: z.string().min(1).nullable(),
-    agentRuntime: z
-      .object({
-        agentThreadId: z.string().min(1).max(200),
-        isRoot: z.boolean(),
-        startedAtMs: agentActivityTimestampSchema.nullable(),
-        completedAtMs: agentActivityTimestampSchema.nullable(),
-        status: z.enum(["running", "completed", "failed"]),
-      })
-      .strict()
-      .nullable()
-      .optional(),
-  }),
-  z.object({
-    kind: z.literal("usage"),
-    usage: agentTokenUsageSchema,
-    modelContextWindow: z.number().int().positive().nullable(),
-    contextUsedPercent: z.number().min(0).nullable(),
-    turnId: z.string().min(1).nullable(),
-  }),
-  z.object({
-    kind: z.literal("checkpoint"),
-    turnId: z.string().min(1),
-  }),
-]);
-
-export const inferenceProgressPhaseSchema = z.enum([
-  "queued",
-  "loading",
-  "prefill",
-  "generating",
-]);
-
-export const inferenceProgressPrecisionSchema = z.enum([
-  "exact",
-  "estimated",
-  "indeterminate",
-]);
-
-export const inferenceProgressSourceSchema = z.enum([
-  "provider-stream",
-  "provider-observer",
-  "provider-metrics",
-  "worker-estimate",
-]);
-
-export const inferenceProgressSnapshotSchema = z
-  .object({
-    kind: z.literal("progress"),
-    requestId: z.string().trim().min(1).max(200),
-    cycle: z.number().int().positive().safe(),
-    sequence: z.number().int().nonnegative().safe(),
-    phase: inferenceProgressPhaseSchema,
-    fractionComplete: z.number().min(0).max(1).nullable(),
-    completedTokens: z.number().int().nonnegative().safe().nullable(),
-    totalTokens: z.number().int().positive().safe().nullable(),
-    precision: inferenceProgressPrecisionSchema,
-    source: inferenceProgressSourceSchema,
-    startedAt: z.iso.datetime(),
-    observedAt: z.iso.datetime(),
-  })
-  .strict()
-  .superRefine((progress, context) => {
-    if (
-      progress.precision === "indeterminate" &&
-      progress.fractionComplete !== null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Indeterminate progress cannot include a completed fraction.",
-        path: ["precision"],
-      });
-    }
-    if (
-      progress.precision !== "indeterminate" &&
-      progress.fractionComplete === null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Determinate progress requires a completed fraction.",
-        path: ["precision"],
-      });
-    }
-    if (progress.totalTokens !== null && progress.completedTokens === null) {
-      context.addIssue({
-        code: "custom",
-        message: "A total token count requires a completed token count.",
-        path: ["totalTokens"],
-      });
-    }
-    if (
-      progress.completedTokens !== null &&
-      progress.totalTokens !== null &&
-      progress.completedTokens > progress.totalTokens
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Completed tokens cannot exceed total tokens.",
-        path: ["completedTokens"],
-      });
-    }
-    if (Date.parse(progress.startedAt) > Date.parse(progress.observedAt)) {
-      context.addIssue({
-        code: "custom",
-        message: "Inference progress cannot be observed before it starts.",
-        path: ["startedAt"],
-      });
-    }
-  });
-
-export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
-  inferenceProgressSnapshotSchema,
-  z
-    .object({
-      kind: z.literal("clear"),
-      requestId: z.string().trim().min(1).max(200),
-      cycle: z.number().int().positive().safe(),
-      sequence: z.number().int().nonnegative().safe(),
-      observedAt: z.iso.datetime(),
-    })
-    .strict(),
-]);
-
-export const workerEventSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("project.replica.progress"),
-    jobId: z.string().uuid(),
-    attempt: z.number().int().positive(),
-    progress: projectReplicaJobProgressEventSchema,
-  }),
-  z.object({
-    type: z.literal("agent.activity"),
-    activity: agentActivitySchema,
-  }),
-  z.object({
-    type: z.literal("agent.message"),
-    message: normalizedAgentMessageSchema,
-  }),
-  z
-    .object({
-      type: z.literal("agent.inference-progress"),
-      progress: inferenceProgressUpdateSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("agent.protected-message"),
-      message: chatMessageOpaqueContentSchema,
-      telemetry: protectedAgentEventTelemetrySchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("agent.protected-task-message"),
-      message: taskMessageOpaqueContentSchema,
-      telemetry: protectedAgentEventTelemetrySchema,
-    })
-    .strict(),
-  z.object({ type: z.literal("terminal.ready") }),
-  z.object({
-    type: z.literal("agent.checkpoint"),
-    turnId: z.string().min(1),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal("agent.plan.updated"),
-    turnId: z.string().min(1),
-    explanation: z.string().nullable(),
-    steps: z.array(planStepSchema),
-  }),
-  z.object({
-    type: z.literal("agent.plan.question"),
-    question: pendingPlanQuestionSchema,
-  }),
-  z.object({
-    type: z.literal("agent.plan.question-resolved"),
-    questionId: z.string().min(1),
-  }),
-  z
-    .object({
-      type: z.literal("agent.plan.protected"),
-      turnId: z.string().min(1).nullable(),
-      state: chatPlanOpaqueStateSchema,
-    })
-    .strict(),
-  z.object({
-    type: z.literal("agent.interaction.requested"),
-    request: agentInteractionRuntimeRequestSchema,
-  }),
-  z.object({
-    type: z.literal("agent.interaction.requested.protected"),
-    request: encryptedAgentInteractionRuntimeRequestSchema,
-  }),
-  z.object({
-    type: z.literal("agent.interaction.cleared"),
-    requestKey: z.string().min(1).max(200),
-  }),
-  z.object({
-    type: z.literal("agent.interaction.expired"),
-    requestKey: z.string().min(1).max(200),
-  }),
-  z.object({
-    type: z.literal("workflow.node.activity"),
-    attemptId: z.string().min(1).max(200),
-    activity: agentActivitySchema,
-  }),
-  z.object({
-    type: z.literal("workflow.node.message"),
-    attemptId: z.string().min(1).max(200),
-    message: normalizedAgentMessageSchema,
-  }),
-  z.object({
-    type: z.literal("workflow.node.plan.updated"),
-    attemptId: z.string().min(1).max(200),
-    turnId: z.string().min(1),
-    explanation: z.string().nullable(),
-    steps: z.array(planStepSchema),
-  }),
-  z.object({
-    type: z.literal("workflow.node.interaction.requested"),
-    attemptId: z.string().min(1).max(200),
-    request: agentInteractionRuntimeRequestSchema,
-  }),
-  z.object({
-    type: z.literal("workflow.node.interaction.requested.protected"),
-    attemptId: z.string().min(1).max(200),
-    request: encryptedAgentInteractionRuntimeRequestSchema,
-  }),
-  z.object({
-    type: z.literal("workflow.node.interaction.cleared"),
-    attemptId: z.string().min(1).max(200),
-    requestKey: z.string().min(1).max(200),
-  }),
-  z.object({
-    type: z.literal("workflow.node.interaction.expired"),
-    attemptId: z.string().min(1).max(200),
-    requestKey: z.string().min(1).max(200),
-  }),
-  z
-    .object({
-      type: z.literal("terminal.output"),
-      operationId: surfaceStreamWireRequestSchema.shape.operationId,
-      sequence: surfaceStreamWireRequestSchema.shape.sequence,
-      protectedData: surfaceStreamOpaqueSchema,
-    })
-    .strict(),
-]);
-
-export const workerEventEnvelopeSchema = z.object({
-  kind: z.literal("event"),
-  requestId: z.string().min(1),
-  event: workerEventSchema,
-});
-
-export const workerNotificationSchema = z.discriminatedUnion("type", [
-  workerLinkPeerSignalNotificationSchema,
-  workerLinkPeerCandidateNotificationSchema,
-  z
-    .object({
-      type: z.literal("chat.turn.outcome"),
-      chatId: z.string().min(1),
-      clientMessageId: z.string().min(1),
-      executionLaneId: z.string().min(1),
-      contextKind: chatContextKindSchema.default("project"),
-      worktreeId: z.string().min(1).nullable(),
-      scratchRootId: z.string().min(1).nullable().default(null),
-      taskDispatchFence: taskDispatchWorkerLeaseSchema
-        .omit({ leaseExpiresAt: true })
-        .optional(),
-      outcome: z.discriminatedUnion("ok", [
-        z.object({
-          ok: z.literal(true),
-          result: agentTurnResultSchema,
-        }),
-        z.object({
-          ok: z.literal(false),
-          error: z.string().min(1),
-        }),
-      ]),
-    })
-    .superRefine((notification, context) => {
-      if (
-        (notification.contextKind === "project" &&
-          notification.worktreeId !== null &&
-          notification.scratchRootId === null) ||
-        (notification.contextKind === "standalone" &&
-          notification.worktreeId === null &&
-          notification.scratchRootId !== null)
-      ) {
-        return;
-      }
-      context.addIssue({
-        code: "custom",
-        message: "Chat turn outcome execution root is invalid.",
-        path: ["contextKind"],
-      });
-    }),
-  z
-    .object({
-      type: z.literal("chat.thread.changed"),
-      threadId: z.string().min(1).max(200),
-      revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-      changes: z
-        .array(z.enum(["turn", "goal", "queue", "plan"]))
-        .min(1)
-        .max(4),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("terminal.runtime.observed"),
-      terminalId: z.string().min(1).max(200),
-      workerProcessGeneration: z.string().min(1).max(200),
-      status: z.literal("exited"),
-      exitCode: z.number().int(),
-      signal: z.number().int().nullable(),
-    })
-    .strict(),
-  workerLogStreamBatchSchema
-    .extend({
-      type: z.literal("diagnostics.logs.observed"),
-      subscriptionId: workerLogStreamSubscriptionIdSchema,
-    })
-    .strict(),
-  z.object({
-    type: z.literal("worktree.inventory.observed"),
-    projectId: worktreeObservationTargetSchema.shape.projectId,
-    sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
-    inventory: worktreeInventorySchema,
-  }),
-  z.object({
-    type: z.literal("worktree.status.observed"),
-    projectId: worktreeObservationTargetSchema.shape.projectId,
-    worktreeId: worktreeObservationTargetSchema.shape.worktreeId,
-    sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
-    worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
-    result: worktreeStatusResultSchema,
-  }),
-  z
-    .object({
-      type: z.literal("worktree.filesystem.changed"),
-      projectId: worktreeObservationTargetSchema.shape.projectId,
-      worktreeId: worktreeObservationTargetSchema.shape.worktreeId,
-      sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
-      worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("git.operation.observed"),
-      projectId: z.string().uuid(),
-      worktreeId: z.string().min(1).max(200),
-      operationId: z.string().uuid(),
-      sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
-      worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
-      fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-      observedAt: z.string().datetime({ offset: true }),
-      state: gitOperationObservationStateSchema,
-      conflicts: z
-        .object({
-          files: z.array(gitConflictSummarySchema).max(2_000),
-          truncated: z.boolean(),
-        })
-        .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("codegraph.status.observed"),
-      status: codeGraphProjectStatusSchema,
-    })
-    .strict(),
-  runConfigurationRuntimeWorkerNotificationSchema,
-  runConfigurationDefinitionChangeNotificationSchema,
-  providerAuthStatusObservationSchema,
-]);
-
-const directWorkerEventTypes = new Set<WorkerEvent["type"]>([
-  "agent.activity",
-  "agent.inference-progress",
-  "agent.message",
-  "agent.protected-message",
-  "agent.protected-task-message",
-]);
-
-const directWorkerNotificationTopics = new Map<
-  WorkerNotification["type"],
-  "filesystem" | "runtime" | "worktree"
->([
-  ["worktree.filesystem.changed", "filesystem"],
-  ["worktree.inventory.observed", "worktree"],
-  ["worktree.status.observed", "worktree"],
-  ["git.operation.observed", "worktree"],
-  ["terminal.runtime.observed", "runtime"],
-  ["codegraph.status.observed", "runtime"],
-  ["project.run-configuration-runtime.observed", "runtime"],
-  ["project.run-configuration-definitions.changed", "runtime"],
-]);
-
-export function workerEventIsProvisional(event: WorkerEvent): boolean {
-  if (!directWorkerEventTypes.has(event.type)) return false;
-  if (event.type === "agent.message") {
-    return (
-      event.message.streaming === true || event.message.phase === "commentary"
-    );
-  }
-  if (
-    event.type === "agent.protected-message" ||
-    event.type === "agent.protected-task-message"
-  ) {
-    return (
-      event.telemetry.kind === "activity" ||
-      event.telemetry.kind === "usage" ||
-      (event.telemetry.kind === "message" &&
-        (event.telemetry.streaming === true ||
-          event.telemetry.phase === "commentary"))
-    );
-  }
-  return true;
-}
-
-export const workerObservationPayloadSchema = z.discriminatedUnion("topic", [
-  z
-    .object({
-      topic: z.literal("chat-progress"),
-      chatId: z.string().min(1).max(200),
-      clientMessageId: z.string().min(1).max(200),
-      executionLaneId: z.string().min(1).max(200),
-      contextKind: chatContextKindSchema,
-      worktreeId: z.string().min(1).max(200).nullable(),
-      scratchRootId: z.string().min(1).max(200).nullable(),
-      event: workerEventSchema,
-    })
-    .strict()
-    .superRefine((payload, context) => {
-      if (
-        (payload.contextKind === "project" &&
-          payload.worktreeId !== null &&
-          payload.scratchRootId === null) ||
-        (payload.contextKind === "standalone" &&
-          payload.worktreeId === null &&
-          payload.scratchRootId !== null)
-      ) {
-        // The observation retains the exact execution root needed to render a
-        // provisional message before the server publishes its durable row.
-      } else {
-        context.addIssue({
-          code: "custom",
-          path: ["contextKind"],
-          message: "The observation execution root is invalid.",
-        });
-      }
-      if (!workerEventIsProvisional(payload.event)) {
-        context.addIssue({
-          code: "custom",
-          path: ["event"],
-          message:
-            "Final messages, outcomes, approvals, and durable worker events cannot use the provisional observation channel.",
-        });
-      }
-    }),
-  z
-    .object({
-      topic: z.enum(["filesystem", "worktree", "runtime"]),
-      notification: workerNotificationSchema,
-    })
-    .strict()
-    .superRefine((payload, context) => {
-      if (
-        directWorkerNotificationTopics.get(payload.notification.type) !==
-        payload.topic
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["notification"],
-          message:
-            "This worker notification is not authorized for the selected provisional observation topic.",
-        });
-      }
-    }),
-]);
-
-export const workerObservationEnvelopeSchema = z
-  .object({
-    protocolVersion: z.literal(1),
-    subscriptionId: z.string().uuid(),
-    continuitySequence: z.number().int().nonnegative().safe(),
-    observedAt: z.iso.datetime(),
-    identity: workerObservationEventIdentitySchema,
-    payload: workerObservationPayloadSchema,
-  })
-  .strict()
-  .superRefine((envelope, context) => {
-    if (
-      new TextEncoder().encode(JSON.stringify(envelope)).byteLength >
-      512 * 1_024
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Worker observation envelopes may contain at most 512 KiB.",
-      });
-    }
-  });
-
-export const workerNotificationEnvelopeSchema = z.object({
-  kind: z.literal("notification"),
-  notification: workerNotificationSchema,
-});
-
-export const workerServerEnvelopeSchema = z.union([
+  WORKER_WEBSOCKET_SUBPROTOCOLS,
+  workerConnectionEnvelopeSchema,
   workerResponseEnvelopeSchema,
+} from "./worker-transport.js";
+
+export type {
+  WorkerRequestEnvelope,
+  WorkerConnectionEnvelope,
+  WorkerResponseEnvelope,
+} from "./worker-transport.js";
+
+export {
+  inferenceProgressPhaseSchema,
+  inferenceProgressPrecisionSchema,
+  inferenceProgressSourceSchema,
+  inferenceProgressSnapshotSchema,
+  inferenceProgressUpdateSchema,
+  workerEventSchema,
   workerEventEnvelopeSchema,
+  workerNotificationSchema,
+  workerEventIsProvisional,
+} from "./worker-events.js";
+
+export type {
+  WorkerEvent,
+  InferenceProgressPhase,
+  InferenceProgressPrecision,
+  InferenceProgressSource,
+  InferenceProgressSnapshot,
+  InferenceProgressUpdate,
+  WorkerEventEnvelope,
+  WorkerNotification,
+} from "./worker-events.js";
+
+export {
+  workerObservationPayloadSchema,
+  workerObservationEnvelopeSchema,
+} from "./worker-observations.js";
+
+export type {
+  WorkerObservationPayload,
+  WorkerObservationEnvelope,
+} from "./worker-observations.js";
+
+export {
   workerNotificationEnvelopeSchema,
-]);
+  workerServerEnvelopeSchema,
+} from "./worker-server-envelopes.js";
+
+export type {
+  WorkerNotificationEnvelope,
+  WorkerServerEnvelope,
+} from "./worker-server-envelopes.js";
+
+export {
+  decodeWorkerRequestEnvelope,
+  decodeWorkerConnectionEnvelope,
+  decodeWorkerServerEnvelope,
+  encodeWorkerRequestEnvelope,
+  encodeWorkerConnectionEnvelope,
+  encodeWorkerServerEnvelope,
+} from "./worker-codecs.js";
 
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerEntryName = z.infer<typeof explorerEntryNameSchema>;
@@ -3368,76 +2855,3 @@ export type ChatAttachmentSummary = z.infer<typeof chatAttachmentSummarySchema>;
 export type WorkflowNodeExecutionWorkerResult = z.infer<
   typeof workflowNodeExecutionResultSchema
 >;
-
-export type WorkerEvent = z.infer<typeof workerEventSchema>;
-
-export type WorkerObservationPayload = z.infer<
-  typeof workerObservationPayloadSchema
->;
-export type WorkerObservationEnvelope = z.infer<
-  typeof workerObservationEnvelopeSchema
->;
-export type InferenceProgressPhase = z.infer<
-  typeof inferenceProgressPhaseSchema
->;
-export type InferenceProgressPrecision = z.infer<
-  typeof inferenceProgressPrecisionSchema
->;
-export type InferenceProgressSource = z.infer<
-  typeof inferenceProgressSourceSchema
->;
-export type InferenceProgressSnapshot = z.infer<
-  typeof inferenceProgressSnapshotSchema
->;
-export type InferenceProgressUpdate = z.infer<
-  typeof inferenceProgressUpdateSchema
->;
-export type WorkerRequestEnvelope = z.infer<typeof workerRequestEnvelopeSchema>;
-export type WorkerConnectionEnvelope = z.infer<
-  typeof workerConnectionEnvelopeSchema
->;
-export type WorkerResponseEnvelope = z.infer<
-  typeof workerResponseEnvelopeSchema
->;
-export type WorkerEventEnvelope = z.infer<typeof workerEventEnvelopeSchema>;
-export type WorkerNotification = z.infer<typeof workerNotificationSchema>;
-export type WorkerNotificationEnvelope = z.infer<
-  typeof workerNotificationEnvelopeSchema
->;
-export type WorkerServerEnvelope = z.infer<typeof workerServerEnvelopeSchema>;
-
-export function decodeWorkerRequestEnvelope(
-  encoded: string,
-): JsonMessageDecodeResult<WorkerRequestEnvelope> {
-  return decodeJsonMessage(encoded, workerRequestEnvelopeSchema);
-}
-
-export function decodeWorkerConnectionEnvelope(
-  encoded: string,
-): JsonMessageDecodeResult<WorkerConnectionEnvelope> {
-  return decodeJsonMessage(encoded, workerConnectionEnvelopeSchema);
-}
-
-export function decodeWorkerServerEnvelope(
-  encoded: string,
-): JsonMessageDecodeResult<WorkerServerEnvelope> {
-  return decodeJsonMessage(encoded, workerServerEnvelopeSchema);
-}
-
-export function encodeWorkerRequestEnvelope(
-  envelope: WorkerRequestEnvelope,
-): string {
-  return encodeJsonMessage(envelope, workerRequestEnvelopeSchema);
-}
-
-export function encodeWorkerConnectionEnvelope(
-  envelope: WorkerConnectionEnvelope,
-): string {
-  return encodeJsonMessage(envelope, workerConnectionEnvelopeSchema);
-}
-
-export function encodeWorkerServerEnvelope(
-  envelope: WorkerServerEnvelope,
-): string {
-  return encodeJsonMessage(envelope, workerServerEnvelopeSchema);
-}
