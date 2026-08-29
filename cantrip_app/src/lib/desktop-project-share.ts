@@ -126,7 +126,13 @@ export async function coordinateDesktopProjectRevealPreference(
     revealNetworkShare(): Promise<void>;
   },
 ): Promise<void> {
-  if (preferLocalFolder && (await operations.revealLocalFolder())) return;
+  if (preferLocalFolder) {
+    const revealed = await operations.revealLocalFolder();
+    if (!revealed) {
+      throw new Error("The project folder is not available on this desktop.");
+    }
+    return;
+  }
   await operations.revealNetworkShare();
 }
 
