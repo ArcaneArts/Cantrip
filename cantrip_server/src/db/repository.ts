@@ -304,7 +304,15 @@ import {
 } from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
 import {
+  AccountRepository,
+  type AccountCredentialRecord,
+  type ActiveUserSession,
+  type AuditEventCreate,
+  type UserSessionRow,
+} from "./repository/accounts.js";
+import {
   firstOrThrow,
+  toISOString,
   type RepositoryDatabase,
   type RepositoryTransaction,
 } from "./repository/database.js";
@@ -332,8 +340,13 @@ import {
 } from "./tab-layouts.js";
 
 export type { RepositoryDatabase } from "./repository/database.js";
+export {
+  LOCAL_USER_ID,
+  type AccountCredentialRecord,
+  type ActiveUserSession,
+  type AuditEventCreate,
+} from "./repository/accounts.js";
 
-export const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 export const DEFAULT_OLLAMA_PROVIDER_ID =
   "00000000-0000-0000-0000-000000000010";
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
@@ -425,11 +438,6 @@ type RunConfigurationSecretRow =
 type RunConfigurationSecretOperationRow =
   typeof schema.runConfigurationSecretOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
-type UserRow = typeof schema.users.$inferSelect;
-type UserSessionRow = typeof schema.userSessions.$inferSelect;
-type AuditEventRow = typeof schema.auditEvents.$inferSelect;
-type AccountLicenseWhitelistRow =
-  typeof schema.accountLicenseWhitelist.$inferSelect;
 type WorkerCredentialRow = typeof schema.workerCredentials.$inferSelect;
 type TunnelRow = typeof schema.tunnels.$inferSelect;
 type TunnelAttachmentRow = typeof schema.tunnelAttachments.$inferSelect;
@@ -453,30 +461,6 @@ export type RunConfigurationRuntimeOperationRequest =
       definitionRevision: null;
       codexEnvironmentRevision: null;
     });
-
-export interface AccountCredentialRecord {
-  passwordHash: string;
-  user: UserSummary;
-}
-
-export interface ActiveUserSession {
-  authMethod: "password" | "account-password" | "mobile-qr";
-  csrfTokenHash: string;
-  expiresAt: Date;
-  id: string;
-  user: UserSummary;
-}
-
-export interface AuditEventCreate {
-  action: string;
-  actorSessionId: string | null;
-  actorUserId: string | null;
-  ownerId: string | null;
-  requestId: string | null;
-  resourceId: string | null;
-  resourceType: string;
-  result: AuditEvent["result"];
-}
 
 export interface ActiveWorkerCredential {
   id: string;
@@ -1013,10 +997,6 @@ function detailedTokenUsageTotals(
   };
 }
 
-function toISOString(value: Date): string {
-  return value.toISOString();
-}
-
 function toWorkerCredentialSummary(
   credential: WorkerCredentialRow,
   now = new Date(),
@@ -1058,47 +1038,6 @@ function stableJsonValue(value: unknown): unknown {
 function catalogMetadataSnapshot(model: ProviderModelCatalogWrite) {
   const metadata = stableJsonValue(model) as Record<string, unknown>;
   return createHash("sha256").update(JSON.stringify(metadata)).digest("hex");
-}
-
-function toUserSummary(user: UserRow): UserSummary {
-  return {
-    id: user.id,
-    kind: user.kind as UserSummary["kind"],
-    displayName: user.displayName,
-    email: user.email,
-    role: user.role as UserSummary["role"],
-  };
-}
-
-function toAccountLicenseWhitelistEntry(
-  entry: AccountLicenseWhitelistRow,
-  registered: boolean,
-): AccountLicenseWhitelistEntry {
-  return {
-    id: entry.id,
-    email: entry.email,
-    registered,
-    createdAt: toISOString(entry.createdAt),
-  };
-}
-
-function toAuditEvent(event: AuditEventRow): AuditEvent {
-  return {
-    id: event.id,
-    ownerId: event.ownerId,
-    actor: {
-      userId: event.actorUserId,
-      sessionId: event.actorSessionId,
-    },
-    action: event.action,
-    result: event.result as AuditEvent["result"],
-    resource: {
-      type: event.resourceType,
-      id: event.resourceId,
-    },
-    requestId: event.requestId,
-    occurredAt: toISOString(event.occurredAt),
-  };
 }
 
 function toProjectWireSummary(
@@ -2523,6 +2462,7 @@ function toEncryptedQueuedPrompt(
 }
 
 export class ServerRepository {
+  readonly accounts: AccountRepository;
   readonly accountResourceUsage: AccountResourceUsageRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
@@ -2557,6 +2497,12 @@ export class ServerRepository {
     this.codeSettings = new CodeSettingsRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.policies = new PolicyRepository(database);
+    this.accounts = new AccountRepository(database, {
+      ensureDefaultProjectWorkspace: (ownerId) =>
+        this.ensureDefaultProjectWorkspace(ownerId),
+      ensureOwnerPolicyState: (ownerId) =>
+        this.policies.ensureOwnerState(ownerId),
+    });
     this.tasks = new TaskRepository(database);
     this.taskDispatch = new TaskDispatchRepository(database);
     this.taskScheduling = new TaskSchedulingRepository(database);
@@ -2585,41 +2531,11 @@ export class ServerRepository {
   }
 
   async ensureLocalIdentity(): Promise<UserSummary> {
-    const now = new Date();
-    const result = await this.database
-      .insert(schema.users)
-      .values({
-        id: LOCAL_USER_ID,
-        kind: "anonymous",
-        role: "owner",
-        status: "active",
-        displayName: "Local User",
-        email: null,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: schema.users.id,
-        set: { role: "owner", status: "active", updatedAt: now },
-      })
-      .returning();
-    const user = firstOrThrow(result, "ensuring the local user");
-    await this.ensureDefaultProjectWorkspace(user.id);
-
-    return {
-      id: user.id,
-      kind: "anonymous",
-      displayName: user.displayName,
-      email: user.email,
-      role: "owner",
-    };
+    return this.accounts.ensureLocalIdentity();
   }
 
   async countAccountUsers(): Promise<number> {
-    const rows = await this.database
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.users)
-      .where(eq(schema.users.kind, "account"));
-    return rows[0]?.count ?? 0;
+    return this.accounts.countAccountUsers();
   }
 
   async desktopUpdateActiveWork(
@@ -2803,40 +2719,11 @@ export class ServerRepository {
   }
 
   async accountEmailIsWhitelisted(normalizedEmail: string): Promise<boolean> {
-    const rows = await this.database
-      .select({ id: schema.accountLicenseWhitelist.id })
-      .from(schema.accountLicenseWhitelist)
-      .where(
-        eq(schema.accountLicenseWhitelist.normalizedEmail, normalizedEmail),
-      )
-      .limit(1);
-    return Boolean(rows[0]);
+    return this.accounts.accountEmailIsWhitelisted(normalizedEmail);
   }
 
   async listAccountLicenseWhitelist(): Promise<AccountLicenseWhitelistEntry[]> {
-    const rows = await this.database
-      .select({
-        entry: schema.accountLicenseWhitelist,
-        registeredUserId: schema.users.id,
-      })
-      .from(schema.accountLicenseWhitelist)
-      .leftJoin(
-        schema.users,
-        and(
-          eq(schema.users.kind, "account"),
-          eq(
-            schema.users.normalizedEmail,
-            schema.accountLicenseWhitelist.normalizedEmail,
-          ),
-        ),
-      )
-      .orderBy(
-        asc(schema.accountLicenseWhitelist.createdAt),
-        asc(schema.accountLicenseWhitelist.email),
-      );
-    return rows.map(({ entry, registeredUserId }) =>
-      toAccountLicenseWhitelistEntry(entry, Boolean(registeredUserId)),
-    );
+    return this.accounts.listAccountLicenseWhitelist();
   }
 
   async createAccountLicenseWhitelistEntry(input: {
@@ -2844,28 +2731,11 @@ export class ServerRepository {
     email: string;
     normalizedEmail: string;
   }): Promise<AccountLicenseWhitelistEntry | null> {
-    const rows = await this.database
-      .insert(schema.accountLicenseWhitelist)
-      .values({
-        id: randomUUID(),
-        email: input.email,
-        normalizedEmail: input.normalizedEmail,
-        addedByUserId: input.addedByUserId,
-      })
-      .onConflictDoNothing({
-        target: schema.accountLicenseWhitelist.normalizedEmail,
-      })
-      .returning();
-    const entry = rows[0];
-    return entry ? toAccountLicenseWhitelistEntry(entry, false) : null;
+    return this.accounts.createAccountLicenseWhitelistEntry(input);
   }
 
   async deleteAccountLicenseWhitelistEntry(id: string): Promise<boolean> {
-    const rows = await this.database
-      .delete(schema.accountLicenseWhitelist)
-      .where(eq(schema.accountLicenseWhitelist.id, id))
-      .returning({ id: schema.accountLicenseWhitelist.id });
-    return Boolean(rows[0]);
+    return this.accounts.deleteAccountLicenseWhitelistEntry(id);
   }
 
   async createAccount(input: {
@@ -2875,64 +2745,19 @@ export class ServerRepository {
     passwordHash: string;
     role: UserSummary["role"];
   }): Promise<UserSummary> {
-    const now = new Date();
-    const rows = await this.database
-      .insert(schema.users)
-      .values({
-        id: randomUUID(),
-        kind: "account",
-        role: input.role,
-        status: "active",
-        displayName: input.displayName,
-        email: input.email,
-        normalizedEmail: input.normalizedEmail,
-        passwordHash: input.passwordHash,
-        passwordChangedAt: now,
-        updatedAt: now,
-      })
-      .returning();
-    const user = firstOrThrow(rows, "creating an account");
-    await this.ensureDefaultProjectWorkspace(user.id);
-    await this.policies.ensureOwnerState(user.id);
-    return toUserSummary(user);
+    return this.accounts.createAccount(input);
   }
 
   async findAccountCredential(
     normalizedEmail: string,
   ): Promise<AccountCredentialRecord | null> {
-    const rows = await this.database
-      .select()
-      .from(schema.users)
-      .where(
-        and(
-          eq(schema.users.kind, "account"),
-          eq(schema.users.normalizedEmail, normalizedEmail),
-          eq(schema.users.status, "active"),
-        ),
-      )
-      .limit(1);
-    const user = rows[0];
-    if (!user?.passwordHash) return null;
-    return { passwordHash: user.passwordHash, user: toUserSummary(user) };
+    return this.accounts.findAccountCredential(normalizedEmail);
   }
 
   async findAccountCredentialById(
     ownerId: string,
   ): Promise<AccountCredentialRecord | null> {
-    const rows = await this.database
-      .select()
-      .from(schema.users)
-      .where(
-        and(
-          eq(schema.users.id, ownerId),
-          eq(schema.users.kind, "account"),
-          eq(schema.users.status, "active"),
-        ),
-      )
-      .limit(1);
-    const user = rows[0];
-    if (!user?.passwordHash) return null;
-    return { passwordHash: user.passwordHash, user: toUserSummary(user) };
+    return this.accounts.findAccountCredentialById(ownerId);
   }
 
   async createUserSession(input: {
@@ -2943,38 +2768,13 @@ export class ServerRepository {
     tokenHash: string;
     userId: string;
   }): Promise<UserSessionRow> {
-    const rows = await this.database
-      .insert(schema.userSessions)
-      .values({ id: randomUUID(), ...input })
-      .returning();
-    return firstOrThrow(rows, "creating a user session");
+    return this.accounts.createUserSession(input);
   }
 
   async getActiveUserSession(
     tokenHash: string,
   ): Promise<ActiveUserSession | null> {
-    const rows = await this.database
-      .select({ session: schema.userSessions, user: schema.users })
-      .from(schema.userSessions)
-      .innerJoin(schema.users, eq(schema.users.id, schema.userSessions.userId))
-      .where(
-        and(
-          eq(schema.userSessions.tokenHash, tokenHash),
-          isNull(schema.userSessions.revokedAt),
-          gt(schema.userSessions.expiresAt, new Date()),
-          eq(schema.users.status, "active"),
-        ),
-      )
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    return {
-      authMethod: row.session.authMethod as ActiveUserSession["authMethod"],
-      csrfTokenHash: row.session.csrfTokenHash,
-      expiresAt: row.session.expiresAt,
-      id: row.session.id,
-      user: toUserSummary(row.user),
-    };
+    return this.accounts.getActiveUserSession(tokenHash);
   }
 
   async createMobileSignInGrant(input: {
@@ -2983,209 +2783,57 @@ export class ServerRepository {
     expiresAt: Date;
     ownerId: string;
   }): Promise<string> {
-    const id = randomUUID();
-    await this.database.insert(schema.mobileSignInGrants).values({
-      id,
-      ownerId: input.ownerId,
-      createdBySessionId: input.createdBySessionId,
-      codeHash: input.codeHash,
-      expiresAt: input.expiresAt,
-    });
-    return id;
+    return this.accounts.createMobileSignInGrant(input);
   }
 
   async consumeMobileSignInGrant(
     codeHash: string,
   ): Promise<UserSummary | null> {
-    const now = new Date();
-    return this.database.transaction(async (transaction) => {
-      const grants = await transaction
-        .select()
-        .from(schema.mobileSignInGrants)
-        .where(
-          and(
-            eq(schema.mobileSignInGrants.codeHash, codeHash),
-            isNull(schema.mobileSignInGrants.consumedAt),
-            gt(schema.mobileSignInGrants.expiresAt, now),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      const grant = grants[0];
-      if (!grant) return null;
-
-      const creatingSessions = grant.createdBySessionId
-        ? await transaction
-            .select({ id: schema.userSessions.id })
-            .from(schema.userSessions)
-            .where(
-              and(
-                eq(schema.userSessions.id, grant.createdBySessionId),
-                eq(schema.userSessions.userId, grant.ownerId),
-                isNull(schema.userSessions.revokedAt),
-                gt(schema.userSessions.expiresAt, now),
-              ),
-            )
-            .limit(1)
-        : [];
-      if (!creatingSessions[0]) return null;
-
-      const consumed = await transaction
-        .update(schema.mobileSignInGrants)
-        .set({ consumedAt: now })
-        .where(
-          and(
-            eq(schema.mobileSignInGrants.id, grant.id),
-            isNull(schema.mobileSignInGrants.consumedAt),
-          ),
-        )
-        .returning({ id: schema.mobileSignInGrants.id });
-      if (!consumed[0]) return null;
-
-      const users = await transaction
-        .select()
-        .from(schema.users)
-        .where(
-          and(
-            eq(schema.users.id, grant.ownerId),
-            eq(schema.users.status, "active"),
-          ),
-        )
-        .limit(1);
-      return users[0] ? toUserSummary(users[0]) : null;
-    });
+    return this.accounts.consumeMobileSignInGrant(codeHash);
   }
 
   async pruneMobileSignInGrants(before: Date): Promise<void> {
-    await this.database
-      .delete(schema.mobileSignInGrants)
-      .where(lt(schema.mobileSignInGrants.expiresAt, before));
+    return this.accounts.pruneMobileSignInGrants(before);
   }
 
   async isUserSessionActive(
     sessionId: string,
     userId: string,
   ): Promise<boolean> {
-    const rows = await this.database
-      .select({ id: schema.userSessions.id })
-      .from(schema.userSessions)
-      .innerJoin(schema.users, eq(schema.users.id, schema.userSessions.userId))
-      .where(
-        and(
-          eq(schema.userSessions.id, sessionId),
-          eq(schema.userSessions.userId, userId),
-          isNull(schema.userSessions.revokedAt),
-          gt(schema.userSessions.expiresAt, new Date()),
-          eq(schema.users.status, "active"),
-        ),
-      )
-      .limit(1);
-    return rows.length > 0;
+    return this.accounts.isUserSessionActive(sessionId, userId);
   }
 
   async rotateSessionCsrfToken(
     sessionId: string,
     csrfTokenHash: string,
   ): Promise<boolean> {
-    const rows = await this.database
-      .update(schema.userSessions)
-      .set({ csrfTokenHash, lastSeenAt: new Date(), updatedAt: new Date() })
-      .where(
-        and(
-          eq(schema.userSessions.id, sessionId),
-          isNull(schema.userSessions.revokedAt),
-        ),
-      )
-      .returning({ id: schema.userSessions.id });
-    return rows.length > 0;
+    return this.accounts.rotateSessionCsrfToken(sessionId, csrfTokenHash);
   }
 
   async revokeUserSession(sessionId: string, reason: string): Promise<boolean> {
-    const now = new Date();
-    const rows = await this.database
-      .update(schema.userSessions)
-      .set({ revokedAt: now, revokedReason: reason, updatedAt: now })
-      .where(
-        and(
-          eq(schema.userSessions.id, sessionId),
-          isNull(schema.userSessions.revokedAt),
-        ),
-      )
-      .returning({ id: schema.userSessions.id });
-    return rows.length > 0;
+    return this.accounts.revokeUserSession(sessionId, reason);
   }
 
   async revokeAllUserSessions(userId: string, reason: string): Promise<number> {
-    const now = new Date();
-    const rows = await this.database
-      .update(schema.userSessions)
-      .set({ revokedAt: now, revokedReason: reason, updatedAt: now })
-      .where(
-        and(
-          eq(schema.userSessions.userId, userId),
-          isNull(schema.userSessions.revokedAt),
-        ),
-      )
-      .returning({ id: schema.userSessions.id });
-    return rows.length;
+    return this.accounts.revokeAllUserSessions(userId, reason);
   }
 
   async listUserSessions(
     userId: string,
     currentSessionId: string | null,
   ): Promise<AccountSessionSummary[]> {
-    const rows = await this.database
-      .select()
-      .from(schema.userSessions)
-      .where(
-        and(
-          eq(schema.userSessions.userId, userId),
-          isNull(schema.userSessions.revokedAt),
-          gt(schema.userSessions.expiresAt, new Date()),
-        ),
-      )
-      .orderBy(desc(schema.userSessions.lastSeenAt))
-      .limit(1_000);
-    return rows.map((session) => ({
-      id: session.id,
-      authMethod: session.authMethod as AccountSessionSummary["authMethod"],
-      label: session.label,
-      current: session.id === currentSessionId,
-      connected: false,
-      createdAt: toISOString(session.createdAt),
-      lastSeenAt: toISOString(session.lastSeenAt),
-      expiresAt: toISOString(session.expiresAt),
-    }));
+    return this.accounts.listUserSessions(userId, currentSessionId);
   }
 
   async appendAuditEvent(input: AuditEventCreate): Promise<AuditEvent> {
-    const rows = await this.database
-      .insert(schema.auditEvents)
-      .values(input)
-      .returning();
-    return toAuditEvent(firstOrThrow(rows, "appending an audit event"));
+    return this.accounts.appendAuditEvent(input);
   }
 
   async listAuditEvents(
     query: AuditEventQuery,
     ownerId?: string,
   ): Promise<AuditEventList> {
-    const filters = [
-      ...(ownerId ? [eq(schema.auditEvents.ownerId, ownerId)] : []),
-      ...(query.before ? [lt(schema.auditEvents.id, query.before)] : []),
-    ];
-    const rows = await this.database
-      .select()
-      .from(schema.auditEvents)
-      .where(filters.length > 0 ? and(...filters) : undefined)
-      .orderBy(desc(schema.auditEvents.id))
-      .limit(query.limit + 1);
-    const hasMore = rows.length > query.limit;
-    const items = rows.slice(0, query.limit).map(toAuditEvent);
-    return {
-      items,
-      nextCursor: hasMore ? (items.at(-1)?.id ?? null) : null,
-    };
+    return this.accounts.listAuditEvents(query, ownerId);
   }
 
   async ensureDefaultModelConfiguration(
