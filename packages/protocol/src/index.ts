@@ -1690,952 +1690,15 @@ export type {
   TabGroupMemberMove,
 } from "./project-tabs.js";
 
-export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
-export const agentMessagePhaseSchema = z.enum(["commentary", "final_answer"]);
-export const workerObservationEventIdentitySchema = z
-  .object({
-    operationId: z.string().min(1).max(200),
-    turnId: z.string().min(1).max(200).nullable(),
-    messageId: z.string().min(1).max(200).nullable(),
-    sequence: z.number().int().nonnegative().safe(),
-  })
-  .strict();
-export const agentActivityStatusSchema = z.enum([
-  "running",
-  "completed",
-  "failed",
-  "declined",
-]);
-export const agentCommandOutputLimitBytes = 256 * 1_024;
-export const agentFilePreviewLimitCharacters = 8_192;
-export const agentActivityRawRequestLimitBytes = 64 * 1_024;
-export const agentActivityRawResponseLimitBytes = 256 * 1_024;
-
-function encodedTextLimitSchema(limit: number) {
-  return z.string().superRefine((value, context) => {
-    if (new TextEncoder().encode(value).byteLength <= limit) return;
-    context.addIssue({
-      code: "custom",
-      message: `Raw capture text may contain at most ${limit} encoded bytes.`,
-    });
-  });
-}
-
-const agentActivityRawDocumentBaseShape = {
-  mediaType: z.string().min(1).max(200),
-  originalBytes: z.number().int().nonnegative().safe(),
-  truncated: z.boolean(),
-  digest: z.string().min(1).max(200).nullable().optional(),
-  omittedReason: z.string().min(1).max(500).nullable().optional(),
-};
-
-export const agentActivityRawRequestDocumentSchema = z.object({
-  ...agentActivityRawDocumentBaseShape,
-  text: encodedTextLimitSchema(agentActivityRawRequestLimitBytes).nullable(),
-});
-
-export const agentActivityRawResponseDocumentSchema = z.object({
-  ...agentActivityRawDocumentBaseShape,
-  text: encodedTextLimitSchema(agentActivityRawResponseLimitBytes).nullable(),
-});
-
-export const agentActivityRawEnvelopeSchema = z.object({
-  schemaVersion: z.literal(1),
-  request: agentActivityRawRequestDocumentSchema.nullable(),
-  response: agentActivityRawResponseDocumentSchema.nullable(),
-  metadata: z
-    .record(z.string().min(1).max(100), z.string().max(4_000))
-    .refine((value) => Object.keys(value).length <= 32, {
-      message: "Raw capture metadata may contain at most 32 entries.",
-    }),
-});
-
-const agentActivityTimestampSchema = z.number().int().nonnegative().safe();
-const agentCommandOutputSchema = z.string().superRefine((value, context) => {
-  const size = new TextEncoder().encode(value).byteLength;
-  if (size <= agentCommandOutputLimitBytes) return;
-  context.addIssue({
-    code: "custom",
-    message: `Agent command output may contain at most ${agentCommandOutputLimitBytes} encoded bytes.`,
-  });
-});
-export const codexEventCorrelationSchema = z.object({
-  sourceMethod: z.string().min(1).max(200),
-  diagnosticId: z.string().min(1).max(200).nullable(),
-  threadId: z.string().min(1).max(200).nullable(),
-  turnId: z.string().min(1).max(200).nullable(),
-  itemId: z.string().min(1).max(200).nullable(),
-});
-
-export const agentScopeSchema = z
-  .object({
-    agentThreadId: z.string().min(1).max(200),
-    rootThreadId: z.string().min(1).max(200),
-    parentThreadId: z.string().min(1).max(200).nullable(),
-    rootTurnId: z.string().min(1).max(200),
-    agentPath: z.array(z.string().min(1).max(200)).max(32),
-    nickname: z.string().min(1).max(200).nullable(),
-    role: z.string().min(1).max(500).nullable(),
-    depth: z.number().int().nonnegative().max(32),
-    isRoot: z.boolean(),
-  })
-  .strict();
-
-export const agentCommunicationKindSchema = z.enum([
-  "spawned",
-  "messageSent",
-  "followupSent",
-  "waiting",
-  "statusChanged",
-  "interrupted",
-  "returned",
-  "failed",
-]);
-
-const agentActivityBaseShape = {
-  id: z.string().min(1),
-  status: agentActivityStatusSchema,
-  startedAtMs: agentActivityTimestampSchema.optional(),
-  updatedAtMs: agentActivityTimestampSchema.optional(),
-  completedAtMs: agentActivityTimestampSchema.nullable().optional(),
-  correlation: codexEventCorrelationSchema.nullable().optional(),
-  agentScope: agentScopeSchema.optional(),
-  raw: agentActivityRawEnvelopeSchema.optional(),
-};
-
-export const agentTokenUsageSchema = z.object({
-  totalTokens: z.number().int().nonnegative(),
-  inputTokens: z.number().int().nonnegative(),
-  cachedInputTokens: z.number().int().nonnegative(),
-  cacheWriteInputTokens: z.number().int().nonnegative(),
-  outputTokens: z.number().int().nonnegative(),
-  reasoningOutputTokens: z.number().int().nonnegative(),
-});
-
-const rateLimitWindowSchema = z.object({
-  usedPercent: z.number().min(0),
-  windowDurationMins: z.number().int().nonnegative().nullable(),
-  resetsAt: z.number().int().nonnegative().nullable(),
-});
-
-export const agentActivitySchema = z.discriminatedUnion("type", [
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("instructionContext"),
-    provenance: z.enum(["exact", "assembled", "unavailable"]),
-    text: z.string().max(agentActivityRawRequestLimitBytes).nullable(),
-    sources: z.array(z.string().min(1).max(500)).max(100),
-    model: z.string().max(200).nullable(),
-    provider: z.string().max(200).nullable(),
-    reasoningEffort: z.string().max(100).nullable(),
-    collaborationMode: z.string().max(100).nullable(),
-    permissionProfile: z.string().max(200).nullable(),
-    runtimeVersion: z.string().max(100).nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("command"),
-    command: z.string().min(1),
-    cwd: z.string().min(1),
-    exitCode: z.number().int().nullable(),
-    output: z.string().nullable(),
-    outputTail: agentCommandOutputSchema.nullable().optional(),
-    outputTruncated: z.boolean().optional(),
-    durationMs: z.number().int().nonnegative().nullable().optional(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("fileChange"),
-    changes: z.array(
-      z.object({
-        path: z.string().min(1),
-        kind: z.enum(["add", "delete", "update"]),
-        latestLine: z
-          .string()
-          .max(agentFilePreviewLimitCharacters)
-          .nullable()
-          .optional(),
-        diffPreview: z
-          .string()
-          .max(agentFilePreviewLimitCharacters)
-          .nullable()
-          .optional(),
-        lastActivityAtMs: agentActivityTimestampSchema.optional(),
-      }),
-    ),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("worktree"),
-    operation: z.string().min(1),
-    summary: z.string().min(1),
-    worktreeId: z.string().min(1).nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("plan"),
-    text: z.string(),
-    explanation: z.string().nullable(),
-    steps: z.array(
-      z.object({
-        step: z.string().min(1),
-        status: z.enum(["pending", "inProgress", "completed"]),
-      }),
-    ),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("reasoning"),
-    summary: z.array(z.string().min(1)).max(100),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("mcpToolCall"),
-    server: z.string().min(1),
-    tool: z.string().min(1),
-    query: z.string().max(4_000).nullable().optional(),
-    resultText: z.string().max(20_000).nullable().optional(),
-    error: z.string().nullable(),
-    errorCode: z.string().min(1).max(200).nullable().optional(),
-    retryable: z.boolean().nullable().optional(),
-    durationMs: z.number().int().nonnegative().nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("dynamicToolCall"),
-    namespace: z.string().min(1).nullable(),
-    tool: z.string().min(1),
-    success: z.boolean().nullable(),
-    durationMs: z.number().int().nonnegative().nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("collabToolCall"),
-    tool: z.string().min(1),
-    senderThreadId: z.string().min(1),
-    receiverThreadIds: z.array(z.string().min(1)).max(100),
-    prompt: z.string().nullable(),
-    model: z.string().nullable(),
-    agentStates: z.array(
-      z.object({
-        threadId: z.string().min(1),
-        status: z.string().min(1),
-        message: z.string().nullable(),
-      }),
-    ),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("subAgent"),
-    kind: z.enum(["started", "interacted", "interrupted"]),
-    agentThreadId: z.string().min(1),
-    agentPath: z.string().min(1),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("agentCommunication"),
-    kind: agentCommunicationKindSchema,
-    senderThreadId: z.string().min(1).max(200),
-    receiverThreadIds: z.array(z.string().min(1).max(200)).max(100),
-    message: z.string().max(100_000).nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("webSearch"),
-    query: z.string(),
-    action: z.string().nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("imageView"),
-    path: z.string().min(1),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("reviewMode"),
-    state: z.enum(["entered", "exited"]),
-    review: z.string(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("contextCompaction"),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("notice"),
-    level: z.enum(["warning", "error"]),
-    message: z.string().min(1),
-    details: z.string().nullable(),
-    willRetry: z.boolean().nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("usage"),
-    total: agentTokenUsageSchema,
-    last: agentTokenUsageSchema,
-    modelContextWindow: z.number().int().positive().nullable(),
-    contextUsedPercent: z.number().min(0).nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("rateLimit"),
-    limitId: z.string().nullable().default(null),
-    limitName: z.string().nullable(),
-    planType: z.string().nullable(),
-    reachedType: z.string().nullable(),
-    primary: rateLimitWindowSchema.nullable(),
-    secondary: rateLimitWindowSchema.nullable(),
-  }),
-  z.object({
-    ...agentActivityBaseShape,
-    type: z.literal("turnSummary"),
-    durationMs: z.number().int().nonnegative().nullable(),
-    startedAt: z.number().int().nonnegative().nullable(),
-    completedAt: z.number().int().nonnegative().nullable(),
-  }),
-]);
-export const chatMessageContentSchema = z.array(
-  z.discriminatedUnion("type", [
-    z.object({
-      type: z.literal("text"),
-      text: z.string().min(1),
-      phase: agentMessagePhaseSchema.nullable().optional(),
-      streaming: z.boolean().optional(),
-      correlation: codexEventCorrelationSchema.nullable().optional(),
-      agentScope: agentScopeSchema.optional(),
-      sourceEvent: workerObservationEventIdentitySchema.optional(),
-    }),
-    z.object({
-      type: z.literal("activity"),
-      activity: agentActivitySchema,
-      sourceEvent: workerObservationEventIdentitySchema.optional(),
-    }),
-    z.object({
-      type: z.literal("attachment"),
-      attachment: chatAttachmentSummarySchema,
-    }),
-  ]),
-);
-
-export const chatTurnModeSchema = z.enum(["default", "plan", "goal"]);
-
-export const chatComposerDraftSchema = z
-  .object({
-    text: z.string().max(100_000),
-    mode: chatTurnModeSchema,
-    reasoningEffort: reasoningEffortSchema.nullable(),
-  })
-  .strict();
-
-export const chatMessageCreateSchema = z.object({
-  role: chatMessageRoleSchema,
-  content: chatMessageContentSchema.min(1),
-  mode: chatTurnModeSchema.optional(),
-  reasoningEffort: reasoningEffortSchema.nullable().optional(),
-  idempotencyKey: z.string().min(1).max(200).optional(),
-});
-
-export const chatMessageSchema = chatMessageCreateSchema
-  .omit({ idempotencyKey: true })
-  .extend({
-    id: z.string().min(1),
-    chatId: z.string().min(1),
-    contextKind: chatContextKindSchema.default("project"),
-    worktreeId: z.string().min(1).nullable(),
-    scratchRootId: z.string().min(1).nullable().default(null),
-    executionLaneId: z.string().min(1).nullable(),
-    sequence: z.number().int().positive(),
-    mode: chatTurnModeSchema.default("default"),
-    reasoningEffort: reasoningEffortSchema.nullable().default(null),
-    modelId: z.string().min(1).nullable(),
-    modelRouteId: z.string().min(1).nullable(),
-    providerId: z.string().min(1).nullable(),
-    providerName: z.string().min(1).nullable(),
-    providerModelName: z.string().min(1).nullable(),
-    appliedReasoningEffort: reasoningEffortSchema.nullable().default(null),
-    reasoningAdjusted: z.boolean().default(false),
-    createdAt: z.string().datetime(),
-  })
-  .superRefine((message, context) => {
-    if (
-      (message.contextKind === "project" &&
-        message.worktreeId !== null &&
-        message.scratchRootId === null) ||
-      (message.contextKind === "standalone" &&
-        message.worktreeId === null &&
-        message.scratchRootId !== null)
-    ) {
-      return;
-    }
-    context.addIssue({
-      code: "custom",
-      message: "Chat message execution root is invalid.",
-      path: ["contextKind"],
-    });
-  });
-
-export const chatRelocationStateSchema = z.enum([
-  "queued",
-  "waiting-for-idle",
-  "validating",
-  "preparing-replica",
-  "transferring-attachments",
-  "hydrating-runtime",
-  "ready-to-commit",
-  "succeeded",
-  "blocked",
-  "failed",
-  "cancelled",
-]);
-
-export const chatRelocationErrorCodeSchema = z.enum([
-  "target-not-found",
-  "target-mismatch",
-  "worker-offline",
-  "capability-missing",
-  "replica-not-ready",
-  "worktree-dirty",
-  "revision-diverged",
-  "attachment-unavailable",
-  "runtime-incompatible",
-  "stale-attempt",
-  "policy-denied",
-  "worker-error",
-]);
-
-export const chatRelocationErrorSchema = z.object({
-  code: chatRelocationErrorCodeSchema,
-  message: z.string().min(1).max(4_000),
-  retryable: z.boolean(),
-});
-
-export const chatRelocationJobErrorSchema = chatRelocationErrorSchema.omit({
-  message: true,
-});
-
-export const chatRelocationProgressStageSchema = z.enum([
-  "queued",
-  "waiting-for-idle",
-  "recovering",
-  "validating",
-  "preparing-replica",
-  "transferring-attachments",
-  "hydrating-runtime",
-  "ready-to-commit",
-  "blocked",
-  "failed",
-  "succeeded",
-  "cancelled",
-]);
-
-export const chatRelocationProgressSchema = z.object({
-  stage: chatRelocationProgressStageSchema,
-  percent: z.number().int().min(0).max(100),
-  updatedAt: z.string().datetime(),
-});
-
-export const chatRelocationContextMessageSchema = z.object({
-  sequence: z.number().int().positive(),
-  role: chatMessageRoleSchema,
-  mode: chatTurnModeSchema,
-  reasoningEffort: reasoningEffortSchema.nullable().default(null),
-  content: chatMessageContentSchema,
-  createdAt: z.string().datetime(),
-});
-
-export const taskRelocationContextMessageSchema =
-  taskMessageOpaqueSummarySchema;
-
-export const chatRelocationAttachmentAvailabilitySchema = z.object({
-  attachment: chatAttachmentOpaqueSummarySchema,
-  sourceWorkerId: z.string().min(1).max(200),
-  availableWorkerIds: z.array(z.string().min(1).max(200)).max(1_000),
-});
-
-export const chatRelocationContextPayloadSchema = z.union([
-  z.object({
-    version: z.literal(1),
-    kind: z.literal("visible").default("visible"),
-    messages: z.array(chatRelocationContextMessageSchema).max(100_000),
-    attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
-  }),
-  z.object({
-    version: z.literal(1),
-    kind: z.literal("task-encrypted"),
-    messages: z.array(taskRelocationContextMessageSchema).max(100_000),
-    attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
-  }),
-  z.object({
-    version: z.literal(1),
-    kind: z.literal("chat-encrypted"),
-    messages: z.array(chatMessageOpaqueSummarySchema).max(100_000),
-    attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
-  }),
-]);
-
-export const chatRelocationSnapshotSummarySchema = z.object({
-  id: z.string().uuid(),
-  chatId: z.string().min(1),
-  sourcePlacement: executionPlacementSchema,
-  throughSequence: z.number().int().nonnegative(),
-  transcriptSha256: z.string().regex(/^[0-9a-f]{64}$/u),
-  messageCount: z.number().int().nonnegative(),
-  attachmentCount: z.number().int().nonnegative(),
-  modelId: z.string().min(1).nullable(),
-  modelRouteId: z.string().min(1).nullable(),
-  permissionProfileId: z.string().min(1).max(200).nullable(),
-  requiredRevision: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .regex(/^[0-9a-f]{40,64}$/u),
-  createdAt: z.string().datetime(),
-});
-
-export const chatRelocationHydrationBeginResultSchema = z.discriminatedUnion(
-  "status",
-  [
-    z.object({ status: z.literal("upload") }),
-    z.object({
-      status: z.literal("hydrated"),
-      threadId: z.string().min(1),
-    }),
-  ],
-);
-
-export const chatRelocationHydrationResultSchema = z.object({
-  snapshotId: z.string().uuid(),
-  transcriptSha256: z.string().regex(/^[0-9a-f]{64}$/u),
-  threadId: z.string().min(1),
-  reused: z.boolean(),
-});
-
-export const chatRelocationJobSummarySchema = z.object({
-  id: z.string().uuid(),
-  projectId: z.string().min(1),
-  chatId: z.string().min(1),
-  state: chatRelocationStateSchema,
-  stateRevision: z.number().int().positive(),
-  idempotencyKey: z.string().min(1).max(200),
-  sourcePlacement: executionPlacementSchema,
-  sourcePlacementRevision: z.number().int().positive(),
-  targetPlacement: executionPlacementSchema,
-  contextSnapshotId: z.string().uuid(),
-  targetRuntimeThreadId: z.string().min(1).nullable(),
-  targetModelRouteId: z.string().min(1).nullable(),
-  targetProviderAccountId: z.string().min(1).nullable().default(null),
-  attempt: z.number().int().nonnegative(),
-  progress: chatRelocationProgressSchema,
-  error: chatRelocationJobErrorSchema.nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  startedAt: z.string().datetime().nullable(),
-  cancellationUnsafeAt: z.string().datetime().nullable(),
-  completedAt: z.string().datetime().nullable(),
-});
-
-export const chatRelocationJobListSchema = z
-  .array(chatRelocationJobSummarySchema)
-  .max(1_000);
-
-export const chatRelocationCreateSchema = z.object({
-  target: executionTargetSchema,
-  approved: z.literal(true),
-  idempotencyKey: z.string().trim().min(1).max(200),
-});
-
-export const chatRelocationJobRetrySchema = z.object({
-  stateRevision: z.number().int().positive(),
-});
-
-export const chatRelocationJobCancelSchema = z.object({
-  stateRevision: z.number().int().positive(),
-});
-
-export const agentInteractionRequestKindSchema = z.enum([
-  "commandExecution",
-  "fileChange",
-  "permissions",
-  "userInput",
-  "mcpElicitation",
-]);
-
-export const agentInteractionRequestStatusSchema = z.enum([
-  "pending",
-  "resolved",
-  "expired",
-  "interrupted",
-]);
-
-export const agentInteractionProvenanceSchema = z.object({
-  chatId: z.string().min(1).nullable(),
-  threadId: z.string().min(1),
-  turnId: z.string().min(1).nullable(),
-  itemId: z.string().min(1).nullable(),
-  executionLaneId: z.string().min(1).nullable(),
-  workflowRunId: z.string().min(1).nullable(),
-  workflowNodeId: z.string().min(1).nullable(),
-  workerId: z.string().min(1),
-});
-
-export const agentInteractionRequestPayloadSchema = z.discriminatedUnion(
-  "kind",
-  [
-    z.object({
-      kind: z.literal("commandExecution"),
-      startedAtMs: z.number().int().nonnegative(),
-      approvalId: z.string().min(1).nullable(),
-      environmentId: z.string().min(1).nullable(),
-      reason: z.string().nullable(),
-      command: z.string().nullable(),
-      cwd: z.string().nullable(),
-      commandActions: z.json().nullable().optional(),
-      networkApprovalContext: z
-        .object({
-          host: z.string().min(1),
-          protocol: z.enum(["http", "https", "socks5Tcp", "socks5Udp"]),
-        })
-        .nullable(),
-      additionalPermissions: z.json().nullable(),
-      proposedExecpolicyAmendment: z.array(z.string()).nullable(),
-      proposedNetworkPolicyAmendments: z
-        .array(
-          z.object({
-            host: z.string().min(1),
-            action: z.enum(["allow", "deny"]),
-          }),
-        )
-        .nullable(),
-      availableDecisions: z
-        .array(
-          z.enum([
-            "accept",
-            "acceptForSession",
-            "acceptWithExecpolicyAmendment",
-            "applyNetworkPolicyAmendment",
-            "decline",
-            "cancel",
-          ]),
-        )
-        .nullable(),
-    }),
-    z.object({
-      kind: z.literal("fileChange"),
-      startedAtMs: z.number().int().nonnegative(),
-      reason: z.string().nullable(),
-      grantRoot: z.string().nullable(),
-    }),
-    z.object({
-      kind: z.literal("permissions"),
-      startedAtMs: z.number().int().nonnegative(),
-      environmentId: z.string().min(1).nullable(),
-      cwd: z.string().min(1),
-      reason: z.string().nullable(),
-      requestedPermissions: z.json(),
-    }),
-    z.object({
-      kind: z.literal("userInput"),
-      questions: z
-        .array(
-          z.object({
-            id: z.string().min(1),
-            header: z.string().min(1),
-            question: z.string().min(1),
-            isOther: z.boolean(),
-            isSecret: z.boolean(),
-            options: z
-              .array(
-                z.object({
-                  label: z.string().min(1),
-                  description: z.string(),
-                }),
-              )
-              .nullable(),
-          }),
-        )
-        .min(1)
-        .max(3),
-      autoResolutionMs: z.number().int().nonnegative().nullable(),
-    }),
-    z.object({
-      kind: z.literal("mcpElicitation"),
-      serverName: z.string().min(1),
-      mode: z.enum(["form", "openai/form", "url"]),
-      message: z.string().min(1),
-      requestedSchema: z.json().nullable(),
-      url: z.url().nullable(),
-      elicitationId: z.string().min(1).nullable(),
-      metadata: z.json().nullable(),
-    }),
-  ],
-);
-
-export const agentInteractionResponseSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("commandExecution"),
-    decision: z.enum([
-      "accept",
-      "acceptForSession",
-      "acceptWithExecpolicyAmendment",
-      "applyNetworkPolicyAmendment",
-      "decline",
-      "cancel",
-    ]),
-    execpolicyAmendment: z.array(z.string()).nullable().default(null),
-    networkPolicyAmendment: z
-      .object({
-        host: z.string().min(1),
-        action: z.enum(["allow", "deny"]),
-      })
-      .nullable()
-      .default(null),
-  }),
-  z.object({
-    kind: z.literal("fileChange"),
-    decision: z.enum(["accept", "acceptForSession", "decline", "cancel"]),
-  }),
-  z.object({
-    kind: z.literal("permissions"),
-    permissions: z.json(),
-    scope: z.enum(["turn", "session"]),
-    strictAutoReview: z.boolean().default(false),
-  }),
-  z.object({
-    kind: z.literal("userInput"),
-    answers: z.record(
-      z.string().min(1),
-      z.object({ answers: z.array(z.string()).min(1) }),
-    ),
-  }),
-  z.object({
-    kind: z.literal("mcpElicitation"),
-    action: z.enum(["accept", "decline", "cancel"]),
-    content: z.json().nullable(),
-    metadata: z.json().nullable().default(null),
-  }),
-]);
-
-function fitsAgentInteractionStorageLimit(value: unknown): boolean {
-  try {
-    return JSON.stringify(value).length <= 1_000_000;
-  } catch {
-    return false;
-  }
-}
-
-export const agentInteractionRequestCreateSchema = z
-  .object({
-    requestKey: z.string().min(1).max(200),
-    projectId: z.string().min(1).nullable(),
-    provenance: agentInteractionProvenanceSchema,
-    payload: agentInteractionRequestPayloadSchema,
-    expiresAt: z.string().datetime().nullable(),
-  })
-  .refine(fitsAgentInteractionStorageLimit, {
-    message: "Agent interaction request exceeds the 1 MB storage limit.",
-  });
-
-export const agentInteractionResolutionCreateSchema = z
-  .object({
-    idempotencyKey: z.string().min(1).max(200),
-    response: agentInteractionResponseSchema,
-  })
-  .refine(fitsAgentInteractionStorageLimit, {
-    message: "Agent interaction response exceeds the 1 MB storage limit.",
-  });
-
-export const encryptedAgentInteractionRequestCreateSchema = z
-  .object({
-    requestKey: z.string().min(1).max(200),
-    projectId: z.string().min(1).nullable(),
-    provenance: agentInteractionProvenanceSchema,
-    ...interactionRequestOpaqueContentSchema.shape,
-    expiresAt: z.string().datetime().nullable(),
-  })
-  .strict()
-  .refine(fitsAgentInteractionStorageLimit, {
-    message: "Protected agent interaction request exceeds the storage limit.",
-  });
-
-export const encryptedAgentInteractionResolutionCreateSchema = z
-  .object({
-    idempotencyKey: z.string().min(1).max(200),
-    ...interactionResponseOpaqueContentSchema.shape,
-  })
-  .strict()
-  .refine(fitsAgentInteractionStorageLimit, {
-    message: "Protected agent interaction response exceeds the storage limit.",
-  });
-
-export const agentInteractionRuntimeRequestSchema = z.object({
-  requestKey: z.string().min(1).max(200),
-  threadId: z.string().min(1),
-  turnId: z.string().min(1).nullable(),
-  itemId: z.string().min(1).nullable(),
-  payload: agentInteractionRequestPayloadSchema,
-  expiresAt: z.string().datetime(),
-});
-
-export const encryptedAgentInteractionRuntimeRequestSchema = z
-  .object({
-    requestKey: z.string().min(1).max(200),
-    threadId: z.string().min(1),
-    turnId: z.string().min(1).nullable(),
-    itemId: z.string().min(1).nullable(),
-    ...interactionRequestOpaqueContentSchema.shape,
-    expiresAt: z.string().datetime(),
-  })
-  .strict();
-
-export const agentInteractionAcceptedSchema = z.object({
-  accepted: z.literal(true),
-});
-
-export const agentInteractionRequestSchema = z
-  .object({
-    id: z.string().min(1),
-    requestKey: z.string().min(1),
-    projectId: z.string().min(1).nullable(),
-    provenance: agentInteractionProvenanceSchema,
-    payload: agentInteractionRequestPayloadSchema,
-    status: agentInteractionRequestStatusSchema,
-    response: agentInteractionResponseSchema.nullable(),
-    resolvedByUserId: z.string().min(1).nullable(),
-    expiresAt: z.string().datetime().nullable(),
-    resolvedAt: z.string().datetime().nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .superRefine((request, context) => {
-    if (request.response && request.response.kind !== request.payload.kind) {
-      context.addIssue({
-        code: "custom",
-        path: ["response", "kind"],
-        message: "Response kind must match request kind.",
-      });
-    }
-    const terminalWithoutResponse =
-      request.status === "expired" || request.status === "interrupted";
-    if (request.status === "pending") {
-      if (request.response || request.resolvedByUserId || request.resolvedAt) {
-        context.addIssue({
-          code: "custom",
-          path: ["status"],
-          message: "Pending requests cannot contain resolution data.",
-        });
-      }
-    } else if (request.status === "resolved") {
-      if (
-        !request.response ||
-        !request.resolvedByUserId ||
-        !request.resolvedAt
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["status"],
-          message: "Resolved requests require response and resolution data.",
-        });
-      }
-    } else if (
-      terminalWithoutResponse &&
-      (request.response || request.resolvedByUserId || !request.resolvedAt)
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["status"],
-        message:
-          "Expired and interrupted requests require a terminal timestamp without a response.",
-      });
-    }
-  });
-
-export const agentInteractionRequestListSchema = z.array(
-  agentInteractionRequestSchema,
-);
-
-export const encryptedAgentInteractionRequestSchema = z
-  .object({
-    id: z.string().min(1),
-    requestKey: z.string().min(1),
-    projectId: z.string().min(1).nullable(),
-    provenance: agentInteractionProvenanceSchema,
-    classification: interactionProtectedClassificationSchema,
-    protectedPayload:
-      interactionRequestOpaqueContentSchema.shape.protectedPayload,
-    status: agentInteractionRequestStatusSchema,
-    protectedResponse: encryptedInteractionResponseContentSchema.nullable(),
-    resolvedByUserId: z.string().min(1).nullable(),
-    expiresAt: z.string().datetime().nullable(),
-    resolvedAt: z.string().datetime().nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict()
-  .superRefine((request, context) => {
-    if (request.status === "pending") {
-      if (
-        request.protectedResponse ||
-        request.resolvedByUserId ||
-        request.resolvedAt
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["status"],
-          message: "Pending requests cannot contain resolution data.",
-        });
-      }
-      return;
-    }
-    if (request.status === "resolved") {
-      if (
-        !request.protectedResponse ||
-        !request.resolvedByUserId ||
-        !request.resolvedAt
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["status"],
-          message: "Resolved requests require protected resolution data.",
-        });
-      }
-      return;
-    }
-    if (
-      request.protectedResponse ||
-      request.resolvedByUserId ||
-      !request.resolvedAt
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["status"],
-        message:
-          "Expired and interrupted requests require a terminal timestamp without a response.",
-      });
-    }
-  });
-
-export const agentInteractionRequestWireSchema = z.union([
-  agentInteractionRequestSchema,
-  encryptedAgentInteractionRequestSchema,
-]);
-
-export const agentInteractionRequestWireListSchema = z.array(
-  agentInteractionRequestWireSchema,
-);
-
-export const agentInteractionResolutionWireCreateSchema = z.union([
-  agentInteractionResolutionCreateSchema,
-  encryptedAgentInteractionResolutionCreateSchema,
-]);
-
-export const agentInteractionRequestQuerySchema = z.object({
-  chatId: z.string().min(1).optional(),
-  workflowRunId: z.string().min(1).optional(),
-  status: agentInteractionRequestStatusSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
-});
-
-// contract used by worker-owned agent transports.
+export type {
+  ChatExecutionLaneActor,
+  ChatExecutionLaneState,
+  ProjectChatExecutionLaneSummary,
+  StandaloneChatExecutionLaneSummary,
+  ContextualChatExecutionLaneSummary,
+  ChatExecutionLaneSummary,
+  ChatExecutionLaneRelease,
+} from "./chat-execution-lanes.js";
 
 export {
   chatExecutionLaneActorSchema,
@@ -2646,16 +1709,6 @@ export {
   chatExecutionLaneSummarySchema,
   chatExecutionLaneListSchema,
   chatExecutionLaneReleaseSchema,
-} from "./chat-execution-lanes.js";
-
-export type {
-  ChatExecutionLaneActor,
-  ChatExecutionLaneState,
-  ProjectChatExecutionLaneSummary,
-  StandaloneChatExecutionLaneSummary,
-  ContextualChatExecutionLaneSummary,
-  ChatExecutionLaneSummary,
-  ChatExecutionLaneRelease,
 } from "./chat-execution-lanes.js";
 
 export {
@@ -2804,458 +1857,263 @@ export type {
   CantripCliCommandResult,
 } from "./cantrip-cli.js";
 
-export const chatMessageListSchema = z.array(chatMessageSchema);
+import {
+  agentMessagePhaseSchema,
+  workerObservationEventIdentitySchema,
+  agentActivityTimestampSchema,
+  codexEventCorrelationSchema,
+  agentScopeSchema,
+  agentTokenUsageSchema,
+  agentActivitySchema,
+} from "./agent-activity.js";
 
-export const CHAT_MESSAGE_PAGE_DEFAULT_LIMIT = 150;
-export const CHAT_MESSAGE_PAGE_MAX_LIMIT = 200;
-export const CHAT_MESSAGE_PAGE_BOUNDARY_MAX = 500;
+export {
+  chatMessageRoleSchema,
+  agentMessagePhaseSchema,
+  workerObservationEventIdentitySchema,
+  agentActivityStatusSchema,
+  agentCommandOutputLimitBytes,
+  agentFilePreviewLimitCharacters,
+  agentActivityRawRequestLimitBytes,
+  agentActivityRawResponseLimitBytes,
+  agentActivityRawRequestDocumentSchema,
+  agentActivityRawResponseDocumentSchema,
+  agentActivityRawEnvelopeSchema,
+  codexEventCorrelationSchema,
+  agentScopeSchema,
+  agentCommunicationKindSchema,
+  agentTokenUsageSchema,
+  agentActivitySchema,
+} from "./agent-activity.js";
 
-export const chatMessagePageQuerySchema = z
-  .object({
-    beforeSequence: z.coerce.number().int().positive().optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(CHAT_MESSAGE_PAGE_MAX_LIMIT)
-      .default(CHAT_MESSAGE_PAGE_DEFAULT_LIMIT),
-  })
-  .strict();
+export type {
+  AgentMessagePhase,
+  CodexEventCorrelation,
+  AgentScope,
+  AgentCommunicationKind,
+  AgentTokenUsage,
+  AgentActivityRawEnvelope,
+  AgentActivity,
+  WorkerObservationEventIdentity,
+} from "./agent-activity.js";
 
-export const chatMessagePageInfoSchema = z
-  .object({
-    hasMore: z.boolean(),
-    nextBeforeSequence: z.number().int().positive().nullable(),
-    oldestSequence: z.number().int().positive().nullable(),
-    newestSequence: z.number().int().positive().nullable(),
-    startsAtUserTurn: z.boolean(),
-  })
-  .strict();
+import {
+  chatTurnModeSchema,
+  chatMessageCreateSchema,
+} from "./chat-messages.js";
 
-export const chatMessageWireListSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("task-encrypted"),
-      messages: z.array(taskMessageOpaqueSummarySchema).max(100_000),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("chat-encrypted"),
-      messages: z.array(chatMessageOpaqueSummarySchema).max(100_000),
-    })
-    .strict(),
-]);
+export {
+  chatMessageContentSchema,
+  chatTurnModeSchema,
+  chatComposerDraftSchema,
+  chatMessageCreateSchema,
+  chatMessageSchema,
+} from "./chat-messages.js";
 
-export const chatMessageWirePageSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("task-encrypted"),
-      messages: z
-        .array(taskMessageOpaqueSummarySchema)
-        .max(CHAT_MESSAGE_PAGE_BOUNDARY_MAX),
-      page: chatMessagePageInfoSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("chat-encrypted"),
-      messages: z
-        .array(chatMessageOpaqueSummarySchema)
-        .max(CHAT_MESSAGE_PAGE_BOUNDARY_MAX),
-      page: chatMessagePageInfoSchema,
-    })
-    .strict(),
-]);
+export type {
+  ChatComposerDraft,
+  ChatMessageContent,
+  ChatMessageCreate,
+  ChatMessage,
+  ChatTurnMode,
+} from "./chat-messages.js";
 
-export const encryptedQueuedPromptSchema = queuedPromptOpaqueContentSchema
-  .extend({
-    chatId: z.string().min(1).max(200),
-    attachments: chatAttachmentOpaqueListSchema.default([]),
-    position: z.number().int().nonnegative(),
-    createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
-  })
-  .strict();
+export {
+  chatRelocationStateSchema,
+  chatRelocationErrorCodeSchema,
+  chatRelocationErrorSchema,
+  chatRelocationJobErrorSchema,
+  chatRelocationProgressStageSchema,
+  chatRelocationProgressSchema,
+  chatRelocationContextMessageSchema,
+  taskRelocationContextMessageSchema,
+  chatRelocationAttachmentAvailabilitySchema,
+  chatRelocationContextPayloadSchema,
+  chatRelocationSnapshotSummarySchema,
+  chatRelocationHydrationBeginResultSchema,
+  chatRelocationHydrationResultSchema,
+  chatRelocationJobSummarySchema,
+  chatRelocationJobListSchema,
+  chatRelocationCreateSchema,
+  chatRelocationJobRetrySchema,
+  chatRelocationJobCancelSchema,
+} from "./chat-relocation.js";
 
-export const encryptedQueuedPromptListSchema = z
-  .array(encryptedQueuedPromptSchema)
-  .max(1_000);
+export type {
+  ChatRelocationState,
+  ChatRelocationErrorCode,
+  ChatRelocationError,
+  ChatRelocationJobError,
+  ChatRelocationProgress,
+  ChatRelocationContextMessage,
+  ChatRelocationAttachmentAvailability,
+  ChatRelocationContextPayload,
+  ChatRelocationSnapshotSummary,
+  ChatRelocationHydrationBeginResult,
+  ChatRelocationHydrationResult,
+  ChatRelocationJobSummary,
+  ChatRelocationCreate,
+  ChatRelocationJobRetry,
+  ChatRelocationJobCancel,
+} from "./chat-relocation.js";
 
-export const encryptedChatTurnCreateSchema = z
-  .object({
-    message: chatMessageOpaqueContentSchema,
-    queuedPrompt: queuedPromptOpaqueContentSchema,
-    modelId: z.string().min(1).max(200).optional(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (
-      JSON.stringify(value.message) !==
-      JSON.stringify(value.queuedPrompt.pendingMessage)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "The queued prompt must carry the submitted encrypted message.",
-        path: ["queuedPrompt", "pendingMessage"],
-      });
-    }
-    if (
-      value.modelId !== undefined &&
-      value.modelId !== value.queuedPrompt.modelId
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "The queued prompt model must match the submitted model.",
-        path: ["queuedPrompt", "modelId"],
-      });
-    }
-  });
+import {
+  agentInteractionResponseSchema,
+  agentInteractionRuntimeRequestSchema,
+  encryptedAgentInteractionRuntimeRequestSchema,
+} from "./agent-interactions.js";
 
-export const projectAutomationProtectedDispatchResultSchema = z
-  .object({
-    allowed: z.boolean(),
-    protectedTurn: encryptedChatTurnCreateSchema.nullable(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.allowed !== Boolean(value.protectedTurn)) {
-      context.addIssue({
-        code: "custom",
-        message: "Allowed automation dispatches require a protected turn.",
-        path: ["protectedTurn"],
-      });
-    }
-  });
+export {
+  agentInteractionRequestKindSchema,
+  agentInteractionRequestStatusSchema,
+  agentInteractionProvenanceSchema,
+  agentInteractionRequestPayloadSchema,
+  agentInteractionResponseSchema,
+  agentInteractionRequestCreateSchema,
+  agentInteractionResolutionCreateSchema,
+  encryptedAgentInteractionRequestCreateSchema,
+  encryptedAgentInteractionResolutionCreateSchema,
+  agentInteractionRuntimeRequestSchema,
+  encryptedAgentInteractionRuntimeRequestSchema,
+  agentInteractionAcceptedSchema,
+  agentInteractionRequestSchema,
+  agentInteractionRequestListSchema,
+  encryptedAgentInteractionRequestSchema,
+  agentInteractionRequestWireSchema,
+  agentInteractionRequestWireListSchema,
+  agentInteractionResolutionWireCreateSchema,
+  agentInteractionRequestQuerySchema,
+} from "./agent-interactions.js";
 
-export const encryptedQueuedPromptUpdateSchema = z
-  .object({ prompt: queuedPromptOpaqueContentSchema })
-  .strict();
+export type {
+  AgentInteractionRequestKind,
+  AgentInteractionRequestStatus,
+  AgentInteractionProvenance,
+  AgentInteractionRequestPayload,
+  AgentInteractionResponse,
+  AgentInteractionRequestCreate,
+  AgentInteractionResolutionCreate,
+  EncryptedAgentInteractionRequestCreate,
+  EncryptedAgentInteractionResolutionCreate,
+  AgentInteractionRuntimeRequest,
+  EncryptedAgentInteractionRuntimeRequest,
+  AgentInteractionAccepted,
+  AgentInteractionRequest,
+  EncryptedAgentInteractionRequest,
+  AgentInteractionRequestWire,
+  AgentInteractionResolutionWireCreate,
+  AgentInteractionRequestQuery,
+} from "./agent-interactions.js";
 
-export const encryptedChatPromptSubmitResultSchema = z.discriminatedUnion(
-  "status",
-  [
-    z
-      .object({
-        status: z.literal("started"),
-        message: chatMessageOpaqueSummarySchema,
-      })
-      .strict(),
-    z
-      .object({
-        status: z.literal("queued"),
-        prompt: encryptedQueuedPromptSchema,
-      })
-      .strict(),
-  ],
-);
+import {
+  chatGoalCreateSchema,
+  chatGoalUpdateSchema,
+  planModeSchema,
+  planStepSchema,
+  pendingPlanQuestionSchema,
+} from "./chat-runtime.js";
 
-export const chatTurnCreateSchema = z
-  .object({
-    text: z.string().trim().max(100_000).default(""),
-    attachmentIds: z.array(z.string().min(1)).max(20).default([]),
-    mode: chatTurnModeSchema.default("default"),
-    idempotencyKey: z.string().min(1).max(200),
-    modelId: z.string().min(1).optional(),
-    reasoningEffort: reasoningEffortSchema.nullable().optional(),
-  })
-  .refine(
-    ({ attachmentIds, text }) => text.length > 0 || attachmentIds.length > 0,
-    { message: "A prompt needs text or at least one attachment." },
-  )
-  .refine(({ mode, text }) => mode !== "goal" || text.length > 0, {
-    message: "Goal mode needs a text objective.",
-  });
-
-export const queuedPromptSchema = z.object({
-  id: z.string().min(1),
-  chatId: z.string().min(1),
-  text: z.string().trim().max(100_000),
-  attachments: chatAttachmentListSchema.default([]),
-  mode: chatTurnModeSchema.default("default"),
-  modelId: z.string().min(1),
-  reasoningEffort: reasoningEffortSchema.nullable().default(null),
-  customSubagentModel: z.boolean().default(false),
-  subagentModelId: z.string().min(1).nullable().default(null),
-  subagentReasoningEffort: reasoningEffortSchema.nullable().default(null),
-  worktreeId: z.string().min(1).nullable(),
-  position: z.number().int().nonnegative(),
-  frozen: z.boolean(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const queuedPromptListSchema = z.array(queuedPromptSchema);
-
-export const queuedPromptCreateSchema = chatTurnCreateSchema.extend({
-  frozen: z.boolean().default(false),
-  worktreeId: z.string().min(1).nullable().default(null),
-});
-
-export const queuedPromptUpdateSchema = z
-  .object({
-    text: z.string().trim().max(100_000).optional(),
-    attachmentIds: z.array(z.string().min(1)).max(20).optional(),
-    mode: chatTurnModeSchema.optional(),
-    reasoningEffort: reasoningEffortSchema.nullable().optional(),
-    frozen: z.boolean().optional(),
-  })
-  .refine(
-    (value) =>
-      value.text !== undefined ||
-      value.attachmentIds !== undefined ||
-      value.mode !== undefined ||
-      value.reasoningEffort !== undefined ||
-      value.frozen !== undefined,
-    { message: "At least one queued prompt field is required." },
-  );
-
-export const queuedPromptOrderSchema = z.object({
-  ids: z.array(z.string().min(1)).max(1_000),
-});
-
-export const chatModelUpdateSchema = z.object({
-  modelId: z.string().min(1),
-});
-
-export const chatModelConfigurationUpdateSchema =
-  modelConfigurationSchema.refine(
-    (configuration) => configuration.modelId !== null,
-    {
-      message: "A root model must be selected.",
-      path: ["modelId"],
-    },
-  );
-
-export const chatRuntimeSelectionSchema = z.object({
-  modelRouteId: z.string().min(1).nullable(),
-  providerAccountId: z.string().min(1).nullable(),
-});
-
-export const chatReasoningOptionSchema = modelReasoningEffortOptionSchema;
-
-export const chatReasoningStateSchema = z.object({
-  modelId: z.string().min(1),
-  reasoningEffort: reasoningEffortSchema.nullable(),
-  options: z.array(chatReasoningOptionSchema).max(32),
-  reasoningMandatory: z.boolean(),
-  incompleteMetadata: z.boolean(),
-});
-
-export const chatReasoningUpdateSchema = z.object({
-  reasoningEffort: reasoningEffortSchema.nullable(),
-});
-
-export const chatTurnAcceptedSchema = z.object({
-  accepted: z.literal(true),
-  message: chatMessageSchema,
-});
-
-export const chatPromptSubmitResultSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("started"), message: chatMessageSchema }),
-  z.object({ status: z.literal("queued"), prompt: queuedPromptSchema }),
-]);
-
-export const chatPromptSteerResultSchema = z.object({
-  steered: z.literal(true),
-  message: chatMessageSchema,
-});
-
-export const encryptedChatPromptSteerResultSchema = z
-  .object({
-    steered: z.literal(true),
-    message: chatMessageOpaqueSummarySchema,
-  })
-  .strict();
-
-export const chatCompactAcceptedSchema = z.object({
-  accepted: z.literal(true),
-});
-
-export const chatInterruptAcceptedSchema = z.object({
-  interrupted: z.boolean(),
-});
-
-export const chatTurnRollbackAcceptedSchema = z.object({
-  rolledBack: z.literal(true),
-});
-
-export const chatPauseUpdateSchema = z.object({
-  paused: z.boolean(),
-});
-
-export const chatPauseStateSchema = z.object({
-  paused: z.boolean(),
-});
-
-export const chatPauseRuntimeStateSchema = z
-  .object({
-    paused: z.boolean(),
-    active: z
-      .object({
-        threadId: z.string().min(1).max(500),
-        turnId: z.string().min(1).max(500),
-      })
-      .strict()
-      .nullable(),
-  })
-  .strict();
-
-export const threadGoalStatusSchema = z.enum([
-  "active",
-  "paused",
-  "blocked",
-  "usageLimited",
-  "budgetLimited",
-  "complete",
-]);
-
-export const threadGoalSchema = z.object({
-  threadId: z.string().min(1),
-  objective: z.string().min(1),
-  status: threadGoalStatusSchema,
-  tokenBudget: z.number().int().positive().nullable(),
-  tokensUsed: z.number().int().nonnegative(),
-  timeUsedSeconds: z.number().int().nonnegative(),
-  createdAt: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative(),
-});
-
-export const chatGoalResponseSchema = z.object({
-  goal: threadGoalSchema.nullable(),
-});
-
-export const chatGoalWireResponseSchema = z.union([
-  z
-    .object({
-      kind: z.literal("task-encrypted"),
-      goal: taskGoalObjectiveOpaqueSnapshotSchema.nullable(),
-    })
-    .strict(),
+export {
+  chatMessageListSchema,
+  CHAT_MESSAGE_PAGE_DEFAULT_LIMIT,
+  CHAT_MESSAGE_PAGE_MAX_LIMIT,
+  CHAT_MESSAGE_PAGE_BOUNDARY_MAX,
+  chatMessagePageQuerySchema,
+  chatMessagePageInfoSchema,
+  chatMessageWireListSchema,
+  chatMessageWirePageSchema,
+  encryptedQueuedPromptSchema,
+  encryptedQueuedPromptListSchema,
+  encryptedChatTurnCreateSchema,
+  projectAutomationProtectedDispatchResultSchema,
+  encryptedQueuedPromptUpdateSchema,
+  encryptedChatPromptSubmitResultSchema,
+  chatTurnCreateSchema,
+  queuedPromptSchema,
+  queuedPromptListSchema,
+  queuedPromptCreateSchema,
+  queuedPromptUpdateSchema,
+  queuedPromptOrderSchema,
+  chatModelUpdateSchema,
+  chatModelConfigurationUpdateSchema,
+  chatRuntimeSelectionSchema,
+  chatReasoningOptionSchema,
+  chatReasoningStateSchema,
+  chatReasoningUpdateSchema,
+  chatTurnAcceptedSchema,
+  chatPromptSubmitResultSchema,
+  chatPromptSteerResultSchema,
+  encryptedChatPromptSteerResultSchema,
+  chatCompactAcceptedSchema,
+  chatInterruptAcceptedSchema,
+  chatTurnRollbackAcceptedSchema,
+  chatPauseUpdateSchema,
+  chatPauseStateSchema,
+  chatPauseRuntimeStateSchema,
+  threadGoalStatusSchema,
+  threadGoalSchema,
   chatGoalResponseSchema,
-]);
+  chatGoalWireResponseSchema,
+  chatGoalCreateSchema,
+  chatGoalUpdateSchema,
+  chatGoalClearSchema,
+  planModeSchema,
+  planStepSchema,
+  planQuestionOptionSchema,
+  planQuestionSchema,
+  pendingPlanQuestionSchema,
+  chatPlanStateSchema,
+  encryptedChatPlanWireStateSchema,
+  projectTaskWorkloadOpaqueItemSchema,
+  projectTaskWorkloadOpaqueSchema,
+  chatPlanUpdateSchema,
+  chatPlanAnswerSchema,
+  chatPlanAcceptedSchema,
+} from "./chat-runtime.js";
 
-export const chatGoalCreateSchema = z.object({
-  objective: z.string().trim().min(1).max(100_000),
-  tokenBudget: z.number().int().positive().nullable().optional(),
-});
-
-export const chatGoalUpdateSchema = z.object({
-  status: z.enum(["active", "paused"]),
-});
-
-export const chatGoalClearSchema = z.object({
-  cleared: z.boolean(),
-});
-
-export const planModeSchema = z.enum(["default", "plan"]);
-
-export const planStepSchema = z.object({
-  step: z.string().min(1),
-  status: z.enum(["pending", "inProgress", "completed"]),
-});
-
-export const planQuestionOptionSchema = z.object({
-  label: z.string().min(1),
-  description: z.string(),
-});
-
-export const planQuestionSchema = z.object({
-  id: z.string().min(1),
-  header: z.string().min(1),
-  question: z.string().min(1),
-  isOther: z.boolean(),
-  isSecret: z.boolean(),
-  options: z.array(planQuestionOptionSchema).min(1).nullable(),
-});
-
-export const pendingPlanQuestionSchema = z.object({
-  id: z.string().min(1),
-  threadId: z.string().min(1),
-  turnId: z.string().min(1),
-  itemId: z.string().min(1),
-  questions: z.array(planQuestionSchema).min(1).max(3),
-  createdAt: z.string().datetime(),
-});
-
-export const chatPlanStateSchema = z.object({
-  mode: planModeSchema,
-  explanation: z.string().nullable(),
-  steps: z.array(planStepSchema),
-  question: pendingPlanQuestionSchema.nullable(),
-});
-
-export const encryptedChatPlanWireStateSchema = z
-  .object({
-    kind: z.literal("chat-encrypted"),
-    chatId: z.string().min(1).max(200),
-    mode: planModeSchema,
-    hasQuestion: z.boolean(),
-    state: chatPlanOpaqueStateSchema.nullable(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (
-      value.state &&
-      value.state.classification.hasQuestion !== value.hasQuestion
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Encrypted plan question metadata is inconsistent.",
-        path: ["state", "classification", "hasQuestion"],
-      });
-    }
-    if (!value.state && value.hasQuestion) {
-      context.addIssue({
-        code: "custom",
-        message: "Pending encrypted plans require protected state.",
-        path: ["state"],
-      });
-    }
-  });
-
-export const projectTaskWorkloadOpaqueItemSchema = z
-  .object({
-    task: taskOpaqueSummarySchema,
-    plan: encryptedChatPlanWireStateSchema,
-    messages: z
-      .array(taskMessageOpaqueSummarySchema)
-      .max(CHAT_MESSAGE_PAGE_BOUNDARY_MAX),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (
-      value.plan.chatId !== value.task.chatId ||
-      value.messages.some((message) => message.chatId !== value.task.chatId)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Task workload material must belong to the same Task Chat.",
-      });
-    }
-  });
-
-export const projectTaskWorkloadOpaqueSchema = z
-  .object({
-    projectId: z.string().min(1).max(200),
-    items: z.array(projectTaskWorkloadOpaqueItemSchema).max(10_000),
-  })
-  .strict();
-
-export const chatPlanUpdateSchema = z.object({ mode: planModeSchema });
-
-export const chatPlanAnswerSchema = z.object({
-  answers: z.record(
-    z.string().min(1),
-    z.array(z.string().trim().min(1).max(10_000)).min(1).max(16),
-  ),
-});
-
-export const chatPlanAcceptedSchema = z.object({
-  accepted: z.literal(true),
-  requestKey: z.string().min(1).optional(),
-});
+export type {
+  ChatMessagePageQuery,
+  ChatMessagePageInfo,
+  ChatMessageWirePage,
+  EncryptedChatTurnCreate,
+  EncryptedChatPromptSubmitResult,
+  EncryptedQueuedPrompt,
+  EncryptedQueuedPromptUpdate,
+  ChatTurnCreate,
+  QueuedPrompt,
+  QueuedPromptCreate,
+  QueuedPromptUpdate,
+  QueuedPromptOrder,
+  ChatModelUpdate,
+  ChatModelConfigurationUpdate,
+  ChatRuntimeSelection,
+  ChatReasoningOption,
+  ChatReasoningState,
+  ChatReasoningUpdate,
+  ChatCompactAccepted,
+  ChatInterruptAccepted,
+  ChatPauseUpdate,
+  ChatPauseState,
+  ChatPauseRuntimeState,
+  ThreadGoalStatus,
+  ThreadGoal,
+  ChatGoalResponse,
+  ChatGoalCreate,
+  ChatGoalUpdate,
+  ChatGoalClear,
+  PlanMode,
+  PlanStep,
+  PlanQuestionOption,
+  PlanQuestion,
+  PendingPlanQuestion,
+  ChatPlanState,
+  EncryptedChatPlanWireState,
+  ProjectTaskWorkloadOpaqueItem,
+  ProjectTaskWorkloadOpaque,
+  ChatPlanUpdate,
+  ChatPlanAnswer,
+  ChatPlanAccepted,
+} from "./chat-runtime.js";
 
 export const githubWorkerRepositorySchema = githubRepositorySchema.omit({
   imported: true,
@@ -7571,48 +6429,6 @@ export type ProjectWorktreePolicyUpdate = z.infer<
 export type ChatWorktreeUpdate = z.infer<typeof chatWorktreeUpdateSchema>;
 export type WorktreeSelection = z.infer<typeof worktreeSelectionSchema>;
 
-export type ChatComposerDraft = z.infer<typeof chatComposerDraftSchema>;
-
-export type ChatRelocationState = z.infer<typeof chatRelocationStateSchema>;
-export type ChatRelocationErrorCode = z.infer<
-  typeof chatRelocationErrorCodeSchema
->;
-export type ChatRelocationError = z.infer<typeof chatRelocationErrorSchema>;
-export type ChatRelocationJobError = z.infer<
-  typeof chatRelocationJobErrorSchema
->;
-export type ChatRelocationProgress = z.infer<
-  typeof chatRelocationProgressSchema
->;
-export type ChatRelocationContextMessage = z.infer<
-  typeof chatRelocationContextMessageSchema
->;
-export type ChatRelocationAttachmentAvailability = z.infer<
-  typeof chatRelocationAttachmentAvailabilitySchema
->;
-export type ChatRelocationContextPayload = z.infer<
-  typeof chatRelocationContextPayloadSchema
->;
-export type ChatRelocationSnapshotSummary = z.infer<
-  typeof chatRelocationSnapshotSummarySchema
->;
-export type ChatRelocationHydrationBeginResult = z.infer<
-  typeof chatRelocationHydrationBeginResultSchema
->;
-export type ChatRelocationHydrationResult = z.infer<
-  typeof chatRelocationHydrationResultSchema
->;
-export type ChatRelocationJobSummary = z.infer<
-  typeof chatRelocationJobSummarySchema
->;
-export type ChatRelocationCreate = z.infer<typeof chatRelocationCreateSchema>;
-export type ChatRelocationJobRetry = z.infer<
-  typeof chatRelocationJobRetrySchema
->;
-export type ChatRelocationJobCancel = z.infer<
-  typeof chatRelocationJobCancelSchema
->;
-
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerEntryName = z.infer<typeof explorerEntryNameSchema>;
 export type ExplorerEntryRename = z.infer<typeof explorerEntryRenameSchema>;
@@ -7636,137 +6452,17 @@ export type ExplorerMediaFileChunk = z.infer<
 >;
 export type ExplorerFileWrite = z.infer<typeof explorerFileWriteSchema>;
 
-export type AgentMessagePhase = z.infer<typeof agentMessagePhaseSchema>;
-export type CodexEventCorrelation = z.infer<typeof codexEventCorrelationSchema>;
-export type AgentScope = z.infer<typeof agentScopeSchema>;
-export type AgentCommunicationKind = z.infer<
-  typeof agentCommunicationKindSchema
->;
-export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
-export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
-export type ChatMessage = z.infer<typeof chatMessageSchema>;
-export type ChatMessagePageQuery = z.infer<typeof chatMessagePageQuerySchema>;
-export type ChatMessagePageInfo = z.infer<typeof chatMessagePageInfoSchema>;
-export type ChatMessageWirePage = z.infer<typeof chatMessageWirePageSchema>;
-export type EncryptedChatTurnCreate = z.infer<
-  typeof encryptedChatTurnCreateSchema
->;
-export type EncryptedChatPromptSubmitResult = z.infer<
-  typeof encryptedChatPromptSubmitResultSchema
->;
-export type EncryptedQueuedPrompt = z.infer<typeof encryptedQueuedPromptSchema>;
-export type EncryptedQueuedPromptUpdate = z.infer<
-  typeof encryptedQueuedPromptUpdateSchema
->;
 export type ChatAttachmentKind = z.infer<typeof chatAttachmentKindSchema>;
 export type ChatAttachmentSource = z.infer<typeof chatAttachmentSourceSchema>;
 export type ChatAttachmentSummary = z.infer<typeof chatAttachmentSummarySchema>;
 
-export type AgentInteractionRequestKind = z.infer<
-  typeof agentInteractionRequestKindSchema
->;
-export type AgentInteractionRequestStatus = z.infer<
-  typeof agentInteractionRequestStatusSchema
->;
-export type AgentInteractionProvenance = z.infer<
-  typeof agentInteractionProvenanceSchema
->;
-export type AgentInteractionRequestPayload = z.infer<
-  typeof agentInteractionRequestPayloadSchema
->;
-export type AgentInteractionResponse = z.infer<
-  typeof agentInteractionResponseSchema
->;
-export type AgentInteractionRequestCreate = z.infer<
-  typeof agentInteractionRequestCreateSchema
->;
-export type AgentInteractionResolutionCreate = z.infer<
-  typeof agentInteractionResolutionCreateSchema
->;
-export type EncryptedAgentInteractionRequestCreate = z.infer<
-  typeof encryptedAgentInteractionRequestCreateSchema
->;
-export type EncryptedAgentInteractionResolutionCreate = z.infer<
-  typeof encryptedAgentInteractionResolutionCreateSchema
->;
-export type AgentInteractionRuntimeRequest = z.infer<
-  typeof agentInteractionRuntimeRequestSchema
->;
-export type EncryptedAgentInteractionRuntimeRequest = z.infer<
-  typeof encryptedAgentInteractionRuntimeRequestSchema
->;
-export type AgentInteractionAccepted = z.infer<
-  typeof agentInteractionAcceptedSchema
->;
-export type AgentInteractionRequest = z.infer<
-  typeof agentInteractionRequestSchema
->;
-export type EncryptedAgentInteractionRequest = z.infer<
-  typeof encryptedAgentInteractionRequestSchema
->;
-export type AgentInteractionRequestWire = z.infer<
-  typeof agentInteractionRequestWireSchema
->;
-export type AgentInteractionResolutionWireCreate = z.infer<
-  typeof agentInteractionResolutionWireCreateSchema
->;
-export type AgentInteractionRequestQuery = z.infer<
-  typeof agentInteractionRequestQuerySchema
->;
-
-export type ChatTurnCreate = z.infer<typeof chatTurnCreateSchema>;
-export type ChatTurnMode = z.infer<typeof chatTurnModeSchema>;
-export type QueuedPrompt = z.infer<typeof queuedPromptSchema>;
-export type QueuedPromptCreate = z.infer<typeof queuedPromptCreateSchema>;
-export type QueuedPromptUpdate = z.infer<typeof queuedPromptUpdateSchema>;
-export type QueuedPromptOrder = z.infer<typeof queuedPromptOrderSchema>;
-export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
-export type ChatModelConfigurationUpdate = z.infer<
-  typeof chatModelConfigurationUpdateSchema
->;
-export type ChatRuntimeSelection = z.infer<typeof chatRuntimeSelectionSchema>;
-export type ChatReasoningOption = z.infer<typeof chatReasoningOptionSchema>;
-export type ChatReasoningState = z.infer<typeof chatReasoningStateSchema>;
-export type ChatReasoningUpdate = z.infer<typeof chatReasoningUpdateSchema>;
-export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
-export type ChatInterruptAccepted = z.infer<typeof chatInterruptAcceptedSchema>;
-export type ChatPauseUpdate = z.infer<typeof chatPauseUpdateSchema>;
-export type ChatPauseState = z.infer<typeof chatPauseStateSchema>;
-export type ChatPauseRuntimeState = z.infer<typeof chatPauseRuntimeStateSchema>;
-export type ThreadGoalStatus = z.infer<typeof threadGoalStatusSchema>;
-export type ThreadGoal = z.infer<typeof threadGoalSchema>;
-export type ChatGoalResponse = z.infer<typeof chatGoalResponseSchema>;
-export type ChatGoalCreate = z.infer<typeof chatGoalCreateSchema>;
-export type ChatGoalUpdate = z.infer<typeof chatGoalUpdateSchema>;
-export type ChatGoalClear = z.infer<typeof chatGoalClearSchema>;
-export type PlanMode = z.infer<typeof planModeSchema>;
-export type PlanStep = z.infer<typeof planStepSchema>;
-export type PlanQuestionOption = z.infer<typeof planQuestionOptionSchema>;
-export type PlanQuestion = z.infer<typeof planQuestionSchema>;
-export type PendingPlanQuestion = z.infer<typeof pendingPlanQuestionSchema>;
-export type ChatPlanState = z.infer<typeof chatPlanStateSchema>;
-export type EncryptedChatPlanWireState = z.infer<
-  typeof encryptedChatPlanWireStateSchema
->;
-export type ProjectTaskWorkloadOpaqueItem = z.infer<
-  typeof projectTaskWorkloadOpaqueItemSchema
->;
-export type ProjectTaskWorkloadOpaque = z.infer<
-  typeof projectTaskWorkloadOpaqueSchema
->;
-export type ChatPlanUpdate = z.infer<typeof chatPlanUpdateSchema>;
-export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
-export type ChatPlanAccepted = z.infer<typeof chatPlanAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
 export type AgentTurnResultMode = z.infer<typeof agentTurnResultModeSchema>;
-export type AgentTokenUsage = z.infer<typeof agentTokenUsageSchema>;
+
 export type WorkflowNodeExecutionWorkerResult = z.infer<
   typeof workflowNodeExecutionResultSchema
 >;
-export type AgentActivityRawEnvelope = z.infer<
-  typeof agentActivityRawEnvelopeSchema
->;
-export type AgentActivity = z.infer<typeof agentActivitySchema>;
+
 export type NormalizedAgentMessage = z.infer<
   typeof normalizedAgentMessageSchema
 >;
@@ -7902,9 +6598,7 @@ export type WorkerLogStreamServerMessage = z.infer<
 >;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
-export type WorkerObservationEventIdentity = z.infer<
-  typeof workerObservationEventIdentitySchema
->;
+
 export type WorkerObservationPayload = z.infer<
   typeof workerObservationPayloadSchema
 >;
