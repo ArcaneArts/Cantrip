@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  DEFAULT_PERMISSION_PROFILE_ID,
-  chatMessageOpaqueContentSchema,
-  taskMessageOpaqueContentSchema,
-} from "@cantrip/protocol";
+import { DEFAULT_PERMISSION_PROFILE_ID } from "@cantrip/protocol";
 import type {
   RunConfigurationRuntime,
   RunConfigurationRuntimeObservationApplyResult,
@@ -198,7 +194,6 @@ import {
   gt,
   inArray,
   isNull,
-  isNotNull,
   ne,
   notInArray,
   or,
@@ -294,10 +289,7 @@ import {
 } from "./repository/worktree-lifecycle.js";
 import {
   ChatExecutionLaneRepository,
-  ExecutionLaneConflictError,
   chatIsExecuting,
-  requiredProjectChatProjectId,
-  requiredProjectChatWorktreeId,
   type ChatExecutionContext,
   type ChatExecutionLaneContext,
   type ChatExecutionLaneReleaseResult,
@@ -323,13 +315,12 @@ import {
   ChatAttachmentRepository,
   type ChatAttachmentRecord,
 } from "./repository/chat-attachments.js";
-import {
-  toChatMessage,
-  toEncryptedChatMessage,
-  toTaskMessage,
-} from "./repository/message-mappers.js";
 import { MessageQueryRepository } from "./repository/message-queries.js";
 import { QueuedPromptRepository } from "./repository/queued-prompts.js";
+import {
+  MessageWriteRepository,
+  type ChatExecutionAttribution,
+} from "./repository/message-writes.js";
 import {
   TerminalRepository,
   type TerminalExecutionContext,
@@ -455,6 +446,7 @@ export {
 export { StandaloneChatPlacementUnavailableError } from "./repository/chat-catalog.js";
 export { ARCHIVED_CHAT_RETENTION_MS } from "./repository/chat-mappers.js";
 export type { ChatLiveRouting } from "./repository/chat-configuration.js";
+export type { ChatExecutionAttribution } from "./repository/message-writes.js";
 export { AgentInteractionConflictError } from "./repository/agent-interactions.js";
 export {
   toChatAttachmentOpaqueSummary,
@@ -479,20 +471,6 @@ export const DEFAULT_OLLAMA_PROVIDER_ID =
   "00000000-0000-0000-0000-000000000010";
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
-export type ChatExecutionAttribution =
-  | {
-      contextKind?: "project";
-      executionLaneId: string;
-      scratchRootId?: null;
-      worktreeId: string;
-    }
-  | {
-      contextKind: "standalone";
-      executionLaneId: string;
-      scratchRootId: string;
-      worktreeId: null;
-    };
-
 function toTerminalWireSummary(
   terminal: typeof schema.terminals.$inferSelect,
 ): TerminalWireSummary {
@@ -559,6 +537,7 @@ export class ServerRepository {
   readonly chatAttachments: ChatAttachmentRepository;
   readonly messageQueries: MessageQueryRepository;
   readonly queuedPrompts: QueuedPromptRepository;
+  readonly messageWrites: MessageWriteRepository;
   readonly terminals: TerminalRepository;
   readonly explorers: ExplorerRepository;
   readonly codeSurfaces: CodeSurfaceRepository;
@@ -725,6 +704,24 @@ export class ServerRepository {
     });
     this.messageQueries = new MessageQueryRepository(database);
     this.queuedPrompts = new QueuedPromptRepository(database);
+    this.messageWrites = new MessageWriteRepository(database, {
+      appendMessage: (ownerId, chatId, input, attribution) =>
+        this.appendMessage(ownerId, chatId, input, attribution),
+      appendEncryptedMessage: (ownerId, chatId, input, attribution) =>
+        this.appendEncryptedMessage(ownerId, chatId, input, attribution),
+      appendTaskMessage: (ownerId, chatId, input, attribution) =>
+        this.appendTaskMessage(ownerId, chatId, input, attribution),
+      getMessageByIdempotencyKey: (ownerId, chatId, idempotencyKey) =>
+        this.getMessageByIdempotencyKey(ownerId, chatId, idempotencyKey),
+      getEncryptedMessageByIdempotencyKey: (ownerId, chatId, idempotencyKey) =>
+        this.getEncryptedMessageByIdempotencyKey(
+          ownerId,
+          chatId,
+          idempotencyKey,
+        ),
+      getTaskMessageByIdempotencyKey: (ownerId, chatId, idempotencyKey) =>
+        this.getTaskMessageByIdempotencyKey(ownerId, chatId, idempotencyKey),
+    });
     this.terminals = new TerminalRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
@@ -4433,97 +4430,12 @@ export class ServerRepository {
     input: ChatMessageCreate,
     attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessage | null> {
-    if (attribution?.contextKind === "standalone") {
-      throw new Error("Standalone Chat messages must use protected content.");
-    }
-    const chat = await this.database
-      .select({
-        id: schema.chats.id,
-        experience: schema.chats.experience,
-        worktreeId: schema.chats.activeWorktreeId,
-      })
-      .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
-      .limit(1);
-    if (!chat[0] || chat[0].experience !== "agent") {
-      return null;
-    }
-    const worktreeId = requiredProjectChatWorktreeId(chat[0].worktreeId);
-
-    const activeLanes = attribution
-      ? await this.database
-          .select({
-            id: schema.chatExecutionLanes.id,
-            worktreeId: schema.chatExecutionLanes.worktreeId,
-          })
-          .from(schema.chatExecutionLanes)
-          .where(
-            and(
-              eq(schema.chatExecutionLanes.id, attribution.executionLaneId),
-              eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, attribution.worktreeId),
-            ),
-          )
-          .limit(1)
-      : await this.database
-          .select({
-            id: schema.chatExecutionLanes.id,
-            worktreeId: schema.chatExecutionLanes.worktreeId,
-          })
-          .from(schema.chatExecutionLanes)
-          .where(
-            and(
-              eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, worktreeId),
-              eq(schema.chatExecutionLanes.state, "active"),
-            ),
-          )
-          .limit(1);
-    if (attribution && !activeLanes[0]) return null;
-
-    if (input.idempotencyKey) {
-      const existing = await this.database
-        .select()
-        .from(schema.chatMessages)
-        .where(
-          and(
-            eq(schema.chatMessages.chatId, chatId),
-            eq(schema.chatMessages.idempotencyKey, input.idempotencyKey),
-          ),
-        )
-        .limit(1);
-      if (existing[0]) {
-        return toChatMessage(existing[0]);
-      }
-    }
-
-    const result = await this.database
-      .insert(schema.chatMessages)
-      .values({
-        id: randomUUID(),
-        chatId,
-        worktreeId: attribution?.worktreeId ?? worktreeId,
-        executionLaneId: activeLanes[0]?.id ?? null,
-        role: input.role,
-        mode: input.mode ?? "default",
-        content: input.content,
-        reasoningEffort: input.reasoningEffort ?? null,
-        idempotencyKey: input.idempotencyKey ?? null,
-      })
-      .returning();
-    const message = firstOrThrow(result, "appending a chat message");
-    await this.database
-      .update(schema.chats)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId));
-    return toChatMessage(message);
+    return this.messageWrites.appendMessage(
+      ownerId,
+      chatId,
+      input,
+      attribution,
+    );
   }
 
   async appendEncryptedMessage(
@@ -4532,116 +4444,11 @@ export class ServerRepository {
     input: ChatMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessageOpaqueSummary | null> {
-    const message = chatMessageOpaqueContentSchema.parse(input);
-    const chat = await this.database
-      .select({
-        contextKind: schema.chats.contextKind,
-        experience: schema.chats.experience,
-        worktreeId: schema.chats.activeWorktreeId,
-        scratchRootId: schema.chats.activeScratchRootId,
-      })
-      .from(schema.chats)
-      .where(
-        and(
-          eq(schema.chats.id, chatId),
-          eq(schema.chats.ownerId, ownerId),
-          isNull(schema.chats.archivedAt),
-        ),
-      )
-      .limit(1);
-    if (!chat[0] || chat[0].experience !== "agent") return null;
-    const worktreeId = chat[0].worktreeId;
-    const scratchRootId = chat[0].scratchRootId;
-    if ((worktreeId === null) === (scratchRootId === null)) {
-      throw new Error("Chat has an invalid execution root.");
-    }
-    const activeLanes = attribution
-      ? await this.database
-          .select({ id: schema.chatExecutionLanes.id })
-          .from(schema.chatExecutionLanes)
-          .where(
-            and(
-              eq(schema.chatExecutionLanes.id, attribution.executionLaneId),
-              eq(schema.chatExecutionLanes.chatId, chatId),
-              attribution.contextKind === "standalone"
-                ? eq(
-                    schema.chatExecutionLanes.scratchRootId,
-                    attribution.scratchRootId,
-                  )
-                : eq(
-                    schema.chatExecutionLanes.worktreeId,
-                    attribution.worktreeId,
-                  ),
-            ),
-          )
-          .limit(1)
-      : await this.database
-          .select({ id: schema.chatExecutionLanes.id })
-          .from(schema.chatExecutionLanes)
-          .where(
-            and(
-              eq(schema.chatExecutionLanes.chatId, chatId),
-              worktreeId
-                ? eq(schema.chatExecutionLanes.worktreeId, worktreeId)
-                : eq(schema.chatExecutionLanes.scratchRootId, scratchRootId!),
-              eq(schema.chatExecutionLanes.state, "active"),
-            ),
-          )
-          .limit(1);
-    if (attribution && !activeLanes[0]) return null;
-    const existing = await this.database
-      .select()
-      .from(schema.chatMessages)
-      .where(
-        and(
-          eq(schema.chatMessages.chatId, chatId),
-          eq(schema.chatMessages.idempotencyKey, message.idempotencyKey),
-        ),
-      )
-      .limit(1);
-    if (existing[0]) {
-      if (
-        existing[0].id !== message.id ||
-        existing[0].role !== message.classification.role ||
-        existing[0].mode !== message.classification.mode ||
-        existing[0].reasoningEffort !== message.reasoningEffort ||
-        JSON.stringify(existing[0].attachmentIds) !==
-          JSON.stringify(message.classification.attachmentIds) ||
-        JSON.stringify(existing[0].protectedContent) !==
-          JSON.stringify(message.protectedContent)
-      ) {
-        throw new Error(
-          "Encrypted chat message idempotency metadata is inconsistent.",
-        );
-      }
-      return toEncryptedChatMessage(existing[0]);
-    }
-    const result = await this.database
-      .insert(schema.chatMessages)
-      .values({
-        id: message.id,
-        chatId,
-        worktreeId: attribution?.worktreeId ?? worktreeId,
-        scratchRootId: attribution
-          ? (attribution.scratchRootId ?? null)
-          : scratchRootId,
-        executionLaneId: activeLanes[0]?.id ?? null,
-        role: message.classification.role,
-        mode: message.classification.mode,
-        content: null,
-        protectedContent: message.protectedContent,
-        attachmentIds: message.classification.attachmentIds,
-        taskProtectedContent: null,
-        reasoningEffort: message.reasoningEffort,
-        idempotencyKey: message.idempotencyKey,
-      })
-      .returning();
-    await this.database
-      .update(schema.chats)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId));
-    return toEncryptedChatMessage(
-      firstOrThrow(result, "appending an encrypted chat message"),
+    return this.messageWrites.appendEncryptedMessage(
+      ownerId,
+      chatId,
+      input,
+      attribution,
     );
   }
 
@@ -4651,35 +4458,11 @@ export class ServerRepository {
     input: ChatMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessageOpaqueSummary | null> {
-    const message = chatMessageOpaqueContentSchema.parse(input);
-    const existing = await this.getEncryptedMessageByIdempotencyKey(
+    return this.messageWrites.upsertEncryptedMessage(
       ownerId,
       chatId,
-      message.idempotencyKey,
-    );
-    if (!existing) {
-      return this.appendEncryptedMessage(ownerId, chatId, message, attribution);
-    }
-    if (existing.id !== message.id) {
-      throw new Error("Encrypted chat message update targets another row.");
-    }
-    const result = await this.database
-      .update(schema.chatMessages)
-      .set({
-        role: message.classification.role,
-        mode: message.classification.mode,
-        protectedContent: message.protectedContent,
-        attachmentIds: message.classification.attachmentIds,
-        reasoningEffort: message.reasoningEffort,
-      })
-      .where(eq(schema.chatMessages.id, message.id))
-      .returning();
-    await this.database
-      .update(schema.chats)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId));
-    return toEncryptedChatMessage(
-      firstOrThrow(result, "updating an encrypted chat message"),
+      input,
+      attribution,
     );
   }
 
@@ -4688,25 +4471,11 @@ export class ServerRepository {
     chatId: string,
     idempotencyKey: string,
   ): Promise<ChatMessageOpaqueSummary | null> {
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, "agent"),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chatMessages.chatId, chatId),
-          eq(schema.chatMessages.idempotencyKey, idempotencyKey),
-        ),
-      )
-      .limit(1);
-    return rows[0] ? toEncryptedChatMessage(rows[0].message) : null;
+    return this.messageWrites.getEncryptedMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      idempotencyKey,
+    );
   }
 
   async setEncryptedMessageModelRoute(
@@ -4719,36 +4488,13 @@ export class ServerRepository {
       reasoningAdjusted: boolean;
     } = { appliedReasoningEffort: null, reasoningAdjusted: false },
   ): Promise<ChatMessageOpaqueSummary | null> {
-    const rows = await this.database
-      .update(schema.chatMessages)
-      .set({
-        modelId,
-        modelRouteId: runtime.routeId,
-        providerId: runtime.provider.id,
-        providerName: runtime.provider.name,
-        providerModelName: runtime.model.name,
-        appliedReasoningEffort: reasoning.appliedReasoningEffort,
-        reasoningAdjusted: reasoning.reasoningAdjusted,
-      })
-      .where(
-        and(
-          eq(schema.chatMessages.id, messageId),
-          isNotNull(schema.chatMessages.protectedContent),
-          exists(
-            this.database
-              .select({ id: schema.chats.id })
-              .from(schema.chats)
-              .where(
-                and(
-                  eq(schema.chats.id, schema.chatMessages.chatId),
-                  eq(schema.chats.ownerId, ownerId),
-                ),
-              ),
-          ),
-        ),
-      )
-      .returning();
-    return rows[0] ? toEncryptedChatMessage(rows[0]) : null;
+    return this.messageWrites.setEncryptedMessageModelRoute(
+      ownerId,
+      messageId,
+      modelId,
+      runtime,
+      reasoning,
+    );
   }
 
   async appendTaskMessage(
@@ -4757,109 +4503,12 @@ export class ServerRepository {
     input: TaskMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
   ): Promise<TaskMessageOpaqueSummary | null> {
-    if (attribution?.contextKind === "standalone") {
-      throw new Error("Standalone Chats do not support Task messages.");
-    }
-    const message = taskMessageOpaqueContentSchema.parse(input);
-    const chat = await this.database
-      .select({
-        id: schema.chats.id,
-        experience: schema.chats.experience,
-        worktreeId: schema.chats.activeWorktreeId,
-      })
-      .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
-      .limit(1);
-    if (!chat[0] || chat[0].experience !== "task") return null;
-    const worktreeId = requiredProjectChatWorktreeId(chat[0].worktreeId);
-
-    const activeLanes = attribution
-      ? await this.database
-          .select({
-            id: schema.chatExecutionLanes.id,
-            worktreeId: schema.chatExecutionLanes.worktreeId,
-          })
-          .from(schema.chatExecutionLanes)
-          .where(
-            and(
-              eq(schema.chatExecutionLanes.id, attribution.executionLaneId),
-              eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, attribution.worktreeId),
-            ),
-          )
-          .limit(1)
-      : await this.database
-          .select({
-            id: schema.chatExecutionLanes.id,
-            worktreeId: schema.chatExecutionLanes.worktreeId,
-          })
-          .from(schema.chatExecutionLanes)
-          .where(
-            and(
-              eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, worktreeId),
-              eq(schema.chatExecutionLanes.state, "active"),
-            ),
-          )
-          .limit(1);
-    if (attribution && !activeLanes[0]) return null;
-
-    const existing = await this.database
-      .select()
-      .from(schema.chatMessages)
-      .where(
-        and(
-          eq(schema.chatMessages.chatId, chatId),
-          eq(schema.chatMessages.idempotencyKey, message.idempotencyKey),
-        ),
-      )
-      .limit(1);
-    if (existing[0]) {
-      if (
-        existing[0].id !== message.id ||
-        existing[0].role !== message.classification.role ||
-        existing[0].mode !== message.classification.mode ||
-        existing[0].reasoningEffort !== message.reasoningEffort ||
-        JSON.stringify(existing[0].taskAttachmentIds) !==
-          JSON.stringify(message.classification.attachmentIds) ||
-        JSON.stringify(existing[0].taskProtectedContent) !==
-          JSON.stringify(message.protectedContent)
-      ) {
-        throw new Error(
-          "Encrypted Task message idempotency metadata is inconsistent.",
-        );
-      }
-      return toTaskMessage(existing[0]);
-    }
-
-    const result = await this.database
-      .insert(schema.chatMessages)
-      .values({
-        id: message.id,
-        chatId,
-        worktreeId: attribution?.worktreeId ?? worktreeId,
-        executionLaneId: activeLanes[0]?.id ?? null,
-        role: message.classification.role,
-        mode: message.classification.mode,
-        content: null,
-        taskProtectedContent: message.protectedContent,
-        taskAttachmentIds: message.classification.attachmentIds,
-        reasoningEffort: message.reasoningEffort,
-        idempotencyKey: message.idempotencyKey,
-      })
-      .returning();
-    await this.database
-      .update(schema.chats)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId));
-    return toTaskMessage(firstOrThrow(result, "appending a Task message"));
+    return this.messageWrites.appendTaskMessage(
+      ownerId,
+      chatId,
+      input,
+      attribution,
+    );
   }
 
   async upsertTaskMessage(
@@ -4868,35 +4517,11 @@ export class ServerRepository {
     input: TaskMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
   ): Promise<TaskMessageOpaqueSummary | null> {
-    const message = taskMessageOpaqueContentSchema.parse(input);
-    const existing = await this.getTaskMessageByIdempotencyKey(
+    return this.messageWrites.upsertTaskMessage(
       ownerId,
       chatId,
-      message.idempotencyKey,
-    );
-    if (!existing) {
-      return this.appendTaskMessage(ownerId, chatId, message, attribution);
-    }
-    if (existing.id !== message.id) {
-      throw new Error("Encrypted Task message update targets another row.");
-    }
-    const result = await this.database
-      .update(schema.chatMessages)
-      .set({
-        role: message.classification.role,
-        mode: message.classification.mode,
-        taskProtectedContent: message.protectedContent,
-        taskAttachmentIds: message.classification.attachmentIds,
-        reasoningEffort: message.reasoningEffort,
-      })
-      .where(eq(schema.chatMessages.id, message.id))
-      .returning();
-    await this.database
-      .update(schema.chats)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId));
-    return toTaskMessage(
-      firstOrThrow(result, "updating an encrypted Task message"),
+      input,
+      attribution,
     );
   }
 
@@ -4910,38 +4535,13 @@ export class ServerRepository {
       reasoningAdjusted: boolean;
     } = { appliedReasoningEffort: null, reasoningAdjusted: false },
   ): Promise<TaskMessageOpaqueSummary | null> {
-    const rows = await this.database
-      .update(schema.chatMessages)
-      .set({
-        modelId,
-        modelRouteId: runtime.routeId,
-        providerId: runtime.provider.id,
-        providerName: runtime.provider.name,
-        providerModelName: runtime.model.name,
-        appliedReasoningEffort: reasoning.appliedReasoningEffort,
-        reasoningAdjusted: reasoning.reasoningAdjusted,
-      })
-      .where(
-        and(
-          eq(schema.chatMessages.id, messageId),
-          isNotNull(schema.chatMessages.taskProtectedContent),
-          exists(
-            this.database
-              .select({ id: schema.chats.id })
-              .from(schema.chats)
-              .innerJoin(
-                schema.projects,
-                and(
-                  eq(schema.projects.id, schema.chats.projectId),
-                  eq(schema.projects.ownerId, ownerId),
-                ),
-              )
-              .where(eq(schema.chats.id, schema.chatMessages.chatId)),
-          ),
-        ),
-      )
-      .returning();
-    return rows[0] ? toTaskMessage(rows[0]) : null;
+    return this.messageWrites.setTaskMessageModelRoute(
+      ownerId,
+      messageId,
+      modelId,
+      runtime,
+      reasoning,
+    );
   }
 
   async getTaskMessageByIdempotencyKey(
@@ -4949,31 +4549,11 @@ export class ServerRepository {
     chatId: string,
     idempotencyKey: string,
   ): Promise<TaskMessageOpaqueSummary | null> {
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, "task"),
-        ),
-      )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chatMessages.chatId, chatId),
-          eq(schema.chatMessages.idempotencyKey, idempotencyKey),
-        ),
-      )
-      .limit(1);
-    return rows[0] ? toTaskMessage(rows[0].message) : null;
+    return this.messageWrites.getTaskMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      idempotencyKey,
+    );
   }
 
   async setMessageModelRoute(
@@ -4986,38 +4566,13 @@ export class ServerRepository {
       reasoningAdjusted: boolean;
     } = { appliedReasoningEffort: null, reasoningAdjusted: false },
   ): Promise<ChatMessage | null> {
-    const rows = await this.database
-      .update(schema.chatMessages)
-      .set({
-        modelId,
-        modelRouteId: runtime.routeId,
-        providerId: runtime.provider.id,
-        providerName: runtime.provider.name,
-        providerModelName: runtime.model.name,
-        appliedReasoningEffort: reasoning.appliedReasoningEffort,
-        reasoningAdjusted: reasoning.reasoningAdjusted,
-      })
-      .where(
-        and(
-          eq(schema.chatMessages.id, messageId),
-          isNotNull(schema.chatMessages.content),
-          exists(
-            this.database
-              .select({ id: schema.chats.id })
-              .from(schema.chats)
-              .innerJoin(
-                schema.projects,
-                and(
-                  eq(schema.projects.id, schema.chats.projectId),
-                  eq(schema.projects.ownerId, ownerId),
-                ),
-              )
-              .where(eq(schema.chats.id, schema.chatMessages.chatId)),
-          ),
-        ),
-      )
-      .returning();
-    return rows[0] ? toChatMessage(rows[0]) : null;
+    return this.messageWrites.setMessageModelRoute(
+      ownerId,
+      messageId,
+      modelId,
+      runtime,
+      reasoning,
+    );
   }
 
   async upsertMessage(
@@ -5026,33 +4581,12 @@ export class ServerRepository {
     input: ChatMessageCreate & { idempotencyKey: string },
     attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessage | null> {
-    const existing = await this.getMessageByIdempotencyKey(
+    return this.messageWrites.upsertMessage(
       ownerId,
       chatId,
-      input.idempotencyKey,
+      input,
+      attribution,
     );
-    if (!existing) {
-      return this.appendMessage(ownerId, chatId, input, attribution);
-    }
-
-    const result = await this.database
-      .update(schema.chatMessages)
-      .set({
-        role: input.role,
-        mode: input.mode ?? existing.mode,
-        content: input.content,
-        reasoningEffort:
-          input.reasoningEffort !== undefined
-            ? input.reasoningEffort
-            : existing.reasoningEffort,
-      })
-      .where(eq(schema.chatMessages.id, existing.id))
-      .returning();
-    await this.database
-      .update(schema.chats)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId));
-    return toChatMessage(firstOrThrow(result, "updating a chat message"));
   }
 
   async getMessageByIdempotencyKey(
@@ -5060,30 +4594,10 @@ export class ServerRepository {
     chatId: string,
     idempotencyKey: string,
   ): Promise<ChatMessage | null> {
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, "agent"),
-        ),
-      )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chatMessages.chatId, chatId),
-          eq(schema.chatMessages.idempotencyKey, idempotencyKey),
-        ),
-      )
-      .limit(1);
-    return rows[0] ? toChatMessage(rows[0].message) : null;
+    return this.messageWrites.getMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      idempotencyKey,
+    );
   }
 }
