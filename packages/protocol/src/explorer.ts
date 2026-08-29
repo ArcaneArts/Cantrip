@@ -143,3 +143,26 @@ export const explorerEntryMutationResultSchema = z
     newPath: explorerFileWriteSchema.shape.path.nullable(),
   })
   .strict();
+
+export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
+export type ExplorerEntryName = z.infer<typeof explorerEntryNameSchema>;
+export type ExplorerEntryRename = z.infer<typeof explorerEntryRenameSchema>;
+export type ExplorerEntryDelete = z.infer<typeof explorerEntryDeleteSchema>;
+export type ExplorerEntryMutationResult = z.infer<
+  typeof explorerEntryMutationResultSchema
+>;
+export type ExplorerDirectory = z.infer<typeof explorerDirectorySchema>;
+export type ExplorerLastCommit = z.infer<typeof explorerLastCommitSchema>;
+export type ExplorerDirectoryCommitEntry = z.infer<
+  typeof explorerDirectoryCommitEntrySchema
+>;
+export type ExplorerDirectoryCommits = z.infer<
+  typeof explorerDirectoryCommitsSchema
+>;
+export type ExplorerFile = z.infer<typeof explorerFileSchema>;
+export type ExplorerMediaKind = z.infer<typeof explorerMediaKindSchema>;
+export type ExplorerMediaFile = z.infer<typeof explorerMediaFileSchema>;
+export type ExplorerMediaFileChunk = z.infer<
+  typeof explorerMediaFileChunkSchema
+>;
+export type ExplorerFileWrite = z.infer<typeof explorerFileWriteSchema>;
