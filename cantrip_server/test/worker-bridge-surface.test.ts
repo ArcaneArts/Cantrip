@@ -20,6 +20,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  WorkerCommandError,
   WorkerBridge,
   type WorkerConnectionContinuityIdentity,
 } from "../src/workers/bridge.js";
@@ -215,6 +216,39 @@ describe("WorkerBridge Remote Surface transport", () => {
     expect(serialized).toContain("worker.command.completed");
     expect(serialized).toContain("terminal.input");
     expect(serialized).not.toContain(secretInput);
+    bridge.close();
+  });
+
+  it("preserves a stable worker command failure code", async () => {
+    const bridge = new WorkerBridge(1_000);
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+
+    const response = bridge.request("worker-1", { type: "code.probe" });
+    const request = JSON.parse(String(socket.sent.at(-1))) as {
+      requestId: string;
+    };
+    socket.emit(
+      "message",
+      JSON.stringify(
+        workerResponseEnvelopeSchema.parse({
+          kind: "response",
+          requestId: request.requestId,
+          ok: false,
+          error: {
+            code: "project-source-unavailable",
+            message: "Project source is unavailable.",
+          },
+        }),
+      ),
+      false,
+    );
+
+    await expect(response).rejects.toMatchObject({
+      code: "project-source-unavailable",
+      message: "Project source is unavailable.",
+      name: WorkerCommandError.name,
+    });
     bridge.close();
   });
 

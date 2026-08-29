@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { workerCommandSchema } from "./worker-commands.js";
 
+export const PROJECT_SOURCE_UNAVAILABLE_CODE = "project-source-unavailable";
+
+const workerCommandErrorCodeSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
+
 export const workerRequestEnvelopeSchema = z.object({
   kind: z.literal("request"),
   requestId: z.string().min(1),
@@ -53,7 +61,10 @@ export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
     kind: z.literal("response"),
     requestId: z.string().min(1),
     ok: z.literal(false),
-    error: z.object({ message: z.string().min(1) }),
+    error: z.object({
+      code: workerCommandErrorCodeSchema.optional(),
+      message: z.string().min(1),
+    }),
   }),
 ]);
 

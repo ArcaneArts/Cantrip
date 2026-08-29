@@ -62,6 +62,16 @@ const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS = 15_000;
 type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
 
+function workerCommandFailureCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("code" in error)) return;
+  const code = error.code;
+  return typeof code === "string" &&
+    code.length <= 100 &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(code)
+    ? code
+    : undefined;
+}
+
 export interface WorkerConnectionTimingOptions {
   connectionGeneration?: string;
   handleWorkerLinkFrame?: WorkerLinkFrameHandler;
@@ -1147,10 +1157,11 @@ export class WorkerConnection {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const errorCode = workerCommandFailureCode(error);
       const failureContext = {
         ...commandLogContext(request),
         event: "worker.command.failed",
-        reasonCode: "handler-failed",
+        reasonCode: errorCode ?? "handler-failed",
         status: "failed",
         durationMs: Math.round(performance.now() - startedAt),
         error: workerLogError(error),
@@ -1173,6 +1184,7 @@ export class WorkerConnection {
         requestId: request.requestId,
         ok: false,
         error: {
+          ...(errorCode ? { code: errorCode } : {}),
           message,
         },
       });

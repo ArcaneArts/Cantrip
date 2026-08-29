@@ -2,6 +2,7 @@ import { realpath, stat } from "node:fs/promises";
 import type { Server } from "node:http";
 
 import {
+  PROJECT_SOURCE_UNAVAILABLE_CODE,
   projectSharePublicBasePathSchema,
   projectSharePublicOriginSchema,
   type WorkerProjectShareDescriptor,
@@ -56,6 +57,20 @@ export interface ProjectShareOpenInput {
 
 export interface ProjectShareManagerOptions {
   maxShares?: number;
+}
+
+export class ProjectSourceUnavailableError extends Error {
+  readonly code = PROJECT_SOURCE_UNAVAILABLE_CODE;
+
+  constructor(cause: unknown) {
+    super("Project source is unavailable.", { cause });
+    this.name = "ProjectSourceUnavailableError";
+  }
+}
+
+function isUnavailableSourcePathError(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return error.code === "ENOENT" || error.code === "ENOTDIR";
 }
 
 function isFileManagerMetadataSegment(segment: string): boolean {
@@ -130,8 +145,17 @@ export class ProjectShareManager {
     const publicOrigin = projectSharePublicOriginSchema.parse(
       input.publicOrigin,
     );
-    const root = await realpath(input.root);
-    const rootStat = await stat(root);
+    let root: string;
+    let rootStat: Awaited<ReturnType<typeof stat>>;
+    try {
+      root = await realpath(input.root);
+      rootStat = await stat(root);
+    } catch (error) {
+      if (isUnavailableSourcePathError(error)) {
+        throw new ProjectSourceUnavailableError(error);
+      }
+      throw error;
+    }
     if (!rootStat.isDirectory()) {
       throw new Error("Project share root must be a directory.");
     }

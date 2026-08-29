@@ -1,12 +1,18 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { WorkerProjectShareDescriptor } from "@cantrip/protocol";
+import {
+  PROJECT_SOURCE_UNAVAILABLE_CODE,
+  type WorkerProjectShareDescriptor,
+} from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ProjectShareManager } from "../src/project-share-manager.js";
+import {
+  ProjectShareManager,
+  ProjectSourceUnavailableError,
+} from "../src/project-share-manager.js";
 
 const directories: string[] = [];
 const managers: ProjectShareManager[] = [];
@@ -98,6 +104,23 @@ afterEach(async () => {
 });
 
 describe("ProjectShareManager", () => {
+  it("classifies a missing project root as unavailable without exposing its path", async () => {
+    const manager = new ProjectShareManager();
+    managers.push(manager);
+    const missing = path.join(
+      tmpdir(),
+      `cantrip-missing-project-${randomUUID()}`,
+    );
+
+    await expect(
+      manager.open(shareInput(missing, "share-missing")),
+    ).rejects.toMatchObject({
+      code: PROJECT_SOURCE_UNAVAILABLE_CODE,
+      message: "Project source is unavailable.",
+      name: ProjectSourceUnavailableError.name,
+    });
+  });
+
   it("serves a project directory only on authenticated worker loopback", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-project-share-"));
     directories.push(root);

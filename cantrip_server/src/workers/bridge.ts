@@ -138,6 +138,16 @@ interface PendingRequest {
 
 export class WorkerUnavailableError extends Error {}
 
+export class WorkerCommandError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | null = null,
+  ) {
+    super(message);
+    this.name = "WorkerCommandError";
+  }
+}
+
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 
 function workerFrameBytes(data: unknown): Uint8Array {
@@ -512,7 +522,12 @@ export class WorkerBridge implements WorkerCommandBus {
             durationMs,
             workerId,
           });
-          pending.reject(new Error(response.error.message));
+          pending.reject(
+            new WorkerCommandError(
+              response.error.message,
+              response.error.code ?? null,
+            ),
+          );
         }
       },
       (error: unknown) => {
