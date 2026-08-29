@@ -150,14 +150,27 @@ describe("authenticated API client", () => {
     });
   });
 
-  it("retains a sanitized route and status in failed-request diagnostics", async () => {
+  it("retains structured failure context in failed-request diagnostics", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: "Not Found" }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            code: "project-source-unavailable",
+            error: "Project source is unavailable.",
+            failureStage: "worker-share-open",
+            requestId: "body-request-1",
+            workerId: "worker-one",
+            workerRequestId: "worker-request-1",
+          }),
+          {
+            status: 502,
+            headers: {
+              "content-type": "application/json",
+              "x-request-id": "http-request-1",
+            },
+          },
+        ),
       ),
     );
 
@@ -166,7 +179,14 @@ describe("authenticated API client", () => {
         "/api/explorers/11a148ef-be4b-4d61-a23e-53682c891f45/code-attachments",
         { method: "POST", body: "{}" },
       ),
-    ).rejects.toMatchObject({ status: 404 });
+    ).rejects.toMatchObject({
+      code: "project-source-unavailable",
+      failureStage: "worker-share-open",
+      requestId: "http-request-1",
+      status: 502,
+      workerId: "worker-one",
+      workerRequestId: "worker-request-1",
+    });
 
     const failure = readClientLogs().records.find(
       (record) =>
@@ -178,8 +198,12 @@ describe("authenticated API client", () => {
     expect(failure?.context).toMatchObject({
       method: "POST",
       path: "/api/explorers/:id/code-attachments",
-      reasonCode: "http-404",
-      statusCode: 404,
+      failureStage: "worker-share-open",
+      reasonCode: "project-source-unavailable",
+      requestId: "http-request-1",
+      statusCode: 502,
+      workerId: "worker-one",
+      workerRequestId: "worker-request-1",
     });
   });
 

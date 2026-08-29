@@ -1,13 +1,18 @@
 import type { ProtectedTunnelContentRecord } from "@cantrip/protocol/tunnel-content";
 import { describe, expect, it, vi } from "vitest";
 
+import { projectShareFailureDetails } from "../src/app/routes/project-network-shares.js";
 import type { ServerRepository } from "../src/db/repository.js";
 import {
+  ProjectShareOperationError,
   ProjectShareStateStaleError,
   ProjectShareTunnelBroker,
 } from "../src/project-shares/tunnel.js";
 import { TunnelStreamBroker } from "../src/tunnels/broker.js";
-import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import {
+  WorkerCommandError,
+  type WorkerCommandBus,
+} from "../src/workers/bridge.js";
 
 const tunnelId = "11111111-1111-4111-8111-111111111111";
 const protectedRecord: ProtectedTunnelContentRecord = {
@@ -197,6 +202,78 @@ describe("protected project share control plane", () => {
 
     expect(bridge.request).not.toHaveBeenCalled();
     await broker.close();
+    streamBroker.close();
+  });
+
+  it("preserves a safe worker failure code, stage, and request ID", async () => {
+    const bridge = {
+      isConnected: () => true,
+      request: vi.fn().mockRejectedValue(
+        new WorkerCommandError(
+          "Project source is unavailable.",
+          "project-source-unavailable",
+          {
+            operation: "project.share.open",
+            requestId: "worker-request-1",
+            workerId: "worker-1",
+          },
+        ),
+      ),
+    } as unknown as WorkerCommandBus;
+    const repository = {
+      getManagedTunnel: vi.fn().mockResolvedValue(null),
+    } as unknown as ServerRepository;
+    const broker = new ProjectShareTunnelBroker(bridge);
+    const streamBroker = new TunnelStreamBroker();
+    broker.configureControlPlane(repository, streamBroker, () => undefined);
+
+    await expect(
+      broker.open({
+        ownerId: "owner-1",
+        projectId: "project-1",
+        protectedRecord,
+        tunnelId,
+        workerId: "worker-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "project-source-unavailable",
+      failureStage: "worker-share-open",
+      message: "Project source is unavailable.",
+      name: ProjectShareOperationError.name,
+      workerRequestId: "worker-request-1",
+    });
+    const failure = await broker
+      .open({
+        ownerId: "owner-1",
+        projectId: "project-1",
+        protectedRecord,
+        tunnelId,
+        workerId: "worker-1",
+      })
+      .catch((error: unknown) => error);
+    expect(projectShareFailureDetails(failure)).toEqual({
+      failureStage: "worker-share-open",
+      message: "Project source is unavailable.",
+      reasonCode: "project-source-unavailable",
+      statusCode: 409,
+      workerRequestId: "worker-request-1",
+    });
+    expect(
+      projectShareFailureDetails(
+        new WorkerCommandError(
+          "Failed below /Users/example/private-repository",
+          "/Users/example/private-repository",
+          {
+            requestId: "/Users/example/private-repository",
+          },
+        ),
+      ),
+    ).toEqual({
+      failureStage: "worker-share-open",
+      message: "Winterhold could not open the protected project share.",
+      reasonCode: "project-share-open-failed",
+      statusCode: 502,
+    });
     streamBroker.close();
   });
 });

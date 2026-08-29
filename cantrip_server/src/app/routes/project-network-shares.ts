@@ -5,12 +5,14 @@ import {
   projectShareTunnelCreateSchema,
   standaloneChatShareAttachmentWireSchema,
 } from "@cantrip/protocol";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 
 import type { ServerRepository } from "../../db/repository.js";
 import type { DirectAttachmentCoordinator } from "../../direct-attachments/coordinator.js";
-import { errorMessage, invalidBody } from "../../http/request-helpers.js";
+import { invalidBody } from "../../http/request-helpers.js";
+import { serverLogger } from "../../logger.js";
 import {
+  ProjectShareOperationError,
   ProjectShareStateStaleError,
   type ProjectShareTunnelBroker,
 } from "../../project-shares/tunnel.js";
@@ -36,6 +38,113 @@ export interface ProjectNetworkShareRouteDependencies {
     | "getWorker"
   >;
   tunnelRuntime: Pick<TunnelRuntimeManager, "revoke">;
+}
+
+export interface ProjectShareFailureDetails {
+  failureStage: string;
+  message: string;
+  reasonCode: string;
+  statusCode: 409 | 502 | 503;
+  workerRequestId?: string;
+}
+
+const STABLE_FAILURE_CODE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const STABLE_DIAGNOSTIC_ID = /^[A-Za-z0-9._:-]+$/u;
+
+function stableFailureCode(value: string | null | undefined): string | null {
+  return value && value.length <= 100 && STABLE_FAILURE_CODE.test(value)
+    ? value
+    : null;
+}
+
+function stableDiagnosticId(value: string | undefined): string | undefined {
+  return value && value.length <= 200 && STABLE_DIAGNOSTIC_ID.test(value)
+    ? value
+    : undefined;
+}
+
+export function projectShareFailureDetails(
+  error: unknown,
+): ProjectShareFailureDetails {
+  const operationError =
+    error instanceof ProjectShareOperationError ? error : null;
+  const workerError = error instanceof WorkerCommandError ? error : null;
+  const reasonCode =
+    stableFailureCode(operationError?.code) ??
+    stableFailureCode(workerError?.code) ??
+    (error instanceof WorkerUnavailableError
+      ? "worker-offline"
+      : "project-share-open-failed");
+  const failureStage =
+    operationError?.failureStage ??
+    (workerError
+      ? "worker-share-open"
+      : error instanceof WorkerUnavailableError
+        ? "worker-connectivity"
+        : "control-plane");
+  const statusCode =
+    reasonCode === PROJECT_SHARE_STATE_STALE_CODE ||
+    reasonCode === PROJECT_SOURCE_UNAVAILABLE_CODE
+      ? 409
+      : reasonCode === "worker-offline"
+        ? 503
+        : 502;
+  const message =
+    reasonCode === PROJECT_SOURCE_UNAVAILABLE_CODE
+      ? "Project source is unavailable."
+      : reasonCode === "worker-offline"
+        ? "The project worker is offline."
+        : (operationError?.message ??
+          (reasonCode === PROJECT_SHARE_STATE_STALE_CODE
+            ? "Project share state is stale."
+            : "Winterhold could not open the protected project share."));
+  const workerRequestId = stableDiagnosticId(
+    operationError?.workerRequestId ?? workerError?.requestId,
+  );
+  return {
+    failureStage,
+    message,
+    reasonCode,
+    statusCode,
+    ...(workerRequestId ? { workerRequestId } : {}),
+  };
+}
+
+function sendProjectShareFailure(
+  reply: FastifyReply,
+  error: unknown,
+  context: {
+    requestId: string;
+    resourceKind: "chat" | "project";
+    workerId: string;
+  },
+) {
+  const { failureStage, message, reasonCode, statusCode, workerRequestId } =
+    projectShareFailureDetails(error);
+  serverLogger.event(
+    statusCode >= 500 ? "error" : "warn",
+    "Protected project share open failed",
+    {
+      event: "project_share.open.failed",
+      subsystem: "project-share",
+      operation: "open",
+      status: "failed",
+      requestId: context.requestId,
+      ...(workerRequestId ? { workerRequestId } : {}),
+      workerId: context.workerId,
+      reasonCode,
+      failureStage,
+      resourceKind: context.resourceKind,
+    },
+  );
+  return reply.code(statusCode).send({
+    code: reasonCode,
+    error: message,
+    failureStage,
+    requestId: context.requestId,
+    workerId: context.workerId,
+    ...(workerRequestId ? { workerRequestId } : {}),
+  });
 }
 
 export function installProjectNetworkShareRoutes(
@@ -80,10 +189,9 @@ export function installProjectNetworkShareRoutes(
               id: request.params.projectId,
             });
             if (existing && existing.id !== input.data.tunnelId) {
-              return reply.code(409).send({
-                code: PROJECT_SHARE_STATE_STALE_CODE,
-                error: "The project share tunnel identity is stale.",
-              });
+              throw new ProjectShareStateStaleError(
+                "The project share tunnel identity is stale.",
+              );
             }
             if (existing) {
               await Promise.all(
@@ -107,30 +215,11 @@ export function installProjectNetworkShareRoutes(
           },
         );
       } catch (error) {
-        const message = errorMessage(error);
-        if (error instanceof ProjectShareStateStaleError) {
-          return reply.code(409).send({
-            code: PROJECT_SHARE_STATE_STALE_CODE,
-            error: message,
-          });
-        }
-        if (
-          error instanceof WorkerCommandError &&
-          error.code === PROJECT_SOURCE_UNAVAILABLE_CODE
-        ) {
-          return reply.code(409).send({
-            code: PROJECT_SOURCE_UNAVAILABLE_CODE,
-            error: message,
-          });
-        }
-        return reply
-          .code(
-            error instanceof WorkerUnavailableError ||
-              message.toLowerCase().includes("offline")
-              ? 503
-              : 502,
-          )
-          .send({ error: message });
+        return sendProjectShareFailure(reply, error, {
+          requestId: String(request.id),
+          resourceKind: "project",
+          workerId: input.data.workerId,
+        });
       }
     },
   );
@@ -180,10 +269,9 @@ export function installProjectNetworkShareRoutes(
               id: managedResourceId,
             });
             if (existing && existing.id !== input.data.tunnelId) {
-              return reply.code(409).send({
-                code: PROJECT_SHARE_STATE_STALE_CODE,
-                error: "The Chat share tunnel identity is stale.",
-              });
+              throw new ProjectShareStateStaleError(
+                "The Chat share tunnel identity is stale.",
+              );
             }
             if (existing) {
               await Promise.all(
@@ -219,30 +307,11 @@ export function installProjectNetworkShareRoutes(
           },
         );
       } catch (error) {
-        const message = errorMessage(error);
-        if (error instanceof ProjectShareStateStaleError) {
-          return reply.code(409).send({
-            code: PROJECT_SHARE_STATE_STALE_CODE,
-            error: message,
-          });
-        }
-        if (
-          error instanceof WorkerCommandError &&
-          error.code === PROJECT_SOURCE_UNAVAILABLE_CODE
-        ) {
-          return reply.code(409).send({
-            code: PROJECT_SOURCE_UNAVAILABLE_CODE,
-            error: message,
-          });
-        }
-        return reply
-          .code(
-            error instanceof WorkerUnavailableError ||
-              message.toLowerCase().includes("offline")
-              ? 503
-              : 502,
-          )
-          .send({ error: message });
+        return sendProjectShareFailure(reply, error, {
+          requestId: String(request.id),
+          resourceKind: "chat",
+          workerId: input.data.workerId,
+        });
       }
     },
   );

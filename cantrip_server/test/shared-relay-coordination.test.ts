@@ -23,7 +23,10 @@ import {
 import { AppLiveHub, type AppLiveSocket } from "../src/live/hub.js";
 import { WorkerLinkRelay } from "../src/worker-links/relay.js";
 import { CoordinatedWorkerBridge } from "../src/workers/coordinated-bridge.js";
-import type { WorkerConnectionContinuityIdentity } from "../src/workers/bridge.js";
+import {
+  WorkerCommandError,
+  type WorkerConnectionContinuityIdentity,
+} from "../src/workers/bridge.js";
 
 class TestWorkerSocket {
   bufferedAmount = 0;
@@ -103,6 +106,59 @@ const continuityIdentity: WorkerConnectionContinuityIdentity = {
 };
 
 describe("shared relay coordination", () => {
+  it("preserves worker failure codes and correlation context across instances", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
+    const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
+    await Promise.all([coordinatorA.start(), coordinatorB.start()]);
+    const resolveOwnerId = async () => "owner-1";
+    const bridgeA = new CoordinatedWorkerBridge({
+      coordinator: coordinatorA,
+      resolveOwnerId,
+    });
+    const bridgeB = new CoordinatedWorkerBridge({
+      coordinator: coordinatorB,
+      resolveOwnerId,
+    });
+    const workerSocket = new TestWorkerSocket();
+    await bridgeB.attach("worker-1", workerSocket, "owner-1");
+
+    const response = bridgeA.request(
+      "worker-1",
+      { type: "code.probe" },
+      { ownerId: "owner-1" },
+    );
+    await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(1));
+    const workerRequest = workerRequestEnvelopeSchema.parse(
+      JSON.parse(String(workerSocket.sent[0])),
+    );
+    workerSocket.emit(
+      "message",
+      JSON.stringify({
+        kind: "response",
+        requestId: workerRequest.requestId,
+        ok: false,
+        error: {
+          code: "project-source-unavailable",
+          message: "Project source is unavailable.",
+        },
+      }),
+      false,
+    );
+
+    await expect(response).rejects.toMatchObject({
+      code: "project-source-unavailable",
+      message: "Project source is unavailable.",
+      name: WorkerCommandError.name,
+      operation: "code.probe",
+      requestId: expect.any(String),
+      workerId: "worker-1",
+    });
+    await bridgeA.close();
+    await bridgeB.close();
+    await Promise.all([coordinatorA.close(), coordinatorB.close()]);
+  });
+
   it("routes commands and binary frames between server instances", async () => {
     const backend = createInMemoryRelayCoordinatorBackend();
     const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);

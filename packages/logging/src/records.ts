@@ -279,6 +279,7 @@ const PERSISTED_NUMBER_CONTEXT_KEY =
   /(?:^attempt$|^durationMs$|^errorStatus$|^statusCode$|Count$|Bytes$|Ms$|Percent$|BasisPoints$)/u;
 const PERSISTED_ID_CONTEXT_KEY = /Ids?$/u;
 const PERSISTED_VERSION_CONTEXT_KEY = /Version$/u;
+const PERSISTED_FAILURE_STAGE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 function minimizeLogContext(
   value: unknown,
@@ -290,6 +291,16 @@ function minimizeLogContext(
   const source = sanitized as Record<string, unknown>;
   const output: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(source)) {
+    if (key === "failureStage") {
+      if (
+        typeof nested === "string" &&
+        nested.length <= 100 &&
+        PERSISTED_FAILURE_STAGE.test(nested)
+      ) {
+        output.failureStage = nested;
+      }
+      continue;
+    }
     if (key === "lastDestinationRejectionCode") {
       if (
         typeof nested === "string" &&

@@ -80,15 +80,35 @@ describe("client log relay", () => {
   it("reduces operational failures to class, code, and status metadata", () => {
     const error = Object.assign(
       new Error("provider response contains private payload text"),
-      { code: "UPSTREAM_FAILED", status: 502 },
+      {
+        code: "UPSTREAM_FAILED",
+        failureStage: "worker-share-open",
+        requestId: "request-one",
+        status: 502,
+        workerId: "worker-one",
+        workerRequestId: "worker-request-one",
+      },
     );
     const metadata = operationalErrorMetadata(error);
     expect(metadata).toEqual({
       errorClass: "Error",
       errorCode: "UPSTREAM_FAILED",
       errorStatus: 502,
+      failureStage: "worker-share-open",
+      requestId: "request-one",
+      workerId: "worker-one",
+      workerRequestId: "worker-request-one",
     });
     expect(JSON.stringify(metadata)).not.toContain("private payload");
+
+    const rejected = operationalErrorMetadata(
+      Object.assign(new Error("private"), {
+        failureStage: "/Users/private/project",
+        workerId: "worker one /Users/private/project",
+      }),
+    );
+    expect(rejected).not.toHaveProperty("failureStage");
+    expect(rejected).not.toHaveProperty("workerId");
   });
 
   it("captures pre-bootstrap console and fetch failures without URL secrets", async () => {

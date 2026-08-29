@@ -11,20 +11,60 @@ import {
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 
 export class CantripApiError extends Error {
+  readonly failureStage: string | null;
+  readonly requestId: string | null;
+  readonly workerId: string | null;
+  readonly workerRequestId: string | null;
+
   constructor(
     message: string,
     readonly status: number,
     readonly code: string | null = null,
+    context: {
+      failureStage?: string | null;
+      requestId?: string | null;
+      workerId?: string | null;
+      workerRequestId?: string | null;
+    } = {},
   ) {
     super(message);
+    this.name = "CantripApiError";
+    this.failureStage = context.failureStage ?? null;
+    this.requestId = context.requestId ?? null;
+    this.workerId = context.workerId ?? null;
+    this.workerRequestId = context.workerRequestId ?? null;
   }
 }
 
 interface ApiErrorBody {
   code?: string;
   error?: string;
+  failureStage?: string;
   issues?: unknown;
+  requestId?: string;
+  workerId?: string;
+  workerRequestId?: string;
 }
+
+function safeDiagnosticString(
+  value: unknown,
+  pattern: RegExp,
+  maximumLength = 200,
+): string | undefined {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= maximumLength &&
+    pattern.test(value)
+    ? value
+    : undefined;
+}
+
+const safeReasonCode = (value: unknown) =>
+  safeDiagnosticString(value, /^[a-z0-9]+(?:-[a-z0-9]+)*$/u, 100);
+const safeFailureStage = (value: unknown) =>
+  safeDiagnosticString(value, /^[a-z0-9]+(?:-[a-z0-9]+)*$/u, 100);
+const safeIdentifier = (value: unknown) =>
+  safeDiagnosticString(value, /^[A-Za-z0-9._:-]+$/u);
 
 function validationIssueDetail(issues: unknown): string | null {
   if (!Array.isArray(issues)) return null;
@@ -277,6 +317,12 @@ export async function requestResponse(
         body?.error ?? "Your Cantrip session has expired.",
       );
     }
+    const reasonCode = safeReasonCode(body?.code) ?? `http-${response.status}`;
+    const requestId =
+      responseRequestId(response) ?? safeIdentifier(body?.requestId);
+    const workerId = safeIdentifier(body?.workerId);
+    const workerRequestId = safeIdentifier(body?.workerRequestId);
+    const failureStage = safeFailureStage(body?.failureStage);
     clientLogger.rateLimited(
       `api:${method}:${route}:${response.status}`,
       response.status >= 500 ? "error" : "warn",
@@ -287,8 +333,11 @@ export async function requestResponse(
         method,
         operation: "request",
         path: route,
-        reasonCode: `http-${response.status}`,
-        requestId: responseRequestId(response),
+        reasonCode,
+        requestId,
+        ...(workerId ? { workerId } : {}),
+        ...(workerRequestId ? { workerRequestId } : {}),
+        ...(failureStage ? { failureStage } : {}),
         statusCode: response.status,
         subsystem: "api",
       },
@@ -296,7 +345,8 @@ export async function requestResponse(
     throw new CantripApiError(
       apiErrorMessage(body, response.status),
       response.status,
-      body?.code ?? null,
+      safeReasonCode(body?.code) ?? null,
+      { failureStage, requestId, workerId, workerRequestId },
     );
   }
   const durationMs = Math.round(performance.now() - startedAt);
