@@ -152,6 +152,7 @@ export function GlobalContentHost({
     linkedConsoleChat,
     mobileBottomNavigationItems,
     mobileProjectSelectorOpen,
+    mobileSettingsSectionOpen,
     mobileTabGridOpen,
     narrowViewport,
     newBrowser,
@@ -240,6 +241,7 @@ export function GlobalContentHost({
     setChatRelocationOpen,
     setGitHistoryHeader,
     setMobileTabGridOpen,
+    setMobileSettingsSectionOpen,
     setPendingTerminalInputs,
     setProjectOverviewSection,
     setProjectOverviewWorktreeId,
@@ -311,7 +313,9 @@ export function GlobalContentHost({
           appearance={codeAppearance}
           initialSection={settingsSection}
           initialPolicyId={settingsPolicyId}
+          mobileSectionOpen={mobileSettingsSectionOpen}
           onEliteOpen={() => setSettingsSection("elite")}
+          onMobileSectionOpenChange={setMobileSettingsSectionOpen}
           onPolicyOpenHandled={() => setSettingsPolicyId(null)}
           onOpenTunnelOwner={openTunnelOwner}
         />
@@ -427,6 +431,7 @@ export function GlobalContentHost({
           desktopRuntime={desktopRuntime && projectRevealLabel !== null}
           initialSection={projectSettingsSection}
           initialWorkflowId={selectedWorkflowIntentId}
+          mobileSectionOpen={mobileSettingsSectionOpen}
           project={selectedProject}
           chats={chats.data ?? []}
           codeTabs={codeTabs.data ?? []}
@@ -485,6 +490,7 @@ export function GlobalContentHost({
             setShowImporter(false);
             setShowProjectSettings(false);
           }}
+          onMobileSectionOpenChange={setMobileSettingsSectionOpen}
         />
       ) : showImporter ? (
         <RepositoryImporter
