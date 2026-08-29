@@ -39,7 +39,6 @@ import {
   RefreshCw,
   Route,
   ScanLine,
-  Search,
   Server,
   ShieldCheck,
   ScrollText,
@@ -114,10 +113,9 @@ import { errorMessage as errorText } from "@/lib/error-message";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import {
-  SettingsSearchField,
-  SettingsTabBar,
-  type SettingsTab,
-} from "./settings-controls";
+  SettingsNavigationLayout,
+  type SettingsNavigationSection,
+} from "./settings-navigation";
 import { McpServerSettings } from "./mcp-server-settings";
 import {
   DesktopUpdateSettings,
@@ -175,20 +173,262 @@ export type SettingsSection =
   | "policies"
   | "workspaces";
 
-const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
-  { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "code", label: "Code", icon: Code2 },
-  { id: "usage", label: "Usage", icon: BarChart3 },
-  { id: "models", label: "Models", icon: Cpu },
-  { id: "tasks", label: "Tasks", icon: ListTodo },
-  { id: "workers", label: "Workers", icon: Network },
-  { id: "logs", label: "Logs", icon: ScrollText },
-  { id: "tunnels", label: "Tunnels", icon: Route },
-  { id: "workspaces", label: "Workspaces", icon: Layers3 },
-  { id: "policies", label: "Policies", icon: ShieldCheck },
-  { id: "skills", label: "Skills", icon: Sparkles },
-  { id: "mcp", label: "MCP", icon: Cable },
-];
+export const settingsNavigationSections: readonly SettingsNavigationSection<SettingsSection>[] =
+  [
+    {
+      id: "general",
+      label: "General",
+      description: "Appearance and permissions",
+      icon: SlidersHorizontal,
+      searchItems: [
+        {
+          id: "appearance",
+          label: "Appearance",
+          description: "Theme, contrast, Elite Mode, and macOS Pro Mode.",
+          keywords: ["light dark brightness opacity transparency"],
+        },
+        {
+          id: "agent-permissions",
+          label: "Default agent permissions",
+          description: "Default sandbox and approval profile for agents.",
+          keywords: ["read only workspace full access yolo"],
+        },
+        {
+          id: "chat-permissions",
+          label: "Standalone Chat permissions",
+          description: "Permission defaults for standalone conversations.",
+        },
+        {
+          id: "remote-desktop",
+          label: "Remote Desktop",
+          description: "Frame rate and streaming quality.",
+          keywords: ["fps adaptive data saver bandwidth"],
+        },
+        {
+          id: "updates",
+          label: "Cantrip updates",
+          description: "Desktop releases, downloads, and installation.",
+        },
+      ],
+    },
+    {
+      id: "code",
+      label: "Code",
+      description: "Editor and extensions",
+      icon: Code2,
+      searchItems: [
+        {
+          id: "code-editor",
+          label: "Code editor",
+          description: "Code-OSS customization and editor preferences.",
+          keywords: ["vscode vs code workbench"],
+        },
+        {
+          id: "extensions",
+          label: "Extensions",
+          description: "Install and manage editor extensions.",
+          keywords: ["vsix marketplace"],
+        },
+        {
+          id: "themes",
+          label: "Editor themes",
+          description: "Choose how Code follows Cantrip appearance.",
+        },
+      ],
+    },
+    {
+      id: "usage",
+      label: "Usage",
+      description: "Storage and bandwidth",
+      icon: BarChart3,
+      searchItems: [
+        {
+          id: "account-usage",
+          label: "Account usage",
+          description: "Resource totals and historical trends.",
+        },
+        {
+          id: "storage",
+          label: "Storage usage",
+          description: "Server data and worker-managed attachments.",
+        },
+        {
+          id: "bandwidth",
+          label: "Bandwidth usage",
+          description: "Ingress and egress measurements.",
+          keywords: ["network traffic"],
+        },
+      ],
+    },
+    {
+      id: "models",
+      label: "Models",
+      description: "Providers and routing",
+      icon: Cpu,
+      searchItems: [
+        {
+          id: "providers",
+          label: "Model providers",
+          description: "Ollama, ChatGPT, Grok, xAI, and compatible APIs.",
+          keywords: ["openai openrouter zai oauth endpoint api key"],
+        },
+        {
+          id: "models",
+          label: "Models and routes",
+          description: "Logical models, provider priority, and failover.",
+        },
+        {
+          id: "model-defaults",
+          label: "Default model configuration",
+          description: "Root, subagent, and standalone Chat defaults.",
+        },
+      ],
+    },
+    {
+      id: "tasks",
+      label: "Tasks",
+      description: "Task worker defaults",
+      icon: ListTodo,
+      searchItems: [
+        {
+          id: "task-workers",
+          label: "Task Workers",
+          description: "Configure workers that execute background tasks.",
+        },
+        {
+          id: "task-models",
+          label: "Task agent models",
+          description: "Choose models and reasoning for task agents.",
+        },
+      ],
+    },
+    {
+      id: "workers",
+      label: "Workers",
+      description: "Runtimes and placement",
+      icon: Network,
+      searchItems: [
+        {
+          id: "worker-inventory",
+          label: "Worker inventory",
+          description: "Connected machines, platforms, and project sources.",
+        },
+        {
+          id: "desktop-worker",
+          label: "Desktop Worker",
+          description: "This device and its managed services.",
+        },
+        {
+          id: "worker-placement",
+          label: "Worker placement",
+          description: "Default execution and routing targets.",
+        },
+        {
+          id: "worker-enrollment",
+          label: "Worker enrollment",
+          description: "Connect another worker to Cantrip.",
+        },
+      ],
+    },
+    {
+      id: "logs",
+      label: "Logs",
+      description: "Diagnostics and exports",
+      icon: ScrollText,
+      searchItems: [
+        {
+          id: "logs",
+          label: "Logs",
+          description: "Search, follow, copy, and export diagnostic records.",
+          keywords: ["device server worker debug"],
+        },
+      ],
+    },
+    {
+      id: "tunnels",
+      label: "Tunnels",
+      description: "Network forwarding",
+      icon: Route,
+      searchItems: [
+        {
+          id: "project-tunnels",
+          label: "Project Tunnels",
+          description: "Managed tunnels owned by project features.",
+        },
+        {
+          id: "all-tunnels",
+          label: "All Tunnels",
+          description: "Ports, endpoints, workers, and connection status.",
+          keywords: ["tcp http forwarding"],
+        },
+      ],
+    },
+    {
+      id: "workspaces",
+      label: "Workspaces",
+      description: "Project organization",
+      icon: Layers3,
+      searchItems: [
+        {
+          id: "workspace-management",
+          label: "Workspace management",
+          description: "Create, rename, order, and choose a default workspace.",
+        },
+        {
+          id: "project-membership",
+          label: "Project membership",
+          description: "Organize projects within workspaces.",
+        },
+      ],
+    },
+    {
+      id: "policies",
+      label: "Policies",
+      description: "Agent instructions",
+      icon: ShieldCheck,
+      searchItems: [
+        {
+          id: "policy-library",
+          label: "Policy library",
+          description: "Create and edit reusable agent policies.",
+          keywords: ["instructions rules templates"],
+        },
+        {
+          id: "policy-assignments",
+          label: "Policy assignments",
+          description: "Apply policies globally, by workspace, or by project.",
+        },
+      ],
+    },
+    {
+      id: "skills",
+      label: "Skills",
+      description: "Agent capabilities",
+      icon: Sparkles,
+      searchItems: [
+        {
+          id: "global-skills",
+          label: "Global skills",
+          description: "Manage skills available across Cantrip.",
+          keywords: ["agents tools instructions"],
+        },
+      ],
+    },
+    {
+      id: "mcp",
+      label: "MCP",
+      description: "External tool servers",
+      icon: Cable,
+      searchItems: [
+        {
+          id: "mcp-servers",
+          label: "MCP servers",
+          description: "Configure command and HTTP MCP integrations.",
+          keywords: ["tools stdio sse streamable http oauth"],
+        },
+      ],
+    },
+  ];
 
 type ProviderSetupKind =
   ModelProviderKind | "openai" | "openrouter" | "xai" | "zai";
@@ -654,8 +894,7 @@ export function SettingsPage({
   const desktopUpdatesAvailable =
     desktopUpdateCapability.data?.available === true;
   const macosDesktopRuntime = isMacosDesktopRuntime();
-  const [generalSearchQuery, setGeneralSearchQuery] = useState("");
-  const [modelSearchQuery, setModelSearchQuery] = useState("");
+  const [settingsSearchQuery, setSettingsSearchQuery] = useState("");
   const [proModeOpacityDialogOpen, setProModeOpacityDialogOpen] =
     useState(false);
   const [proModeOpacityDraft, setProModeOpacityDraft] = useState(80);
@@ -1086,8 +1325,8 @@ export function SettingsPage({
     }
   };
 
-  const generalSearch = generalSearchQuery.trim().toLowerCase();
-  const modelSearch = modelSearchQuery.trim().toLowerCase();
+  const generalSearch = settingsSearchQuery.trim().toLowerCase();
+  const modelSearch = generalSearch;
   const providers = settings.data?.providers ?? [];
   const models = settings.data?.models ?? [];
   const appearanceMatches =
@@ -1173,448 +1412,386 @@ export function SettingsPage({
 
   return (
     <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden">
-      <SettingsTabBar<SettingsSection>
-        activeTab={section}
-        ariaLabel="Account settings sections"
-        tabs={settingsTabs}
-        onTabChange={(next) => {
+      <SettingsNavigationLayout<SettingsSection>
+        activeSection={section}
+        ariaLabel="Account settings categories"
+        initialMobileSectionOpen={initialSection !== "general"}
+        searchPlaceholder="Search all settings"
+        searchQuery={settingsSearchQuery}
+        sections={settingsNavigationSections}
+        title="Settings"
+        onSearchQueryChange={setSettingsSearchQuery}
+        onSectionChange={(next) => {
           if (next === "code") setCodeActivated(true);
           setSection(next);
         }}
-      />
-      <div
-        className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "code" ? "overflow-hidden" : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
       >
         <div
-          className={`${section === "general" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
+          className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "code" ? "overflow-hidden" : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
         >
-          <SettingsSearchField
-            ariaLabel="Search settings"
-            placeholder={
-              section === "models"
-                ? "Search providers and models"
-                : "Search general settings"
-            }
-            value={section === "models" ? modelSearchQuery : generalSearchQuery}
-            onValueChange={
-              section === "models" ? setModelSearchQuery : setGeneralSearchQuery
-            }
-          />
+          <div
+            className={`${section === "general" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
+          >
+            {settings.isError ? (
+              <p className="text-sm text-destructive">
+                {errorText(settings.error)}
+              </p>
+            ) : null}
 
-          {settings.isError ? (
-            <p className="text-sm text-destructive">
-              {errorText(settings.error)}
-            </p>
-          ) : null}
-
-          {hasSearchResults ? (
-            <div className="min-w-0 divide-y overflow-hidden border-y">
-              {section === "general" && appearanceMatches ? (
-                <section>
-                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Palette className="size-4 shrink-0 text-muted-foreground" />
-                      <div>
-                        <h2 className="text-sm font-semibold">Appearance</h2>
-                        <p className="text-xs text-muted-foreground">
-                          System follows the operating system.
-                        </p>
+            {hasSearchResults ? (
+              <div className="min-w-0 divide-y overflow-hidden border-y">
+                {section === "general" && appearanceMatches ? (
+                  <section>
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Palette className="size-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">Appearance</h2>
+                          <p className="text-xs text-muted-foreground">
+                            System follows the operating system.
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <label className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">
-                          Brightness
-                        </span>
-                        <NativeSelect
-                          aria-label="Brightness"
-                          className="h-7"
-                          size="sm"
-                          value={settings.data?.preferences.theme ?? "system"}
-                          disabled={preferences.isPending}
-                          onChange={(event) =>
-                            preferences.mutate({
-                              theme: event.target.value as ThemePreference,
-                            })
-                          }
-                        >
-                          <option value="system">System</option>
-                          <option value="light">Light</option>
-                          <option value="dark">Dark</option>
-                        </NativeSelect>
-                      </label>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
-                        <input
-                          type="checkbox"
-                          className="size-3.5 accent-primary"
-                          checked={
-                            settings.data?.preferences.highContrast ?? false
-                          }
-                          disabled={preferences.isPending}
-                          onChange={(event) =>
-                            preferences.mutate({
-                              highContrast: event.target.checked,
-                            })
-                          }
-                        />
-                        High contrast
-                      </label>
-                      <EliteModeButton
-                        onOpen={() => {
-                          setSection("elite");
-                          onEliteOpen?.();
-                        }}
-                      />
-                      {macosDesktopRuntime ? (
-                        <label
-                          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
-                          title="Use a translucent native macOS material. Right-click to adjust opacity."
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setProModeOpacityDraft(savedProModeOpacity);
-                            setProModeOpacityDialogOpen(true);
-                          }}
-                        >
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <label className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">
+                            Brightness
+                          </span>
+                          <NativeSelect
+                            aria-label="Brightness"
+                            className="h-7"
+                            size="sm"
+                            value={settings.data?.preferences.theme ?? "system"}
+                            disabled={preferences.isPending}
+                            onChange={(event) =>
+                              preferences.mutate({
+                                theme: event.target.value as ThemePreference,
+                              })
+                            }
+                          >
+                            <option value="system">System</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                          </NativeSelect>
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
                           <input
                             type="checkbox"
                             className="size-3.5 accent-primary"
                             checked={
-                              settings.data?.preferences.proMode ?? false
+                              settings.data?.preferences.highContrast ?? false
                             }
                             disabled={preferences.isPending}
                             onChange={(event) =>
                               preferences.mutate({
-                                proMode: event.target.checked,
+                                highContrast: event.target.checked,
                               })
                             }
                           />
-                          &quot;Pro&quot; Mode
+                          High contrast
                         </label>
-                      ) : null}
-                    </div>
-                  </div>
-                </section>
-              ) : null}
-
-              {section === "general" && permissionDefaultsMatch ? (
-                <section>
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Lock className="size-4 shrink-0 text-muted-foreground" />
-                      <div>
-                        <h2 className="text-sm font-semibold">
-                          Default agent permissions
-                        </h2>
-                        <p className="text-xs text-muted-foreground">
-                          Agents set to Default follow this permission profile.
-                        </p>
+                        <EliteModeButton
+                          onOpen={() => {
+                            setSection("elite");
+                            onEliteOpen?.();
+                          }}
+                        />
+                        {macosDesktopRuntime ? (
+                          <label
+                            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
+                            title="Use a translucent native macOS material. Right-click to adjust opacity."
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              setProModeOpacityDraft(savedProModeOpacity);
+                              setProModeOpacityDialogOpen(true);
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              className="size-3.5 accent-primary"
+                              checked={
+                                settings.data?.preferences.proMode ?? false
+                              }
+                              disabled={preferences.isPending}
+                              onChange={(event) =>
+                                preferences.mutate({
+                                  proMode: event.target.checked,
+                                })
+                              }
+                            />
+                            &quot;Pro&quot; Mode
+                          </label>
+                        ) : null}
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
-                      {BUILTIN_PERMISSION_PROFILES.map((profile) => (
-                        <Button
-                          key={profile.id}
-                          type="button"
-                          size="sm"
-                          className="h-7 px-2.5 text-xs"
-                          variant={
-                            settings.data?.preferences
-                              .defaultPermissionProfileId === profile.id
-                              ? "default"
-                              : "ghost"
-                          }
-                          disabled={preferences.isPending}
-                          title={profile.description}
-                          onClick={() =>
-                            preferences.mutate({
-                              defaultPermissionProfileId: profile.id,
-                            })
-                          }
-                        >
-                          {permissionProfileLabel(profile.id)}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-3">
-                    <div className="min-w-0 pl-7">
-                      <h3 className="text-xs font-medium">
-                        Standalone Chat permissions
-                      </h3>
-                      <p className="text-[11px] text-muted-foreground">
-                        Applied only to each Chat&apos;s worker scratch folder.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
-                      {BUILTIN_PERMISSION_PROFILES.map((profile) => (
-                        <Button
-                          key={profile.id}
-                          type="button"
-                          size="sm"
-                          className="h-7 px-2.5 text-xs"
-                          variant={
-                            settings.data?.preferences
-                              .defaultChatPermissionProfileId === profile.id
-                              ? "default"
-                              : "ghost"
-                          }
-                          disabled={preferences.isPending}
-                          title={profile.description}
-                          onClick={() =>
-                            preferences.mutate({
-                              defaultChatPermissionProfileId: profile.id,
-                            })
-                          }
-                        >
-                          {permissionProfileLabel(profile.id)}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </section>
-              ) : null}
+                  </section>
+                ) : null}
 
-              {section === "general" && desktopStreamingMatches ? (
-                <section>
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Gauge className="size-4 shrink-0 text-muted-foreground" />
-                      <div>
-                        <h2 className="text-sm font-semibold">
-                          Remote Desktop
-                        </h2>
-                        <p className="text-xs text-muted-foreground">
-                          Higher rates are best effort; adaptive quality keeps
-                          the newest frame responsive.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <label className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">
-                          Frame rate
-                        </span>
-                        <NativeSelect
-                          size="sm"
-                          aria-label="Remote Desktop frame rate"
-                          value={
-                            settings.data?.preferences.desktopFrameRate ?? 30
-                          }
-                          disabled={preferences.isPending}
-                          onChange={(event) =>
-                            preferences.mutate({
-                              desktopFrameRate: Number(event.target.value) as
-                                15 | 30 | 60,
-                            })
-                          }
-                        >
-                          <option value={15}>15 FPS</option>
-                          <option value={30}>30 FPS</option>
-                          <option value={60}>60 FPS max</option>
-                        </NativeSelect>
-                      </label>
-                      <label className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">Quality</span>
-                        <NativeSelect
-                          size="sm"
-                          aria-label="Remote Desktop stream quality"
-                          value={
-                            settings.data?.preferences.desktopStreamQuality ??
-                            "adaptive"
-                          }
-                          disabled={preferences.isPending}
-                          onChange={(event) =>
-                            preferences.mutate({
-                              desktopStreamQuality: event.target
-                                .value as UserSettings["desktopStreamQuality"],
-                            })
-                          }
-                        >
-                          <option value="adaptive">Adaptive</option>
-                          <option value="data-saver">Data saver</option>
-                          <option value="balanced">Balanced</option>
-                          <option value="sharp">Sharp</option>
-                        </NativeSelect>
-                      </label>
-                    </div>
-                  </div>
-                </section>
-              ) : null}
-
-              {section === "general" && desktopUpdateMatches ? (
-                <DesktopUpdateSettings
-                  capability={desktopUpdateCapability.data!}
-                />
-              ) : null}
-
-              {section === "models" && providersMatch ? (
-                <section>
-                  <div className="flex items-center justify-between gap-3 px-3 py-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Server className="size-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0">
-                        <div className="flex items-baseline gap-2">
-                          <h2 className="text-sm font-semibold">Providers</h2>
-                          <span className="text-xs text-muted-foreground">
-                            {visibleProviders.length}
-                            {modelSearch &&
-                            visibleProviders.length !== providers.length
-                              ? ` of ${providers.length}`
-                              : ""}
-                          </span>
-                        </div>
-                        <p className="truncate text-xs text-muted-foreground">
-                          Ollama, compatible APIs, and portable ChatGPT or Grok
-                          accounts.
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      className="size-8"
-                      size="icon"
-                      variant="outline"
-                      onClick={() => openProviderDialog(null)}
-                    >
-                      <Plus className="size-3.5" />
-                      <span className="sr-only">Add provider</span>
-                    </Button>
-                  </div>
-                  <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_96px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-                    <span>Provider</span>
-                    <span>Connection</span>
-                    <span>Catalog</span>
-                    <span>Scope</span>
-                    <span className="text-right">Actions</span>
-                  </div>
-                  <div className="divide-y border-t sm:border-t-0">
-                    {visibleProviders.map((provider) => (
-                      <ProviderRow
-                        key={provider.id}
-                        provider={provider}
-                        workerId={worker?.workerId ?? null}
-                        removing={removeProvider.isPending}
-                        onEdit={() => openProviderDialog(provider)}
-                        onAnalytics={() => setAnalyticsProvider(provider)}
-                        onRemove={() => removeProvider.mutate(provider.id)}
-                      />
-                    ))}
-                    {!visibleProviders.length ? (
-                      <p className="px-3 py-5 text-center text-sm text-muted-foreground">
-                        No providers match “{modelSearchQuery.trim()}”.
-                      </p>
-                    ) : null}
-                  </div>
-                  {removeProvider.isError ? (
-                    <p className="border-t px-3 py-3 text-sm text-destructive">
-                      {errorText(removeProvider.error)}
-                    </p>
-                  ) : null}
-                </section>
-              ) : null}
-
-              {section === "models" && modelsMatch ? (
-                <section>
-                  <div className="flex items-center justify-between gap-3 px-3 py-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Cpu className="size-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0">
-                        <div className="flex items-baseline gap-2">
-                          <h2 className="text-sm font-semibold">Models</h2>
-                          <span className="text-xs text-muted-foreground">
-                            {visibleModels.length}
-                            {modelSearch &&
-                            visibleModels.length !== models.length
-                              ? ` of ${models.length}`
-                              : ""}
-                          </span>
-                        </div>
-                        <p className="truncate text-xs text-muted-foreground">
-                          Logical models with ordered provider failover routes.
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      className="size-8"
-                      size="icon"
-                      variant="outline"
-                      disabled={!providers.length}
-                      onClick={() => openModelDialog(null)}
-                    >
-                      <Plus className="size-3.5" />
-                      <span className="sr-only">Add model</span>
-                    </Button>
-                  </div>
-
-                  {settings.data ? (
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium">
-                          Default model configuration
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          Root and subagent defaults for newly created IDE Agent
-                          chats.
-                        </p>
-                      </div>
-                      <ModelReasoningPicker
-                        configuration={defaultModelConfiguration(
-                          settings.data.preferences,
-                        )}
-                        disabled={preferences.isPending}
-                        loadReasoningState={getModelReasoningOptions}
-                        mode="settings"
-                        models={models}
-                        pending={preferences.isPending}
-                        onSave={(configuration) =>
-                          preferences.mutateAsync(
-                            modelConfigurationSettingsUpdate(configuration),
-                          )
-                        }
-                      />
-                    </div>
-                  ) : null}
-
-                  {settings.data ? (
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2.5">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-medium">
-                            Standalone Chat defaults
+                {section === "general" && permissionDefaultsMatch ? (
+                  <section>
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Lock className="size-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">
+                            Default agent permissions
+                          </h2>
+                          <p className="text-xs text-muted-foreground">
+                            Agents set to Default follow this permission
+                            profile.
                           </p>
-                          {settings.data.preferences.defaultChatModelId ===
-                            null &&
-                          settings.data.preferences
-                            .defaultChatReasoningEffort === null ? (
-                            <Badge variant="outline">Inherits IDE</Badge>
-                          ) : null}
                         </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          Model and reasoning for newly created standalone
-                          Chats.
-                        </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {settings.data.preferences.defaultChatModelId !==
-                          null ||
-                        settings.data.preferences.defaultChatReasoningEffort !==
-                          null ? (
+                      <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
+                        {BUILTIN_PERMISSION_PROFILES.map((profile) => (
                           <Button
+                            key={profile.id}
                             type="button"
                             size="sm"
-                            variant="ghost"
+                            className="h-7 px-2.5 text-xs"
+                            variant={
+                              settings.data?.preferences
+                                .defaultPermissionProfileId === profile.id
+                                ? "default"
+                                : "ghost"
+                            }
                             disabled={preferences.isPending}
+                            title={profile.description}
                             onClick={() =>
                               preferences.mutate({
-                                defaultChatModelId: null,
-                                defaultChatReasoningEffort: null,
+                                defaultPermissionProfileId: profile.id,
                               })
                             }
                           >
-                            Use IDE defaults
+                            {permissionProfileLabel(profile.id)}
                           </Button>
-                        ) : null}
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-3">
+                      <div className="min-w-0 pl-7">
+                        <h3 className="text-xs font-medium">
+                          Standalone Chat permissions
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground">
+                          Applied only to each Chat&apos;s worker scratch
+                          folder.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
+                        {BUILTIN_PERMISSION_PROFILES.map((profile) => (
+                          <Button
+                            key={profile.id}
+                            type="button"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs"
+                            variant={
+                              settings.data?.preferences
+                                .defaultChatPermissionProfileId === profile.id
+                                ? "default"
+                                : "ghost"
+                            }
+                            disabled={preferences.isPending}
+                            title={profile.description}
+                            onClick={() =>
+                              preferences.mutate({
+                                defaultChatPermissionProfileId: profile.id,
+                              })
+                            }
+                          >
+                            {permissionProfileLabel(profile.id)}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
+
+                {section === "general" && desktopStreamingMatches ? (
+                  <section>
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Gauge className="size-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">
+                            Remote Desktop
+                          </h2>
+                          <p className="text-xs text-muted-foreground">
+                            Higher rates are best effort; adaptive quality keeps
+                            the newest frame responsive.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <label className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">
+                            Frame rate
+                          </span>
+                          <NativeSelect
+                            size="sm"
+                            aria-label="Remote Desktop frame rate"
+                            value={
+                              settings.data?.preferences.desktopFrameRate ?? 30
+                            }
+                            disabled={preferences.isPending}
+                            onChange={(event) =>
+                              preferences.mutate({
+                                desktopFrameRate: Number(event.target.value) as
+                                  15 | 30 | 60,
+                              })
+                            }
+                          >
+                            <option value={15}>15 FPS</option>
+                            <option value={30}>30 FPS</option>
+                            <option value={60}>60 FPS max</option>
+                          </NativeSelect>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">Quality</span>
+                          <NativeSelect
+                            size="sm"
+                            aria-label="Remote Desktop stream quality"
+                            value={
+                              settings.data?.preferences.desktopStreamQuality ??
+                              "adaptive"
+                            }
+                            disabled={preferences.isPending}
+                            onChange={(event) =>
+                              preferences.mutate({
+                                desktopStreamQuality: event.target
+                                  .value as UserSettings["desktopStreamQuality"],
+                              })
+                            }
+                          >
+                            <option value="adaptive">Adaptive</option>
+                            <option value="data-saver">Data saver</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="sharp">Sharp</option>
+                          </NativeSelect>
+                        </label>
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
+
+                {section === "general" && desktopUpdateMatches ? (
+                  <DesktopUpdateSettings
+                    capability={desktopUpdateCapability.data!}
+                  />
+                ) : null}
+
+                {section === "models" && providersMatch ? (
+                  <section>
+                    <div className="flex items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Server className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <h2 className="text-sm font-semibold">Providers</h2>
+                            <span className="text-xs text-muted-foreground">
+                              {visibleProviders.length}
+                              {modelSearch &&
+                              visibleProviders.length !== providers.length
+                                ? ` of ${providers.length}`
+                                : ""}
+                            </span>
+                          </div>
+                          <p className="truncate text-xs text-muted-foreground">
+                            Ollama, compatible APIs, and portable ChatGPT or
+                            Grok accounts.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        className="size-8"
+                        size="icon"
+                        variant="outline"
+                        onClick={() => openProviderDialog(null)}
+                      >
+                        <Plus className="size-3.5" />
+                        <span className="sr-only">Add provider</span>
+                      </Button>
+                    </div>
+                    <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_96px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                      <span>Provider</span>
+                      <span>Connection</span>
+                      <span>Catalog</span>
+                      <span>Scope</span>
+                      <span className="text-right">Actions</span>
+                    </div>
+                    <div className="divide-y border-t sm:border-t-0">
+                      {visibleProviders.map((provider) => (
+                        <ProviderRow
+                          key={provider.id}
+                          provider={provider}
+                          workerId={worker?.workerId ?? null}
+                          removing={removeProvider.isPending}
+                          onEdit={() => openProviderDialog(provider)}
+                          onAnalytics={() => setAnalyticsProvider(provider)}
+                          onRemove={() => removeProvider.mutate(provider.id)}
+                        />
+                      ))}
+                      {!visibleProviders.length ? (
+                        <p className="px-3 py-5 text-center text-sm text-muted-foreground">
+                          No providers match “{settingsSearchQuery.trim()}”.
+                        </p>
+                      ) : null}
+                    </div>
+                    {removeProvider.isError ? (
+                      <p className="border-t px-3 py-3 text-sm text-destructive">
+                        {errorText(removeProvider.error)}
+                      </p>
+                    ) : null}
+                  </section>
+                ) : null}
+
+                {section === "models" && modelsMatch ? (
+                  <section>
+                    <div className="flex items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Cpu className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <h2 className="text-sm font-semibold">Models</h2>
+                            <span className="text-xs text-muted-foreground">
+                              {visibleModels.length}
+                              {modelSearch &&
+                              visibleModels.length !== models.length
+                                ? ` of ${models.length}`
+                                : ""}
+                            </span>
+                          </div>
+                          <p className="truncate text-xs text-muted-foreground">
+                            Logical models with ordered provider failover
+                            routes.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        className="size-8"
+                        size="icon"
+                        variant="outline"
+                        disabled={!providers.length}
+                        onClick={() => openModelDialog(null)}
+                      >
+                        <Plus className="size-3.5" />
+                        <span className="sr-only">Add model</span>
+                      </Button>
+                    </div>
+
+                    {settings.data ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium">
+                            Default model configuration
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Root and subagent defaults for newly created IDE
+                            Agent chats.
+                          </p>
+                        </div>
                         <ModelReasoningPicker
-                          configuration={defaultStandaloneChatModelConfiguration(
+                          configuration={defaultModelConfiguration(
                             settings.data.preferences,
                           )}
                           disabled={preferences.isPending}
@@ -1624,200 +1801,248 @@ export function SettingsPage({
                           pending={preferences.isPending}
                           onSave={(configuration) =>
                             preferences.mutateAsync(
-                              standaloneChatModelConfigurationSettingsUpdate(
-                                configuration,
-                              ),
+                              modelConfigurationSettingsUpdate(configuration),
                             )
                           }
                         />
                       </div>
-                    </div>
-                  ) : null}
+                    ) : null}
 
-                  <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
-                    <span>Model</span>
-                    <span>Routes</span>
-                    <span>Configuration</span>
-                    <span className="text-right">Actions</span>
-                  </div>
-                  <div className="divide-y border-t sm:border-t-0">
-                    {visibleModels.map((model) => (
-                      <div
-                        key={model.id}
-                        data-high-contrast-row
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Edit ${model.name}`}
-                        title={`Edit ${model.name}`}
-                        className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px]"
-                        onClick={() => openModelDialog(model)}
-                        onKeyDown={(event) =>
-                          editSettingsRowFromKeyboard(event, () =>
-                            openModelDialog(model),
-                          )
-                        }
-                      >
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <Cpu className="size-4 shrink-0 text-muted-foreground" />
-                          <p className="truncate text-sm font-medium">
-                            {model.name}
+                    {settings.data ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2.5">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-medium">
+                              Standalone Chat defaults
+                            </p>
+                            {settings.data.preferences.defaultChatModelId ===
+                              null &&
+                            settings.data.preferences
+                              .defaultChatReasoningEffort === null ? (
+                              <Badge variant="outline">Inherits IDE</Badge>
+                            ) : null}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Model and reasoning for newly created standalone
+                            Chats.
                           </p>
-                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                            {formatTokenCount(model.tokenUsage.totalTokens)}{" "}
-                            tokens
-                          </span>
-                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                            {formatAgentTime(model.agentTime.agentTimeMs)} AI ·{" "}
-                            {formatConcurrency(model.agentTime)}
-                          </span>
-                          {settings.data?.preferences.defaultModelId ===
-                          model.id ? (
-                            <Badge className="sm:hidden" variant="secondary">
-                              Default
-                            </Badge>
-                          ) : null}
                         </div>
-                        <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
-                          {model.routes
-                            .filter((route) => route.enabled)
-                            .map((route) => {
-                              const provider = providers.find(
-                                ({ id }) => id === route.providerId,
-                              );
-                              return provider
-                                ? providerRouteLabel(provider)
-                                : route.providerName;
-                            })
-                            .join(" → ")}
-                          <span className="sm:hidden">
-                            {` · ${model.routes.filter((route) => route.enabled).length} enabled`}
-                          </span>
-                        </p>
-                        <div className="hidden items-center justify-end gap-2 text-xs text-muted-foreground sm:flex">
-                          <span>
-                            {
-                              model.routes.filter((route) => route.enabled)
-                                .length
-                            }{" "}
-                            enabled
-                          </span>
-                          {settings.data?.preferences.defaultModelId ===
-                          model.id ? (
-                            <Badge variant="secondary">Default</Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {settings.data.preferences.defaultChatModelId !==
+                            null ||
+                          settings.data.preferences
+                            .defaultChatReasoningEffort !== null ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={preferences.isPending}
+                              onClick={() =>
+                                preferences.mutate({
+                                  defaultChatModelId: null,
+                                  defaultChatReasoningEffort: null,
+                                })
+                              }
+                            >
+                              Use IDE defaults
+                            </Button>
                           ) : null}
-                        </div>
-                        <div
-                          className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <Button
-                            className="size-7"
-                            size="icon"
-                            variant="ghost"
-                            disabled={removeModel.isPending}
-                            onClick={() => removeModel.mutate(model.id)}
-                          >
-                            <Trash2 className="size-3.5" />
-                            <span className="sr-only">Delete {model.name}</span>
-                          </Button>
+                          <ModelReasoningPicker
+                            configuration={defaultStandaloneChatModelConfiguration(
+                              settings.data.preferences,
+                            )}
+                            disabled={preferences.isPending}
+                            loadReasoningState={getModelReasoningOptions}
+                            mode="settings"
+                            models={models}
+                            pending={preferences.isPending}
+                            onSave={(configuration) =>
+                              preferences.mutateAsync(
+                                standaloneChatModelConfigurationSettingsUpdate(
+                                  configuration,
+                                ),
+                              )
+                            }
+                          />
                         </div>
                       </div>
-                    ))}
-                    {!visibleModels.length ? (
-                      <p className="px-3 py-5 text-center text-sm text-muted-foreground">
-                        No models match “{modelSearchQuery.trim()}”.
+                    ) : null}
+
+                    <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                      <span>Model</span>
+                      <span>Routes</span>
+                      <span>Configuration</span>
+                      <span className="text-right">Actions</span>
+                    </div>
+                    <div className="divide-y border-t sm:border-t-0">
+                      {visibleModels.map((model) => (
+                        <div
+                          key={model.id}
+                          data-high-contrast-row
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Edit ${model.name}`}
+                          title={`Edit ${model.name}`}
+                          className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px]"
+                          onClick={() => openModelDialog(model)}
+                          onKeyDown={(event) =>
+                            editSettingsRowFromKeyboard(event, () =>
+                              openModelDialog(model),
+                            )
+                          }
+                        >
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <Cpu className="size-4 shrink-0 text-muted-foreground" />
+                            <p className="truncate text-sm font-medium">
+                              {model.name}
+                            </p>
+                            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                              {formatTokenCount(model.tokenUsage.totalTokens)}{" "}
+                              tokens
+                            </span>
+                            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                              {formatAgentTime(model.agentTime.agentTimeMs)} AI
+                              · {formatConcurrency(model.agentTime)}
+                            </span>
+                            {settings.data?.preferences.defaultModelId ===
+                            model.id ? (
+                              <Badge className="sm:hidden" variant="secondary">
+                                Default
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
+                            {model.routes
+                              .filter((route) => route.enabled)
+                              .map((route) => {
+                                const provider = providers.find(
+                                  ({ id }) => id === route.providerId,
+                                );
+                                return provider
+                                  ? providerRouteLabel(provider)
+                                  : route.providerName;
+                              })
+                              .join(" → ")}
+                            <span className="sm:hidden">
+                              {` · ${model.routes.filter((route) => route.enabled).length} enabled`}
+                            </span>
+                          </p>
+                          <div className="hidden items-center justify-end gap-2 text-xs text-muted-foreground sm:flex">
+                            <span>
+                              {
+                                model.routes.filter((route) => route.enabled)
+                                  .length
+                              }{" "}
+                              enabled
+                            </span>
+                            {settings.data?.preferences.defaultModelId ===
+                            model.id ? (
+                              <Badge variant="secondary">Default</Badge>
+                            ) : null}
+                          </div>
+                          <div
+                            className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <Button
+                              className="size-7"
+                              size="icon"
+                              variant="ghost"
+                              disabled={removeModel.isPending}
+                              onClick={() => removeModel.mutate(model.id)}
+                            >
+                              <Trash2 className="size-3.5" />
+                              <span className="sr-only">
+                                Delete {model.name}
+                              </span>
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {!visibleModels.length ? (
+                        <p className="px-3 py-5 text-center text-sm text-muted-foreground">
+                          No models match “{settingsSearchQuery.trim()}”.
+                        </p>
+                      ) : null}
+                    </div>
+                    {removeModel.isError ? (
+                      <p className="border-t px-3 py-3 text-sm text-destructive">
+                        {errorText(removeModel.error)}
                       </p>
                     ) : null}
-                  </div>
-                  {removeModel.isError ? (
-                    <p className="border-t px-3 py-3 text-sm text-destructive">
-                      {errorText(removeModel.error)}
-                    </p>
-                  ) : null}
-                </section>
-              ) : null}
+                  </section>
+                ) : null}
+              </div>
+            ) : null}
+
+            {section === "models" ? (
+              <p className="pb-2 text-xs text-muted-foreground">
+                The default initializes new agents. An agent’s selected model
+                applies to its next message.
+              </p>
+            ) : null}
+          </div>
+          {section === "workspaces" ? (
+            <div className="w-full min-w-0">
+              <WorkspaceSettings
+                onOpenPolicySettings={(policyId) => {
+                  setPolicyEditorId(policyId ?? null);
+                  setSection("policies");
+                }}
+              />
             </div>
           ) : null}
-
-          {!hasSearchResults ? (
-            <div className="py-12 text-center">
-              <Search className="mx-auto mb-3 size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">
-                {section === "models" ? "No models found" : "No settings found"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {section === "models"
-                  ? "Try a provider name, model name, or route."
-                  : "Try a theme, display option, or setting."}
-              </p>
+          {section === "policies" ? (
+            <div className="w-full min-w-0">
+              <PolicySettings
+                initialPolicyId={policyEditorId}
+                onInitialPolicyHandled={() => {
+                  setPolicyEditorId(null);
+                  onPolicyOpenHandled?.();
+                }}
+              />
             </div>
           ) : null}
-
-          {section === "models" ? (
-            <p className="pb-2 text-xs text-muted-foreground">
-              The default initializes new agents. An agent’s selected model
-              applies to its next message.
-            </p>
+          {section === "workers" ? <WorkerSettings /> : null}
+          {section === "tasks" ? <TaskSettings /> : null}
+          {section === "usage" ? <AccountUsageSettings /> : null}
+          {codeActivated ? (
+            <CodeSettings
+              active={section === "code"}
+              appearance={appearance}
+              defaultWorkerId={
+                settings.data?.preferences.defaultWorkerId ?? null
+              }
+            />
+          ) : null}
+          {section === "elite" ? (
+            <EliteSettings
+              appWideEnabled={settings.data?.preferences.eliteMode ?? false}
+              configuredEffect={settings.data?.preferences.eliteRevealConfig}
+              configSaving={preferences.isPending}
+              onAppWideEnabledChange={(eliteMode) =>
+                preferences.mutate({ eliteMode })
+              }
+              onConfigChange={(eliteRevealConfig) =>
+                preferences.mutate({ eliteRevealConfig })
+              }
+              saveError={
+                preferences.isError ? errorText(preferences.error) : null
+              }
+            />
+          ) : null}
+          {section === "logs" ? <LogSettings /> : null}
+          {section === "tunnels" ? (
+            <TunnelSettings onOpenOwner={onOpenTunnelOwner} />
+          ) : null}
+          {section === "skills" ? <SkillsSettings /> : null}
+          {section === "mcp" ? (
+            <div className="w-full min-w-0">
+              <McpServerSettings scope={{ kind: "global" }} />
+            </div>
           ) : null}
         </div>
-        {section === "workspaces" ? (
-          <div className="w-full min-w-0">
-            <WorkspaceSettings
-              onOpenPolicySettings={(policyId) => {
-                setPolicyEditorId(policyId ?? null);
-                setSection("policies");
-              }}
-            />
-          </div>
-        ) : null}
-        {section === "policies" ? (
-          <div className="w-full min-w-0">
-            <PolicySettings
-              initialPolicyId={policyEditorId}
-              onInitialPolicyHandled={() => {
-                setPolicyEditorId(null);
-                onPolicyOpenHandled?.();
-              }}
-            />
-          </div>
-        ) : null}
-        {section === "workers" ? <WorkerSettings /> : null}
-        {section === "tasks" ? <TaskSettings /> : null}
-        {section === "usage" ? <AccountUsageSettings /> : null}
-        {codeActivated ? (
-          <CodeSettings
-            active={section === "code"}
-            appearance={appearance}
-            defaultWorkerId={settings.data?.preferences.defaultWorkerId ?? null}
-          />
-        ) : null}
-        {section === "elite" ? (
-          <EliteSettings
-            appWideEnabled={settings.data?.preferences.eliteMode ?? false}
-            configuredEffect={settings.data?.preferences.eliteRevealConfig}
-            configSaving={preferences.isPending}
-            onAppWideEnabledChange={(eliteMode) =>
-              preferences.mutate({ eliteMode })
-            }
-            onConfigChange={(eliteRevealConfig) =>
-              preferences.mutate({ eliteRevealConfig })
-            }
-            saveError={
-              preferences.isError ? errorText(preferences.error) : null
-            }
-          />
-        ) : null}
-        {section === "logs" ? <LogSettings /> : null}
-        {section === "tunnels" ? (
-          <TunnelSettings onOpenOwner={onOpenTunnelOwner} />
-        ) : null}
-        {section === "skills" ? <SkillsSettings /> : null}
-        {section === "mcp" ? (
-          <div className="w-full min-w-0">
-            <McpServerSettings scope={{ kind: "global" }} />
-          </div>
-        ) : null}
-      </div>
+      </SettingsNavigationLayout>
 
       {macosDesktopRuntime ? (
         <Dialog
