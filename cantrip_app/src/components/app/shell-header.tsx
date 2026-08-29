@@ -14,6 +14,7 @@ import {
   ExplorerFileCloseButton,
   type ContentHeaderActionsProps,
 } from "@/components/workspace/content-header-actions";
+import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch";
 import { MobileProjectHeader } from "@/components/mobile/mobile-project-header";
 import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { WorktreeControl } from "@/components/worktrees/worktree-control";
@@ -89,55 +90,75 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     sidebarFilePreviewVisible,
     sidebarToggleVisible,
     standaloneFilesOpen,
+    switchToChat,
+    switchToIde,
     workers,
     worktreeActionError,
     worktreeStatuses,
     worktrees,
   } = bindings;
+  const switchAppMode =
+    isPopout || appMode === null
+      ? null
+      : appMode === "ide"
+        ? switchToChat
+        : switchToIde;
   return (
     <>
       {compactShell && showImporter ? (
         <MobileProjectHeader
+          appMode={appMode}
           context={activeProjectWorkspace?.name ?? "Choose a repository"}
           onBack={closeCompactProject}
+          onSwitchAppMode={switchAppMode ?? undefined}
           title="GitHub repositories"
         />
       ) : compactShell && showSettings ? (
         <MobileProjectHeader
+          appMode={appMode}
           context="Account preferences"
           onBack={closeCompactProject}
+          onSwitchAppMode={switchAppMode ?? undefined}
           title="Settings"
         />
       ) : compactShell && showArchivedStandaloneChats ? (
         <MobileProjectHeader
+          appMode={appMode}
           context="Recover or permanently delete conversations"
           onBack={() => setShowArchivedStandaloneChats(false)}
+          onSwitchAppMode={switchAppMode ?? undefined}
           title="Archived chats"
         />
       ) : compactShell && showServerAdmin ? (
         <MobileProjectHeader
+          appMode={appMode}
           context="Account access and server policy"
           onBack={closeCompactProject}
+          onSwitchAppMode={switchAppMode ?? undefined}
           title="Server administration"
         />
       ) : compactShell && showProjectSettings && selectedProject ? (
         <MobileProjectHeader
           actions={renderProjectRunConfigurationControl(true)}
+          appMode={appMode}
           context={
             selectedProject.github?.nameWithOwner ??
             selectedProject.source?.displayPath
           }
           onBack={returnToCompactProjectOverview}
+          onSwitchAppMode={switchAppMode ?? undefined}
           title="Project settings"
         />
       ) : compactShell && mobileTabGridOpen && selectedProject ? (
         <MobileProjectHeader
           actions={renderProjectRunConfigurationControl(true)}
+          appMode={appMode}
           context={`Tabs · ${
             selectedProject.github?.nameWithOwner ??
             selectedProject.source?.displayPath ??
             selectedProject.name
           }`}
+          onSwitchAppMode={switchAppMode ?? undefined}
           title={selectedProject.name}
         />
       ) : compactShell && projectOverviewSelected && selectedProject ? (
@@ -153,12 +174,14 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               {renderProjectRunConfigurationControl(true)}
             </>
           }
+          appMode={appMode}
           context={
             selectedProject.github?.nameWithOwner ??
             selectedProject.source?.displayPath
           }
           onCloseProject={closeCompactProject}
           onOpenProjectSettings={() => openProjectSettings(selectedProject.id)}
+          onSwitchAppMode={switchAppMode ?? undefined}
           title={selectedProject.name}
         />
       ) : null}
@@ -455,6 +478,12 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               : null}
             {appMode === "ide" ? (
               <ContentHeaderActions {...contentHeaderActions} compact />
+            ) : null}
+            {compactShell && switchAppMode ? (
+              <MobileAppModeSwitch
+                currentMode={appMode}
+                onSwitch={switchAppMode}
+              />
             ) : null}
             {!isPopout && !compactShell && appMode === "ide" ? (
               <>

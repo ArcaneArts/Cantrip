@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ export function MobileProjectSelector({
   onNewProject,
   onOpenAdmin,
   onOpenSettings,
+  onSwitchChat,
   onSelectProject,
   onSelectWorkspace,
   folderSetupJobs,
@@ -84,6 +86,7 @@ export function MobileProjectSelector({
   onNewProject(source: ProjectCreateSource): void;
   onOpenAdmin(): void;
   onOpenSettings(): void;
+  onSwitchChat(): void;
   onSelectProject(projectId: string): void;
   onSelectWorkspace(workspaceId: string): void;
   folderSetupJobs?: ReadonlyMap<string, ProjectFolderSetupJobSummary>;
@@ -115,6 +118,11 @@ export function MobileProjectSelector({
             {onlineWorker ? `${onlineWorker.name} online` : "Worker offline"}
           </p>
         </div>
+        <MobileAppModeSwitch
+          currentMode="ide"
+          labeled
+          onSwitch={onSwitchChat}
+        />
       </header>
 
       <div className="shrink-0 space-y-3 border-y px-4 py-3">
