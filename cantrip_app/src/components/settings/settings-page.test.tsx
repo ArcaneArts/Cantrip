@@ -7,8 +7,10 @@ import {
   SettingsPage,
   changedAccountLabel,
   initialProviderName,
+  settingsNavigationSections,
   type SettingsSection,
 } from "./settings-page";
+import { settingsSearchResults } from "./settings-navigation";
 
 function renderSettings(
   initialSection: SettingsSection,
@@ -37,7 +39,7 @@ describe("account settings", () => {
     expect(changedAccountLabel("Arcane", "   ")).toBeNull();
   });
 
-  it("keeps the Elite lab out of the visible settings tabs", () => {
+  it("keeps the Elite lab out of the visible settings navigation", () => {
     const markup = renderSettings("general");
     const general = markup.indexOf(">General<");
     const usage = markup.indexOf(">Usage<");
@@ -55,6 +57,30 @@ describe("account settings", () => {
     expect(tasks).toBeGreaterThan(models);
     expect(workers).toBeGreaterThan(tasks);
     expect(logs).toBeGreaterThan(workers);
+    expect(markup).toContain('data-slot="settings-sidebar"');
+    expect(markup).toContain('data-slot="settings-mobile-categories"');
+    expect(markup).not.toContain('role="tablist"');
+  });
+
+  it("indexes settings from every account category", () => {
+    expect(
+      settingsSearchResults("project membership", settingsNavigationSections),
+    ).toEqual([
+      expect.objectContaining({
+        id: "project-membership",
+        sectionId: "workspaces",
+      }),
+    ]);
+    expect(
+      settingsSearchResults("MCP HTTP", settingsNavigationSections),
+    ).toEqual([
+      expect.objectContaining({ id: "mcp-servers", sectionId: "mcp" }),
+    ]);
+    expect(
+      settingsSearchResults("VSIX marketplace", settingsNavigationSections),
+    ).toEqual([
+      expect.objectContaining({ id: "extensions", sectionId: "code" }),
+    ]);
   });
 
   it("exposes account usage as its own settings section", () => {
@@ -71,8 +97,7 @@ describe("account settings", () => {
     const code = renderSettings("code");
     expect(code).toContain('data-slot="code-settings-surface"');
     expect(code).toContain("Starting the Code customization workbench…");
-    expect(code).toContain("Code customization sections");
-    expect(code).toContain("Extensions");
+    expect(code).toContain("Editor and extensions");
     expect(code).toContain("Code customization worker");
     expect(code).not.toContain("VS Code settings</p>");
   });
@@ -123,14 +148,14 @@ describe("account settings", () => {
     expect(general).toContain("Default agent permissions");
     expect(general).toContain("Standalone Chat permissions");
     expect(general).toContain("YOLO mode");
-    expect(general).toContain("Search general settings");
+    expect(general).toContain("Search all settings");
     expect(general).not.toContain("Cantrip updates");
     expect(general).not.toContain(
       "Logical models with ordered provider failover routes.",
     );
 
     const models = renderSettings("models");
-    expect(models).toContain("Search providers and models");
+    expect(models).toContain("Search all settings");
     expect(models).toContain(
       "Logical models with ordered provider failover routes.",
     );
