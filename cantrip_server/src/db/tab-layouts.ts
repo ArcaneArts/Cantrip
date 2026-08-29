@@ -4,12 +4,13 @@ import type {
   ProjectTabKind,
   ProjectTabLayoutWireSummary,
   ProjectTabMemberWireSummary,
+  OrderedIds,
   EncryptedTabGroupUpdate,
   TabGroupMemberMove,
   TabGroupMemberOrder,
   TabGroupOrder,
 } from "@cantrip/protocol";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -688,5 +689,73 @@ export class ProjectTabLayoutRepository {
       await updateGroupPositions(transaction, nextGroupIds);
     });
     return this.get(ownerId, projectId);
+  }
+
+  async nextProjectTabPosition(projectId: string): Promise<number> {
+    const positions = await Promise.all([
+      this.database
+        .select({ position: schema.chats.position })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.projectId, projectId),
+            isNull(schema.chats.archivedAt),
+          ),
+        )
+        .orderBy(desc(schema.chats.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.terminals.position })
+        .from(schema.terminals)
+        .where(eq(schema.terminals.projectId, projectId))
+        .orderBy(desc(schema.terminals.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.explorers.position })
+        .from(schema.explorers)
+        .where(eq(schema.explorers.projectId, projectId))
+        .orderBy(desc(schema.explorers.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.codeTabs.position })
+        .from(schema.codeTabs)
+        .where(eq(schema.codeTabs.projectId, projectId))
+        .orderBy(desc(schema.codeTabs.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.browsers.position })
+        .from(schema.browsers)
+        .where(eq(schema.browsers.projectId, projectId))
+        .orderBy(desc(schema.browsers.position))
+        .limit(1),
+      this.database
+        .select({ position: schema.projectViews.position })
+        .from(schema.projectViews)
+        .where(eq(schema.projectViews.projectId, projectId))
+        .orderBy(desc(schema.projectViews.position))
+        .limit(1),
+    ]);
+    return Math.max(...positions.map((rows) => rows[0]?.position ?? -1)) + 1;
+  }
+
+  async reorderProjects(ownerId: string, input: OrderedIds): Promise<boolean> {
+    const rows = await this.database
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(eq(schema.projects.ownerId, ownerId));
+    if (
+      rows.length !== input.ids.length ||
+      rows.some(({ id }) => !input.ids.includes(id))
+    )
+      return false;
+    await this.database.transaction(async (transaction) => {
+      for (const [position, id] of input.ids.entries()) {
+        await transaction
+          .update(schema.projects)
+          .set({ position })
+          .where(eq(schema.projects.id, id));
+      }
+    });
+    return true;
   }
 }

@@ -183,20 +183,7 @@ import type {
   ProtectedProviderCredential,
   ProviderCredentialPublicMetadata,
 } from "@cantrip/protocol/protected-secrets";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  exists,
-  gt,
-  inArray,
-  isNull,
-  ne,
-  notInArray,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { CodeSettingsRepository } from "./code-settings.js";
 import type { QuotaTokenAnalytics } from "../analytics/quota-token.js";
@@ -626,7 +613,7 @@ export class ServerRepository {
           references,
         ),
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
     });
     this.worktreeLifecycle = new WorktreeLifecycleRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
@@ -647,7 +634,7 @@ export class ServerRepository {
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
       listWorkers: (ownerId) => this.listWorkers(ownerId),
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
       resolveProjectExecutionPlacement: (
         ownerId,
         projectId,
@@ -671,7 +658,7 @@ export class ServerRepository {
     });
     this.chatArchiveLifecycle = new ChatArchiveLifecycleRepository(database, {
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
     });
     this.chatForks = new ChatForkRepository(database, {
       createStandaloneChat: (ownerId, input, isWorkerConnected) =>
@@ -723,7 +710,7 @@ export class ServerRepository {
       getTerminalExecutionContext: (ownerId, terminalId) =>
         this.getTerminalExecutionContext(ownerId, terminalId),
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
       resolveProjectExecutionPlacement: (
         ownerId,
         projectId,
@@ -748,7 +735,7 @@ export class ServerRepository {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
       resolveProjectExecutionPlacement: (
         ownerId,
         projectId,
@@ -773,7 +760,7 @@ export class ServerRepository {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
       resolveProjectExecutionPlacement: (
         ownerId,
         projectId,
@@ -805,7 +792,7 @@ export class ServerRepository {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
     });
     this.remoteSurfaces = new RemoteSurfaceRepository(database, {
       getRemoteDesktop: (ownerId, desktopId) =>
@@ -813,7 +800,7 @@ export class ServerRepository {
       getRemoteSurfaceExecutionContext: (ownerId, surfaceId) =>
         this.getRemoteSurfaceExecutionContext(ownerId, surfaceId),
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
     });
     this.browsers = new BrowserRepository(database, {
       getProjectSource: (ownerId, projectId) =>
@@ -821,7 +808,7 @@ export class ServerRepository {
       getRemoteSurfaceExecutionContext: (ownerId, surfaceId) =>
         this.getRemoteSurfaceExecutionContext(ownerId, surfaceId),
       nextProjectTabPosition: (projectId) =>
-        this.nextProjectTabPosition(projectId),
+        this.tabLayouts.nextProjectTabPosition(projectId),
       resolveProjectExecutionPlacement: (
         ownerId,
         projectId,
@@ -2841,53 +2828,6 @@ export class ServerRepository {
     return this.projectLifecycle.deleteProject(ownerId, projectId);
   }
 
-  private async nextProjectTabPosition(projectId: string): Promise<number> {
-    const positions = await Promise.all([
-      this.database
-        .select({ position: schema.chats.position })
-        .from(schema.chats)
-        .where(
-          and(
-            eq(schema.chats.projectId, projectId),
-            isNull(schema.chats.archivedAt),
-          ),
-        )
-        .orderBy(desc(schema.chats.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.terminals.position })
-        .from(schema.terminals)
-        .where(eq(schema.terminals.projectId, projectId))
-        .orderBy(desc(schema.terminals.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.explorers.position })
-        .from(schema.explorers)
-        .where(eq(schema.explorers.projectId, projectId))
-        .orderBy(desc(schema.explorers.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.codeTabs.position })
-        .from(schema.codeTabs)
-        .where(eq(schema.codeTabs.projectId, projectId))
-        .orderBy(desc(schema.codeTabs.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.browsers.position })
-        .from(schema.browsers)
-        .where(eq(schema.browsers.projectId, projectId))
-        .orderBy(desc(schema.browsers.position))
-        .limit(1),
-      this.database
-        .select({ position: schema.projectViews.position })
-        .from(schema.projectViews)
-        .where(eq(schema.projectViews.projectId, projectId))
-        .orderBy(desc(schema.projectViews.position))
-        .limit(1),
-    ]);
-    return Math.max(...positions.map((rows) => rows[0]?.position ?? -1)) + 1;
-  }
-
   async listChats(
     ownerId: string,
     projectId: string,
@@ -3510,24 +3450,7 @@ export class ServerRepository {
     );
   }
   async reorderProjects(ownerId: string, input: OrderedIds): Promise<boolean> {
-    const rows = await this.database
-      .select({ id: schema.projects.id })
-      .from(schema.projects)
-      .where(eq(schema.projects.ownerId, ownerId));
-    if (
-      rows.length !== input.ids.length ||
-      rows.some(({ id }) => !input.ids.includes(id))
-    )
-      return false;
-    await this.database.transaction(async (transaction) => {
-      for (const [position, id] of input.ids.entries()) {
-        await transaction
-          .update(schema.projects)
-          .set({ position })
-          .where(eq(schema.projects.id, id));
-      }
-    });
-    return true;
+    return this.tabLayouts.reorderProjects(ownerId, input);
   }
 
   async setChatModel(
