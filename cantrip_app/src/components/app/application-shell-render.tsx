@@ -1,4 +1,5 @@
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
+import { useCallback, useEffect, useState } from "react";
 import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { type ContentHeaderActionsProps } from "@/components/workspace/content-header-actions";
@@ -73,6 +74,7 @@ export function ApplicationShellRender({
     popOutProjectOverviewView,
     popoutError,
     popoutPending,
+    projectSettingsSection,
     revealWorkspace,
     runConfigurationEditorId,
     runConfigurationRuntimes,
@@ -94,6 +96,7 @@ export function ApplicationShellRender({
     setTerminalServiceTerminalId,
     setWorkspaceDragError,
     settings,
+    settingsSection,
     showImporter,
     showChatConsole,
     showProjectSettings,
@@ -109,6 +112,46 @@ export function ApplicationShellRender({
     workspaceDragError,
     worktrees,
   } = bindings;
+  const mobileSettingsDestination = showSettings
+    ? "global"
+    : showProjectSettings && selectedProject
+      ? `project:${selectedProject.id}`
+      : null;
+  const mobileSettingsInitiallyOpen = showSettings
+    ? settingsSection !== "general"
+    : showProjectSettings
+      ? projectSettingsSection !== "general"
+      : false;
+  const [mobileSettingsNavigation, setMobileSettingsNavigation] = useState<{
+    destination: string | null;
+    sectionOpen: boolean;
+  }>(() => ({
+    destination: mobileSettingsDestination,
+    sectionOpen: mobileSettingsInitiallyOpen,
+  }));
+  const mobileSettingsSectionOpen =
+    mobileSettingsDestination !== null &&
+    mobileSettingsNavigation.destination === mobileSettingsDestination
+      ? mobileSettingsNavigation.sectionOpen
+      : mobileSettingsInitiallyOpen;
+  const setMobileSettingsSectionOpen = useCallback(
+    (sectionOpen: boolean) => {
+      if (!mobileSettingsDestination) return;
+      setMobileSettingsNavigation({
+        destination: mobileSettingsDestination,
+        sectionOpen,
+      });
+    },
+    [mobileSettingsDestination],
+  );
+  useEffect(() => {
+    if (mobileSettingsDestination !== null) return;
+    setMobileSettingsNavigation((current) =>
+      current.destination === null
+        ? current
+        : { destination: null, sectionOpen: false },
+    );
+  }, [mobileSettingsDestination]);
   const contentHeaderActions = {
     git:
       gitHistoryProject &&
@@ -295,7 +338,9 @@ export function ApplicationShellRender({
     codeSurfaceVisible,
     contentHeaderActions,
     explorerSurfaceVisible,
+    mobileSettingsSectionOpen,
     renderProjectRunConfigurationControl,
+    setMobileSettingsSectionOpen,
     sidebarExpanded,
     sidebarToggleVisible,
   };

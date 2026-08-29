@@ -914,14 +914,18 @@ export function SettingsPage({
   appearance,
   initialSection = "general",
   initialPolicyId = null,
+  mobileSectionOpen,
   onEliteOpen,
+  onMobileSectionOpenChange,
   onPolicyOpenHandled,
   onOpenTunnelOwner,
 }: {
   appearance: CodeAppearance;
   initialSection?: SettingsSection;
   initialPolicyId?: string | null;
+  mobileSectionOpen?: boolean;
   onEliteOpen?(): void;
+  onMobileSectionOpenChange?(open: boolean): void;
   onPolicyOpenHandled?(): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
@@ -1467,11 +1471,13 @@ export function SettingsPage({
         activeSection={section}
         ariaLabel="Account settings categories"
         initialMobileSectionOpen={initialSection !== "general"}
+        mobileSectionOpen={mobileSectionOpen}
         searchPlaceholder="Search all settings"
         searchQuery={settingsSearchQuery}
         sections={navigationSections}
         title="Settings"
         onSearchQueryChange={setSettingsSearchQuery}
+        onMobileSectionOpenChange={onMobileSectionOpenChange}
         onSectionChange={(next) => {
           if (next === "code") setCodeActivated(true);
           setSection(next);

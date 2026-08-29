@@ -25,6 +25,18 @@ import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
 type ShellHeaderBindings = Readonly<Record<string, any>>;
 
+export function navigateMobileSettingsBack(
+  sectionOpen: boolean,
+  returnToRoot: () => void,
+  exitSettings: () => void,
+) {
+  if (sectionOpen) {
+    returnToRoot();
+    return;
+  }
+  exitSettings();
+}
+
 export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
   const {
     activeChat,
@@ -51,6 +63,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     isPopout,
     linkedConsoleChat,
     mobileTabGridOpen,
+    mobileSettingsSectionOpen,
     narrowViewport,
     openChatExplorerHere,
     openChatHistoryHere,
@@ -71,6 +84,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     selectedStandaloneChat,
     selectedTerminal,
     setDesktopSidebarDrawerOpen,
+    setMobileSettingsSectionOpen,
     setSettingsSection,
     setShowArchivedStandaloneChats,
     setShowImporter,
@@ -117,7 +131,13 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
         <MobileProjectHeader
           appMode={appMode}
           context="Account preferences"
-          onBack={closeCompactProject}
+          onBack={() =>
+            navigateMobileSettingsBack(
+              mobileSettingsSectionOpen,
+              () => setMobileSettingsSectionOpen(false),
+              closeCompactProject,
+            )
+          }
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Settings"
         />
@@ -148,7 +168,13 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
             selectedProject.github?.nameWithOwner ??
             selectedProject.source?.displayPath
           }
-          onBack={returnToCompactProjectOverview}
+          onBack={() =>
+            navigateMobileSettingsBack(
+              mobileSettingsSectionOpen,
+              () => setMobileSettingsSectionOpen(false),
+              returnToCompactProjectOverview,
+            )
+          }
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Project settings"
         />

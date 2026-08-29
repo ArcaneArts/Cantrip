@@ -514,6 +514,7 @@ export function ProjectSettingsPage({
   explorers,
   initialSection = "general",
   initialWorkflowId,
+  mobileSectionOpen,
   onCreateChat,
   onCreateCode,
   onCreateExplorer,
@@ -523,6 +524,7 @@ export function ProjectSettingsPage({
   onOpenTunnelOwner,
   onOpenImportedChat,
   onOpenPolicySettings,
+  onMobileSectionOpenChange,
   project,
   projectViews,
   statuses,
@@ -536,6 +538,7 @@ export function ProjectSettingsPage({
   explorers: ExplorerSummary[];
   initialSection?: ProjectSettingsSection;
   initialWorkflowId?: string | null;
+  mobileSectionOpen?: boolean;
   onCreateChat(worktreeId: string): void;
   onCreateCode(worktreeId: string): void;
   onCreateExplorer(worktreeId: string): void;
@@ -545,6 +548,7 @@ export function ProjectSettingsPage({
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
   onOpenImportedChat(chatId: string): void;
   onOpenPolicySettings?(policyId?: string): void;
+  onMobileSectionOpenChange?(open: boolean): void;
   project: ProjectSummary;
   projectViews: ProjectViewSummary[];
   statuses: WorktreeStatusMap;
@@ -684,11 +688,13 @@ export function ProjectSettingsPage({
         activeSection={section}
         ariaLabel="Project settings categories"
         initialMobileSectionOpen={normalizedInitialSection !== "general"}
+        mobileSectionOpen={mobileSectionOpen}
         searchPlaceholder="Search all project settings"
         searchQuery={settingsSearchQuery}
         sections={visibleSettingsSections}
         title={`${project.name} settings`}
         onSearchQueryChange={setSettingsSearchQuery}
+        onMobileSectionOpenChange={onMobileSectionOpenChange}
         onSectionChange={setSection}
       >
         {section === "automations" ? (

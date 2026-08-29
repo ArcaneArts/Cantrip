@@ -1,7 +1,6 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { SettingsSearchField, type SettingsTab } from "./settings-controls";
@@ -171,6 +170,8 @@ export function SettingsNavigationLayout<SectionId extends string>({
   ariaLabel,
   children,
   initialMobileSectionOpen = false,
+  mobileSectionOpen: controlledMobileSectionOpen,
+  onMobileSectionOpenChange,
   onSearchQueryChange,
   onSectionChange,
   searchPlaceholder = "Search all settings",
@@ -182,6 +183,8 @@ export function SettingsNavigationLayout<SectionId extends string>({
   ariaLabel: string;
   children: ReactNode;
   initialMobileSectionOpen?: boolean;
+  mobileSectionOpen?: boolean;
+  onMobileSectionOpenChange?(open: boolean): void;
   onSearchQueryChange(query: string): void;
   onSectionChange(section: SectionId): void;
   searchPlaceholder?: string;
@@ -189,9 +192,16 @@ export function SettingsNavigationLayout<SectionId extends string>({
   sections: readonly SettingsNavigationSection<SectionId>[];
   title: string;
 }) {
-  const [mobileSectionOpen, setMobileSectionOpen] = useState(
-    initialMobileSectionOpen,
-  );
+  const [uncontrolledMobileSectionOpen, setUncontrolledMobileSectionOpen] =
+    useState(initialMobileSectionOpen);
+  const mobileSectionOpen =
+    controlledMobileSectionOpen ?? uncontrolledMobileSectionOpen;
+  const setMobileSectionOpen = (open: boolean) => {
+    if (controlledMobileSectionOpen === undefined) {
+      setUncontrolledMobileSectionOpen(open);
+    }
+    onMobileSectionOpenChange?.(open);
+  };
   const normalizedQuery = searchQuery.trim();
   const active = sections.find(({ id }) => id === activeSection) ?? null;
   const results = useMemo(
@@ -277,16 +287,7 @@ export function SettingsNavigationLayout<SectionId extends string>({
         data-slot="settings-content"
       >
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-2 md:hidden">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => setMobileSectionOpen(false)}
-          >
-            <ChevronLeft className="size-4" />
-            All settings
-          </Button>
-          <span className="truncate text-sm font-medium">
+          <span className="truncate px-2 text-sm font-medium">
             {active?.label ?? title}
           </span>
         </div>
