@@ -68,6 +68,7 @@ vi.mock("@tanstack/react-query", () => ({
 import {
   explorerWorkerEncryptionBindingKey,
   explorerWorkerEncryptionBindingReady,
+  explorerWorkerEncryptionContinuityKey,
   explorerWorkerSecurityFingerprint,
   resetExplorerWorkerEncryptionReadinessForTests,
   useExplorerWorkerEncryption,
@@ -100,6 +101,20 @@ function binding(
   > = {},
 ): string {
   return explorerWorkerEncryptionBindingKey({
+    encryption,
+    explorer,
+    session,
+    worker: runtime.worker,
+    ...overrides,
+  });
+}
+
+function continuity(
+  overrides: Partial<
+    Parameters<typeof explorerWorkerEncryptionContinuityKey>[0]
+  > = {},
+): string {
+  return explorerWorkerEncryptionContinuityKey({
     encryption,
     explorer,
     session,
@@ -145,6 +160,22 @@ describe("Explorer worker encryption binding", () => {
     ).not.toBe(current);
     expect(
       binding({ explorer: { ...explorer, activeWorkerId: "worker-b" } }),
+    ).not.toBe(current);
+  });
+
+  it("keeps cache continuity across Explorer identities on the same authorization", () => {
+    const current = continuity();
+
+    expect(continuity({ explorer: { ...explorer, id: "explorer-b" } })).toBe(
+      current,
+    );
+    expect(
+      continuity({ explorer: { ...explorer, activeWorkerId: "worker-b" } }),
+    ).not.toBe(current);
+    expect(
+      continuity({
+        encryption: { ...encryption, masterKeyRevision: 4 },
+      }),
     ).not.toBe(current);
   });
 

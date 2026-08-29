@@ -32,6 +32,7 @@ const runtime = vi.hoisted(() => {
     entriesByPath: new Map<string, ExplorerEntry[]>(),
     gate: {
       bindingKey: "binding-a" as string | null,
+      continuityKey: "worker-authorization" as string | null,
       error: null as string | null,
       ready: true,
       retry: vi.fn(),
@@ -341,6 +342,53 @@ describe("project sidebar file tree encryption gate", () => {
     expect(
       reopenedEntries.every((entry) => entry.props["data-elite-global"]),
     ).toBe(true);
+    await act(async () => renderer.unmount());
+  });
+
+  it("preserves expanded folders when pinning hands the tree to a replacement Explorer", async () => {
+    runtime.entriesByPath.set("", [runtime.directoryEntry]);
+    runtime.entriesByPath.set("src", [runtime.entry]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+
+    const rootEntry = renderer.root.findByProps({ role: "treeitem" });
+    const clickTarget = {};
+    await act(async () =>
+      rootEntry.props.onClick({
+        currentTarget: clickTarget,
+        target: clickTarget,
+      }),
+    );
+    expect(renderer.root.findAllByProps({ role: "treeitem" })).toHaveLength(2);
+
+    runtime.gate.bindingKey = "binding-b";
+    await act(async () =>
+      renderer.update(
+        tree({
+          explorer: {
+            ...explorer,
+            id: "explorer-b",
+          },
+        }),
+      ),
+    );
+    expect(renderer.root.findAllByProps({ role: "treeitem" })).toHaveLength(2);
+
+    await act(async () =>
+      renderer.update(
+        tree({
+          explorer: {
+            ...explorer,
+            id: "explorer-c",
+            worktreeId: "worktree-b",
+          },
+        }),
+      ),
+    );
+    expect(renderer.root.findAllByProps({ role: "treeitem" })).toHaveLength(1);
+
     await act(async () => renderer.unmount());
   });
 

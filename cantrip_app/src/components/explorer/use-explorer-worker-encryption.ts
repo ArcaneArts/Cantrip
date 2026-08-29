@@ -82,7 +82,7 @@ export function explorerWorkerEncryptionBindingKey(input: {
   ]);
 }
 
-function explorerWorkerEncryptionAuthorizationKey(input: {
+export function explorerWorkerEncryptionContinuityKey(input: {
   encryption: ClientEncryptionSnapshot;
   explorer: ExplorerEncryptionBinding;
   session: ClientSessionContext | null;
@@ -189,6 +189,7 @@ export function useExplorerWorkerEncryption(
   enabled = true,
 ): {
   bindingKey: string | null;
+  continuityKey: string | null;
   error: string | null;
   ready: boolean;
   retry(): void;
@@ -223,7 +224,7 @@ export function useExplorerWorkerEncryption(
     : null;
   const authorizationKey =
     explorer && worker
-      ? explorerWorkerEncryptionAuthorizationKey({
+      ? explorerWorkerEncryptionContinuityKey({
           encryption,
           explorer,
           session,
@@ -327,6 +328,7 @@ export function useExplorerWorkerEncryption(
 
   return {
     bindingKey,
+    continuityKey: authorizationKey,
     error:
       authorizationError ??
       (enabled && explorer && workersFailed
