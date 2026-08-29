@@ -12,6 +12,28 @@ export type DesktopProjectRevealLabel =
 export type DesktopFolderRevealLabel =
   "Show in File Explorer" | "Show in Finder";
 export type DesktopProjectRevealButtonLabel = "Explorer" | "Finder";
+export type LocalProjectRevealResult =
+  | "opened"
+  | "worker-not-local"
+  | "server-mismatch"
+  | "source-path-missing"
+  | "outside-managed-root"
+  | "explorer-launch-failed";
+
+const localProjectRevealErrors: Record<
+  Exclude<LocalProjectRevealResult, "opened">,
+  string
+> = {
+  "worker-not-local": "This project's worker is not running on this desktop.",
+  "server-mismatch":
+    "This project's worker is connected to a different Cantrip server.",
+  "source-path-missing":
+    "The project folder no longer exists at the path reported by its worker.",
+  "outside-managed-root":
+    "The project folder is outside this worker's managed storage root.",
+  "explorer-launch-failed":
+    "The system file manager could not open the project folder.",
+};
 
 function desktopFileManagerName(
   desktopRuntime: boolean,
@@ -122,16 +144,17 @@ export async function coordinateDesktopProjectReveal(
 export async function coordinateDesktopProjectRevealPreference(
   preferLocalFolder: boolean,
   operations: {
-    revealLocalFolder(): Promise<boolean>;
+    revealLocalFolder(): Promise<LocalProjectRevealResult | boolean>;
     revealNetworkShare(): Promise<void>;
   },
 ): Promise<void> {
   if (preferLocalFolder) {
-    const revealed = await operations.revealLocalFolder();
-    if (!revealed) {
-      throw new Error("The project folder is not available on this desktop.");
+    const result = await operations.revealLocalFolder();
+    if (result === "opened" || result === true) return;
+    if (result === false) {
+      throw new Error("The local folder is not available on this desktop.");
     }
-    return;
+    throw new Error(localProjectRevealErrors[result]);
   }
   await operations.revealNetworkShare();
 }
@@ -179,9 +202,11 @@ export async function revealProjectInNativeFileManager(
         getActiveServerUrl(),
         relativePath,
       );
-      if (!request) return false;
+      if (!request) return "source-path-missing";
       const { invoke } = await import("@tauri-apps/api/core");
-      return invoke<boolean>("reveal_local_project_folder", { request });
+      return invoke<LocalProjectRevealResult>("reveal_local_project_folder", {
+        request,
+      });
     },
     revealNetworkShare: () => revealProjectNetworkShare(project, relativePath),
   });

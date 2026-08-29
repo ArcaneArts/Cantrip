@@ -80,6 +80,13 @@ pub(crate) enum DesktopWorkerProjectStorage {
     Repositories,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum LocalProjectDirectoryResolution {
+    Resolved(PathBuf),
+    SourcePathMissing,
+    OutsideManagedRoot,
+}
+
 impl DesktopWorkerProjectStorage {
     fn directory_name(self) -> Option<&'static str> {
         match self {
@@ -375,7 +382,7 @@ impl DesktopWorkers {
         worker_id: &str,
         storage: DesktopWorkerProjectStorage,
         requested_path: &Path,
-    ) -> Result<Option<PathBuf>, String> {
+    ) -> Result<Option<LocalProjectDirectoryResolution>, String> {
         let server_url = normalize_server_url(server_url)?;
         let local_worker = self
             .profiles
@@ -387,11 +394,20 @@ impl DesktopWorkers {
             return Ok(None);
         }
 
-        Ok(resolve_project_directory(
+        Ok(Some(resolve_project_directory(
             &self.profile_directory(worker_id),
             storage,
             requested_path,
-        ))
+        )))
+    }
+
+    pub(crate) fn has_worker_identity(&self, worker_id: &str) -> Result<bool, String> {
+        Ok(self
+            .profiles
+            .lock()
+            .map_err(|_| "The desktop worker registry is unavailable.".to_string())?
+            .iter()
+            .any(|profile| profile.worker_id == worker_id))
     }
 
     pub(crate) fn resolve_chat_scratch_directory(
@@ -659,27 +675,36 @@ pub(crate) fn resolve_project_directory_under_root(
     worker_data_directory: &Path,
     storage: DesktopWorkerProjectStorage,
     requested_path: &Path,
-) -> Option<PathBuf> {
-    let profile_root = fs::canonicalize(worker_data_directory).ok()?;
-    let storage_root = fs::canonicalize(profile_root.join(storage.directory_name()?)).ok()?;
+) -> LocalProjectDirectoryResolution {
+    let Ok(project_directory) = fs::canonicalize(requested_path) else {
+        return LocalProjectDirectoryResolution::SourcePathMissing;
+    };
+    if !project_directory.is_dir() {
+        return LocalProjectDirectoryResolution::SourcePathMissing;
+    }
+    let Some(storage_directory) = storage.directory_name() else {
+        return LocalProjectDirectoryResolution::OutsideManagedRoot;
+    };
+    let Ok(profile_root) = fs::canonicalize(worker_data_directory) else {
+        return LocalProjectDirectoryResolution::OutsideManagedRoot;
+    };
+    let Ok(storage_root) = fs::canonicalize(profile_root.join(storage_directory)) else {
+        return LocalProjectDirectoryResolution::OutsideManagedRoot;
+    };
     if storage_root == profile_root || !storage_root.starts_with(&profile_root) {
-        return None;
+        return LocalProjectDirectoryResolution::OutsideManagedRoot;
     }
-    let project_directory = fs::canonicalize(requested_path).ok()?;
-    if project_directory == storage_root
-        || !project_directory.starts_with(&storage_root)
-        || !project_directory.is_dir()
-    {
-        return None;
+    if project_directory == storage_root || !project_directory.starts_with(&storage_root) {
+        return LocalProjectDirectoryResolution::OutsideManagedRoot;
     }
-    Some(project_directory)
+    LocalProjectDirectoryResolution::Resolved(project_directory)
 }
 
 pub(crate) fn resolve_project_directory(
     worker_data_directory: &Path,
     storage: DesktopWorkerProjectStorage,
     requested_path: &Path,
-) -> Option<PathBuf> {
+) -> LocalProjectDirectoryResolution {
     if storage != DesktopWorkerProjectStorage::ExternalFolder {
         return resolve_project_directory_under_root(
             worker_data_directory,
@@ -687,8 +712,13 @@ pub(crate) fn resolve_project_directory(
             requested_path,
         );
     }
-    let project_directory = fs::canonicalize(requested_path).ok()?;
-    project_directory.is_dir().then_some(project_directory)
+    let Ok(project_directory) = fs::canonicalize(requested_path) else {
+        return LocalProjectDirectoryResolution::SourcePathMissing;
+    };
+    if !project_directory.is_dir() {
+        return LocalProjectDirectoryResolution::SourcePathMissing;
+    }
+    LocalProjectDirectoryResolution::Resolved(project_directory)
 }
 
 pub(crate) fn resolve_chat_scratch_directory(
@@ -1051,7 +1081,7 @@ mod tests {
         resolve_chat_scratch_directory, retained_profile_directories, should_autostart_profile,
         sibling_profile_directories, sort_worker_candidates, DesktopWorkerCandidate,
         DesktopWorkerProfile, DesktopWorkerProjectStorage, DesktopWorkers,
-        RetainedDesktopWorkerProfile, WorkerLaunch,
+        LocalProjectDirectoryResolution, RetainedDesktopWorkerProfile, WorkerLaunch,
     };
 
     fn test_manager(root: &Path) -> DesktopWorkers {
@@ -1290,7 +1320,9 @@ mod tests {
                     &repository,
                 )
                 .unwrap(),
-            Some(fs::canonicalize(&repository).unwrap())
+            Some(LocalProjectDirectoryResolution::Resolved(
+                fs::canonicalize(&repository).unwrap()
+            ))
         );
         assert_eq!(
             manager
@@ -1301,7 +1333,9 @@ mod tests {
                     &folder,
                 )
                 .unwrap(),
-            Some(fs::canonicalize(&folder).unwrap())
+            Some(LocalProjectDirectoryResolution::Resolved(
+                fs::canonicalize(&folder).unwrap()
+            ))
         );
         assert_eq!(
             manager
@@ -1312,7 +1346,9 @@ mod tests {
                     &outside,
                 )
                 .unwrap(),
-            Some(fs::canonicalize(&outside).unwrap())
+            Some(LocalProjectDirectoryResolution::Resolved(
+                fs::canonicalize(&outside).unwrap()
+            ))
         );
         assert_eq!(
             manager
@@ -1336,6 +1372,22 @@ mod tests {
                 .unwrap(),
             None
         );
+        let missing = root.join("missing");
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://cantrip.example",
+                    worker_id,
+                    DesktopWorkerProjectStorage::Repositories,
+                    &missing,
+                )
+                .unwrap(),
+            Some(LocalProjectDirectoryResolution::SourcePathMissing)
+        );
+        assert!(manager.has_worker_identity(worker_id).unwrap());
+        assert!(!manager
+            .has_worker_identity("desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f4")
+            .unwrap());
         assert_eq!(
             manager
                 .resolve_project_directory(
@@ -1356,7 +1408,7 @@ mod tests {
                     &outside,
                 )
                 .unwrap(),
-            None
+            Some(LocalProjectDirectoryResolution::OutsideManagedRoot)
         );
         assert_eq!(
             manager
@@ -1367,7 +1419,7 @@ mod tests {
                     &repository,
                 )
                 .unwrap(),
-            None
+            Some(LocalProjectDirectoryResolution::OutsideManagedRoot)
         );
 
         fs::remove_dir_all(root).unwrap();
