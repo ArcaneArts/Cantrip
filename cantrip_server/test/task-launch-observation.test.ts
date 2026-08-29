@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DEFAULT_TASK_LAUNCH_STAGE_TIMEOUT_MS,
   observeTaskLaunchStage,
   TaskLaunchStageTimeoutError,
   withTaskLaunchStageTimeout,
@@ -83,6 +84,26 @@ describe("Task launch observation", () => {
       }),
       "Scheduled Task launch stage failed",
     );
+  });
+
+  it("bounds every observed launch stage by default", async () => {
+    vi.useFakeTimers();
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const pending = observeTaskLaunchStage(
+      logger as never,
+      cycle,
+      "begin-turn",
+      () => new Promise<never>(() => undefined),
+      { slowWarningMs: null },
+    );
+    const rejection = expect(pending).rejects.toMatchObject({
+      name: "TaskLaunchStageTimeoutError",
+      stage: "begin-turn",
+      timeoutMs: DEFAULT_TASK_LAUNCH_STAGE_TIMEOUT_MS,
+    });
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_TASK_LAUNCH_STAGE_TIMEOUT_MS);
+    await rejection;
   });
 
   it("bounds scheduler runtime resolution without lifecycle log noise", async () => {

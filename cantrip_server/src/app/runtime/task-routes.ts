@@ -1071,105 +1071,115 @@ export function installTaskRouteRuntime(
             );
           },
           operation: () =>
-            observeTaskLaunchStage(app.log, claim.cycle, launchStage, () =>
-              beginTurn(
-                context,
-                {
-                  text: "Run the encrypted Task operation.",
-                  attachmentIds: startedTask.draftAttachmentIds,
-                  idempotencyKey: `task-operation:${request.operationId}`,
-                  modelId: taskModelId,
-                  reasoningEffort: taskModelConfiguration.reasoningEffort,
-                  customSubagentModel:
-                    taskModelConfiguration.customSubagentModel,
-                  subagentModelId: taskModelConfiguration.subagentModelId,
-                  subagentReasoningEffort:
-                    taskModelConfiguration.subagentReasoningEffort,
-                },
-                {
-                  purpose: "Scheduled encrypted Task operation",
-                  encryptedTaskMessages: { userMessage: request.userMessage },
-                  preflightWorkerCommandTimeoutMs:
-                    TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
-                  runtimes: [runtime],
-                  taskDispatchLease: claim.lease,
-                  structuredResult: {
-                    taskOperation: request,
-                    async onCompleted({ attribution, result }) {
-                      await repository.taskDispatch.heartbeat(claim.lease);
-                      const relayResult = parseTaskOperationRelayResult(
-                        result.structuredResult,
-                        request,
-                      );
-                      const completed =
-                        await repository.tasks.completeOperation(
+            observeTaskLaunchStage(
+              app.log,
+              claim.cycle,
+              launchStage,
+              () =>
+                beginTurn(
+                  context,
+                  {
+                    text: "Run the encrypted Task operation.",
+                    attachmentIds: startedTask.draftAttachmentIds,
+                    idempotencyKey: `task-operation:${request.operationId}`,
+                    modelId: taskModelId,
+                    reasoningEffort: taskModelConfiguration.reasoningEffort,
+                    customSubagentModel:
+                      taskModelConfiguration.customSubagentModel,
+                    subagentModelId: taskModelConfiguration.subagentModelId,
+                    subagentReasoningEffort:
+                      taskModelConfiguration.subagentReasoningEffort,
+                  },
+                  {
+                    purpose: "Scheduled encrypted Task operation",
+                    encryptedTaskMessages: { userMessage: request.userMessage },
+                    preflightWorkerCommandTimeoutMs:
+                      TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
+                    runtimes: [runtime],
+                    taskDispatchLease: claim.lease,
+                    structuredResult: {
+                      taskOperation: request,
+                      async onCompleted({ attribution, result }) {
+                        await repository.taskDispatch.heartbeat(claim.lease);
+                        const relayResult = parseTaskOperationRelayResult(
+                          result.structuredResult,
+                          request,
+                        );
+                        const completed =
+                          await repository.tasks.completeOperation(
+                            ownerId,
+                            context.chatId,
+                            request.operationId,
+                            relayResult,
+                            result.turnId ?? null,
+                          );
+                        if (!completed) {
+                          throw new Error(
+                            "Encrypted Task operation was not found.",
+                          );
+                        }
+                        const assistantMessage = await appendLiveTaskMessage(
+                          ownerId,
+                          context.chatId,
+                          relayResult.assistantMessage,
+                          attribution,
+                          context,
+                        );
+                        if (!assistantMessage) {
+                          throw new Error("Task Chat was not found.");
+                        }
+                        await repository.tasks.attachOperationAssistantMessage(
                           ownerId,
                           context.chatId,
                           request.operationId,
-                          relayResult,
-                          result.turnId ?? null,
+                          assistantMessage.id,
                         );
-                      if (!completed) {
-                        throw new Error(
-                          "Encrypted Task operation was not found.",
+                        if (request.classification.kind !== "finalize") {
+                          await repository.taskDispatch.settle(
+                            claim.lease,
+                            "succeeded",
+                          );
+                          queueTaskScheduleTick();
+                        }
+                        publishChatInvalidation(
+                          context.chatId,
+                          "task",
+                          null,
+                          context,
                         );
-                      }
-                      const assistantMessage = await appendLiveTaskMessage(
-                        ownerId,
-                        context.chatId,
-                        relayResult.assistantMessage,
-                        attribution,
-                        context,
-                      );
-                      if (!assistantMessage) {
-                        throw new Error("Task Chat was not found.");
-                      }
-                      await repository.tasks.attachOperationAssistantMessage(
-                        ownerId,
-                        context.chatId,
-                        request.operationId,
-                        assistantMessage.id,
-                      );
-                      if (request.classification.kind !== "finalize") {
-                        await repository.taskDispatch.settle(
-                          claim.lease,
-                          "succeeded",
-                        );
-                        queueTaskScheduleTick();
-                      }
-                      publishChatInvalidation(
-                        context.chatId,
-                        "task",
-                        null,
-                        context,
-                      );
-                    },
-                    async afterCompleted() {
-                      if (request.classification.kind !== "finalize") return;
-                      await launchClaimedGoal(request.operationId);
-                    },
-                    async onFailed() {
-                      await finishClaimedTaskFailure(ownerId, claim);
+                      },
+                      async afterCompleted() {
+                        if (request.classification.kind !== "finalize") return;
+                        await launchClaimedGoal(request.operationId);
+                      },
+                      async onFailed() {
+                        await finishClaimedTaskFailure(ownerId, claim);
+                      },
                     },
                   },
-                },
-              ),
+                ),
+              { timeoutMs: TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS },
             ),
         });
         if (!userMessage.executionLaneId) {
           throw new Error("Encrypted Task operation did not acquire a lane.");
         }
         launchStage = "attach-execution";
-        await observeTaskLaunchStage(app.log, claim.cycle, launchStage, () =>
-          repository.tasks.attachOperationExecution(
-            ownerId,
-            context.chatId,
-            request.operationId,
-            {
-              executionLaneId: userMessage.executionLaneId!,
-              userMessageId: userMessage.id,
-            },
-          ),
+        await observeTaskLaunchStage(
+          app.log,
+          claim.cycle,
+          launchStage,
+          () =>
+            repository.tasks.attachOperationExecution(
+              ownerId,
+              context.chatId,
+              request.operationId,
+              {
+                executionLaneId: userMessage.executionLaneId!,
+                userMessageId: userMessage.id,
+              },
+            ),
+          { timeoutMs: TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS },
         );
       } catch (error) {
         app.log.warn(

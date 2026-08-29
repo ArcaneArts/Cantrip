@@ -1,5 +1,7 @@
 import { YOLO_PERMISSION_PROFILE_ID } from "@cantrip/protocol";
 
+import { DEFAULT_TASK_LAUNCH_STAGE_TIMEOUT_MS } from "../../tasks/launch-observation.js";
+
 export const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
 export const DEFAULT_API_BODY_LIMIT_BYTES = 1_024 * 1_024;
 export const DEFAULT_UPLOAD_LIMIT_BYTES = 25 * 1_024 * 1_024;
@@ -34,7 +36,8 @@ export const REMOTE_DESKTOP_FLEET_TARGET_LIMIT = 4_096;
 export const REMOTE_DESKTOP_FLEET_SURFACE_LIMIT = 64;
 export const FINITE_WORKER_COMMAND_TIMEOUT_MS = 30 * 60_000;
 export const STREAMING_WORKER_COMMAND_TIMEOUT_MS = null;
-export const TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS = 30_000;
+export const TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS =
+  DEFAULT_TASK_LAUNCH_STAGE_TIMEOUT_MS;
 
 export const CONFIGURABLE_PERMISSION_PROFILES = [
   { id: ":read-only", description: "Inspection only", allowed: true },
