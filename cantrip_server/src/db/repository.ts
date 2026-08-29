@@ -41,7 +41,6 @@ import type {
   EncryptedBrowserUpdate,
   EncryptedChatCreate,
   EncryptedStandaloneChatCreate,
-  ChatExperience,
   ChatExecutionLaneSummary,
   ContextualChatExecutionLaneSummary,
   EncryptedChatFork,
@@ -199,21 +198,15 @@ import {
   eq,
   exists,
   gt,
-  gte,
   inArray,
   isNull,
   isNotNull,
-  lt,
   ne,
   notInArray,
   or,
   sql,
 } from "drizzle-orm";
 
-import {
-  CHAT_MESSAGE_PAGE_BOUNDARY_MAX,
-  selectChatMessagePageWindow,
-} from "./chat-message-pagination.js";
 import { CodeSettingsRepository } from "./code-settings.js";
 import type { QuotaTokenAnalytics } from "../analytics/quota-token.js";
 import type { SecretVault } from "../security/secret-vault.js";
@@ -337,6 +330,7 @@ import {
   toEncryptedChatMessage,
   toTaskMessage,
 } from "./repository/message-mappers.js";
+import { MessageQueryRepository } from "./repository/message-queries.js";
 import {
   TerminalRepository,
   type TerminalExecutionContext,
@@ -605,6 +599,7 @@ export class ServerRepository {
   readonly chatRuntimeContext: ChatRuntimeContextRepository;
   readonly agentInteractions: AgentInteractionRepository;
   readonly chatAttachments: ChatAttachmentRepository;
+  readonly messageQueries: MessageQueryRepository;
   readonly terminals: TerminalRepository;
   readonly explorers: ExplorerRepository;
   readonly codeSurfaces: CodeSurfaceRepository;
@@ -769,6 +764,7 @@ export class ServerRepository {
       getChatAttachment: (ownerId, attachmentId) =>
         this.getChatAttachment(ownerId, attachmentId),
     });
+    this.messageQueries = new MessageQueryRepository(database);
     this.terminals = new TerminalRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
@@ -4292,79 +4288,21 @@ export class ServerRepository {
   }
 
   async listMessages(ownerId: string, chatId: string): Promise<ChatMessage[]> {
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, "agent"),
-        ),
-      )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.chatMessages.chatId, chatId))
-      .orderBy(asc(schema.chatMessages.sequence));
-    return rows.map(({ message }) => toChatMessage(message));
+    return this.messageQueries.listMessages(ownerId, chatId);
   }
 
   async listEncryptedMessages(
     ownerId: string,
     chatId: string,
   ): Promise<ChatMessageOpaqueSummary[]> {
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, "agent"),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chatMessages.chatId, chatId),
-          isNotNull(schema.chatMessages.protectedContent),
-        ),
-      )
-      .orderBy(asc(schema.chatMessages.sequence));
-    return rows.map(({ message }) => toEncryptedChatMessage(message));
+    return this.messageQueries.listEncryptedMessages(ownerId, chatId);
   }
 
   async getLatestEncryptedUserMessage(
     ownerId: string,
     chatId: string,
   ): Promise<ChatMessageOpaqueSummary | null> {
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, "agent"),
-          isNull(schema.chats.archivedAt),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chatMessages.chatId, chatId),
-          eq(schema.chatMessages.role, "user"),
-          isNotNull(schema.chatMessages.protectedContent),
-        ),
-      )
-      .orderBy(desc(schema.chatMessages.sequence))
-      .limit(1);
-    return rows[0] ? toEncryptedChatMessage(rows[0].message) : null;
+    return this.messageQueries.getLatestEncryptedUserMessage(ownerId, chatId);
   }
 
   async trimLatestEncryptedTurn(
@@ -4372,144 +4310,11 @@ export class ServerRepository {
     chatId: string,
     messageId: string,
   ): Promise<boolean> {
-    return this.database.transaction(async (transaction) => {
-      const chats = await transaction
-        .select({ id: schema.chats.id })
-        .from(schema.chats)
-        .where(
-          and(
-            eq(schema.chats.id, chatId),
-            eq(schema.chats.ownerId, ownerId),
-            eq(schema.chats.experience, "agent"),
-            isNull(schema.chats.archivedAt),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      if (!chats[0]) return false;
-      const messages = await transaction
-        .select({
-          id: schema.chatMessages.id,
-          sequence: schema.chatMessages.sequence,
-        })
-        .from(schema.chatMessages)
-        .where(
-          and(
-            eq(schema.chatMessages.chatId, chatId),
-            eq(schema.chatMessages.role, "user"),
-            isNotNull(schema.chatMessages.protectedContent),
-          ),
-        )
-        .orderBy(desc(schema.chatMessages.sequence))
-        .limit(1);
-      const latest = messages[0];
-      if (!latest || latest.id !== messageId) return false;
-      await transaction
-        .delete(schema.chatMessages)
-        .where(
-          and(
-            eq(schema.chatMessages.chatId, chatId),
-            gte(schema.chatMessages.sequence, latest.sequence),
-          ),
-        );
-      await transaction
-        .update(schema.chats)
-        .set({
-          protectedPlan: null,
-          hasPendingPlanQuestion: false,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.chats.id, chatId));
-      return true;
-    });
-  }
-
-  private async listOpaqueMessagePageRows(
-    ownerId: string,
-    chatId: string,
-    experience: ChatExperience,
-    query: ChatMessagePageQuery,
-  ): Promise<{
-    messages: (typeof schema.chatMessages.$inferSelect)[];
-    page: ChatMessagePageInfo;
-  }> {
-    const protectedColumn =
-      experience === "task"
-        ? schema.chatMessages.taskProtectedContent
-        : schema.chatMessages.protectedContent;
-    const cursorCondition = query.beforeSequence
-      ? lt(schema.chatMessages.sequence, query.beforeSequence)
-      : undefined;
-    const headers = await this.database
-      .select({
-        role: schema.chatMessages.role,
-        sequence: schema.chatMessages.sequence,
-      })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, experience),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chatMessages.chatId, chatId),
-          isNotNull(protectedColumn),
-          cursorCondition,
-        ),
-      )
-      .orderBy(desc(schema.chatMessages.sequence))
-      .limit(CHAT_MESSAGE_PAGE_BOUNDARY_MAX + 1);
-
-    if (headers.length === 0) {
-      return {
-        messages: [],
-        page: {
-          hasMore: false,
-          nextBeforeSequence: null,
-          oldestSequence: null,
-          newestSequence: null,
-          startsAtUserTurn: true,
-        },
-      };
-    }
-
-    const window = selectChatMessagePageWindow(headers, query.limit);
-    const selectedHeaders = window.selected;
-    const selectedSequences = selectedHeaders.map(({ sequence }) => sequence);
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, experience),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chatMessages.chatId, chatId),
-          isNotNull(protectedColumn),
-          inArray(schema.chatMessages.sequence, selectedSequences),
-        ),
-      )
-      .orderBy(asc(schema.chatMessages.sequence));
-    const oldestSequence = selectedHeaders.at(-1)?.sequence ?? null;
-    return {
-      messages: rows.map(({ message }) => message),
-      page: {
-        hasMore: window.hasMore,
-        nextBeforeSequence: window.hasMore ? oldestSequence : null,
-        oldestSequence,
-        newestSequence: selectedHeaders[0]?.sequence ?? null,
-        startsAtUserTurn: window.startsAtUserTurn,
-      },
-    };
+    return this.messageQueries.trimLatestEncryptedTurn(
+      ownerId,
+      chatId,
+      messageId,
+    );
   }
 
   async listEncryptedMessagePage(
@@ -4520,69 +4325,18 @@ export class ServerRepository {
     messages: ChatMessageOpaqueSummary[];
     page: ChatMessagePageInfo;
   }> {
-    const result = await this.listOpaqueMessagePageRows(
-      ownerId,
-      chatId,
-      "agent",
-      query,
-    );
-    return {
-      messages: result.messages.map(toEncryptedChatMessage),
-      page: result.page,
-    };
+    return this.messageQueries.listEncryptedMessagePage(ownerId, chatId, query);
   }
 
   async listAgentMessageWire(ownerId: string, chatId: string) {
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, "agent"),
-        ),
-      )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.chatMessages.chatId, chatId))
-      .orderBy(asc(schema.chatMessages.sequence));
-    return rows.map(({ message }) =>
-      message.protectedContent
-        ? toEncryptedChatMessage(message)
-        : toChatMessage(message),
-    );
+    return this.messageQueries.listAgentMessageWire(ownerId, chatId);
   }
 
   async listTaskMessages(
     ownerId: string,
     chatId: string,
   ): Promise<TaskMessageOpaqueSummary[]> {
-    const rows = await this.database
-      .select({ message: schema.chatMessages })
-      .from(schema.chatMessages)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatMessages.chatId),
-          eq(schema.chats.experience, "task"),
-        ),
-      )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.chatMessages.chatId, chatId))
-      .orderBy(asc(schema.chatMessages.sequence));
-    return rows.map(({ message }) => toTaskMessage(message));
+    return this.messageQueries.listTaskMessages(ownerId, chatId);
   }
 
   async listTaskMessagePage(
@@ -4593,40 +4347,11 @@ export class ServerRepository {
     messages: TaskMessageOpaqueSummary[];
     page: ChatMessagePageInfo;
   }> {
-    const result = await this.listOpaqueMessagePageRows(
-      ownerId,
-      chatId,
-      "task",
-      query,
-    );
-    return {
-      messages: result.messages.map(toTaskMessage),
-      page: result.page,
-    };
+    return this.messageQueries.listTaskMessagePage(ownerId, chatId, query);
   }
 
   async listMessageHeaders(ownerId: string, chatId: string) {
-    const rows = await this.database
-      .select({
-        id: schema.chatMessages.id,
-        executionLaneId: schema.chatMessages.executionLaneId,
-        role: schema.chatMessages.role,
-        createdAt: schema.chatMessages.createdAt,
-      })
-      .from(schema.chatMessages)
-      .innerJoin(schema.chats, eq(schema.chats.id, schema.chatMessages.chatId))
-      .where(
-        and(
-          eq(schema.chatMessages.chatId, chatId),
-          eq(schema.chats.ownerId, ownerId),
-        ),
-      )
-      .orderBy(asc(schema.chatMessages.sequence));
-    return rows.map((row) => ({
-      ...row,
-      role: row.role as "assistant" | "system" | "user",
-      createdAt: toISOString(row.createdAt),
-    }));
+    return this.messageQueries.listMessageHeaders(ownerId, chatId);
   }
 
   async listQueuedPrompts(
