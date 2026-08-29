@@ -60,6 +60,7 @@ describe("mobile project selector", () => {
         onNewProject={vi.fn()}
         onOpenAdmin={vi.fn()}
         onOpenSettings={vi.fn()}
+        onSwitchChat={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
       />,
@@ -70,6 +71,7 @@ describe("mobile project selector", () => {
     expect(markup).toContain("Add project to Default");
     expect(markup).not.toContain("New Project");
     expect(markup).toContain('aria-label="Open settings"');
+    expect(markup).toContain('aria-label="Switch to Chats"');
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).not.toContain("ArcaneArts/CareMap");
   });
@@ -98,6 +100,7 @@ describe("mobile project selector", () => {
         onNewProject={vi.fn()}
         onOpenAdmin={vi.fn()}
         onOpenSettings={vi.fn()}
+        onSwitchChat={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
       />,
@@ -142,6 +145,7 @@ describe("mobile project selector", () => {
         onNewProject={vi.fn()}
         onOpenAdmin={vi.fn()}
         onOpenSettings={vi.fn()}
+        onSwitchChat={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
       />,
@@ -183,6 +187,34 @@ describe("mobile project selector", () => {
     expect(markup).toContain('data-slot="mobile-project-header-actions"');
     expect(markup).toContain('data-run-configuration-control="true"');
     expect(markup).toContain("Run configuration");
+  });
+
+  it("exposes a compact app mode switch after project actions", () => {
+    const markup = renderToStaticMarkup(
+      <MobileProjectHeader
+        actions={<div data-run-configuration-control="true" />}
+        appMode="ide"
+        onSwitchAppMode={vi.fn()}
+        title="Cantrip"
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Switch to Chats"');
+    expect(
+      markup.indexOf('data-run-configuration-control="true"'),
+    ).toBeLessThan(markup.indexOf('aria-label="Switch to Chats"'));
+  });
+
+  it("offers a return to the IDE from compact Chat headers", () => {
+    const markup = renderToStaticMarkup(
+      <MobileProjectHeader
+        appMode="chat"
+        onSwitchAppMode={vi.fn()}
+        title="Standalone chat"
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Switch to IDE"');
   });
 
   it("keeps the Run control at the right edge after project settings", () => {

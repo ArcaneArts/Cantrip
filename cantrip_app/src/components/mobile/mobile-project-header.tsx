@@ -1,21 +1,26 @@
 import { ArrowLeft, Settings, X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch";
 import { Button } from "@/components/ui/button";
 
 export function MobileProjectHeader({
   actions,
+  appMode,
   context,
   onBack,
   onCloseProject,
   onOpenProjectSettings,
+  onSwitchAppMode,
   title,
 }: {
   actions?: ReactNode;
+  appMode?: "chat" | "ide" | null;
   context?: string | null;
   onBack?: () => void;
   onCloseProject?: () => void;
   onOpenProjectSettings?: () => void;
+  onSwitchAppMode?: () => void;
   title: string;
 }) {
   return (
@@ -48,7 +53,7 @@ export function MobileProjectHeader({
           <p className="truncate text-xs text-muted-foreground">{context}</p>
         ) : null}
       </div>
-      {onOpenProjectSettings || actions ? (
+      {onOpenProjectSettings || actions || (appMode && onSwitchAppMode) ? (
         <div
           className="flex shrink-0 items-center gap-1"
           data-slot="mobile-project-header-actions"
@@ -65,6 +70,12 @@ export function MobileProjectHeader({
             </Button>
           ) : null}
           {actions}
+          {appMode && onSwitchAppMode ? (
+            <MobileAppModeSwitch
+              currentMode={appMode}
+              onSwitch={onSwitchAppMode}
+            />
+          ) : null}
         </div>
       ) : null}
     </header>

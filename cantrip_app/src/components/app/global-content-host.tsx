@@ -269,6 +269,7 @@ export function GlobalContentHost({
     standaloneChats,
     standaloneFilePath,
     standaloneFilesOpen,
+    switchToChat,
     tabLayout,
     terminalCommandPaletteTerminalId,
     terminalServiceTerminalId,
@@ -301,6 +302,7 @@ export function GlobalContentHost({
           onNewProject={(source) => openProjectCreateSource(source, true)}
           onOpenAdmin={openServerAdmin}
           onOpenSettings={() => openCompactRootSettings()}
+          onSwitchChat={switchToChat}
           onSelectProject={selectProjectFromSidebar}
           onSelectWorkspace={selectProjectWorkspace}
         />
