@@ -34,6 +34,7 @@ import {
   type TaskOperationStart,
 } from "@cantrip/protocol/tasks";
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { cantripVersion } from "@cantrip/version";
 
 import {
   chatIsExecuting,
@@ -796,6 +797,7 @@ export function installTaskRouteRuntime(
                   workerId: claimed.cycle.physicalWorkerId,
                   modelRouteId: claimed.cycle.modelRouteId,
                   providerAccountId: claimed.cycle.providerAccountId,
+                  serverVersion: cantripVersion.version,
                   attempt: claimed.cycle.attemptCount,
                 },
                 "Queued Task claimed for execution",
@@ -813,6 +815,7 @@ export function installTaskRouteRuntime(
                     status: "failed",
                     chatId: claimed.cycle.chatId,
                     cycleId: claimed.cycle.id,
+                    serverVersion: cantripVersion.version,
                     err: error,
                   },
                   "Scheduled Task execution failed",
@@ -1065,6 +1068,7 @@ export function installTaskRouteRuntime(
                 status: "degraded",
                 chatId: claim.cycle.chatId,
                 cycleId: claim.cycle.id,
+                serverVersion: cantripVersion.version,
                 err: error,
               },
               "Could not retain the Task dispatch lease during launch preflight",
@@ -1192,6 +1196,7 @@ export function installTaskRouteRuntime(
             stage: launchStage,
             chatId: claim.cycle.chatId,
             cycleId: claim.cycle.id,
+            serverVersion: cantripVersion.version,
             err: error,
           },
           "Scheduled Task operation failed to start",

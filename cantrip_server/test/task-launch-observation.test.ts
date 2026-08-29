@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { cantripVersion } from "@cantrip/version";
 
 import {
   DEFAULT_TASK_LAUNCH_STAGE_TIMEOUT_MS,
@@ -31,6 +32,7 @@ describe("Task launch observation", () => {
       1,
       expect.objectContaining({
         event: "task.operation.launch-stage",
+        serverVersion: cantripVersion.version,
         status: "started",
         stage: "resolve-context",
       }),

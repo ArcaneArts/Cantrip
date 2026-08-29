@@ -3,6 +3,7 @@ import type {
   ServerBootstrap,
   UserSummary,
 } from "@cantrip/protocol";
+import { CANTRIP_VERSION } from "@cantrip/version";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import {
@@ -26,7 +27,10 @@ import { MobileSignInScanner } from "@/components/auth/mobile-sign-in-scanner";
 import { SessionWindowDragRegion } from "@/components/auth/session-window-drag-region";
 import { WorkerObservationSession } from "@/components/auth/worker-observation-session";
 import { AddServerForm } from "@/components/servers/add-server-form";
-import { ServerSwitcher } from "@/components/servers/server-switcher";
+import {
+  ServerSwitcher,
+  serverVersionCompatibility,
+} from "@/components/servers/server-switcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -69,6 +73,20 @@ type AuthenticatedSessionContext = {
   expiresAt: string | null;
   user: UserSummary;
 };
+
+function serverSessionLogFields(bootstrap: ServerBootstrap) {
+  const serverVersion = bootstrap.server.version.version;
+  return {
+    clientVersion: CANTRIP_VERSION,
+    serverBootstrapMode: bootstrap.server.bootstrapMode,
+    serverDeploymentMode: bootstrap.server.deploymentMode,
+    serverVersion,
+    serverVersionCompatibility: serverVersionCompatibility(
+      serverVersion,
+      CANTRIP_VERSION,
+    ),
+  };
+}
 
 type ApplicationSessionState =
   | { kind: "loading" }
@@ -158,6 +176,7 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
       event: "session.load.completed",
       operation: "load-session",
       serverId: bootstrap.server.id,
+      ...serverSessionLogFields(bootstrap),
       status: "authenticated",
       subsystem: "authentication",
     });
@@ -196,6 +215,7 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
       event: "session.load.completed",
       operation: "load-session",
       serverId: bootstrap.server.id,
+      ...serverSessionLogFields(bootstrap),
       status: "signed-out",
       subsystem: "authentication",
     });
@@ -222,6 +242,7 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
     event: "session.load.completed",
     operation: "load-session",
     serverId: bootstrap.server.id,
+    ...serverSessionLogFields(bootstrap),
     status: "authenticated",
     subsystem: "authentication",
   });
