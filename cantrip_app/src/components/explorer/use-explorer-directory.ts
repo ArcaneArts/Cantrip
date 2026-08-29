@@ -9,11 +9,29 @@ import { getExplorerDirectory, getExplorerDirectoryCommits } from "@/lib/api";
 // bounded fallback for filesystems where recursive watching is unavailable.
 const EXPLORER_DIRECTORY_STALE_TIME_MS = 30_000;
 
+function sameDirectoryLocation(
+  queryKey: readonly unknown[] | undefined,
+  projectId: string,
+  worktreeId: string,
+  path: string,
+  continuityKey: string,
+): boolean {
+  return Boolean(
+    queryKey &&
+    queryKey[0] === "explorer-directory" &&
+    queryKey[1] === projectId &&
+    queryKey[2] === worktreeId &&
+    queryKey[4] === path &&
+    queryKey[6] === continuityKey,
+  );
+}
+
 export function useExplorerDirectory({
   enabled,
   explorerId,
   gitStatus,
   path,
+  preservePreviousDataKey,
   projectId,
   queryScope,
   worktreeId,
@@ -22,12 +40,25 @@ export function useExplorerDirectory({
   explorerId: string;
   gitStatus: GitStatus | undefined;
   path: string;
+  preservePreviousDataKey?: string | null;
   projectId: string;
   queryScope: string;
   worktreeId: string;
 }) {
   const directory = useQuery({
     enabled,
+    placeholderData: preservePreviousDataKey
+      ? (previousData, previousQuery) =>
+          sameDirectoryLocation(
+            previousQuery?.queryKey,
+            projectId,
+            worktreeId,
+            path,
+            preservePreviousDataKey,
+          )
+            ? previousData
+            : undefined
+      : undefined,
     queryFn: () => getExplorerDirectory(explorerId, path),
     queryKey: [
       "explorer-directory",
@@ -36,6 +67,7 @@ export function useExplorerDirectory({
       explorerId,
       path,
       queryScope,
+      ...(preservePreviousDataKey ? [preservePreviousDataKey] : []),
     ],
     staleTime: EXPLORER_DIRECTORY_STALE_TIME_MS,
   });

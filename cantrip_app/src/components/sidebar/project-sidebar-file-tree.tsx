@@ -253,6 +253,7 @@ function SidebarFileRow({
 
 function SidebarDirectoryNode({
   activePath,
+  continuityKey,
   depth,
   entry,
   expandedPaths,
@@ -269,6 +270,7 @@ function SidebarDirectoryNode({
   onRenameValueChange,
   onToggle,
   projectId,
+  queryEnabled,
   queryScope,
   editingPath,
   renamePending,
@@ -277,6 +279,7 @@ function SidebarDirectoryNode({
   worktreeId,
 }: {
   activePath: string | null;
+  continuityKey: string | null;
   depth: number;
   entry: ExplorerEntry;
   expandedPaths: ReadonlySet<string>;
@@ -293,6 +296,7 @@ function SidebarDirectoryNode({
   onRenameValueChange(value: string): void;
   onToggle(path: string): void;
   projectId: string;
+  queryEnabled: boolean;
   queryScope: string;
   editingPath: string | null;
   renamePending: boolean;
@@ -302,10 +306,11 @@ function SidebarDirectoryNode({
 }) {
   const expanded = expandedPaths.has(entry.path);
   const { directory, entries } = useExplorerDirectory({
-    enabled: expanded,
+    enabled: expanded && queryEnabled,
     explorerId,
     gitStatus: undefined,
     path: entry.path,
+    preservePreviousDataKey: continuityKey,
     projectId,
     queryScope,
     worktreeId,
@@ -365,6 +370,7 @@ function SidebarDirectoryNode({
               child.kind === "directory" ? (
                 <SidebarDirectoryNode
                   activePath={activePath}
+                  continuityKey={continuityKey}
                   depth={depth + 1}
                   entry={child}
                   expandedPaths={expandedPaths}
@@ -383,6 +389,7 @@ function SidebarDirectoryNode({
                   onRenameValueChange={onRenameValueChange}
                   onToggle={onToggle}
                   projectId={projectId}
+                  queryEnabled={queryEnabled}
                   queryScope={queryScope}
                   renamePending={renamePending}
                   renameValue={renameValue}
@@ -494,6 +501,7 @@ export function ProjectSidebarFileTree({
     explorerId: explorer?.id ?? "unavailable",
     gitStatus: undefined,
     path: "",
+    preservePreviousDataKey: streamEncryption.continuityKey,
     projectId: explorer?.projectId ?? "unavailable",
     queryScope: streamEncryption.bindingKey ?? "unavailable",
     worktreeId: explorer?.worktreeId ?? "unavailable",
@@ -570,6 +578,9 @@ export function ProjectSidebarFileTree({
 
   useEffect(() => {
     setExpandedPaths(new Set());
+  }, [explorer?.activeWorkerId, explorer?.projectId, explorer?.worktreeId]);
+
+  useEffect(() => {
     setRenameTarget(null);
     setRenameError(null);
     setDeleteTarget(null);
@@ -700,7 +711,10 @@ export function ProjectSidebarFileTree({
           </p>
         ) : null}
         {filesCollapsed ? null : loading ||
-          (explorer && !streamEncryption.ready && !streamEncryption.error) ||
+          (explorer &&
+            !streamEncryption.ready &&
+            !streamEncryption.error &&
+            !directory.data) ||
           (explorer && directory.isLoading) ? (
           <div className="flex h-16 items-center justify-center text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
@@ -744,6 +758,7 @@ export function ProjectSidebarFileTree({
               entry.kind === "directory" ? (
                 <SidebarDirectoryNode
                   activePath={activePath}
+                  continuityKey={streamEncryption.continuityKey}
                   depth={0}
                   editingPath={renameTarget?.path ?? null}
                   entry={entry}
@@ -762,6 +777,7 @@ export function ProjectSidebarFileTree({
                   onRenameValueChange={setRenameValue}
                   onToggle={toggle}
                   projectId={explorer.projectId}
+                  queryEnabled={streamEncryption.ready}
                   queryScope={streamEncryption.bindingKey!}
                   renamePending={renamePending}
                   renameValue={renameValue}
