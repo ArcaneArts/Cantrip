@@ -3009,6 +3009,9 @@ export type WorkflowNodeExecutionRequest = z.infer<
 export type WorkflowNodeExecutionResult = z.infer<
   typeof workflowNodeExecutionResultSchema
 >;
+export type WorkflowNodeExecutionWorkerResult = z.infer<
+  typeof workflowNodeExecutionResultSchema
+>;
 export type WorkflowNodeInterruptResult = z.infer<
   typeof workflowNodeInterruptResultSchema
 >;
