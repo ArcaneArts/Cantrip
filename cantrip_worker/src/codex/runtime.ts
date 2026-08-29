@@ -15,8 +15,8 @@ import type {
   CodexSkillRootsResult,
   PermissionProfileCapability,
   PlanMode,
-  WorkflowNodeExecutionWorkerResult,
 } from "@cantrip/protocol";
+import type { WorkflowNodeExecutionWorkerResult } from "@cantrip/protocol/workflows";
 
 import type {
   CodexSkill,
