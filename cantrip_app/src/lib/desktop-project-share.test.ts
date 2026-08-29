@@ -64,17 +64,19 @@ describe("desktop project reveal", () => {
     );
   });
 
-  it("falls back to the network share when the preferred local folder is unavailable", async () => {
+  it("does not fall back to a network share when the preferred local folder is unavailable", async () => {
     const revealLocalFolder = vi.fn().mockResolvedValue(false);
     const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
 
-    await coordinateDesktopProjectRevealPreference(true, {
-      revealLocalFolder,
-      revealNetworkShare,
-    });
+    await expect(
+      coordinateDesktopProjectRevealPreference(true, {
+        revealLocalFolder,
+        revealNetworkShare,
+      }),
+    ).rejects.toThrow("The project folder is not available on this desktop.");
 
     expect(revealLocalFolder).toHaveBeenCalledOnce();
-    expect(revealNetworkShare).toHaveBeenCalledOnce();
+    expect(revealNetworkShare).not.toHaveBeenCalled();
   });
 
   it("uses the real folder only when Shift preference resolves locally", async () => {
