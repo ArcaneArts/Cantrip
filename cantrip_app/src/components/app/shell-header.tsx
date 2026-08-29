@@ -137,7 +137,10 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Server administration"
         />
-      ) : compactShell && showProjectSettings && selectedProject ? (
+      ) : compactShell &&
+        appMode === "ide" &&
+        showProjectSettings &&
+        selectedProject ? (
         <MobileProjectHeader
           actions={renderProjectRunConfigurationControl(true)}
           appMode={appMode}
@@ -149,7 +152,10 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Project settings"
         />
-      ) : compactShell && mobileTabGridOpen && selectedProject ? (
+      ) : compactShell &&
+        appMode === "ide" &&
+        mobileTabGridOpen &&
+        selectedProject ? (
         <MobileProjectHeader
           actions={renderProjectRunConfigurationControl(true)}
           appMode={appMode}
@@ -161,7 +167,10 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
           onSwitchAppMode={switchAppMode ?? undefined}
           title={selectedProject.name}
         />
-      ) : compactShell && projectOverviewSelected && selectedProject ? (
+      ) : compactShell &&
+        appMode === "ide" &&
+        projectOverviewSelected &&
+        selectedProject ? (
         <MobileProjectHeader
           actions={
             <>

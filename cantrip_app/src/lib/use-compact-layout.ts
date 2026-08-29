@@ -10,12 +10,11 @@ export function shouldUseCompactLayout(
   return mediaQueryMatches && !tauriRuntime;
 }
 
-export function shouldUseDesktopSidebarDrawer(
+export function shouldUseSidebarDrawer(
   mediaQueryMatches: boolean,
-  tauriRuntime: boolean,
   popout: boolean,
 ): boolean {
-  return mediaQueryMatches && tauriRuntime && !popout;
+  return mediaQueryMatches && !popout;
 }
 
 export function useNarrowViewport(): boolean {

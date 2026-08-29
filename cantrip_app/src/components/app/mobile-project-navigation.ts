@@ -115,6 +115,7 @@ export function mobileProjectShellModel({
   projectOverviewSelected,
   selectedProject,
   selectedProjectId,
+  showArchivedStandaloneChats,
   showImporter,
   showProjectSettings,
   showServerAdmin,
@@ -126,6 +127,7 @@ export function mobileProjectShellModel({
   projectOverviewSelected: boolean;
   selectedProject: boolean;
   selectedProjectId: string | null;
+  showArchivedStandaloneChats: boolean;
   showImporter: boolean;
   showProjectSettings: boolean;
   showServerAdmin: boolean;
@@ -141,15 +143,16 @@ export function mobileProjectShellModel({
     !showServerAdmin &&
     !showProjectSettings;
   const compactManagedHeader =
-    appMode === "ide" &&
     compactShell &&
-    (mobileProjectSelectorOpen ||
+    (showArchivedStandaloneChats ||
       showImporter ||
       showSettings ||
       showServerAdmin ||
-      showProjectSettings ||
-      mobileTabGridOpen ||
-      (projectOverviewSelected && selectedProject));
+      (appMode === "ide" &&
+        (mobileProjectSelectorOpen ||
+          showProjectSettings ||
+          mobileTabGridOpen ||
+          (projectOverviewSelected && selectedProject))));
   return { compactManagedHeader, mobileProjectSelectorOpen } as const;
 }
 

@@ -730,6 +730,7 @@ export function App() {
       projectOverviewSelected,
       selectedProject: Boolean(selectedProject),
       selectedProjectId,
+      showArchivedStandaloneChats,
       showImporter,
       showProjectSettings,
       showServerAdmin,

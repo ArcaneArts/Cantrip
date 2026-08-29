@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   shouldUseCompactLayout,
-  shouldUseDesktopSidebarDrawer,
+  shouldUseSidebarDrawer,
 } from "./use-compact-layout";
 
 describe("compact layout runtime boundary", () => {
@@ -18,10 +18,9 @@ describe("compact layout runtime boundary", () => {
     expect(shouldUseCompactLayout(true, true)).toBe(false);
   });
 
-  it("uses a sidebar drawer only for narrow primary Tauri windows", () => {
-    expect(shouldUseDesktopSidebarDrawer(true, true, false)).toBe(true);
-    expect(shouldUseDesktopSidebarDrawer(false, true, false)).toBe(false);
-    expect(shouldUseDesktopSidebarDrawer(true, false, false)).toBe(false);
-    expect(shouldUseDesktopSidebarDrawer(true, true, true)).toBe(false);
+  it("uses a sidebar drawer for narrow primary windows across runtimes", () => {
+    expect(shouldUseSidebarDrawer(true, false)).toBe(true);
+    expect(shouldUseSidebarDrawer(false, false)).toBe(false);
+    expect(shouldUseSidebarDrawer(true, true)).toBe(false);
   });
 });
