@@ -651,6 +651,7 @@ import {
   protectTunnelContentRecord,
 } from "@/lib/tunnel-content-encryption";
 import { createBoundedResource } from "@/lib/bounded-resource-creation";
+import { recoverStaleProjectShareState } from "@/lib/project-share-recovery";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -2157,16 +2158,19 @@ export async function copyProjectMcpServer(
   );
 }
 
-export async function createProjectNetworkShare(project: ProjectSummary) {
-  const source = project.source;
-  if (!source) throw new Error("Project source is unavailable.");
-  await ensureTunnelWorker(source.workerId);
-  let existing = tunnelWireListSchema
+async function currentProjectNetworkShare(projectId: string) {
+  return tunnelWireListSchema
     .parse(await request("/api/tunnels"))
     .find(
-      ({ origin, projectId }) =>
-        origin === "project-share" && projectId === project.id,
+      ({ origin, projectId: candidateProjectId }) =>
+        origin === "project-share" && candidateProjectId === projectId,
     );
+}
+
+async function createProjectNetworkShareAttempt(project: ProjectSummary) {
+  const source = project.source;
+  if (!source) throw new Error("Project source is unavailable.");
+  let existing = await currentProjectNetworkShare(project.id);
   if (existing && !existing.protectedRecord) {
     await deleteProjectNetworkShare(existing.id);
     existing = undefined;
@@ -2239,6 +2243,19 @@ export async function createProjectNetworkShare(project: ProjectSummary) {
     clearSensitiveBytes(usernameBytes);
     clearSensitiveBytes(passwordBytes);
   }
+}
+
+export async function createProjectNetworkShare(project: ProjectSummary) {
+  const source = project.source;
+  if (!source) throw new Error("Project source is unavailable.");
+  await ensureTunnelWorker(source.workerId);
+  return recoverStaleProjectShareState({
+    open: () => createProjectNetworkShareAttempt(project),
+    revokeOrphan: async () => {
+      const orphan = await currentProjectNetworkShare(project.id);
+      if (orphan) await deleteProjectNetworkShare(orphan.id);
+    },
+  });
 }
 
 export async function createStandaloneChatNetworkShare(

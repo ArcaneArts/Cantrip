@@ -519,6 +519,8 @@ export const projectShareAttachmentSchema = z.object({
     .max(24 * 60 * 60_000),
 });
 
+export const PROJECT_SHARE_STATE_STALE_CODE = "project-share-state-stale";
+
 export const projectShareTunnelCreateSchema = z
   .object({
     tunnelId: z.string().uuid(),

@@ -2,7 +2,10 @@ import type { ProtectedTunnelContentRecord } from "@cantrip/protocol/tunnel-cont
 import { describe, expect, it, vi } from "vitest";
 
 import type { ServerRepository } from "../src/db/repository.js";
-import { ProjectShareTunnelBroker } from "../src/project-shares/tunnel.js";
+import {
+  ProjectShareStateStaleError,
+  ProjectShareTunnelBroker,
+} from "../src/project-shares/tunnel.js";
 import { TunnelStreamBroker } from "../src/tunnels/broker.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
@@ -146,6 +149,53 @@ describe("protected project share control plane", () => {
       expect.any(Object),
     );
 
+    await broker.close();
+    streamBroker.close();
+  });
+
+  it("types stale tunnel identities and protected revisions for route recovery", async () => {
+    const bridge = {
+      isConnected: () => true,
+      request: vi.fn(),
+    } as unknown as WorkerCommandBus;
+    const repository = {
+      getManagedTunnel: vi.fn().mockResolvedValue({
+        id: "22222222-2222-4222-8222-222222222222",
+        protectedRecord,
+      }),
+    } as unknown as ServerRepository;
+    const streamBroker = new TunnelStreamBroker();
+    const broker = new ProjectShareTunnelBroker(bridge);
+    broker.configureControlPlane(repository, streamBroker, () => undefined);
+
+    await expect(
+      broker.open({
+        ownerId: "owner-1",
+        projectId: "project-1",
+        protectedRecord,
+        tunnelId,
+        workerId: "worker-1",
+      }),
+    ).rejects.toBeInstanceOf(ProjectShareStateStaleError);
+
+    repository.getManagedTunnel = vi.fn().mockResolvedValue({
+      id: tunnelId,
+      protectedRecord,
+    });
+    await expect(
+      broker.open({
+        ownerId: "owner-1",
+        projectId: "project-1",
+        protectedRecord: {
+          ...protectedRecord,
+          operationId: "33333333-3333-4333-8333-333333333333",
+        },
+        tunnelId,
+        workerId: "worker-1",
+      }),
+    ).rejects.toBeInstanceOf(ProjectShareStateStaleError);
+
+    expect(bridge.request).not.toHaveBeenCalled();
     await broker.close();
     streamBroker.close();
   });
