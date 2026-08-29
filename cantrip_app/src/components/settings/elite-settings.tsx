@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Table2,
   Text,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -124,6 +125,13 @@ export function eliteConfiguratorWidthFromKey(
     maxWidth: MAX_ELITE_CONFIGURATOR_WIDTH,
     minWidth: MIN_ELITE_CONFIGURATOR_WIDTH,
   });
+}
+
+export function eliteConfiguratorSidebarClassName(open: boolean): string {
+  return cn(
+    "max-md:absolute max-md:inset-0 max-md:z-50",
+    open ? "max-md:!w-full" : "max-md:!w-0",
+  );
 }
 
 function emitEliteQaEvent(
@@ -619,7 +627,7 @@ function NumberOption({
   value: number;
 }) {
   return (
-    <label className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-3 text-sm">
+    <label className="grid gap-2 text-sm md:grid-cols-[minmax(0,1fr)_7rem] md:items-center md:gap-3">
       <span>
         {label}
         {suffix ? (
@@ -640,9 +648,11 @@ function NumberOption({
 function EliteConfigurator({
   config,
   onApply,
+  onClose,
 }: {
   config: EliteRevealConfig;
   onApply(config: EliteRevealConfig): void;
+  onClose(): void;
 }) {
   const [draft, setDraft] = useState<EliteRevealConfig>(() => ({
     ...config,
@@ -682,18 +692,28 @@ function EliteConfigurator({
   return (
     <aside
       aria-label="Elite effect options"
-      className="flex h-full min-h-0 flex-col border-l bg-background"
+      className="flex h-full min-h-0 flex-col border-l bg-background max-md:border-l-0"
     >
-      <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
-        <div>
+      <div className="flex items-start justify-between gap-3 border-b px-4 py-4 md:px-5">
+        <div className="min-w-0">
           <h2 className="font-semibold">Effect options</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             Changes apply together so typing does not continuously replay the
             screen.
           </p>
         </div>
+        <Button
+          aria-label="Close effect options"
+          className="md:hidden"
+          onClick={onClose}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <X className="size-4" />
+        </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 md:p-5">
         <section className="grid gap-4">
           <div>
             <h3 className="text-sm font-semibold">Timing</h3>
@@ -761,8 +781,8 @@ function EliteConfigurator({
         </section>
 
         <section className="mt-7 grid gap-3 border-t pt-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+          <div className="grid gap-2 md:flex md:items-start md:justify-between md:gap-3">
+            <div className="min-w-0">
               <h3 className="text-sm font-semibold">Variants</h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 Relative weights control how often each enabled effect is
@@ -770,8 +790,9 @@ function EliteConfigurator({
                 it. Text jitter is reserved for text wrappers.
               </p>
             </div>
-            <div className="flex gap-1">
+            <div className="grid grid-cols-2 gap-1 md:flex">
               <Button
+                className="w-full md:w-auto"
                 onClick={() =>
                   setDraft((current) => ({
                     ...current,
@@ -785,6 +806,7 @@ function EliteConfigurator({
                 Check all
               </Button>
               <Button
+                className="w-full md:w-auto"
                 onClick={() =>
                   setDraft((current) => ({ ...current, variants: [] }))
                 }
@@ -812,7 +834,9 @@ function EliteConfigurator({
                       }
                       type="checkbox"
                     />
-                    <span className="truncate">{variantLabels[variant]}</span>
+                    <span className="min-w-0 break-words md:truncate">
+                      {variantLabels[variant]}
+                    </span>
                   </label>
                   <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                     <Input
@@ -875,13 +899,16 @@ function EliteConfiguratorSidebar({
   return (
     <ResizablePanel
       ariaLabel="Resize Elite effect options sidebar"
+      className={eliteConfiguratorSidebarClassName(open)}
       defaultWidth={DEFAULT_ELITE_CONFIGURATOR_WIDTH}
+      handleClassName="max-md:hidden"
       handleDataSlot="elite-configurator-resize-handle"
       maxWidth={MAX_ELITE_CONFIGURATOR_WIDTH}
       minWidth={MIN_ELITE_CONFIGURATOR_WIDTH}
       open={open}
       shellDataSlot="elite-configurator-sidebar-shell"
       storageKey={ELITE_CONFIGURATOR_WIDTH_STORAGE_KEY}
+      surfaceClassName="max-md:!w-full"
       surfaceDataSlot="elite-configurator-sidebar-surface"
       title="Drag to resize Elite effect options sidebar"
     >
@@ -963,9 +990,9 @@ export function EliteSettings({
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="shrink-0 border-b bg-background/95 px-3 pt-3 backdrop-blur sm:px-4">
           <div className="flex flex-wrap items-start justify-between gap-3 pb-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <Activity className="size-4" />
+            <div className="min-w-0 basis-full md:basis-auto md:flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Activity className="size-4 shrink-0" />
                 <h1 className="font-semibold">Elite reveal laboratory</h1>
                 <Badge variant="outline">Experimental</Badge>
               </div>
@@ -976,9 +1003,10 @@ export function EliteSettings({
                 stays isolated for accurate previews.
               </p>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <div className="grid w-full shrink-0 grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end">
               <Button
                 aria-checked={appWideEnabled}
+                className="col-span-2 w-full md:col-span-1 md:w-auto"
                 disabled={configSaving}
                 onClick={() => onAppWideEnabledChange?.(!appWideEnabled)}
                 role="switch"
@@ -995,11 +1023,17 @@ export function EliteSettings({
                 />
                 App-wide {appWideEnabled ? "on" : "off"}
               </Button>
-              <Button onClick={() => replay()} size="sm" variant="outline">
+              <Button
+                className="w-full md:w-auto"
+                onClick={() => replay()}
+                size="sm"
+                variant="outline"
+              >
                 <RefreshCw className="size-3.5" /> Replay
               </Button>
               <Button
                 aria-pressed={configuratorOpen}
+                className="w-full md:w-auto"
                 onClick={() => setConfiguratorOpen((current) => !current)}
                 size="sm"
               >
@@ -1012,10 +1046,11 @@ export function EliteSettings({
               </Button>
             </div>
           </div>
-          <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
+          <div className="grid min-w-0 gap-2 md:flex md:flex-wrap md:items-end md:justify-between">
             <NavigationTabBar
               activeTab={view}
               ariaLabel="Elite laboratory views"
+              className="w-full md:w-auto"
               onTabChange={changeView}
               tabs={eliteLabTabs}
             />
@@ -1045,18 +1080,27 @@ export function EliteSettings({
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t bg-muted/25 px-4 py-2 text-[11px] text-muted-foreground">
-          React component types are not reliably inspectable after composition.
-          This lab uses explicit semantic roles; DOM type traversal is possible,
-          but intentionally avoided because it is brittle.
+        <div
+          className={cn(
+            "shrink-0 border-t bg-muted/25 px-4 py-2 text-[11px] text-muted-foreground",
+            !saveError && "max-md:hidden",
+          )}
+        >
+          <span className="max-md:hidden">
+            React component types are not reliably inspectable after
+            composition. This lab uses explicit semantic roles; DOM type
+            traversal is possible, but intentionally avoided because it is
+            brittle.
+          </span>
           {saveError ? (
-            <span className="ml-2 text-destructive">{saveError}</span>
+            <span className="text-destructive md:ml-2">{saveError}</span>
           ) : null}
         </div>
       </div>
       <EliteConfiguratorSidebar open={configuratorOpen}>
         <EliteConfigurator
           config={config}
+          onClose={() => setConfiguratorOpen(false)}
           onApply={(nextConfig) => {
             setConfig(nextConfig);
             replay(nextConfig, "configurator");
