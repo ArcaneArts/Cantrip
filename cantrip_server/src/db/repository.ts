@@ -185,7 +185,6 @@ import {
   type TunnelPublicSourceEndpoint,
 } from "@cantrip/protocol/tunnel-content";
 import {
-  chatAttachmentOpaqueSummarySchema,
   type AttachmentProtectedMetadata,
   type ChatAttachmentOpaqueSummary,
 } from "@cantrip/protocol/attachment-content";
@@ -330,6 +329,10 @@ import {
 import { ChatRuntimeContextRepository } from "./repository/chat-runtime-context.js";
 import { AgentInteractionRepository } from "./repository/agent-interactions.js";
 import {
+  ChatAttachmentRepository,
+  type ChatAttachmentRecord,
+} from "./repository/chat-attachments.js";
+import {
   toChatMessage,
   toEncryptedChatMessage,
   toTaskMessage,
@@ -460,6 +463,10 @@ export { StandaloneChatPlacementUnavailableError } from "./repository/chat-catal
 export { ARCHIVED_CHAT_RETENTION_MS } from "./repository/chat-mappers.js";
 export type { ChatLiveRouting } from "./repository/chat-configuration.js";
 export { AgentInteractionConflictError } from "./repository/agent-interactions.js";
+export {
+  toChatAttachmentOpaqueSummary,
+  type ChatAttachmentRecord,
+} from "./repository/chat-attachments.js";
 export type { TerminalExecutionContext } from "./repository/terminals.js";
 export type { ExplorerExecutionContext } from "./repository/explorers.js";
 export {
@@ -479,23 +486,6 @@ export const DEFAULT_OLLAMA_PROVIDER_ID =
   "00000000-0000-0000-0000-000000000010";
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
-export interface ChatAttachmentRecord extends ChatAttachmentOpaqueSummary {
-  workerId: string;
-}
-
-export function toChatAttachmentOpaqueSummary(
-  attachment: ChatAttachmentRecord,
-): ChatAttachmentOpaqueSummary {
-  return chatAttachmentOpaqueSummarySchema.parse({
-    id: attachment.id,
-    chatId: attachment.chatId,
-    sizeBytes: attachment.sizeBytes,
-    status: attachment.status,
-    protectedMetadata: attachment.protectedMetadata,
-    createdAt: attachment.createdAt,
-  });
-}
-
 export type ChatExecutionAttribution =
   | {
       contextKind?: "project";
@@ -546,22 +536,6 @@ function toExplorerWireSummary(
     fileMode: explorer.fileMode as ExplorerWireSummary["fileMode"],
     createdAt: toISOString(explorer.createdAt),
     updatedAt: toISOString(explorer.updatedAt),
-  };
-}
-
-function toChatAttachment(
-  attachment: typeof schema.chatAttachments.$inferSelect,
-): ChatAttachmentRecord {
-  return {
-    ...chatAttachmentOpaqueSummarySchema.parse({
-      id: attachment.id,
-      chatId: attachment.chatId,
-      sizeBytes: attachment.sizeBytes,
-      status: attachment.status,
-      protectedMetadata: attachment.protectedMetadata,
-      createdAt: toISOString(attachment.createdAt),
-    }),
-    workerId: attachment.workerId,
   };
 }
 
@@ -630,6 +604,7 @@ export class ServerRepository {
   readonly chatConfiguration: ChatConfigurationRepository;
   readonly chatRuntimeContext: ChatRuntimeContextRepository;
   readonly agentInteractions: AgentInteractionRepository;
+  readonly chatAttachments: ChatAttachmentRepository;
   readonly terminals: TerminalRepository;
   readonly explorers: ExplorerRepository;
   readonly codeSurfaces: CodeSurfaceRepository;
@@ -789,6 +764,10 @@ export class ServerRepository {
         this.expireAgentInteractionRequests(now),
       getAgentInteractionRequest: (ownerId, requestId) =>
         this.getAgentInteractionRequest(ownerId, requestId),
+    });
+    this.chatAttachments = new ChatAttachmentRepository(database, {
+      getChatAttachment: (ownerId, attachmentId) =>
+        this.getChatAttachment(ownerId, attachmentId),
     });
     this.terminals = new TerminalRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
@@ -4273,56 +4252,14 @@ export class ServerRepository {
       workerId: string;
     },
   ): Promise<ChatAttachmentRecord | null> {
-    const owned = await this.database
-      .select({ id: schema.chats.id })
-      .from(schema.chats)
-      .where(
-        and(
-          eq(schema.chats.id, chatId),
-          eq(schema.chats.ownerId, ownerId),
-          isNull(schema.chats.archivedAt),
-        ),
-      )
-      .limit(1);
-    if (!owned[0]) return null;
-    return this.database.transaction(async (transaction) => {
-      const rows = await transaction
-        .insert(schema.chatAttachments)
-        .values({
-          ...input,
-          chatId,
-          status: "ready",
-        })
-        .returning();
-      const attachment = firstOrThrow(rows, "creating an attachment");
-      await transaction.insert(schema.chatAttachmentReplicas).values({
-        attachmentId: attachment.id,
-        workerId: input.workerId,
-        status: "ready",
-      });
-      return toChatAttachment(attachment);
-    });
+    return this.chatAttachments.createChatAttachment(ownerId, chatId, input);
   }
 
   async getChatAttachment(
     ownerId: string,
     attachmentId: string,
   ): Promise<ChatAttachmentRecord | null> {
-    const rows = await this.database
-      .select({ attachment: schema.chatAttachments })
-      .from(schema.chatAttachments)
-      .innerJoin(
-        schema.chats,
-        eq(schema.chats.id, schema.chatAttachments.chatId),
-      )
-      .where(
-        and(
-          eq(schema.chatAttachments.id, attachmentId),
-          eq(schema.chats.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    return rows[0] ? toChatAttachment(rows[0].attachment) : null;
+    return this.chatAttachments.getChatAttachment(ownerId, attachmentId);
   }
 
   async getChatAttachments(
@@ -4330,73 +4267,28 @@ export class ServerRepository {
     chatId: string,
     attachmentIds: string[],
   ): Promise<ChatAttachmentRecord[]> {
-    if (attachmentIds.length === 0) return [];
-    const rows = await this.database
-      .select({ attachment: schema.chatAttachments })
-      .from(schema.chatAttachments)
-      .innerJoin(
-        schema.chats,
-        and(
-          eq(schema.chats.id, schema.chatAttachments.chatId),
-          eq(schema.chats.id, chatId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          inArray(schema.chatAttachments.id, attachmentIds),
-        ),
-      );
-    const byId = new Map(
-      rows.map(({ attachment }) => [
-        attachment.id,
-        toChatAttachment(attachment),
-      ]),
+    return this.chatAttachments.getChatAttachments(
+      ownerId,
+      chatId,
+      attachmentIds,
     );
-    return attachmentIds.flatMap((id) => {
-      const attachment = byId.get(id);
-      return attachment ? [attachment] : [];
-    });
   }
 
   async getChatAttachmentReplicaWorkerIds(
     ownerId: string,
     attachmentId: string,
   ): Promise<string[]> {
-    const rows = await this.database
-      .select({ workerId: schema.chatAttachmentReplicas.workerId })
-      .from(schema.chatAttachmentReplicas)
-      .innerJoin(
-        schema.chatAttachments,
-        eq(
-          schema.chatAttachments.id,
-          schema.chatAttachmentReplicas.attachmentId,
-        ),
-      )
-      .innerJoin(
-        schema.chats,
-        eq(schema.chats.id, schema.chatAttachments.chatId),
-      )
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chatAttachmentReplicas.attachmentId, attachmentId),
-          eq(schema.chatAttachmentReplicas.status, "ready"),
-        ),
-      );
-    return [...new Set(rows.map(({ workerId }) => workerId))];
+    return this.chatAttachments.getChatAttachmentReplicaWorkerIds(
+      ownerId,
+      attachmentId,
+    );
   }
 
   async deleteChatAttachment(
     ownerId: string,
     attachmentId: string,
   ): Promise<ChatAttachmentRecord | null> {
-    const attachment = await this.getChatAttachment(ownerId, attachmentId);
-    if (!attachment) return null;
-    await this.database
-      .delete(schema.chatAttachments)
-      .where(eq(schema.chatAttachments.id, attachmentId));
-    return attachment;
+    return this.chatAttachments.deleteChatAttachment(ownerId, attachmentId);
   }
 
   async listMessages(ownerId: string, chatId: string): Promise<ChatMessage[]> {
