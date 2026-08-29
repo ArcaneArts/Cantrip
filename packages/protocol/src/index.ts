@@ -1050,794 +1050,106 @@ export type {
   GithubPullRequestCheckoutResult,
 } from "./worktrees.js";
 
-const tunnelResourceIdSchema = z.string().trim().min(1).max(200);
-const tunnelNameSchema = z.string().trim().min(1).max(120);
-const tunnelDescriptionSchema = z.string().trim().max(1_000).nullable();
+import { tunnelResourceIdSchema } from "./tunnels.js";
 
-export const tunnelOriginSchema = z.enum([
-  "user",
-  "browser",
-  "project-share",
-  "code",
-  "workflow",
-  "system",
-]);
+export {
+  tunnelOriginSchema,
+  tunnelManagementSchema,
+  tunnelProtocolHintSchema,
+  tunnelDesiredStateSchema,
+  tunnelStatusSchema,
+  tunnelWorkerHostSchema,
+  tunnelSourceEndpointSchema,
+  tunnelDestinationEndpointSchema,
+  tunnelManagedResourceSchema,
+  tunnelUserCreateSchema,
+  tunnelUserUpdateSchema,
+  tunnelUserWireCreateSchema,
+  tunnelUserWireUpdateSchema,
+  tunnelManagedRegistrationSchema,
+  tunnelAttachmentKindSchema,
+  tunnelAttachmentSummarySchema,
+  tunnelAttachmentWireSummarySchema,
+  tunnelAttachmentCreateSchema,
+  tunnelAttachmentCreateResultSchema,
+  tunnelDirectActivationSchema,
+  tunnelAttachmentInitializeSchema,
+  tunnelAttachmentReadySchema,
+  tunnelActionCapabilitiesSchema,
+  tunnelSummarySchema,
+  tunnelListSchema,
+  tunnelWireSummarySchema,
+  tunnelWireListSchema,
+} from "./tunnels.js";
 
-export const tunnelManagementSchema = z.enum([
-  "user-managed",
-  "managed-durable",
-  "managed-ephemeral",
-]);
+export type {
+  TunnelOrigin,
+  TunnelManagement,
+  TunnelProtocolHint,
+  TunnelDesiredState,
+  TunnelStatus,
+  TunnelSourceEndpoint,
+  TunnelDestinationEndpoint,
+  TunnelManagedResource,
+  TunnelUserCreate,
+  TunnelUserUpdate,
+  TunnelUserWireCreate,
+  TunnelUserWireUpdate,
+  TunnelAttachmentCreate,
+  TunnelAttachmentCreateResult,
+  TunnelAttachmentInitialize,
+  TunnelAttachmentReady,
+  TunnelManagedRegistration,
+  TunnelAttachmentKind,
+  TunnelAttachmentSummary,
+  TunnelAttachmentWireSummary,
+  TunnelActionCapabilities,
+  TunnelSummary,
+  TunnelWireSummary,
+} from "./tunnels.js";
 
-export const tunnelProtocolHintSchema = z.enum([
-  "tcp",
-  "http",
-  "https",
-  "http-websocket",
-  "https-websocket",
-  "webdav",
-]);
-
-export const tunnelDesiredStateSchema = z.enum(["stopped", "started"]);
-
-export const tunnelStatusSchema = z.enum([
-  "stopped",
-  "starting",
-  "active",
-  "offline",
-  "degraded",
-  "stopping",
-  "failed",
-]);
-
-export const tunnelWorkerHostSchema = z.enum(["127.0.0.1", "localhost", "::1"]);
-
-export const tunnelSourceEndpointSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("desktop-loopback") }).strict(),
-  z
-    .object({
-      kind: z.literal("worker-listener"),
-      workerId: tunnelResourceIdSchema,
-      host: tunnelWorkerHostSchema,
-      port: z.number().int().min(1).max(65_535),
-    })
-    .strict(),
-]);
-
-export const tunnelDestinationEndpointSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("worker-tcp"),
-      workerId: tunnelResourceIdSchema,
-      host: tunnelWorkerHostSchema,
-      port: z.number().int().min(1).max(65_535),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("worker-adapter"),
-      workerId: tunnelResourceIdSchema,
-      adapter: z.enum(["code", "project-share"]),
-      resourceId: tunnelResourceIdSchema,
-    })
-    .strict(),
-]);
-
-export const tunnelManagedResourceSchema = z
-  .object({
-    kind: z.enum(["browser", "code", "project-share", "workflow", "system"]),
-    id: tunnelResourceIdSchema,
-  })
-  .strict();
-
-export const tunnelUserCreateSchema = z
-  .object({
-    name: tunnelNameSchema,
-    description: tunnelDescriptionSchema.default(null),
-    projectId: tunnelResourceIdSchema.nullable().default(null),
-    protocolHint: tunnelProtocolHintSchema,
-    destination: z
-      .object({
-        kind: z.literal("worker-tcp"),
-        workerId: tunnelResourceIdSchema,
-        host: tunnelWorkerHostSchema.default("127.0.0.1"),
-        port: z.number().int().min(1).max(65_535),
-      })
-      .strict(),
-  })
-  .strict();
-
-export const tunnelUserUpdateSchema = z
-  .object({
-    name: tunnelNameSchema.optional(),
-    description: tunnelDescriptionSchema.optional(),
-    projectId: tunnelResourceIdSchema.nullable().optional(),
-    protocolHint: tunnelProtocolHintSchema.optional(),
-    destination: tunnelUserCreateSchema.shape.destination.optional(),
-  })
-  .strict()
-  .refine((input) => Object.keys(input).length > 0, {
-    message: "At least one tunnel field is required.",
-  });
-
-export const tunnelUserWireCreateSchema = z
-  .object({
-    id: z.string().uuid(),
-    projectId: tunnelResourceIdSchema.nullable().default(null),
-    protocolHint: tunnelProtocolHintSchema,
-    destination: tunnelPublicDestinationEndpointSchema.and(
-      z.object({ kind: z.literal("worker-tcp") }).strict(),
-    ),
-    protectedRecord: protectedTunnelContentRecordSchema,
-  })
-  .strict()
-  .refine(({ id, protectedRecord }) => id === protectedRecord.operationId, {
-    message: "A new tunnel record must use its tunnel id as operation id.",
-    path: ["protectedRecord", "operationId"],
-  })
-  .refine(({ protectedRecord }) => protectedRecord.revision === 1, {
-    message: "A new tunnel record must begin at revision one.",
-    path: ["protectedRecord", "revision"],
-  });
-
-export const tunnelUserWireUpdateSchema = z
-  .object({
-    projectId: tunnelResourceIdSchema.nullable().optional(),
-    protocolHint: tunnelProtocolHintSchema.optional(),
-    destination: tunnelPublicDestinationEndpointSchema
-      .and(z.object({ kind: z.literal("worker-tcp") }).strict())
-      .optional(),
-    protectedRecord: protectedTunnelContentRecordSchema,
-  })
-  .strict();
-
-export const tunnelManagedRegistrationSchema = z
-  .object({
-    name: tunnelNameSchema,
-    description: tunnelDescriptionSchema.default(null),
-    projectId: tunnelResourceIdSchema.nullable().default(null),
-    origin: tunnelOriginSchema.exclude(["user"]),
-    management: tunnelManagementSchema.exclude(["user-managed"]),
-    protocolHint: tunnelProtocolHintSchema,
-    source: tunnelSourceEndpointSchema,
-    destination: tunnelDestinationEndpointSchema,
-    managedBy: tunnelManagedResourceSchema,
-    desiredState: tunnelDesiredStateSchema.default("started"),
-    status: tunnelStatusSchema.default("starting"),
-  })
-  .strict()
-  .superRefine((tunnel, context) => {
-    if (tunnel.origin !== tunnel.managedBy.kind) {
-      context.addIssue({
-        code: "custom",
-        message: "A managed tunnel origin must match its owning resource.",
-        path: ["managedBy", "kind"],
-      });
-    }
-    if (
-      tunnel.destination.kind === "worker-adapter" &&
-      (tunnel.origin !== tunnel.destination.adapter ||
-        tunnel.destination.resourceId !== tunnel.managedBy.id)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Worker adapters must match the owning resource.",
-        path: ["destination"],
-      });
-    }
-  });
-
-export const tunnelAttachmentKindSchema = z.enum(["desktop-loopback"]);
-
-export const tunnelAttachmentSummarySchema = z
-  .object({
-    id: tunnelResourceIdSchema,
-    tunnelId: tunnelResourceIdSchema,
-    kind: tunnelAttachmentKindSchema,
-    clientId: tunnelResourceIdSchema.nullable(),
-    localHost: tunnelWorkerHostSchema.nullable(),
-    localPort: z.number().int().min(1).max(65_535).nullable(),
-    status: tunnelStatusSchema,
-    activeConnectionCount: z.number().int().nonnegative(),
-    bytesFromSource: z.number().int().nonnegative().safe(),
-    bytesToSource: z.number().int().nonnegative().safe(),
-    lastError: z.string().min(1).max(4_000).nullable(),
-    expiresAt: z.string().datetime().nullable(),
-    lastSeenAt: z.string().datetime().nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict()
-  .superRefine((attachment, context) => {
-    const desktop = attachment.kind === "desktop-loopback";
-    if (desktop !== (attachment.clientId !== null)) {
-      context.addIssue({
-        code: "custom",
-        message: "Desktop attachments require a client identity.",
-        path: ["clientId"],
-      });
-    }
-    if (!desktop && attachment.localHost !== null) {
-      context.addIssue({
-        code: "custom",
-        message: "Server relay attachments cannot expose a local host.",
-        path: ["localHost"],
-      });
-    }
-    if (!desktop && attachment.localPort !== null) {
-      context.addIssue({
-        code: "custom",
-        message: "Server relay attachments cannot expose a local port.",
-        path: ["localPort"],
-      });
-    }
-    if ((attachment.localHost === null) !== (attachment.localPort === null)) {
-      context.addIssue({
-        code: "custom",
-        message: "A local attachment host and port must be reported together.",
-        path: ["localPort"],
-      });
-    }
-  });
-
-export const tunnelAttachmentWireSummarySchema = z
-  .object({
-    id: tunnelResourceIdSchema,
-    tunnelId: tunnelResourceIdSchema,
-    kind: tunnelAttachmentKindSchema,
-    clientId: tunnelResourceIdSchema.nullable(),
-    status: tunnelStatusSchema,
-    errorCode: tunnelContentErrorCodeSchema.nullable(),
-    activeConnectionCount: z.number().int().nonnegative(),
-    bytesFromSource: z.number().int().nonnegative().safe(),
-    bytesToSource: z.number().int().nonnegative().safe(),
-    expiresAt: z.string().datetime().nullable(),
-    lastSeenAt: z.string().datetime().nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict();
-
-export const tunnelAttachmentCreateSchema = z
-  .object({
-    clientId: tunnelResourceIdSchema,
-  })
-  .strict();
-
-export const tunnelAttachmentCreateResultSchema = z
-  .object({
-    attachmentId: tunnelResourceIdSchema,
-    tunnelId: tunnelResourceIdSchema,
-    secret: z.string().min(32).max(512),
-    connectPath: z.string().startsWith("/api/tunnel-attachments/"),
-    secretExpiresAt: z.string().datetime(),
-    expiresAt: z.string().datetime(),
-  })
-  .strict();
-
-export const tunnelDirectActivationSchema = z
-  .object({
-    capabilityId: z.string().uuid(),
-  })
-  .strict();
-
-export const tunnelAttachmentInitializeSchema = z
-  .object({
-    type: z.literal("initialize"),
-    clientId: tunnelResourceIdSchema,
-    diagnosticTraceId: z.string().uuid().optional(),
-  })
-  .strict();
-
-export const tunnelAttachmentReadySchema = z
-  .object({
-    type: z.literal("ready"),
-    attachmentId: tunnelResourceIdSchema,
-    tunnelId: tunnelResourceIdSchema,
-    sourceEndpointId: tunnelResourceIdSchema,
-    destinationEndpointId: tunnelResourceIdSchema,
-    expiresAt: z.string().datetime(),
-  })
-  .strict();
-
-export const tunnelActionCapabilitiesSchema = z
-  .object({
-    canEdit: z.boolean(),
-    canDelete: z.boolean(),
-    canStart: z.boolean(),
-    canStop: z.boolean(),
-    canAttach: z.boolean(),
-    canOpenOwner: z.boolean(),
-  })
-  .strict();
-
-export const tunnelSummarySchema = z
-  .object({
-    id: tunnelResourceIdSchema,
-    name: tunnelNameSchema,
-    description: tunnelDescriptionSchema,
-    projectId: tunnelResourceIdSchema.nullable(),
-    position: z.number().int().nonnegative(),
-    origin: tunnelOriginSchema,
-    management: tunnelManagementSchema,
-    protocolHint: tunnelProtocolHintSchema,
-    source: tunnelSourceEndpointSchema,
-    destination: tunnelDestinationEndpointSchema,
-    managedBy: tunnelManagedResourceSchema.nullable(),
-    desiredState: tunnelDesiredStateSchema,
-    status: tunnelStatusSchema,
-    lastError: z.string().min(1).max(4_000).nullable(),
-    activeConnectionCount: z.number().int().nonnegative(),
-    bytesFromSource: z.number().int().nonnegative().safe(),
-    bytesToSource: z.number().int().nonnegative().safe(),
-    attachments: z.array(tunnelAttachmentSummarySchema).max(128),
-    capabilities: tunnelActionCapabilitiesSchema,
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict()
-  .superRefine((tunnel, context) => {
-    const userManaged = tunnel.management === "user-managed";
-    if (userManaged !== (tunnel.origin === "user")) {
-      context.addIssue({
-        code: "custom",
-        message: "Only user-origin tunnels may be user managed.",
-        path: ["management"],
-      });
-    }
-    if (userManaged !== (tunnel.managedBy === null)) {
-      context.addIssue({
-        code: "custom",
-        message: "Managed tunnels require an owning resource.",
-        path: ["managedBy"],
-      });
-    }
-  });
-
-export const tunnelListSchema = z.array(tunnelSummarySchema).max(10_000);
-
-export const tunnelWireSummarySchema = z
-  .object({
-    id: tunnelResourceIdSchema,
-    projectId: tunnelResourceIdSchema.nullable(),
-    position: z.number().int().nonnegative(),
-    origin: tunnelOriginSchema,
-    management: tunnelManagementSchema,
-    protocolHint: tunnelProtocolHintSchema,
-    source: tunnelPublicSourceEndpointSchema,
-    destination: tunnelPublicDestinationEndpointSchema,
-    managedBy: tunnelManagedResourceSchema.nullable(),
-    desiredState: tunnelDesiredStateSchema,
-    status: tunnelStatusSchema,
-    errorCode: tunnelContentErrorCodeSchema.nullable(),
-    activeConnectionCount: z.number().int().nonnegative(),
-    bytesFromSource: z.number().int().nonnegative().safe(),
-    bytesToSource: z.number().int().nonnegative().safe(),
-    attachments: z.array(tunnelAttachmentWireSummarySchema).max(128),
-    capabilities: tunnelActionCapabilitiesSchema,
-    protectedRecord: protectedTunnelContentRecordSchema.nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict();
-
-export const tunnelWireListSchema = z
-  .array(tunnelWireSummarySchema)
-  .max(10_000);
-
-export const projectGitRepositoryStatsSchema = z.object({
-  kind: z.literal("git").default("git"),
-  commitCount: z.number().int().nonnegative(),
-  trackedFileCount: z.number().int().nonnegative(),
-  trackedByteCount: z.number().int().nonnegative(),
-  textFileCount: z.number().int().nonnegative(),
-  lineCount: z.number().int().nonnegative(),
-  excludedFileCount: z.number().int().nonnegative(),
-  truncated: z.boolean(),
-});
-
-export const projectFolderStatsSchema = z.object({
-  kind: z.literal("folder"),
-  fileCount: z.number().int().nonnegative(),
-  byteCount: z.number().int().nonnegative(),
-  textFileCount: z.number().int().nonnegative(),
-  lineCount: z.number().int().nonnegative(),
-  excludedFileCount: z.number().int().nonnegative(),
-  truncated: z.boolean(),
-});
-
-export const projectRepositoryStatsSchema = z.union([
+export {
   projectGitRepositoryStatsSchema,
   projectFolderStatsSchema,
-]);
+  projectRepositoryStatsSchema,
+  projectTokenUsageDaySchema,
+  projectTokenUsageBreakdownSchema,
+  projectTokenUsageSchema,
+  telemetryValueStatisticsSchema,
+  telemetryQuotaReadingSchema,
+  telemetryQuotaReadingWireSchema,
+  telemetryBreakdownSchema,
+  telemetryBreakdownWireSchema,
+  modelBehaviorSummarySchema,
+  modelBehaviorBreakdownSchema,
+  modelBehaviorDaySchema,
+  telemetryChangeMetricSchema,
+  telemetryChangePointSchema,
+  telemetryChangePointWireSchema,
+  providerTelemetryAnalyticsSchema,
+  providerTelemetryWireAnalyticsSchema,
+  providerTelemetryExportSchema,
+  providerTelemetryDeleteResultSchema,
+} from "./telemetry.js";
 
-export const projectTokenUsageDaySchema = detailedTokenUsageTotalsSchema.extend(
-  {
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
-  },
-);
-
-export const projectTokenUsageBreakdownSchema =
-  detailedTokenUsageTotalsSchema.extend({
-    id: z.string().min(1).nullable(),
-    name: z.string().min(1),
-    agentTime: agentTimeSummarySchema,
-  });
-
-export const projectTokenUsageSchema = z.object({
-  total: detailedTokenUsageTotalsSchema,
-  agentTime: agentTimeSummarySchema,
-  daily: z.array(projectTokenUsageDaySchema).max(366),
-  providers: z.array(projectTokenUsageBreakdownSchema),
-  models: z.array(projectTokenUsageBreakdownSchema),
-  range: z.object({
-    start: projectTokenUsageDaySchema.shape.date,
-    end: projectTokenUsageDaySchema.shape.date,
-  }),
-});
-
-export const telemetryValueStatisticsSchema = z.object({
-  sampleCount: z.number().int().nonnegative(),
-  mean: z.number().finite().nullable(),
-  median: z.number().finite().nullable(),
-  min: z.number().finite().nullable(),
-  p10: z.number().finite().nullable(),
-  p25: z.number().finite().nullable(),
-  p75: z.number().finite().nullable(),
-  p90: z.number().finite().nullable(),
-  max: z.number().finite().nullable(),
-});
-
-export const telemetryQuotaReadingSchema = z.object({
-  id: z.string().min(1),
-  providerId: z.string().min(1),
-  providerName: z.string().min(1),
-  providerAccountId: z.string().min(1),
-  providerAccountLabel: z.string().min(1),
-  limitName: z.string().min(1),
-  windowKind: z.string().min(1),
-  usedPercent: z.number().min(0).max(100),
-  remainingPercent: z.number().min(0).max(100),
-  resetsAt: z.string().datetime().nullable(),
-  observedAt: z.string().datetime(),
-});
-
-export const telemetryQuotaReadingWireSchema = telemetryQuotaReadingSchema
-  .omit({
-    providerName: true,
-    providerAccountLabel: true,
-    limitName: true,
-  })
-  .extend({ limitId: z.string().nullable() })
-  .strict();
-
-export const telemetryBreakdownSchema = z.object({
-  key: z.string().min(1),
-  label: z.string().min(1),
-  sampleCount: z.number().int().nonnegative(),
-  highConfidenceSamples: z.number().int().nonnegative(),
-  unattributedSamples: z.number().int().nonnegative(),
-  tokens: detailedTokenUsageTotalsSchema,
-  effectiveTokensPer100Percent: telemetryValueStatisticsSchema,
-});
-
-export const telemetryBreakdownWireSchema = telemetryBreakdownSchema
-  .omit({ label: true })
-  .strict();
-
-export const modelBehaviorSummarySchema = z.object({
-  attemptCount: z.number().int().nonnegative(),
-  completedCount: z.number().int().nonnegative(),
-  failedCount: z.number().int().nonnegative(),
-  interruptedCount: z.number().int().nonnegative(),
-  completionRate: z.number().min(0).max(1).nullable(),
-  finalAnswerRate: z.number().min(0).max(1).nullable(),
-  toolCallCount: z.number().int().nonnegative(),
-  invalidToolCallCount: z.number().int().nonnegative(),
-  toolErrorRate: z.number().min(0).max(1).nullable(),
-  retryFailoverCount: z.number().int().nonnegative(),
-  compactionCount: z.number().int().nonnegative(),
-  approvalRequestCount: z.number().int().nonnegative(),
-  filesChangedCount: z.number().int().nonnegative(),
-  testCommandCount: z.number().int().nonnegative(),
-  testFailureCount: z.number().int().nonnegative(),
-  immediateCorrectiveFollowupCount: z.number().int().nonnegative(),
-  durationMs: telemetryValueStatisticsSchema,
-  timeToFirstActivityMs: telemetryValueStatisticsSchema,
-  timeToVisibleResponseMs: telemetryValueStatisticsSchema,
-});
-
-export const modelBehaviorBreakdownSchema = modelBehaviorSummarySchema.extend({
-  key: z.string().min(1),
-  label: z.string().min(1),
-});
-
-export const modelBehaviorDaySchema = modelBehaviorSummarySchema.extend({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
-});
-
-export const telemetryChangeMetricSchema = z.enum([
-  "tokens-per-percent",
-  "effective-weekly-allowance",
-  "failure-rate",
-  "tool-error-rate",
-  "latency",
-  "compaction-frequency",
-  "completion-rate",
-  "output-reasoning-mix",
-]);
-
-export const telemetryChangePointSchema = z.object({
-  id: z.string().min(1),
-  metric: telemetryChangeMetricSchema,
-  scope: z.enum(["account", "model", "account-model"]),
-  providerAccountId: z.string().min(1).nullable(),
-  providerAccountLabel: z.string().min(1).nullable(),
-  modelId: z.string().min(1).nullable(),
-  modelLabel: z.string().min(1).nullable(),
-  detectedAt: z.string().datetime(),
-  beforeStart: z.string().datetime(),
-  beforeEnd: z.string().datetime(),
-  afterStart: z.string().datetime(),
-  afterEnd: z.string().datetime(),
-  beforeValue: z.number().finite(),
-  afterValue: z.number().finite(),
-  relativeChangePercent: z.number().finite().nullable(),
-  beforeSampleCount: z.number().int().positive(),
-  afterSampleCount: z.number().int().positive(),
-  confidence: z.enum(["high", "medium"]),
-  direction: z.enum(["increased", "decreased"]),
-  impact: z.enum(["improvement", "degradation", "neutral"]),
-  unit: z.enum(["tokens", "ratio", "milliseconds"]),
-});
-
-export const telemetryChangePointWireSchema = telemetryChangePointSchema
-  .omit({ providerAccountLabel: true, modelLabel: true })
-  .strict();
-
-export const providerTelemetryAnalyticsSchema = z.object({
-  generatedAt: z.string().datetime(),
-  range: z.object({
-    from: z.string().datetime(),
-    to: z.string().datetime(),
-  }),
-  accounts: z.array(
-    z.object({
-      id: z.string().min(1),
-      providerId: z.string().min(1),
-      providerName: z.string().min(1),
-      label: z.string().min(1),
-    }),
-  ),
-  currentQuota: z.array(telemetryQuotaReadingSchema),
-  quotaHistory: z.array(telemetryQuotaReadingSchema),
-  resetBoundaries: z.array(
-    z.object({
-      providerAccountId: z.string().min(1),
-      resetsAt: z.string().datetime(),
-      firstObservedAt: z.string().datetime(),
-    }),
-  ),
-  tokens: z.object({
-    total: detailedTokenUsageTotalsSchema,
-    daily: z.array(projectTokenUsageDaySchema).max(366),
-  }),
-  estimates: z.object({
-    sampleCount: z.number().int().nonnegative(),
-    highConfidenceSamples: z.number().int().nonnegative(),
-    unattributedSamples: z.number().int().nonnegative(),
-    tokensPerPercent: telemetryValueStatisticsSchema,
-    effectiveTokensPer100Percent: telemetryValueStatisticsSchema,
-  }),
-  comparisons: z.object({
-    rolling7Days: z.object({
-      current: telemetryValueStatisticsSchema,
-      previous: telemetryValueStatisticsSchema,
-      changePercent: z.number().finite().nullable(),
-    }),
-    rolling30Days: z.object({
-      current: telemetryValueStatisticsSchema,
-      previous: telemetryValueStatisticsSchema,
-      changePercent: z.number().finite().nullable(),
-    }),
-    monthOverMonth: z.object({
-      current: telemetryValueStatisticsSchema,
-      previous: telemetryValueStatisticsSchema,
-      changePercent: z.number().finite().nullable(),
-    }),
-  }),
-  breakdowns: z.object({
-    accounts: z.array(telemetryBreakdownSchema),
-    models: z.array(telemetryBreakdownSchema),
-    reasoningEfforts: z.array(telemetryBreakdownSchema),
-    months: z.array(telemetryBreakdownSchema),
-  }),
-  behavior: z.object({
-    total: modelBehaviorSummarySchema,
-    daily: z.array(modelBehaviorDaySchema).max(366),
-    accounts: z.array(modelBehaviorBreakdownSchema),
-    models: z.array(modelBehaviorBreakdownSchema),
-    reasoningEfforts: z.array(modelBehaviorBreakdownSchema),
-  }),
-  changePoints: z.array(telemetryChangePointSchema).max(100),
-});
-
-export const providerTelemetryWireAnalyticsSchema =
-  providerTelemetryAnalyticsSchema
-    .omit({
-      accounts: true,
-      currentQuota: true,
-      quotaHistory: true,
-      breakdowns: true,
-      behavior: true,
-      changePoints: true,
-    })
-    .extend({
-      accounts: z.array(
-        z
-          .object({
-            id: z.string().min(1),
-            providerId: z.string().min(1),
-          })
-          .strict(),
-      ),
-      currentQuota: z.array(telemetryQuotaReadingWireSchema),
-      quotaHistory: z.array(telemetryQuotaReadingWireSchema),
-      breakdowns: z.object({
-        accounts: z.array(telemetryBreakdownWireSchema),
-        models: z.array(telemetryBreakdownWireSchema),
-        reasoningEfforts: z.array(telemetryBreakdownWireSchema),
-        months: z.array(telemetryBreakdownWireSchema),
-      }),
-      behavior: z.object({
-        total: modelBehaviorSummarySchema,
-        daily: z.array(modelBehaviorDaySchema).max(366),
-        accounts: z.array(
-          modelBehaviorBreakdownSchema.omit({ label: true }).strict(),
-        ),
-        models: z.array(
-          modelBehaviorBreakdownSchema.omit({ label: true }).strict(),
-        ),
-        reasoningEfforts: z.array(
-          modelBehaviorBreakdownSchema.omit({ label: true }).strict(),
-        ),
-      }),
-      changePoints: z.array(telemetryChangePointWireSchema).max(100),
-    })
-    .strict();
-
-const telemetryExportQuotaObservationSchema = z.object({
-  id: z.string().min(1),
-  eventKey: z.string().min(1),
-  observationBatchKey: z.string().min(1),
-  providerAccountId: z.string().min(1),
-  workerId: z.string().nullable(),
-  observedAt: z.string().datetime(),
-  receivedAt: z.string().datetime(),
-  usedPercent: z.number().finite(),
-  resetsAt: z.string().datetime().nullable(),
-  windowDurationMinutes: z.number().int().nonnegative().nullable(),
-  limitId: z.string().nullable(),
-  windowKind: z.string().min(1),
-  reachedType: z.string().nullable(),
-  observationTrigger: z.string().min(1),
-  chatId: z.string().nullable(),
-  turnId: z.string().nullable(),
-  executionAttemptId: z.string().nullable(),
-  workerVersion: z.string().nullable(),
-  serverVersion: z.string().nullable(),
-  codexVersion: z.string().nullable(),
-});
-
-const telemetryExportTokenUsageSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().nullable(),
-  chatId: z.string().nullable(),
-  sourceKey: z.string().min(1),
-  modelId: z.string().nullable(),
-  modelRouteId: z.string().nullable(),
-  providerAccountId: z.string().nullable(),
-  workerId: z.string().nullable(),
-  turnId: z.string().nullable(),
-  executionAttemptId: z.string().nullable(),
-  attemptKind: z.string().min(1),
-  attemptStatus: z.string().min(1),
-  reasoningEffort: z.string().nullable(),
-  inputTokens: z.number().int().nonnegative(),
-  cachedInputTokens: z.number().int().nonnegative(),
-  cacheWriteInputTokens: z.number().int().nonnegative(),
-  outputTokens: z.number().int().nonnegative(),
-  reasoningOutputTokens: z.number().int().nonnegative(),
-  visibleOutputTokens: z.number().int().nonnegative().nullable(),
-  reportedTotalTokens: z.number().int().nonnegative().nullable(),
-  usageSemantics: z.string().min(1),
-  startedAt: z.string().datetime(),
-  completedAt: z.string().datetime().nullable(),
-  finalizedAt: z.string().datetime().nullable(),
-  workerVersion: z.string().nullable(),
-  serverVersion: z.string().nullable(),
-  codexVersion: z.string().nullable(),
-});
-
-const telemetryExportBehaviorSchema = z.object({
-  id: z.string().min(1),
-  sourceKey: z.string().min(1),
-  projectId: z.string().nullable(),
-  chatId: z.string().nullable(),
-  modelId: z.string().nullable(),
-  modelRouteId: z.string().nullable(),
-  providerAccountId: z.string().nullable(),
-  workerId: z.string().nullable(),
-  turnId: z.string().nullable(),
-  executionAttemptId: z.string().min(1),
-  attemptStatus: z.string().min(1),
-  reasoningEffort: z.string().nullable(),
-  startedAt: z.string().datetime(),
-  completedAt: z.string().datetime().nullable(),
-  finalizedAt: z.string().datetime().nullable(),
-  durationMs: z.number().int().nonnegative().nullable(),
-  finalAnswerAppeared: z.boolean(),
-  toolCallCount: z.number().int().nonnegative(),
-  invalidToolCallCount: z.number().int().nonnegative(),
-  retryFailoverCount: z.number().int().nonnegative(),
-  compactionCount: z.number().int().nonnegative(),
-  approvalRequestCount: z.number().int().nonnegative(),
-  inputTokens: z.number().int().nonnegative(),
-  cachedInputTokens: z.number().int().nonnegative(),
-  cacheWriteInputTokens: z.number().int().nonnegative(),
-  outputTokens: z.number().int().nonnegative(),
-  reasoningOutputTokens: z.number().int().nonnegative(),
-  filesChangedCount: z.number().int().nonnegative(),
-  testCommandCount: z.number().int().nonnegative(),
-  testPassCount: z.number().int().nonnegative(),
-  testFailureCount: z.number().int().nonnegative(),
-  userInterrupted: z.boolean(),
-  userRetryRegeneration: z.boolean().nullable(),
-  immediateCorrectiveFollowup: z.boolean(),
-  forkCount: z.number().int().nonnegative(),
-  copyCount: z.number().int().nonnegative().nullable(),
-  ratingValue: z.number().int().nullable(),
-  workerVersion: z.string().nullable(),
-  serverVersion: z.string().nullable(),
-  codexVersion: z.string().nullable(),
-  signalAvailability: z.record(z.string(), z.unknown()),
-});
-
-const telemetryExportCatalogSnapshotSchema = z.object({
-  id: z.string().min(1),
-  providerAccountId: z.string().nullable(),
-  workerId: z.string().nullable(),
-  availabilityScope: z.string().min(1),
-  metadataSource: z.string().min(1),
-  metadataHash: z.string().min(1),
-  observedAt: z.string().datetime(),
-});
-
-export const providerTelemetryExportSchema = z.object({
-  schemaVersion: z.literal(2),
-  generatedAt: z.string().datetime(),
-  provider: z.object({ id: z.string().min(1) }),
-  privacy: z.object({
-    includesMessageContent: z.literal(false),
-    rawPayloadsStored: z.literal(false),
-    dimensionLabels: z.literal("opaque-ids"),
-    retention: z.literal("owner-controlled-indefinite"),
-  }),
-  quotaObservations: z.array(telemetryExportQuotaObservationSchema),
-  tokenUsage: z.array(telemetryExportTokenUsageSchema),
-  modelBehavior: z.array(telemetryExportBehaviorSchema),
-  modelCatalogSnapshots: z.array(telemetryExportCatalogSnapshotSchema),
-});
-
-export const providerTelemetryDeleteResultSchema = z.object({
-  providerId: z.string().min(1),
-  deleted: z.object({
-    quotaObservations: z.number().int().nonnegative(),
-    tokenUsage: z.number().int().nonnegative(),
-    modelBehavior: z.number().int().nonnegative(),
-    modelCatalogSnapshots: z.number().int().nonnegative(),
-  }),
-});
+export type {
+  ProjectRepositoryStats,
+  ProjectGitRepositoryStats,
+  ProjectFolderStats,
+  ProjectTokenUsageDay,
+  ProjectTokenUsageBreakdown,
+  ProjectTokenUsage,
+  TelemetryValueStatistics,
+  TelemetryQuotaReading,
+  TelemetryBreakdown,
+  ModelBehaviorSummary,
+  TelemetryChangeMetric,
+  TelemetryChangePoint,
+  ProviderTelemetryAnalytics,
+  ProviderTelemetryWireAnalytics,
+  ProviderTelemetryExport,
+  ProviderTelemetryDeleteResult,
+} from "./telemetry.js";
 
 const chatPlacementCreateFields = {
   worktreeId: z.string().min(1).optional(),
@@ -12997,77 +12309,6 @@ export const workerServerEnvelopeSchema = z.union([
   workerNotificationEnvelopeSchema,
 ]);
 
-export type ProjectRepositoryStats = z.infer<
-  typeof projectRepositoryStatsSchema
->;
-export type ProjectGitRepositoryStats = z.infer<
-  typeof projectGitRepositoryStatsSchema
->;
-export type ProjectFolderStats = z.infer<typeof projectFolderStatsSchema>;
-export type ProjectTokenUsageDay = z.infer<typeof projectTokenUsageDaySchema>;
-export type ProjectTokenUsageBreakdown = z.infer<
-  typeof projectTokenUsageBreakdownSchema
->;
-export type ProjectTokenUsage = z.infer<typeof projectTokenUsageSchema>;
-export type TelemetryValueStatistics = z.infer<
-  typeof telemetryValueStatisticsSchema
->;
-export type TelemetryQuotaReading = z.infer<typeof telemetryQuotaReadingSchema>;
-export type TelemetryBreakdown = z.infer<typeof telemetryBreakdownSchema>;
-export type ModelBehaviorSummary = z.infer<typeof modelBehaviorSummarySchema>;
-export type TelemetryChangeMetric = z.infer<typeof telemetryChangeMetricSchema>;
-export type TelemetryChangePoint = z.infer<typeof telemetryChangePointSchema>;
-export type ProviderTelemetryAnalytics = z.infer<
-  typeof providerTelemetryAnalyticsSchema
->;
-export type ProviderTelemetryWireAnalytics = z.infer<
-  typeof providerTelemetryWireAnalyticsSchema
->;
-export type ProviderTelemetryExport = z.infer<
-  typeof providerTelemetryExportSchema
->;
-export type ProviderTelemetryDeleteResult = z.infer<
-  typeof providerTelemetryDeleteResultSchema
->;
-export type TunnelOrigin = z.infer<typeof tunnelOriginSchema>;
-export type TunnelManagement = z.infer<typeof tunnelManagementSchema>;
-export type TunnelProtocolHint = z.infer<typeof tunnelProtocolHintSchema>;
-export type TunnelDesiredState = z.infer<typeof tunnelDesiredStateSchema>;
-export type TunnelStatus = z.infer<typeof tunnelStatusSchema>;
-export type TunnelSourceEndpoint = z.infer<typeof tunnelSourceEndpointSchema>;
-export type TunnelDestinationEndpoint = z.infer<
-  typeof tunnelDestinationEndpointSchema
->;
-export type TunnelManagedResource = z.infer<typeof tunnelManagedResourceSchema>;
-export type TunnelUserCreate = z.infer<typeof tunnelUserCreateSchema>;
-export type TunnelUserUpdate = z.infer<typeof tunnelUserUpdateSchema>;
-export type TunnelUserWireCreate = z.infer<typeof tunnelUserWireCreateSchema>;
-export type TunnelUserWireUpdate = z.infer<typeof tunnelUserWireUpdateSchema>;
-export type TunnelAttachmentCreate = z.infer<
-  typeof tunnelAttachmentCreateSchema
->;
-export type TunnelAttachmentCreateResult = z.infer<
-  typeof tunnelAttachmentCreateResultSchema
->;
-export type TunnelAttachmentInitialize = z.infer<
-  typeof tunnelAttachmentInitializeSchema
->;
-export type TunnelAttachmentReady = z.infer<typeof tunnelAttachmentReadySchema>;
-export type TunnelManagedRegistration = z.infer<
-  typeof tunnelManagedRegistrationSchema
->;
-export type TunnelAttachmentKind = z.infer<typeof tunnelAttachmentKindSchema>;
-export type TunnelAttachmentSummary = z.infer<
-  typeof tunnelAttachmentSummarySchema
->;
-export type TunnelAttachmentWireSummary = z.infer<
-  typeof tunnelAttachmentWireSummarySchema
->;
-export type TunnelActionCapabilities = z.infer<
-  typeof tunnelActionCapabilitiesSchema
->;
-export type TunnelSummary = z.infer<typeof tunnelSummarySchema>;
-export type TunnelWireSummary = z.infer<typeof tunnelWireSummarySchema>;
 export type GithubWorkerRepository = z.infer<
   typeof githubWorkerRepositorySchema
 >;
