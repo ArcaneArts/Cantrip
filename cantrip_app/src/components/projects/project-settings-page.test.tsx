@@ -19,10 +19,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   ProjectSettingsPage,
+  projectSettingsSections,
   projectSettingsTabsForProject,
   projectWorktreeBindings,
   projectWorktreeState,
 } from "./project-settings-page";
+import { settingsSearchResults } from "@/components/settings/settings-navigation";
 
 const now = "2026-08-08T12:00:00.000Z";
 const worktree: ProjectWorktreeSummary = {
@@ -80,6 +82,22 @@ describe("project settings", () => {
       "policies",
       "skills",
       "mcp",
+    ]);
+  });
+
+  it("indexes settings from every project category", () => {
+    expect(
+      settingsSearchResults("archived chats", projectSettingsSections),
+    ).toEqual([
+      expect.objectContaining({ id: "archived-chats", sectionId: "archive" }),
+    ]);
+    expect(settingsSearchResults("MCP HTTP", projectSettingsSections)).toEqual([
+      expect.objectContaining({ id: "project-mcp-servers", sectionId: "mcp" }),
+    ]);
+    expect(
+      settingsSearchResults("CodeGraph index", projectSettingsSections),
+    ).toEqual([
+      expect.objectContaining({ id: "codegraph", sectionId: "worktrees" }),
     ]);
   });
 
@@ -346,6 +364,10 @@ describe("project settings", () => {
     expect(markup).not.toContain("Agent managed");
     expect(markup).not.toContain("Worker offline");
     expect(markup).toContain('data-slot="project-settings"');
+    expect(markup).toContain('data-slot="settings-sidebar"');
+    expect(markup).toContain('data-slot="settings-mobile-categories"');
+    expect(markup).toContain('aria-label="Search all project settings"');
+    expect(markup).not.toContain('role="tablist"');
 
     const workflowsMarkup = renderSection("workflows");
     expect(workflowsMarkup).toContain("New workflow");
@@ -356,7 +378,9 @@ describe("project settings", () => {
     expect(worktreesMarkup).toContain("Required for writes");
     expect(worktreesMarkup).toContain("Primary");
     expect(worktreesMarkup).toContain("Worker offline");
-    expect(worktreesMarkup).toContain('aria-label="Search worktrees"');
+    expect(worktreesMarkup).toContain(
+      'aria-label="Search all project settings"',
+    );
     expect(worktreesMarkup).not.toContain("New workflow");
 
     const replicasMarkup = renderSection("replicas");
