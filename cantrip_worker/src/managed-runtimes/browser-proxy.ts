@@ -14,10 +14,18 @@ const MAX_CONNECTIONS = 8;
 const MAX_HOST_CONNECTIONS = 2;
 
 export interface BrowserNetworkProxyOptions {
+  connectSocket?: (options: {
+    family: 4 | 6;
+    host: string;
+    port: number;
+  }) => Socket;
   lookup?: typeof dnsLookup;
 }
 
 export class BrowserNetworkProxy {
+  readonly #connectSocket: NonNullable<
+    BrowserNetworkProxyOptions["connectSocket"]
+  >;
   readonly #lookup: typeof dnsLookup;
   readonly #hostConnections = new Map<string, number>();
   readonly #tunnels = new Set<Duplex>();
@@ -25,6 +33,8 @@ export class BrowserNetworkProxy {
   #server: HttpServer | null = null;
 
   constructor(options: BrowserNetworkProxyOptions = {}) {
+    this.#connectSocket =
+      options.connectSocket ?? ((input) => netConnect(input));
     this.#lookup = options.lookup ?? dnsLookup;
   }
 
@@ -132,17 +142,51 @@ export class BrowserNetworkProxy {
         target.hostname,
         this.#lookup,
       );
-      upstream = netConnect({
+      upstream = this.#connectSocket({
         host: selected!.address,
         port: 443,
         family: selected!.family,
       });
-      await new Promise<void>((resolve, reject) => {
-        upstream!.once("connect", resolve);
-        upstream!.once("error", reject);
-        upstream!.setTimeout(30_000, () => reject(new Error("timeout")));
+      let endRelay!: () => void;
+      const relayEnded = new Promise<void>((resolve) => {
+        let ended = false;
+        endRelay = () => {
+          if (ended) return;
+          ended = true;
+          client.destroy();
+          upstream?.destroy();
+          resolve();
+        };
       });
-      upstream.setTimeout(0);
+      client.on("error", endRelay);
+      client.on("close", endRelay);
+      upstream.on("error", endRelay);
+      upstream.on("close", endRelay);
+      await new Promise<void>((resolve, reject) => {
+        const connected = () => {
+          cleanup();
+          resolve();
+        };
+        const failed = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+        const closed = () =>
+          failed(new Error("upstream closed before connecting"));
+        const timedOut = () => failed(new Error("timeout"));
+        const cleanup = () => {
+          upstream!.off("connect", connected);
+          upstream!.off("error", failed);
+          upstream!.off("close", closed);
+          upstream!.off("timeout", timedOut);
+          upstream!.setTimeout(0);
+        };
+        upstream!.once("connect", connected);
+        upstream!.once("error", failed);
+        upstream!.once("close", closed);
+        upstream!.once("timeout", timedOut);
+        upstream!.setTimeout(30_000);
+      });
       client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
       if (head.length > 0) upstream.write(head);
       let clientBytes = head.length;
@@ -163,9 +207,7 @@ export class BrowserNetworkProxy {
       });
       client.pipe(upstream);
       upstream.pipe(client);
-      await new Promise<void>((resolve) =>
-        client.once("close", () => resolve()),
-      );
+      await relayEnded;
     } finally {
       this.#tunnels.delete(client);
       upstream?.destroy();

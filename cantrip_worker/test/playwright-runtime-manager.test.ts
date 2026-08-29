@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { connect } from "node:net";
+import { connect, createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -295,5 +295,49 @@ describe("BrowserNetworkProxy", () => {
     });
     expect(response).toContain("502 Bad Gateway");
     await proxy.close();
+  });
+
+  it("closes a CONNECT client when the upstream socket resets", async () => {
+    const upstream = createServer((socket) => {
+      socket.on("error", () => undefined);
+      setTimeout(() => socket.destroy(new Error("fixture reset")), 20);
+    });
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", resolve);
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Fixture upstream did not bind a TCP port.");
+    }
+    const proxy = new BrowserNetworkProxy({
+      connectSocket: () => connect(address.port, "127.0.0.1"),
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }] as never,
+    });
+    const origin = new URL(await proxy.start());
+    const response = await new Promise<string>((resolve, reject) => {
+      const socket = connect(Number(origin.port), origin.hostname);
+      let received = "";
+      const timeout = setTimeout(
+        () => reject(new Error("Proxy client did not close after reset.")),
+        1_000,
+      );
+      socket.once("error", reject);
+      socket.on("data", (chunk) => (received += chunk));
+      socket.once("close", () => {
+        clearTimeout(timeout);
+        resolve(received);
+      });
+      socket.once("connect", () =>
+        socket.write(
+          "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n",
+        ),
+      );
+    });
+    expect(response).toContain("200 Connection Established");
+    await proxy.close();
+    await new Promise<void>((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
   });
 });
