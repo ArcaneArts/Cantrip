@@ -49,6 +49,7 @@ import {
 import { errorMessage } from "../../http/request-helpers.js";
 import { persistProviderRateLimitActivity } from "../../models/provider-quota.js";
 import { taskOperationRelayTurnFields } from "../../tasks/encrypted-relay.js";
+import { withTaskLaunchStageTimeout } from "../../tasks/launch-observation.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
 import {
   ROUTE_FAILURE_COOLDOWN_MS,
@@ -80,8 +81,6 @@ type TaskTurnBootstrapStage =
   | "persist-chat-runtime"
   | "persist-turn-mode"
   | "prepare-code-editors"
-  | "record-model-behavior"
-  | "record-token-usage"
   | "resolve-attachments"
   | "resolve-effective-policies"
   | "resolve-mcp-servers"
@@ -203,6 +202,7 @@ export interface ChatTurnRuntimeDependencies
     context: Pick<ChatExecutionContext, "chatId" | "cwd" | "workerId">,
     phase: "started" | "completed" | "failed",
     paths?: Iterable<string>,
+    timeoutMs?: number | null,
   ) => Promise<void>;
   prepareCodeEditorsForTurn: (
     context: ChatExecutionContext,
@@ -288,7 +288,15 @@ export function createChatTurnRuntime({
         "Scheduled Task turn bootstrap stage started",
       );
       try {
-        const result = await operation();
+        const result =
+          options.preflightWorkerCommandTimeoutMs === undefined ||
+          options.preflightWorkerCommandTimeoutMs === null
+            ? await operation()
+            : await withTaskLaunchStageTimeout(
+                "begin-turn",
+                options.preflightWorkerCommandTimeoutMs,
+                operation,
+              );
         app.log.info(
           {
             event: "task.turn-bootstrap-stage",
@@ -485,11 +493,9 @@ export function createChatTurnRuntime({
               context.contextKind === "project" ? "ide" : "chat",
             ),
           );
-    // Scheduled callers retain the fresh claim while this preflight runs. Use
-    // the authoritative state transition as the single launch fence instead
-    // of first awaiting a redundant heartbeat and only marking the Task later.
-    // This also prevents a preflight that was paused in-flight from acquiring
-    // an execution lane after its fencing token has been advanced.
+    // This is the authoritative launch fence. If a claimed Task was paused
+    // while worker preflight was in flight, it cannot acquire an execution
+    // lane or persist a duplicate turn after its fencing token advances.
     if (options.taskDispatchLease) {
       await observeTaskTurnBootstrapStage("mark-dispatch-running", () =>
         repository.taskDispatch.markRunning(options.taskDispatchLease!),
@@ -676,24 +682,25 @@ export function createChatTurnRuntime({
       "load-worker-attribution",
       () => repository.getWorker(ownerId, execution.workerId),
     );
-    if (options.taskDispatchLease) {
-      app.log.info(
-        {
-          event: "task.turn-bootstrap-ready",
-          subsystem: "task-scheduler",
-          operation: "bootstrap-turn",
-          status: "ready",
-          chatId: execution.chatId,
-          cycleId: options.taskDispatchLease.cycleId,
-          operationId: options.taskDispatchLease.operationId,
-          clientMessageId: userMessage.id,
-          executionLaneId,
-          serverVersion: cantripVersion.version,
-          workerId: execution.workerId,
-        },
-        "Scheduled Task turn bootstrap is ready for worker dispatch",
-      );
-    }
+    let resolveTaskWorkerDispatch: (() => void) | null = null;
+    let rejectTaskWorkerDispatch: ((error: unknown) => void) | null = null;
+    let taskWorkerDispatchSettled = false;
+    const taskWorkerDispatchStarted = options.taskDispatchLease
+      ? new Promise<void>((resolve, reject) => {
+          resolveTaskWorkerDispatch = resolve;
+          rejectTaskWorkerDispatch = reject;
+        })
+      : null;
+    const markTaskWorkerDispatchStarted = () => {
+      if (taskWorkerDispatchSettled) return;
+      taskWorkerDispatchSettled = true;
+      resolveTaskWorkerDispatch?.();
+    };
+    const markTaskWorkerDispatchFailed = (error: unknown) => {
+      if (taskWorkerDispatchSettled) return;
+      taskWorkerDispatchSettled = true;
+      rejectTaskWorkerDispatch?.(error);
+    };
     void runAsOwner(ownerId, async () => {
       let anyActivity = false;
       let workerObservationSequence = 0;
@@ -738,7 +745,12 @@ export function createChatTurnRuntime({
       try {
         if (execution.contextKind === "project") {
           await observeTaskTurnBootstrapStage("notify-code-agent-started", () =>
-            notifyCodeAgentState(execution, "started"),
+            notifyCodeAgentState(
+              execution,
+              "started",
+              [],
+              options.preflightWorkerCommandTimeoutMs,
+            ),
           );
         }
         for (const [index, runtime] of runtimes.entries()) {
@@ -873,8 +885,8 @@ export function createChatTurnRuntime({
               : "turn-starting",
             executionAttemptId,
           );
-          await observeTaskTurnBootstrapStage("record-token-usage", () =>
-            recordRuntimeTokenUsage(
+          const recordStartedAttempt = async () => {
+            await recordRuntimeTokenUsage(
               tokenUsageSourceKey,
               execution.projectId,
               execution.chatId,
@@ -888,10 +900,8 @@ export function createChatTurnRuntime({
                 startedAt: attemptStartedAt,
                 codexVersion: attributedWorker?.codexVersion ?? null,
               },
-            ),
-          );
-          await observeTaskTurnBootstrapStage("record-model-behavior", () =>
-            recordRuntimeModelBehavior(
+            );
+            await recordRuntimeModelBehavior(
               behaviorSourceKey,
               execution,
               runtime,
@@ -906,9 +916,30 @@ export function createChatTurnRuntime({
                 userRetryRegeneration: Boolean(options.retryMessageId),
                 codexVersion: attributedWorker?.codexVersion ?? null,
               },
-            ),
-          );
+            );
+          };
+          if (!options.taskDispatchLease) {
+            await recordStartedAttempt();
+          }
           try {
+            if (options.taskDispatchLease) {
+              app.log.info(
+                {
+                  event: "task.turn-bootstrap-ready",
+                  subsystem: "task-scheduler",
+                  operation: "bootstrap-turn",
+                  status: "ready",
+                  chatId: execution.chatId,
+                  cycleId: options.taskDispatchLease.cycleId,
+                  operationId: options.taskDispatchLease.operationId,
+                  clientMessageId: userMessage.id,
+                  executionLaneId,
+                  serverVersion: cantripVersion.version,
+                  workerId: execution.workerId,
+                },
+                "Scheduled Task turn bootstrap is ready for worker dispatch",
+              );
+            }
             app.log.debug(
               {
                 event: "chat.turn.route-dispatched",
@@ -928,25 +959,7 @@ export function createChatTurnRuntime({
               },
               "Agent turn route dispatched",
             );
-            if (options.taskDispatchLease) {
-              app.log.info(
-                {
-                  event: "task.worker-turn.dispatched",
-                  subsystem: "task-scheduler",
-                  operation: "dispatch-worker-turn",
-                  status: "dispatched",
-                  chatId: execution.chatId,
-                  cycleId: options.taskDispatchLease.cycleId,
-                  operationId: options.taskDispatchLease.operationId,
-                  clientMessageId: userMessage.id,
-                  executionLaneId,
-                  serverVersion: cantripVersion.version,
-                  workerId: execution.workerId,
-                },
-                "Scheduled Task turn dispatched to the worker",
-              );
-            }
-            const rawResult = await bridge.request(
+            const rawResultPromise = bridge.request(
               execution.workerId,
               {
                 type: "chat.turn",
@@ -1568,6 +1581,58 @@ export function createChatTurnRuntime({
                   }),
               },
             );
+            markTaskWorkerDispatchStarted();
+            if (options.taskDispatchLease) {
+              app.log.info(
+                {
+                  event: "task.worker-turn.dispatched",
+                  subsystem: "task-scheduler",
+                  operation: "dispatch-worker-turn",
+                  status: "dispatched",
+                  chatId: execution.chatId,
+                  cycleId: options.taskDispatchLease.cycleId,
+                  operationId: options.taskDispatchLease.operationId,
+                  clientMessageId: userMessage.id,
+                  executionLaneId,
+                  serverVersion: cantripVersion.version,
+                  workerId: execution.workerId,
+                },
+                "Scheduled Task turn dispatched to the worker",
+              );
+              try {
+                if (
+                  options.preflightWorkerCommandTimeoutMs === undefined ||
+                  options.preflightWorkerCommandTimeoutMs === null
+                ) {
+                  await recordStartedAttempt();
+                } else {
+                  await withTaskLaunchStageTimeout(
+                    "begin-turn",
+                    options.preflightWorkerCommandTimeoutMs,
+                    recordStartedAttempt,
+                  );
+                }
+              } catch (error) {
+                app.log.warn(
+                  {
+                    event: "task.turn-start-telemetry.failed",
+                    subsystem: "task-scheduler",
+                    operation: "record-turn-start",
+                    status: "degraded",
+                    chatId: execution.chatId,
+                    cycleId: options.taskDispatchLease!.cycleId,
+                    operationId: options.taskDispatchLease!.operationId,
+                    clientMessageId: userMessage.id,
+                    executionLaneId,
+                    serverVersion: cantripVersion.version,
+                    workerId: execution.workerId,
+                    err: error,
+                  },
+                  "Could not record scheduled Task turn-start telemetry",
+                );
+              }
+            }
+            const rawResult = await rawResultPromise;
             cancelChatTurnOutcomeRecovery(
               execution.workerId,
               execution.chatId,
@@ -1896,6 +1961,7 @@ export function createChatTurnRuntime({
           }
         }
       } catch (error: unknown) {
+        markTaskWorkerDispatchFailed(error);
         if (options.structuredResult) {
           try {
             await options.structuredResult.onFailed({
@@ -1911,7 +1977,12 @@ export function createChatTurnRuntime({
           }
         }
         if (execution.contextKind === "project") {
-          await notifyCodeAgentState(execution, "failed", changedPaths);
+          await notifyCodeAgentState(
+            execution,
+            "failed",
+            changedPaths,
+            options.preflightWorkerCommandTimeoutMs,
+          );
         }
         if (!anyActivity && execution.modelRouteId) {
           await repository.updateChatRuntime(
@@ -2000,9 +2071,19 @@ export function createChatTurnRuntime({
           void dispatchNextQueuedPrompt(execution.chatId);
         }
       } finally {
+        if (!taskWorkerDispatchSettled && options.taskDispatchLease) {
+          markTaskWorkerDispatchFailed(
+            new Error("Scheduled Task bootstrap ended before worker dispatch."),
+          );
+        }
         if (taskDispatchHeartbeat) clearInterval(taskDispatchHeartbeat);
       }
     });
+
+    // Ordinary interactive chat remains fire-and-stream. A scheduled Task,
+    // however, does not report launch success until the worker turn request
+    // has crossed the complete server-side bootstrap path above.
+    await taskWorkerDispatchStarted;
 
     const firstRuntime = runtimes[0]!;
     return {
