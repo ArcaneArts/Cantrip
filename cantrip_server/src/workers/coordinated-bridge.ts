@@ -35,6 +35,7 @@ import type {
 import {
   sameWorkerConnectionContinuityIdentity,
   WorkerBridge,
+  WorkerCommandError,
   workerSocketIsAttachable,
   WorkerUnavailableError,
 } from "./bridge.js";
@@ -73,6 +74,14 @@ export interface CoordinatedWorkerBridgeOptions {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function stableWorkerFailureCode(value: unknown): string | null {
+  return typeof value === "string" &&
+    value.length <= 100 &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value)
+    ? value
+    : null;
 }
 
 function decodePayload(value: string): Uint8Array | null {
@@ -632,7 +641,13 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
           durationMs: Date.now() - startedAtMs,
           workerId,
         });
-        reject(new Error(`Worker command ${command.type} timed out.`));
+        reject(
+          new WorkerCommandError(
+            `Worker command ${command.type} timed out.`,
+            "worker-command-timeout",
+            { operation: command.type, requestId, workerId },
+          ),
+        );
       }, timeoutMs);
       timeout.unref();
       this.#pending.set(requestId, {
@@ -750,18 +765,27 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
           pending.resolve(message.result);
         } else {
           this.#failedRequests += 1;
+          const errorCode = stableWorkerFailureCode(message.errorCode);
           serverLogger.event("warn", "Remote worker command failed", {
             event: "coordination.command.failed",
             subsystem: "relay-coordination",
             operation: pending.commandType,
             requestId: message.requestId,
-            reasonCode: "remote-worker-failure",
+            reasonCode: errorCode ?? "remote-worker-failure",
             status: "failed",
             durationMs: Date.now() - pending.startedAtMs,
             workerId: pending.workerId,
           });
           pending.reject(
-            new Error(message.error ?? "Remote worker command failed."),
+            new WorkerCommandError(
+              message.error ?? "Remote worker command failed.",
+              errorCode,
+              {
+                operation: pending.commandType,
+                requestId: message.requestId,
+                workerId: pending.workerId,
+              },
+            ),
           );
         }
         return;
@@ -891,7 +915,15 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       });
       await this.#respond(message, true, result);
     } catch (error) {
-      await this.#respond(message, false, undefined, errorMessage(error));
+      await this.#respond(
+        message,
+        false,
+        undefined,
+        errorMessage(error),
+        error instanceof WorkerCommandError
+          ? (error.code ?? undefined)
+          : undefined,
+      );
     } finally {
       this.#incomingRequests -= 1;
     }
@@ -905,6 +937,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     ok: boolean,
     result?: unknown,
     error?: string,
+    errorCode?: string,
   ): Promise<void> {
     await this.#coordinator.publish(
       {
@@ -914,6 +947,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         ok,
         result,
         error,
+        errorCode,
       },
       request.timeoutMs,
     );

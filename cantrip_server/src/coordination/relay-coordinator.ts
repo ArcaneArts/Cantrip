@@ -62,6 +62,7 @@ export type RelayCoordinationPayload =
       ok: boolean;
       result?: unknown;
       error?: string;
+      errorCode?: string;
     })
   | (CoordinationPayloadBase & {
       kind: "worker-frame";

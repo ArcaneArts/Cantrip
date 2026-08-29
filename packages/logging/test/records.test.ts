@@ -300,4 +300,31 @@ describe("structured service logs", () => {
       transportKind: "local-direct",
     });
   });
+
+  it("persists safe failure stages without retaining arbitrary failure text", () => {
+    const persisted = minimizeServiceLogRecordInput({
+      ...baseRecord,
+      context: {
+        event: "project_share.open.failed",
+        failureStage: "worker-share-open",
+        reasonCode: "project-source-unavailable",
+        detail: "/Users/private/project",
+      },
+    });
+
+    expect(persisted.context).toMatchObject({
+      failureStage: "worker-share-open",
+      reasonCode: "project-source-unavailable",
+    });
+    expect(persisted.context).not.toHaveProperty("detail");
+
+    const rejected = minimizeServiceLogRecordInput({
+      ...baseRecord,
+      context: {
+        event: "project_share.open.failed",
+        failureStage: "/Users/private/project",
+      },
+    });
+    expect(rejected.context).not.toHaveProperty("failureStage");
+  });
 });

@@ -137,10 +137,14 @@ describe("WorkerRoutingRegistry", () => {
     );
     expect(
       registry.protectError(
-        "worktree.create",
-        new Error("Failed below /Users/example/private-repository"),
+        "project.share.open",
+        Object.assign(
+          new Error("Failed below /Users/example/private-repository"),
+          { code: "project-source-unavailable" },
+        ),
       ),
     ).toMatchObject({
+      code: "project-source-unavailable",
       message: "Protected repository operation failed on the worker.",
     });
   });

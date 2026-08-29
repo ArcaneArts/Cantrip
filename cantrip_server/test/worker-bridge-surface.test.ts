@@ -248,6 +248,9 @@ describe("WorkerBridge Remote Surface transport", () => {
       code: "project-source-unavailable",
       message: "Project source is unavailable.",
       name: WorkerCommandError.name,
+      operation: "code.probe",
+      requestId: request.requestId,
+      workerId: "worker-1",
     });
     bridge.close();
   });

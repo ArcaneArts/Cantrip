@@ -2646,6 +2646,22 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(reusedProjectShare.attachmentId).toBe(projectShare.attachmentId);
+    const staleShareResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/network-shares`,
+      payload: {
+        tunnelId: randomUUID(),
+        workerId: project.source?.workerId,
+        protectedRecord: projectShareRecord(randomUUID(), 1),
+      },
+    });
+    expect(staleShareResponse.statusCode).toBe(409);
+    expect(staleShareResponse.json()).toMatchObject({
+      code: "project-share-state-stale",
+      failureStage: "share-state-validation",
+      requestId: expect.any(String),
+      workerId: project.source?.workerId,
+    });
     expect(openedProjectShares).toHaveLength(2);
     expect(openedProjectShares[0]).toMatchObject({
       shareId: projectShare.attachmentId,

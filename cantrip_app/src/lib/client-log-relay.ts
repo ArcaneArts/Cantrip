@@ -151,6 +151,10 @@ export function operationalErrorMetadata(error: unknown): {
   errorClass: string;
   errorCode?: string;
   errorStatus?: number;
+  failureStage?: string;
+  requestId?: string;
+  workerId?: string;
+  workerRequestId?: string;
 } {
   const candidate = error && typeof error === "object" ? error : null;
   const name =
@@ -161,6 +165,24 @@ export function operationalErrorMetadata(error: unknown): {
         : "NonError";
   const code = candidate ? Reflect.get(candidate, "code") : undefined;
   const status = candidate ? Reflect.get(candidate, "status") : undefined;
+  const safeString = (key: string, pattern: RegExp, maxLength: number) => {
+    const value = candidate ? Reflect.get(candidate, key) : undefined;
+    return typeof value === "string" &&
+      value.length > 0 &&
+      value.length <= maxLength &&
+      pattern.test(value)
+      ? sanitizeLogText(value)
+      : undefined;
+  };
+  const failureStage = safeString(
+    "failureStage",
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/u,
+    100,
+  );
+  const safeIdPattern = /^[A-Za-z0-9._:-]+$/u;
+  const requestId = safeString("requestId", safeIdPattern, 200);
+  const workerId = safeString("workerId", safeIdPattern, 200);
+  const workerRequestId = safeString("workerRequestId", safeIdPattern, 200);
   return {
     errorClass: sanitizeLogText(name || "Error"),
     ...(typeof code === "string" || typeof code === "number"
@@ -169,6 +191,10 @@ export function operationalErrorMetadata(error: unknown): {
     ...(typeof status === "number" && Number.isFinite(status)
       ? { errorStatus: status }
       : {}),
+    ...(failureStage ? { failureStage } : {}),
+    ...(requestId ? { requestId } : {}),
+    ...(workerId ? { workerId } : {}),
+    ...(workerRequestId ? { workerRequestId } : {}),
   };
 }
 

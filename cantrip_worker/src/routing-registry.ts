@@ -28,6 +28,8 @@ const protectedResultTypes = new Set([
   "project.replica.synchronize",
   "project.replica.remove",
   "project.replica.link.repair",
+  "project.share.open",
+  "project.share.close",
   "worktree.list",
   "worktree.reconcile",
   "worktree.create",
@@ -104,7 +106,19 @@ export class WorkerRoutingRegistry {
 
   protectError(type: string, error: unknown): unknown {
     if (!protectedResultTypes.has(type)) return error;
-    return new Error("Protected repository operation failed on the worker.");
+    const protectedError = new Error(
+      "Protected repository operation failed on the worker.",
+    );
+    const code =
+      error && typeof error === "object" ? Reflect.get(error, "code") : null;
+    if (
+      typeof code === "string" &&
+      code.length <= 100 &&
+      /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(code)
+    ) {
+      Object.assign(protectedError, { code });
+    }
+    return protectedError;
   }
 
   async resolveToken(value: string): Promise<string> {

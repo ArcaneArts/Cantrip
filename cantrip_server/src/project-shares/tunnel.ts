@@ -7,7 +7,10 @@ import type { ProtectedTunnelContentRecord } from "@cantrip/protocol/tunnel-cont
 import type { ServerRepository } from "../db/repository.js";
 import { serverLogger } from "../logger.js";
 import type { TunnelStreamBroker } from "../tunnels/broker.js";
-import type { WorkerCommandBus } from "../workers/bridge.js";
+import {
+  WorkerCommandError,
+  type WorkerCommandBus,
+} from "../workers/bridge.js";
 
 export interface OpenProjectShareInput {
   ownerId: string;
@@ -21,6 +24,26 @@ export interface OpenProjectShareInput {
 
 export interface ProjectShareTunnelBrokerOptions {
   maxLifetimeMs?: number;
+}
+
+export type ProjectShareFailureStage =
+  | "share-state-validation"
+  | "tunnel-registration"
+  | "worker-connectivity"
+  | "worker-response-validation"
+  | "worker-share-open";
+
+export class ProjectShareOperationError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly failureStage: ProjectShareFailureStage,
+    readonly workerRequestId?: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "ProjectShareOperationError";
+  }
 }
 
 type ProjectShareTunnelChange = (input: {
@@ -42,8 +65,11 @@ const WORKER_SHARE_CLOSE_TIMEOUT_MS = 5_000;
 const MAX_NATIVE_MOUNT_LEASE_MS = 24 * 60 * 60_000;
 const DEFAULT_MOUNT_LEASE_MS = 12 * 60 * 60_000;
 
-export class ProjectShareStateStaleError extends Error {
-  readonly code = PROJECT_SHARE_STATE_STALE_CODE;
+export class ProjectShareStateStaleError extends ProjectShareOperationError {
+  constructor(message: string) {
+    super(message, PROJECT_SHARE_STATE_STALE_CODE, "share-state-validation");
+    this.name = "ProjectShareStateStaleError";
+  }
 }
 
 /**
@@ -96,7 +122,11 @@ export class ProjectShareTunnelBroker {
     const startedAtMs = Date.now();
     const repository = this.#requiredRepository();
     if (!this.bridge.isConnected(input.workerId)) {
-      throw new Error(`Worker ${input.workerId} is offline.`);
+      throw new ProjectShareOperationError(
+        "The project worker is offline.",
+        "worker-offline",
+        "worker-connectivity",
+      );
     }
     const managedResourceId = input.managedResourceId ?? input.projectId;
     if (!managedResourceId) {
@@ -134,19 +164,47 @@ export class ProjectShareTunnelBroker {
     if (existing) {
       await this.#closeWorkerShare(existing.id, existing.destination.workerId);
     }
-    const rawResult = await this.bridge.request(
-      input.workerId,
-      {
-        type: "project.share.open",
-        shareId: input.tunnelId,
-        protectedRecord: input.protectedRecord,
-        standaloneRoot: input.standaloneRoot ?? null,
-      },
-      { timeoutMs: WORKER_SHARE_COMMAND_TIMEOUT_MS },
-    );
-    const result = workerProjectShareOpenResultSchema.parse(rawResult);
+    let rawResult: unknown;
+    try {
+      rawResult = await this.bridge.request(
+        input.workerId,
+        {
+          type: "project.share.open",
+          shareId: input.tunnelId,
+          protectedRecord: input.protectedRecord,
+          standaloneRoot: input.standaloneRoot ?? null,
+        },
+        { timeoutMs: WORKER_SHARE_COMMAND_TIMEOUT_MS },
+      );
+    } catch (error) {
+      const workerError =
+        error instanceof WorkerCommandError ? error : undefined;
+      throw new ProjectShareOperationError(
+        workerError?.code === "project-source-unavailable"
+          ? "Project source is unavailable."
+          : "The worker could not open the protected project share.",
+        workerError?.code ?? "worker-share-open-failed",
+        "worker-share-open",
+        workerError?.requestId,
+        { cause: error },
+      );
+    }
+    const parsedResult =
+      workerProjectShareOpenResultSchema.safeParse(rawResult);
+    if (!parsedResult.success) {
+      throw new ProjectShareOperationError(
+        "The worker returned an invalid project share response.",
+        "worker-response-invalid",
+        "worker-response-validation",
+      );
+    }
+    const result = parsedResult.data;
     if (result.shareId !== input.tunnelId) {
-      throw new Error("Worker opened an unexpected project share.");
+      throw new ProjectShareOperationError(
+        "The worker opened an unexpected project share.",
+        "worker-response-mismatch",
+        "worker-response-validation",
+      );
     }
 
     try {
@@ -211,7 +269,14 @@ export class ProjectShareTunnelBroker {
       };
     } catch (error) {
       await this.#closeWorkerShare(input.tunnelId, input.workerId);
-      throw error;
+      if (error instanceof ProjectShareOperationError) throw error;
+      throw new ProjectShareOperationError(
+        "Winterhold could not register the protected project share tunnel.",
+        "tunnel-registration-failed",
+        "tunnel-registration",
+        undefined,
+        { cause: error },
+      );
     }
   }
 

@@ -138,13 +138,27 @@ interface PendingRequest {
 
 export class WorkerUnavailableError extends Error {}
 
+export interface WorkerCommandErrorContext {
+  operation?: WorkerCommand["type"];
+  requestId?: string;
+  workerId?: string;
+}
+
 export class WorkerCommandError extends Error {
+  readonly operation: WorkerCommand["type"] | undefined;
+  readonly requestId: string | undefined;
+  readonly workerId: string | undefined;
+
   constructor(
     message: string,
     readonly code: string | null = null,
+    context: WorkerCommandErrorContext = {},
   ) {
     super(message);
     this.name = "WorkerCommandError";
+    this.operation = context.operation;
+    this.requestId = context.requestId;
+    this.workerId = context.workerId;
   }
 }
 
@@ -517,7 +531,7 @@ export class WorkerBridge implements WorkerCommandBus {
             subsystem: "worker-command",
             operation: pending.commandType,
             requestId: response.requestId,
-            reasonCode: "worker-reported-failure",
+            reasonCode: response.error.code ?? "worker-reported-failure",
             status: "failed",
             durationMs,
             workerId,
@@ -526,6 +540,11 @@ export class WorkerBridge implements WorkerCommandBus {
             new WorkerCommandError(
               response.error.message,
               response.error.code ?? null,
+              {
+                operation: pending.commandType,
+                requestId: response.requestId,
+                workerId,
+              },
             ),
           );
         }
@@ -778,7 +797,13 @@ export class WorkerBridge implements WorkerCommandBus {
                   durationMs: Math.max(0, Date.now() - startedAtMs),
                   workerId,
                 });
-                reject(new Error(`Worker command ${command.type} timed out.`));
+                reject(
+                  new WorkerCommandError(
+                    `Worker command ${command.type} timed out.`,
+                    "worker-command-timeout",
+                    { operation: command.type, requestId, workerId },
+                  ),
+                );
               },
               options.timeoutMs ?? 10 * 60_000,
             );
@@ -795,7 +820,7 @@ export class WorkerBridge implements WorkerCommandBus {
 
       try {
         socket.send(envelope);
-      } catch (error) {
+      } catch {
         if (timeout) clearTimeout(timeout);
         this.#pending.delete(requestId);
         this.#failedRequests += 1;
@@ -809,7 +834,17 @@ export class WorkerBridge implements WorkerCommandBus {
           durationMs: Math.max(0, Date.now() - startedAtMs),
           workerId,
         });
-        reject(error instanceof Error ? error : new Error(String(error)));
+        reject(
+          new WorkerCommandError(
+            `Worker command ${command.type} could not be dispatched.`,
+            "worker-command-dispatch-failed",
+            {
+              operation: command.type,
+              requestId,
+              workerId,
+            },
+          ),
+        );
       }
     });
   }
