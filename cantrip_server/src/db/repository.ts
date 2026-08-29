@@ -356,6 +356,7 @@ import {
   RemoteSurfaceRepository,
   type RemoteSurfaceExecutionContext,
 } from "./repository/remote-surfaces.js";
+import { ProjectViewRepository } from "./repository/project-views.js";
 import {
   TelemetryRepository,
   ZERO_AGENT_TIME,
@@ -703,21 +704,6 @@ function toExplorerWireSummary(
     fileMode: explorer.fileMode as ExplorerWireSummary["fileMode"],
     createdAt: toISOString(explorer.createdAt),
     updatedAt: toISOString(explorer.updatedAt),
-  };
-}
-
-function toProjectViewWireSummary(
-  view: typeof schema.projectViews.$inferSelect,
-): ProjectViewWireSummary {
-  return {
-    id: view.id,
-    projectId: view.projectId,
-    titleProtection: view.protectedLabel,
-    kind: view.kind as ProjectViewWireSummary["kind"],
-    worktreeId: view.worktreeId,
-    position: view.position,
-    createdAt: toISOString(view.createdAt),
-    updatedAt: toISOString(view.updatedAt),
   };
 }
 
@@ -1079,6 +1065,7 @@ export class ServerRepository {
   readonly codeSurfaces: CodeSurfaceRepository;
   readonly browsers: BrowserRepository;
   readonly remoteSurfaces: RemoteSurfaceRepository;
+  readonly projectViews: ProjectViewRepository;
   readonly telemetry: TelemetryRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
@@ -1286,6 +1273,14 @@ export class ServerRepository {
           isWorkerConnected,
           allowOfflineExplicit,
         ),
+    });
+    this.projectViews = new ProjectViewRepository(database, {
+      getProjectSource: (ownerId, projectId) =>
+        this.getProjectSource(ownerId, projectId),
+      getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
+        this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
+      nextProjectTabPosition: (projectId) =>
+        this.nextProjectTabPosition(projectId),
     });
     this.remoteSurfaces = new RemoteSurfaceRepository(database, {
       getRemoteDesktop: (ownerId, desktopId) =>
@@ -4170,41 +4165,14 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
   ): Promise<ProjectViewWireSummary[]> {
-    const rows = await this.database
-      .select({ view: schema.projectViews })
-      .from(schema.projectViews)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.projectViews.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.projectViews.projectId, projectId))
-      .orderBy(
-        asc(schema.projectViews.position),
-        asc(schema.projectViews.createdAt),
-      );
-    return rows.map(({ view }) => toProjectViewWireSummary(view));
+    return this.projectViews.listProjectViews(ownerId, projectId);
   }
 
   async getProjectViewProjectId(
     ownerId: string,
     viewId: string,
   ): Promise<string | null> {
-    const rows = await this.database
-      .select({ projectId: schema.projectViews.projectId })
-      .from(schema.projectViews)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.projectViews.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.projectViews.id, viewId))
-      .limit(1);
-    return rows[0]?.projectId ?? null;
+    return this.projectViews.getProjectViewProjectId(ownerId, viewId);
   }
 
   async createProjectView(
@@ -4212,47 +4180,7 @@ export class ServerRepository {
     projectId: string,
     input: EncryptedProjectViewCreate,
   ): Promise<ProjectViewWireSummary | null> {
-    const selected =
-      input.kind === "history" && input.worktreeId
-        ? await this.getProjectWorktreeContext(
-            ownerId,
-            projectId,
-            input.worktreeId,
-          )
-        : null;
-    const source =
-      input.kind === "history" && !input.worktreeId
-        ? await this.getProjectSource(ownerId, projectId)
-        : null;
-    const worktreeId = selected?.worktree.id ?? source?.worktreeId ?? null;
-    if (
-      input.kind === "history" &&
-      (!worktreeId ||
-        (selected && selected.worktree.lifecycleState !== "ready"))
-    )
-      return null;
-    const position = await this.nextProjectTabPosition(projectId);
-    return this.database.transaction(async (transaction) => {
-      const result = await transaction
-        .insert(schema.projectViews)
-        .values({
-          id: input.id,
-          projectId,
-          protectedLabel: input.titleProtection,
-          kind: input.kind,
-          worktreeId: input.kind === "history" ? worktreeId : null,
-          position,
-        })
-        .returning();
-      const view = firstOrThrow(result, "creating a project view");
-      await attachProjectTab(transaction, {
-        projectId,
-        tabGroupId: input.tabGroupId,
-        tabId: view.id,
-        tabKind: input.kind,
-      });
-      return toProjectViewWireSummary(view);
-    });
+    return this.projectViews.createProjectView(ownerId, projectId, input);
   }
 
   async updateProjectView(
@@ -4260,13 +4188,7 @@ export class ServerRepository {
     viewId: string,
     input: EncryptedProjectViewUpdate,
   ): Promise<ProjectViewWireSummary | null> {
-    if (!(await this.projectViewIsOwnedBy(ownerId, viewId))) return null;
-    const result = await this.database
-      .update(schema.projectViews)
-      .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
-      .where(eq(schema.projectViews.id, viewId))
-      .returning();
-    return result[0] ? toProjectViewWireSummary(result[0]) : null;
+    return this.projectViews.updateProjectView(ownerId, viewId, input);
   }
 
   async updateProjectViewWorktree(
@@ -4274,88 +4196,12 @@ export class ServerRepository {
     viewId: string,
     input: WorktreeSelection,
   ): Promise<ProjectViewWireSummary | null> {
-    const rows = await this.database
-      .select({ view: schema.projectViews })
-      .from(schema.projectViews)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.projectViews.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.projectViews.id, viewId))
-      .limit(1);
-    const view = rows[0]?.view;
-    if (!view) return null;
-    if (view.kind !== "history") {
-      throw new Error("This project view does not use worktrees.");
-    }
-    const target = await this.getProjectWorktreeContext(
-      ownerId,
-      view.projectId,
-      input.worktreeId,
-    );
-    if (!target || target.worktree.lifecycleState !== "ready") return null;
-    const updated = await this.database
-      .update(schema.projectViews)
-      .set({ worktreeId: target.worktree.id, updatedAt: new Date() })
-      .where(eq(schema.projectViews.id, viewId))
-      .returning();
-    return updated[0] ? toProjectViewWireSummary(updated[0]) : null;
+    return this.projectViews.updateProjectViewWorktree(ownerId, viewId, input);
   }
 
   async deleteProjectView(ownerId: string, viewId: string): Promise<boolean> {
-    const rows = await this.database
-      .select({ view: schema.projectViews })
-      .from(schema.projectViews)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.projectViews.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.projectViews.id, viewId))
-      .limit(1);
-    const view = rows[0]?.view;
-    if (!view) return false;
-    const result = await this.database.transaction(async (transaction) => {
-      await detachProjectTab(
-        transaction,
-        view.projectId,
-        projectTabKey(view.kind as ProjectViewWireSummary["kind"], viewId),
-      );
-      await transaction
-        .delete(schema.remoteSurfaces)
-        .where(eq(schema.remoteSurfaces.id, viewId));
-      return transaction
-        .delete(schema.projectViews)
-        .where(eq(schema.projectViews.id, viewId))
-        .returning({ id: schema.projectViews.id });
-    });
-    return result.length === 1;
+    return this.projectViews.deleteProjectView(ownerId, viewId);
   }
-
-  private async projectViewIsOwnedBy(
-    ownerId: string,
-    viewId: string,
-  ): Promise<boolean> {
-    const rows = await this.database
-      .select({ id: schema.projectViews.id })
-      .from(schema.projectViews)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.projectViews.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.projectViews.id, viewId))
-      .limit(1);
-    return rows.length === 1;
-  }
-
   private async browserIsOwnedBy(
     ownerId: string,
     browserId: string,
