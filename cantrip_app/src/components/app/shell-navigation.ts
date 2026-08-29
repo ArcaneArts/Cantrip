@@ -4,6 +4,7 @@ import type {
   ChatSummary,
   ClientControlCommand,
   ProjectSummary,
+  ProjectTabLayoutSummary,
   ProjectWorkspaceSummary,
   SettingsBundle,
   StandaloneChatSummary,
@@ -38,6 +39,7 @@ import { resolveProjectWorkspaceForSelection } from "@/lib/project-workspaces";
 import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import {
   emptyWorkspaceSelection,
+  selectWorkspaceTab,
   selectWorkspaceOverview,
   type WorkspaceSelection,
 } from "@/lib/workspace-selection";
@@ -46,6 +48,19 @@ export interface PendingSurfaceSelection {
   groupId?: string;
   projectId: string;
   tabKey: string;
+}
+
+export function projectTabLayoutContainsTab(
+  layout: ProjectTabLayoutSummary | undefined,
+  projectId: string,
+  tabKey: string,
+): layout is ProjectTabLayoutSummary {
+  return Boolean(
+    layout?.projectId === projectId &&
+    layout.groups.some((group) =>
+      group.members.some((member) => member.tabKey === tabKey),
+    ),
+  );
 }
 
 export type ShellDestination =
@@ -982,16 +997,31 @@ export function createShellProjectNavigationCommands({
   ) => {
     setAppMode("ide");
     setSidebarFilePreview((current) =>
-      current?.projectId === projectId ? { ...current, active: false } : null,
+      current?.projectId === projectId
+        ? current.active
+          ? { ...current, active: false }
+          : current
+        : null,
     );
     setDesktopSidebarDrawerOpen(false);
     const tabKey = projectSurfaceTabKey(kind, tabId);
     setSelectedProjectId(projectId);
-    setPendingSurfaceSelection({ projectId, tabKey });
+    const cachedLayout = queryClient.getQueryData<ProjectTabLayoutSummary>([
+      "project-tab-layout",
+      projectId,
+    ]);
+    if (projectTabLayoutContainsTab(cachedLayout, projectId, tabKey)) {
+      setWorkspaceSelection((current) =>
+        selectWorkspaceTab(current, cachedLayout, tabKey),
+      );
+      setPendingSurfaceSelection(null);
+    } else {
+      setPendingSurfaceSelection({ projectId, tabKey });
+      void queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", projectId],
+      });
+    }
     setMobileTabGridOpen(false);
-    void queryClient.invalidateQueries({
-      queryKey: ["project-tab-layout", projectId],
-    });
     setShowImporter(false);
     setShowSettings(false);
     setShowServerAdmin(false);

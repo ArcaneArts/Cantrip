@@ -28,6 +28,7 @@ import { errorMessage as errorText } from "@/lib/error-message";
 import {
   moveSidebarPath,
   pinnedExplorerForPath,
+  sidebarFilePreviewMatches,
   sidebarFileTargetGroupId,
   sidebarPathAtOrBelow,
 } from "@/lib/sidebar-file-tabs";
@@ -150,6 +151,17 @@ export function createSidebarExplorerCommands({
       focusPinnedSidebarFile(pinned);
       return;
     }
+    const groupId = sidebarFileGroupId(explorer);
+    if (
+      sidebarFilePreviewMatches(sidebarFilePreview, {
+        explorerId: explorer.id,
+        groupId,
+        path: entry.path,
+        projectId: explorer.projectId,
+      })
+    ) {
+      return;
+    }
     const previewLifecycle = sidebarFilePreview
       ? sidebarFilePreviewLifecycleRef.current
       : (explorerLifecycleRef.current.get(explorer.id) ?? null);
@@ -163,7 +175,6 @@ export function createSidebarExplorerCommands({
     ) {
       return;
     }
-    const groupId = sidebarFileGroupId(explorer);
     if (tabLayout && groupId) {
       setWorkspaceSelection((current) =>
         selectWorkspaceGroup(current, tabLayout, groupId),
@@ -480,6 +491,7 @@ export function createSidebarExplorerCommands({
   };
   const activateSidebarFilePreview = () => {
     if (!sidebarFilePreview) return;
+    if (sidebarFilePreview.active) return;
     if (tabLayout && sidebarFilePreview.groupId) {
       setWorkspaceSelection((current) =>
         selectWorkspaceGroup(current, tabLayout, sidebarFilePreview.groupId!),

@@ -8,7 +8,10 @@ import {
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
 import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
-import { sidebarFileName } from "@/lib/sidebar-file-tabs";
+import {
+  sidebarExplorerPrewarmTarget,
+  sidebarFileName,
+} from "@/lib/sidebar-file-tabs";
 type PersistentSurfaceBindings = Readonly<Record<string, any>>;
 
 export function PersistentSurfaceLayer({
@@ -252,7 +255,12 @@ export function PersistentSurfaceLayer({
           }}
           onlineWorkerIds={onlineWorkerIds}
           openExplorers={openExplorers}
-          prewarmExplorer={!isPopout ? sidebarInlineExplorer : null}
+          prewarmExplorer={sidebarExplorerPrewarmTarget({
+            hasOpenExplorer: openExplorers.length > 0,
+            isPopout,
+            pinInProgress: Boolean(sidebarFilePinHandoff),
+            sidebarExplorer: sidebarInlineExplorer,
+          })}
         />
       </Suspense>
     </>

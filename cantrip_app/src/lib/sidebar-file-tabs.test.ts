@@ -9,7 +9,9 @@ import {
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   moveSidebarPath,
+  sidebarExplorerPrewarmTarget,
   sidebarFileName,
+  sidebarFilePreviewMatches,
   sidebarFilePreviewIsVisible,
   sidebarFilePreviewViewKey,
   sidebarFileTargetGroupId,
@@ -39,6 +41,48 @@ function layout(...explorerIds: string[]): ProjectTabLayoutSummary {
 }
 
 describe("sidebar file tabs", () => {
+  it("recognizes an already-active preview without reopening it", () => {
+    const preview = {
+      active: true,
+      explorerId: "explorer-1",
+      groupId: "group-1",
+      path: "src/index.ts",
+      projectId: "project-1",
+    };
+
+    expect(sidebarFilePreviewMatches(preview, preview)).toBe(true);
+    expect(
+      sidebarFilePreviewMatches(preview, {
+        ...preview,
+        path: "src/other.ts",
+      }),
+    ).toBe(false);
+    expect(
+      sidebarFilePreviewMatches({ ...preview, active: false }, preview),
+    ).toBe(false);
+  });
+
+  it("does not prewarm a replacement editor while pinning or after a tab is open", () => {
+    const sidebarExplorer = explorer("sidebar", "worktree-1");
+    const initial = {
+      hasOpenExplorer: false,
+      isPopout: false,
+      pinInProgress: false,
+      sidebarExplorer,
+    };
+
+    expect(sidebarExplorerPrewarmTarget(initial)).toBe(sidebarExplorer);
+    expect(
+      sidebarExplorerPrewarmTarget({ ...initial, pinInProgress: true }),
+    ).toBeNull();
+    expect(
+      sidebarExplorerPrewarmTarget({ ...initial, hasOpenExplorer: true }),
+    ).toBeNull();
+    expect(
+      sidebarExplorerPrewarmTarget({ ...initial, isPopout: true }),
+    ).toBeNull();
+  });
+
   it("hides an active file preview while a managed screen owns the content area", () => {
     const visible = {
       previewActive: true,
