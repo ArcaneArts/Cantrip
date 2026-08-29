@@ -8,6 +8,7 @@ import {
   changedAccountLabel,
   initialProviderName,
   settingsNavigationSections,
+  settingsNavigationSectionsForResources,
   type SettingsSection,
 } from "./settings-page";
 import { settingsSearchResults } from "./settings-navigation";
@@ -210,6 +211,10 @@ describe("account settings", () => {
     });
 
     const markup = renderSettings("models", settings);
+    const navigationSections = settingsNavigationSectionsForResources(
+      settings.providers,
+      settings.models,
+    );
 
     expect(markup).toContain('role="button"');
     expect(markup).toContain('aria-label="Edit Ollama"');
@@ -224,5 +229,14 @@ describe("account settings", () => {
     expect(markup).not.toContain("Default for new agents");
     expect(markup).toContain("py-1.5");
     expect(markup).not.toContain("lucide-pencil");
+    expect(settingsSearchResults("gemma4:26b", navigationSections)).toEqual([
+      expect.objectContaining({ id: "model:model-1", sectionId: "models" }),
+    ]);
+    expect(settingsSearchResults("127.0.0.1", navigationSections)).toEqual([
+      expect.objectContaining({
+        id: "provider:provider-1",
+        sectionId: "models",
+      }),
+    ]);
   });
 });

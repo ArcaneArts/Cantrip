@@ -243,13 +243,10 @@ export function SettingsNavigationLayout<SectionId extends string>({
         data-slot="settings-mobile-categories"
       >
         <div className="border-b p-4">
-          <h1 className="text-base font-semibold">{title}</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Choose a category or search every setting.
-          </p>
+          <h1 className="sr-only">{title}</h1>
           <SettingsSearchField
             ariaLabel={searchPlaceholder}
-            className="mt-3 max-w-none"
+            className="max-w-none"
             placeholder={searchPlaceholder}
             value={searchQuery}
             onValueChange={onSearchQueryChange}

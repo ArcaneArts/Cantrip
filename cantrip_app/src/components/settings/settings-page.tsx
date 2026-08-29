@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useMemo,
   useState,
   type FormEvent,
   type KeyboardEvent,
@@ -429,6 +430,48 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       ],
     },
   ];
+
+export function settingsNavigationSectionsForResources(
+  providers: readonly ModelProviderSummary[],
+  models: readonly ModelProfileSummary[],
+): readonly SettingsNavigationSection<SettingsSection>[] {
+  return settingsNavigationSections.map((section) =>
+    section.id === "models"
+      ? {
+          ...section,
+          searchItems: [
+            ...section.searchItems,
+            ...providers.map((provider) => ({
+              id: `provider:${provider.id}`,
+              label: provider.name,
+              description: `${provider.kind} provider at ${provider.baseUrl}`,
+              keywords: [
+                provider.kind,
+                provider.baseUrl,
+                provider.hasApiKey ? "API key" : "",
+              ],
+            })),
+            ...models.map((model) => ({
+              id: `model:${model.id}`,
+              label: model.name,
+              description: model.routes.length
+                ? model.routes
+                    .map(
+                      (route) => `${route.providerName} · ${route.modelName}`,
+                    )
+                    .join(", ")
+                : "Logical model profile.",
+              keywords: model.routes.flatMap((route) => [
+                route.providerName,
+                route.modelName,
+                "route",
+              ]),
+            })),
+          ],
+        }
+      : section,
+  );
+}
 
 type ProviderSetupKind =
   ModelProviderKind | "openai" | "openrouter" | "xai" | "zai";
@@ -1329,6 +1372,14 @@ export function SettingsPage({
   const modelSearch = generalSearch;
   const providers = settings.data?.providers ?? [];
   const models = settings.data?.models ?? [];
+  const navigationSections = useMemo(
+    () =>
+      settingsNavigationSectionsForResources(
+        settings.data?.providers ?? [],
+        settings.data?.models ?? [],
+      ),
+    [settings.data?.models, settings.data?.providers],
+  );
   const appearanceMatches =
     !generalSearch ||
     matchesSearch(
@@ -1418,7 +1469,7 @@ export function SettingsPage({
         initialMobileSectionOpen={initialSection !== "general"}
         searchPlaceholder="Search all settings"
         searchQuery={settingsSearchQuery}
-        sections={settingsNavigationSections}
+        sections={navigationSections}
         title="Settings"
         onSearchQueryChange={setSettingsSearchQuery}
         onSectionChange={(next) => {
