@@ -1,20 +1,4 @@
-import { randomUUID } from "node:crypto";
-
 import type {
-  RunConfigurationRuntime,
-  RunConfigurationRuntimeObservationApplyResult,
-  RunConfigurationRuntimeOperationResult,
-  RunConfigurationRuntimeWorkerIdentity,
-  RunConfigurationRuntimeWorkerObservation,
-} from "@cantrip/protocol/run-configuration-runtime";
-import type {
-  RunConfigurationProtectedSecret,
-  RunConfigurationSecretSetResult,
-  RunConfigurationSecretSummary,
-} from "@cantrip/protocol/run-configuration-secrets";
-import type {
-  AppDestination,
-  AppDestinationUpdate,
   AgentInteractionRequest,
   AgentInteractionRequestCreate,
   AgentInteractionRequestQuery,
@@ -23,19 +7,6 @@ import type {
   EncryptedAgentInteractionRequest,
   EncryptedAgentInteractionRequestCreate,
   EncryptedAgentInteractionResolutionCreate,
-  ArchivedChatWireSummary,
-  AccountLicenseWhitelistEntry,
-  AccountSessionSummary,
-  AuditEvent,
-  AuditEventList,
-  AuditEventQuery,
-  BrowserWireSummary,
-  EncryptedBrowserCreate,
-  EncryptedBrowserUpdate,
-  EncryptedChatCreate,
-  EncryptedStandaloneChatCreate,
-  ChatExecutionLaneSummary,
-  ContextualChatExecutionLaneSummary,
   EncryptedChatFork,
   ChatModelUpdate,
   ChatPlanOpaqueState,
@@ -51,94 +22,17 @@ import type {
   ChatModelConfigurationUpdate,
   EncryptedChatUpdate,
   ChatWorktreeUpdate,
-  CodeCapabilities,
-  CodeEditorBuild,
-  CodeRuntimeStatus,
-  CodeSessionSummary,
-  EncryptedCodeTabCreate,
-  CodeTabWireSummary,
-  AgentTimeSummary,
-  DetailedTokenUsageTotals,
-  EncryptedCodeTabUpdate,
-  DesktopUpdateActiveWorkSummary,
-  EncryptedExplorerCreate,
-  EncryptedExplorerPin,
-  EncryptedExplorerViewStateUpdate,
-  EncryptedExplorerWorktreeUpdate,
   ExplorerWireSummary,
-  EncryptedExplorerUpdate,
-  ExecutionPlacementResolution,
-  ExecutionSurfaceKind,
-  ExecutionTarget,
-  ExecutionTargetWireCatalog,
-  ExecutionTargetResolution,
-  EncryptedGithubProjectCreate,
-  EncryptedManagedFolderProjectCreate,
-  GitManagedOperationContext,
-  GitManagedOperationRecord,
-  GitManagedOperationWorkerState,
-  ModelProfileCreate,
-  ModelProfileSummary,
-  ModelProfileUpdate,
   ModelConfiguration,
-  EncryptedMcpServerCreate,
-  EncryptedMcpServerUpdate,
-  McpServerOpaqueRuntime,
-  McpServerWireSummary,
-  EncryptedModelProviderAccountCreate,
-  EncryptedModelProviderAccountUpdate,
-  ModelProviderAccountWireSummary,
-  EncryptedModelProviderCreate,
-  ProviderCatalogSyncState,
-  ProviderModelAvailability,
-  ProviderModelCatalogEntry,
-  ProviderModelCatalogResult,
-  ModelProviderSummary,
-  ModelProviderWireSummary,
-  EncryptedModelProviderUpdate,
-  ModelRouteSummary,
   EncryptedChatPlanWireState,
   PlanMode,
-  PrivateDisplayLabelOpaque,
   OrderedIds,
   QueuedPrompt,
   QueuedPromptCreate,
   QueuedPromptOrder,
   QueuedPromptUpdate,
   ReasoningEffort,
-  RemoteDesktopWireSummary,
-  ResourceAudience,
-  EncryptedRemoteSurfaceCreate,
-  RemoteSurfaceStatus,
-  RemoteSurfaceWireSummary,
-  SurfacePrivateStateOpaque,
-  EncryptedRemoteSurfaceUpdate,
-  ProjectCloneResult,
-  ProjectFolderSetupJobSummary,
-  ProjectReplicaSummary,
-  ProjectWireSummary,
-  ProjectTokenUsage,
-  ProviderTelemetryWireAnalytics,
-  ProviderTelemetryDeleteResult,
-  ProviderTelemetryExport,
-  EncryptedProjectWorkspaceCreate,
-  EncryptedProjectWorkspaceUpdate,
-  ProjectWorkspaceWireList,
-  ProjectWorkspaceWireSummary,
-  ProjectWorktreePolicyUpdate,
-  ProjectWorktreeSummary,
-  EncryptedProjectViewCreate,
-  ProjectViewWireSummary,
-  EncryptedProjectViewUpdate,
-  SettingsBundleWire,
-  EncryptedTerminalCreate,
-  EncryptedTerminalServiceConfiguration,
-  TerminalServiceRuntimeConfiguration,
   TerminalWireSummary,
-  EncryptedTerminalUpdate,
-  EncryptedTaskCreate,
-  TaskWireCreateResult,
-  TaskOpaqueSummary,
   TaskMessageOpaqueContent,
   TaskMessageOpaqueSummary,
   ChatMessageOpaqueContent,
@@ -147,44 +41,12 @@ import type {
   EncryptedChatComposerDraftWireState,
   EncryptedQueuedPrompt,
   QueuedPromptOpaqueContent,
-  TunnelAttachmentWireSummary,
-  TunnelDestinationEndpoint,
-  TunnelManagedRegistration,
-  TunnelSourceEndpoint,
-  TunnelWireSummary,
-  TunnelUserWireCreate,
-  TunnelUserWireUpdate,
-  TokenUsageTotals,
-  UserSettings,
-  UserSettingsUpdate,
-  UserSummary,
-  WorkerCredentialScope,
-  WorkerCredentialSummary,
-  WorkerEnrollmentCodeStatus,
-  WorkerHeartbeat,
-  WorkerManagementSource,
-  WorkerSummary,
-  WorkerWorktreeSummary,
-  WorktreeInventory,
-  WorktreeSelection,
-  WorktreeStatusResult,
 } from "@cantrip/protocol";
-import {
-  type ProtectedTunnelContentRecord,
-  type TunnelContentErrorCode,
-  type TunnelPublicDestinationEndpoint,
-  type TunnelPublicSourceEndpoint,
-} from "@cantrip/protocol/tunnel-content";
 import {
   type AttachmentProtectedMetadata,
   type ChatAttachmentOpaqueSummary,
 } from "@cantrip/protocol/attachment-content";
-import type {
-  ProtectedProviderCredential,
-  ProviderCredentialPublicMetadata,
-} from "@cantrip/protocol/protected-secrets";
 import { CodeSettingsRepository } from "./code-settings.js";
-import type { QuotaTokenAnalytics } from "../analytics/quota-token.js";
 import type { SecretVault } from "../security/secret-vault.js";
 import { AccountResourceUsageRepository } from "./account-resource-usage.js";
 import { DesktopUpdateStateRepository } from "./repository/desktop-update-state.js";
@@ -192,96 +54,28 @@ import * as schema from "./schema.js";
 import { ChatImportJobRepository } from "./chat-import-jobs.js";
 import { ChatRelocationJobRepository } from "./chat-relocation-jobs.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
-import {
-  AccountRepository,
-  type AccountCredentialRecord,
-  type ActiveUserSession,
-  type AuditEventCreate,
-  type UserSessionRow,
-} from "./repository/accounts.js";
-import {
-  ProviderAccountRepository,
-  ProviderCredentialIdentityConflictError,
-  ProviderCredentialRevisionConflictError,
-  type ModelProviderAccountRuntime,
-  type ProviderAccountCredentialMigrationRecord,
-  type ProviderAccountCredentialRecord,
-  type ProviderAccountCredentialSignOutRecord,
-  type ProviderAccountCredentialState,
-} from "./repository/provider-accounts.js";
-import {
-  ProviderCatalogRepository,
-  type ModelProviderCatalogRuntime,
-  type ModelProviderCatalogTarget,
-  type ModelProviderRefreshTarget,
-  type ProviderModelCatalogWrite,
-} from "./repository/provider-catalog.js";
+import { AccountRepository } from "./repository/accounts.js";
+import { ProviderAccountRepository } from "./repository/provider-accounts.js";
+import { ProviderCatalogRepository } from "./repository/provider-catalog.js";
 import {
   ModelRepository,
   type ModelRuntime,
 } from "./repository/model-runtime.js";
-import {
-  WorkerRepository,
-  toWorkerSummary,
-  type ActiveWorkerCredential,
-  type WorkerEnrollmentProvision,
-  type WorkerManagementRecord,
-} from "./repository/workers.js";
-import {
-  TunnelRepository,
-  type DesktopTunnelAttachmentLeaseChange,
-  type DesktopTunnelAttachmentStopFence,
-  type TunnelAttachmentAuthorization,
-} from "./repository/tunnels.js";
+import { WorkerRepository } from "./repository/workers.js";
+import { TunnelRepository } from "./repository/tunnels.js";
 import { McpRepository } from "./repository/mcp.js";
-import {
-  ProjectRepository,
-  toProjectWorktreeSummary,
-  type ProjectWorkspaceRow,
-  type ProjectWorktreeExecutionContext,
-} from "./repository/projects.js";
-import {
-  ProjectLifecycleRepository,
-  type GithubProjectExecutionContext,
-  type ProjectRemovalContext,
-} from "./repository/project-lifecycle.js";
-import {
-  ExecutionPlacementUnavailableError,
-  PlacementRepository,
-} from "./repository/placement.js";
-import {
-  ExecutionTargetRepository,
-  type ExecutionTargetSelectorResult,
-  type FocusedExecutionTargetResourceKind,
-} from "./repository/execution-targets.js";
-import {
-  WorktreeStateRepository,
-  type ProjectWorktreeObservationContext,
-  type ProjectWorktreeStatusRecord,
-} from "./repository/worktree-state.js";
-import {
-  RunConfigurationStateRepository,
-  type RunConfigurationRuntimeOperationRequest,
-} from "./repository/run-configuration-state.js";
-import {
-  WorktreeLifecycleRepository,
-  type WorktreeRemovalBlockers,
-} from "./repository/worktree-lifecycle.js";
+import { ProjectRepository } from "./repository/projects.js";
+import { ProjectLifecycleRepository } from "./repository/project-lifecycle.js";
+import { PlacementRepository } from "./repository/placement.js";
+import { ExecutionTargetRepository } from "./repository/execution-targets.js";
+import { WorktreeStateRepository } from "./repository/worktree-state.js";
+import { RunConfigurationStateRepository } from "./repository/run-configuration-state.js";
+import { WorktreeLifecycleRepository } from "./repository/worktree-lifecycle.js";
 import {
   ChatExecutionLaneRepository,
-  chatIsExecuting,
   type ChatExecutionContext,
-  type ChatExecutionLaneContext,
-  type ChatExecutionLaneReleaseResult,
-  type ChatExecutionRecoveryContext,
-  type ChatWorktreeTransitionResult,
-  type ProjectChatExecutionContext,
-  type StandaloneChatExecutionContext,
 } from "./repository/chat-execution-lanes.js";
-import {
-  ChatCatalogRepository,
-  StandaloneChatPlacementUnavailableError,
-} from "./repository/chat-catalog.js";
+import { ChatCatalogRepository } from "./repository/chat-catalog.js";
 import { ChatStateRepository } from "./repository/chat-state.js";
 import { ChatArchiveLifecycleRepository } from "./repository/chat-archive-lifecycle.js";
 import { ChatForkRepository } from "./repository/chat-forks.js";
@@ -302,51 +96,21 @@ import {
   type ChatExecutionAttribution,
 } from "./repository/message-writes.js";
 import { SettingsRepository } from "./repository/settings.js";
-import {
-  TerminalRepository,
-  type TerminalExecutionContext,
-} from "./repository/terminals.js";
-import {
-  ExplorerRepository,
-  type ExplorerExecutionContext,
-} from "./repository/explorers.js";
-import {
-  CodeCapabilityUnavailableError,
-  CodeSurfaceRepository,
-  type CodeTabExecutionContext,
-} from "./repository/code-surfaces.js";
+import { TerminalRepository } from "./repository/terminals.js";
+import { ExplorerRepository } from "./repository/explorers.js";
+import { CodeSurfaceRepository } from "./repository/code-surfaces.js";
 import { BrowserRepository } from "./repository/browsers.js";
-import {
-  RemoteSurfaceRepository,
-  type RemoteSurfaceExecutionContext,
-} from "./repository/remote-surfaces.js";
+import { RemoteSurfaceRepository } from "./repository/remote-surfaces.js";
 import { ProjectViewRepository } from "./repository/project-views.js";
-import {
-  TelemetryRepository,
-  ZERO_AGENT_TIME,
-  ZERO_TOKEN_USAGE,
-  type AgentTimeAnalytics,
-  type ModelBehaviorObservationInput,
-  type ProviderQuotaObservationInput,
-  type QuotaTokenAnalyticsQuery,
-  type TokenUsageRecordInput,
-} from "./repository/telemetry.js";
-import {
-  toISOString,
-  type RepositoryDatabase,
-  type RepositoryTransaction,
-} from "./repository/database.js";
+import { TelemetryRepository } from "./repository/telemetry.js";
+import { toISOString, type RepositoryDatabase } from "./repository/database.js";
 import { ProjectFolderSetupJobRepository } from "./project-folder-setup-jobs.js";
 import { StandaloneChatRootJobRepository } from "./standalone-chat-root-jobs.js";
 import { ProjectGithubConversionJobRepository } from "./project-github-conversion-jobs.js";
 import { EncryptionRegistryRepository } from "./encryption-registry.js";
 import { PolicyRepository } from "./policies.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
-import {
-  TaskRepository,
-  taskOpaqueColumns,
-  toTaskOpaqueSummary,
-} from "./tasks.js";
+import { TaskRepository } from "./tasks.js";
 import { TaskSchedulingRepository } from "./task-scheduling.js";
 import { TaskDispatchRepository } from "./task-dispatch.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
