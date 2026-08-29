@@ -68,6 +68,11 @@ import type { createModelRoutingRuntime } from "./model-routing-runtime.js";
 type LiveMutationRuntime = ReturnType<typeof createLiveMutationRuntime>;
 type ModelRoutingRuntime = ReturnType<typeof createModelRoutingRuntime>;
 type OwnerRunner = <T>(ownerId: string, operation: () => T) => T;
+type TaskTurnBootstrapStage =
+  | "acquire-execution-lane"
+  | "mark-dispatch-running"
+  | "prepare-code-editors"
+  | "resolve-mcp-servers";
 
 export type ChatTurnInput = Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
   attachmentIds?: string[];
@@ -247,6 +252,62 @@ export function createChatTurnRuntime({
   const beginTurn: BeginChatTurn = async (context, input, options = {}) => {
     const turnStartedAtMs = Date.now();
     const ownerId = applicationOwnerId();
+    const observeTaskTurnBootstrapStage = async <T>(
+      stage: TaskTurnBootstrapStage,
+      operation: () => Promise<T>,
+    ): Promise<T> => {
+      const lease = options.taskDispatchLease;
+      if (!lease) return operation();
+      const startedAt = Date.now();
+      app.log.info(
+        {
+          event: "task.turn-bootstrap-stage",
+          subsystem: "task-scheduler",
+          operation: "bootstrap-turn",
+          status: "started",
+          chatId: context.chatId,
+          cycleId: lease.cycleId,
+          operationId: lease.operationId,
+          stage,
+        },
+        "Scheduled Task turn bootstrap stage started",
+      );
+      try {
+        const result = await operation();
+        app.log.info(
+          {
+            event: "task.turn-bootstrap-stage",
+            subsystem: "task-scheduler",
+            operation: "bootstrap-turn",
+            status: "completed",
+            chatId: context.chatId,
+            cycleId: lease.cycleId,
+            operationId: lease.operationId,
+            stage,
+            durationMs: Date.now() - startedAt,
+          },
+          "Scheduled Task turn bootstrap stage completed",
+        );
+        return result;
+      } catch (error) {
+        app.log.warn(
+          {
+            event: "task.turn-bootstrap-stage",
+            subsystem: "task-scheduler",
+            operation: "bootstrap-turn",
+            status: "failed",
+            chatId: context.chatId,
+            cycleId: lease.cycleId,
+            operationId: lease.operationId,
+            stage,
+            durationMs: Date.now() - startedAt,
+            err: error,
+          },
+          "Scheduled Task turn bootstrap stage failed",
+        );
+        throw error;
+      }
+    };
     if (
       context.contextKind === "standalone" &&
       ((input.mode !== undefined && input.mode !== "default") ||
@@ -374,19 +435,23 @@ export function createChatTurnRuntime({
       context.contextKind === "project" &&
       (!options.structuredResult || directTaskOperation)
     ) {
-      await prepareCodeEditorsForTurn(
-        context,
-        options.preflightWorkerCommandTimeoutMs,
+      await observeTaskTurnBootstrapStage("prepare-code-editors", () =>
+        prepareCodeEditorsForTurn(
+          context,
+          options.preflightWorkerCommandTimeoutMs,
+        ),
       );
     }
     const mcpServers =
       options.structuredResult && !directTaskOperation
         ? []
-        : await repository.listEffectiveMcpServers(
-            ownerId,
-            context.contextKind === "project" ? context.projectId : null,
-            context.workerId,
-            context.contextKind === "project" ? "ide" : "chat",
+        : await observeTaskTurnBootstrapStage("resolve-mcp-servers", () =>
+            repository.listEffectiveMcpServers(
+              ownerId,
+              context.contextKind === "project" ? context.projectId : null,
+              context.workerId,
+              context.contextKind === "project" ? "ide" : "chat",
+            ),
           );
     // Scheduled callers retain the fresh claim while this preflight runs. Use
     // the authoritative state transition as the single launch fence instead
@@ -394,13 +459,19 @@ export function createChatTurnRuntime({
     // This also prevents a preflight that was paused in-flight from acquiring
     // an execution lane after its fencing token has been advanced.
     if (options.taskDispatchLease) {
-      await repository.taskDispatch.markRunning(options.taskDispatchLease);
+      await observeTaskTurnBootstrapStage("mark-dispatch-running", () =>
+        repository.taskDispatch.markRunning(options.taskDispatchLease!),
+      );
     }
-    const execution = await repository.startChatExecutionLane(
-      ownerId,
-      context.chatId,
-      options.acquiringActor ?? "user",
-      options.purpose ?? "Chat turn",
+    const execution = await observeTaskTurnBootstrapStage(
+      "acquire-execution-lane",
+      () =>
+        repository.startChatExecutionLane(
+          ownerId,
+          context.chatId,
+          options.acquiringActor ?? "user",
+          options.purpose ?? "Chat turn",
+        ),
     );
     if (!execution || !execution.executionLaneId) {
       throw new Error("Chat execution lane could not be acquired.");

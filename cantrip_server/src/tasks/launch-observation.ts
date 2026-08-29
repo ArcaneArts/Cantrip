@@ -12,6 +12,8 @@ export type TaskLaunchStage =
 
 type TaskLaunchLogger = Pick<FastifyInstance["log"], "info" | "warn">;
 
+export const DEFAULT_TASK_LAUNCH_STAGE_TIMEOUT_MS = 30_000;
+
 interface ObserveTaskLaunchStageOptions {
   slowWarningMs?: number | null;
   timeoutMs?: number | null;
@@ -62,7 +64,7 @@ export async function observeTaskLaunchStage<T>(
   operation: () => Promise<T>,
   {
     slowWarningMs = 5_000,
-    timeoutMs = null,
+    timeoutMs = DEFAULT_TASK_LAUNCH_STAGE_TIMEOUT_MS,
   }: ObserveTaskLaunchStageOptions = {},
 ): Promise<T> {
   const startedAt = Date.now();
