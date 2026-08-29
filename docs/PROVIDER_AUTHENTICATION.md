@@ -1,8 +1,8 @@
 # Portable provider authentication
 
 - Status: endpoint-encrypted for static API keys and ChatGPT/Grok OAuth
-- Last updated: 2026-08-27
-- Codex boundary: packaged `codex-cli 0.150.1`
+- Last updated: 2026-08-29
+- Codex boundary: packaged `codex-cli 0.151.0`
 - Related: [encryption](ENCRYPTION.md),
   [runtime compatibility](CODEX_RUNTIME_COMPATIBILITY.md), and
   [multi-worker placement](MULTI_WORKER_ARCHITECTURE.md)
@@ -97,9 +97,9 @@ authorization header; it does not fetch the private `/models/user` catalog.
 Actual access is enforced when the authorized worker invokes the provider with
 the decrypted key.
 
-## ChatGPT through Codex 0.150
+## ChatGPT through Codex 0.151
 
-Portable ChatGPT requires Codex 0.150.x, experimental API negotiation, and the
+Portable ChatGPT requires Codex 0.151.x, experimental API negotiation, and the
 `account/login/start` method. The worker opens the account-bound envelope,
 injects the access token, ChatGPT workspace ID, and plan type into Codex, and
 keeps only the short-lived usable view in memory.
@@ -111,7 +111,7 @@ and returns the new access token. Unsupported Codex versions or capabilities
 fail before the portable runtime starts. Normal operation does not retain an
 `auth.json` credential.
 
-This interface is experimental in Codex 0.150. Cantrip does not patch it, but a
+This interface is experimental in Codex 0.151. Cantrip does not patch it, but a
 future Codex release may change its method names, payloads, result type, or
 timeout. Do not widen the pinned range until the login and refresh fixture in
 the runtime compatibility procedure passes against the new source.

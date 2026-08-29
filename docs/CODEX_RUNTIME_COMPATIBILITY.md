@@ -6,19 +6,19 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.150.1` from the official
-`rust-v0.150.1` source tag. Its resolved commit, imported source manifest, and
+Cantrip currently pins and builds `codex-cli 0.151.0` from the official
+`rust-v0.151.0` source tag. Its resolved commit, imported source manifest, and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
-by that CLI on August 27, 2026:
+by that CLI on August 29, 2026:
 
 ```sh
 codex app-server generate-ts --experimental --out <temporary-directory>
 codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
-The adapter's compatibility range is `>=0.150.0 <0.151.0`, but packaged
-workers contain exactly `0.150.1`; they do not select another compatible patch
+The adapter's compatibility range is `>=0.151.0 <0.152.0`, but packaged
+workers contain exactly `0.151.0`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
@@ -27,16 +27,19 @@ Cantrip keeps the imported snapshot pristine and applies a reviewed patch
 series from `cantrip_codex/patches/` only to the ignored build copy. The series
 preserves explicit empty `dynamicTools` semantics on resume, omits empty
 reasoning objects, removes OpenAI-only tools from compatible-provider requests,
-adds the active-turn pause boundary used by Cantrip, and exposes MCP tools as
-portable function tools when a provider lacks namespace support. Cantrip sends
-the empty dynamic-tool override and its managed-MCP-first developer instruction
-on both thread start and resume, migrating pre-cutover chats without discarding
-their conversation history. `dynamicTools: []` clears legacy declarations; it
-does not remove native tools loaded from MCP configuration. The build also
-downloads the sandboxed Rusty V8 archive and binding from OpenAI's official
-versioned Codex dependency release, verifies their published SHA-256 values,
-and passes them to Cargo. The ordered patch-set hash is part of the runtime
-manifest and invalidates cached binaries.
+adds the active-turn pause boundary used by Cantrip, and normalizes whole-number
+tool arguments that providers encode as floating-point JSON values. Codex 0.151
+now natively exposes MCP namespace tools as portable function aliases for
+providers without namespace support, so the former downstream compatibility
+patch has been retired without removing that behavior. Cantrip sends the empty
+dynamic-tool override and its managed-MCP-first developer instruction on both
+thread start and resume, migrating pre-cutover chats without discarding their
+conversation history. `dynamicTools: []` clears legacy declarations; it does
+not remove native tools loaded from MCP configuration. The build also downloads
+the sandboxed Rusty V8 archive and binding from OpenAI's official versioned
+Codex dependency release, verifies their published SHA-256 values, and passes
+them to Cargo. The ordered patch-set hash is part of the runtime manifest and
+invalidates cached binaries.
 
 ## Startup negotiation
 
@@ -66,7 +69,7 @@ The optional method inventory covers the native customization families Cantrip
 uses: collaboration modes, goals, hooks, skill discovery/configuration/extra
 roots, MCP inventory/OAuth/resource read/reload, plugin list/read/install/remove,
 external-agent detection/import history, and effective configuration reads.
-For 0.150 it also probes process diagnostics, all six durable thread-queue
+For 0.151 it also probes process diagnostics, all six durable thread-queue
 operations, and thread-history revert. The generated notification inventory now
 recognizes `thread/queue/changed`, `thread/reverted`,
 `autoApprovalReview/strictReviewRequired`, `project/changed`,
@@ -182,10 +185,10 @@ external thread. See
 
 ## Server-managed ChatGPT authentication
 
-Portable ChatGPT accounts depend on an experimental Codex 0.150 App Server
+Portable ChatGPT accounts depend on an experimental Codex 0.151 App Server
 surface. Before starting a server-managed ChatGPT runtime, the worker requires:
 
-- semantic version `0.150.x`;
+- semantic version `0.151.x`;
 - `initialize.capabilities.experimentalApi` support; and
 - an available `account/login/start` method.
 
@@ -199,7 +202,7 @@ change, and returns the replacement token within the normal App Server request
 timeout. The worker keeps these tokens only in memory and does not create a
 durable `auth.json` for this mode.
 
-This integration required no patch to the imported Codex 0.150 source. It is
+This integration required no patch to the imported Codex 0.151 source. It is
 still experimental upstream: method names, request shapes, login result types,
 or refresh timing may change even if core thread methods remain compatible.
 Cantrip therefore fails with an explicit server-managed-auth compatibility
@@ -235,7 +238,7 @@ enabled and not in the `deprecated` or `removed` stage. Read and mutation
 methods are tracked independently so a runtime can remain inspectable while a
 write control degrades to disabled.
 
-Product readiness may be stricter than method discovery. Codex 0.150 stabilizes
+Product readiness may be stricter than method discovery. Codex 0.151 stabilizes
 the core plugin list/read/install/uninstall methods, but Cantrip has not yet
 implemented and validated plugin product operations against their payloads.
 Cantrip retains those methods in diagnostics while disabling plugin product

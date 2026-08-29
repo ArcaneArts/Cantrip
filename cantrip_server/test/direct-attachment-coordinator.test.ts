@@ -25,7 +25,7 @@ function worker(leaseRenewal = false): WorkerSummary {
       adapter: "app-server",
       compatibility: "missing",
       version: null,
-      testedRange: ">=0.150.0 <0.151.0",
+      testedRange: ">=0.151.0 <0.152.0",
       initialize: null,
       methods: {},
       features: [],
