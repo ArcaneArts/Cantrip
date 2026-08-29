@@ -37,6 +37,11 @@ import {
   type RepositoryDatabase,
 } from "./database.js";
 import {
+  chatModelConfiguration,
+  toChatWireSummary,
+  toStandaloneChatWireSummary,
+} from "./chat-mappers.js";
+import {
   toProjectWorktreeSummary,
   type ProjectWorktreeExecutionContext,
 } from "./projects.js";
@@ -123,16 +128,6 @@ export interface ChatWorktreeTransitionResult {
 export class ExecutionLaneConflictError extends Error {}
 
 export interface ChatExecutionLaneRepositoryCollaborators {
-  chatModelConfiguration(
-    chat: Pick<
-      typeof schema.chats.$inferSelect,
-      | "modelId"
-      | "reasoningEffort"
-      | "customSubagentModel"
-      | "subagentModelId"
-      | "subagentReasoningEffort"
-    >,
-  ): ModelConfiguration;
   getChatExecutionContext(
     ownerId: string,
     chatId: string,
@@ -147,10 +142,6 @@ export interface ChatExecutionLaneRepositoryCollaborators {
     projectId: string,
     worktreeId: string,
   ): Promise<ProjectWorktreeExecutionContext | null>;
-  toChatWireSummary(chat: typeof schema.chats.$inferSelect): ChatWireSummary;
-  toStandaloneChatWireSummary(
-    chat: typeof schema.chats.$inferSelect,
-  ): StandaloneChatWireSummary;
 }
 
 export function chatIsExecuting(status: ChatWireSummary["status"]): boolean {
@@ -595,9 +586,7 @@ export class ChatExecutionLaneRepository {
           status: "running",
           modelId: row.chat.modelId,
           reasoningEffort: row.chat.reasoningEffort,
-          modelConfiguration: this.collaborators.chatModelConfiguration(
-            row.chat,
-          ),
+          modelConfiguration: chatModelConfiguration(row.chat),
           modelRouteId: runtime.modelRouteId,
           providerAccountId: runtime.providerAccountId,
           permissionProfileId: row.chat.permissionProfileId,
@@ -805,7 +794,7 @@ export class ChatExecutionLaneRepository {
         status: "running",
         modelId: row.chat.modelId,
         reasoningEffort: row.chat.reasoningEffort,
-        modelConfiguration: this.collaborators.chatModelConfiguration(row.chat),
+        modelConfiguration: chatModelConfiguration(row.chat),
         modelRouteId: runtime.modelRouteId,
         providerAccountId: runtime.providerAccountId,
         permissionProfileId: row.chat.permissionProfileId,
@@ -947,7 +936,7 @@ export class ChatExecutionLaneRepository {
     const row = rows[0];
     if (!row) return null;
     return {
-      chat: this.collaborators.toChatWireSummary(row.chat),
+      chat: toChatWireSummary(row.chat),
       lane: toChatExecutionLaneSummary(row.lane),
       sourcePath: row.sourcePath,
       worktree: toProjectWorktreeSummary(
@@ -1000,7 +989,7 @@ export class ChatExecutionLaneRepository {
     const lane = toContextualChatExecutionLaneSummary(row.lane);
     if (lane.contextKind !== "standalone") return null;
     return {
-      chat: this.collaborators.toStandaloneChatWireSummary(row.chat),
+      chat: toStandaloneChatWireSummary(row.chat),
       lane,
       root: {
         id: row.root.id,
@@ -1177,7 +1166,7 @@ export class ChatExecutionLaneRepository {
         .where(eq(schema.chats.id, chatId))
         .limit(1);
       return {
-        chat: this.collaborators.toChatWireSummary(
+        chat: toChatWireSummary(
           firstOrThrow(chats, "selecting a released chat"),
         ),
         lane: toChatExecutionLaneSummary(released),
@@ -1561,7 +1550,7 @@ export class ChatExecutionLaneRepository {
         .where(eq(schema.chats.id, chatId))
         .returning();
       return {
-        chat: this.collaborators.toChatWireSummary(
+        chat: toChatWireSummary(
           firstOrThrow(chats, "switching chat worktrees"),
         ),
         fromWorktreeId,
