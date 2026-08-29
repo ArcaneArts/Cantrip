@@ -321,6 +321,7 @@ import {
   type DesktopTunnelAttachmentStopFence,
   type TunnelAttachmentAuthorization,
 } from "./repository/tunnels.js";
+import { McpRepository } from "./repository/mcp.js";
 import {
   TelemetryRepository,
   ZERO_AGENT_TIME,
@@ -397,6 +398,10 @@ export {
   type DesktopTunnelAttachmentStopFence,
   type TunnelAttachmentAuthorization,
 } from "./repository/tunnels.js";
+export {
+  ManagedMcpServerInvariantError,
+  McpServerWorkerBindingError,
+} from "./repository/mcp.js";
 export type {
   ModelBehaviorObservationInput,
   ProviderQuotaObservationInput,
@@ -413,7 +418,6 @@ type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
 type WorkerRow = typeof schema.workers.$inferSelect;
-type McpServerRow = typeof schema.mcpServers.$inferSelect;
 type GitOperationRow = typeof schema.gitOperations.$inferSelect;
 type RunConfigurationRuntimeRow =
   typeof schema.runConfigurationRuntimes.$inferSelect;
@@ -533,8 +537,6 @@ export class ExecutionPlacementUnavailableError extends Error {
 export class AgentInteractionConflictError extends Error {}
 export class CodeCapabilityUnavailableError extends Error {}
 export class ProjectWorkspaceInvariantError extends Error {}
-export class ManagedMcpServerInvariantError extends Error {}
-export class McpServerWorkerBindingError extends Error {}
 class StaleCodeSessionRuntimeError extends Error {}
 
 export interface TerminalExecutionContext {
@@ -769,32 +771,6 @@ function toProjectReplicaSummary(
       : null,
     createdAt: toISOString(source.createdAt),
     updatedAt: toISOString(source.updatedAt),
-  };
-}
-
-function toMcpServerWireSummary(server: McpServerRow): McpServerWireSummary {
-  return {
-    id: server.id,
-    audience: server.audience,
-    scope: server.projectId ? "project" : "global",
-    projectId: server.projectId,
-    workerId: server.workerId,
-    enabled: server.enabled,
-    nameBlindIndex: server.nameBlindIndex,
-    protectedConfiguration: server.protectedConfiguration,
-    createdAt: toISOString(server.createdAt),
-    updatedAt: toISOString(server.updatedAt),
-  };
-}
-
-function toMcpServerOpaqueRuntime(
-  server: McpServerRow,
-): McpServerOpaqueRuntime {
-  return {
-    id: server.id,
-    enabled: server.enabled,
-    nameBlindIndex: server.nameBlindIndex,
-    protectedConfiguration: server.protectedConfiguration,
   };
 }
 
@@ -1759,6 +1735,7 @@ export class ServerRepository {
   readonly models: ModelRepository;
   readonly workers: WorkerRepository;
   readonly tunnels: TunnelRepository;
+  readonly mcp: McpRepository;
   readonly telemetry: TelemetryRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
@@ -1809,6 +1786,11 @@ export class ServerRepository {
           preserveTunnelState,
           expected,
         ),
+    });
+    this.mcp = new McpRepository(database, {
+      getModelProvider: (ownerId, providerId) =>
+        this.getModelProvider(ownerId, providerId),
+      getWorker: (ownerId, workerId) => this.getWorker(ownerId, workerId),
     });
     this.telemetry = new TelemetryRepository(database);
     this.chatImportJobs = new ChatImportJobRepository(database);
@@ -3451,35 +3433,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string | null,
   ): Promise<McpServerWireSummary[] | null> {
-    if (projectId) {
-      const project = await this.database
-        .select({ id: schema.projects.id })
-        .from(schema.projects)
-        .where(
-          and(
-            eq(schema.projects.id, projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .limit(1);
-      if (!project[0]) return null;
-    }
-    const rows = await this.database
-      .select()
-      .from(schema.mcpServers)
-      .where(
-        and(
-          eq(schema.mcpServers.ownerId, ownerId),
-          projectId
-            ? eq(schema.mcpServers.projectId, projectId)
-            : isNull(schema.mcpServers.projectId),
-        ),
-      )
-      .orderBy(
-        asc(schema.mcpServers.nameBlindIndex),
-        asc(schema.mcpServers.createdAt),
-      );
-    return rows.map(toMcpServerWireSummary);
+    return this.mcp.listMcpServers(ownerId, projectId);
   }
 
   async listEffectiveMcpServers(
@@ -3488,43 +3442,12 @@ export class ServerRepository {
     workerId: string,
     audience: Exclude<ResourceAudience, "both"> = "ide",
   ): Promise<McpServerOpaqueRuntime[]> {
-    const rows = await this.database
-      .select()
-      .from(schema.mcpServers)
-      .where(
-        and(
-          eq(schema.mcpServers.ownerId, ownerId),
-          eq(schema.mcpServers.enabled, true),
-          inArray(schema.mcpServers.audience, [audience, "both"]),
-          or(
-            isNull(schema.mcpServers.projectId),
-            ...(projectId ? [eq(schema.mcpServers.projectId, projectId)] : []),
-          ),
-          or(
-            isNull(schema.mcpServers.workerId),
-            eq(schema.mcpServers.workerId, workerId),
-          ),
-        ),
-      )
-      .orderBy(
-        asc(schema.mcpServers.nameBlindIndex),
-        asc(schema.mcpServers.createdAt),
-      );
-    const effective = new Map<string, McpServerRow>();
-    for (const row of rows) {
-      const current = effective.get(row.nameBlindIndex);
-      const priority =
-        (projectId && row.projectId === projectId ? 2 : 0) +
-        (row.workerId === workerId ? 1 : 0);
-      const currentPriority = current
-        ? (projectId && current.projectId === projectId ? 2 : 0) +
-          (current.workerId === workerId ? 1 : 0)
-        : -1;
-      if (!current || priority > currentPriority) {
-        effective.set(row.nameBlindIndex, row);
-      }
-    }
-    return [...effective.values()].map(toMcpServerOpaqueRuntime);
+    return this.mcp.listEffectiveMcpServers(
+      ownerId,
+      projectId,
+      workerId,
+      audience,
+    );
   }
 
   async createMcpServer(
@@ -3532,38 +3455,7 @@ export class ServerRepository {
     projectId: string | null,
     input: EncryptedMcpServerCreate,
   ): Promise<McpServerWireSummary | null> {
-    if (projectId) {
-      const project = await this.database
-        .select({ id: schema.projects.id })
-        .from(schema.projects)
-        .where(
-          and(
-            eq(schema.projects.id, projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .limit(1);
-      if (!project[0]) return null;
-    }
-    if (input.workerId && !(await this.getWorker(ownerId, input.workerId))) {
-      throw new McpServerWorkerBindingError(
-        "The selected MCP worker is not available to this account.",
-      );
-    }
-    const rows = await this.database
-      .insert(schema.mcpServers)
-      .values({
-        id: input.id,
-        ownerId,
-        projectId,
-        workerId: input.workerId,
-        enabled: input.enabled,
-        audience: input.audience,
-        nameBlindIndex: input.nameBlindIndex,
-        protectedConfiguration: input.protectedConfiguration,
-      })
-      .returning();
-    return toMcpServerWireSummary(firstOrThrow(rows, "creating an MCP server"));
+    return this.mcp.createMcpServer(ownerId, projectId, input);
   }
 
   async updateMcpServer(
@@ -3572,32 +3464,7 @@ export class ServerRepository {
     serverId: string,
     input: EncryptedMcpServerUpdate,
   ): Promise<McpServerWireSummary | null> {
-    if (input.workerId && !(await this.getWorker(ownerId, input.workerId))) {
-      throw new McpServerWorkerBindingError(
-        "The selected MCP worker is not available to this account.",
-      );
-    }
-    const rows = await this.database
-      .update(schema.mcpServers)
-      .set({
-        workerId: input.workerId,
-        enabled: input.enabled,
-        audience: input.audience,
-        nameBlindIndex: input.nameBlindIndex,
-        protectedConfiguration: input.protectedConfiguration,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.mcpServers.id, serverId),
-          eq(schema.mcpServers.ownerId, ownerId),
-          projectId
-            ? eq(schema.mcpServers.projectId, projectId)
-            : isNull(schema.mcpServers.projectId),
-        ),
-      )
-      .returning();
-    return rows[0] ? toMcpServerWireSummary(rows[0]) : null;
+    return this.mcp.updateMcpServer(ownerId, projectId, serverId, input);
   }
 
   async deleteMcpServer(
@@ -3605,19 +3472,7 @@ export class ServerRepository {
     projectId: string | null,
     serverId: string,
   ): Promise<boolean> {
-    const rows = await this.database
-      .delete(schema.mcpServers)
-      .where(
-        and(
-          eq(schema.mcpServers.id, serverId),
-          eq(schema.mcpServers.ownerId, ownerId),
-          projectId
-            ? eq(schema.mcpServers.projectId, projectId)
-            : isNull(schema.mcpServers.projectId),
-        ),
-      )
-      .returning({ id: schema.mcpServers.id });
-    return rows.length > 0;
+    return this.mcp.deleteMcpServer(ownerId, projectId, serverId);
   }
 
   async listSkillAudiences(
@@ -3628,25 +3483,7 @@ export class ServerRepository {
     audienceKey: string;
     audience: ResourceAudience;
   }> | null> {
-    const [worker, provider] = await Promise.all([
-      this.getWorker(ownerId, workerId),
-      this.getModelProvider(ownerId, providerId),
-    ]);
-    if (!worker || !provider) return null;
-    return this.database
-      .select({
-        audienceKey: schema.skillAudiences.audienceKey,
-        audience: schema.skillAudiences.audience,
-      })
-      .from(schema.skillAudiences)
-      .where(
-        and(
-          eq(schema.skillAudiences.ownerId, ownerId),
-          eq(schema.skillAudiences.workerId, workerId),
-          eq(schema.skillAudiences.providerId, providerId),
-        ),
-      )
-      .orderBy(asc(schema.skillAudiences.audienceKey));
+    return this.mcp.listSkillAudiences(ownerId, workerId, providerId);
   }
 
   async updateSkillAudience(
@@ -3658,28 +3495,7 @@ export class ServerRepository {
       workerId: string;
     },
   ): Promise<{ audienceKey: string; audience: ResourceAudience } | null> {
-    const [worker, provider] = await Promise.all([
-      this.getWorker(ownerId, input.workerId),
-      this.getModelProvider(ownerId, input.providerId),
-    ]);
-    if (!worker || !provider) return null;
-    const rows = await this.database
-      .insert(schema.skillAudiences)
-      .values({ ownerId, ...input })
-      .onConflictDoUpdate({
-        target: [
-          schema.skillAudiences.ownerId,
-          schema.skillAudiences.workerId,
-          schema.skillAudiences.providerId,
-          schema.skillAudiences.audienceKey,
-        ],
-        set: { audience: input.audience, updatedAt: new Date() },
-      })
-      .returning({
-        audienceKey: schema.skillAudiences.audienceKey,
-        audience: schema.skillAudiences.audience,
-      });
-    return rows[0] ?? null;
+    return this.mcp.updateSkillAudience(ownerId, input);
   }
 
   async listChatSkillAudienceKeys(
@@ -3687,21 +3503,8 @@ export class ServerRepository {
     workerId: string,
     providerId: string,
   ): Promise<string[]> {
-    const rows = await this.database
-      .select({ audienceKey: schema.skillAudiences.audienceKey })
-      .from(schema.skillAudiences)
-      .where(
-        and(
-          eq(schema.skillAudiences.ownerId, ownerId),
-          eq(schema.skillAudiences.workerId, workerId),
-          eq(schema.skillAudiences.providerId, providerId),
-          inArray(schema.skillAudiences.audience, ["chat", "both"]),
-        ),
-      )
-      .orderBy(asc(schema.skillAudiences.audienceKey));
-    return rows.map(({ audienceKey }) => audienceKey);
+    return this.mcp.listChatSkillAudienceKeys(ownerId, workerId, providerId);
   }
-
   async ensureDefaultProjectWorkspace(
     ownerId: string,
   ): Promise<ProjectWorkspaceRow> {
