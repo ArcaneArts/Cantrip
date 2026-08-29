@@ -91,11 +91,15 @@ let rejectNextAgentTurnPreparation = false;
 let holdNextAgentTurnPreparation = false;
 let heldAgentTurnPreparationStarted = false;
 let releaseHeldAgentTurnPreparation: (() => void) | null = null;
+let holdNextAgentTurnState = false;
+let heldAgentTurnStateStarted = false;
+let releaseHeldAgentTurnState: (() => void) | null = null;
 const pauseCommands: boolean[] = [];
 const serverObservedPayloads: string[] = [];
 const workerErrors: string[] = [];
 const taskOperationPrepareTimeouts: Array<number | null | undefined> = [];
 const codeAgentPrepareTimeouts: Array<number | null | undefined> = [];
+const codeAgentStateTimeouts: Array<number | null | undefined> = [];
 
 function workerComponentKey() {
   return { key: new Uint8Array(workerTaskKey), keyRevision: 1 };
@@ -425,6 +429,16 @@ const workerBridge: WorkerCommandBus = {
       };
     }
     if (command.type === "code.agentTurnState") {
+      if (command.phase === "started") {
+        codeAgentStateTimeouts.push(options?.timeoutMs);
+        if (holdNextAgentTurnState) {
+          holdNextAgentTurnState = false;
+          heldAgentTurnStateStarted = true;
+          await new Promise<void>((resolve) => {
+            releaseHeldAgentTurnState = resolve;
+          });
+        }
+      }
       return { notifiedSessions: 0, refreshed: [], conflicts: [] };
     }
     if (command.type === "code.prepareAgentTurn") {
@@ -712,6 +726,89 @@ afterAll(async () => {
 });
 
 describe.sequential("Task E2EE closure lifecycle", () => {
+  it("does not report launch success before the worker turn dispatch begins", async () => {
+    holdNextAgentTurnState = true;
+    heldAgentTurnStateStarted = false;
+    releaseHeldAgentTurnState = null;
+    codeAgentStateTimeouts.length = 0;
+    const chatId = randomUUID();
+    const initialTask = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} worker dispatch boundary test`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const createdResponse = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task: initialTask,
+      },
+    });
+    expect(createdResponse.statusCode).toBe(201);
+    const created = taskWireCreateResultSchema.parse(createdResponse.json());
+
+    const tasks = database.repository.tasks;
+    const originalAttachOperationExecution =
+      tasks.attachOperationExecution.bind(tasks);
+    let operationExecutionAttached = false;
+    tasks.attachOperationExecution = async (...args) => {
+      operationExecutionAttached = true;
+      return originalAttachOperationExecution(...args);
+    };
+
+    try {
+      const started = await app!.inject({
+        method: "POST",
+        url: `/api/tasks/${chatId}/start`,
+        payload: {
+          operationId: randomUUID(),
+          rowVersion: created.task.rowVersion,
+        },
+      });
+      expect(started.statusCode).toBe(202);
+      for (
+        let attempt = 0;
+        attempt < 200 && !heldAgentTurnStateStarted;
+        attempt += 1
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(heldAgentTurnStateStarted).toBe(true);
+      expect(operationExecutionAttached).toBe(false);
+      expect(codeAgentStateTimeouts).toEqual([
+        TASK_LAUNCH_PREFLIGHT_TIMEOUT_MS,
+      ]);
+
+      releaseHeldAgentTurnState?.();
+      await waitForTask(chatId, "complete");
+      expect(operationExecutionAttached).toBe(true);
+    } finally {
+      releaseHeldAgentTurnState?.();
+      tasks.attachOperationExecution = originalAttachOperationExecution;
+    }
+  });
+
   it("dispatches the agent turn without waiting on a redundant launch heartbeat", async () => {
     const chatId = randomUUID();
     const initialTask = await sealTask(chatId, {

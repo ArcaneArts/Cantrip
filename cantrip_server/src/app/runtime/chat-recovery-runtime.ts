@@ -331,15 +331,20 @@ export function createChatRecoveryRuntime({
     context: Pick<ChatExecutionContext, "chatId" | "cwd" | "workerId">,
     phase: "started" | "completed" | "failed",
     paths: Iterable<string> = [],
+    timeoutMs?: number | null,
   ): Promise<void> => {
     try {
       codeAgentTurnNotificationResultSchema.parse(
-        await bridge.request(context.workerId, {
-          type: "code.agentTurnState",
-          cwd: context.cwd,
-          phase,
-          paths: [...paths].slice(0, 5_000),
-        }),
+        await bridge.request(
+          context.workerId,
+          {
+            type: "code.agentTurnState",
+            cwd: context.cwd,
+            phase,
+            paths: [...paths].slice(0, 5_000),
+          },
+          { timeoutMs },
+        ),
       );
     } catch (error) {
       app.log.warn(
