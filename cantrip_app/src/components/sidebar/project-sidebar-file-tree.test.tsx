@@ -345,6 +345,53 @@ describe("project sidebar file tree encryption gate", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("hides operating-system metadata files at every sidebar tree depth", async () => {
+    const metadataEntry = (name: string, path = name): ExplorerEntry => ({
+      ...runtime.entry,
+      name,
+      path,
+    });
+    runtime.entriesByPath.set("", [
+      metadataEntry(".DS_Store"),
+      metadataEntry("THUMBS.DB"),
+      metadataEntry("Thumbs.db.backup"),
+      runtime.directoryEntry,
+    ]);
+    runtime.entriesByPath.set("src", [
+      metadataEntry(".DS_Store", "src/.DS_Store"),
+      metadataEntry("Thumbs.db", "src/Thumbs.db"),
+      runtime.entry,
+    ]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+
+    const visibleNames = () =>
+      renderer.root
+        .findAllByProps({ role: "treeitem" })
+        .map((entry) => textContent(entry.props.children));
+    expect(visibleNames()).toEqual(
+      expect.arrayContaining(["Thumbs.db.backup", "src"]),
+    );
+    expect(visibleNames()).not.toContain(".DS_Store");
+    expect(visibleNames()).not.toContain("THUMBS.DB");
+
+    const folder = renderer.root
+      .findAllByProps({ role: "treeitem" })
+      .find((entry) => textContent(entry.props.children).includes("src"));
+    if (!folder) throw new Error("Folder not found: src");
+    const clickTarget = {};
+    await act(async () =>
+      folder.props.onClick({ currentTarget: clickTarget, target: clickTarget }),
+    );
+
+    expect(visibleNames()).toContain("example.ts");
+    expect(visibleNames()).not.toContain(".DS_Store");
+    expect(visibleNames()).not.toContain("Thumbs.db");
+    await act(async () => renderer.unmount());
+  });
+
   it("preserves expanded folders when pinning hands the tree to a replacement Explorer", async () => {
     runtime.entriesByPath.set("", [runtime.directoryEntry]);
     runtime.entriesByPath.set("src", [runtime.entry]);
