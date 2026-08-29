@@ -155,6 +155,15 @@ export function requiredProjectChatProjectId(projectId: string | null): string {
   return projectId;
 }
 
+export function requiredProjectChatWorktreeId(
+  worktreeId: string | null,
+): string {
+  if (!worktreeId) {
+    throw new Error("Project Chat operation is missing its worktree.");
+  }
+  return worktreeId;
+}
+
 export function toChatExecutionLaneSummary(
   lane: typeof schema.chatExecutionLanes.$inferSelect,
 ): ChatExecutionLaneSummary {
