@@ -2,21 +2,15 @@ import { randomUUID } from "node:crypto";
 
 import {
   DEFAULT_PERMISSION_PROFILE_ID,
-  archivedChatWireSummarySchema,
-  archivedStandaloneChatWireSummarySchema,
   encryptedAgentInteractionRequestSchema,
   agentInteractionRequestSchema,
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
-  chatWireSummarySchema,
-  contextualChatWireSummarySchema,
-  standaloneChatWireSummarySchema,
   encryptedChatComposerDraftWireStateSchema,
   chatComposerDraftOpaqueStateSchema,
   chatPlanOpaqueStateSchema,
   encryptedChatPlanWireStateSchema,
   encryptedQueuedPromptSchema,
-  modelConfigurationSchema,
   queuedPromptOpaqueContentSchema,
   taskMessageOpaqueContentSchema,
   taskMessageOpaqueSummarySchema,
@@ -339,6 +333,15 @@ import {
   StandaloneChatPlacementUnavailableError,
 } from "./repository/chat-catalog.js";
 import {
+  ARCHIVED_CHAT_RETENTION_MS,
+  chatModelConfiguration,
+  toArchivedChatWireSummary,
+  toArchivedStandaloneChatWireSummary,
+  toChatWireSummary,
+  toContextualChatWireSummary,
+  toStandaloneChatWireSummary,
+} from "./repository/chat-mappers.js";
+import {
   TerminalRepository,
   type TerminalExecutionContext,
 } from "./repository/terminals.js";
@@ -466,6 +469,7 @@ export {
   type StandaloneChatExecutionContext,
 } from "./repository/chat-execution-lanes.js";
 export { StandaloneChatPlacementUnavailableError } from "./repository/chat-catalog.js";
+export { ARCHIVED_CHAT_RETENTION_MS } from "./repository/chat-mappers.js";
 export type { TerminalExecutionContext } from "./repository/terminals.js";
 export type { ExplorerExecutionContext } from "./repository/explorers.js";
 export {
@@ -485,7 +489,6 @@ export const DEFAULT_OLLAMA_PROVIDER_ID =
   "00000000-0000-0000-0000-000000000010";
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
-export const ARCHIVED_CHAT_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 export interface ChatLiveRouting {
   experience: ChatWireSummary["experience"];
   projectId: string | null;
@@ -529,143 +532,6 @@ function requiredProjectChatWorktreeId(worktreeId: string | null): string {
     throw new Error("Project Chat operation is missing its worktree.");
   }
   return worktreeId;
-}
-
-function toChatWireSummary(
-  chat: typeof schema.chats.$inferSelect,
-): ChatWireSummary {
-  return chatWireSummarySchema.parse({
-    id: chat.id,
-    contextKind: chat.contextKind,
-    projectId: chat.projectId,
-    titleProtection: chat.protectedLabel,
-    experience: chat.experience as ChatWireSummary["experience"],
-    position: chat.position,
-    status: chat.status as ChatWireSummary["status"],
-    activeWorkerId: chat.activeWorkerId,
-    activeWorktreeId: chat.activeWorktreeId,
-    activeScratchRootId: chat.activeScratchRootId,
-    placementRevision: chat.placementRevision,
-    worktreeMode: chat.worktreeMode as ChatWireSummary["worktreeMode"],
-    modelId: chat.modelId,
-    reasoningEffort: chat.reasoningEffort,
-    customSubagentModel: chat.customSubagentModel,
-    subagentModelId: chat.subagentModelId,
-    subagentReasoningEffort: chat.subagentReasoningEffort,
-    permissionProfileId: chat.permissionProfileId,
-    planMode: chat.planMode as ChatWireSummary["planMode"],
-    hasPendingPlanQuestion: chat.hasPendingPlanQuestion,
-    hasUnreadCompletion: chat.hasUnreadCompletion,
-    automationPaused: chat.automationPaused,
-    createdAt: toISOString(chat.createdAt),
-    updatedAt: toISOString(chat.updatedAt),
-  });
-}
-
-function toStandaloneChatWireSummary(
-  chat: typeof schema.chats.$inferSelect,
-): StandaloneChatWireSummary {
-  return standaloneChatWireSummarySchema.parse({
-    id: chat.id,
-    contextKind: "standalone",
-    projectId: null,
-    titleProtection: chat.protectedLabel,
-    experience: "agent",
-    position: chat.position,
-    status: chat.status,
-    activeWorkerId: chat.activeWorkerId,
-    activeWorktreeId: null,
-    activeScratchRootId: chat.activeScratchRootId,
-    placementRevision: chat.placementRevision,
-    worktreeMode: null,
-    modelId: chat.modelId,
-    reasoningEffort: chat.reasoningEffort,
-    customSubagentModel: false,
-    subagentModelId: null,
-    subagentReasoningEffort: null,
-    permissionProfileId: chat.permissionProfileId,
-    planMode: "default",
-    hasPendingPlanQuestion: false,
-    hasUnreadCompletion: chat.hasUnreadCompletion,
-    automationPaused: chat.automationPaused,
-    createdAt: toISOString(chat.createdAt),
-    updatedAt: toISOString(chat.updatedAt),
-  });
-}
-
-function toContextualChatWireSummary(
-  chat: typeof schema.chats.$inferSelect,
-): ContextualChatWireSummary {
-  return contextualChatWireSummarySchema.parse(
-    chat.contextKind === "standalone"
-      ? toStandaloneChatWireSummary(chat)
-      : toChatWireSummary(chat),
-  );
-}
-
-function chatModelConfiguration(
-  chat: Pick<
-    typeof schema.chats.$inferSelect,
-    | "modelId"
-    | "reasoningEffort"
-    | "customSubagentModel"
-    | "subagentModelId"
-    | "subagentReasoningEffort"
-  >,
-): ModelConfiguration {
-  return modelConfigurationSchema.parse({
-    modelId: chat.modelId,
-    reasoningEffort: chat.reasoningEffort,
-    customSubagentModel: chat.customSubagentModel,
-    subagentModelId: chat.subagentModelId,
-    subagentReasoningEffort: chat.subagentReasoningEffort,
-  });
-}
-
-function toArchivedChatWireSummary(
-  chat: typeof schema.chats.$inferSelect,
-  messageCount: number,
-): ArchivedChatWireSummary {
-  if (!chat.archivedAt) {
-    throw new Error("Cannot summarize an active chat as archived.");
-  }
-  return archivedChatWireSummarySchema.parse({
-    id: chat.id,
-    contextKind: chat.contextKind,
-    projectId: chat.projectId,
-    titleProtection: chat.protectedLabel,
-    experience: chat.experience as ArchivedChatWireSummary["experience"],
-    messageCount,
-    archivedAt: toISOString(chat.archivedAt),
-    expiresAt: new Date(
-      chat.archivedAt.getTime() + ARCHIVED_CHAT_RETENTION_MS,
-    ).toISOString(),
-    createdAt: toISOString(chat.createdAt),
-    updatedAt: toISOString(chat.updatedAt),
-  });
-}
-
-function toArchivedStandaloneChatWireSummary(
-  chat: typeof schema.chats.$inferSelect,
-  messageCount: number,
-): ArchivedStandaloneChatWireSummary {
-  if (!chat.archivedAt) {
-    throw new Error("Cannot summarize an active Chat as archived.");
-  }
-  return archivedStandaloneChatWireSummarySchema.parse({
-    id: chat.id,
-    contextKind: "standalone",
-    projectId: null,
-    titleProtection: chat.protectedLabel,
-    experience: "agent",
-    messageCount,
-    archivedAt: toISOString(chat.archivedAt),
-    expiresAt: new Date(
-      chat.archivedAt.getTime() + ARCHIVED_CHAT_RETENTION_MS,
-    ).toISOString(),
-    createdAt: toISOString(chat.createdAt),
-    updatedAt: toISOString(chat.updatedAt),
-  });
 }
 
 function toTerminalWireSummary(
@@ -1162,15 +1028,12 @@ export class ServerRepository {
         this.listProjectWorktrees(ownerId, projectId),
     });
     this.chatExecutionLanes = new ChatExecutionLaneRepository(database, {
-      chatModelConfiguration,
       getChatExecutionContext: (ownerId, chatId) =>
         this.getChatExecutionContext(ownerId, chatId),
       getChatExecutionLaneContext: (ownerId, chatId, laneId) =>
         this.getChatExecutionLaneContext(ownerId, chatId, laneId),
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
-      toChatWireSummary,
-      toStandaloneChatWireSummary,
     });
     this.chatCatalog = new ChatCatalogRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
@@ -1194,10 +1057,6 @@ export class ServerRepository {
           isWorkerConnected,
           allowOfflineExplicit,
         ),
-      toArchivedChatWireSummary,
-      toArchivedStandaloneChatWireSummary,
-      toChatWireSummary,
-      toStandaloneChatWireSummary,
     });
     this.terminals = new TerminalRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>

@@ -27,6 +27,12 @@ import {
   toISOString,
   type RepositoryDatabase,
 } from "./database.js";
+import {
+  toArchivedChatWireSummary,
+  toArchivedStandaloneChatWireSummary,
+  toChatWireSummary,
+  toStandaloneChatWireSummary,
+} from "./chat-mappers.js";
 import type { ProjectWorktreeExecutionContext } from "./projects.js";
 
 export class StandaloneChatPlacementUnavailableError extends Error {}
@@ -47,18 +53,6 @@ export interface ChatCatalogRepositoryCollaborators {
     isWorkerConnected?: (workerId: string) => boolean,
     allowOfflineExplicit?: boolean,
   ): Promise<ExecutionPlacementResolution>;
-  toArchivedChatWireSummary(
-    chat: typeof schema.chats.$inferSelect,
-    messageCount: number,
-  ): ArchivedChatWireSummary;
-  toArchivedStandaloneChatWireSummary(
-    chat: typeof schema.chats.$inferSelect,
-    messageCount: number,
-  ): ArchivedStandaloneChatWireSummary;
-  toChatWireSummary(chat: typeof schema.chats.$inferSelect): ChatWireSummary;
-  toStandaloneChatWireSummary(
-    chat: typeof schema.chats.$inferSelect,
-  ): StandaloneChatWireSummary;
 }
 
 export class ChatCatalogRepository {
@@ -88,7 +82,7 @@ export class ChatCatalogRepository {
         ),
       )
       .orderBy(asc(schema.chats.position), asc(schema.chats.createdAt));
-    return rows.map(({ chat }) => this.collaborators.toChatWireSummary(chat));
+    return rows.map(({ chat }) => toChatWireSummary(chat));
   }
 
   async listArchivedChats(
@@ -120,7 +114,7 @@ export class ChatCatalogRepository {
       )
       .orderBy(desc(schema.chats.archivedAt));
     return rows.map(({ chat, messageCount }) =>
-      this.collaborators.toArchivedChatWireSummary(chat, messageCount),
+      toArchivedChatWireSummary(chat, messageCount),
     );
   }
 
@@ -138,9 +132,7 @@ export class ChatCatalogRepository {
         ),
       )
       .orderBy(asc(schema.chats.position), asc(schema.chats.createdAt));
-    return rows.map(({ chat }) =>
-      this.collaborators.toStandaloneChatWireSummary(chat),
-    );
+    return rows.map(({ chat }) => toStandaloneChatWireSummary(chat));
   }
 
   async listArchivedStandaloneChats(
@@ -165,10 +157,7 @@ export class ChatCatalogRepository {
       )
       .orderBy(desc(schema.chats.archivedAt));
     return rows.map(({ chat, messageCount }) =>
-      this.collaborators.toArchivedStandaloneChatWireSummary(
-        chat,
-        messageCount,
-      ),
+      toArchivedStandaloneChatWireSummary(chat, messageCount),
     );
   }
 
@@ -302,7 +291,7 @@ export class ChatCatalogRepository {
         "queueing standalone Chat scratch provisioning",
       );
       return {
-        chat: this.collaborators.toStandaloneChatWireSummary(chat),
+        chat: toStandaloneChatWireSummary(chat),
         provisionJob: {
           id: provisionJob.id,
           rootId: provisionJob.rootId,
@@ -481,7 +470,7 @@ export class ChatCatalogRepository {
             )
           : null;
       return {
-        chat: this.collaborators.toChatWireSummary(chat),
+        chat: toChatWireSummary(chat),
         task: task ? toTaskOpaqueSummary(task) : null,
       };
     });
