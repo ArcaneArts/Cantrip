@@ -14,6 +14,35 @@ export interface SidebarFilePreviewState {
   projectId: string;
 }
 
+export function sidebarFilePreviewMatches(
+  preview: SidebarFilePreviewState | null,
+  target: Omit<SidebarFilePreviewState, "active">,
+): boolean {
+  return Boolean(
+    preview?.active &&
+    preview.explorerId === target.explorerId &&
+    preview.groupId === target.groupId &&
+    preview.path === target.path &&
+    preview.projectId === target.projectId,
+  );
+}
+
+export function sidebarExplorerPrewarmTarget({
+  hasOpenExplorer,
+  pinInProgress,
+  isPopout,
+  sidebarExplorer,
+}: {
+  hasOpenExplorer: boolean;
+  pinInProgress: boolean;
+  isPopout: boolean;
+  sidebarExplorer: ExplorerSummary | null;
+}): ExplorerSummary | null {
+  return !isPopout && !pinInProgress && !hasOpenExplorer
+    ? sidebarExplorer
+    : null;
+}
+
 export function sidebarFileName(path: string): string {
   return path.split("/").at(-1) || path;
 }

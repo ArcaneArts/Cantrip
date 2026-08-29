@@ -1,7 +1,11 @@
+import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
+import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   createShellNavigationCommands,
+  createShellProjectNavigationCommands,
+  projectTabLayoutContainsTab,
   shellDestinationVisibility,
   updateShellDestinationVisibility,
   type ShellDestination,
@@ -192,5 +196,96 @@ describe("shell destination state", () => {
         (visible) => !visible,
       ),
     ).toEqual({ kind: "workspace" });
+  });
+});
+
+describe("created tab selection", () => {
+  const layout = {
+    projectId: "project-1",
+    groups: [
+      {
+        anchorTabKey: "explorer:explorer-1",
+        id: "group-1",
+        members: [{ tabKey: "explorer:explorer-1" }],
+        projectId: "project-1",
+      },
+    ],
+  } as ProjectTabLayoutSummary;
+
+  it("uses an already-cached pinned tab without refreshing the layout", () => {
+    expect(
+      projectTabLayoutContainsTab(layout, "project-1", "explorer:explorer-1"),
+    ).toBe(true);
+    expect(
+      projectTabLayoutContainsTab(layout, "project-1", "explorer:missing"),
+    ).toBe(false);
+    expect(
+      projectTabLayoutContainsTab(layout, "project-2", "explorer:explorer-1"),
+    ).toBe(false);
+  });
+
+  it("selects a cached pinned tab without invalidating project layout", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["project-tab-layout", "project-1"], layout);
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const setPendingSurfaceSelection = vi.fn();
+    const setWorkspaceSelection = vi.fn();
+    type ProjectCommandOptions = Parameters<
+      typeof createShellProjectNavigationCommands
+    >[0];
+    const options = {
+      compactShell: false,
+      getActiveProjectWorkspaceId: () => "workspace-1",
+      navigation: {
+        setAppMode: vi.fn(),
+        setProjectOverviewSection: vi.fn(),
+        setProjectSettingsSection: vi.fn(),
+        setSelectedProjectId: vi.fn(),
+        setSelectedWorkflowIntentId: vi.fn(),
+        setShowImporter: vi.fn(),
+        setShowProjectSettings: vi.fn(),
+        setShowServerAdmin: vi.fn(),
+        setShowSettings: vi.fn(),
+      },
+      persistAppDestination: vi.fn().mockResolvedValue(undefined),
+      queryClient,
+      resetMobileBottomTabs: vi.fn(),
+      setCreatedRepositoryOnboarding: vi.fn(),
+      setDesktopSidebarDrawerOpen: vi.fn(),
+      setFolderProjectDialogMode: vi.fn(),
+      setFolderProjectDialogOpen: vi.fn(),
+      setMobileTabGridOpen: vi.fn(),
+      setPendingSurfaceSelection,
+      setProjectTaskChatIds: vi.fn(),
+      setSidebarFilePreview: vi.fn(),
+      setWorkspaceSelection,
+    } as unknown as ProjectCommandOptions;
+
+    createShellProjectNavigationCommands(options).openCreatedTab(
+      "project-1",
+      "explorer",
+      "explorer-1",
+    );
+
+    expect(invalidateQueries).not.toHaveBeenCalled();
+    expect(setPendingSurfaceSelection).toHaveBeenCalledWith(null);
+    expect(setWorkspaceSelection).toHaveBeenCalledOnce();
+    const select = setWorkspaceSelection.mock.calls[0]?.[0] as (current: {
+      activeTabByGroup: Record<string, string>;
+      destination: "overview";
+      projectId: string;
+      selectedGroupId: null;
+    }) => unknown;
+    expect(
+      select({
+        activeTabByGroup: {},
+        destination: "overview",
+        projectId: "project-1",
+        selectedGroupId: null,
+      }),
+    ).toMatchObject({
+      destination: "surface",
+      selectedGroupId: "group-1",
+    });
   });
 });

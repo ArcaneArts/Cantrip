@@ -25,6 +25,7 @@ import type {
 import type { AppToastInput } from "@/components/ui/app-toast";
 import {
   createExplorer,
+  getProjectTabLayout,
   pinExplorer,
   updateExplorerViewState,
 } from "@/lib/api";
@@ -201,7 +202,7 @@ export function useSidebarExplorerMutations({
       path: string;
       transactionId: string;
     }) => {
-      return pinExplorer(
+      const explorer = await pinExplorer(
         destinationExplorerId,
         sidebarFileName(path),
         {
@@ -210,16 +211,23 @@ export function useSidebarExplorerMutations({
         },
         groupId ?? undefined,
       );
+      const layout = await getProjectTabLayout(explorer.projectId);
+      return { explorer, layout };
     },
-    onSuccess: (explorer, input) => {
+    onSuccess: ({ explorer, layout }, input) => {
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", explorer.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      queryClient.setQueryData<ProjectTabLayoutSummary>(
+        ["project-tab-layout", explorer.projectId],
+        layout,
+      );
       const handoff = sidebarFilePinHandoffRef.current;
       if (!handoff || handoff.transactionId !== input.transactionId) {
-        void queryClient.invalidateQueries({
-          queryKey: ["explorers", explorer.projectId],
-        });
-        void queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", explorer.projectId],
-        });
         return;
       }
       const expectedFileMode = defaultExplorerFileMode(input.path);
@@ -247,23 +255,11 @@ export function useSidebarExplorerMutations({
         ready: true,
       };
       // This Explorer is now a tab. Permit the creation effect to provision
-      // and prewarm the next dedicated sidebar Explorer for this worktree.
+      // the next lightweight sidebar Explorer record. It is not opened until
+      // the user selects another file.
       sidebarExplorerCreationKeyRef.current = null;
       sidebarFilePinHandoffRef.current = nextHandoff;
       setSidebarFilePinHandoff(nextHandoff);
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", explorer.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      void queryClient.invalidateQueries({
-        queryKey: ["explorers", explorer.projectId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", explorer.projectId],
-      });
     },
     onError: (error, input) => {
       const handoff = sidebarFilePinHandoffRef.current;
