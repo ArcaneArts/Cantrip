@@ -16,3 +16,7 @@ export function firstOrThrow<T>(rows: T[], operation: string): T {
   }
   return row;
 }
+
+export function toISOString(value: Date): string {
+  return value.toISOString();
+}
