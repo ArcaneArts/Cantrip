@@ -316,6 +316,7 @@ import {
   ExecutionLaneConflictError,
   chatIsExecuting,
   requiredProjectChatProjectId,
+  requiredProjectChatWorktreeId,
   type ChatExecutionContext,
   type ChatExecutionLaneContext,
   type ChatExecutionLaneReleaseResult,
@@ -330,12 +331,11 @@ import {
 } from "./repository/chat-catalog.js";
 import {
   chatModelConfiguration,
-  toChatWireSummary,
   toContextualChatWireSummary,
-  toStandaloneChatWireSummary,
 } from "./repository/chat-mappers.js";
 import { ChatStateRepository } from "./repository/chat-state.js";
 import { ChatArchiveLifecycleRepository } from "./repository/chat-archive-lifecycle.js";
+import { ChatForkRepository } from "./repository/chat-forks.js";
 import {
   toChatMessage,
   toEncryptedChatMessage,
@@ -393,7 +393,7 @@ import { TaskDispatchRepository } from "./task-dispatch.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
-import { attachProjectTab, ProjectTabLayoutRepository } from "./tab-layouts.js";
+import { ProjectTabLayoutRepository } from "./tab-layouts.js";
 
 export type { RepositoryDatabase } from "./repository/database.js";
 export {
@@ -521,13 +521,6 @@ export type ChatExecutionAttribution =
       scratchRootId: string;
       worktreeId: null;
     };
-
-function requiredProjectChatWorktreeId(worktreeId: string | null): string {
-  if (!worktreeId) {
-    throw new Error("Project Chat operation is missing its worktree.");
-  }
-  return worktreeId;
-}
 
 function toTerminalWireSummary(
   terminal: typeof schema.terminals.$inferSelect,
@@ -827,6 +820,7 @@ export class ServerRepository {
   readonly chatCatalog: ChatCatalogRepository;
   readonly chatState: ChatStateRepository;
   readonly chatArchiveLifecycle: ChatArchiveLifecycleRepository;
+  readonly chatForks: ChatForkRepository;
   readonly terminals: TerminalRepository;
   readonly explorers: ExplorerRepository;
   readonly codeSurfaces: CodeSurfaceRepository;
@@ -967,6 +961,10 @@ export class ServerRepository {
       nextProjectTabPosition: (projectId) =>
         this.nextProjectTabPosition(projectId),
     });
+    this.chatForks = new ChatForkRepository(database, {
+      createStandaloneChat: (ownerId, input, isWorkerConnected) =>
+        this.createStandaloneChat(ownerId, input, isWorkerConnected),
+    });
     this.terminals = new TerminalRepository(database, {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
@@ -974,7 +972,6 @@ export class ServerRepository {
         this.getTerminalExecutionContext(ownerId, terminalId),
       nextProjectTabPosition: (projectId) =>
         this.nextProjectTabPosition(projectId),
-      requiredProjectChatWorktreeId,
       resolveProjectExecutionPlacement: (
         ownerId,
         projectId,
@@ -4117,258 +4114,7 @@ export class ServerRepository {
       messages: ChatMessageOpaqueSummary[],
     ) => Promise<ChatMessageOpaqueContent[]>,
   ): Promise<ChatWireSummary | null> {
-    return this.database.transaction(async (transaction) => {
-      const rows = await transaction
-        .select({ chat: schema.chats })
-        .from(schema.chats)
-        .innerJoin(
-          schema.projects,
-          and(
-            eq(schema.projects.id, schema.chats.projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .where(eq(schema.chats.id, chatId))
-        .limit(1);
-      const row = rows[0];
-      if (!row) return null;
-      const projectId = requiredProjectChatProjectId(row.chat.projectId);
-      const activeWorktreeId = requiredProjectChatWorktreeId(
-        row.chat.activeWorktreeId,
-      );
-
-      const targetRows = await transaction
-        .select({ worktree: schema.projectWorktrees })
-        .from(schema.projectWorktrees)
-        .innerJoin(
-          schema.projectSources,
-          and(
-            eq(
-              schema.projectSources.id,
-              schema.projectWorktrees.projectSourceId,
-            ),
-            eq(schema.projectSources.projectId, projectId),
-          ),
-        )
-        .where(
-          and(
-            eq(
-              schema.projectWorktrees.id,
-              input.worktreeId ?? activeWorktreeId,
-            ),
-            isNull(schema.projectSources.removedAt),
-          ),
-        )
-        .limit(1);
-      const target = targetRows[0]?.worktree;
-      if (!target || target.lifecycleState !== "ready") return null;
-
-      let throughSequence: number | null = null;
-      if (input.messageId) {
-        const selected = await transaction
-          .select({ sequence: schema.chatMessages.sequence })
-          .from(schema.chatMessages)
-          .where(
-            and(
-              eq(schema.chatMessages.id, input.messageId),
-              eq(schema.chatMessages.chatId, chatId),
-            ),
-          )
-          .limit(1);
-        if (!selected[0]) return null;
-        throughSequence = selected[0].sequence;
-      }
-      const sourceMessages = await transaction
-        .select()
-        .from(schema.chatMessages)
-        .where(
-          throughSequence === null
-            ? eq(schema.chatMessages.chatId, chatId)
-            : and(
-                eq(schema.chatMessages.chatId, chatId),
-                lte(schema.chatMessages.sequence, throughSequence),
-              ),
-        )
-        .orderBy(asc(schema.chatMessages.sequence));
-      if (
-        sourceMessages.some(
-          (source) =>
-            !source.protectedContent ||
-            source.content !== null ||
-            source.taskProtectedContent !== null,
-        )
-      ) {
-        return null;
-      }
-      const protectedCopies = await protectMessages(
-        sourceMessages.map(toEncryptedChatMessage),
-      );
-      if (
-        protectedCopies.length !== sourceMessages.length ||
-        protectedCopies.some((copy, index) => {
-          const source = sourceMessages[index]!;
-          return (
-            copy.classification.role !== source.role ||
-            copy.classification.mode !== source.mode ||
-            JSON.stringify(copy.classification.attachmentIds) !==
-              JSON.stringify(source.attachmentIds)
-          );
-        })
-      ) {
-        throw new Error(
-          "The worker returned inconsistent encrypted fork messages.",
-        );
-      }
-      const [
-        lastChats,
-        lastTerminals,
-        lastExplorers,
-        lastCodeTabs,
-        lastBrowsers,
-        lastViews,
-      ] = await Promise.all([
-        transaction
-          .select({ position: schema.chats.position })
-          .from(schema.chats)
-          .where(eq(schema.chats.projectId, projectId))
-          .orderBy(desc(schema.chats.position))
-          .limit(1),
-        transaction
-          .select({ position: schema.terminals.position })
-          .from(schema.terminals)
-          .where(eq(schema.terminals.projectId, projectId))
-          .orderBy(desc(schema.terminals.position))
-          .limit(1),
-        transaction
-          .select({ position: schema.explorers.position })
-          .from(schema.explorers)
-          .where(eq(schema.explorers.projectId, projectId))
-          .orderBy(desc(schema.explorers.position))
-          .limit(1),
-        transaction
-          .select({ position: schema.codeTabs.position })
-          .from(schema.codeTabs)
-          .where(eq(schema.codeTabs.projectId, projectId))
-          .orderBy(desc(schema.codeTabs.position))
-          .limit(1),
-        transaction
-          .select({ position: schema.browsers.position })
-          .from(schema.browsers)
-          .where(eq(schema.browsers.projectId, projectId))
-          .orderBy(desc(schema.browsers.position))
-          .limit(1),
-        transaction
-          .select({ position: schema.projectViews.position })
-          .from(schema.projectViews)
-          .where(eq(schema.projectViews.projectId, projectId))
-          .orderBy(desc(schema.projectViews.position))
-          .limit(1),
-      ]);
-      const chatResult = await transaction
-        .insert(schema.chats)
-        .values({
-          id: input.id,
-          ownerId,
-          contextKind: "project",
-          projectId,
-          protectedLabel: input.titleProtection,
-          position:
-            Math.max(
-              lastChats[0]?.position ?? -1,
-              lastTerminals[0]?.position ?? -1,
-              lastExplorers[0]?.position ?? -1,
-              lastCodeTabs[0]?.position ?? -1,
-              lastBrowsers[0]?.position ?? -1,
-              lastViews[0]?.position ?? -1,
-            ) + 1,
-          activeWorkerId: target.workerId,
-          activeWorktreeId: target.id,
-          worktreeMode: input.worktreeMode ?? row.chat.worktreeMode,
-          modelId: row.chat.modelId,
-          reasoningEffort: row.chat.reasoningEffort,
-          customSubagentModel: row.chat.customSubagentModel,
-          subagentModelId: row.chat.subagentModelId,
-          subagentReasoningEffort: row.chat.subagentReasoningEffort,
-          permissionProfileId: row.chat.permissionProfileId,
-        })
-        .returning();
-      const fork = firstOrThrow(chatResult, "forking a chat");
-      const runtimeSessionId = randomUUID();
-      await transaction.insert(schema.chatRuntimeSessions).values({
-        id: runtimeSessionId,
-        chatId: fork.id,
-        workerId: target.workerId,
-        worktreeId: target.id,
-      });
-      await transaction.insert(schema.chatExecutionLanes).values({
-        id: randomUUID(),
-        chatId: fork.id,
-        worktreeId: target.id,
-        workerId: target.workerId,
-        acquiringActor: "user",
-        exclusive: !target.isPrimary,
-        purpose: `Forked from ${row.chat.id}`,
-        state: "suspended",
-        startingHead: target.head,
-        runtimeSessionId,
-      });
-      await attachProjectTab(transaction, {
-        projectId,
-        tabId: fork.id,
-        tabKind: "chat",
-      });
-      if (sourceMessages.length > 0) {
-        await transaction.insert(schema.chatMessages).values(
-          sourceMessages.map((source, index) => {
-            const message = protectedCopies[index]!;
-            return {
-              id: message.id,
-              chatId: fork.id,
-              worktreeId: target.id,
-              executionLaneId: null,
-              role: message.classification.role,
-              mode: message.classification.mode,
-              content: null,
-              protectedContent: message.protectedContent,
-              attachmentIds: message.classification.attachmentIds,
-              modelId: source.modelId,
-              modelRouteId: source.modelRouteId,
-              providerId: source.providerId,
-              providerName: source.providerName,
-              providerModelName: source.providerModelName,
-              reasoningEffort: message.reasoningEffort,
-              appliedReasoningEffort: source.appliedReasoningEffort,
-              reasoningAdjusted: source.reasoningAdjusted,
-              idempotencyKey: message.idempotencyKey,
-              createdAt: source.createdAt,
-            };
-          }),
-        );
-      }
-      const forkBoundary = sourceMessages.at(-1)?.createdAt ?? new Date();
-      const behaviorRows = await transaction
-        .select({ id: schema.modelBehaviorObservations.id })
-        .from(schema.modelBehaviorObservations)
-        .where(
-          and(
-            eq(schema.modelBehaviorObservations.ownerId, ownerId),
-            eq(schema.modelBehaviorObservations.chatId, chatId),
-            lte(schema.modelBehaviorObservations.startedAt, forkBoundary),
-          ),
-        )
-        .orderBy(desc(schema.modelBehaviorObservations.startedAt))
-        .limit(1);
-      if (behaviorRows[0]) {
-        await transaction
-          .update(schema.modelBehaviorObservations)
-          .set({
-            forkCount: sql`${schema.modelBehaviorObservations.forkCount} + 1`,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.modelBehaviorObservations.id, behaviorRows[0].id));
-      }
-      return toChatWireSummary(fork);
-    });
+    return this.chatForks.forkChat(ownerId, chatId, input, protectMessages);
   }
 
   async forkStandaloneChat(
@@ -4383,142 +4129,14 @@ export class ServerRepository {
     chat: StandaloneChatWireSummary;
     provisionJob: StandaloneChatRootJobSummary;
   }> {
-    if (input.worktreeId || input.worktreeMode) {
-      throw new ExecutionLaneConflictError(
-        "Standalone Chat forks do not accept worktree settings.",
-      );
-    }
-    const sources = await this.database
-      .select({ chat: schema.chats })
-      .from(schema.chats)
-      .where(
-        and(
-          eq(schema.chats.id, chatId),
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chats.contextKind, "standalone"),
-          isNull(schema.chats.archivedAt),
-        ),
-      )
-      .limit(1);
-    if (!sources[0]) return null;
-    let throughSequence: number | null = null;
-    if (input.messageId) {
-      const selected = await this.database
-        .select({ sequence: schema.chatMessages.sequence })
-        .from(schema.chatMessages)
-        .where(
-          and(
-            eq(schema.chatMessages.id, input.messageId),
-            eq(schema.chatMessages.chatId, chatId),
-          ),
-        )
-        .limit(1);
-      if (!selected[0]) return null;
-      throughSequence = selected[0].sequence;
-    }
-    const sourceMessages = await this.database
-      .select()
-      .from(schema.chatMessages)
-      .where(
-        throughSequence === null
-          ? eq(schema.chatMessages.chatId, chatId)
-          : and(
-              eq(schema.chatMessages.chatId, chatId),
-              lte(schema.chatMessages.sequence, throughSequence),
-            ),
-      )
-      .orderBy(asc(schema.chatMessages.sequence));
-    if (
-      sourceMessages.some(
-        (source) =>
-          !source.protectedContent ||
-          source.content !== null ||
-          source.taskProtectedContent !== null,
-      )
-    ) {
-      return null;
-    }
-    const protectedCopies = await protectMessages(
-      sourceMessages.map(toEncryptedChatMessage),
-    );
-    if (protectedCopies.length !== sourceMessages.length) {
-      throw new Error("The worker returned an incomplete encrypted fork.");
-    }
-    const created = await this.createStandaloneChat(
+    return this.chatForks.forkStandaloneChat(
       ownerId,
-      { id: input.id, titleProtection: input.titleProtection },
+      chatId,
+      input,
       isWorkerConnected,
+      protectMessages,
     );
-    try {
-      const forkRows = await this.database
-        .update(schema.chats)
-        .set({
-          modelId: sources[0].chat.modelId,
-          reasoningEffort: sources[0].chat.reasoningEffort,
-          permissionProfileId: sources[0].chat.permissionProfileId,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(schema.chats.id, created.chat.id),
-            eq(schema.chats.ownerId, ownerId),
-          ),
-        )
-        .returning();
-      const fork = firstOrThrow(forkRows, "copying standalone Chat settings");
-      if (sourceMessages.length > 0) {
-        await this.database.insert(schema.chatMessages).values(
-          sourceMessages.map((source, index) => {
-            const message = protectedCopies[index]!;
-            if (
-              message.classification.role !== source.role ||
-              message.classification.mode !== source.mode ||
-              JSON.stringify(message.classification.attachmentIds) !==
-                JSON.stringify(source.attachmentIds)
-            ) {
-              throw new Error(
-                "The worker returned inconsistent encrypted fork messages.",
-              );
-            }
-            return {
-              id: message.id,
-              chatId: created.chat.id,
-              worktreeId: null,
-              scratchRootId: created.chat.activeScratchRootId,
-              executionLaneId: null,
-              role: message.classification.role,
-              mode: message.classification.mode,
-              content: null,
-              protectedContent: message.protectedContent,
-              attachmentIds: message.classification.attachmentIds,
-              modelId: source.modelId,
-              modelRouteId: source.modelRouteId,
-              providerId: source.providerId,
-              providerName: source.providerName,
-              providerModelName: source.providerModelName,
-              reasoningEffort: message.reasoningEffort,
-              appliedReasoningEffort: source.appliedReasoningEffort,
-              reasoningAdjusted: source.reasoningAdjusted,
-              idempotencyKey: message.idempotencyKey,
-              createdAt: source.createdAt,
-            };
-          }),
-        );
-      }
-      return { ...created, chat: toStandaloneChatWireSummary(fork) };
-    } catch (error) {
-      await this.database
-        .delete(schema.chats)
-        .where(
-          and(
-            eq(schema.chats.id, created.chat.id),
-            eq(schema.chats.ownerId, ownerId),
-          ),
-        );
-      throw error;
-    }
   }
-
   async reorderProjects(ownerId: string, input: OrderedIds): Promise<boolean> {
     const rows = await this.database
       .select({ id: schema.projects.id })

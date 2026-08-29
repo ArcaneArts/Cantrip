@@ -19,7 +19,10 @@ import {
   projectTabKey,
 } from "../tab-layouts.js";
 import { firstOrThrow, type RepositoryDatabase } from "./database.js";
-import { requiredProjectChatProjectId } from "./chat-execution-lanes.js";
+import {
+  requiredProjectChatProjectId,
+  requiredProjectChatWorktreeId,
+} from "./chat-execution-lanes.js";
 import type { ProjectWorktreeExecutionContext } from "./projects.js";
 
 export interface TerminalExecutionContext {
@@ -49,7 +52,6 @@ export interface TerminalRepositoryCollaborators {
     terminalId: string,
   ): Promise<TerminalExecutionContext | null>;
   nextProjectTabPosition(projectId: string): Promise<number>;
-  requiredProjectChatWorktreeId(worktreeId: string | null): string;
   resolveProjectExecutionPlacement(
     ownerId: string,
     projectId: string,
@@ -168,9 +170,7 @@ export class TerminalRepository {
     const row = rows[0];
     if (!row) return null;
     const projectId = requiredProjectChatProjectId(row.chat.projectId);
-    const worktreeId = this.collaborators.requiredProjectChatWorktreeId(
-      row.chat.activeWorktreeId,
-    );
+    const worktreeId = requiredProjectChatWorktreeId(row.chat.activeWorktreeId);
 
     const existing = await this.database
       .select()
