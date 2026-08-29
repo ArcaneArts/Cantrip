@@ -336,6 +336,10 @@ import {
   type StandaloneChatExecutionContext,
 } from "./repository/chat-execution-lanes.js";
 import {
+  ChatCatalogRepository,
+  StandaloneChatPlacementUnavailableError,
+} from "./repository/chat-catalog.js";
+import {
   TelemetryRepository,
   ZERO_AGENT_TIME,
   ZERO_TOKEN_USAGE,
@@ -443,6 +447,7 @@ export {
   type ProjectChatExecutionContext,
   type StandaloneChatExecutionContext,
 } from "./repository/chat-execution-lanes.js";
+export { StandaloneChatPlacementUnavailableError } from "./repository/chat-catalog.js";
 export type {
   ModelBehaviorObservationInput,
   ProviderQuotaObservationInput,
@@ -477,7 +482,6 @@ export function toChatAttachmentOpaqueSummary(
   });
 }
 
-export class StandaloneChatPlacementUnavailableError extends Error {}
 export class SurfacePrivateStateConflictError extends Error {}
 export class AgentInteractionConflictError extends Error {}
 export class CodeCapabilityUnavailableError extends Error {}
@@ -1213,6 +1217,7 @@ export class ServerRepository {
   readonly runConfigurationState: RunConfigurationStateRepository;
   readonly worktreeLifecycle: WorktreeLifecycleRepository;
   readonly chatExecutionLanes: ChatExecutionLaneRepository;
+  readonly chatCatalog: ChatCatalogRepository;
   readonly telemetry: TelemetryRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
@@ -1316,6 +1321,33 @@ export class ServerRepository {
         this.getChatExecutionLaneContext(ownerId, chatId, laneId),
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
+      toChatWireSummary,
+      toStandaloneChatWireSummary,
+    });
+    this.chatCatalog = new ChatCatalogRepository(database, {
+      getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
+        this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
+      listWorkers: (ownerId) => this.listWorkers(ownerId),
+      nextProjectTabPosition: (projectId) =>
+        this.nextProjectTabPosition(projectId),
+      resolveProjectExecutionPlacement: (
+        ownerId,
+        projectId,
+        surfaceKind,
+        target,
+        isWorkerConnected,
+        allowOfflineExplicit,
+      ) =>
+        this.resolveProjectExecutionPlacement(
+          ownerId,
+          projectId,
+          surfaceKind,
+          target,
+          isWorkerConnected,
+          allowOfflineExplicit,
+        ),
+      toArchivedChatWireSummary,
+      toArchivedStandaloneChatWireSummary,
       toChatWireSummary,
       toStandaloneChatWireSummary,
     });
@@ -3760,100 +3792,26 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
   ): Promise<ChatWireSummary[]> {
-    const rows = await this.database
-      .select({ chat: schema.chats })
-      .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chats.projectId, projectId),
-          isNull(schema.chats.archivedAt),
-        ),
-      )
-      .orderBy(asc(schema.chats.position), asc(schema.chats.createdAt));
-    return rows.map(({ chat }) => toChatWireSummary(chat));
+    return this.chatCatalog.listChats(ownerId, projectId);
   }
 
   async listArchivedChats(
     ownerId: string,
     projectId: string,
   ): Promise<ArchivedChatWireSummary[]> {
-    const rows = await this.database
-      .select({
-        chat: schema.chats,
-        messageCount: sql<number>`(
-          select count(*)::int
-          from ${schema.chatMessages}
-          where ${schema.chatMessages.chatId} = ${schema.chats.id}
-        )`,
-      })
-      .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.chats.projectId, projectId),
-          isNotNull(schema.chats.archivedAt),
-        ),
-      )
-      .orderBy(desc(schema.chats.archivedAt));
-    return rows.map(({ chat, messageCount }) =>
-      toArchivedChatWireSummary(chat, messageCount),
-    );
+    return this.chatCatalog.listArchivedChats(ownerId, projectId);
   }
 
   async listStandaloneChats(
     ownerId: string,
   ): Promise<StandaloneChatWireSummary[]> {
-    const rows = await this.database
-      .select({ chat: schema.chats })
-      .from(schema.chats)
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chats.contextKind, "standalone"),
-          isNull(schema.chats.archivedAt),
-        ),
-      )
-      .orderBy(asc(schema.chats.position), asc(schema.chats.createdAt));
-    return rows.map(({ chat }) => toStandaloneChatWireSummary(chat));
+    return this.chatCatalog.listStandaloneChats(ownerId);
   }
 
   async listArchivedStandaloneChats(
     ownerId: string,
   ): Promise<ArchivedStandaloneChatWireSummary[]> {
-    const rows = await this.database
-      .select({
-        chat: schema.chats,
-        messageCount: sql<number>`(
-          select count(*)::int
-          from ${schema.chatMessages}
-          where ${schema.chatMessages.chatId} = ${schema.chats.id}
-        )`,
-      })
-      .from(schema.chats)
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chats.contextKind, "standalone"),
-          isNotNull(schema.chats.archivedAt),
-        ),
-      )
-      .orderBy(desc(schema.chats.archivedAt));
-    return rows.map(({ chat, messageCount }) =>
-      toArchivedStandaloneChatWireSummary(chat, messageCount),
-    );
+    return this.chatCatalog.listArchivedStandaloneChats(ownerId);
   }
 
   async createStandaloneChat(
@@ -3864,146 +3822,11 @@ export class ServerRepository {
     chat: StandaloneChatWireSummary;
     provisionJob: StandaloneChatRootJobSummary;
   }> {
-    const settings = firstOrThrow(
-      await this.database
-        .select()
-        .from(schema.userSettings)
-        .where(eq(schema.userSettings.userId, ownerId))
-        .limit(1),
-      "loading standalone Chat defaults",
+    return this.chatCatalog.createStandaloneChat(
+      ownerId,
+      input,
+      isWorkerConnected,
     );
-    const workers = await this.listWorkers(ownerId);
-    const compatible = workers
-      .filter(
-        (worker) =>
-          isWorkerConnected(worker.workerId) &&
-          worker.standaloneChat.scratch.provision &&
-          worker.standaloneChat.scratch.resolve &&
-          worker.standaloneChat.scratch.archive &&
-          worker.standaloneChat.scratch.restore &&
-          worker.standaloneChat.scratch.remove &&
-          worker.standaloneChat.scratch.reconcile &&
-          worker.standaloneChat.scratch.routingHandles,
-      )
-      .sort((left, right) => left.workerId.localeCompare(right.workerId));
-    const worker =
-      compatible.find(
-        (candidate) => candidate.workerId === settings.defaultWorkerId,
-      ) ?? compatible[0];
-    if (!worker) {
-      throw new StandaloneChatPlacementUnavailableError(
-        "New Chat requires a compatible online worker with standalone scratch support.",
-      );
-    }
-    const inheritedModelId =
-      settings.defaultChatModelId ?? settings.defaultModelId;
-    const inheritedReasoningEffort =
-      settings.defaultChatReasoningEffort ?? settings.defaultReasoningEffort;
-    const last = await this.database
-      .select({ position: schema.chats.position })
-      .from(schema.chats)
-      .where(
-        and(
-          eq(schema.chats.ownerId, ownerId),
-          eq(schema.chats.contextKind, "standalone"),
-        ),
-      )
-      .orderBy(desc(schema.chats.position))
-      .limit(1);
-    const rootId = randomUUID();
-    const runtimeSessionId = randomUUID();
-    const provisionJobId = randomUUID();
-    return this.database.transaction(async (transaction) => {
-      const chat = firstOrThrow(
-        await transaction
-          .insert(schema.chats)
-          .values({
-            id: input.id,
-            ownerId,
-            contextKind: "standalone",
-            projectId: null,
-            protectedLabel: input.titleProtection,
-            experience: "agent",
-            position: (last[0]?.position ?? -1) + 1,
-            activeWorkerId: worker.workerId,
-            activeWorktreeId: null,
-            activeScratchRootId: rootId,
-            worktreeMode: null,
-            modelId: inheritedModelId,
-            reasoningEffort: inheritedReasoningEffort,
-            customSubagentModel: false,
-            subagentModelId: null,
-            subagentReasoningEffort: null,
-            permissionProfileId: settings.defaultChatPermissionProfileId,
-            automationPaused: false,
-            planMode: "default",
-            protectedPlan: null,
-            hasPendingPlanQuestion: false,
-          })
-          .returning(),
-        "creating a standalone Chat",
-      );
-      await transaction.insert(schema.standaloneChatRoots).values({
-        id: rootId,
-        chatId: chat.id,
-        ownerId,
-        workerId: worker.workerId,
-        protectedPathHandle: null,
-        status: "provisioning",
-      });
-      await transaction.insert(schema.chatRuntimeSessions).values({
-        id: runtimeSessionId,
-        chatId: chat.id,
-        workerId: worker.workerId,
-        worktreeId: null,
-        scratchRootId: rootId,
-      });
-      await transaction.insert(schema.chatExecutionLanes).values({
-        id: randomUUID(),
-        chatId: chat.id,
-        worktreeId: null,
-        scratchRootId: rootId,
-        workerId: worker.workerId,
-        acquiringActor: "user",
-        exclusive: false,
-        purpose: "Initial standalone Chat scratch root",
-        state: "suspended",
-        runtimeSessionId,
-      });
-      const provisionJob = firstOrThrow(
-        await transaction
-          .insert(schema.standaloneChatRootJobs)
-          .values({
-            id: provisionJobId,
-            ownerId,
-            rootId,
-            chatId: chat.id,
-            workerId: worker.workerId,
-            kind: "provision",
-            state: "queued",
-          })
-          .returning(),
-        "queueing standalone Chat scratch provisioning",
-      );
-      return {
-        chat: toStandaloneChatWireSummary(chat),
-        provisionJob: {
-          id: provisionJob.id,
-          rootId: provisionJob.rootId,
-          chatId: provisionJob.chatId,
-          workerId: provisionJob.workerId,
-          kind: provisionJob.kind,
-          state: provisionJob.state,
-          stateRevision: provisionJob.stateRevision,
-          attempt: provisionJob.attempt,
-          error: null,
-          createdAt: toISOString(provisionJob.createdAt),
-          updatedAt: toISOString(provisionJob.updatedAt),
-          startedAt: null,
-          completedAt: null,
-        },
-      };
-    });
   }
 
   async createChat(
@@ -4012,14 +3835,12 @@ export class ServerRepository {
     input: EncryptedChatCreate,
     isWorkerConnected?: (workerId: string) => boolean,
   ): Promise<ChatWireSummary | null> {
-    const created = await this.createChatExperience(
+    return this.chatCatalog.createChat(
       ownerId,
       projectId,
       input,
-      "agent",
       isWorkerConnected,
     );
-    return created?.chat ?? null;
   }
 
   async createTask(
@@ -4028,146 +3849,12 @@ export class ServerRepository {
     input: EncryptedTaskCreate,
     isWorkerConnected?: (workerId: string) => boolean,
   ): Promise<TaskWireCreateResult | null> {
-    const created = await this.createChatExperience(
+    return this.chatCatalog.createTask(
       ownerId,
       projectId,
       input,
-      "task",
       isWorkerConnected,
     );
-    if (!created) return null;
-    if (!created.task) {
-      throw new Error("Task-backed Chat creation omitted its Task record.");
-    }
-    return { chat: created.chat, task: created.task };
-  }
-
-  private async createChatExperience(
-    ownerId: string,
-    projectId: string,
-    input: EncryptedChatCreate | EncryptedTaskCreate,
-    experience: ChatExperience,
-    isWorkerConnected?: (workerId: string) => boolean,
-  ): Promise<{ chat: ChatWireSummary; task: TaskOpaqueSummary | null } | null> {
-    const target =
-      input.target ??
-      (input.worktreeId
-        ? ({
-            kind: "worktree",
-            projectId,
-            worktreeId: input.worktreeId,
-          } as const)
-        : undefined);
-    const { placement } = await this.resolveProjectExecutionPlacement(
-      ownerId,
-      projectId,
-      "chat",
-      target,
-      isWorkerConnected,
-    );
-    const selected = await this.getProjectWorktreeContext(
-      ownerId,
-      projectId,
-      placement.worktreeId!,
-    );
-    if (!selected) return null;
-    const worktreeId = selected.worktree.id;
-    const workerId = selected.workerId;
-    const isPrimary = selected.worktree.isPrimary;
-    const startingHead = selected.worktree.head;
-    const defaultSettings = firstOrThrow(
-      await this.database
-        .select({
-          modelId: schema.userSettings.defaultModelId,
-          reasoningEffort: schema.userSettings.defaultReasoningEffort,
-          customSubagentModel: schema.userSettings.defaultCustomSubagentModel,
-          subagentModelId: schema.userSettings.defaultSubagentModelId,
-          subagentReasoningEffort:
-            schema.userSettings.defaultSubagentReasoningEffort,
-        })
-        .from(schema.userSettings)
-        .where(eq(schema.userSettings.userId, ownerId))
-        .limit(1),
-      "loading default chat model configuration",
-    );
-
-    const position = await this.nextProjectTabPosition(projectId);
-    return this.database.transaction(async (transaction) => {
-      const chatId =
-        experience === "task"
-          ? (input as EncryptedTaskCreate).chatId
-          : (input as EncryptedChatCreate).id;
-      const result = await transaction
-        .insert(schema.chats)
-        .values({
-          id: chatId,
-          ownerId,
-          contextKind: "project",
-          projectId,
-          protectedLabel: input.titleProtection,
-          experience,
-          position,
-          activeWorkerId: workerId,
-          activeWorktreeId: worktreeId,
-          worktreeMode: input.worktreeMode,
-          modelId: defaultSettings.modelId,
-          reasoningEffort: defaultSettings.reasoningEffort,
-          customSubagentModel: defaultSettings.customSubagentModel,
-          subagentModelId: defaultSettings.subagentModelId,
-          subagentReasoningEffort: defaultSettings.subagentReasoningEffort,
-        })
-        .returning();
-      const chat = firstOrThrow(result, "creating a chat");
-      const runtimeSessionId = randomUUID();
-      await transaction.insert(schema.chatRuntimeSessions).values({
-        id: runtimeSessionId,
-        chatId: chat.id,
-        workerId,
-        worktreeId,
-      });
-      await transaction.insert(schema.chatExecutionLanes).values({
-        id: randomUUID(),
-        chatId: chat.id,
-        worktreeId,
-        workerId,
-        acquiringActor: "user",
-        exclusive: !isPrimary,
-        purpose: "Initial chat worktree",
-        state: "suspended",
-        startingHead,
-        runtimeSessionId,
-      });
-      if (experience !== "task") {
-        await attachProjectTab(transaction, {
-          projectId,
-          tabGroupId: input.tabGroupId,
-          tabId: chat.id,
-          tabKind: "chat",
-        });
-      }
-      const task =
-        experience === "task"
-          ? firstOrThrow(
-              await transaction
-                .insert(schema.tasks)
-                .values({
-                  chatId: chat.id,
-                  planGoalEnabled: (input as EncryptedTaskCreate)
-                    .planGoalEnabled,
-                  priority: (input as EncryptedTaskCreate).priority,
-                  requestedTaskWorkerId: (input as EncryptedTaskCreate)
-                    .requestedTaskWorkerId,
-                  ...taskOpaqueColumns((input as EncryptedTaskCreate).task),
-                })
-                .returning(),
-              "creating a Task record",
-            )
-          : null;
-      return {
-        chat: toChatWireSummary(chat),
-        task: task ? toTaskOpaqueSummary(task) : null,
-      };
-    });
   }
 
   async listTerminals(
