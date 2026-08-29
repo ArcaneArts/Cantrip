@@ -73,6 +73,13 @@ impl ManagedRuntime {
         }
         Some(&local_worker.data_directory)
     }
+
+    pub(crate) fn has_local_worker_identity(&self, worker_id: &str) -> bool {
+        self.local_worker
+            .as_ref()
+            .and_then(|local_worker| local_worker.worker_id.as_deref())
+            == Some(worker_id)
+    }
 }
 
 struct ManagedChild {
@@ -1338,6 +1345,8 @@ mod tests {
         assert!(runtime
             .local_worker_data_directory("http://127.0.0.1:4310", "remote-worker")
             .is_none());
+        assert!(runtime.has_local_worker_identity("desktop-local"));
+        assert!(!runtime.has_local_worker_identity("remote-worker"));
     }
 
     #[test]

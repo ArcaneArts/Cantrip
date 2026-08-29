@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 #[cfg(target_os = "macos")]
 use tauri::Manager;
 use tauri::{AppHandle, State};
@@ -15,7 +15,7 @@ use zeroize::Zeroize;
 use crate::{
     desktop_worker::{
         normalize_server_url, resolve_chat_scratch_directory, resolve_project_directory,
-        DesktopWorkerProjectStorage, DesktopWorkers,
+        DesktopWorkerProjectStorage, DesktopWorkers, LocalProjectDirectoryResolution,
     },
     ManagedRuntime,
 };
@@ -46,6 +46,17 @@ pub struct RevealLocalProjectFolderRequest {
     server_url: String,
     source_kind: LocalProjectSourceKind,
     worker_id: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalProjectRevealResult {
+    Opened,
+    WorkerNotLocal,
+    ServerMismatch,
+    SourcePathMissing,
+    OutsideManagedRoot,
+    ExplorerLaunchFailed,
 }
 
 #[derive(Deserialize)]
@@ -200,9 +211,9 @@ pub async fn reveal_local_project_folder(
     runtime: State<'_, ManagedRuntime>,
     workers: State<'_, DesktopWorkers>,
     request: RevealLocalProjectFolderRequest,
-) -> Result<bool, String> {
+) -> Result<LocalProjectRevealResult, String> {
     let Ok(server_url) = normalize_server_url(&request.server_url) else {
-        return Ok(false);
+        return Ok(LocalProjectRevealResult::ServerMismatch);
     };
     let storage = local_project_storage(
         request.source_kind,
@@ -212,26 +223,54 @@ pub async fn reveal_local_project_folder(
     let requested_path = std::path::Path::new(&request.path);
     let bundled_project = runtime
         .local_worker_data_directory(&server_url, &request.worker_id)
-        .and_then(|data_directory| {
-            resolve_project_directory(data_directory, storage, requested_path)
+        .map(|data_directory| resolve_project_directory(data_directory, storage, requested_path));
+    let linked_project = workers.resolve_project_directory(
+        &server_url,
+        &request.worker_id,
+        storage,
+        requested_path,
+    )?;
+    let resolution = [bundled_project, linked_project]
+        .into_iter()
+        .flatten()
+        .reduce(|current, candidate| match (current, candidate) {
+            (LocalProjectDirectoryResolution::Resolved(path), _) => {
+                LocalProjectDirectoryResolution::Resolved(path)
+            }
+            (_, LocalProjectDirectoryResolution::Resolved(path)) => {
+                LocalProjectDirectoryResolution::Resolved(path)
+            }
+            (LocalProjectDirectoryResolution::OutsideManagedRoot, _)
+            | (_, LocalProjectDirectoryResolution::OutsideManagedRoot) => {
+                LocalProjectDirectoryResolution::OutsideManagedRoot
+            }
+            _ => LocalProjectDirectoryResolution::SourcePathMissing,
         });
-    let project_directory = match bundled_project {
-        Some(project_directory) => Some(project_directory),
-        None => workers.resolve_project_directory(
-            &server_url,
-            &request.worker_id,
-            storage,
-            requested_path,
-        )?,
+    let project_directory = match resolution {
+        Some(LocalProjectDirectoryResolution::Resolved(path)) => path,
+        Some(LocalProjectDirectoryResolution::SourcePathMissing) => {
+            return Ok(LocalProjectRevealResult::SourcePathMissing);
+        }
+        Some(LocalProjectDirectoryResolution::OutsideManagedRoot) => {
+            return Ok(LocalProjectRevealResult::OutsideManagedRoot);
+        }
+        None if runtime.has_local_worker_identity(&request.worker_id)
+            || workers.has_worker_identity(&request.worker_id)? =>
+        {
+            return Ok(LocalProjectRevealResult::ServerMismatch);
+        }
+        None => return Ok(LocalProjectRevealResult::WorkerNotLocal),
     };
-    let Some(project_directory) = project_directory else {
-        return Ok(false);
+    let reveal_target = match resolve_reveal_target(&project_directory, &request.relative_path) {
+        Ok(target) => target,
+        Err(_) => return Ok(LocalProjectRevealResult::SourcePathMissing),
     };
-    let reveal_target = resolve_reveal_target(&project_directory, &request.relative_path)?;
-    tauri::async_runtime::spawn_blocking(move || open_local_project_target(&reveal_target))
+    match tauri::async_runtime::spawn_blocking(move || open_local_project_target(&reveal_target))
         .await
-        .map_err(|error| format!("Could not join the local project reveal task: {error}"))??;
-    Ok(true)
+    {
+        Ok(Ok(())) => Ok(LocalProjectRevealResult::Opened),
+        Ok(Err(_)) | Err(_) => Ok(LocalProjectRevealResult::ExplorerLaunchFailed),
+    }
 }
 
 #[tauri::command]
@@ -968,6 +1007,22 @@ mod tests {
             "https://cantrip.example/project-shares/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
         ))
         .is_err());
+    }
+
+    #[test]
+    fn serializes_local_project_reveal_results_for_the_desktop_client() {
+        assert_eq!(
+            serde_json::to_string(&LocalProjectRevealResult::WorkerNotLocal).unwrap(),
+            "\"worker-not-local\""
+        );
+        assert_eq!(
+            serde_json::to_string(&LocalProjectRevealResult::OutsideManagedRoot).unwrap(),
+            "\"outside-managed-root\""
+        );
+        assert_eq!(
+            serde_json::to_string(&LocalProjectRevealResult::ExplorerLaunchFailed).unwrap(),
+            "\"explorer-launch-failed\""
+        );
     }
 
     #[test]

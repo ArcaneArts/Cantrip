@@ -64,23 +64,32 @@ describe("desktop project reveal", () => {
     );
   });
 
-  it("does not fall back to a network share when the preferred local folder is unavailable", async () => {
-    const revealLocalFolder = vi.fn().mockResolvedValue(false);
-    const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
+  it.each([
+    ["worker-not-local", "worker is not running on this desktop"],
+    ["server-mismatch", "connected to a different Cantrip server"],
+    ["source-path-missing", "no longer exists"],
+    ["outside-managed-root", "outside this worker's managed storage root"],
+    ["explorer-launch-failed", "file manager could not open"],
+  ] as const)(
+    "reports the %s local reveal result without falling back to a network share",
+    async (result, message) => {
+      const revealLocalFolder = vi.fn().mockResolvedValue(result);
+      const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
 
-    await expect(
-      coordinateDesktopProjectRevealPreference(true, {
-        revealLocalFolder,
-        revealNetworkShare,
-      }),
-    ).rejects.toThrow("The project folder is not available on this desktop.");
+      await expect(
+        coordinateDesktopProjectRevealPreference(true, {
+          revealLocalFolder,
+          revealNetworkShare,
+        }),
+      ).rejects.toThrow(message);
 
-    expect(revealLocalFolder).toHaveBeenCalledOnce();
-    expect(revealNetworkShare).not.toHaveBeenCalled();
-  });
+      expect(revealLocalFolder).toHaveBeenCalledOnce();
+      expect(revealNetworkShare).not.toHaveBeenCalled();
+    },
+  );
 
   it("uses the real folder only when Shift preference resolves locally", async () => {
-    const revealLocalFolder = vi.fn().mockResolvedValue(true);
+    const revealLocalFolder = vi.fn().mockResolvedValue("opened");
     const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
 
     await coordinateDesktopProjectRevealPreference(true, {
@@ -93,7 +102,7 @@ describe("desktop project reveal", () => {
   });
 
   it("opens the network share directly without a local-folder preference", async () => {
-    const revealLocalFolder = vi.fn().mockResolvedValue(true);
+    const revealLocalFolder = vi.fn().mockResolvedValue("opened");
     const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
 
     await coordinateDesktopProjectRevealPreference(false, {
