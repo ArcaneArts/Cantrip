@@ -8,7 +8,7 @@ const {
   openGraphicalExtensions,
 } = require("../src/extensions.js");
 
-test("opens the built-in Extensions view", async () => {
+test("opens Settings beside the built-in Extensions view", async () => {
   const commands = [];
   const result = await openGraphicalExtensions({
     async executeCommand(command) {
@@ -16,7 +16,10 @@ test("opens the built-in Extensions view", async () => {
     },
   });
 
-  assert.deepEqual(commands, ["workbench.view.extensions"]);
+  assert.deepEqual(commands, [
+    "workbench.action.openSettings",
+    "workbench.view.extensions",
+  ]);
   assert.deepEqual(result, { opened: true });
 });
 
