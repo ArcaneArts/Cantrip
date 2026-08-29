@@ -365,1164 +365,207 @@ export type {
   CantripVersion,
 } from "./protocol-core.js";
 
-export const projectReplicaCapabilitiesSchema = z.object({
-  provision: z.boolean(),
-  synchronize: z.boolean(),
-  remove: z.boolean(),
-  exactRevision: z.boolean(),
-  directPlacement: z.boolean().default(false),
-  managedLinkPlacement: z.boolean().default(false),
-  attachExisting: z.boolean().default(false),
-  recursiveParentCreation: z.boolean().default(false),
-});
+import {
+  managedWebRuntimeActionRequestSchema,
+  codeGraphProjectStatusSchema,
+} from "./worker-capabilities.js";
 
-export const unavailableProjectReplicaCapabilities =
-  projectReplicaCapabilitiesSchema.parse({
-    provision: false,
-    synchronize: false,
-    remove: false,
-    exactRevision: false,
-    directPlacement: false,
-    managedLinkPlacement: false,
-    attachExisting: false,
-    recursiveParentCreation: false,
-  });
+export {
+  projectReplicaCapabilitiesSchema,
+  unavailableProjectReplicaCapabilities,
+  managedFolderCapabilitiesSchema,
+  unavailableManagedFolderCapabilities,
+  standaloneChatScratchCapabilitiesSchema,
+  standaloneChatFileCapabilitiesSchema,
+  standaloneChatCapabilitiesSchema,
+  unavailableStandaloneChatCapabilities,
+  codeGraphRuntimeStateSchema,
+  codeGraphProjectStateSchema,
+  codeGraphProjectCountsSchema,
+  codeGraphWorkerStatusSchema,
+  unavailableCodeGraphWorkerStatus,
+  managedWebRuntimeComponentSchema,
+  managedWebRuntimePlatformSchema,
+  managedWebRuntimeArchitectureSchema,
+  managedWebRuntimeArchiveFormatSchema,
+  managedWebRuntimeArtifactSchema,
+  managedWebRuntimeReleaseManifestSchema,
+  managedWebRuntimeStateSchema,
+  managedWebRuntimeProgressPhaseSchema,
+  managedWebRuntimeProgressSchema,
+  managedWebRuntimeFailureCategorySchema,
+  managedWebRuntimeFailureSchema,
+  managedWebRuntimeStatusSchema,
+  managedWebRuntimeCapabilitiesSchema,
+  managedWebRuntimeActionSchema,
+  managedWebRuntimeActionRequestSchema,
+  managedWebRuntimeActionResultSchema,
+  unavailableManagedWebRuntimeCapabilities,
+  codeGraphJobSchema,
+  codeGraphProjectStatusSchema,
+  codeGraphActionAcknowledgementSchema,
+} from "./worker-capabilities.js";
 
-export const managedFolderCapabilitiesSchema = z.object({
-  create: z.boolean(),
-  attachExisting: z.boolean().default(false),
-  convertToGithub: z.boolean().default(false),
-  remove: z.boolean(),
-});
+export type {
+  ProjectReplicaCapabilities,
+  ManagedFolderCapabilities,
+  StandaloneChatScratchCapabilities,
+  StandaloneChatFileCapabilities,
+  StandaloneChatCapabilities,
+  CodeGraphWorkerStatus,
+  ManagedWebRuntimeComponent,
+  ManagedWebRuntimeArtifact,
+  ManagedWebRuntimeReleaseManifest,
+  ManagedWebRuntimeProgress,
+  ManagedWebRuntimeFailure,
+  ManagedWebRuntimeStatus,
+  ManagedWebRuntimeCapabilities,
+  ManagedWebRuntimeAction,
+  ManagedWebRuntimeActionRequest,
+  ManagedWebRuntimeActionResult,
+  CodeGraphProjectStatus,
+  CodeGraphActionAcknowledgement,
+} from "./worker-capabilities.js";
 
-export const unavailableManagedFolderCapabilities =
-  managedFolderCapabilitiesSchema.parse({
-    create: false,
-    attachExisting: false,
-    convertToGithub: false,
-    remove: false,
-  });
+import { workerCredentialSecretSchema } from "./workers.js";
 
-export const standaloneChatScratchCapabilitiesSchema = z
-  .object({
-    provision: z.boolean(),
-    resolve: z.boolean(),
-    archive: z.boolean(),
-    restore: z.boolean(),
-    remove: z.boolean(),
-    reconcile: z.boolean(),
-    routingHandles: z.boolean(),
-  })
-  .strict();
-
-export const standaloneChatFileCapabilitiesSchema = z
-  .object({
-    list: z.boolean(),
-    read: z.boolean(),
-    write: z.boolean(),
-    remove: z.boolean(),
-    download: z.boolean(),
-    archive: z.boolean(),
-    networkShare: z.boolean().default(false),
-  })
-  .strict();
-
-export const standaloneChatCapabilitiesSchema = z
-  .object({
-    protocolVersion: z.number().int().positive(),
-    scratch: standaloneChatScratchCapabilitiesSchema,
-    files: standaloneChatFileCapabilitiesSchema,
-  })
-  .strict();
-
-export const unavailableStandaloneChatCapabilities =
-  standaloneChatCapabilitiesSchema.parse({
-    protocolVersion: 1,
-    scratch: {
-      provision: false,
-      resolve: false,
-      archive: false,
-      restore: false,
-      remove: false,
-      reconcile: false,
-      routingHandles: false,
-    },
-    files: {
-      list: false,
-      read: false,
-      write: false,
-      remove: false,
-      download: false,
-      archive: false,
-      networkShare: false,
-    },
-  });
-
-export const codeGraphRuntimeStateSchema = z.enum([
-  "checking",
-  "degraded",
-  "installing",
-  "ready",
-  "unavailable",
-]);
-
-export const codeGraphProjectStateSchema = z.enum([
-  "degraded",
-  "indexing",
-  "queued",
-  "ready",
-  "syncing",
-  "unavailable",
-]);
-
-export const codeGraphProjectCountsSchema = z.object({
-  ready: z.number().int().nonnegative().max(128),
-  indexing: z.number().int().nonnegative().max(128),
-  queued: z.number().int().nonnegative().max(128),
-  degraded: z.number().int().nonnegative().max(128),
-});
-
-export const codeGraphWorkerStatusSchema = z.object({
-  supported: z.boolean(),
-  available: z.boolean(),
-  runtimeState: codeGraphRuntimeStateSchema,
-  installedVersion: z.string().trim().min(1).max(100).nullable(),
-  latestVersion: z.string().trim().min(1).max(100).nullable(),
-  previousVersion: z.string().trim().min(1).max(100).nullable(),
-  lastCheckedAt: z.iso.datetime().nullable(),
-  telemetryDisabled: z.boolean(),
-  healthy: z.boolean(),
-  statusMessage: z.string().max(1_000).nullable(),
-  projectCounts: codeGraphProjectCountsSchema,
-  cliAvailable: z.boolean(),
-  mcpInjectionAvailable: z.boolean(),
-});
-
-export const unavailableCodeGraphWorkerStatus =
-  codeGraphWorkerStatusSchema.parse({
-    supported: false,
-    available: false,
-    runtimeState: "unavailable",
-    installedVersion: null,
-    latestVersion: null,
-    previousVersion: null,
-    lastCheckedAt: null,
-    telemetryDisabled: false,
-    healthy: false,
-    statusMessage: "This worker has not reported CodeGraph capabilities.",
-    projectCounts: { ready: 0, indexing: 0, queued: 0, degraded: 0 },
-    cliAvailable: false,
-    mcpInjectionAvailable: false,
-  });
-
-export const managedWebRuntimeComponentSchema = z.enum([
-  "searxng",
-  "playwright",
-]);
-
-export const managedWebRuntimePlatformSchema = z.enum([
-  "darwin",
-  "win32",
-  "linux",
-]);
-
-export const managedWebRuntimeArchitectureSchema = z.enum(["arm64", "x64"]);
-
-export const managedWebRuntimeArchiveFormatSchema = z.enum(["tar.gz", "zip"]);
-
-const managedWebRuntimeRelativePathSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(8_192)
-  .refine(
-    (value) =>
-      !value.includes("\\") &&
-      !value.startsWith("/") &&
-      !/^[A-Za-z]:/u.test(value) &&
-      value
-        .split("/")
-        .every(
-          (segment) => segment !== "" && segment !== "." && segment !== "..",
-        ),
-    { message: "Managed runtime inventory paths must be safe relative paths." },
-  );
-
-export const managedWebRuntimeArtifactSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    component: managedWebRuntimeComponentSchema,
-    version: z.string().trim().min(1).max(100),
-    platform: managedWebRuntimePlatformSchema,
-    architecture: managedWebRuntimeArchitectureSchema,
-    archiveFormat: managedWebRuntimeArchiveFormatSchema,
-    downloadUrl: z
-      .url()
-      .max(8_192)
-      .refine((value) => value.startsWith("https://"), {
-        message: "Managed web runtime artifacts must use HTTPS.",
-      }),
-    sha256: z.string().regex(/^[0-9a-f]{64}$/u),
-    signature: z.string().regex(/^[A-Za-z0-9+/]{86}==$/u, {
-      message: "Managed runtime signatures must be Ed25519 base64 values.",
-    }),
-    signingKeyId: z.string().trim().min(1).max(200),
-    compressedBytes: z.number().int().positive().max(4_000_000_000),
-    extractedBytes: z.number().int().positive().max(12_000_000_000),
-    licenseManifest: managedWebRuntimeRelativePathSchema,
-    sourceManifest: managedWebRuntimeRelativePathSchema,
-    minimumOs: z.string().trim().min(1).max(200).optional(),
-    minimumKernel: z.string().trim().min(1).max(200).optional(),
-    minimumLibc: z.string().trim().min(1).max(200).optional(),
-  })
-  .strict();
-
-export const managedWebRuntimeReleaseManifestSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    channel: z.string().trim().min(1).max(100),
-    publishedAt: z.iso.datetime(),
-    artifacts: z.array(managedWebRuntimeArtifactSchema).min(1).max(12),
-  })
-  .strict()
-  .superRefine((manifest, context) => {
-    const targets = new Set<string>();
-    for (const [index, artifact] of manifest.artifacts.entries()) {
-      const target = `${artifact.component}:${artifact.platform}:${artifact.architecture}`;
-      if (targets.has(target)) {
-        context.addIssue({
-          code: "custom",
-          message: `Managed web runtime manifest contains duplicate target ${target}.`,
-          path: ["artifacts", index],
-        });
-      }
-      targets.add(target);
-    }
-  });
-
-export const managedWebRuntimeStateSchema = z.enum([
-  "checking",
-  "installing",
-  "updating",
-  "ready",
-  "degraded",
-  "failed",
-  "unsupported",
-]);
-
-export const managedWebRuntimeProgressPhaseSchema = z.enum([
-  "manifest",
-  "download",
-  "verify",
-  "extract",
-  "inventory",
-  "probe",
-  "promote",
-  "cleanup",
-]);
-
-export const managedWebRuntimeProgressSchema = z
-  .object({
-    phase: managedWebRuntimeProgressPhaseSchema,
-    completedBytes: z.number().int().nonnegative().max(12_000_000_000),
-    totalBytes: z.number().int().nonnegative().max(12_000_000_000),
-    updatedAt: z.iso.datetime(),
-  })
-  .strict()
-  .refine(
-    (progress) =>
-      progress.totalBytes === 0 ||
-      progress.completedBytes <= progress.totalBytes,
-    { message: "Managed web runtime progress cannot exceed its total." },
-  );
-
-export const managedWebRuntimeFailureCategorySchema = z.enum([
-  "download",
-  "integrity",
-  "signature",
-  "archive",
-  "inventory",
-  "health-check",
-  "compatibility",
-  "disk",
-  "process",
-  "unknown",
-]);
-
-export const managedWebRuntimeFailureSchema = z
-  .object({
-    category: managedWebRuntimeFailureCategorySchema,
-    message: z.string().trim().min(1).max(1_000),
-    retryable: z.boolean(),
-    failedAt: z.iso.datetime(),
-  })
-  .strict();
-
-export const managedWebRuntimeStatusSchema = z
-  .object({
-    component: managedWebRuntimeComponentSchema,
-    supported: z.boolean(),
-    state: managedWebRuntimeStateSchema,
-    installedVersion: z.string().trim().min(1).max(100).nullable(),
-    previousVersion: z.string().trim().min(1).max(100).nullable(),
-    latestVersion: z.string().trim().min(1).max(100).nullable(),
-    lastCheckedAt: z.iso.datetime().nullable(),
-    progress: managedWebRuntimeProgressSchema.nullable(),
-    failure: managedWebRuntimeFailureSchema.nullable(),
-  })
-  .strict();
-
-export const managedWebRuntimeCapabilitiesSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    search: managedWebRuntimeStatusSchema,
-    browser: managedWebRuntimeStatusSchema,
-    staticReading: z.boolean(),
-  })
-  .strict()
-  .superRefine((capabilities, context) => {
-    if (capabilities.search.component !== "searxng") {
-      context.addIssue({
-        code: "custom",
-        message: "Search runtime status must describe SearXNG.",
-        path: ["search", "component"],
-      });
-    }
-    if (capabilities.browser.component !== "playwright") {
-      context.addIssue({
-        code: "custom",
-        message: "Browser runtime status must describe Playwright.",
-        path: ["browser", "component"],
-      });
-    }
-  });
-
-export const managedWebRuntimeActionSchema = z.enum([
-  "check-update",
-  "retry",
-  "reinstall",
-  "clear-cache",
-  "clear-profiles",
-]);
-
-export const managedWebRuntimeActionRequestSchema = z
-  .object({
-    component: managedWebRuntimeComponentSchema,
-    action: managedWebRuntimeActionSchema,
-  })
-  .strict()
-  .superRefine((input, context) => {
-    if (input.action === "clear-profiles" && input.component !== "playwright") {
-      context.addIssue({
-        code: "custom",
-        message: "Only the managed browser runtime has persistent profiles.",
-        path: ["component"],
-      });
-    }
-  });
-
-export const managedWebRuntimeActionResultSchema = z
-  .object({
-    accepted: z.literal(true),
-    action: managedWebRuntimeActionSchema,
-    component: managedWebRuntimeComponentSchema,
-    status: managedWebRuntimeStatusSchema,
-  })
-  .strict();
-
-export const unavailableManagedWebRuntimeCapabilities =
-  managedWebRuntimeCapabilitiesSchema.parse({
-    schemaVersion: 1,
-    search: {
-      component: "searxng",
-      supported: false,
-      state: "unsupported",
-      installedVersion: null,
-      previousVersion: null,
-      latestVersion: null,
-      lastCheckedAt: null,
-      progress: null,
-      failure: null,
-    },
-    browser: {
-      component: "playwright",
-      supported: false,
-      state: "unsupported",
-      installedVersion: null,
-      previousVersion: null,
-      latestVersion: null,
-      lastCheckedAt: null,
-      progress: null,
-      failure: null,
-    },
-    staticReading: false,
-  });
-
-export const codeGraphJobSchema = z.object({
-  id: z.string().uuid(),
-  action: z.enum(["sync", "rebuild"]),
-  state: z.enum(["queued", "running", "completed", "failed"]),
-  requestedAt: z.iso.datetime(),
-  completedAt: z.iso.datetime().nullable(),
-});
-
-export const codeGraphProjectStatusSchema = z
-  .object({
-    projectId: z.string().uuid(),
-    worktreeId: z.string().min(1).max(200),
-    state: codeGraphProjectStateSchema,
-    lastIndexedAt: z.iso.datetime().nullable(),
-    lastSuccessfulSyncAt: z.iso.datetime().nullable(),
-    fileCount: z.number().int().nonnegative().nullable(),
-    nodeCount: z.number().int().nonnegative().nullable(),
-    edgeCount: z.number().int().nonnegative().nullable(),
-    pendingChanges: z.number().int().nonnegative().nullable(),
-    statusMessage: z.string().max(1_000).nullable(),
-    job: codeGraphJobSchema.nullable(),
-  })
-  .strict();
-
-export const codeGraphActionAcknowledgementSchema = z.object({
-  jobId: z.string().uuid(),
-  action: z.enum(["sync", "rebuild", "update-check"]),
-  acceptedAt: z.iso.datetime(),
-  status: z.literal("queued"),
-});
-
-export const workerHeartbeatSchema = z.object({
-  workerId: z.string().min(1),
-  name: z.string().min(1),
-  platform: z.string().min(1),
-  architecture: z.string().min(1),
-  codexVersion: z.string().nullable(),
-  codexRuntime: codexRuntimeReportSchema.default(unprobedCodexRuntimeReport),
-  remoteSurfaces: remoteSurfaceCapabilitiesSchema.default(
-    defaultRemoteSurfaceCapabilities,
-  ),
-  directBroker: directBrokerAdvertisementSchema.default(
-    unavailableDirectBroker,
-  ),
-  code: codeCapabilitiesSchema.optional(),
-  projectReplicas: projectReplicaCapabilitiesSchema.default(
-    unavailableProjectReplicaCapabilities,
-  ),
-  managedFolders: managedFolderCapabilitiesSchema.default(
-    unavailableManagedFolderCapabilities,
-  ),
-  standaloneChat: standaloneChatCapabilitiesSchema.default(
-    unavailableStandaloneChatCapabilities,
-  ),
-  chatRelocation: z.boolean().default(false),
-  externalCodexHistory: z.boolean().default(false),
-  codegraph: codeGraphWorkerStatusSchema.default(
-    unavailableCodeGraphWorkerStatus,
-  ),
-  webRuntimes: managedWebRuntimeCapabilitiesSchema.default(
-    unavailableManagedWebRuntimeCapabilities,
-  ),
-  encryption: workerEncryptionStatusSchema.default(
-    unavailableWorkerEncryptionStatus,
-  ),
-  startedAt: z.string().datetime(),
-});
-
-export const workerSummarySchema = workerHeartbeatSchema.extend({
-  code: codeCapabilitiesSchema.default(unavailableCodeCapabilities),
-  online: z.boolean(),
-  lastSeenAt: z.string().datetime(),
-});
-
-export const workerListSchema = z.array(workerSummarySchema);
-
-export const workerManagementSourceSchema = z.object({
-  projectReplicaId: z.string().min(1).nullable().default(null),
-  projectId: z.string().uuid(),
-  nameWithOwner: z.string().min(1),
-  displayPath: z.string().min(1),
-});
-
-export const workerManagementSummarySchema = workerSummarySchema.extend({
-  runtimeName: z.string().min(1),
-  internal: z.boolean(),
-  editable: z.boolean(),
-  removable: z.boolean(),
-  credentialCount: z.number().int().nonnegative(),
-  activeCredentialCount: z.number().int().nonnegative(),
-  sources: z.array(workerManagementSourceSchema),
-});
-
-export const workerManagementListSchema = z.array(
+export {
+  workerHeartbeatSchema,
+  workerSummarySchema,
+  workerListSchema,
+  workerManagementSourceSchema,
   workerManagementSummarySchema,
-);
-
-export const workerUpdateSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-});
-
-export const workerRestartAcknowledgementSchema = z.object({
-  restarting: z.literal(true),
-});
-
-export const workerRestartResultSchema = z.object({
-  workerId: z.string().min(1),
-  status: z.literal("restarting"),
-});
-
-export const workerCredentialScopeSchema = z.enum([
-  "worker:connect",
-  "worker:heartbeat",
-  "worker:automations",
-  "worker:agent-tools",
-]);
-
-export const workerCredentialScopes = workerCredentialScopeSchema.options;
-
-const workerCredentialSecretSchema = z
-  .string()
-  .regex(/^ctwk_[A-Za-z0-9_-]{43}$/u);
-const workerEnrollmentCodeSchema = z
-  .string()
-  .regex(/^ctwl_[A-Za-z0-9_-]{32}$/u);
-
-export const workerEnrollmentCodeCreateSchema = z.object({
-  label: z.string().trim().min(1).max(120).nullable().default(null),
-  expiresInSeconds: z.number().int().min(60).max(1_800).default(600),
-  candidateWorkerIds: z.array(z.string().min(1).max(255)).max(64).default([]),
-});
-
-export const workerEnrollmentCodeResultSchema = z.object({
-  id: z.string().uuid(),
-  code: workerEnrollmentCodeSchema,
-  label: z.string().min(1).max(120).nullable(),
-  expiresAt: z.string().datetime({ offset: true }),
-  workerId: z.string().min(1).max(255).nullable().default(null),
-});
-
-export const workerEnrollmentCodeStatusSchema = z.object({
-  id: z.string().uuid(),
-  label: z.string().min(1).max(120).nullable(),
-  expiresAt: z.string().datetime({ offset: true }),
-  status: z.enum(["pending", "paired", "expired"]),
-});
-
-export const workerCredentialSummarySchema = z.object({
-  id: z.string().uuid(),
-  workerId: z.string().min(1).max(255),
-  label: z.string().min(1).max(120).nullable(),
-  scopes: z.array(workerCredentialScopeSchema),
-  createdAt: z.string().datetime({ offset: true }),
-  expiresAt: z.string().datetime({ offset: true }).nullable(),
-  lastUsedAt: z.string().datetime({ offset: true }).nullable(),
-  revokedAt: z.string().datetime({ offset: true }).nullable(),
-  revokedReason: z.string().min(1).max(500).nullable(),
-  active: z.boolean(),
-});
-
-export const workerCredentialListSchema = z.array(
+  workerManagementListSchema,
+  workerUpdateSchema,
+  workerRestartAcknowledgementSchema,
+  workerRestartResultSchema,
+  workerCredentialScopeSchema,
+  workerCredentialScopes,
+  workerEnrollmentCodeCreateSchema,
+  workerEnrollmentCodeResultSchema,
+  workerEnrollmentCodeStatusSchema,
   workerCredentialSummarySchema,
-);
+  workerCredentialListSchema,
+  workerEnrollmentExchangeSchema,
+  workerEnrollmentResultSchema,
+  workerCredentialRotateSchema,
+  workerCredentialRotateResultSchema,
+} from "./workers.js";
 
-export const workerEnrollmentExchangeSchema = z.object({
-  code: workerEnrollmentCodeSchema,
-  heartbeat: workerHeartbeatSchema,
-  replacement: z
-    .object({
-      workerId: z.string().min(1).max(255),
-      credential: workerCredentialSecretSchema,
-    })
-    .nullable()
-    .default(null),
-});
+export type {
+  WorkerHeartbeat,
+  WorkerSummary,
+  WorkerManagementSource,
+  WorkerManagementSummary,
+  WorkerUpdate,
+  WorkerRestartResult,
+  WorkerCredentialScope,
+  WorkerEnrollmentCodeCreate,
+  WorkerEnrollmentCodeResult,
+  WorkerEnrollmentCodeStatus,
+  WorkerCredentialSummary,
+  WorkerEnrollmentExchange,
+  WorkerEnrollmentResult,
+  WorkerCredentialRotate,
+  WorkerCredentialRotateResult,
+} from "./workers.js";
 
-export const workerEnrollmentResultSchema = z.object({
-  credential: workerCredentialSecretSchema,
-  credentialSummary: workerCredentialSummarySchema,
-  worker: workerSummarySchema,
-});
+export {
+  skillSummarySchema,
+  skillListSchema,
+  customizationCapabilitySchema,
+  nativeSubagentCustomizationCapabilitySchema,
+  codexCustomizationCapabilitiesSchema,
+  codexSkillInventoryItemSchema,
+  codexInventoryErrorSchema,
+  codexHookInventoryItemSchema,
+  codexMcpToolSchema,
+  codexMcpResourceSchema,
+  codexMcpResourceTemplateSchema,
+  codexMcpServerSchema,
+  codexCustomizationInventorySchema,
+  codexExternalImportItemTypeSchema,
+  codexExternalImportPreviewItemSchema,
+  codexExternalImportPreviewSchema,
+  codexMcpResourceContentSchema,
+  codexMcpResourceReadSchema,
+  codexMcpResourceReadRequestSchema,
+  codexSkillConfigUpdateSchema,
+  codexSkillConfigResultSchema,
+  codexSkillRootsUpdateSchema,
+  codexSkillRootsResultSchema,
+  skillSettingsLocationSchema,
+  skillSettingsItemSchema,
+  skillSettingsErrorSchema,
+  skillSettingsInventorySchema,
+  skillSettingsFileSchema,
+  skillSettingsDocumentSchema,
+  skillSettingsContextSchema,
+  skillAudienceSummarySchema,
+  skillAudienceListSchema,
+  skillAudienceContextSchema,
+  skillAudienceUpdateSchema,
+  skillSettingsFileRequestSchema,
+  skillSettingsFileUpdateSchema,
+  skillSettingsDeleteRequestSchema,
+  skillSettingsMutationResultSchema,
+  codexMcpOauthStartSchema,
+  codexMcpOauthStartResultSchema,
+  codexMcpOauthStatusSchema,
+  codexMcpReloadResultSchema,
+  codexMcpReloadRequestSchema,
+  codexExternalImportApplySchema,
+  codexExternalImportFailureSchema,
+  codexExternalImportTypeResultSchema,
+  codexExternalImportStatusSchema,
+  mentionedSkillNames,
+} from "./customization.js";
 
-export const workerCredentialRotateSchema = z.object({
-  label: z.string().trim().min(1).max(120).nullable().default(null),
-});
+export type {
+  SkillSummary,
+  CustomizationCapability,
+  CodexCustomizationCapabilities,
+  CodexSkillInventoryItem,
+  CodexHookInventoryItem,
+  CodexMcpServer,
+  CodexCustomizationInventory,
+  CodexExternalImportPreviewItem,
+  CodexExternalImportPreview,
+  CodexMcpResourceRead,
+  CodexMcpResourceReadRequest,
+  CodexSkillConfigUpdate,
+  CodexSkillConfigResult,
+  CodexSkillRootsUpdate,
+  CodexSkillRootsResult,
+  SkillSettingsLocation,
+  SkillSettingsItem,
+  SkillSettingsInventory,
+  SkillSettingsFile,
+  SkillSettingsDocument,
+  SkillSettingsContext,
+  SkillSettingsFileRequest,
+  SkillSettingsFileUpdate,
+  SkillSettingsDeleteRequest,
+  SkillSettingsMutationResult,
+  SkillAudienceSummary,
+  SkillAudienceContext,
+  SkillAudienceUpdate,
+  CodexMcpOauthStart,
+  CodexMcpOauthStartResult,
+  CodexMcpOauthStatus,
+  CodexMcpReloadResult,
+  CodexExternalImportApply,
+  CodexExternalImportTypeResult,
+  CodexExternalImportStatus,
+} from "./customization.js";
 
-export const workerCredentialRotateResultSchema = z.object({
-  credential: workerCredentialSecretSchema,
-  credentialSummary: workerCredentialSummarySchema,
-  delivered: z.boolean().default(false),
-});
+export {
+  operationalProbeSchema,
+  serverOperationalStatsSchema,
+  systemHealthSchema,
+} from "./operational-health.js";
 
-export const skillSummarySchema = z.object({
-  name: z.string().min(1),
-  description: z.string(),
-  displayName: z.string().min(1).nullable(),
-});
-
-export const skillListSchema = z.array(skillSummarySchema);
-
-export const customizationCapabilitySchema = z.object({
-  available: z.boolean(),
-  reason: z.string().min(1).nullable(),
-  stability: z.enum(["stable", "experimental", "unsupported"]),
-});
-
-export const nativeSubagentCustomizationCapabilitySchema =
-  customizationCapabilitySchema.extend({
-    protocolVersion: z.literal(NATIVE_SUBAGENT_PROTOCOL_VERSION).nullable(),
-  });
-
-export const codexCustomizationCapabilitiesSchema = z.object({
-  isolatedCodexHome: z.literal(true),
-  collaborationModes: customizationCapabilitySchema,
-  threadGoals: customizationCapabilitySchema,
-  nativeSubagents: nativeSubagentCustomizationCapabilitySchema,
-  customAgents: customizationCapabilitySchema,
-  hooks: customizationCapabilitySchema,
-  skills: z.object({
-    list: customizationCapabilitySchema,
-    configure: customizationCapabilitySchema,
-    extraRoots: customizationCapabilitySchema,
-  }),
-  mcp: z.object({
-    status: customizationCapabilitySchema,
-    resourceRead: customizationCapabilitySchema,
-    oauth: customizationCapabilitySchema,
-    reload: customizationCapabilitySchema,
-  }),
-  plugins: z.object({
-    list: customizationCapabilitySchema,
-    read: customizationCapabilitySchema,
-    install: customizationCapabilitySchema,
-    uninstall: customizationCapabilitySchema,
-  }),
-  externalImports: z.object({
-    detect: customizationCapabilitySchema,
-    apply: customizationCapabilitySchema,
-  }),
-});
-
-export const codexSkillInventoryItemSchema = skillSummarySchema.extend({
-  path: z.string().min(1),
-  scope: z.enum(["user", "repo", "system", "admin"]),
-  enabled: z.boolean(),
-});
-
-export const codexInventoryErrorSchema = z.object({
-  path: z.string(),
-  message: z.string().min(1),
-});
-
-export const codexHookInventoryItemSchema = z.object({
-  key: z.string().min(1),
-  eventName: z.enum([
-    "preToolUse",
-    "permissionRequest",
-    "postToolUse",
-    "preCompact",
-    "postCompact",
-    "sessionStart",
-    "sessionEnd",
-    "userPromptSubmit",
-    "subagentStart",
-    "subagentStop",
-    "stop",
-  ]),
-  handlerType: z.enum(["command", "prompt", "agent"]),
-  matcher: z.string().nullable(),
-  command: z.string().nullable(),
-  timeoutSeconds: z.number().int().nonnegative(),
-  statusMessage: z.string().nullable(),
-  sourcePath: z.string().min(1),
-  source: z.enum([
-    "system",
-    "user",
-    "project",
-    "mdm",
-    "sessionFlags",
-    "plugin",
-    "cloudRequirements",
-    "cloudManagedConfig",
-    "legacyManagedConfigFile",
-    "legacyManagedConfigMdm",
-    "unknown",
-  ]),
-  pluginId: z.string().nullable(),
-  enabled: z.boolean(),
-  managed: z.boolean(),
-  trust: z.enum(["managed", "untrusted", "trusted", "modified"]),
-});
-
-export const codexMcpToolSchema = z.object({
-  name: z.string().min(1),
-  title: z.string().nullable(),
-  description: z.string().nullable(),
-  inputSchema: z.unknown(),
-  outputSchema: z.unknown().nullable(),
-});
-
-export const codexMcpResourceSchema = z.object({
-  uri: z.string().min(1),
-  name: z.string().min(1),
-  title: z.string().nullable(),
-  description: z.string().nullable(),
-  mimeType: z.string().nullable(),
-  size: z.number().int().nonnegative().nullable(),
-});
-
-export const codexMcpResourceTemplateSchema = z.object({
-  uriTemplate: z.string().min(1),
-  name: z.string().min(1),
-  title: z.string().nullable(),
-  description: z.string().nullable(),
-  mimeType: z.string().nullable(),
-});
-
-export const codexMcpServerSchema = z.object({
-  name: z.string().min(1),
-  serverInfo: z
-    .object({
-      name: z.string().min(1),
-      title: z.string().nullable(),
-      version: z.string(),
-      description: z.string().nullable(),
-      websiteUrl: z.string().nullable(),
-    })
-    .nullable(),
-  authStatus: z.enum(["unsupported", "notLoggedIn", "bearerToken", "oAuth"]),
-  tools: z.array(codexMcpToolSchema),
-  resources: z.array(codexMcpResourceSchema),
-  resourceTemplates: z.array(codexMcpResourceTemplateSchema),
-});
-
-export const codexCustomizationInventorySchema = z.object({
-  capabilities: codexCustomizationCapabilitiesSchema,
-  skills: z.object({
-    items: z.array(codexSkillInventoryItemSchema),
-    errors: z.array(codexInventoryErrorSchema),
-  }),
-  skillRoots: z.array(z.string().min(1).max(8_192)).max(32).default([]),
-  hooks: z.object({
-    items: z.array(codexHookInventoryItemSchema),
-    warnings: z.array(z.string()),
-    errors: z.array(codexInventoryErrorSchema),
-  }),
-  mcpServers: z.array(codexMcpServerSchema),
-});
-
-export const codexExternalImportItemTypeSchema = z.enum([
-  "AGENTS_MD",
-  "CONFIG",
-  "SKILLS",
-  "PLUGINS",
-  "MCP_SERVER_CONFIG",
-  "SUBAGENTS",
-  "HOOKS",
-  "COMMANDS",
-  "MEMORY",
-  "SESSIONS",
-]);
-
-export const codexExternalImportPreviewItemSchema = z.object({
-  id: z.string().min(1),
-  itemType: codexExternalImportItemTypeSchema,
-  description: z.string(),
-  cwd: z.string().nullable(),
-  details: z
-    .object({
-      pluginNames: z.array(z.string().min(1)),
-      skillNames: z.array(z.string().min(1)),
-      sessionCount: z.number().int().nonnegative(),
-      mcpServerNames: z.array(z.string().min(1)),
-      hookNames: z.array(z.string().min(1)),
-      subagentNames: z.array(z.string().min(1)),
-      commandNames: z.array(z.string().min(1)),
-      memoryFiles: z.array(z.string().min(1)),
-    })
-    .nullable(),
-});
-
-export const codexExternalImportPreviewSchema = z.object({
-  sourceScope: z.literal("project"),
-  items: z.array(codexExternalImportPreviewItemSchema),
-});
-
-export const codexMcpResourceContentSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("text"),
-    uri: z.string().min(1),
-    mimeType: z.string().nullable(),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal("blob"),
-    uri: z.string().min(1),
-    mimeType: z.string().nullable(),
-    blob: z.string(),
-  }),
-]);
-
-export const codexMcpResourceReadSchema = z.object({
-  contents: z.array(codexMcpResourceContentSchema),
-});
-
-export const codexMcpResourceReadRequestSchema = z.object({
-  server: z.string().trim().min(1).max(256),
-  uri: z.string().trim().min(1).max(8_192),
-});
-
-export const codexSkillConfigUpdateSchema = z.object({
-  path: z.string().trim().min(1).max(8_192),
-  enabled: z.boolean(),
-});
-
-export const codexSkillConfigResultSchema = z.object({
-  path: z.string().min(1).max(8_192),
-  effectiveEnabled: z.boolean(),
-});
-
-export const codexSkillRootsUpdateSchema = z.object({
-  roots: z.array(z.string().trim().min(1).max(8_192)).max(32),
-});
-
-export const codexSkillRootsResultSchema = z.object({
-  roots: z.array(z.string().min(1)).max(32),
-});
-
-export const skillSettingsLocationSchema = z.enum([
-  "project",
-  "account",
-  "user",
-  "codexUser",
-  "system",
-  "admin",
-]);
-
-export const skillSettingsItemSchema = skillSummarySchema.extend({
-  id: z.string().min(1).max(8_192),
-  audienceKey: encryptionKeyBytesSchema,
-  audience: resourceAudienceSchema.default("ide"),
-  scope: z.enum(["repo", "user", "system", "admin"]),
-  location: skillSettingsLocationSchema,
-  path: z.string().min(1).max(8_192),
-  editable: z.boolean(),
-  deletable: z.boolean(),
-});
-
-export const skillSettingsErrorSchema = z.object({
-  path: z.string().max(8_192),
-  message: z.string().min(1).max(2_000),
-});
-
-export const skillSettingsInventorySchema = z.object({
-  project: z.array(skillSettingsItemSchema).max(1_000),
-  global: z.array(skillSettingsItemSchema).max(1_000),
-  errors: z.array(skillSettingsErrorSchema).max(200),
-});
-
-export const skillSettingsFileSchema = z.object({
-  path: z.string().min(1).max(8_192),
-  sizeBytes: z.number().int().nonnegative().max(1_000_000_000),
-});
-
-export const skillSettingsDocumentSchema = z.object({
-  skill: skillSettingsItemSchema,
-  file: skillSettingsFileSchema,
-  files: z.array(skillSettingsFileSchema).max(500),
-  content: z.string().max(1_000_000),
-});
-
-export const skillSettingsContextSchema = z.object({
-  workerId: z.string().min(1).max(200),
-  providerId: z.string().min(1).max(200),
-  projectId: z.string().min(1).max(200).nullable().default(null),
-});
-
-export const skillAudienceSummarySchema = z
-  .object({
-    audienceKey: encryptionKeyBytesSchema,
-    audience: resourceAudienceSchema.default("ide"),
-  })
-  .strict();
-
-export const skillAudienceListSchema = z
-  .array(skillAudienceSummarySchema)
-  .max(5_000);
-
-export const skillAudienceContextSchema = skillSettingsContextSchema
-  .omit({ projectId: true })
-  .strict();
-
-export const skillAudienceUpdateSchema = skillAudienceContextSchema
-  .extend({
-    audienceKey: encryptionKeyBytesSchema,
-    audience: resourceAudienceSchema.default("ide"),
-  })
-  .strict();
-
-export const skillSettingsFileRequestSchema = skillSettingsContextSchema.extend(
-  {
-    skillId: skillSettingsItemSchema.shape.id,
-    file: skillSettingsFileSchema.shape.path.default("SKILL.md"),
-  },
-);
-
-export const skillSettingsFileUpdateSchema =
-  skillSettingsFileRequestSchema.extend({
-    content: z.string().max(1_000_000),
-  });
-
-export const skillSettingsDeleteRequestSchema =
-  skillSettingsContextSchema.extend({
-    skillId: skillSettingsItemSchema.shape.id,
-  });
-
-export const skillSettingsMutationResultSchema = z.object({
-  changed: z.literal(true),
-  recoveryPath: z.string().min(1).max(8_192).nullable(),
-});
-
-export const codexMcpOauthStartSchema = z.object({
-  server: z.string().trim().min(1).max(256),
-});
-
-export const codexMcpOauthStartResultSchema = z.object({
-  server: z.string().min(1).max(256),
-  authorizationUrl: z.string().url().max(8_192),
-  status: z.literal("pending"),
-});
-
-export const codexMcpOauthStatusSchema = z.object({
-  server: z.string().min(1).max(256),
-  status: z.enum(["pending", "succeeded", "failed", "unknown"]),
-  error: z.string().max(2_000).nullable(),
-});
-
-export const codexMcpReloadResultSchema = z.object({
-  reloaded: z.literal(true),
-});
-
-export const codexMcpReloadRequestSchema = z.object({}).strict();
-
-export const codexExternalImportApplySchema = z
-  .object({
-    itemIds: z.array(z.string().min(1).max(200)).min(1).max(100),
-  })
-  .superRefine(({ itemIds }, context) => {
-    if (new Set(itemIds).size !== itemIds.length) {
-      context.addIssue({
-        code: "custom",
-        message: "Import item ids must be unique.",
-        path: ["itemIds"],
-      });
-    }
-  });
-
-export const codexExternalImportFailureSchema = z.object({
-  failureStage: z.string().max(200),
-  message: z.string().max(2_000),
-});
-
-export const codexExternalImportTypeResultSchema = z.object({
-  itemType: codexExternalImportItemTypeSchema,
-  successCount: z.number().int().nonnegative(),
-  failures: z.array(codexExternalImportFailureSchema).max(100),
-});
-
-export const codexExternalImportStatusSchema = z.object({
-  importId: z.string().min(1).max(200),
-  status: z.enum(["pending", "completed", "unknown"]),
-  results: z.array(codexExternalImportTypeResultSchema).max(100),
-});
-
-export function mentionedSkillNames(text: string): string[] {
-  const names = new Set<string>();
-  for (const match of text.matchAll(
-    /(?:^|[^A-Za-z0-9_$])\$([A-Za-z0-9][A-Za-z0-9_.:-]*)/gu,
-  )) {
-    const name = match[1];
-    if (name) names.add(name);
-  }
-  return [...names];
-}
-
-export const operationalProbeSchema = z.object({
-  status: z.enum(["alive", "ready", "not-ready"]),
-  service: z.literal("cantrip_server"),
-  database: z
-    .object({
-      engine: databaseEngineSchema,
-      status: z.enum(["ready", "unavailable"]),
-      latencyMs: z.number().nonnegative(),
-    })
-    .optional(),
-  coordination: z
-    .object({
-      shared: z.boolean(),
-      status: z.enum(["ready", "unavailable"]),
-    })
-    .optional(),
-  timestamp: z.string().datetime(),
-});
-
-const operationalCounterSchema = z.number().int().nonnegative();
-
-export const serverOperationalStatsSchema = z.object({
-  instanceId: z.string().min(1).max(100),
-  uptimeSeconds: z.number().nonnegative(),
-  http: z.object({
-    activeRequests: operationalCounterSchema,
-    requestCount: operationalCounterSchema,
-  }),
-  legacyFeatureTransports: z
-    .object({
-      requestsByEndpoint: z.object({
-        "remote-surface-transport": operationalCounterSchema,
-        "terminal-direct": operationalCounterSchema,
-        "terminal-relay": operationalCounterSchema,
-        "tunnel-direct": operationalCounterSchema,
-        "tunnel-direct-activate": operationalCounterSchema,
-        "tunnel-relay": operationalCounterSchema,
-      }),
-    })
-    .optional(),
-  coordination: z.object({
-    cachedWorkers: operationalCounterSchema,
-    instanceCount: operationalCounterSchema,
-    maximumInstances: z.number().int().positive(),
-    receivedMessages: operationalCounterSchema,
-    rejectedMessages: operationalCounterSchema,
-    sentMessages: operationalCounterSchema,
-    shared: z.boolean(),
-  }),
-  workerCommands: z.object({
-    activeRequests: operationalCounterSchema,
-    connectedWorkers: operationalCounterSchema,
-    failedRequests: operationalCounterSchema,
-    routedRequests: operationalCounterSchema,
-    succeededRequests: operationalCounterSchema,
-  }),
-  workerLinkRelay: z
-    .object({
-      channels: operationalCounterSchema,
-      connections: operationalCounterSchema,
-      queuedBytes: operationalCounterSchema,
-      queuedFrames: operationalCounterSchema,
-      queuedFramesByLane: z.object({
-        events: operationalCounterSchema,
-        interactive: operationalCounterSchema,
-        stream: operationalCounterSchema,
-        realtime: operationalCounterSchema,
-        bulk: operationalCounterSchema,
-      }),
-    })
-    .optional(),
-  tunnels: z.object({
-    activeConnections: operationalCounterSchema,
-    activeRoutes: operationalCounterSchema,
-    bytesFromSource: operationalCounterSchema,
-    bytesToSource: operationalCounterSchema,
-    closedConnections: operationalCounterSchema,
-    openedConnections: operationalCounterSchema,
-    rejectedConnections: operationalCounterSchema,
-    terminationsByReason: z.record(
-      tunnelDataPlaneCloseCodeSchema,
-      operationalCounterSchema,
-    ),
-  }),
-  quotas: z.object({
-    activeRemoteSurfaces: operationalCounterSchema,
-    rejectedRelayBandwidth: operationalCounterSchema,
-    rejectedRemoteSurfaces: operationalCounterSchema,
-    rejectedUploads: operationalCounterSchema,
-    relayBytes: operationalCounterSchema,
-    uploadBytes: operationalCounterSchema,
-  }),
-  scheduler: z.object({
-    dispatchFailures: operationalCounterSchema,
-    dispatches: operationalCounterSchema,
-    dueOccurrences: operationalCounterSchema,
-    lastScanAt: z.string().datetime().nullable(),
-    lastScanDurationSeconds: z.number().nonnegative(),
-    leaseContentions: operationalCounterSchema,
-    leaseRecoveries: operationalCounterSchema,
-    maximumLagSeconds: z.number().nonnegative(),
-    scanFailures: operationalCounterSchema,
-    scans: operationalCounterSchema,
-  }),
-  accountUsage: z
-    .object({
-      bandwidthMeter: z.object({
-        bufferedBytes: z.string().regex(/^\d+$/u),
-        bufferedEntries: operationalCounterSchema,
-        droppedBytes: z.string().regex(/^\d+$/u),
-        droppedMeasurements: z.string().regex(/^\d+$/u),
-        flushCount: operationalCounterSchema,
-        flushFailureCount: operationalCounterSchema,
-        lastFlushDurationMs: z.number().nonnegative().nullable(),
-        lastFlushedAt: z.string().datetime().nullable(),
-      }),
-      historyMaintenance: z.object({
-        completionCount: operationalCounterSchema,
-        failureCount: operationalCounterSchema,
-        lastCompletedAt: z.string().datetime().nullable(),
-        lastDurationMs: z.number().nonnegative().nullable(),
-        lastErrorAt: z.string().datetime().nullable(),
-        lastSuccessfulAt: z.string().datetime().nullable(),
-        leaseContentionCount: operationalCounterSchema,
-        running: z.boolean(),
-        totals: z.object({
-          accountCount: operationalCounterSchema,
-          logicalServerBytes: z.string().regex(/^\d+$/u),
-          logicalWorkerManagedBytes: z.string().regex(/^\d+$/u),
-          physicalDatabaseBytes: z.string().regex(/^\d+$/u).nullable(),
-        }),
-      }),
-      storageReconciliation: z.object({
-        completionCount: operationalCounterSchema,
-        failureCount: operationalCounterSchema,
-        lastCompletedAt: z.string().datetime().nullable(),
-        lastDurationMs: z.number().nonnegative().nullable(),
-        lastErrorAt: z.string().datetime().nullable(),
-        lastSuccessfulAt: z.string().datetime().nullable(),
-        leaseContentionCount: operationalCounterSchema,
-        running: z.boolean(),
-      }),
-    })
-    .optional(),
-});
-
-export const systemHealthSchema = z.object({
-  status: z.literal("ok"),
-  service: z.literal("cantrip_server"),
-  database: z.object({
-    engine: databaseEngineSchema,
-    ready: z.boolean(),
-  }),
-  workers: z.object({
-    connected: z.number().int().nonnegative(),
-  }),
-  live: z.object({
-    acceptedConnectionCount: z.number().int().nonnegative(),
-    connectionCount: z.number().int().nonnegative(),
-    currentCursor: z.number().int().nonnegative(),
-    deliveredEventCount: z.number().int().nonnegative(),
-    disconnectedConnectionCount: z.number().int().nonnegative(),
-    heartbeatPongCount: z.number().int().nonnegative(),
-    heartbeatTimeoutCount: z.number().int().nonnegative(),
-    protocolViolationCount: z.number().int().nonnegative(),
-    publicationCount: z.number().int().nonnegative(),
-    queuePressureCount: z.number().int().nonnegative(),
-    replayEventCount: z.number().int().nonnegative(),
-    replaySessionCount: z.number().int().nonnegative(),
-    replayedEventCount: z.number().int().nonnegative(),
-    resyncRequiredCount: z.number().int().nonnegative(),
-    resumeAttemptCount: z.number().int().nonnegative(),
-    serverEpoch: z.string().uuid(),
-    slowConsumerClosureCount: z.number().int().nonnegative(),
-  }),
-  // Optional while clients and independently deployed servers roll across the
-  // release that introduced operational counters.
-  operations: serverOperationalStatsSchema.optional(),
-  timestamp: z.string().datetime(),
-});
+export type { SystemHealth, OperationalProbe } from "./operational-health.js";
 
 export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
 
@@ -15682,11 +14725,6 @@ export const workerServerEnvelopeSchema = z.union([
   workerNotificationEnvelopeSchema,
 ]);
 
-export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
-export type WorkerSummary = z.infer<typeof workerSummarySchema>;
-export type ProjectReplicaCapabilities = z.infer<
-  typeof projectReplicaCapabilitiesSchema
->;
 export type ProjectReplicaPlacementMode = z.infer<
   typeof projectReplicaPlacementModeSchema
 >;
@@ -15705,54 +14743,6 @@ export type ProjectReplicaOwnershipKind = z.infer<
 export type ProjectReplicaPlacementResult = z.infer<
   typeof projectReplicaPlacementResultSchema
 >;
-export type ManagedFolderCapabilities = z.infer<
-  typeof managedFolderCapabilitiesSchema
->;
-export type StandaloneChatScratchCapabilities = z.infer<
-  typeof standaloneChatScratchCapabilitiesSchema
->;
-export type StandaloneChatFileCapabilities = z.infer<
-  typeof standaloneChatFileCapabilitiesSchema
->;
-export type StandaloneChatCapabilities = z.infer<
-  typeof standaloneChatCapabilitiesSchema
->;
-export type WorkerManagementSource = z.infer<
-  typeof workerManagementSourceSchema
->;
-export type WorkerManagementSummary = z.infer<
-  typeof workerManagementSummarySchema
->;
-export type WorkerUpdate = z.infer<typeof workerUpdateSchema>;
-export type WorkerRestartResult = z.infer<typeof workerRestartResultSchema>;
-export type WorkerCredentialScope = z.infer<typeof workerCredentialScopeSchema>;
-export type WorkerEnrollmentCodeCreate = z.infer<
-  typeof workerEnrollmentCodeCreateSchema
->;
-export type WorkerEnrollmentCodeResult = z.infer<
-  typeof workerEnrollmentCodeResultSchema
->;
-export type WorkerEnrollmentCodeStatus = z.infer<
-  typeof workerEnrollmentCodeStatusSchema
->;
-export type WorkerCredentialSummary = z.infer<
-  typeof workerCredentialSummarySchema
->;
-export type WorkerEnrollmentExchange = z.infer<
-  typeof workerEnrollmentExchangeSchema
->;
-export type WorkerEnrollmentResult = z.infer<
-  typeof workerEnrollmentResultSchema
->;
-export type WorkerCredentialRotate = z.infer<
-  typeof workerCredentialRotateSchema
->;
-export type WorkerCredentialRotateResult = z.infer<
-  typeof workerCredentialRotateResultSchema
->;
-export type SkillSummary = z.infer<typeof skillSummarySchema>;
-export type SystemHealth = z.infer<typeof systemHealthSchema>;
-export type OperationalProbe = z.infer<typeof operationalProbeSchema>;
 export type ThemePreference = z.infer<typeof themePreferenceSchema>;
 export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
 export type ProviderWeeklyUsage = z.infer<typeof providerWeeklyUsageSchema>;
@@ -17226,78 +16216,6 @@ export type ProjectExportChatBeginResult = z.infer<
   typeof projectExportChatBeginResultSchema
 >;
 export type WorkerChatAttachment = z.infer<typeof workerChatAttachmentSchema>;
-export type CustomizationCapability = z.infer<
-  typeof customizationCapabilitySchema
->;
-export type CodexCustomizationCapabilities = z.infer<
-  typeof codexCustomizationCapabilitiesSchema
->;
-export type CodexSkillInventoryItem = z.infer<
-  typeof codexSkillInventoryItemSchema
->;
-export type CodexHookInventoryItem = z.infer<
-  typeof codexHookInventoryItemSchema
->;
-export type CodexMcpServer = z.infer<typeof codexMcpServerSchema>;
-export type CodexCustomizationInventory = z.infer<
-  typeof codexCustomizationInventorySchema
->;
-export type CodexExternalImportPreviewItem = z.infer<
-  typeof codexExternalImportPreviewItemSchema
->;
-export type CodexExternalImportPreview = z.infer<
-  typeof codexExternalImportPreviewSchema
->;
-export type CodexMcpResourceRead = z.infer<typeof codexMcpResourceReadSchema>;
-export type CodexMcpResourceReadRequest = z.infer<
-  typeof codexMcpResourceReadRequestSchema
->;
-export type CodexSkillConfigUpdate = z.infer<
-  typeof codexSkillConfigUpdateSchema
->;
-export type CodexSkillConfigResult = z.infer<
-  typeof codexSkillConfigResultSchema
->;
-export type CodexSkillRootsUpdate = z.infer<typeof codexSkillRootsUpdateSchema>;
-export type CodexSkillRootsResult = z.infer<typeof codexSkillRootsResultSchema>;
-export type SkillSettingsLocation = z.infer<typeof skillSettingsLocationSchema>;
-export type SkillSettingsItem = z.infer<typeof skillSettingsItemSchema>;
-export type SkillSettingsInventory = z.infer<
-  typeof skillSettingsInventorySchema
->;
-export type SkillSettingsFile = z.infer<typeof skillSettingsFileSchema>;
-export type SkillSettingsDocument = z.infer<typeof skillSettingsDocumentSchema>;
-export type SkillSettingsContext = z.infer<typeof skillSettingsContextSchema>;
-export type SkillSettingsFileRequest = z.infer<
-  typeof skillSettingsFileRequestSchema
->;
-export type SkillSettingsFileUpdate = z.infer<
-  typeof skillSettingsFileUpdateSchema
->;
-export type SkillSettingsDeleteRequest = z.infer<
-  typeof skillSettingsDeleteRequestSchema
->;
-export type SkillSettingsMutationResult = z.infer<
-  typeof skillSettingsMutationResultSchema
->;
-export type SkillAudienceSummary = z.infer<typeof skillAudienceSummarySchema>;
-export type SkillAudienceContext = z.infer<typeof skillAudienceContextSchema>;
-export type SkillAudienceUpdate = z.infer<typeof skillAudienceUpdateSchema>;
-export type CodexMcpOauthStart = z.infer<typeof codexMcpOauthStartSchema>;
-export type CodexMcpOauthStartResult = z.infer<
-  typeof codexMcpOauthStartResultSchema
->;
-export type CodexMcpOauthStatus = z.infer<typeof codexMcpOauthStatusSchema>;
-export type CodexMcpReloadResult = z.infer<typeof codexMcpReloadResultSchema>;
-export type CodexExternalImportApply = z.infer<
-  typeof codexExternalImportApplySchema
->;
-export type CodexExternalImportTypeResult = z.infer<
-  typeof codexExternalImportTypeResultSchema
->;
-export type CodexExternalImportStatus = z.infer<
-  typeof codexExternalImportStatusSchema
->;
 export type WorkerAttachmentUploadResult = z.infer<
   typeof workerAttachmentUploadResultSchema
 >;
@@ -17353,43 +16271,6 @@ export type WorkerLogStreamServerMessage = z.infer<
   typeof workerLogStreamServerMessageSchema
 >;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
-export type CodeGraphWorkerStatus = z.infer<typeof codeGraphWorkerStatusSchema>;
-export type ManagedWebRuntimeComponent = z.infer<
-  typeof managedWebRuntimeComponentSchema
->;
-export type ManagedWebRuntimeArtifact = z.infer<
-  typeof managedWebRuntimeArtifactSchema
->;
-export type ManagedWebRuntimeReleaseManifest = z.infer<
-  typeof managedWebRuntimeReleaseManifestSchema
->;
-export type ManagedWebRuntimeProgress = z.infer<
-  typeof managedWebRuntimeProgressSchema
->;
-export type ManagedWebRuntimeFailure = z.infer<
-  typeof managedWebRuntimeFailureSchema
->;
-export type ManagedWebRuntimeStatus = z.infer<
-  typeof managedWebRuntimeStatusSchema
->;
-export type ManagedWebRuntimeCapabilities = z.infer<
-  typeof managedWebRuntimeCapabilitiesSchema
->;
-export type ManagedWebRuntimeAction = z.infer<
-  typeof managedWebRuntimeActionSchema
->;
-export type ManagedWebRuntimeActionRequest = z.infer<
-  typeof managedWebRuntimeActionRequestSchema
->;
-export type ManagedWebRuntimeActionResult = z.infer<
-  typeof managedWebRuntimeActionResultSchema
->;
-export type CodeGraphProjectStatus = z.infer<
-  typeof codeGraphProjectStatusSchema
->;
-export type CodeGraphActionAcknowledgement = z.infer<
-  typeof codeGraphActionAcknowledgementSchema
->;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
 export type WorkerObservationEventIdentity = z.infer<
   typeof workerObservationEventIdentitySchema
