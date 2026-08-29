@@ -6,6 +6,7 @@ import {
   MAX_ELITE_CONFIGURATOR_WIDTH,
   MIN_ELITE_CONFIGURATOR_WIDTH,
   clampEliteConfiguratorWidth,
+  eliteConfiguratorSidebarClassName,
   eliteConfiguratorWidthFromKey,
   eliteConfiguratorWidthFromPointer,
 } from "./elite-settings";
@@ -27,6 +28,12 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain('role="switch"');
     expect(markup).toContain('aria-checked="false"');
     expect(markup).toContain("App-wide off");
+    expect(markup).toContain("max-md:absolute max-md:inset-0 max-md:z-50");
+    expect(markup).toContain("max-md:!w-0");
+    expect(markup).toContain("max-md:!w-full");
+    expect(markup).toContain('aria-label="Close effect options"');
+    expect(markup).toContain("md:grid-cols-[minmax(0,1fr)_7rem]");
+    expect(markup).toContain("col-span-2 w-full");
     expect(markup).toContain(
       'data-slot="elite-configurator-sidebar-shell" data-state="closed"',
     );
@@ -57,6 +64,11 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain('data-elite-lab=""');
     expect(markup).toContain('aria-checked="true"');
     expect(markup).toContain("App-wide on");
+  });
+
+  it("switches the mobile configurator between full overlay and closed widths", () => {
+    expect(eliteConfiguratorSidebarClassName(true)).toContain("max-md:!w-full");
+    expect(eliteConfiguratorSidebarClassName(false)).toContain("max-md:!w-0");
   });
 
   it("clamps pointer and keyboard resizing to the dock limits", () => {
