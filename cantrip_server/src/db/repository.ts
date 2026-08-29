@@ -353,6 +353,10 @@ import {
   type CodeTabExecutionContext,
 } from "./repository/code-surfaces.js";
 import {
+  BrowserRepository,
+  SurfacePrivateStateConflictError,
+} from "./repository/browsers.js";
+import {
   TelemetryRepository,
   ZERO_AGENT_TIME,
   ZERO_TOKEN_USAGE,
@@ -467,6 +471,7 @@ export {
   CodeCapabilityUnavailableError,
   type CodeTabExecutionContext,
 } from "./repository/code-surfaces.js";
+export { SurfacePrivateStateConflictError } from "./repository/browsers.js";
 export type {
   ModelBehaviorObservationInput,
   ProviderQuotaObservationInput,
@@ -501,7 +506,6 @@ export function toChatAttachmentOpaqueSummary(
   });
 }
 
-export class SurfacePrivateStateConflictError extends Error {}
 export class AgentInteractionConflictError extends Error {}
 
 export type ChatExecutionAttribution =
@@ -704,23 +708,6 @@ function toExplorerWireSummary(
     fileMode: explorer.fileMode as ExplorerWireSummary["fileMode"],
     createdAt: toISOString(explorer.createdAt),
     updatedAt: toISOString(explorer.updatedAt),
-  };
-}
-
-function toBrowserWireSummary(
-  browser: typeof schema.browsers.$inferSelect,
-  workerId: string | null = null,
-): BrowserWireSummary {
-  return {
-    id: browser.id,
-    projectId: browser.projectId,
-    titleProtection: browser.protectedLabel,
-    position: browser.position,
-    stateProtection: browser.protectedState,
-    stateRevision: browser.stateRevision,
-    workerId,
-    createdAt: toISOString(browser.createdAt),
-    updatedAt: toISOString(browser.updatedAt),
   };
 }
 
@@ -1155,6 +1142,7 @@ export class ServerRepository {
   readonly terminals: TerminalRepository;
   readonly explorers: ExplorerRepository;
   readonly codeSurfaces: CodeSurfaceRepository;
+  readonly browsers: BrowserRepository;
   readonly telemetry: TelemetryRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
@@ -1344,6 +1332,30 @@ export class ServerRepository {
         this.getCodeTabExecutionContext(ownerId, codeTabId),
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
+      nextProjectTabPosition: (projectId) =>
+        this.nextProjectTabPosition(projectId),
+      resolveProjectExecutionPlacement: (
+        ownerId,
+        projectId,
+        surfaceKind,
+        target,
+        isWorkerConnected,
+        allowOfflineExplicit,
+      ) =>
+        this.resolveProjectExecutionPlacement(
+          ownerId,
+          projectId,
+          surfaceKind,
+          target,
+          isWorkerConnected,
+          allowOfflineExplicit,
+        ),
+    });
+    this.browsers = new BrowserRepository(database, {
+      getProjectSource: (ownerId, projectId) =>
+        this.getProjectSource(ownerId, projectId),
+      getRemoteSurfaceExecutionContext: (ownerId, surfaceId) =>
+        this.getRemoteSurfaceExecutionContext(ownerId, surfaceId),
       nextProjectTabPosition: (projectId) =>
         this.nextProjectTabPosition(projectId),
       resolveProjectExecutionPlacement: (
@@ -4088,28 +4100,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
   ): Promise<BrowserWireSummary[]> {
-    const rows = await this.database
-      .select({
-        browser: schema.browsers,
-        workerId: schema.remoteSurfaces.workerId,
-      })
-      .from(schema.browsers)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.browsers.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .leftJoin(
-        schema.remoteSurfaces,
-        eq(schema.remoteSurfaces.id, schema.browsers.id),
-      )
-      .where(eq(schema.browsers.projectId, projectId))
-      .orderBy(asc(schema.browsers.position), asc(schema.browsers.createdAt));
-    return rows.map(({ browser, workerId }) =>
-      toBrowserWireSummary(browser, workerId),
-    );
+    return this.browsers.listBrowsers(ownerId, projectId);
   }
 
   async createBrowser(
@@ -4118,47 +4109,12 @@ export class ServerRepository {
     input: EncryptedBrowserCreate,
     isWorkerConnected?: (workerId: string) => boolean,
   ): Promise<BrowserWireSummary | null> {
-    const { placement } = await this.resolveProjectExecutionPlacement(
+    return this.browsers.createBrowser(
       ownerId,
       projectId,
-      "browser",
-      input.target,
+      input,
       isWorkerConnected,
     );
-    const position = await this.nextProjectTabPosition(projectId);
-    return this.database.transaction(async (transaction) => {
-      const browserId = input.id;
-      const result = await transaction
-        .insert(schema.browsers)
-        .values({
-          id: browserId,
-          projectId,
-          protectedLabel: input.titleProtection,
-          protectedState: input.stateProtection,
-          stateRevision: 1,
-          position,
-        })
-        .returning();
-      const browser = firstOrThrow(result, "creating a browser");
-      await transaction.insert(schema.remoteSurfaces).values({
-        id: browserId,
-        projectId,
-        workerId: placement.workerId,
-        kind: "browser",
-        preferredTransport: "webrtc",
-        configuration: {
-          kind: "browser",
-          profileId: null,
-        },
-      });
-      await attachProjectTab(transaction, {
-        projectId,
-        tabGroupId: input.tabGroupId,
-        tabId: browser.id,
-        tabKind: "browser",
-      });
-      return toBrowserWireSummary(browser, placement.workerId);
-    });
   }
 
   async updateBrowser(
@@ -4166,125 +4122,15 @@ export class ServerRepository {
     browserId: string,
     input: EncryptedBrowserUpdate,
   ): Promise<BrowserWireSummary | null> {
-    if (!(await this.browserIsOwnedBy(ownerId, browserId))) return null;
-    const surface = await this.getRemoteSurfaceExecutionContext(
-      ownerId,
-      browserId,
-    );
-    return this.database.transaction(async (transaction) => {
-      const result = await transaction
-        .update(schema.browsers)
-        .set({
-          ...(input.titleProtection
-            ? { protectedLabel: input.titleProtection }
-            : {}),
-          ...(input.stateProtection
-            ? {
-                protectedState: input.stateProtection,
-                stateRevision: input.expectedStateRevision! + 1,
-              }
-            : {}),
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(schema.browsers.id, browserId),
-            ...(input.expectedStateRevision === undefined
-              ? []
-              : [
-                  eq(
-                    schema.browsers.stateRevision,
-                    input.expectedStateRevision,
-                  ),
-                ]),
-          ),
-        )
-        .returning();
-      const browser = result[0];
-      if (!browser) {
-        if (input.expectedStateRevision === undefined) return null;
-        throw new SurfacePrivateStateConflictError(
-          "Browser private state changed before this update.",
-        );
-      }
-      await transaction
-        .update(schema.remoteSurfaces)
-        .set({ updatedAt: new Date() })
-        .where(eq(schema.remoteSurfaces.id, browserId));
-      return toBrowserWireSummary(browser, surface?.workerId ?? null);
-    });
+    return this.browsers.updateBrowser(ownerId, browserId, input);
   }
 
   async deleteBrowser(ownerId: string, browserId: string): Promise<boolean> {
-    const context = await this.getRemoteSurfaceExecutionContext(
-      ownerId,
-      browserId,
-    );
-    if (!context || context.surface.kind !== "browser") return false;
-    return this.database.transaction(async (transaction) => {
-      await detachProjectTab(
-        transaction,
-        context.surface.projectId,
-        projectTabKey("browser", browserId),
-      );
-      await transaction
-        .delete(schema.remoteSurfaces)
-        .where(eq(schema.remoteSurfaces.id, browserId));
-      const result = await transaction
-        .delete(schema.browsers)
-        .where(eq(schema.browsers.id, browserId))
-        .returning({ id: schema.browsers.id });
-      return result.length === 1;
-    });
+    return this.browsers.deleteBrowser(ownerId, browserId);
   }
 
   async ensureBrowserRemoteSurfaces(ownerId: string): Promise<void> {
-    const rows = await this.database
-      .select({
-        browser: schema.browsers,
-        surfaceId: schema.remoteSurfaces.id,
-      })
-      .from(schema.browsers)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.browsers.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .leftJoin(
-        schema.remoteSurfaces,
-        eq(schema.remoteSurfaces.id, schema.browsers.id),
-      )
-      .where(isNull(schema.remoteSurfaces.id));
-    if (rows.length === 0) return;
-    const values = (
-      await Promise.all(
-        rows.map(async ({ browser }) => ({
-          browser,
-          source: await this.getProjectSource(ownerId, browser.projectId),
-        })),
-      )
-    ).flatMap(({ browser, source }) =>
-      source ? [{ browser, workerId: source.workerId }] : [],
-    );
-    if (values.length === 0) return;
-    await this.database
-      .insert(schema.remoteSurfaces)
-      .values(
-        values.map(({ browser, workerId }) => ({
-          id: browser.id,
-          projectId: browser.projectId,
-          workerId,
-          kind: "browser",
-          preferredTransport: "webrtc",
-          configuration: {
-            kind: "browser" as const,
-            profileId: null,
-          },
-        })),
-      )
-      .onConflictDoNothing();
+    return this.browsers.ensureBrowserRemoteSurfaces(ownerId);
   }
 
   async listRemoteSurfaces(
@@ -4867,19 +4713,7 @@ export class ServerRepository {
     ownerId: string,
     browserId: string,
   ): Promise<boolean> {
-    const rows = await this.database
-      .select({ id: schema.browsers.id })
-      .from(schema.browsers)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.browsers.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.browsers.id, browserId))
-      .limit(1);
-    return rows.length === 1;
+    return this.browsers.browserIsOwnedBy(ownerId, browserId);
   }
 
   async deleteTerminal(
