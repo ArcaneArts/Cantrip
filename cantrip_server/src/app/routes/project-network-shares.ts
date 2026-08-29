@@ -1,4 +1,5 @@
 import {
+  PROJECT_SOURCE_UNAVAILABLE_CODE,
   PROJECT_SHARE_STATE_STALE_CODE,
   projectShareAttachmentWireSchema,
   projectShareTunnelCreateSchema,
@@ -14,7 +15,10 @@ import {
   type ProjectShareTunnelBroker,
 } from "../../project-shares/tunnel.js";
 import type { TunnelRuntimeManager } from "../../tunnels/runtime.js";
-import { WorkerUnavailableError } from "../../workers/bridge.js";
+import {
+  WorkerCommandError,
+  WorkerUnavailableError,
+} from "../../workers/bridge.js";
 
 export interface ProjectNetworkShareRouteDependencies {
   applicationOwnerId: () => string;
@@ -107,6 +111,15 @@ export function installProjectNetworkShareRoutes(
         if (error instanceof ProjectShareStateStaleError) {
           return reply.code(409).send({
             code: PROJECT_SHARE_STATE_STALE_CODE,
+            error: message,
+          });
+        }
+        if (
+          error instanceof WorkerCommandError &&
+          error.code === PROJECT_SOURCE_UNAVAILABLE_CODE
+        ) {
+          return reply.code(409).send({
+            code: PROJECT_SOURCE_UNAVAILABLE_CODE,
             error: message,
           });
         }
@@ -210,6 +223,15 @@ export function installProjectNetworkShareRoutes(
         if (error instanceof ProjectShareStateStaleError) {
           return reply.code(409).send({
             code: PROJECT_SHARE_STATE_STALE_CODE,
+            error: message,
+          });
+        }
+        if (
+          error instanceof WorkerCommandError &&
+          error.code === PROJECT_SOURCE_UNAVAILABLE_CODE
+        ) {
+          return reply.code(409).send({
+            code: PROJECT_SOURCE_UNAVAILABLE_CODE,
             error: message,
           });
         }
