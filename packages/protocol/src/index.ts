@@ -2115,295 +2115,6 @@ export type {
   ChatPlanAccepted,
 } from "./chat-runtime.js";
 
-export const githubWorkerRepositorySchema = githubRepositorySchema.omit({
-  imported: true,
-});
-
-export const githubWorkerRepositoryListSchema = z.array(
-  githubWorkerRepositorySchema,
-);
-
-export const projectCloneResultSchema = z.object({
-  path: z.string().min(1),
-  displayPath: z.string().min(1),
-  reused: z.boolean().default(false),
-  updated: z.boolean().default(false),
-  warning: z.string().min(1).nullable().default(null),
-  worktreePolicy: worktreePolicySchema.nullable().optional(),
-});
-
-export const managedFolderMaterializeReadySchema = z.object({
-  status: z.literal("ready"),
-  jobId: z.string().uuid(),
-  attempt: z.number().int().positive(),
-  path: z.string().min(1),
-  displayPath: z.string().min(1),
-  reused: z.boolean(),
-});
-
-export const managedFolderDeleteResultSchema = z.object({
-  deleted: z.boolean(),
-});
-
-export const projectFolderSetupJobStateSchema = z.enum([
-  "queued",
-  "running",
-  "blocked",
-  "succeeded",
-  "failed",
-]);
-
-export const projectFolderSetupJobErrorSchema = z.object({
-  code: z.enum([
-    "worker-offline",
-    "capability-missing",
-    "materialization-failed",
-  ]),
-  retryable: z.boolean(),
-});
-
-export const projectFolderSetupJobSummarySchema = z.object({
-  id: z.string().uuid(),
-  projectId: z.string().uuid(),
-  workerId: z.string().min(1),
-  state: projectFolderSetupJobStateSchema,
-  stateRevision: z.number().int().positive(),
-  attempt: z.number().int().nonnegative(),
-  error: projectFolderSetupJobErrorSchema.nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  startedAt: z.string().datetime().nullable(),
-  completedAt: z.string().datetime().nullable(),
-});
-
-export const projectFolderSetupRetrySchema = z.object({
-  stateRevision: z.number().int().positive(),
-});
-
-export const projectGithubConversionErrorSchema = z.object({
-  code: z.enum([
-    "worker-offline",
-    "capability-missing",
-    "project-not-ready",
-    "transition-active",
-    "repository-collision",
-    "github-auth-required",
-    "repository-unavailable",
-    "repository-not-empty",
-    "local-git-ambiguous",
-    "preflight-changed",
-    "initial-commit-required",
-    "git-initialization-failed",
-    "commit-failed",
-    "push-failed",
-    "reconciliation-failed",
-  ]),
-  message: z.string().min(1).max(4_000),
-  retryable: z.boolean(),
-});
-
-export const projectGithubConversionJobErrorSchema =
-  projectGithubConversionErrorSchema.omit({ message: true });
-
-const projectGithubConversionPreflightBaseSchema = z.object({
-  projectId: z.string().uuid(),
-  repository: projectGithubWireRepositorySchema,
-});
-
-export const projectGithubConversionPreflightReadySchema =
-  projectGithubConversionPreflightBaseSchema.extend({
-    status: z.literal("ready"),
-    confirmationToken: z.string().regex(/^[0-9a-f]{64}$/u),
-    localState: z.enum(["not-initialized", "unborn", "committed"]),
-    branch: z.string().min(1).max(255).nullable(),
-    head: gitObjectRevisionSchema.nullable(),
-    dirty: z.boolean(),
-    originUrl: z.string().min(1).max(8_192).nullable(),
-    requiresInitialCommit: z.boolean(),
-    warnings: z.array(z.string().min(1).max(1_000)).max(20),
-  });
-
-export const projectGithubConversionPreflightBlockedSchema =
-  projectGithubConversionPreflightBaseSchema.extend({
-    status: z.literal("blocked"),
-    error: projectGithubConversionErrorSchema,
-  });
-
-export const projectGithubConversionPreflightResultSchema =
-  z.discriminatedUnion("status", [
-    projectGithubConversionPreflightReadySchema,
-    projectGithubConversionPreflightBlockedSchema,
-  ]);
-
-export const projectGithubConversionPreflightRequestSchema = z.object({
-  repository: projectGithubConversionRepositorySchema,
-});
-
-export const encryptedProjectGithubConversionPreflightRequestSchema = z
-  .object({
-    repository: projectGithubRoutingRepositorySchema,
-    repositoryBlindIndex: encryptionKeyBytesSchema,
-  })
-  .strict();
-
-export const projectGithubConversionStartSchema = z.object({
-  repository: projectGithubConversionRepositorySchema,
-  confirmationToken:
-    projectGithubConversionPreflightReadySchema.shape.confirmationToken,
-  initialCommit: z
-    .object({
-      message: z.string().trim().min(1).max(1_000),
-    })
-    .nullable()
-    .default(null),
-});
-
-export const encryptedProjectGithubConversionStartSchema =
-  projectGithubConversionStartSchema
-    .omit({ repository: true, initialCommit: true })
-    .extend({
-      repository: projectGithubRoutingRepositorySchema,
-      repositoryBlindIndex: encryptionKeyBytesSchema,
-      initialCommit: z
-        .object({ message: repositoryRoutingHandleSchema })
-        .nullable(),
-    })
-    .strict();
-
-export const projectGithubConversionJobStateSchema = z.enum([
-  "queued",
-  "running",
-  "blocked",
-  "succeeded",
-  "failed",
-]);
-
-export const projectGithubConversionJobSummarySchema = z.object({
-  id: z.string().uuid(),
-  projectId: z.string().uuid(),
-  workerId: z.string().min(1),
-  repository: projectGithubWireRepositorySchema,
-  state: projectGithubConversionJobStateSchema,
-  stateRevision: z.number().int().positive(),
-  attempt: z.number().int().nonnegative(),
-  initialCommitRequested: z.boolean(),
-  error: projectGithubConversionJobErrorSchema.nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  startedAt: z.string().datetime().nullable(),
-  completedAt: z.string().datetime().nullable(),
-});
-
-export const projectGithubConversionRetrySchema = z.object({
-  stateRevision: z.number().int().positive(),
-});
-
-export const projectGithubConversionReadySchema = z.object({
-  status: z.literal("ready"),
-  jobId: z.string().uuid(),
-  attempt: z.number().int().positive(),
-  repository: projectGithubWireRepositorySchema,
-  path: z.string().min(1),
-  displayPath: z.string().min(1),
-  repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-  branch: z.string().min(1).max(255),
-  head: gitObjectRevisionSchema,
-  worktreePolicy: worktreePolicySchema,
-});
-
-export const projectGithubConversionBlockedSchema = z.object({
-  status: z.literal("blocked"),
-  jobId: z.string().uuid(),
-  attempt: z.number().int().positive(),
-  error: projectGithubConversionJobErrorSchema,
-});
-
-export const projectGithubConversionExecutionResultSchema =
-  z.discriminatedUnion("status", [
-    projectGithubConversionReadySchema,
-    projectGithubConversionBlockedSchema,
-  ]);
-
-export const projectReplicaProvisionBlockedSchema = z.object({
-  status: z.literal("blocked"),
-  jobId: z.string().uuid(),
-  attempt: z.number().int().positive(),
-  error: projectReplicaJobErrorSchema,
-});
-
-export const projectReplicaProvisionReadySchema = z.object({
-  status: z.literal("ready"),
-  jobId: z.string().uuid(),
-  attempt: z.number().int().positive(),
-  path: z.string().min(1),
-  displayPath: z.string().min(1),
-  repositoryFingerprint: z.string().min(1),
-  resolvedRevision: gitObjectRevisionSchema.nullable(),
-  branch: z.string().min(1).nullable(),
-  reused: z.boolean(),
-  placement: projectReplicaPlacementResultSchema.nullable().default(null),
-  worktreePolicy: worktreePolicySchema.nullable().optional(),
-});
-
-export const projectReplicaProvisionResultSchema = z.discriminatedUnion(
-  "status",
-  [projectReplicaProvisionBlockedSchema, projectReplicaProvisionReadySchema],
-);
-
-export const projectReplicaSynchronizeReadySchema = z.object({
-  status: z.literal("ready"),
-  jobId: z.string().uuid(),
-  attempt: z.number().int().positive(),
-  path: z.string().min(1),
-  previousRevision: gitObjectRevisionSchema,
-  resolvedRevision: gitObjectRevisionSchema,
-  branch: z.string().min(1).nullable(),
-  changed: z.boolean(),
-});
-
-export const projectReplicaSynchronizeResultSchema = z.discriminatedUnion(
-  "status",
-  [projectReplicaProvisionBlockedSchema, projectReplicaSynchronizeReadySchema],
-);
-
-export const projectReplicaRemoveReadySchema = z.object({
-  status: z.literal("removed"),
-  jobId: z.string().uuid(),
-  attempt: z.number().int().positive(),
-  path: z.string().min(1),
-  localFilesDeleted: z.boolean(),
-  linkRemoved: z.boolean().default(false),
-  ownershipReleased: z.boolean().default(false),
-  warning: z.string().min(1).max(1_000).nullable().default(null),
-});
-
-export const projectReplicaRemoveResultSchema = z.discriminatedUnion("status", [
-  projectReplicaProvisionBlockedSchema,
-  projectReplicaRemoveReadySchema,
-]);
-
-export const projectReplicaLinkRepairReadySchema = z.object({
-  status: z.literal("ready"),
-  projectId: z.string().uuid(),
-  path: z.string().min(1).max(8_192),
-  linkPath: z.string().min(1).max(8_192),
-  repaired: z.boolean(),
-});
-
-export const projectReplicaLinkRepairBlockedSchema = z.object({
-  status: z.literal("blocked"),
-  error: projectReplicaJobErrorSchema,
-});
-
-export const projectReplicaLinkRepairResultSchema = z.discriminatedUnion(
-  "status",
-  [projectReplicaLinkRepairReadySchema, projectReplicaLinkRepairBlockedSchema],
-);
-
-export const projectRemoveSchema = z.object({
-  deleteLocalFiles: z.boolean().default(false),
-});
-
 import {
   gitRelativePathSchema,
   gitComparisonModeSchema,
@@ -2720,1097 +2431,316 @@ export type {
   GitForcePushApply,
 } from "./git-actions.js";
 
-export const workerWorktreeSummarySchema = z.object({
-  path: z.string().min(1),
-  head: z.string().min(1).nullable(),
-  branch: z.string().min(1).nullable(),
-  detached: z.boolean(),
-  isPrimary: z.boolean(),
-  managed: z.boolean(),
-  locked: z.boolean(),
-  lockReason: z.string().min(1).nullable(),
-  prunable: z.boolean(),
-  pruneReason: z.string().min(1).nullable(),
-  missing: z.boolean(),
-});
-
-export const worktreeInventorySchema = z.object({
-  sourcePath: z.string().min(1),
-  primaryPath: z.string().min(1),
-  gitCommonDir: z.string().min(1),
-  managedRoot: z.string().min(1),
-  repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-  worktrees: z.array(workerWorktreeSummarySchema),
-});
-
-export const worktreeCreateModeSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("newBranch"),
-    branch: z.string().trim().min(1).max(255),
-    startPoint: z.string().trim().min(1).max(1_024).nullable().default(null),
-  }),
-  z.object({
-    type: z.literal("existingBranch"),
-    branch: z.string().trim().min(1).max(255),
-  }),
-  z.object({
-    type: z.literal("detached"),
-    revision: z.string().trim().min(1).max(1_024),
-  }),
-]);
-
-export const worktreeCreateResultSchema = z.object({
-  created: z.boolean(),
-  worktree: workerWorktreeSummarySchema,
-  inventory: worktreeInventorySchema,
-});
-
-export const worktreeCreateMutationOutcomeSchema = z.enum([
-  "notStarted",
-  "committed",
-  "rolledBack",
-  "partial",
-]);
-
-export const worktreeCreateMutationFailureSchema = z
-  .object({
-    code: z.enum([
-      "worktree-create-not-started",
-      "worktree-create-committed",
-      "worktree-create-rolled-back",
-      "worktree-create-partial",
-    ]),
-    error: z.string().min(1).max(2_000),
-    mutation: z
-      .object({
-        outcome: worktreeCreateMutationOutcomeSchema,
-        retryable: z.boolean(),
-        target: z
-          .object({
-            kind: z.literal("worktree"),
-            projectId: z.string().min(1).max(200),
-            worktreeId: z.string().min(1).max(200),
-          })
-          .strict()
-          .nullable(),
-      })
-      .strict(),
-  })
-  .strict()
-  .superRefine((failure, context) => {
-    const expectedCode = `worktree-create-${
-      failure.mutation.outcome === "notStarted"
-        ? "not-started"
-        : failure.mutation.outcome === "rolledBack"
-          ? "rolled-back"
-          : failure.mutation.outcome
-    }`;
-    if (failure.code !== expectedCode) {
-      context.addIssue({
-        code: "custom",
-        message: "Worktree mutation failure code must match its outcome.",
-        path: ["code"],
-      });
-    }
-    if (
-      (failure.mutation.outcome === "notStarted") !==
-      (failure.mutation.target === null)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Only a worktree mutation that did not start may omit its recovery target.",
-        path: ["mutation", "target"],
-      });
-    }
-  });
-
-export const worktreeMutationResultSchema = z.object({
-  worktree: workerWorktreeSummarySchema,
-  inventory: worktreeInventorySchema,
-});
-
-export const worktreeRemoveResultSchema = z.object({
-  removedPath: z.string().min(1),
-  inventory: worktreeInventorySchema,
-});
-
-export const worktreePruneResultSchema = z.object({
-  prunedPaths: z.array(z.string().min(1)),
-  inventory: worktreeInventorySchema,
-});
-
-export const worktreeStatusResultSchema = z.object({
-  worktree: workerWorktreeSummarySchema,
-  status: gitStatusSchema,
-});
-
-const cantripMcpWorkerWorktreeSummarySchema = workerWorktreeSummarySchema
-  .omit({ path: true })
-  .strict();
-const cantripMcpGitStatusSchema = gitStatusSchema.extend({
-  files: gitStatusSchema.shape.files.max(2_000),
-  branches: gitStatusSchema.shape.branches.max(500),
-});
-export const cantripMcpWorktreeStatusResultSchema =
-  cantripMcpReadResultBaseSchema.extend({
-    target: z
-      .object({
-        kind: z.literal("worktree"),
-        projectId: z.string().min(1).max(200),
-        worktreeId: z.string().min(1).max(200),
-      })
-      .strict(),
-    data: z
-      .object({
-        worktree: cantripMcpWorkerWorktreeSummarySchema,
-        status: cantripMcpGitStatusSchema,
-        filesTruncated: z.boolean(),
-        branchesTruncated: z.boolean(),
-      })
-      .strict(),
-  });
-
-export const worktreeObservationTargetSchema = z.object({
-  projectId: z.string().uuid().optional(),
-  worktreeId: z.string().min(1).max(200).optional(),
-  sourcePath: z.string().min(1).max(8_192),
-  worktreePath: z.string().min(1).max(8_192),
-  operation: z
-    .object({
-      id: z.string().uuid(),
-      context: gitManagedOperationContextSchema,
-    })
-    .strict()
-    .nullable()
-    .optional(),
-});
-
-export const worktreeObservationTargetsSchema = z
-  .array(worktreeObservationTargetSchema)
-  .max(128)
-  .superRefine((targets, context) => {
-    const keys = new Set<string>();
-    for (const [index, target] of targets.entries()) {
-      const key = `${target.sourcePath}\0${target.worktreePath}`;
-      if (keys.has(key)) {
-        context.addIssue({
-          code: "custom",
-          message: "Worktree observation targets must be unique.",
-          path: [index],
-        });
-      }
-      keys.add(key);
-    }
-  });
-
-export const codeGraphObservationTargetSchema = z.object({
-  projectId: z.string().uuid(),
-  worktreeId: z.string().min(1).max(200),
-  rootKind: projectRootKindSchema,
-  sourcePath: z.string().min(1).max(8_192),
-  worktreePath: z.string().min(1).max(8_192),
-});
-
-export const codeGraphObservationTargetsSchema = z
-  .array(codeGraphObservationTargetSchema)
-  .max(128)
-  .superRefine((targets, context) => {
-    const keys = new Set<string>();
-    for (const [index, target] of targets.entries()) {
-      const key = `${target.rootKind}\0${target.sourcePath}\0${target.worktreePath}`;
-      if (keys.has(key)) {
-        context.addIssue({
-          code: "custom",
-          message: "CodeGraph observation targets must be unique.",
-          path: [index],
-        });
-      }
-      keys.add(key);
-    }
-  });
-
-export const projectWorktreeCreateSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  mode: worktreeCreateModeSchema,
-});
-
-export const projectWorktreeLockSchema = z.object({
-  reason: z.string().trim().min(1).max(1_000).nullable().default(null),
-});
-
-export const projectWorktreeRemoveSchema = z.object({
-  force: z.boolean().default(false),
-  allowExternal: z.boolean().default(false),
-});
-
-export const projectWorktreePruneSchema = z.object({
-  allowExternal: z.boolean().default(false),
-});
-
-export const projectWorktreePolicyUpdateSchema = z.object({
-  policy: worktreePolicySchema,
-});
-
-export const chatWorktreeUpdateSchema = z.object({
-  worktreeId: z.string().min(1),
-  mode: z.enum(["agent-managed", "pinned"]),
-});
-
-export const worktreeSelectionSchema = z.object({
-  worktreeId: z.string().min(1),
-});
-
-export const agentTurnResultSchema = z.object({
-  threadId: z.string().min(1),
-  turnId: z.string().min(1).optional(),
-  text: z.string(),
-  structuredResult: z.unknown().optional(),
-  measuredUsage: agentTokenUsageSchema.nullable().optional(),
-  status: z.literal("completed"),
-});
-
-export const agentTurnResultModeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("visible") }),
-  z.object({
-    kind: z.literal("structured"),
-    outputSchema: workflowJsonObjectSchema,
-  }),
-  z.object({
-    kind: z.literal("task-encrypted"),
-    operation: taskOperationRelayRequestSchema,
-  }),
-  z.object({
-    kind: z.literal("task-message-encrypted"),
-    messageId: z.string().uuid(),
-    idempotencyKey: z.string().min(1).max(200),
-  }),
-  z.object({
-    kind: z.literal("chat-message-encrypted"),
-    messageId: z.string().uuid(),
-    idempotencyKey: z.string().min(1).max(200),
-  }),
-]);
-
-export const chatMessageRelayResultSchema = z
-  .object({
-    message: chatMessageOpaqueContentSchema.nullable(),
-  })
-  .strict();
-
-export const normalizedAgentMessageSchema = z.object({
-  id: z.string().min(1),
-  text: z.string().min(1),
-  phase: agentMessagePhaseSchema.nullable(),
-  streaming: z.boolean().optional(),
-  correlation: codexEventCorrelationSchema.nullable().optional(),
-  agentScope: agentScopeSchema.optional(),
-});
-
-export const agentThreadSyncItemSchema = z.discriminatedUnion("type", [
-  z
-    .object({
-      type: z.literal("userMessage"),
-      id: z.string().min(1),
-      text: z.string(),
-      externalAttachmentIds: z.array(z.string().uuid()).max(20).default([]),
-    })
-    .refine(
-      (item) =>
-        item.text.trim().length > 0 || item.externalAttachmentIds.length > 0,
-      { message: "User messages require text or an external attachment." },
-    ),
-  z.object({
-    type: z.literal("agentMessage"),
-    ...normalizedAgentMessageSchema.shape,
-  }),
-  z.object({
-    type: z.literal("activity"),
-    activity: agentActivitySchema,
-  }),
-]);
-
-export const agentThreadSyncSchema = z.object({
-  threadId: z.string().min(1),
-  status: z.enum(["idle", "running", "failed"]),
-  turns: z.array(
-    z.object({
-      id: z.string().min(1),
-      status: z.enum(["completed", "failed", "interrupted", "inProgress"]),
-      startedAt: z.number().int().nonnegative().nullable(),
-      completedAt: z.number().int().nonnegative().nullable(),
-      durationMs: z.number().int().nonnegative().nullable(),
-      items: z.array(agentThreadSyncItemSchema),
-    }),
-  ),
-});
-
-export const externalChatSourceKindSchema = z.enum(["chatgpt-codex"]);
-
-export const externalChatSourceAvailabilitySchema = z.enum([
-  "available",
-  "unavailable",
-  "incompatible",
-]);
-
-export const externalChatThreadStatusSchema = z.enum([
-  "not-loaded",
-  "idle",
-  "system-error",
-]);
-
-export const chatImportStateSchema = z.enum([
-  "queued",
-  "reading",
-  "importing",
-  "awaiting-hydration",
-  "hydrating",
-  "succeeded",
-  "blocked",
-  "failed",
-  "cancelled",
-]);
-
-export const externalChatImportReferenceSchema = z.object({
-  jobId: z.string().uuid(),
-  projectId: z.string().min(1).max(200),
-  chatId: z.string().min(1).max(200).nullable(),
-  state: chatImportStateSchema,
-});
-
-export const externalChatThreadMatchSchema = z.object({
-  kind: z.enum(["worktree-path", "replica-path", "git-origin"]),
-  projectReplicaId: z.string().min(1).max(200),
-  worktreeId: z.string().min(1).max(200).nullable(),
-});
-
-export const externalChatThreadMetadataSchema = z.object({
-  sourceThreadId: z.string().min(1).max(200),
-  title: z.string().min(1).max(500),
-  preview: z.string().max(2_000),
-  cwd: z.string().min(1).max(8_192),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  archived: z.boolean(),
-  source: z.enum(["cli", "vscode"]),
-  status: externalChatThreadStatusSchema,
-  modelProvider: z.string().min(1).max(200),
-  cliVersion: z.string().max(100).nullable(),
-  git: z
-    .object({
-      branch: z.string().max(1_000).nullable(),
-      sha: z.string().max(200).nullable(),
-      originUrl: z.string().max(4_000).nullable(),
-    })
-    .nullable(),
-  match: externalChatThreadMatchSchema,
-  existingImport: externalChatImportReferenceSchema.nullable().default(null),
-});
-
-export const externalChatSourceSchema = z.object({
-  kind: externalChatSourceKindSchema,
-  sourceId: z.string().regex(/^[0-9a-f]{64}$/u),
-  name: z.string().min(1).max(200),
-  platform: z.enum(["darwin", "win32"]),
-  homeLabel: z.string().min(1).max(500),
-  availability: externalChatSourceAvailabilitySchema,
-  message: z.string().min(1).max(2_000).nullable(),
-  runtimeVersion: z.string().max(100).nullable(),
-  threads: z.array(externalChatThreadMetadataSchema).max(5_000),
-  truncated: z.boolean(),
-});
-
-export const externalChatDiscoveryWorkerStatusSchema = z.enum([
-  "ok",
-  "offline",
-  "unsupported",
-  "timed-out",
-  "error",
-]);
-
-export const externalChatDiscoveryWorkerSchema = z.object({
-  workerId: z.string().min(1).max(200),
-  workerName: z.string().min(1).max(200),
-  platform: z.string().min(1).max(100),
-  status: externalChatDiscoveryWorkerStatusSchema,
-  sources: z.array(externalChatSourceSchema).max(8),
-  error: z
-    .object({
-      code: z.enum([
-        "worker-offline",
-        "capability-missing",
-        "worker-timeout",
-        "worker-error",
-      ]),
-      message: z.string().min(1).max(2_000),
-    })
-    .nullable(),
-});
-
-export const projectExternalChatDiscoverySchema = z.object({
-  projectId: z.string().min(1).max(200),
-  observedAt: z.string().datetime(),
-  partial: z.boolean(),
-  truncated: z.boolean(),
-  workers: z.array(externalChatDiscoveryWorkerSchema).max(64),
-});
-
-export const externalChatDiscoveryTargetSchema = z.object({
-  projectReplicaId: z.string().min(1).max(200),
-  path: z.string().min(1).max(8_192),
-  repositoryFingerprint: z.string().min(1).max(500).nullable(),
-  worktrees: z
-    .array(
-      z.object({
-        worktreeId: z.string().min(1).max(200),
-        path: z.string().min(1).max(8_192),
-        isPrimary: z.boolean(),
-      }),
-    )
-    .max(512),
-});
-
-export const externalChatDiscoveryWorkerResultSchema = z.object({
-  sources: z.array(externalChatSourceSchema).max(8),
-  truncated: z.boolean(),
-});
-
-export const externalChatTranscriptMetadataSchema =
-  externalChatThreadMetadataSchema.omit({
-    archived: true,
-    existingImport: true,
-    title: true,
-  });
-
-export const externalChatAttachmentSchema = z
-  .object({
-    id: z.string().uuid(),
-    sourceAttachmentId: z.string().regex(/^[0-9a-f]{64}$/u),
-    itemId: z.string().min(1).max(500),
-    sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
-    status: z.enum(["available", "missing", "unsafe", "unsupported"]),
-    protectedMetadata: attachmentProtectedMetadataSchema,
-  })
-  .superRefine((attachment, context) => {
-    if (attachment.status === "available" && attachment.sizeBytes === 0) {
-      context.addIssue({
-        code: "custom",
-        message: "Available external attachments cannot be empty.",
-        path: ["sizeBytes"],
-      });
-    }
-  });
-
-export const externalChatTranscriptSchema = z
-  .object({
-    sourceId: externalChatSourceSchema.shape.sourceId,
-    sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
-    metadata: externalChatTranscriptMetadataSchema,
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    sync: agentThreadSyncSchema,
-    attachments: z.array(externalChatAttachmentSchema).max(20).default([]),
-  })
-  .superRefine((transcript, context) => {
-    if (transcript.titleProtection.classification.recordKind !== "chat") {
-      context.addIssue({
-        code: "custom",
-        message: "Imported title classification must be chat.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-    const descriptors = new Map(
-      transcript.attachments.map((attachment) => [attachment.id, attachment]),
-    );
-    if (descriptors.size !== transcript.attachments.length) {
-      context.addIssue({
-        code: "custom",
-        message: "External attachment ids must be unique.",
-        path: ["attachments"],
-      });
-    }
-    const references = new Map<string, string>();
-    for (const [turnIndex, turn] of transcript.sync.turns.entries()) {
-      for (const [itemIndex, item] of turn.items.entries()) {
-        if (item.type !== "userMessage") continue;
-        for (const attachmentId of item.externalAttachmentIds) {
-          if (references.has(attachmentId)) {
-            context.addIssue({
-              code: "custom",
-              message: "An external attachment may be referenced only once.",
-              path: [
-                "sync",
-                "turns",
-                turnIndex,
-                "items",
-                itemIndex,
-                "externalAttachmentIds",
-              ],
-            });
-          }
-          references.set(attachmentId, item.id);
-        }
-      }
-    }
-    for (const [
-      attachmentIndex,
-      attachment,
-    ] of transcript.attachments.entries()) {
-      if (references.get(attachment.id) !== attachment.itemId) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Every external attachment must reference its originating user message.",
-          path: ["attachments", attachmentIndex, "itemId"],
-        });
-      }
-    }
-    for (const attachmentId of references.keys()) {
-      if (!descriptors.has(attachmentId)) {
-        context.addIssue({
-          code: "custom",
-          message: "External attachment references require a descriptor.",
-          path: ["sync"],
-        });
-      }
-    }
-  });
-
-export const externalChatReadWorkerResultSchema = z.object({
-  transcript: externalChatTranscriptSchema,
-});
-
-export const externalChatAttachmentReadResultSchema = z.discriminatedUnion(
-  "status",
-  [
-    z.object({
-      status: z.literal("available"),
-      chunk: attachmentChunkOpaqueSchema,
-      sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
-    }),
-    z.object({
-      status: z.literal("unavailable"),
-      reasonCode: z.enum(["missing", "changed", "invalid"]),
-    }),
-  ],
-);
-
-export const chatImportErrorSchema = z.object({
-  code: z.enum([
-    "worker-offline",
-    "capability-missing",
-    "source-not-found",
-    "source-changed",
-    "project-mismatch",
-    "runtime-incompatible",
-    "target-not-found",
-    "stale-attempt",
-    "worker-error",
-  ]),
-  message: z.string().min(1).max(2_000),
-  retryable: z.boolean(),
-});
-
-export const chatImportJobErrorSchema = chatImportErrorSchema.omit({
-  message: true,
-});
-
-export const chatImportProgressStageSchema = z.enum([
-  "queued",
-  "reading",
-  "importing",
-  "awaiting-hydration",
-  "hydrating",
-  "blocked",
-  "failed",
-  "succeeded",
-]);
-
-export const chatImportProgressSchema = z.object({
-  stage: chatImportProgressStageSchema,
-  percent: z.number().int().min(0).max(100),
-  updatedAt: z.string().datetime(),
-});
-
-export const chatImportJobSummarySchema = z.object({
-  id: z.string().uuid(),
-  projectId: z.string().min(1).max(200),
-  chatId: z.string().min(1).max(200).nullable(),
-  sourceKind: externalChatSourceKindSchema,
-  sourceWorkerId: z.string().min(1).max(200),
-  sourceId: externalChatSourceSchema.shape.sourceId,
-  sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
-  targetPlacement: executionPlacementSchema,
-  managedThreadId: z.string().min(1).max(500).nullable(),
-  targetModelRouteId: z.string().min(1).max(200).nullable(),
-  targetProviderAccountId: z.string().min(1).max(200).nullable(),
-  state: chatImportStateSchema,
-  stateRevision: z.number().int().positive(),
-  idempotencyKey: z.string().min(1).max(200),
-  attempt: z.number().int().nonnegative(),
-  progress: chatImportProgressSchema,
-  error: chatImportJobErrorSchema.nullable(),
-  sourceMetadata: externalChatTranscriptMetadataSchema.nullable(),
-  attachmentCount: z.number().int().nonnegative(),
-  attachmentWarningCount: z.number().int().nonnegative(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  startedAt: z.string().datetime().nullable(),
-  completedAt: z.string().datetime().nullable(),
-});
-
-export const chatImportJobListSchema = z
-  .array(chatImportJobSummarySchema)
-  .max(1_000);
-
-export const chatImportSelectionSchema = z.object({
-  sourceKind: externalChatSourceKindSchema,
-  sourceWorkerId: z.string().min(1).max(200),
-  sourceId: externalChatSourceSchema.shape.sourceId,
-  sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
-  idempotencyKey: z.string().min(1).max(200),
-  target: executionTargetSchema.optional(),
-  modelId: z.string().min(1).max(200).nullable().default(null),
-  modelRouteId: z.string().min(1).max(200).nullable().default(null),
-  providerAccountId: z.string().min(1).max(200).nullable().default(null),
-  permissionProfileId: z.string().min(1).max(200).nullable().default(null),
-  planMode: planModeSchema.default("default"),
-});
-
-export const chatImportCreateSchema = z.object({
-  imports: z.array(chatImportSelectionSchema).min(1).max(50),
-});
-
-export const chatImportJobRetrySchema = z.object({
-  stateRevision: z.number().int().positive(),
-});
-
-export const PROJECT_EXPORT_MAX_CHATS = 20;
-
-export const projectExportTargetSchema = z
-  .object({
-    kind: z.literal("codex-local"),
-  })
-  .strict();
-
-export const projectExportMappingSchema = z
-  .object({
-    id: z.string().min(1).max(100),
-    label: z.string().min(1).max(200),
-    description: z.string().min(1).max(1_000),
-  })
-  .strict();
-
-export const projectExportPreviewRequestSchema = z
-  .object({
-    target: projectExportTargetSchema,
-    worktreeId: z.string().min(1).max(200),
-  })
-  .strict();
-
-export const projectExportTargetInspectionSchema = z
-  .object({
-    target: projectExportTargetSchema,
-    available: z.boolean(),
-    destinationLabel: z.string().min(1).max(500).nullable(),
-    message: z.string().min(1).max(2_000).nullable(),
-    platform: z.string().min(1).max(100),
-  })
-  .strict();
-
-export const projectExportPreviewSchema = z
-  .object({
-    target: projectExportTargetSchema,
-    targetLabel: z.string().min(1).max(200),
-    available: z.boolean(),
-    destinationLabel: z.string().min(1).max(500).nullable(),
-    message: z.string().min(1).max(2_000).nullable(),
-    worker: z
-      .object({
-        workerId: z.string().min(1).max(200),
-        name: z.string().min(1).max(200),
-        platform: z.string().min(1).max(100),
-      })
-      .strict(),
-    worktree: z
-      .object({
-        worktreeId: z.string().min(1).max(200),
-        name: z.string().min(1).max(500),
-        displayPath: z.string().min(1).max(8_192),
-      })
-      .strict(),
-    maxChats: z.number().int().min(1).max(PROJECT_EXPORT_MAX_CHATS),
-    supportedChatExperiences: z.array(z.enum(["agent", "task"])).max(2),
-    preserves: z.array(projectExportMappingSchema).max(32),
-    flattens: z.array(projectExportMappingSchema).max(32),
-  })
-  .strict();
-
-export const projectExportCreateSchema = z
-  .object({
-    operationId: z.string().uuid(),
-    target: projectExportTargetSchema,
-    worktreeId: z.string().min(1).max(200),
-    chatIds: z
-      .array(z.string().min(1).max(200))
-      .min(1)
-      .max(PROJECT_EXPORT_MAX_CHATS),
-  })
-  .strict()
-  .refine((input) => new Set(input.chatIds).size === input.chatIds.length, {
-    message: "Project export chat ids must be unique.",
-    path: ["chatIds"],
-  });
-
-export const projectExportChatResultSchema = z
-  .object({
-    chatId: z.string().min(1).max(200),
-    threadId: z.string().min(1).max(500),
-    destinationLabel: z.string().min(1).max(500),
-    messageCount: z.number().int().nonnegative(),
-    reused: z.boolean(),
-  })
-  .strict();
-
-export const projectExportItemOutcomeSchema = z.discriminatedUnion("status", [
-  projectExportChatResultSchema.extend({ status: z.literal("exported") }),
-  z
-    .object({
-      status: z.literal("failed"),
-      chatId: z.string().min(1).max(200),
-      code: z.enum([
-        "target-unavailable",
-        "encryption-unavailable",
-        "runtime-incompatible",
-        "worker-error",
-      ]),
-      message: z.string().min(1).max(2_000),
-    })
-    .strict(),
-]);
-
-export const projectExportResultSchema = z
-  .object({
-    operationId: z.string().uuid(),
-    target: projectExportTargetSchema,
-    workerId: z.string().min(1).max(200),
-    worktreeId: z.string().min(1).max(200),
-    outcomes: z
-      .array(projectExportItemOutcomeSchema)
-      .min(1)
-      .max(PROJECT_EXPORT_MAX_CHATS),
-  })
-  .strict();
-
-export const projectExportChatBeginResultSchema = z.discriminatedUnion(
-  "status",
-  [
-    z.object({ status: z.literal("upload") }).strict(),
-    projectExportChatResultSchema
-      .omit({ reused: true })
-      .extend({ status: z.literal("exported"), reused: z.literal(true) })
-      .strict(),
-  ],
-);
-
-const workerRuntimeModelSchema = z.object({
-  id: z.string().min(1),
-  routeId: z.string().min(1),
-  name: z.string().min(1),
-  reasoningEffort: reasoningEffortSchema.nullable(),
-  catalog: providerModelCatalogEntrySchema
-    .pick({
-      nativeModelId: true,
-      displayName: true,
-      description: true,
-      contextWindow: true,
-      maxOutputTokens: true,
-      inputModalities: true,
-      outputModalities: true,
-      supportsTools: true,
-      supportsParallelTools: true,
-      supportsStructuredOutput: true,
-      supportsVision: true,
-      supportsReasoning: true,
-      supportedReasoningEfforts: true,
-      defaultReasoningEffort: true,
-      reasoningMandatory: true,
-      metadataSource: true,
-    })
-    .nullable()
-    .optional(),
-});
-
-const workerRuntimeProviderSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  kind: modelProviderKindSchema,
-  baseUrl: z.url(),
-  protectedApiKey: protectedSecretEnvelopeSchema.nullable().default(null),
-  accountId: z.string().min(1).nullable().default(null),
-  credentialHomeKey: z.string().min(1).max(500).nullable().default(null),
-});
-
-export const workerChatAttachmentSchema = chatAttachmentOpaqueSummarySchema;
-
-export const workerAttachmentUploadResultSchema = z.object({
-  sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
-  verified: z.literal(true),
-});
-
-export const workerAttachmentReadResultSchema = z.object({
-  chunk: attachmentChunkOpaqueSchema,
-  sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
-});
-
-export const workerProjectShareDescriptorSchema = z
-  .object({
-    shareId: z.string().min(1).max(200),
-    protocol: z.literal("webdav"),
-    publicBasePath: projectSharePublicBasePathSchema,
-    publicOrigin: projectSharePublicOriginSchema,
-    loopbackHost: z.literal("127.0.0.1"),
-    loopbackPort: z.number().int().min(1).max(65_535),
-    username: z.string().min(1).max(128),
-    password: z.string().min(24).max(256),
-    realm: z.string().min(1).max(200),
-  })
-  .strict();
-
-export const workerProjectShareOpenResultSchema = z
-  .object({
-    accepted: z.literal(true),
-    shareId: z.string().min(1).max(200),
-  })
-  .strict();
-
-export const ollamaModelInventoryItemSchema = z.object({
-  name: z.string().trim().min(1).max(500),
-  modifiedAt: z.string().datetime().nullable(),
-  sizeBytes: z.number().int().nonnegative().nullable(),
-  digest: z.string().trim().min(1).max(500).nullable(),
-  family: z.string().trim().min(1).max(500).nullable(),
-  families: z.array(z.string().trim().min(1).max(500)).max(32),
-  parameterSize: z.string().trim().min(1).max(100).nullable(),
-  quantization: z.string().trim().min(1).max(100).nullable(),
-  capabilities: z.array(z.string().trim().min(1).max(100)).max(64),
-  modelInfo: z.record(z.string(), z.unknown()),
-});
-
-export const ollamaModelInventorySchema = z.object({
-  models: z.array(ollamaModelInventoryItemSchema).max(1_000),
-  observedAt: z.string().datetime(),
-});
-
-export const chatGptModelInventoryItemSchema = z.object({
-  id: z.string().trim().min(1).max(500),
-  model: z.string().trim().min(1).max(500),
-  displayName: z.string().trim().min(1).max(500),
-  description: z.string().max(20_000),
-  hidden: z.boolean(),
-  isDefault: z.boolean(),
-  inputModalities: z.array(z.string().trim().min(1).max(80)).max(32),
-  supportedReasoningEfforts: z
-    .array(
-      z.object({
-        reasoningEffort: reasoningEffortSchema,
-        description: z.string().max(500),
-      }),
-    )
-    .max(32),
-  defaultReasoningEffort: reasoningEffortSchema,
-  modelSpecialty: z.string().max(500).nullable(),
-  supportsPersonality: z.boolean(),
-  upgrade: z.string().max(500).nullable(),
-  upgradeInfo: z.record(z.string(), z.unknown()).nullable(),
-  availabilityNux: z.record(z.string(), z.unknown()).nullable(),
-  additionalSpeedTiers: z.array(z.string().max(100)).max(32),
-  serviceTiers: z
-    .array(
-      z.object({
-        id: z.string().max(100),
-        name: z.string().max(200),
-        description: z.string().max(2_000),
-      }),
-    )
-    .max(32),
-  defaultServiceTier: z.string().max(100).nullable(),
-});
-
-export const providerQuotaWindowObservationSchema = z.object({
-  limitId: z.string().max(500).nullable(),
-  limitName: z.string().max(500).nullable(),
-  planType: z.string().max(500).nullable(),
-  reachedType: z.string().max(500).nullable(),
-  windowKind: z.enum(["primary", "secondary"]),
-  usedPercent: z.number().min(0).max(100),
-  windowDurationMinutes: z.number().int().nonnegative().nullable(),
-  resetsAt: z.number().int().nonnegative().nullable(),
-  isWeeklyProjection: z.boolean(),
-  rawPayload: z.record(z.string(), z.unknown()).default({}),
-});
-
-export const providerRateLimitResetCreditSchema = z.object({
-  id: z.string().trim().min(1).max(1_000),
-  resetType: z.enum(["codexRateLimits", "unknown"]),
-  status: z.enum(["available", "redeeming", "redeemed", "unknown"]),
-  grantedAt: z.number().int().nonnegative(),
-  expiresAt: z.number().int().nonnegative().nullable(),
-  title: z.string().max(1_000).nullable(),
-  description: z.string().max(4_000).nullable(),
-});
-
-export const providerRateLimitResetCreditsSummarySchema = z.object({
-  availableCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  credits: z.array(providerRateLimitResetCreditSchema).max(100).nullable(),
-});
-
-export const providerRateLimitResetConsumeOutcomeSchema = z.enum([
-  "reset",
-  "nothingToReset",
-  "noCredit",
-  "alreadyRedeemed",
-]);
-
-export const providerRateLimitResetConsumeInputSchema = z
-  .object({
-    idempotencyKey: z.string().uuid(),
-    creditId: z.string().trim().min(1).max(1_000).nullable().optional(),
-  })
-  .strict();
-
-export const providerRateLimitResetConsumeRequestSchema =
-  providerRateLimitResetConsumeInputSchema
-    .extend({ workerId: z.string().min(1).max(500) })
-    .strict();
-
-export const providerQuotaSnapshotSchema = z.object({
-  snapshotId: z.string().min(1).max(200),
-  observedAt: z.string().datetime(),
-  workerVersion: z.string().max(200).nullable(),
-  codexVersion: z.string().max(500).nullable(),
-  windows: z.array(providerQuotaWindowObservationSchema).max(500),
-  rateLimitResetCredits: providerRateLimitResetCreditsSummarySchema
-    .nullable()
-    .default(null),
-});
-
-export const providerRateLimitResetConsumeResultSchema = z.object({
-  outcome: providerRateLimitResetConsumeOutcomeSchema,
-  quotaSnapshot: providerQuotaSnapshotSchema.nullable(),
-});
-
-export const chatGptModelInventorySchema = z.object({
-  models: z.array(chatGptModelInventoryItemSchema).max(1_000),
-  observedAt: z.string().datetime(),
-  weeklyUsage: providerWeeklyUsageSchema.nullable().default(null),
-  quotaSnapshot: providerQuotaSnapshotSchema.nullable().default(null),
-});
-
-export const grokModelInventoryItemSchema = z.object({
-  id: z.string().trim().min(1).max(500),
-  displayName: z.string().trim().min(1).max(500),
-  description: z.string().max(20_000).nullable(),
-  contextWindow: z.number().int().positive().nullable(),
-  maxOutputTokens: z.number().int().positive().nullable(),
-  inputModalities: z.array(z.string().trim().min(1).max(80)).max(32),
-  outputModalities: z.array(z.string().trim().min(1).max(80)).max(32),
-  supportedReasoningEfforts: z.array(modelReasoningEffortOptionSchema).max(32),
-  defaultReasoningEffort: reasoningEffortSchema.nullable(),
-  supportsReasoning: z.boolean(),
-  hidden: z.boolean(),
-  isDefault: z.boolean(),
-  rawMetadata: z.record(z.string(), z.unknown()),
-});
-
-export const grokModelInventorySchema = z.object({
-  models: z.array(grokModelInventoryItemSchema).max(1_000),
-  observedAt: z.string().datetime(),
-  weeklyUsage: providerWeeklyUsageSchema.nullable().default(null),
-  quotaSnapshot: providerQuotaSnapshotSchema.nullable().default(null),
-});
-
-export const serviceLogLevelSchema = z.enum([
-  "trace",
-  "debug",
-  "info",
-  "warn",
-  "error",
-  "fatal",
-]);
-
-export const serviceLogRecordSchema = z.object({
-  cursor: z.number().int().positive(),
-  timestamp: z.string().datetime(),
-  system: z.string().trim().min(1).max(100),
-  level: serviceLogLevelSchema,
-  message: z.string().max(16_384),
-  context: z.unknown().optional(),
-});
-
-export const serviceLogReadResultSchema = z.object({
-  records: z.array(serviceLogRecordSchema).max(500),
-  nextCursor: z.number().int().nonnegative(),
-  oldestCursor: z.number().int().positive().nullable(),
-  latestCursor: z.number().int().nonnegative(),
-  hasMore: z.boolean(),
-  truncated: z.boolean(),
-});
-
-export const workerLogStreamSubscriptionIdSchema = z.string().uuid();
-
-export const workerLogStreamBatchSchema = z
-  .object({
-    records: z.array(serviceLogRecordSchema).max(200),
-    nextCursor: z.number().int().nonnegative(),
-    oldestCursor: z.number().int().positive().nullable(),
-    latestCursor: z.number().int().nonnegative(),
-    truncated: z.boolean(),
-  })
-  .strict();
-
-export const workerLogStreamStartResultSchema = z
-  .object({
-    accepted: z.literal(true),
-    latestCursor: z.number().int().nonnegative(),
-  })
-  .strict();
-
-export const workerLogStreamRenewResultSchema = z
-  .object({ accepted: z.literal(true) })
-  .strict();
-
-export const workerLogStreamServerMessageSchema = z.discriminatedUnion("type", [
-  z
-    .object({
-      type: z.literal("ready"),
-      subscriptionId: workerLogStreamSubscriptionIdSchema,
-      nextCursor: z.number().int().nonnegative(),
-    })
-    .strict(),
-  workerLogStreamBatchSchema.extend({ type: z.literal("batch") }).strict(),
-  z
-    .object({
-      type: z.literal("error"),
-      code: z.enum([
-        "authorization-failed",
-        "invalid-request",
-        "worker-offline",
-        "stream-unavailable",
-      ]),
-      message: z.string().min(1).max(500),
-      retryable: z.boolean(),
-    })
-    .strict(),
-]);
-
-export const workerLogReadQuerySchema = z
-  .object({
-    afterCursor: z.coerce.number().int().nonnegative().default(0),
-    beforeCursor: z.coerce.number().int().positive().optional(),
-    limit: z.coerce.number().int().min(1).max(500).default(200),
-    minimumLevel: serviceLogLevelSchema.default("trace"),
-  })
-  .strict();
+import {
+  projectGithubConversionPreflightReadySchema,
+  projectGithubConversionStartSchema,
+} from "./project-provisioning.js";
+
+export {
+  githubWorkerRepositorySchema,
+  githubWorkerRepositoryListSchema,
+  projectCloneResultSchema,
+  managedFolderMaterializeReadySchema,
+  managedFolderDeleteResultSchema,
+  projectFolderSetupJobStateSchema,
+  projectFolderSetupJobErrorSchema,
+  projectFolderSetupJobSummarySchema,
+  projectFolderSetupRetrySchema,
+  projectGithubConversionErrorSchema,
+  projectGithubConversionJobErrorSchema,
+  projectGithubConversionPreflightReadySchema,
+  projectGithubConversionPreflightBlockedSchema,
+  projectGithubConversionPreflightResultSchema,
+  projectGithubConversionPreflightRequestSchema,
+  encryptedProjectGithubConversionPreflightRequestSchema,
+  projectGithubConversionStartSchema,
+  encryptedProjectGithubConversionStartSchema,
+  projectGithubConversionJobStateSchema,
+  projectGithubConversionJobSummarySchema,
+  projectGithubConversionRetrySchema,
+  projectGithubConversionReadySchema,
+  projectGithubConversionBlockedSchema,
+  projectGithubConversionExecutionResultSchema,
+  projectReplicaProvisionBlockedSchema,
+  projectReplicaProvisionReadySchema,
+  projectReplicaProvisionResultSchema,
+  projectReplicaSynchronizeReadySchema,
+  projectReplicaSynchronizeResultSchema,
+  projectReplicaRemoveReadySchema,
+  projectReplicaRemoveResultSchema,
+  projectReplicaLinkRepairReadySchema,
+  projectReplicaLinkRepairBlockedSchema,
+  projectReplicaLinkRepairResultSchema,
+  projectRemoveSchema,
+} from "./project-provisioning.js";
+
+export type {
+  GithubWorkerRepository,
+  ProjectCloneResult,
+  ManagedFolderMaterializeReady,
+  ManagedFolderDeleteResult,
+  ProjectFolderSetupJobState,
+  ProjectFolderSetupJobError,
+  ProjectFolderSetupJobSummary,
+  ProjectGithubConversionError,
+  ProjectGithubConversionJobError,
+  ProjectGithubConversionPreflightResult,
+  ProjectGithubConversionPreflightReady,
+  ProjectGithubConversionPreflightRequest,
+  EncryptedProjectGithubConversionPreflightRequest,
+  ProjectGithubConversionStart,
+  EncryptedProjectGithubConversionStart,
+  ProjectGithubConversionJobState,
+  ProjectGithubConversionJobSummary,
+  ProjectGithubConversionReady,
+  ProjectGithubConversionExecutionResult,
+  ProjectReplicaProvisionResult,
+  ProjectReplicaSynchronizeResult,
+  ProjectReplicaRemoveResult,
+  ProjectReplicaLinkRepairResult,
+  ProjectRemove,
+} from "./project-provisioning.js";
+
+import {
+  worktreeInventorySchema,
+  worktreeCreateModeSchema,
+  worktreeStatusResultSchema,
+  worktreeObservationTargetSchema,
+  worktreeObservationTargetsSchema,
+  codeGraphObservationTargetsSchema,
+} from "./worker-worktrees.js";
+
+export {
+  workerWorktreeSummarySchema,
+  worktreeInventorySchema,
+  worktreeCreateModeSchema,
+  worktreeCreateResultSchema,
+  worktreeCreateMutationOutcomeSchema,
+  worktreeCreateMutationFailureSchema,
+  worktreeMutationResultSchema,
+  worktreeRemoveResultSchema,
+  worktreePruneResultSchema,
+  worktreeStatusResultSchema,
+  cantripMcpWorktreeStatusResultSchema,
+  worktreeObservationTargetSchema,
+  worktreeObservationTargetsSchema,
+  codeGraphObservationTargetSchema,
+  codeGraphObservationTargetsSchema,
+  projectWorktreeCreateSchema,
+  projectWorktreeLockSchema,
+  projectWorktreeRemoveSchema,
+  projectWorktreePruneSchema,
+  projectWorktreePolicyUpdateSchema,
+  chatWorktreeUpdateSchema,
+  worktreeSelectionSchema,
+} from "./worker-worktrees.js";
+
+export type {
+  WorkerWorktreeSummary,
+  WorktreeInventory,
+  WorktreeCreateMode,
+  WorktreeCreateResult,
+  WorktreeCreateMutationFailure,
+  WorktreeCreateMutationOutcome,
+  WorktreeMutationResult,
+  WorktreeRemoveResult,
+  WorktreePruneResult,
+  WorktreeStatusResult,
+  WorktreeObservationTarget,
+  CodeGraphObservationTarget,
+  ProjectWorktreeCreate,
+  ProjectWorktreeLock,
+  ProjectWorktreeRemove,
+  ProjectWorktreePrune,
+  ProjectWorktreePolicyUpdate,
+  ChatWorktreeUpdate,
+  WorktreeSelection,
+} from "./worker-worktrees.js";
+
+import {
+  agentTurnResultSchema,
+  agentTurnResultModeSchema,
+  normalizedAgentMessageSchema,
+} from "./agent-thread-sync.js";
+
+export {
+  agentTurnResultSchema,
+  agentTurnResultModeSchema,
+  chatMessageRelayResultSchema,
+  normalizedAgentMessageSchema,
+  agentThreadSyncItemSchema,
+  agentThreadSyncSchema,
+} from "./agent-thread-sync.js";
+
+export type {
+  AgentTurnResult,
+  AgentTurnResultMode,
+  NormalizedAgentMessage,
+  AgentThreadSync,
+  AgentThreadSyncItem,
+} from "./agent-thread-sync.js";
+
+import {
+  externalChatSourceKindSchema,
+  externalChatThreadMetadataSchema,
+  externalChatSourceSchema,
+  externalChatDiscoveryTargetSchema,
+  externalChatAttachmentSchema,
+} from "./external-chat-imports.js";
+
+export {
+  externalChatSourceKindSchema,
+  externalChatSourceAvailabilitySchema,
+  externalChatThreadStatusSchema,
+  chatImportStateSchema,
+  externalChatImportReferenceSchema,
+  externalChatThreadMatchSchema,
+  externalChatThreadMetadataSchema,
+  externalChatSourceSchema,
+  externalChatDiscoveryWorkerStatusSchema,
+  externalChatDiscoveryWorkerSchema,
+  projectExternalChatDiscoverySchema,
+  externalChatDiscoveryTargetSchema,
+  externalChatDiscoveryWorkerResultSchema,
+  externalChatTranscriptMetadataSchema,
+  externalChatAttachmentSchema,
+  externalChatTranscriptSchema,
+  externalChatReadWorkerResultSchema,
+  externalChatAttachmentReadResultSchema,
+  chatImportErrorSchema,
+  chatImportJobErrorSchema,
+  chatImportProgressStageSchema,
+  chatImportProgressSchema,
+  chatImportJobSummarySchema,
+  chatImportJobListSchema,
+  chatImportSelectionSchema,
+  chatImportCreateSchema,
+  chatImportJobRetrySchema,
+} from "./external-chat-imports.js";
+
+export type {
+  ExternalChatSourceKind,
+  ExternalChatSourceAvailability,
+  ExternalChatThreadStatus,
+  ExternalChatImportReference,
+  ExternalChatThreadMatch,
+  ExternalChatThreadMetadata,
+  ExternalChatSource,
+  ExternalChatDiscoveryWorker,
+  ProjectExternalChatDiscovery,
+  ExternalChatDiscoveryTarget,
+  ExternalChatDiscoveryWorkerResult,
+  ExternalChatTranscriptMetadata,
+  ExternalChatTranscript,
+  ExternalChatAttachment,
+  ExternalChatAttachmentReadResult,
+  ExternalChatReadWorkerResult,
+  ChatImportState,
+  ChatImportError,
+  ChatImportJobError,
+  ChatImportProgress,
+  ChatImportJobSummary,
+  ChatImportSelection,
+  ChatImportCreate,
+} from "./external-chat-imports.js";
+
+import { projectExportTargetSchema } from "./project-exports.js";
+
+export {
+  PROJECT_EXPORT_MAX_CHATS,
+  projectExportTargetSchema,
+  projectExportMappingSchema,
+  projectExportPreviewRequestSchema,
+  projectExportTargetInspectionSchema,
+  projectExportPreviewSchema,
+  projectExportCreateSchema,
+  projectExportChatResultSchema,
+  projectExportItemOutcomeSchema,
+  projectExportResultSchema,
+  projectExportChatBeginResultSchema,
+} from "./project-exports.js";
+
+export type {
+  ProjectExportTarget,
+  ProjectExportMapping,
+  ProjectExportPreviewRequest,
+  ProjectExportTargetInspection,
+  ProjectExportPreview,
+  ProjectExportCreate,
+  ProjectExportChatResult,
+  ProjectExportItemOutcome,
+  ProjectExportResult,
+  ProjectExportChatBeginResult,
+} from "./project-exports.js";
+
+import {
+  workerRuntimeModelSchema,
+  workerRuntimeProviderSchema,
+  workerChatAttachmentSchema,
+  providerRateLimitResetConsumeInputSchema,
+  serviceLogLevelSchema,
+  workerLogStreamSubscriptionIdSchema,
+  workerLogStreamBatchSchema,
+} from "./worker-runtime-support.js";
+
+export {
+  workerChatAttachmentSchema,
+  workerAttachmentUploadResultSchema,
+  workerAttachmentReadResultSchema,
+  workerProjectShareDescriptorSchema,
+  workerProjectShareOpenResultSchema,
+  ollamaModelInventoryItemSchema,
+  ollamaModelInventorySchema,
+  chatGptModelInventoryItemSchema,
+  providerQuotaWindowObservationSchema,
+  providerRateLimitResetCreditSchema,
+  providerRateLimitResetCreditsSummarySchema,
+  providerRateLimitResetConsumeOutcomeSchema,
+  providerRateLimitResetConsumeInputSchema,
+  providerRateLimitResetConsumeRequestSchema,
+  providerQuotaSnapshotSchema,
+  providerRateLimitResetConsumeResultSchema,
+  chatGptModelInventorySchema,
+  grokModelInventoryItemSchema,
+  grokModelInventorySchema,
+  serviceLogLevelSchema,
+  serviceLogRecordSchema,
+  serviceLogReadResultSchema,
+  workerLogStreamSubscriptionIdSchema,
+  workerLogStreamBatchSchema,
+  workerLogStreamStartResultSchema,
+  workerLogStreamRenewResultSchema,
+  workerLogStreamServerMessageSchema,
+  workerLogReadQuerySchema,
+} from "./worker-runtime-support.js";
+
+export type {
+  WorkerChatAttachment,
+  WorkerAttachmentUploadResult,
+  WorkerAttachmentReadResult,
+  WorkerProjectShareOpenResult,
+  WorkerProjectShareDescriptor,
+  OllamaModelInventoryItem,
+  OllamaModelInventory,
+  ChatGptModelInventoryItem,
+  ChatGptModelInventory,
+  ProviderQuotaSnapshot,
+  ProviderQuotaWindowObservation,
+  ProviderRateLimitResetCredit,
+  ProviderRateLimitResetCreditsSummary,
+  ProviderRateLimitResetConsumeInput,
+  ProviderRateLimitResetConsumeRequest,
+  ProviderRateLimitResetConsumeOutcome,
+  ProviderRateLimitResetConsumeResult,
+  GrokModelInventoryItem,
+  GrokModelInventory,
+  ServiceLogLevel,
+  ServiceLogRecord,
+  ServiceLogReadResult,
+  WorkerLogReadQuery,
+  WorkerLogStreamBatch,
+  WorkerLogStreamServerMessage,
+} from "./worker-runtime-support.js";
 
 const workerRepositoryNameSchema = z.union([
   githubRepositorySchema.shape.nameWithOwner,
@@ -6327,108 +5257,6 @@ export const workerServerEnvelopeSchema = z.union([
   workerNotificationEnvelopeSchema,
 ]);
 
-export type GithubWorkerRepository = z.infer<
-  typeof githubWorkerRepositorySchema
->;
-export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
-export type ManagedFolderMaterializeReady = z.infer<
-  typeof managedFolderMaterializeReadySchema
->;
-export type ManagedFolderDeleteResult = z.infer<
-  typeof managedFolderDeleteResultSchema
->;
-
-export type ProjectFolderSetupJobState = z.infer<
-  typeof projectFolderSetupJobStateSchema
->;
-export type ProjectFolderSetupJobError = z.infer<
-  typeof projectFolderSetupJobErrorSchema
->;
-export type ProjectFolderSetupJobSummary = z.infer<
-  typeof projectFolderSetupJobSummarySchema
->;
-export type ProjectGithubConversionError = z.infer<
-  typeof projectGithubConversionErrorSchema
->;
-export type ProjectGithubConversionJobError = z.infer<
-  typeof projectGithubConversionJobErrorSchema
->;
-export type ProjectGithubConversionPreflightResult = z.infer<
-  typeof projectGithubConversionPreflightResultSchema
->;
-export type ProjectGithubConversionPreflightReady = z.infer<
-  typeof projectGithubConversionPreflightReadySchema
->;
-export type ProjectGithubConversionPreflightRequest = z.infer<
-  typeof projectGithubConversionPreflightRequestSchema
->;
-export type EncryptedProjectGithubConversionPreflightRequest = z.infer<
-  typeof encryptedProjectGithubConversionPreflightRequestSchema
->;
-export type ProjectGithubConversionStart = z.infer<
-  typeof projectGithubConversionStartSchema
->;
-export type EncryptedProjectGithubConversionStart = z.infer<
-  typeof encryptedProjectGithubConversionStartSchema
->;
-export type ProjectGithubConversionJobState = z.infer<
-  typeof projectGithubConversionJobStateSchema
->;
-export type ProjectGithubConversionJobSummary = z.infer<
-  typeof projectGithubConversionJobSummarySchema
->;
-export type ProjectGithubConversionReady = z.infer<
-  typeof projectGithubConversionReadySchema
->;
-export type ProjectGithubConversionExecutionResult = z.infer<
-  typeof projectGithubConversionExecutionResultSchema
->;
-export type ProjectReplicaProvisionResult = z.infer<
-  typeof projectReplicaProvisionResultSchema
->;
-export type ProjectReplicaSynchronizeResult = z.infer<
-  typeof projectReplicaSynchronizeResultSchema
->;
-export type ProjectReplicaRemoveResult = z.infer<
-  typeof projectReplicaRemoveResultSchema
->;
-export type ProjectReplicaLinkRepairResult = z.infer<
-  typeof projectReplicaLinkRepairResultSchema
->;
-export type ProjectRemove = z.infer<typeof projectRemoveSchema>;
-
-export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;
-export type WorktreeInventory = z.infer<typeof worktreeInventorySchema>;
-export type WorktreeCreateMode = z.infer<typeof worktreeCreateModeSchema>;
-export type WorktreeCreateResult = z.infer<typeof worktreeCreateResultSchema>;
-export type WorktreeCreateMutationFailure = z.infer<
-  typeof worktreeCreateMutationFailureSchema
->;
-export type WorktreeCreateMutationOutcome = z.infer<
-  typeof worktreeCreateMutationOutcomeSchema
->;
-export type WorktreeMutationResult = z.infer<
-  typeof worktreeMutationResultSchema
->;
-export type WorktreeRemoveResult = z.infer<typeof worktreeRemoveResultSchema>;
-export type WorktreePruneResult = z.infer<typeof worktreePruneResultSchema>;
-export type WorktreeStatusResult = z.infer<typeof worktreeStatusResultSchema>;
-export type WorktreeObservationTarget = z.infer<
-  typeof worktreeObservationTargetSchema
->;
-export type CodeGraphObservationTarget = z.infer<
-  typeof codeGraphObservationTargetSchema
->;
-export type ProjectWorktreeCreate = z.infer<typeof projectWorktreeCreateSchema>;
-export type ProjectWorktreeLock = z.infer<typeof projectWorktreeLockSchema>;
-export type ProjectWorktreeRemove = z.infer<typeof projectWorktreeRemoveSchema>;
-export type ProjectWorktreePrune = z.infer<typeof projectWorktreePruneSchema>;
-export type ProjectWorktreePolicyUpdate = z.infer<
-  typeof projectWorktreePolicyUpdateSchema
->;
-export type ChatWorktreeUpdate = z.infer<typeof chatWorktreeUpdateSchema>;
-export type WorktreeSelection = z.infer<typeof worktreeSelectionSchema>;
-
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerEntryName = z.infer<typeof explorerEntryNameSchema>;
 export type ExplorerEntryRename = z.infer<typeof explorerEntryRenameSchema>;
@@ -6456,146 +5284,10 @@ export type ChatAttachmentKind = z.infer<typeof chatAttachmentKindSchema>;
 export type ChatAttachmentSource = z.infer<typeof chatAttachmentSourceSchema>;
 export type ChatAttachmentSummary = z.infer<typeof chatAttachmentSummarySchema>;
 
-export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
-export type AgentTurnResultMode = z.infer<typeof agentTurnResultModeSchema>;
-
 export type WorkflowNodeExecutionWorkerResult = z.infer<
   typeof workflowNodeExecutionResultSchema
 >;
 
-export type NormalizedAgentMessage = z.infer<
-  typeof normalizedAgentMessageSchema
->;
-export type AgentThreadSync = z.infer<typeof agentThreadSyncSchema>;
-export type AgentThreadSyncItem = z.infer<typeof agentThreadSyncItemSchema>;
-export type ExternalChatSourceKind = z.infer<
-  typeof externalChatSourceKindSchema
->;
-export type ExternalChatSourceAvailability = z.infer<
-  typeof externalChatSourceAvailabilitySchema
->;
-export type ExternalChatThreadStatus = z.infer<
-  typeof externalChatThreadStatusSchema
->;
-export type ExternalChatImportReference = z.infer<
-  typeof externalChatImportReferenceSchema
->;
-export type ExternalChatThreadMatch = z.infer<
-  typeof externalChatThreadMatchSchema
->;
-export type ExternalChatThreadMetadata = z.infer<
-  typeof externalChatThreadMetadataSchema
->;
-export type ExternalChatSource = z.infer<typeof externalChatSourceSchema>;
-export type ExternalChatDiscoveryWorker = z.infer<
-  typeof externalChatDiscoveryWorkerSchema
->;
-export type ProjectExternalChatDiscovery = z.infer<
-  typeof projectExternalChatDiscoverySchema
->;
-export type ExternalChatDiscoveryTarget = z.infer<
-  typeof externalChatDiscoveryTargetSchema
->;
-export type ExternalChatDiscoveryWorkerResult = z.infer<
-  typeof externalChatDiscoveryWorkerResultSchema
->;
-export type ExternalChatTranscriptMetadata = z.infer<
-  typeof externalChatTranscriptMetadataSchema
->;
-export type ExternalChatTranscript = z.infer<
-  typeof externalChatTranscriptSchema
->;
-export type ExternalChatAttachment = z.infer<
-  typeof externalChatAttachmentSchema
->;
-export type ExternalChatAttachmentReadResult = z.infer<
-  typeof externalChatAttachmentReadResultSchema
->;
-export type ExternalChatReadWorkerResult = z.infer<
-  typeof externalChatReadWorkerResultSchema
->;
-export type ChatImportState = z.infer<typeof chatImportStateSchema>;
-export type ChatImportError = z.infer<typeof chatImportErrorSchema>;
-export type ChatImportJobError = z.infer<typeof chatImportJobErrorSchema>;
-export type ChatImportProgress = z.infer<typeof chatImportProgressSchema>;
-export type ChatImportJobSummary = z.infer<typeof chatImportJobSummarySchema>;
-export type ChatImportSelection = z.infer<typeof chatImportSelectionSchema>;
-export type ChatImportCreate = z.infer<typeof chatImportCreateSchema>;
-export type ProjectExportTarget = z.infer<typeof projectExportTargetSchema>;
-export type ProjectExportMapping = z.infer<typeof projectExportMappingSchema>;
-export type ProjectExportPreviewRequest = z.infer<
-  typeof projectExportPreviewRequestSchema
->;
-export type ProjectExportTargetInspection = z.infer<
-  typeof projectExportTargetInspectionSchema
->;
-export type ProjectExportPreview = z.infer<typeof projectExportPreviewSchema>;
-export type ProjectExportCreate = z.infer<typeof projectExportCreateSchema>;
-export type ProjectExportChatResult = z.infer<
-  typeof projectExportChatResultSchema
->;
-export type ProjectExportItemOutcome = z.infer<
-  typeof projectExportItemOutcomeSchema
->;
-export type ProjectExportResult = z.infer<typeof projectExportResultSchema>;
-export type ProjectExportChatBeginResult = z.infer<
-  typeof projectExportChatBeginResultSchema
->;
-export type WorkerChatAttachment = z.infer<typeof workerChatAttachmentSchema>;
-export type WorkerAttachmentUploadResult = z.infer<
-  typeof workerAttachmentUploadResultSchema
->;
-export type WorkerAttachmentReadResult = z.infer<
-  typeof workerAttachmentReadResultSchema
->;
-export type WorkerProjectShareOpenResult = z.infer<
-  typeof workerProjectShareOpenResultSchema
->;
-export type WorkerProjectShareDescriptor = z.infer<
-  typeof workerProjectShareDescriptorSchema
->;
-export type OllamaModelInventoryItem = z.infer<
-  typeof ollamaModelInventoryItemSchema
->;
-export type OllamaModelInventory = z.infer<typeof ollamaModelInventorySchema>;
-export type ChatGptModelInventoryItem = z.infer<
-  typeof chatGptModelInventoryItemSchema
->;
-export type ChatGptModelInventory = z.infer<typeof chatGptModelInventorySchema>;
-export type ProviderQuotaSnapshot = z.infer<typeof providerQuotaSnapshotSchema>;
-export type ProviderQuotaWindowObservation = z.infer<
-  typeof providerQuotaWindowObservationSchema
->;
-export type ProviderRateLimitResetCredit = z.infer<
-  typeof providerRateLimitResetCreditSchema
->;
-export type ProviderRateLimitResetCreditsSummary = z.infer<
-  typeof providerRateLimitResetCreditsSummarySchema
->;
-export type ProviderRateLimitResetConsumeInput = z.infer<
-  typeof providerRateLimitResetConsumeInputSchema
->;
-export type ProviderRateLimitResetConsumeRequest = z.infer<
-  typeof providerRateLimitResetConsumeRequestSchema
->;
-export type ProviderRateLimitResetConsumeOutcome = z.infer<
-  typeof providerRateLimitResetConsumeOutcomeSchema
->;
-export type ProviderRateLimitResetConsumeResult = z.infer<
-  typeof providerRateLimitResetConsumeResultSchema
->;
-export type GrokModelInventoryItem = z.infer<
-  typeof grokModelInventoryItemSchema
->;
-export type GrokModelInventory = z.infer<typeof grokModelInventorySchema>;
-export type ServiceLogLevel = z.infer<typeof serviceLogLevelSchema>;
-export type ServiceLogRecord = z.infer<typeof serviceLogRecordSchema>;
-export type ServiceLogReadResult = z.infer<typeof serviceLogReadResultSchema>;
-export type WorkerLogReadQuery = z.infer<typeof workerLogReadQuerySchema>;
-export type WorkerLogStreamBatch = z.infer<typeof workerLogStreamBatchSchema>;
-export type WorkerLogStreamServerMessage = z.infer<
-  typeof workerLogStreamServerMessageSchema
->;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
 
