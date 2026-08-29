@@ -13,7 +13,7 @@ import {
 } from "@/lib/desktop-project-share";
 import {
   shouldUseCompactLayout,
-  shouldUseDesktopSidebarDrawer,
+  shouldUseSidebarDrawer,
   useNarrowViewport,
 } from "@/lib/use-compact-layout";
 
@@ -68,17 +68,13 @@ export function useShellEnvironment() {
   const narrowViewport = useNarrowViewport();
   const compactLayout = shouldUseCompactLayout(narrowViewport, desktopRuntime);
   const compactShell = compactLayout && !isPopout;
-  const desktopSidebarDrawer = shouldUseDesktopSidebarDrawer(
-    narrowViewport,
-    desktopRuntime,
-    isPopout,
-  );
+  const sidebarDrawer = shouldUseSidebarDrawer(narrowViewport, isPopout);
 
   return {
     compactLayout,
     compactShell,
     desktopRuntime,
-    desktopSidebarDrawer,
+    desktopSidebarDrawer: sidebarDrawer,
     explorerFileTarget,
     folderRevealLabel,
     isPopout,
