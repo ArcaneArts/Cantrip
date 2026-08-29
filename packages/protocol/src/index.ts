@@ -1275,2278 +1275,420 @@ export type {
   ChatPermissionProfileUpdate,
 } from "./permission-profiles.js";
 
-export const repositoryRelativePathSchema = z
-  .string()
-  .min(1)
-  .max(4_096)
-  .refine(
-    (value) =>
-      !value.startsWith("/") &&
-      !/^[A-Za-z]:[\\/]/u.test(value) &&
-      !value.split(/[\\/]/u).includes("..") &&
-      !value.includes("\0"),
-    "Expected a safe repository-relative path.",
-  );
-
-const terminalPlacementSchema = z
-  .object({
-    worktreeId: z.string().min(1).optional(),
-    tabGroupId: z.string().min(1).optional(),
-    target: executionTargetSchema.optional(),
-  })
-  .refine((input) => !(input.worktreeId && input.target), {
-    message: "Choose either a legacy worktreeId or an execution target.",
-  });
-
-export const terminalCreateSchema = terminalPlacementSchema.safeExtend({
-  directoryPath: repositoryRelativePathSchema.optional(),
-  title: z.string().trim().min(1).max(200).default("Terminal"),
-});
-
-export const encryptedTerminalCreateSchema = terminalPlacementSchema
-  .safeExtend({
-    id: z.string().uuid(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: terminalPrivateStateOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "terminal",
-    {
-      message: "Terminal title classification must be terminal.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const encryptedLinkedConsoleCreateSchema = z
-  .object({
-    id: z.string().uuid(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: terminalPrivateStateOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "terminal",
-    {
-      message: "Linked console title classification must be terminal.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const terminalUpdateSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-});
-
-export const encryptedTerminalUpdateSchema = z
-  .object({ titleProtection: privateDisplayLabelOpaqueSchema })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "terminal",
-    {
-      message: "Terminal title classification must be terminal.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const terminalServiceConfigurationSchema = z
-  .object({
-    enabled: z.boolean(),
-    command: z.string().max(100_000),
-  })
-  .superRefine((configuration, context) => {
-    if (configuration.enabled && configuration.command.trim().length === 0) {
-      context.addIssue({
-        code: "custom",
-        message: "A command is required when terminal service mode is enabled.",
-        path: ["command"],
-      });
-    }
-  });
-
-export const encryptedTerminalServiceConfigurationSchema = z
-  .object({
-    enabled: z.boolean(),
-    stateProtection: terminalPrivateStateOpaqueSchema,
-  })
-  .strict();
-
-export const terminalServiceRuntimeConfigurationSchema = z
-  .object({
-    terminalId: z.string().min(1),
-    serverId: z.string().min(1).max(255),
-    worktreePath: z.string().min(1).max(8_192),
-    stateProtection: terminalPrivateStateOpaqueSchema,
-  })
-  .strict();
-
-export const terminalKindSchema = z.enum([
-  "interactive",
-  "chat-console",
-  "run-configuration",
-]);
-
-const terminalSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  kind: terminalKindSchema,
-  position: z.number().int().nonnegative(),
-  status: z.enum(["idle", "running", "exited", "offline", "failed"]),
-  activeWorkerId: z.string().min(1),
-  worktreeId: z.string().min(1),
-  linkedChatId: z.string().min(1).nullable(),
-  runConfigurationId: z.string().uuid().nullable(),
-  runConfigurationRuntimeId: z.string().uuid().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const terminalSummarySchema = terminalSummaryBaseSchema.extend({
-  title: z.string().min(1).max(200),
-  directoryPath: repositoryRelativePathSchema.nullable(),
-  service: terminalServiceConfigurationSchema,
-});
-
-export const terminalWireSummarySchema = terminalSummaryBaseSchema
-  .extend({
-    titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
-    stateProtection: terminalPrivateStateOpaqueSchema.nullable(),
-    serviceEnabled: z.boolean(),
-  })
-  .strict()
-  .superRefine((terminal, context) => {
-    if (terminal.kind === "run-configuration") {
-      if (
-        terminal.titleProtection !== null ||
-        terminal.stateProtection !== null ||
-        terminal.linkedChatId !== null ||
-        terminal.runConfigurationId === null ||
-        terminal.runConfigurationRuntimeId === null ||
-        terminal.serviceEnabled
-      ) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Run configuration terminals require only their runtime binding.",
-        });
-      }
-      return;
-    }
-    if (
-      terminal.titleProtection === null ||
-      terminal.stateProtection === null ||
-      terminal.runConfigurationId !== null ||
-      terminal.runConfigurationRuntimeId !== null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Interactive terminals require protected label and state fields.",
-      });
-      return;
-    }
-    if (terminal.titleProtection.classification.recordKind !== "terminal") {
-      context.addIssue({
-        code: "custom",
-        message: "Terminal title classification must be terminal.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-    if (
-      (terminal.kind === "chat-console") !==
-      (terminal.linkedChatId !== null)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Only chat console terminals may have a linked chat.",
-        path: ["linkedChatId"],
-      });
-    }
-  });
-
-export const terminalListSchema = z.array(terminalSummarySchema);
-export const terminalWireListSchema = z.array(terminalWireSummarySchema);
-
-export const scriptCommandKindSchema = z.enum([
-  "package",
-  "dart",
-  "just",
-  "cargo",
-  "gradle",
-  "make",
-]);
-
-const scriptCommandTextSchema = z
-  .string()
-  .min(1)
-  .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value), {
-    message: "Script command text cannot contain control characters.",
-  });
-
-export const scriptCommandSchema = z.object({
-  id: z.string().min(1).max(512),
-  kind: scriptCommandKindSchema,
-  name: scriptCommandTextSchema.max(200),
-  command: scriptCommandTextSchema.max(4_096),
-  description: scriptCommandTextSchema.max(4_096).nullable(),
-  source: scriptCommandTextSchema.max(512),
-});
-
-export const scriptCommandListSchema = z.array(scriptCommandSchema).max(500);
-
-export const protectedScriptCommandListSchema = z
-  .object({
-    operationId: z.string().uuid(),
-    projectId: z.string().min(1).max(200),
-    worktreeId: z.string().min(1).max(200),
-    protectedCommands: repositoryOperationOpaqueSchema,
-  })
-  .strict();
-
-export const explorerFileModeSchema = z.enum(["preview", "visual", "edit"]);
-
-const explorerCreateBaseSchema = z
-  .object({
-    worktreeId: z.string().min(1).optional(),
-    tabGroupId: z.string().min(1).optional(),
-    target: executionTargetSchema.optional(),
-    attachToTabLayout: z.boolean().optional(),
-    fileMode: explorerFileModeSchema.optional(),
-  })
-  .refine((input) => !(input.worktreeId && input.target), {
-    message: "Choose either a legacy worktreeId or an execution target.",
-  });
-
-export const explorerCreateSchema = explorerCreateBaseSchema.safeExtend({
-  title: z.string().trim().min(1).max(200).default("Explorer"),
-});
-
-export const encryptedExplorerCreateSchema = explorerCreateBaseSchema
-  .safeExtend({
-    id: z.string().uuid(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: explorerPrivateStateOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "explorer",
-    {
-      message: "Explorer title classification must be explorer.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const explorerUpdateSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-});
-
-export const encryptedExplorerUpdateSchema = z
-  .object({ titleProtection: privateDisplayLabelOpaqueSchema })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "explorer",
-    {
-      message: "Explorer title classification must be explorer.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const encryptedExplorerPinSchema = z
-  .object({
-    tabGroupId: z.string().min(1).optional(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: explorerPrivateStateOpaqueSchema,
-    fileMode: explorerFileModeSchema,
-  })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "explorer",
-    {
-      message: "Explorer title classification must be explorer.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const explorerViewStateUpdateSchema = z.object({
-  selectedPath: z.string().min(1).max(8_192).nullable(),
-  fileMode: explorerFileModeSchema,
-});
-
-export const encryptedExplorerViewStateUpdateSchema = z
-  .object({
-    stateProtection: explorerPrivateStateOpaqueSchema,
-    fileMode: explorerFileModeSchema,
-  })
-  .strict();
-
-export const encryptedExplorerWorktreeUpdateSchema = z
-  .object({
-    worktreeId: z.string().min(1),
-    stateProtection: explorerPrivateStateOpaqueSchema,
-  })
-  .strict();
-
-const explorerSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  activeWorkerId: z.string().min(1),
-  worktreeId: z.string().min(1),
-  fileMode: explorerFileModeSchema,
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const explorerSummarySchema = explorerSummaryBaseSchema.extend({
-  title: z.string().min(1).max(200),
-  selectedPath: explorerViewStateUpdateSchema.shape.selectedPath,
-});
-
-export const explorerWireSummarySchema = explorerSummaryBaseSchema
-  .extend({
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: explorerPrivateStateOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (explorer) =>
-      explorer.titleProtection.classification.recordKind === "explorer",
-    {
-      message: "Explorer title classification must be explorer.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const explorerListSchema = z.array(explorerSummarySchema);
-export const explorerWireListSchema = z.array(explorerWireSummarySchema);
-
-export const codeThemeModeSchema = z.enum(["follow-cantrip", "independent"]);
-export const codePresentationSchema = z.enum([
-  "workbench",
-  "editor",
-  "extensions",
-]);
-export const codeAppearanceSchema = z.enum([
-  "light",
-  "dark",
-  "high-contrast-light",
-  "high-contrast-dark",
-  "pro-light",
-  "pro-dark",
-  "pro-high-contrast-light",
-  "pro-high-contrast-dark",
-]);
-export const codeTabStatusSchema = z.enum([
-  "idle",
-  "starting",
-  "running",
-  "stopped",
-  "offline",
-  "failed",
-]);
-export const codeSessionStatusSchema = z.enum([
-  "starting",
-  "running",
-  "idle",
-  "stopping",
-  "stopped",
-  "offline",
-  "failed",
-]);
-
-const codeTabCreateBaseSchema = z
-  .object({
-    worktreeId: z.string().min(1).optional(),
-    profileId: z.string().trim().min(1).max(200).default("default"),
-    themeMode: codeThemeModeSchema.default("follow-cantrip"),
-    tabGroupId: z.string().min(1).optional(),
-    target: executionTargetSchema.optional(),
-  })
-  .refine((input) => !(input.worktreeId && input.target), {
-    message: "Choose either a legacy worktreeId or an execution target.",
-  });
-
-export const codeTabCreateSchema = codeTabCreateBaseSchema.safeExtend({
-  title: z.string().trim().min(1).max(200).default("Code"),
-});
-
-export const encryptedCodeTabCreateSchema = codeTabCreateBaseSchema
-  .safeExtend({
-    id: z.string().uuid(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-  })
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "code-tab",
-    {
-      message: "Code-tab title classification must be code-tab.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const codeTabUpdateSchema = z
-  .object({
-    title: z.string().trim().min(1).max(200).optional(),
-    themeMode: codeThemeModeSchema.optional(),
-  })
-  .refine(
-    (input) => input.title !== undefined || input.themeMode !== undefined,
-    { message: "At least one Code tab field is required." },
-  );
-
-export const encryptedCodeTabUpdateSchema = z
-  .object({
-    titleProtection: privateDisplayLabelOpaqueSchema.optional(),
-    themeMode: codeThemeModeSchema.optional(),
-  })
-  .strict()
-  .superRefine((input, context) => {
-    if (input.titleProtection === undefined && input.themeMode === undefined) {
-      context.addIssue({
-        code: "custom",
-        message: "At least one Code tab field is required.",
-      });
-    }
-    if (
-      input.titleProtection &&
-      input.titleProtection.classification.recordKind !== "code-tab"
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Code-tab title classification must be code-tab.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-  });
-
-const codeTabSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  activeWorkerId: z.string().min(1),
-  worktreeId: z.string().min(1),
-  profileId: z.string().min(1),
-  themeMode: codeThemeModeSchema,
-  status: codeTabStatusSchema,
-  lastError: z.string().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const codeTabSummarySchema = codeTabSummaryBaseSchema.extend({
-  title: z.string().min(1).max(200),
-});
-
-export const codeTabWireSummarySchema = codeTabSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
-  .refine(
-    (codeTab) =>
-      codeTab.titleProtection.classification.recordKind === "code-tab",
-    {
-      message: "Code-tab title classification must be code-tab.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const codeTabListSchema = z.array(codeTabSummarySchema);
-export const codeTabWireListSchema = z.array(codeTabWireSummarySchema);
-
-export const codeEditorBuildSchema = z.object({
-  version: z.string().min(1),
-  upstreamRevision: z.string().regex(/^[0-9a-f]{40}$/u),
-  patchset: z.number().int().nonnegative(),
-  fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-});
-
-export const codeProbeResultSchema = z.object({
-  capabilities: codeCapabilitiesSchema,
-  editorBuild: codeEditorBuildSchema.nullable(),
-  serverControlPlaneGeneration: z.string().uuid().optional(),
-  workerProcessGeneration: z.string().uuid().optional(),
-});
-
-export const codeSessionSummarySchema = z.object({
-  id: z.string().min(1),
-  codeTabId: z.string().min(1),
-  projectId: z.string().min(1),
-  workerId: z.string().min(1),
-  worktreeId: z.string().min(1),
-  profileId: z.string().min(1),
-  editorBuild: codeEditorBuildSchema.nullable(),
-  status: codeSessionStatusSchema,
-  processInstanceId: z.string().min(1).nullable(),
-  lastAttachmentAt: z.string().datetime().nullable(),
-  lastStartedAt: z.string().datetime().nullable(),
-  stoppedAt: z.string().datetime().nullable(),
-  lastError: z.string().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const codeSessionListSchema = z.array(codeSessionSummarySchema);
-
-export const codeDirtyEditorSchema = z.object({
-  uri: z.string().min(1).max(16_384),
-  relativePath: z.string().max(8_192).nullable(),
-  untitled: z.boolean(),
-  dirty: z.literal(true),
-});
-
-export const codeSaveBeforeAgentTurnSchema = z.enum(["always", "ask", "never"]);
-
-export const codeWorkbenchAgentStatusSchema = z.enum([
-  "idle",
-  "running",
-  "completed",
-  "failed",
-]);
-
-export const codeWorkbenchActiveEditorSchema = z.object({
-  uri: z.string().min(1).max(16_384),
-  relativePath: z.string().max(8_192).nullable(),
-  selection: z.object({
-    startLine: z.number().int().nonnegative(),
-    startCharacter: z.number().int().nonnegative(),
-    endLine: z.number().int().nonnegative(),
-    endCharacter: z.number().int().nonnegative(),
-  }),
-});
-
-export const codeWorkbenchGitStateSchema = z.object({
-  branch: z.string().max(1_000).nullable(),
-  head: z.string().max(200).nullable(),
-  ahead: z.number().int().nonnegative(),
-  behind: z.number().int().nonnegative(),
-  staged: z.number().int().nonnegative(),
-  unstaged: z.number().int().nonnegative(),
-  untracked: z.number().int().nonnegative(),
-  conflicts: z.number().int().nonnegative(),
-});
-
-export const codeWorkbenchStateSchema = z.object({
-  activeEditor: codeWorkbenchActiveEditorSchema.nullable(),
-  git: codeWorkbenchGitStateSchema.nullable(),
-  conflicts: z.array(codeDirtyEditorSchema).max(1_000),
-  savePolicy: codeSaveBeforeAgentTurnSchema,
-  agentStatus: codeWorkbenchAgentStatusSchema,
-});
-
-export const codeRuntimeStatusSchema = z.object({
-  sessionId: z.string().min(1),
-  sessionIncarnationId: z.string().uuid().nullable().optional(),
-  workspaceUri: z.string().min(1).max(16_384).optional(),
-  status: codeSessionStatusSchema,
-  editorBuild: codeEditorBuildSchema,
-  processInstanceId: z.string().min(1).nullable(),
-  bridgeConnected: z.boolean(),
-  dirtyEditors: z.array(codeDirtyEditorSchema).max(1_000),
-  workbench: codeWorkbenchStateSchema,
-  startedAt: z.string().datetime().nullable(),
-  lastActivityAt: z.string().datetime().nullable(),
-  lastError: z.string().nullable(),
-});
-
-export const codeSettingsWorkbenchOpenResultSchema = z
-  .object({
-    synchronization: codeSettingsWorkerStatusSchema,
-    runtime: codeRuntimeStatusSchema,
-  })
-  .strict();
-
-export const codeSaveAllResultSchema = z.object({
-  saved: z.array(z.string().max(16_384)).max(1_000),
-  failed: z
-    .array(
-      z.object({
-        uri: z.string().min(1).max(16_384),
-        message: z.string().min(1).max(4_000),
-      }),
-    )
-    .max(1_000),
-});
-
-export const codeAgentTurnPreparationSessionSchema = z.object({
-  sessionId: z.string().min(1),
-  bridgeConnected: z.boolean(),
-  allowed: z.boolean(),
-  policy: codeSaveBeforeAgentTurnSchema.nullable(),
-  dirtyEditors: z.array(codeDirtyEditorSchema).max(1_000),
-  saved: z.array(z.string().max(16_384)).max(1_000),
-  failed: codeSaveAllResultSchema.shape.failed,
-  reason: z.string().max(4_000).nullable(),
-});
-
-export const codeAgentTurnPreparationResultSchema = z.object({
-  prepared: z.boolean(),
-  sessions: z.array(codeAgentTurnPreparationSessionSchema).max(128),
-});
-
-export const codeAgentTurnNotificationResultSchema = z.object({
-  notifiedSessions: z.number().int().nonnegative(),
-  refreshed: z.array(z.string().max(8_192)).max(5_000),
-  conflicts: z.array(codeDirtyEditorSchema).max(1_000),
-});
-
-export const codeAttachmentSchema = z.object({
-  attachmentId: z.string().min(1),
-  sessionId: z.string().min(1),
-  url: z.url(),
-  expiresAt: z.string().datetime(),
-  runtime: codeRuntimeStatusSchema,
-});
-
-export const codeProtectedAttachmentWireSchema = z
-  .object({
-    attachmentId: tunnelResourceIdSchema,
-    tunnelId: tunnelResourceIdSchema,
-    sessionId: tunnelResourceIdSchema,
-    expiresAt: z.string().datetime(),
-    runtime: codeRuntimeStatusSchema,
-  })
-  .strict()
-  .refine(({ attachmentId, tunnelId }) => attachmentId === tunnelId, {
-    message: "A protected Code attachment must reuse its tunnel identity.",
-    path: ["attachmentId"],
-  });
-
-export const codeProtectedAttachmentIntentSchema = z
-  .object({
-    sessionId: tunnelResourceIdSchema,
-    runtime: codeRuntimeStatusSchema,
-  })
-  .strict()
-  .refine(({ sessionId, runtime }) => sessionId === runtime.sessionId, {
-    message: "A Code attachment intent must bind its runtime session.",
-    path: ["runtime", "sessionId"],
-  });
-
-export const codeSessionRouteGrantSchema = encryptionKeyBytesSchema;
-
-export function codeSessionRouteBasePath(routeGrant: string): string {
-  return `/sessions/${codeSessionRouteGrantSchema.parse(routeGrant)}/code`;
-}
-
-export function parseCodeSessionRoutePath(
-  rawPath: string,
-): { basePath: string; routeGrant: string } | null {
-  const queryIndex = rawPath.indexOf("?");
-  const pathname = queryIndex < 0 ? rawPath : rawPath.slice(0, queryIndex);
-  if (
-    pathname.includes("\\") ||
-    pathname.includes("//") ||
-    /%(?:2f|5c)/iu.test(pathname)
-  ) {
-    return null;
-  }
-  const match = /^\/sessions\/([A-Za-z0-9_-]{43})\/code(?=$|\/)/u.exec(
-    pathname,
-  );
-  const routeGrant = match?.[1];
-  if (
-    !routeGrant ||
-    !codeSessionRouteGrantSchema.safeParse(routeGrant).success
-  ) {
-    return null;
-  }
-  const basePath = codeSessionRouteBasePath(routeGrant);
-  const suffix = pathname.slice(basePath.length);
-  if (
-    suffix !== "" &&
-    (!suffix.startsWith("/") ||
-      suffix
-        .slice(1)
-        .split("/")
-        .some((segment) => {
-          try {
-            const decoded = decodeURIComponent(segment);
-            return (
-              decoded === "." ||
-              decoded === ".." ||
-              decoded.includes("/") ||
-              decoded.includes("\\")
-            );
-          } catch {
-            return true;
-          }
-        }))
-  ) {
-    return null;
-  }
-  return { basePath, routeGrant };
-}
-
-export const codeTransportCandidateSchema = z
-  .object({
-    formatVersion: z.literal(2),
-    transportId: z.string().uuid(),
-    protectedRecord: protectedTunnelContentRecordSchema,
-  })
-  .strict()
-  .refine(
-    ({ protectedRecord, transportId }) =>
-      protectedRecord.operationId === transportId &&
-      protectedRecord.revision === 1,
-    {
-      message:
-        "A shared Code transport must begin with its transport-bound record.",
-      path: ["protectedRecord"],
-    },
-  );
-
-export const codeTransportWireSchema = z
-  .object({
-    formatVersion: z.literal(2),
-    transportId: tunnelResourceIdSchema,
-    tunnelId: tunnelResourceIdSchema,
-    workerId: executionResourceIdSchema,
-    securityScopeId: z.string().uuid(),
-    serverId: executionResourceIdSchema,
-    serverControlPlaneGeneration: z.string().uuid(),
-    protectedKeyRevision: z.number().int().positive().safe(),
-    workerProcessGeneration: z.string().uuid(),
-    expiresAt: z.string().datetime(),
-  })
-  .strict()
-  .refine(({ transportId, tunnelId }) => transportId === tunnelId, {
-    message: "A shared Code transport must reuse its tunnel identity.",
-    path: ["tunnelId"],
-  });
-
-export const codeSessionAttachmentWireSchema = z
-  .object({
-    formatVersion: z.literal(2),
-    attachmentId: tunnelResourceIdSchema,
-    transportId: tunnelResourceIdSchema,
-    sessionId: tunnelResourceIdSchema,
-    routeGrant: codeSessionRouteGrantSchema,
-    expiresAt: z.string().datetime(),
-    runtime: codeRuntimeStatusSchema,
-  })
-  .strict()
-  .refine(({ runtime, sessionId }) => runtime.sessionId === sessionId, {
-    message: "A shared Code attachment must bind its runtime session.",
-    path: ["runtime", "sessionId"],
-  });
-
-export const codeSharedAttachmentWireSchema = z
-  .object({
-    formatVersion: z.literal(2),
-    transport: codeTransportWireSchema,
-    session: codeSessionAttachmentWireSchema,
-  })
-  .strict()
-  .refine(
-    ({ session, transport }) => session.transportId === transport.transportId,
-    {
-      message: "A shared Code attachment must reference its transport.",
-      path: ["session", "transportId"],
-    },
-  );
-
-const codeTransportLifecycleIdentitySchema = z
-  .object({
-    ownerId: z.string().min(1).max(2_000),
-    authSessionId: z.string().min(1).max(2_000),
-    serverId: z.string().min(1).max(2_000),
-    serverControlPlaneGeneration: z.string().uuid(),
-    protectedKeyRevision: z.number().int().positive().safe(),
-    workerProcessGeneration: z.string().uuid(),
-  })
-  .strict();
-
-export const codeTransportRouteAuthorizeCommandSchema = z
-  .object({
-    type: z.literal("code.transport.route.authorize"),
-    ...codeTransportLifecycleIdentitySchema.shape,
-    transportId: z.string().uuid(),
-    attachmentId: z.string().uuid(),
-    sessionId: z.string().uuid(),
-    expectedSessionIncarnationId: z.string().uuid(),
-    routeGrant: codeSessionRouteGrantSchema,
-    expiresAt: z.string().datetime(),
-  })
-  .strict();
-
-export const codeTransportRouteRevokeCommandSchema = z
-  .object({
-    type: z.literal("code.transport.route.revoke"),
-    ...codeTransportLifecycleIdentitySchema.shape,
-    transportId: z.string().uuid(),
-    attachmentId: z.string().uuid(),
-  })
-  .strict();
-
-export const codeTransportRevokeCommandSchema = z
-  .object({
-    type: z.literal("code.transport.revoke"),
-    ...codeTransportLifecycleIdentitySchema.shape,
-    transportId: z.string().uuid(),
-  })
-  .strict();
-
-export const codeTransportRouteAuthorizeResultSchema = z
-  .object({
-    ...codeTransportLifecycleIdentitySchema.shape,
-    transportId: z.string().uuid(),
-    attachmentId: z.string().uuid(),
-    sessionId: z.string().uuid(),
-    sessionIncarnationId: z.string().uuid(),
-    authorized: z.literal(true),
-    expiresAt: z.string().datetime(),
-  })
-  .strict();
-
-export const codeTransportRouteRevokeResultSchema = z
-  .object({
-    ...codeTransportLifecycleIdentitySchema.shape,
-    transportId: z.string().uuid(),
-    attachmentId: z.string().uuid(),
-    revoked: z.literal(true),
-  })
-  .strict();
-
-export const codeTransportRevokeResultSchema = z
-  .object({
-    ...codeTransportLifecycleIdentitySchema.shape,
-    transportId: z.string().uuid(),
-    revoked: z.literal(true),
-  })
-  .strict();
-
-export const projectShareAttachmentSchema = z.object({
-  attachmentId: z.string().min(1).max(200),
-  projectId: z.string().min(1).max(200),
-  protocol: z.literal("webdav"),
-  url: z.url(),
-  username: z.string().min(1).max(128),
-  password: z.string().min(24).max(256),
-  realm: z.string().min(1).max(200),
-  expiresAt: z.string().datetime(),
-  mountLeaseMs: z
-    .number()
-    .int()
-    .positive()
-    .max(24 * 60 * 60_000),
-});
-
-export const projectShareTunnelCreateSchema = z
-  .object({
-    tunnelId: z.string().uuid(),
-    workerId: tunnelResourceIdSchema,
-    protectedRecord: protectedTunnelContentRecordSchema,
-  })
-  .strict()
-  .refine(
-    ({ tunnelId, protectedRecord }) =>
-      tunnelId === protectedRecord.operationId || protectedRecord.revision > 1,
-    {
-      message:
-        "A new project share must bind its tunnel identity to its protected record.",
-      path: ["protectedRecord", "operationId"],
-    },
-  );
-
-export const projectShareDirectCreateSchema = z
-  .object({
-    clientId: tunnelResourceIdSchema,
-  })
-  .strict();
-
-export const projectShareAttachmentWireSchema = z
-  .object({
-    attachmentId: tunnelResourceIdSchema,
-    projectId: tunnelResourceIdSchema,
-    protocol: z.literal("webdav"),
-    tunnelId: tunnelResourceIdSchema,
-    expiresAt: z.string().datetime(),
-    mountLeaseMs: z
-      .number()
-      .int()
-      .positive()
-      .max(24 * 60 * 60_000),
-  })
-  .strict();
-
-export const standaloneChatShareAttachmentSchema = z.object({
-  attachmentId: z.string().min(1).max(200),
-  chatId: z.string().uuid(),
-  protocol: z.literal("webdav"),
-  url: z.url(),
-  username: z.string().min(1).max(128),
-  password: z.string().min(24).max(256),
-  realm: z.string().min(1).max(200),
-  expiresAt: z.string().datetime(),
-  mountLeaseMs: z
-    .number()
-    .int()
-    .positive()
-    .max(24 * 60 * 60_000),
-});
-
-export const standaloneChatShareAttachmentWireSchema = z
-  .object({
-    attachmentId: tunnelResourceIdSchema,
-    chatId: z.string().uuid(),
-    protocol: z.literal("webdav"),
-    tunnelId: tunnelResourceIdSchema,
-    expiresAt: z.string().datetime(),
-    mountLeaseMs: z
-      .number()
-      .int()
-      .positive()
-      .max(24 * 60 * 60_000),
-  })
-  .strict();
-
-export const projectSharePublicBasePathSchema = z
-  .string()
-  .regex(/^\/project-shares\/[A-Za-z0-9_-]{43}$/u);
-
-export const projectSharePublicOriginSchema = z.url().refine((value) => {
-  const url = new URL(value);
-  return (
-    (url.protocol === "http:" || url.protocol === "https:") &&
-    url.origin === value
-  );
-});
-
-export const codeAttachmentCreateSchema = z.object({
-  appearance: codeAppearanceSchema.default("dark"),
-  expectedWorkerId: executionResourceIdSchema,
-  expectedWorktreeId: executionResourceIdSchema,
-});
-
-export const codeProtectedAttachmentCreateSchema = codeAttachmentCreateSchema
-  .extend({
-    tunnelId: z.string().uuid(),
-    sessionId: z.string().uuid(),
-    protectedRecord: protectedTunnelContentRecordSchema,
-  })
-  .strict()
-  .refine(
-    ({ tunnelId, protectedRecord }) =>
-      tunnelId === protectedRecord.operationId &&
-      protectedRecord.revision === 1,
-    {
-      message:
-        "A protected Code attachment must begin with its tunnel-bound record.",
-      path: ["protectedRecord"],
-    },
-  );
-
-export const codeSessionAttachmentCreateSchema = codeAttachmentCreateSchema
-  .extend({
-    formatVersion: z.literal(2),
-    attachmentId: z.string().uuid(),
-    sessionId: z.string().uuid(),
-    transport: codeTransportCandidateSchema,
-  })
-  .strict();
-
-export const explorerCodeSessionAttachmentCreateSchema =
-  codeSessionAttachmentCreateSchema.extend({
-    path: repositoryRelativePathSchema.optional(),
-  });
-
-export const codeSettingsWorkbenchSessionAttachmentCreateSchema =
-  codeSessionAttachmentCreateSchema.omit({ expectedWorktreeId: true });
-
-export const codeSettingsWorkbenchSharedAttachmentWireSchema = z
-  .object({
-    workerId: executionResourceIdSchema,
-    synchronization: codeSettingsWorkerStatusSchema,
-    attachment: codeSharedAttachmentWireSchema,
-  })
-  .strict();
-
-export const explorerCodeProtectedAttachmentCreateSchema =
-  codeProtectedAttachmentCreateSchema.extend({
-    path: repositoryRelativePathSchema.optional(),
-  });
-
-export const codeSettingsWorkbenchAttachmentCreateSchema =
-  codeAttachmentCreateSchema
-    .omit({ expectedWorktreeId: true })
-    .extend({
-      tunnelId: z.string().uuid(),
-      sessionId: z.string().uuid(),
-      protectedRecord: protectedTunnelContentRecordSchema,
-    })
-    .strict()
-    .refine(
-      ({ tunnelId, protectedRecord }) =>
-        tunnelId === protectedRecord.operationId &&
-        protectedRecord.revision === 1,
-      {
-        message:
-          "A protected Code settings attachment must begin with its tunnel-bound record.",
-        path: ["protectedRecord"],
-      },
-    );
-
-export const codeSettingsWorkbenchAttachmentWireSchema = z
-  .object({
-    workerId: executionResourceIdSchema,
-    synchronization: codeSettingsWorkerStatusSchema,
-    attachment: codeProtectedAttachmentWireSchema,
-  })
-  .strict();
-
-export const explorerCodeAttachmentCreateSchema = codeAttachmentCreateSchema
-  .extend({
-    path: repositoryRelativePathSchema,
-  })
-  .strict();
-
-export const codeOpenFileResultSchema = z
-  .object({
-    relativePath: repositoryRelativePathSchema,
-  })
-  .strict();
-
-export const codeOpenFileRequestSchema = codeOpenFileResultSchema;
-
-export const codeOpenSettingsRequestSchema = z.object({}).strict();
-
-export const codeOpenSettingsResultSchema = z
-  .object({ opened: z.literal(true) })
-  .strict();
-
-export const codeOpenExtensionsRequestSchema = z.object({}).strict();
-
-export const codeOpenExtensionsResultSchema = z
-  .object({ opened: z.literal(true) })
-  .strict();
-
-export const codeInstallVsixResultSchema = z
-  .object({ installed: z.literal(true) })
-  .strict();
-
-export const codePresentationUpdateSchema = z
-  .object({
-    presentation: codePresentationSchema,
-  })
-  .strict();
-
-export const codeThemeUpdateSchema = z.object({
-  themeMode: codeThemeModeSchema,
-  appearance: codeAppearanceSchema,
-});
-
-export function isForwardableCodeWebSocketCloseCode(code: number): boolean {
-  return (
-    (code >= 1_000 &&
-      code <= 1_014 &&
-      code !== 1_004 &&
-      code !== 1_005 &&
-      code !== 1_006) ||
-    (code >= 3_000 && code <= 4_999)
-  );
-}
-
-export const CODE_MAX_WEBSOCKET_MESSAGE_BYTES = 4 * 1_024 * 1_024;
-const browserHttpUrlSchema = z
-  .string()
-  .url()
-  .max(4_096)
-  .refine((value) => /^https?:\/\//u.test(value), {
-    message: "Browser URLs must use HTTP or HTTPS.",
-  });
-
-const browserCreateBaseSchema = z.object({
-  tabGroupId: z.string().min(1).optional(),
-  target: executionTargetSchema.optional(),
-});
-
-export const browserCreateSchema = browserCreateBaseSchema
-  .extend({
-    title: z.string().trim().min(1).max(200).default("Browser"),
-    url: browserHttpUrlSchema.optional(),
-  })
-  .strict();
-
-export const encryptedBrowserCreateSchema = browserCreateBaseSchema
-  .extend({
-    id: z.string().uuid(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: browserPrivateStateOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "browser",
-    {
-      message: "Browser title classification must be browser.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const browserUpdateSchema = z
-  .object({
-    title: z.string().trim().min(1).max(200).optional(),
-    url: browserHttpUrlSchema.optional(),
-  })
-  .refine((input) => input.title !== undefined || input.url !== undefined, {
-    message: "At least one browser field is required.",
-  });
-
-export const encryptedBrowserUpdateSchema = z
-  .object({
-    titleProtection: privateDisplayLabelOpaqueSchema.optional(),
-    expectedStateRevision: z.number().int().positive().safe().optional(),
-    stateProtection: browserPrivateStateOpaqueSchema.optional(),
-  })
-  .strict()
-  .superRefine((input, context) => {
-    if (
-      input.titleProtection === undefined &&
-      input.stateProtection === undefined
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "At least one browser field is required.",
-      });
-    }
-    if (
-      (input.stateProtection === undefined) !==
-      (input.expectedStateRevision === undefined)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Browser state updates require an expected revision.",
-        path: ["expectedStateRevision"],
-      });
-    }
-    if (
-      input.titleProtection &&
-      input.titleProtection.classification.recordKind !== "browser"
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Browser title classification must be browser.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-  });
-
-const browserSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  stateRevision: z.number().int().positive().safe(),
-  workerId: z.string().min(1).nullable().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const browserSummarySchema = browserSummaryBaseSchema.extend({
-  title: z.string().min(1).max(200),
-  url: browserHttpUrlSchema,
-});
-
-export const browserWireSummarySchema = browserSummaryBaseSchema
-  .extend({
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: browserPrivateStateOpaqueSchema,
-  })
-  .refine(
-    (browser) =>
-      browser.titleProtection.classification.recordKind === "browser",
-    {
-      message: "Browser title classification must be browser.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const browserListSchema = z.array(browserSummarySchema);
-export const browserWireListSchema = z.array(browserWireSummarySchema);
-
-export const browserServiceProtocolSchema = z.enum(["http", "https"]);
-
-export const browserServiceSchema = z.object({
-  workerId: z.string().min(1).max(200),
-  host: z.string().trim().min(1).max(255),
-  port: z.number().int().min(1).max(65_535),
-  protocol: browserServiceProtocolSchema,
-  url: z
-    .string()
-    .url()
-    .max(4_096)
-    .refine((value) => /^https?:\/\//u.test(value), {
-      message: "Browser service URLs must use HTTP or HTTPS.",
-    }),
-  title: z.string().trim().min(1).max(200).nullable(),
-  processName: z.string().trim().min(1).max(200).nullable(),
-  statusCode: z.number().int().min(100).max(599),
-});
-
-export const browserServiceListSchema = z.array(browserServiceSchema).max(128);
-
-export const browserFleetServiceSchema = browserServiceSchema.extend({
-  workerName: z.string().min(1).max(200),
-  placement: executionPlacementSchema,
-});
-
-export const browserServiceDiscoveryWorkerStatusSchema = z.enum([
-  "ok",
-  "offline",
-  "timed-out",
-  "error",
-]);
-
-export const browserServiceDiscoveryErrorSchema = z.object({
-  code: z.enum(["worker-offline", "worker-timeout", "worker-error"]),
-  message: z.string().min(1).max(1_000),
-});
-
-export const browserServiceDiscoveryWorkerResultSchema = z.object({
-  workerId: z.string().min(1).max(200),
-  workerName: z.string().min(1).max(200),
-  status: browserServiceDiscoveryWorkerStatusSchema,
-  services: z.array(browserFleetServiceSchema).max(128),
-  error: browserServiceDiscoveryErrorSchema.nullable(),
-  truncated: z.boolean().default(false),
-});
-
-export const browserServiceFleetDiscoverySchema = z.object({
-  projectId: z.string().min(1),
-  observedAt: z.string().datetime(),
-  partial: z.boolean(),
-  truncated: z.boolean().default(false),
-  workers: z.array(browserServiceDiscoveryWorkerResultSchema).max(64),
-});
-
-export const browserTunnelRequestSchema = z
-  .object({
-    protocol: z.enum(["http", "https"]),
-    host: z.enum(["127.0.0.1", "localhost", "::1"]),
-    port: z.number().int().min(1).max(65_535),
-    workerId: z.string().min(1).max(200).optional(),
-  })
-  .strict();
-
-export const browserTunnelWireRequestSchema = z
-  .object({
-    tunnelId: z.string().uuid(),
-    protocolHint: z.enum(["http-websocket", "https-websocket"]),
-    workerId: z.string().min(1).max(200),
-    resetAttachments: z.boolean().default(false),
-    protectedRecord: protectedTunnelContentRecordSchema,
-  })
-  .strict();
-
-export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("monitor"),
-    id: z.string().min(1).max(200).nullable().default(null),
-    name: z.string().trim().min(1).max(500).nullable().default(null),
-  }),
-  z.object({
-    kind: z.literal("window"),
-    id: z.string().min(1).max(200).nullable().default(null),
-    application: z.string().trim().min(1).max(500),
-    title: z.string().trim().min(1).max(1_000).nullable().default(null),
-  }),
-]);
-
-export const remoteDesktopCreateSchema = z
-  .object({
-    tabGroupId: z.string().min(1).optional(),
-    target: executionTargetSchema.optional(),
-  })
-  .strict();
-
-export const encryptedRemoteDesktopCreateSchema = remoteDesktopCreateSchema
-  .extend({
-    id: z.string().uuid(),
-    stateProtection: remoteDesktopPrivateStateOpaqueSchema,
-    titleProtection: privateDisplayLabelOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (input) =>
-      input.titleProtection.classification.recordKind === "project-view",
-    {
-      message: "Remote Desktop title classification must be project-view.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const remoteDesktopMonitorSchema = z.object({
-  kind: z.literal("monitor"),
-  id: z.string().min(1).max(200),
-  name: z.string().trim().min(1).max(500),
-  x: z.number().int(),
-  y: z.number().int(),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  primary: z.boolean(),
-});
-
-export const remoteDesktopApplicationIconKeySchema = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(/^[a-zA-Z0-9:_-]+$/u);
-
-export const remoteDesktopWindowSchema = z.object({
-  kind: z.literal("window"),
-  id: z.string().min(1).max(200),
-  application: z.string().trim().min(1).max(500),
-  title: z.string().trim().min(1).max(1_000),
-  iconKey: remoteDesktopApplicationIconKeySchema.nullable().default(null),
-  x: z.number().int(),
-  y: z.number().int(),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  minimized: z.boolean(),
-  focused: z.boolean(),
-});
-
-export const remoteDesktopTargetInventorySchema = z.object({
-  monitors: z.array(remoteDesktopMonitorSchema).max(64),
-  windows: z.array(remoteDesktopWindowSchema).max(2_000),
-});
-
-export const encryptedRemoteDesktopUpdateSchema = z
-  .object({
-    expectedStateRevision: z.number().int().positive().safe(),
-    stateProtection: remoteDesktopPrivateStateOpaqueSchema,
-  })
-  .strict();
-
-const remoteDesktopSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  workerId: z.string().min(1),
-  stateRevision: z.number().int().positive().safe(),
-  status: remoteSurfaceStatusSchema,
-  lastError: z.string().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const remoteDesktopSummarySchema = remoteDesktopSummaryBaseSchema.extend(
-  {
-    title: z.string().min(1).max(200),
-    target: remoteDesktopTargetSchema,
-  },
-);
-
-export const remoteDesktopWireSummarySchema = remoteDesktopSummaryBaseSchema
-  .extend({
-    stateProtection: remoteDesktopPrivateStateOpaqueSchema,
-    titleProtection: privateDisplayLabelOpaqueSchema,
-  })
-  .strict()
-  .superRefine((desktop, context) => {
-    if (desktop.titleProtection.classification.recordKind !== "project-view") {
-      context.addIssue({
-        code: "custom",
-        message: "Remote Desktop title classification must be project-view.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-  });
-
-export const remoteDesktopListSchema = z.array(remoteDesktopSummarySchema);
-export const remoteDesktopWireListSchema = z.array(
+import { repositoryRelativePathSchema } from "./repository-paths.js";
+
+export { repositoryRelativePathSchema } from "./repository-paths.js";
+
+import { terminalServiceRuntimeConfigurationSchema } from "./terminals.js";
+
+export {
+  terminalCreateSchema,
+  encryptedTerminalCreateSchema,
+  encryptedLinkedConsoleCreateSchema,
+  terminalUpdateSchema,
+  encryptedTerminalUpdateSchema,
+  terminalServiceConfigurationSchema,
+  encryptedTerminalServiceConfigurationSchema,
+  terminalServiceRuntimeConfigurationSchema,
+  terminalKindSchema,
+  terminalSummarySchema,
+  terminalWireSummarySchema,
+  terminalListSchema,
+  terminalWireListSchema,
+  scriptCommandKindSchema,
+  scriptCommandSchema,
+  scriptCommandListSchema,
+  protectedScriptCommandListSchema,
+  terminalClientMessageSchema,
+  terminalServerMessageSchema,
+  terminalOpenResultSchema,
+  terminalSnapshotResultSchema,
+} from "./terminals.js";
+
+export type {
+  TerminalCreate,
+  EncryptedTerminalCreate,
+  TerminalUpdate,
+  EncryptedTerminalUpdate,
+  TerminalServiceConfiguration,
+  EncryptedTerminalServiceConfiguration,
+  TerminalServiceRuntimeConfiguration,
+  TerminalSummary,
+  TerminalWireSummary,
+  TerminalKind,
+  ScriptCommandKind,
+  ScriptCommand,
+  TerminalClientMessage,
+  TerminalServerMessage,
+  TerminalOpenResult,
+  TerminalSnapshotResult,
+} from "./terminals.js";
+
+export {
+  explorerFileModeSchema,
+  explorerCreateSchema,
+  encryptedExplorerCreateSchema,
+  explorerUpdateSchema,
+  encryptedExplorerUpdateSchema,
+  encryptedExplorerPinSchema,
+  explorerViewStateUpdateSchema,
+  encryptedExplorerViewStateUpdateSchema,
+  encryptedExplorerWorktreeUpdateSchema,
+  explorerSummarySchema,
+  explorerWireSummarySchema,
+  explorerListSchema,
+  explorerWireListSchema,
+} from "./explorer-surfaces.js";
+
+export type {
+  ExplorerCreate,
+  EncryptedExplorerCreate,
+  ExplorerUpdate,
+  EncryptedExplorerUpdate,
+  EncryptedExplorerPin,
+  ExplorerFileMode,
+  ExplorerViewStateUpdate,
+  EncryptedExplorerViewStateUpdate,
+  EncryptedExplorerWorktreeUpdate,
+  ExplorerSummary,
+  ExplorerWireSummary,
+} from "./explorer-surfaces.js";
+
+import {
+  codeThemeModeSchema,
+  codePresentationSchema,
+  codeAppearanceSchema,
+  codeTransportRouteAuthorizeCommandSchema,
+  codeTransportRouteRevokeCommandSchema,
+  codeTransportRevokeCommandSchema,
+  projectSharePublicBasePathSchema,
+  projectSharePublicOriginSchema,
+} from "./code-surfaces.js";
+
+export {
+  codeThemeModeSchema,
+  codePresentationSchema,
+  codeAppearanceSchema,
+  codeTabStatusSchema,
+  codeSessionStatusSchema,
+  codeTabCreateSchema,
+  encryptedCodeTabCreateSchema,
+  codeTabUpdateSchema,
+  encryptedCodeTabUpdateSchema,
+  codeTabSummarySchema,
+  codeTabWireSummarySchema,
+  codeTabListSchema,
+  codeTabWireListSchema,
+  codeEditorBuildSchema,
+  codeProbeResultSchema,
+  codeSessionSummarySchema,
+  codeSessionListSchema,
+  codeDirtyEditorSchema,
+  codeSaveBeforeAgentTurnSchema,
+  codeWorkbenchAgentStatusSchema,
+  codeWorkbenchActiveEditorSchema,
+  codeWorkbenchGitStateSchema,
+  codeWorkbenchStateSchema,
+  codeRuntimeStatusSchema,
+  codeSettingsWorkbenchOpenResultSchema,
+  codeSaveAllResultSchema,
+  codeAgentTurnPreparationSessionSchema,
+  codeAgentTurnPreparationResultSchema,
+  codeAgentTurnNotificationResultSchema,
+  codeAttachmentSchema,
+  codeProtectedAttachmentWireSchema,
+  codeProtectedAttachmentIntentSchema,
+  codeSessionRouteGrantSchema,
+  codeSessionRouteBasePath,
+  parseCodeSessionRoutePath,
+  codeTransportCandidateSchema,
+  codeTransportWireSchema,
+  codeSessionAttachmentWireSchema,
+  codeSharedAttachmentWireSchema,
+  codeTransportRouteAuthorizeCommandSchema,
+  codeTransportRouteRevokeCommandSchema,
+  codeTransportRevokeCommandSchema,
+  codeTransportRouteAuthorizeResultSchema,
+  codeTransportRouteRevokeResultSchema,
+  codeTransportRevokeResultSchema,
+  projectShareAttachmentSchema,
+  projectShareTunnelCreateSchema,
+  projectShareDirectCreateSchema,
+  projectShareAttachmentWireSchema,
+  standaloneChatShareAttachmentSchema,
+  standaloneChatShareAttachmentWireSchema,
+  projectSharePublicBasePathSchema,
+  projectSharePublicOriginSchema,
+  codeAttachmentCreateSchema,
+  codeProtectedAttachmentCreateSchema,
+  codeSessionAttachmentCreateSchema,
+  explorerCodeSessionAttachmentCreateSchema,
+  codeSettingsWorkbenchSessionAttachmentCreateSchema,
+  codeSettingsWorkbenchSharedAttachmentWireSchema,
+  explorerCodeProtectedAttachmentCreateSchema,
+  codeSettingsWorkbenchAttachmentCreateSchema,
+  codeSettingsWorkbenchAttachmentWireSchema,
+  explorerCodeAttachmentCreateSchema,
+  codeOpenFileResultSchema,
+  codeOpenFileRequestSchema,
+  codeOpenSettingsRequestSchema,
+  codeOpenSettingsResultSchema,
+  codeOpenExtensionsRequestSchema,
+  codeOpenExtensionsResultSchema,
+  codeInstallVsixResultSchema,
+  codePresentationUpdateSchema,
+  codeThemeUpdateSchema,
+  isForwardableCodeWebSocketCloseCode,
+  CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
+} from "./code-surfaces.js";
+
+export type {
+  CodeThemeMode,
+  CodePresentation,
+  CodeAppearance,
+  CodeTabStatus,
+  CodeSessionStatus,
+  CodeTabCreate,
+  EncryptedCodeTabCreate,
+  CodeTabUpdate,
+  EncryptedCodeTabUpdate,
+  CodeTabSummary,
+  CodeTabWireSummary,
+  CodeEditorBuild,
+  CodeProbeResult,
+  CodeSessionSummary,
+  CodeDirtyEditor,
+  CodeSaveBeforeAgentTurn,
+  CodeWorkbenchState,
+  CodeRuntimeStatus,
+  CodeSaveAllResult,
+  CodeAgentTurnPreparationResult,
+  CodeAgentTurnNotificationResult,
+  CodeAttachment,
+  CodeAttachmentCreate,
+  CodeProtectedAttachmentWire,
+  CodeProtectedAttachmentIntent,
+  CodeProtectedAttachmentCreate,
+  CodeTransportCandidate,
+  CodeTransportWire,
+  CodeSessionAttachmentCreate,
+  ExplorerCodeSessionAttachmentCreate,
+  CodeSettingsWorkbenchSessionAttachmentCreate,
+  CodeSessionAttachmentWire,
+  CodeSharedAttachmentWire,
+  CodeSettingsWorkbenchSharedAttachmentWire,
+  CodeTransportRouteAuthorizeCommand,
+  CodeTransportRouteRevokeCommand,
+  CodeTransportRevokeCommand,
+  CodeTransportRouteAuthorizeResult,
+  CodeTransportRouteRevokeResult,
+  CodeTransportRevokeResult,
+  CodeSettingsWorkbenchAttachmentCreate,
+  CodeSettingsWorkbenchAttachmentWire,
+  ExplorerCodeAttachmentCreate,
+  ExplorerCodeProtectedAttachmentCreate,
+  CodeOpenFileResult,
+  CodeOpenFileRequest,
+  CodeOpenSettingsResult,
+  CodeOpenExtensionsResult,
+  CodeInstallVsixResult,
+  CodeSettingsWorkbenchOpenResult,
+  CodePresentationUpdate,
+  CodeThemeUpdate,
+  ProjectShareAttachment,
+  ProjectShareAttachmentWire,
+  StandaloneChatShareAttachment,
+  StandaloneChatShareAttachmentWire,
+} from "./code-surfaces.js";
+
+import {
+  browserHttpUrlSchema,
+  browserServiceListSchema,
+} from "./browser-surfaces.js";
+
+export {
+  browserCreateSchema,
+  encryptedBrowserCreateSchema,
+  browserUpdateSchema,
+  encryptedBrowserUpdateSchema,
+  browserSummarySchema,
+  browserWireSummarySchema,
+  browserListSchema,
+  browserWireListSchema,
+  browserServiceProtocolSchema,
+  browserServiceSchema,
+  browserServiceListSchema,
+  browserFleetServiceSchema,
+  browserServiceDiscoveryWorkerStatusSchema,
+  browserServiceDiscoveryErrorSchema,
+  browserServiceDiscoveryWorkerResultSchema,
+  browserServiceFleetDiscoverySchema,
+  browserTunnelRequestSchema,
+  browserTunnelWireRequestSchema,
+} from "./browser-surfaces.js";
+
+export type {
+  BrowserCreate,
+  EncryptedBrowserCreate,
+  BrowserUpdate,
+  EncryptedBrowserUpdate,
+  BrowserSummary,
+  BrowserWireSummary,
+  BrowserServiceProtocol,
+  BrowserService,
+  BrowserFleetService,
+  BrowserServiceDiscoveryWorkerStatus,
+  BrowserServiceDiscoveryWorkerResult,
+  BrowserServiceFleetDiscovery,
+  BrowserTunnelRequest,
+  BrowserTunnelWireRequest,
+} from "./browser-surfaces.js";
+
+export {
+  remoteDesktopTargetSchema,
+  remoteDesktopCreateSchema,
+  encryptedRemoteDesktopCreateSchema,
+  remoteDesktopMonitorSchema,
+  remoteDesktopApplicationIconKeySchema,
+  remoteDesktopWindowSchema,
+  remoteDesktopTargetInventorySchema,
+  encryptedRemoteDesktopUpdateSchema,
+  remoteDesktopSummarySchema,
   remoteDesktopWireSummarySchema,
-);
+  remoteDesktopListSchema,
+  remoteDesktopWireListSchema,
+  remoteDesktopFleetWorkerStatusSchema,
+  remoteDesktopFleetErrorSchema,
+  remoteDesktopFleetWorkerSchema,
+  remoteDesktopProtectedInventorySchema,
+  remoteDesktopFleetWireWorkerSchema,
+  remoteDesktopFleetSchema,
+  remoteDesktopFleetWireSchema,
+} from "./remote-desktops.js";
 
-export const remoteDesktopFleetWorkerStatusSchema = z.enum([
-  "ok",
-  "offline",
-  "timed-out",
-  "error",
-]);
+export type {
+  RemoteDesktopCreate,
+  EncryptedRemoteDesktopCreate,
+  RemoteDesktopTarget,
+  RemoteDesktopMonitor,
+  RemoteDesktopWindow,
+  RemoteDesktopTargetInventory,
+  EncryptedRemoteDesktopUpdate,
+  RemoteDesktopSummary,
+  RemoteDesktopWireSummary,
+  RemoteDesktopFleetWorkerStatus,
+  RemoteDesktopFleetWorker,
+  RemoteDesktopProtectedInventory,
+  RemoteDesktopFleetWireWorker,
+  RemoteDesktopFleet,
+  RemoteDesktopFleetWire,
+} from "./remote-desktops.js";
 
-export const remoteDesktopFleetErrorSchema = z.object({
-  code: z.enum(["worker-offline", "worker-timeout", "worker-error"]),
-  message: z.string().min(1).max(1_000),
-});
+import {
+  remoteSurfaceConfigurationSchema,
+  remoteSurfaceViewportSchema,
+  desktopStreamSettingsSchema,
+} from "./remote-surfaces.js";
 
-export const remoteDesktopFleetWorkerSchema = z.object({
-  workerId: z.string().min(1).max(200),
-  workerName: z.string().min(1).max(200),
-  platform: z.string().min(1).max(100),
-  architecture: z.string().min(1).max(100),
-  status: remoteDesktopFleetWorkerStatusSchema,
-  inventory: remoteDesktopTargetInventorySchema,
-  desktops: z.array(remoteDesktopSummarySchema).max(64),
-  error: remoteDesktopFleetErrorSchema.nullable(),
-  truncated: z.boolean().default(false),
-});
-
-export const remoteDesktopProtectedInventorySchema = z
-  .object({
-    operationId: z.string().uuid(),
-    stateProtection: remoteDesktopPrivateInventoryOpaqueSchema,
-    monitorCount: z.number().int().nonnegative().max(64),
-    windowCount: z.number().int().nonnegative().max(2_000),
-    truncated: z.boolean().default(false),
-  })
-  .strict();
-
-export const remoteDesktopFleetWireWorkerSchema = remoteDesktopFleetWorkerSchema
-  .omit({ inventory: true })
-  .extend({
-    inventoryOperationId: z.string().uuid().nullable(),
-    inventoryProtection: remoteDesktopPrivateInventoryOpaqueSchema.nullable(),
-    monitorCount: z.number().int().nonnegative().max(64),
-    windowCount: z.number().int().nonnegative().max(2_000),
-    desktops: z.array(remoteDesktopWireSummarySchema).max(64),
-  })
-  .strict()
-  .superRefine((worker, context) => {
-    if (
-      (worker.status === "ok") !==
-      (worker.inventoryOperationId !== null &&
-        worker.inventoryProtection !== null)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Available Remote Desktop workers require protected inventory.",
-        path: ["inventoryProtection"],
-      });
-    }
-  });
-
-export const remoteDesktopFleetSchema = z.object({
-  projectId: z.string().min(1),
-  observedAt: z.string().datetime(),
-  partial: z.boolean(),
-  truncated: z.boolean().default(false),
-  workers: z.array(remoteDesktopFleetWorkerSchema).max(64),
-});
-
-export const remoteDesktopFleetWireSchema = remoteDesktopFleetSchema
-  .extend({
-    workers: z.array(remoteDesktopFleetWireWorkerSchema).max(64),
-  })
-  .strict();
-
-export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("browser"),
-    profileId: z.string().trim().min(1).max(200).nullable().default(null),
-  }),
-  z
-    .object({
-      kind: z.literal("desktop"),
-    })
-    .strict(),
-]);
-
-export const remoteSurfaceCreateSchema = z.object({
-  workerId: z.string().min(1),
-  title: z.string().trim().min(1).max(200),
-  configuration: remoteSurfaceConfigurationSchema,
-});
-
-export const encryptedRemoteSurfaceCreateSchema = remoteSurfaceCreateSchema
-  .omit({ title: true })
-  .extend({
-    id: z.string().uuid(),
-    stateProtection: z
-      .union([
-        browserPrivateStateOpaqueSchema,
-        remoteDesktopPrivateStateOpaqueSchema,
-      ])
-      .optional(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-  })
-  .strict()
-  .superRefine((input, context) => {
-    if (input.titleProtection.classification.recordKind !== "remote-surface") {
-      context.addIssue({
-        code: "custom",
-        message: "Remote Surface title classification must be remote-surface.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-    const expectedStateKind =
-      input.configuration.kind === "browser"
-        ? "browser-state"
-        : "remote-desktop-state";
-    if (
-      input.stateProtection?.classification.recordKind !== expectedStateKind
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Remote Surface protected state must match its kind.",
-        path: ["stateProtection"],
-      });
-    }
-  });
-
-export const remoteSurfaceUpdateSchema = z
-  .object({
-    title: z.string().trim().min(1).max(200).optional(),
-    configuration: remoteSurfaceConfigurationSchema.optional(),
-    preferredTransport: remoteSurfaceTransportSchema.optional(),
-  })
-  .refine(
-    (input) =>
-      input.title !== undefined ||
-      input.configuration !== undefined ||
-      input.preferredTransport !== undefined,
-    { message: "At least one remote surface field is required." },
-  );
-
-export const encryptedRemoteSurfaceUpdateSchema = z
-  .object({
-    expectedStateRevision: z.number().int().positive().safe().optional(),
-    titleProtection: privateDisplayLabelOpaqueSchema.optional(),
-    configuration: remoteSurfaceConfigurationSchema.optional(),
-    preferredTransport: remoteSurfaceTransportSchema.optional(),
-    stateProtection: z
-      .union([
-        browserPrivateStateOpaqueSchema,
-        remoteDesktopPrivateStateOpaqueSchema,
-      ])
-      .optional(),
-  })
-  .strict()
-  .superRefine((input, context) => {
-    if (
-      input.titleProtection === undefined &&
-      input.configuration === undefined &&
-      input.preferredTransport === undefined &&
-      input.stateProtection === undefined
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "At least one remote surface field is required.",
-      });
-    }
-    if (
-      (input.stateProtection === undefined) !==
-      (input.expectedStateRevision === undefined)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Remote Surface state updates require an expected revision.",
-        path: ["expectedStateRevision"],
-      });
-    }
-    if (
-      input.titleProtection &&
-      input.titleProtection.classification.recordKind !== "remote-surface"
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Remote Surface title classification must be remote-surface.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-  });
-
-const remoteSurfaceSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  workerId: z.string().min(1),
-  kind: remoteSurfaceKindSchema,
-  status: remoteSurfaceStatusSchema,
-  preferredTransport: remoteSurfaceTransportSchema,
-  configuration: remoteSurfaceConfigurationSchema,
-  stateRevision: z.number().int().positive().safe().nullable(),
-  lastError: z.string().nullable(),
-  lastConnectedAt: z.string().datetime().nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const remoteSurfaceSummarySchema = remoteSurfaceSummaryBaseSchema.extend(
-  {
-    title: z.string().min(1).max(200),
-    url: browserHttpUrlSchema.nullable(),
-  },
-);
-
-export const remoteSurfaceWireSummarySchema = remoteSurfaceSummaryBaseSchema
-  .extend({
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: z
-      .union([
-        browserPrivateStateOpaqueSchema,
-        remoteDesktopPrivateStateOpaqueSchema,
-      ])
-      .nullable(),
-  })
-  .superRefine((surface, context) => {
-    const recordKind = surface.titleProtection.classification.recordKind;
-    if (
-      recordKind !== "remote-surface" &&
-      !(surface.kind === "browser" && recordKind === "browser") &&
-      !(surface.kind === "desktop" && recordKind === "project-view")
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Remote Surface title classification must match its canonical owner.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-    const expectedRecordKind =
-      surface.kind === "browser" ? "browser-state" : "remote-desktop-state";
-    if (
-      surface.stateProtection?.classification.recordKind !==
-        expectedRecordKind ||
-      surface.stateRevision === null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Remote Surfaces require protected state matching their kind.",
-        path: ["stateProtection"],
-      });
-    }
-  });
-
-export const remoteSurfaceListSchema = z.array(remoteSurfaceSummarySchema);
-export const remoteSurfaceWireListSchema = z.array(
+export {
+  remoteSurfaceConfigurationSchema,
+  remoteSurfaceCreateSchema,
+  encryptedRemoteSurfaceCreateSchema,
+  remoteSurfaceUpdateSchema,
+  encryptedRemoteSurfaceUpdateSchema,
+  remoteSurfaceSummarySchema,
   remoteSurfaceWireSummarySchema,
-);
+  remoteSurfaceListSchema,
+  remoteSurfaceWireListSchema,
+  remoteSurfaceViewportSchema,
+  desktopStreamSettingsSchema,
+  remoteSurfaceConnectionMessageSchema,
+  remoteSurfaceAttachResultSchema,
+  remoteSurfaceControlSchema,
+  remoteDesktopProbeResultSchema,
+  remoteDesktopApplicationIconSchema,
+  remoteDesktopClientMessageSchema,
+  remoteDesktopServerMessageSchema,
+  remoteBrowserClientMessageSchema,
+  remoteBrowserServerMessageSchema,
+  remoteBrowserCursorMessageSchema,
+  remoteBrowserClipboardMessageSchema,
+  remoteSurfaceFrameHeaderSchema,
+  REMOTE_SURFACE_MAX_HEADER_BYTES,
+  REMOTE_SURFACE_MAX_PAYLOAD_BYTES,
+  encodeRemoteSurfaceFrame,
+  decodeRemoteSurfaceFrame,
+} from "./remote-surfaces.js";
 
-export const remoteSurfaceViewportSchema = z.object({
-  width: z.number().int().min(1).max(16_384),
-  height: z.number().int().min(1).max(16_384),
-  devicePixelRatio: z.number().min(0.25).max(8),
-});
+export type {
+  RemoteDesktopApplicationIcon,
+  RemoteSurfaceConfiguration,
+  RemoteSurfaceCreate,
+  EncryptedRemoteSurfaceCreate,
+  RemoteSurfaceUpdate,
+  EncryptedRemoteSurfaceUpdate,
+  RemoteSurfaceSummary,
+  RemoteSurfaceWireSummary,
+  RemoteSurfaceViewport,
+  DesktopStreamSettings,
+  RemoteSurfaceConnectionMessage,
+  RemoteSurfaceAttachResult,
+  RemoteSurfaceControl,
+  RemoteDesktopProbeResult,
+  RemoteDesktopClientMessage,
+  RemoteDesktopServerMessage,
+  RemoteBrowserClientMessage,
+  RemoteBrowserServerMessage,
+  RemoteBrowserCursorMessage,
+  RemoteBrowserClipboardMessage,
+  RemoteSurfaceFrameHeader,
+} from "./remote-surfaces.js";
 
-export const desktopStreamSettingsSchema = z.object({
-  targetFps: z.number().int().min(1).max(60),
-  quality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
-});
+export {
+  projectViewKindSchema,
+  projectViewCreateSchema,
+  encryptedProjectViewCreateSchema,
+  projectTabKindSchema,
+  projectTabMemberSummarySchema,
+  projectTabMemberWireSummarySchema,
+  tabGroupSummarySchema,
+  tabGroupWireSummarySchema,
+  tabGroupUpdateSchema,
+  encryptedTabGroupUpdateSchema,
+  projectTabLayoutSummarySchema,
+  projectTabLayoutWireSummarySchema,
+  tabGroupOrderSchema,
+  tabGroupMemberOrderSchema,
+  tabGroupMemberMoveSchema,
+  projectViewUpdateSchema,
+  encryptedProjectViewUpdateSchema,
+  projectViewSummarySchema,
+  projectViewWireSummarySchema,
+  projectViewListSchema,
+  projectViewWireListSchema,
+} from "./project-tabs.js";
 
-export const remoteSurfaceConnectionMessageSchema = z.discriminatedUnion(
-  "type",
-  [
-    z.object({
-      type: z.literal("ready"),
-      surfaceId: z.string().min(1),
-      attachmentId: z.string().min(1),
-      transport: remoteSurfaceTransportSchema,
-      webrtc: remoteSurfaceWebRtcConfigurationSchema.nullable().default(null),
-    }),
-    z.object({
-      type: z.literal("error"),
-      message: z.string().min(1),
-      recoverable: z.boolean(),
-    }),
-  ],
-);
-
-export const remoteSurfaceAttachResultSchema = z.object({
-  accepted: z.literal(true),
-  transport: remoteSurfaceTransportSchema,
-});
-
-export const remoteSurfaceControlSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("resize"),
-    viewport: remoteSurfaceViewportSchema,
-  }),
-  z.object({ type: z.literal("suspend") }),
-  z.object({ type: z.literal("resume") }),
-]);
-
-export const remoteDesktopProbeResultSchema = z.object({
-  available: z.boolean(),
-  message: z.string().max(2_048).nullable(),
-});
-
-export const remoteDesktopApplicationIconSchema = z.object({
-  key: remoteDesktopApplicationIconKeySchema,
-  mimeType: z.literal("image/png"),
-  data: z.string().max(180_000).nullable(),
-});
-
-export const remoteDesktopClientMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("viewport"),
-    viewport: remoteSurfaceViewportSchema,
-  }),
-  z.object({
-    type: z.literal("pointer"),
-    event: z.enum(["move", "down", "up", "wheel"]),
-    x: z.number().finite().nonnegative(),
-    y: z.number().finite().nonnegative(),
-    button: z
-      .enum(["none", "left", "middle", "right", "back", "forward"])
-      .default("none"),
-    buttons: z.number().int().nonnegative().max(31).default(0),
-    clickCount: z.number().int().min(0).max(3).default(0),
-    deltaX: z.number().finite().default(0),
-    deltaY: z.number().finite().default(0),
-    modifiers: z.number().int().nonnegative().max(15).default(0),
-  }),
-  z.object({
-    type: z.literal("key"),
-    event: z.enum(["down", "up"]),
-    key: z.string().max(100),
-    code: z.string().max(100),
-    text: z.string().max(10).default(""),
-    modifiers: z.number().int().nonnegative().max(15).default(0),
-  }),
-  z.object({ type: z.literal("focus") }),
-  z.object({ type: z.literal("refresh-targets") }),
-  z.object({
-    type: z.literal("request-target-icons"),
-    keys: z.array(remoteDesktopApplicationIconKeySchema).min(1).max(64),
-  }),
-  z.object({
-    type: z.literal("clipboard"),
-    operation: z.enum(["copy", "paste-text"]),
-    text: z.string().max(1_000_000).default(""),
-  }),
-  z.object({
-    type: z.literal("stream-feedback"),
-    intervalMs: z.number().int().min(250).max(10_000),
-    receivedFrames: z.number().int().nonnegative().max(1_000),
-    renderedFrames: z.number().int().nonnegative().max(1_000),
-    droppedFrames: z.number().int().nonnegative().max(1_000),
-    averageDecodeMs: z.number().finite().nonnegative().max(10_000),
-  }),
-]);
-
-export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("desktop-state"),
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
-    status: z.enum(["ready", "launching", "suspended", "error"]),
-    message: z.string().max(2_048).nullable(),
-    stream: z
-      .object({
-        backend: z.enum(["native", "compatibility"]),
-        targetFps: z.number().int().min(1).max(60),
-        observedFps: z.number().finite().nonnegative().max(240),
-        quality: z.number().int().min(1).max(100),
-        encodedWidth: z.number().int().positive(),
-      })
-      .nullable()
-      .default(null),
-  }),
-  z
-    .object({
-      type: z.literal("desktop-targets"),
-      operationId: z.string().uuid(),
-      stateProtection: remoteDesktopPrivateInventoryOpaqueSchema,
-      monitorCount: z.number().int().nonnegative().max(64),
-      windowCount: z.number().int().nonnegative().max(2_000),
-    })
-    .strict(),
-  z.object({
-    type: z.literal("desktop-target-icons"),
-    icons: z.array(remoteDesktopApplicationIconSchema).max(64),
-  }),
-  z.object({
-    type: z.literal("desktop-clipboard"),
-    text: z.string().max(1_000_000),
-  }),
-]);
-
-export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("navigate"),
-    operationId: z.string().uuid(),
-    stateProtection: browserPrivateStateOpaqueSchema,
-  }),
-  z.object({
-    type: z.literal("history"),
-    delta: z.union([z.literal(-1), z.literal(1)]),
-  }),
-  z.object({ type: z.literal("reload") }),
-  z.object({ type: z.literal("stop") }),
-  z.object({
-    type: z.literal("viewport"),
-    viewport: remoteSurfaceViewportSchema,
-  }),
-  z.object({
-    type: z.literal("pointer"),
-    event: z.enum(["move", "down", "up", "wheel"]),
-    x: z.number().finite().nonnegative(),
-    y: z.number().finite().nonnegative(),
-    button: z
-      .enum(["none", "left", "middle", "right", "back", "forward"])
-      .default("none"),
-    buttons: z.number().int().nonnegative().max(31).default(0),
-    clickCount: z.number().int().min(0).max(3).default(0),
-    deltaX: z.number().finite().default(0),
-    deltaY: z.number().finite().default(0),
-    modifiers: z.number().int().nonnegative().max(15).default(0),
-  }),
-  z.object({
-    type: z.literal("key"),
-    event: z.enum(["down", "up"]),
-    key: z.string().max(100),
-    code: z.string().max(100),
-    text: z.string().max(10).default(""),
-    modifiers: z.number().int().nonnegative().max(15).default(0),
-  }),
-  z.object({ type: z.literal("focus") }),
-  z.object({
-    type: z.literal("touch"),
-    event: z.enum(["start", "move", "end", "cancel"]),
-    points: z
-      .array(
-        z.object({
-          id: z.number().int().nonnegative(),
-          x: z.number().finite().nonnegative(),
-          y: z.number().finite().nonnegative(),
-          radiusX: z.number().finite().positive().default(1),
-          radiusY: z.number().finite().positive().default(1),
-          force: z.number().finite().min(0).max(1).default(1),
-        }),
-      )
-      .max(10),
-    modifiers: z.number().int().nonnegative().max(15).default(0),
-  }),
-  z.object({
-    type: z.literal("clipboard"),
-    operation: z.enum(["copy-selection", "paste-text"]),
-    text: z.string().max(1_000_000).default(""),
-  }),
-]);
-
-export const remoteBrowserServerMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("browser-state"),
-    operationId: z.string().uuid(),
-    stateProtection: browserPrivateStateOpaqueSchema,
-    title: z.string().max(2_000),
-    canGoBack: z.boolean(),
-    canGoForward: z.boolean(),
-    loading: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("browser-runtime"),
-    status: z.enum(["ready", "recovering", "error"]),
-    message: z.string().max(2_000).nullable().default(null),
-  }),
-  z.object({
-    type: z.literal("browser-input-focus"),
-    editable: z.boolean(),
-  }),
-]);
-
-export const remoteBrowserCursorMessageSchema = z.object({
-  type: z.literal("browser-cursor"),
-  cursor: z.enum([
-    "auto",
-    "default",
-    "none",
-    "context-menu",
-    "help",
-    "pointer",
-    "progress",
-    "wait",
-    "cell",
-    "crosshair",
-    "text",
-    "vertical-text",
-    "alias",
-    "copy",
-    "move",
-    "no-drop",
-    "not-allowed",
-    "grab",
-    "grabbing",
-    "all-scroll",
-    "col-resize",
-    "row-resize",
-    "n-resize",
-    "e-resize",
-    "s-resize",
-    "w-resize",
-    "ne-resize",
-    "nw-resize",
-    "se-resize",
-    "sw-resize",
-    "ew-resize",
-    "ns-resize",
-    "nesw-resize",
-    "nwse-resize",
-    "zoom-in",
-    "zoom-out",
-  ]),
-});
-
-export const remoteBrowserClipboardMessageSchema = z.object({
-  type: z.literal("browser-clipboard"),
-  operation: z.literal("copy-selection"),
-  text: z.string().max(1_000_000),
-});
-
-export const remoteSurfaceFrameHeaderSchema = z.object({
-  protocolVersion: remoteSurfaceProtocolVersionSchema,
-  surfaceId: z.string().min(1).max(200),
-  attachmentId: z.string().min(1).max(200),
-  sequence: z.number().int().nonnegative().safe(),
-  channel: remoteSurfaceChannelSchema,
-});
-
-export const REMOTE_SURFACE_MAX_HEADER_BYTES = 64 * 1_024;
-export const REMOTE_SURFACE_MAX_PAYLOAD_BYTES = 4 * 1_024 * 1_024;
-const REMOTE_SURFACE_FRAME_MAGIC = new Uint8Array([0x43, 0x54, 0x52, 0x53]);
-
-export function encodeRemoteSurfaceFrame(
-  header: RemoteSurfaceFrameHeader,
-  payload: Uint8Array,
-): Uint8Array {
-  const parsedHeader = remoteSurfaceFrameHeaderSchema.parse(header);
-  if (payload.byteLength > REMOTE_SURFACE_MAX_PAYLOAD_BYTES) {
-    throw new Error("Remote Surface payload exceeds the protocol limit.");
-  }
-  const encodedHeader = new TextEncoder().encode(JSON.stringify(parsedHeader));
-  if (encodedHeader.byteLength > REMOTE_SURFACE_MAX_HEADER_BYTES) {
-    throw new Error("Remote Surface header exceeds the protocol limit.");
-  }
-  const frame = new Uint8Array(
-    8 + encodedHeader.byteLength + payload.byteLength,
-  );
-  frame.set(REMOTE_SURFACE_FRAME_MAGIC, 0);
-  new DataView(frame.buffer).setUint32(4, encodedHeader.byteLength, false);
-  frame.set(encodedHeader, 8);
-  frame.set(payload, 8 + encodedHeader.byteLength);
-  return frame;
-}
-
-export function decodeRemoteSurfaceFrame(frame: Uint8Array): {
-  header: RemoteSurfaceFrameHeader;
-  payload: Uint8Array;
-} {
-  if (frame.byteLength < 8)
-    throw new Error("Remote Surface frame is truncated.");
-  for (let index = 0; index < REMOTE_SURFACE_FRAME_MAGIC.length; index += 1) {
-    if (frame[index] !== REMOTE_SURFACE_FRAME_MAGIC[index]) {
-      throw new Error("Remote Surface frame has an invalid magic value.");
-    }
-  }
-  const headerLength = new DataView(
-    frame.buffer,
-    frame.byteOffset,
-    frame.byteLength,
-  ).getUint32(4, false);
-  if (headerLength < 1 || headerLength > REMOTE_SURFACE_MAX_HEADER_BYTES) {
-    throw new Error("Remote Surface frame header length is invalid.");
-  }
-  const payloadOffset = 8 + headerLength;
-  if (payloadOffset > frame.byteLength) {
-    throw new Error("Remote Surface frame header is truncated.");
-  }
-  const payloadLength = frame.byteLength - payloadOffset;
-  if (payloadLength > REMOTE_SURFACE_MAX_PAYLOAD_BYTES) {
-    throw new Error("Remote Surface payload exceeds the protocol limit.");
-  }
-  let rawHeader: unknown;
-  try {
-    rawHeader = JSON.parse(
-      new TextDecoder().decode(frame.subarray(8, payloadOffset)),
-    );
-  } catch {
-    throw new Error("Remote Surface frame header is not valid JSON.");
-  }
-  return {
-    header: remoteSurfaceFrameHeaderSchema.parse(rawHeader),
-    payload: frame.subarray(payloadOffset),
-  };
-}
-
-export const projectViewKindSchema = z.enum([
-  "history",
-  "issues",
-  "remote-desktop",
-]);
-
-export const projectViewCreateSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-  kind: projectViewKindSchema,
-  worktreeId: z.string().min(1).optional(),
-  tabGroupId: z.string().min(1).optional(),
-});
-
-export const encryptedProjectViewCreateSchema = projectViewCreateSchema
-  .omit({ title: true })
-  .extend({
-    id: z.string().uuid(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (input) =>
-      input.titleProtection.classification.recordKind === "project-view",
-    {
-      message: "Project-view title classification must be project-view.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const projectTabKindSchema = z.enum([
-  "chat",
-  "terminal",
-  "explorer",
-  "browser",
-  "code",
-  "history",
-  "issues",
-  "remote-desktop",
-]);
-
-const projectTabMemberSummaryBaseSchema = z.object({
-  tabKey: z.string().min(1),
-  groupId: z.string().min(1),
-  projectId: z.string().min(1),
-  tabKind: projectTabKindSchema,
-  tabId: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const projectTabMemberSummarySchema =
-  projectTabMemberSummaryBaseSchema.extend({ title: z.string().min(1) });
-
-export const projectTabMemberWireSummarySchema =
-  projectTabMemberSummaryBaseSchema
-    .extend({
-      titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
-    })
-    .superRefine((member, context) => {
-      const expectedRecordKind =
-        member.tabKind === "chat"
-          ? "chat"
-          : member.tabKind === "terminal"
-            ? "terminal"
-            : member.tabKind === "explorer"
-              ? "explorer"
-              : member.tabKind === "browser"
-                ? "browser"
-                : member.tabKind === "code"
-                  ? "code-tab"
-                  : "project-view";
-      if (member.titleProtection === null) {
-        if (member.tabKind !== "terminal") {
-          context.addIssue({
-            code: "custom",
-            message:
-              "Only Run configuration terminal tabs may omit a protected title.",
-            path: ["titleProtection"],
-          });
-        }
-      } else if (
-        member.titleProtection.classification.recordKind !== expectedRecordKind
-      ) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Tab-member title classification must match its surface kind.",
-          path: ["titleProtection", "classification", "recordKind"],
-        });
-      }
-    });
-
-const tabGroupSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  anchorTabKey: z.string().min(1),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const tabGroupSummarySchema = tabGroupSummaryBaseSchema.extend({
-  title: z.string().min(1).max(120),
-  members: z.array(projectTabMemberSummarySchema).min(1),
-});
-
-export const tabGroupWireSummarySchema = tabGroupSummaryBaseSchema
-  .extend({
-    titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
-    members: z.array(projectTabMemberWireSummarySchema).min(1),
-  })
-  .superRefine((group, context) => {
-    if (
-      group.titleProtection &&
-      group.titleProtection.classification.recordKind !== "tab-group"
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Tab-group title classification must be tab-group.",
-        path: ["titleProtection", "classification", "recordKind"],
-      });
-    }
-    if (group.members.length === 1 && group.titleProtection !== null) {
-      context.addIssue({
-        code: "custom",
-        message: "A single-tab group derives its title from its member.",
-        path: ["titleProtection"],
-      });
-    }
-  });
-
-export const tabGroupUpdateSchema = z.object({
-  revision: z.number().int().nonnegative(),
-  title: z.string().trim().min(1).max(120),
-});
-
-export const encryptedTabGroupUpdateSchema = z
-  .object({
-    revision: z.number().int().nonnegative(),
-    titleProtection: privateDisplayLabelOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "tab-group",
-    {
-      message: "Tab-group title classification must be tab-group.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const projectTabLayoutSummarySchema = z.object({
-  projectId: z.string().min(1),
-  revision: z.number().int().nonnegative(),
-  groups: z.array(tabGroupSummarySchema),
-});
-
-export const projectTabLayoutWireSummarySchema = z.object({
-  projectId: z.string().min(1),
-  revision: z.number().int().nonnegative(),
-  groups: z.array(tabGroupWireSummarySchema),
-});
-
-export const tabGroupOrderSchema = z.object({
-  revision: z.number().int().nonnegative(),
-  groupIds: z
-    .array(z.string().min(1))
-    .min(1)
-    .refine((groupIds) => new Set(groupIds).size === groupIds.length, {
-      message: "Tab group ids must be unique.",
-    }),
-});
-
-export const tabGroupMemberOrderSchema = z.object({
-  revision: z.number().int().nonnegative(),
-  tabKeys: z
-    .array(z.string().min(1))
-    .min(1)
-    .refine((tabKeys) => new Set(tabKeys).size === tabKeys.length, {
-      message: "Tab keys must be unique.",
-    }),
-});
-
-export const tabGroupMemberMoveSchema = z
-  .object({
-    revision: z.number().int().nonnegative(),
-    tabKey: z.string().min(1),
-    targetGroupId: z.string().min(1).nullable(),
-    targetMemberPosition: z.number().int().nonnegative(),
-    targetGroupPosition: z.number().int().nonnegative().optional(),
-  })
-  .superRefine((input, context) => {
-    if (
-      input.targetGroupId === null &&
-      input.targetGroupPosition === undefined
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "A sidebar position is required when splitting a tab into a new group.",
-        path: ["targetGroupPosition"],
-      });
-    }
-  });
-
-export const projectViewUpdateSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-});
-
-export const encryptedProjectViewUpdateSchema = z
-  .object({ titleProtection: privateDisplayLabelOpaqueSchema })
-  .strict()
-  .refine(
-    (input) =>
-      input.titleProtection.classification.recordKind === "project-view",
-    {
-      message: "Project-view title classification must be project-view.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-const projectViewSummaryBaseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  kind: projectViewKindSchema,
-  worktreeId: z.string().min(1).nullable(),
-  position: z.number().int().nonnegative(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export const projectViewSummarySchema = projectViewSummaryBaseSchema.extend({
-  title: z.string().min(1).max(200),
-});
-
-export const projectViewWireSummarySchema = projectViewSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
-  .refine(
-    (view) => view.titleProtection.classification.recordKind === "project-view",
-    {
-      message: "Project-view title classification must be project-view.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const projectViewListSchema = z.array(projectViewSummarySchema);
-export const projectViewWireListSchema = z.array(projectViewWireSummarySchema);
-
-export const terminalClientMessageSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("input"),
-    operationId: surfaceStreamWireRequestSchema.shape.operationId,
-    sequence: surfaceStreamWireRequestSchema.shape.sequence,
-    protectedData: surfaceStreamOpaqueSchema,
-  }),
-  z.object({
-    type: z.literal("resize"),
-    cols: z.number().int().min(1).max(1_000),
-    rows: z.number().int().min(1).max(1_000),
-  }),
-]);
-
-export const terminalServerMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("ready") }),
-  z.object({
-    type: z.literal("output"),
-    operationId: surfaceStreamWireRequestSchema.shape.operationId,
-    sequence: surfaceStreamWireRequestSchema.shape.sequence,
-    protectedData: surfaceStreamOpaqueSchema,
-  }),
-  z.object({
-    type: z.literal("exit"),
-    exitCode: z.number().int(),
-    signal: z.number().int().nullable(),
-  }),
-  z.object({ type: z.literal("error"), message: z.string().min(1) }),
-]);
-
-export const terminalOpenResultSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("detached") }),
-  z.object({
-    status: z.literal("exited"),
-    exitCode: z.number().int(),
-    signal: z.number().int().nullable(),
-  }),
-]);
-
-export const terminalSnapshotResultSchema = z.object({
-  terminalId: z.string().min(1).max(200),
-  status: z.enum(["running", "restarting", "exited", "not-running"]),
-  data: z.string().max(100_000),
-  truncated: z.boolean(),
-  exitCode: z.number().int().nullable(),
-});
+export type {
+  ProjectViewKind,
+  ProjectViewCreate,
+  EncryptedProjectViewCreate,
+  ProjectViewUpdate,
+  EncryptedProjectViewUpdate,
+  ProjectViewSummary,
+  ProjectViewWireSummary,
+  ProjectTabKind,
+  ProjectTabMemberSummary,
+  ProjectTabMemberWireSummary,
+  TabGroupSummary,
+  TabGroupWireSummary,
+  TabGroupUpdate,
+  EncryptedTabGroupUpdate,
+  ProjectTabLayoutSummary,
+  ProjectTabLayoutWireSummary,
+  TabGroupOrder,
+  TabGroupMemberOrder,
+  TabGroupMemberMove,
+} from "./project-tabs.js";
 
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
 export const agentMessagePhaseSchema = z.enum(["commentary", "final_answer"]);
@@ -12180,318 +10322,6 @@ export type ChatRelocationJobCancel = z.infer<
   typeof chatRelocationJobCancelSchema
 >;
 
-export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
-export type EncryptedTerminalCreate = z.infer<
-  typeof encryptedTerminalCreateSchema
->;
-export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
-export type EncryptedTerminalUpdate = z.infer<
-  typeof encryptedTerminalUpdateSchema
->;
-export type TerminalServiceConfiguration = z.infer<
-  typeof terminalServiceConfigurationSchema
->;
-export type EncryptedTerminalServiceConfiguration = z.infer<
-  typeof encryptedTerminalServiceConfigurationSchema
->;
-export type TerminalServiceRuntimeConfiguration = z.infer<
-  typeof terminalServiceRuntimeConfigurationSchema
->;
-export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
-export type TerminalWireSummary = z.infer<typeof terminalWireSummarySchema>;
-export type TerminalKind = z.infer<typeof terminalKindSchema>;
-export type ScriptCommandKind = z.infer<typeof scriptCommandKindSchema>;
-export type ScriptCommand = z.infer<typeof scriptCommandSchema>;
-export type ExplorerCreate = z.infer<typeof explorerCreateSchema>;
-export type EncryptedExplorerCreate = z.infer<
-  typeof encryptedExplorerCreateSchema
->;
-export type ExplorerUpdate = z.infer<typeof explorerUpdateSchema>;
-export type EncryptedExplorerUpdate = z.infer<
-  typeof encryptedExplorerUpdateSchema
->;
-export type EncryptedExplorerPin = z.infer<typeof encryptedExplorerPinSchema>;
-export type ExplorerFileMode = z.infer<typeof explorerFileModeSchema>;
-export type ExplorerViewStateUpdate = z.infer<
-  typeof explorerViewStateUpdateSchema
->;
-export type EncryptedExplorerViewStateUpdate = z.infer<
-  typeof encryptedExplorerViewStateUpdateSchema
->;
-export type EncryptedExplorerWorktreeUpdate = z.infer<
-  typeof encryptedExplorerWorktreeUpdateSchema
->;
-export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
-export type ExplorerWireSummary = z.infer<typeof explorerWireSummarySchema>;
-export type CodeThemeMode = z.infer<typeof codeThemeModeSchema>;
-export type CodePresentation = z.infer<typeof codePresentationSchema>;
-export type CodeAppearance = z.infer<typeof codeAppearanceSchema>;
-export type CodeTabStatus = z.infer<typeof codeTabStatusSchema>;
-export type CodeSessionStatus = z.infer<typeof codeSessionStatusSchema>;
-export type CodeTabCreate = z.infer<typeof codeTabCreateSchema>;
-export type EncryptedCodeTabCreate = z.infer<
-  typeof encryptedCodeTabCreateSchema
->;
-export type CodeTabUpdate = z.infer<typeof codeTabUpdateSchema>;
-export type EncryptedCodeTabUpdate = z.infer<
-  typeof encryptedCodeTabUpdateSchema
->;
-export type CodeTabSummary = z.infer<typeof codeTabSummarySchema>;
-export type CodeTabWireSummary = z.infer<typeof codeTabWireSummarySchema>;
-export type CodeEditorBuild = z.infer<typeof codeEditorBuildSchema>;
-export type CodeProbeResult = z.infer<typeof codeProbeResultSchema>;
-export type CodeSessionSummary = z.infer<typeof codeSessionSummarySchema>;
-export type CodeDirtyEditor = z.infer<typeof codeDirtyEditorSchema>;
-export type CodeSaveBeforeAgentTurn = z.infer<
-  typeof codeSaveBeforeAgentTurnSchema
->;
-export type CodeWorkbenchState = z.infer<typeof codeWorkbenchStateSchema>;
-export type CodeRuntimeStatus = z.infer<typeof codeRuntimeStatusSchema>;
-export type CodeSaveAllResult = z.infer<typeof codeSaveAllResultSchema>;
-export type CodeAgentTurnPreparationResult = z.infer<
-  typeof codeAgentTurnPreparationResultSchema
->;
-export type CodeAgentTurnNotificationResult = z.infer<
-  typeof codeAgentTurnNotificationResultSchema
->;
-export type CodeAttachment = z.infer<typeof codeAttachmentSchema>;
-export type CodeAttachmentCreate = z.infer<typeof codeAttachmentCreateSchema>;
-export type CodeProtectedAttachmentWire = z.infer<
-  typeof codeProtectedAttachmentWireSchema
->;
-export type CodeProtectedAttachmentIntent = z.infer<
-  typeof codeProtectedAttachmentIntentSchema
->;
-export type CodeProtectedAttachmentCreate = z.infer<
-  typeof codeProtectedAttachmentCreateSchema
->;
-export type CodeTransportCandidate = z.infer<
-  typeof codeTransportCandidateSchema
->;
-export type CodeTransportWire = z.infer<typeof codeTransportWireSchema>;
-export type CodeSessionAttachmentCreate = z.infer<
-  typeof codeSessionAttachmentCreateSchema
->;
-export type ExplorerCodeSessionAttachmentCreate = z.infer<
-  typeof explorerCodeSessionAttachmentCreateSchema
->;
-export type CodeSettingsWorkbenchSessionAttachmentCreate = z.infer<
-  typeof codeSettingsWorkbenchSessionAttachmentCreateSchema
->;
-export type CodeSessionAttachmentWire = z.infer<
-  typeof codeSessionAttachmentWireSchema
->;
-export type CodeSharedAttachmentWire = z.infer<
-  typeof codeSharedAttachmentWireSchema
->;
-export type CodeSettingsWorkbenchSharedAttachmentWire = z.infer<
-  typeof codeSettingsWorkbenchSharedAttachmentWireSchema
->;
-export type CodeTransportRouteAuthorizeCommand = z.infer<
-  typeof codeTransportRouteAuthorizeCommandSchema
->;
-export type CodeTransportRouteRevokeCommand = z.infer<
-  typeof codeTransportRouteRevokeCommandSchema
->;
-export type CodeTransportRevokeCommand = z.infer<
-  typeof codeTransportRevokeCommandSchema
->;
-export type CodeTransportRouteAuthorizeResult = z.infer<
-  typeof codeTransportRouteAuthorizeResultSchema
->;
-export type CodeTransportRouteRevokeResult = z.infer<
-  typeof codeTransportRouteRevokeResultSchema
->;
-export type CodeTransportRevokeResult = z.infer<
-  typeof codeTransportRevokeResultSchema
->;
-export type CodeSettingsWorkbenchAttachmentCreate = z.infer<
-  typeof codeSettingsWorkbenchAttachmentCreateSchema
->;
-export type CodeSettingsWorkbenchAttachmentWire = z.infer<
-  typeof codeSettingsWorkbenchAttachmentWireSchema
->;
-export type ExplorerCodeAttachmentCreate = z.infer<
-  typeof explorerCodeAttachmentCreateSchema
->;
-export type ExplorerCodeProtectedAttachmentCreate = z.infer<
-  typeof explorerCodeProtectedAttachmentCreateSchema
->;
-export type CodeOpenFileResult = z.infer<typeof codeOpenFileResultSchema>;
-export type CodeOpenFileRequest = z.infer<typeof codeOpenFileRequestSchema>;
-export type CodeOpenSettingsResult = z.infer<
-  typeof codeOpenSettingsResultSchema
->;
-export type CodeOpenExtensionsResult = z.infer<
-  typeof codeOpenExtensionsResultSchema
->;
-export type CodeInstallVsixResult = z.infer<typeof codeInstallVsixResultSchema>;
-export type CodeSettingsWorkbenchOpenResult = z.infer<
-  typeof codeSettingsWorkbenchOpenResultSchema
->;
-export type CodePresentationUpdate = z.infer<
-  typeof codePresentationUpdateSchema
->;
-export type CodeThemeUpdate = z.infer<typeof codeThemeUpdateSchema>;
-export type ProjectShareAttachment = z.infer<
-  typeof projectShareAttachmentSchema
->;
-export type ProjectShareAttachmentWire = z.infer<
-  typeof projectShareAttachmentWireSchema
->;
-export type StandaloneChatShareAttachment = z.infer<
-  typeof standaloneChatShareAttachmentSchema
->;
-export type StandaloneChatShareAttachmentWire = z.infer<
-  typeof standaloneChatShareAttachmentWireSchema
->;
-export type BrowserCreate = z.infer<typeof browserCreateSchema>;
-export type EncryptedBrowserCreate = z.infer<
-  typeof encryptedBrowserCreateSchema
->;
-export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
-export type EncryptedBrowserUpdate = z.infer<
-  typeof encryptedBrowserUpdateSchema
->;
-export type BrowserSummary = z.infer<typeof browserSummarySchema>;
-export type BrowserWireSummary = z.infer<typeof browserWireSummarySchema>;
-export type BrowserServiceProtocol = z.infer<
-  typeof browserServiceProtocolSchema
->;
-export type BrowserService = z.infer<typeof browserServiceSchema>;
-export type BrowserFleetService = z.infer<typeof browserFleetServiceSchema>;
-export type BrowserServiceDiscoveryWorkerStatus = z.infer<
-  typeof browserServiceDiscoveryWorkerStatusSchema
->;
-export type BrowserServiceDiscoveryWorkerResult = z.infer<
-  typeof browserServiceDiscoveryWorkerResultSchema
->;
-export type BrowserServiceFleetDiscovery = z.infer<
-  typeof browserServiceFleetDiscoverySchema
->;
-export type BrowserTunnelRequest = z.infer<typeof browserTunnelRequestSchema>;
-export type BrowserTunnelWireRequest = z.infer<
-  typeof browserTunnelWireRequestSchema
->;
-export type RemoteDesktopCreate = z.infer<typeof remoteDesktopCreateSchema>;
-export type EncryptedRemoteDesktopCreate = z.infer<
-  typeof encryptedRemoteDesktopCreateSchema
->;
-export type RemoteDesktopTarget = z.infer<typeof remoteDesktopTargetSchema>;
-export type RemoteDesktopMonitor = z.infer<typeof remoteDesktopMonitorSchema>;
-export type RemoteDesktopWindow = z.infer<typeof remoteDesktopWindowSchema>;
-export type RemoteDesktopTargetInventory = z.infer<
-  typeof remoteDesktopTargetInventorySchema
->;
-export type RemoteDesktopApplicationIcon = z.infer<
-  typeof remoteDesktopApplicationIconSchema
->;
-export type EncryptedRemoteDesktopUpdate = z.infer<
-  typeof encryptedRemoteDesktopUpdateSchema
->;
-export type RemoteDesktopSummary = z.infer<typeof remoteDesktopSummarySchema>;
-export type RemoteDesktopWireSummary = z.infer<
-  typeof remoteDesktopWireSummarySchema
->;
-export type RemoteDesktopFleetWorkerStatus = z.infer<
-  typeof remoteDesktopFleetWorkerStatusSchema
->;
-export type RemoteDesktopFleetWorker = z.infer<
-  typeof remoteDesktopFleetWorkerSchema
->;
-export type RemoteDesktopProtectedInventory = z.infer<
-  typeof remoteDesktopProtectedInventorySchema
->;
-export type RemoteDesktopFleetWireWorker = z.infer<
-  typeof remoteDesktopFleetWireWorkerSchema
->;
-export type RemoteDesktopFleet = z.infer<typeof remoteDesktopFleetSchema>;
-export type RemoteDesktopFleetWire = z.infer<
-  typeof remoteDesktopFleetWireSchema
->;
-export type RemoteSurfaceConfiguration = z.infer<
-  typeof remoteSurfaceConfigurationSchema
->;
-export type RemoteSurfaceCreate = z.infer<typeof remoteSurfaceCreateSchema>;
-export type EncryptedRemoteSurfaceCreate = z.infer<
-  typeof encryptedRemoteSurfaceCreateSchema
->;
-export type RemoteSurfaceUpdate = z.infer<typeof remoteSurfaceUpdateSchema>;
-export type EncryptedRemoteSurfaceUpdate = z.infer<
-  typeof encryptedRemoteSurfaceUpdateSchema
->;
-export type RemoteSurfaceSummary = z.infer<typeof remoteSurfaceSummarySchema>;
-export type RemoteSurfaceWireSummary = z.infer<
-  typeof remoteSurfaceWireSummarySchema
->;
-export type RemoteSurfaceViewport = z.infer<typeof remoteSurfaceViewportSchema>;
-export type DesktopStreamSettings = z.infer<typeof desktopStreamSettingsSchema>;
-export type RemoteSurfaceConnectionMessage = z.infer<
-  typeof remoteSurfaceConnectionMessageSchema
->;
-export type RemoteSurfaceAttachResult = z.infer<
-  typeof remoteSurfaceAttachResultSchema
->;
-export type RemoteSurfaceControl = z.infer<typeof remoteSurfaceControlSchema>;
-export type RemoteDesktopProbeResult = z.infer<
-  typeof remoteDesktopProbeResultSchema
->;
-export type RemoteDesktopClientMessage = z.infer<
-  typeof remoteDesktopClientMessageSchema
->;
-export type RemoteDesktopServerMessage = z.infer<
-  typeof remoteDesktopServerMessageSchema
->;
-export type RemoteBrowserClientMessage = z.infer<
-  typeof remoteBrowserClientMessageSchema
->;
-export type RemoteBrowserServerMessage = z.infer<
-  typeof remoteBrowserServerMessageSchema
->;
-export type RemoteBrowserCursorMessage = z.infer<
-  typeof remoteBrowserCursorMessageSchema
->;
-export type RemoteBrowserClipboardMessage = z.infer<
-  typeof remoteBrowserClipboardMessageSchema
->;
-export type RemoteSurfaceFrameHeader = z.infer<
-  typeof remoteSurfaceFrameHeaderSchema
->;
-export type ProjectViewKind = z.infer<typeof projectViewKindSchema>;
-export type ProjectViewCreate = z.infer<typeof projectViewCreateSchema>;
-export type EncryptedProjectViewCreate = z.infer<
-  typeof encryptedProjectViewCreateSchema
->;
-export type ProjectViewUpdate = z.infer<typeof projectViewUpdateSchema>;
-export type EncryptedProjectViewUpdate = z.infer<
-  typeof encryptedProjectViewUpdateSchema
->;
-export type ProjectViewSummary = z.infer<typeof projectViewSummarySchema>;
-export type ProjectViewWireSummary = z.infer<
-  typeof projectViewWireSummarySchema
->;
-export type ProjectTabKind = z.infer<typeof projectTabKindSchema>;
-export type ProjectTabMemberSummary = z.infer<
-  typeof projectTabMemberSummarySchema
->;
-export type ProjectTabMemberWireSummary = z.infer<
-  typeof projectTabMemberWireSummarySchema
->;
-export type TabGroupSummary = z.infer<typeof tabGroupSummarySchema>;
-export type TabGroupWireSummary = z.infer<typeof tabGroupWireSummarySchema>;
-export type TabGroupUpdate = z.infer<typeof tabGroupUpdateSchema>;
-export type EncryptedTabGroupUpdate = z.infer<
-  typeof encryptedTabGroupUpdateSchema
->;
-export type ProjectTabLayoutSummary = z.infer<
-  typeof projectTabLayoutSummarySchema
->;
-export type ProjectTabLayoutWireSummary = z.infer<
-  typeof projectTabLayoutWireSummarySchema
->;
-export type TabGroupOrder = z.infer<typeof tabGroupOrderSchema>;
-export type TabGroupMemberOrder = z.infer<typeof tabGroupMemberOrderSchema>;
-export type TabGroupMemberMove = z.infer<typeof tabGroupMemberMoveSchema>;
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerEntryName = z.infer<typeof explorerEntryNameSchema>;
 export type ExplorerEntryRename = z.infer<typeof explorerEntryRenameSchema>;
@@ -12514,12 +10344,7 @@ export type ExplorerMediaFileChunk = z.infer<
   typeof explorerMediaFileChunkSchema
 >;
 export type ExplorerFileWrite = z.infer<typeof explorerFileWriteSchema>;
-export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;
-export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;
-export type TerminalOpenResult = z.infer<typeof terminalOpenResultSchema>;
-export type TerminalSnapshotResult = z.infer<
-  typeof terminalSnapshotResultSchema
->;
+
 export type AgentMessagePhase = z.infer<typeof agentMessagePhaseSchema>;
 export type CodexEventCorrelation = z.infer<typeof codexEventCorrelationSchema>;
 export type AgentScope = z.infer<typeof agentScopeSchema>;
