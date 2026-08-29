@@ -81,6 +81,10 @@ import {
   ProjectReplicaPlacementError,
   ProjectReplicaPlacementManager,
 } from "./project-replica-placement.js";
+import {
+  canonicalProjectSourcePath,
+  normalizeProjectSourcePath,
+} from "./project-source-path.js";
 
 const execFileAsync = promisify(execFile);
 const SAFE_REPOSITORY_SEGMENT = /^[A-Za-z0-9_.-]+$/;
@@ -2535,7 +2539,7 @@ export class GithubClient {
       percent: 90,
     });
 
-    const canonicalTarget = await realpath(target);
+    const canonicalTarget = await canonicalProjectSourcePath(target);
     const resolvedRevision = await resolveGitCommit(canonicalTarget, "HEAD");
     const branch = (
       await execFileAsync(
@@ -2744,10 +2748,23 @@ export class GithubClient {
     const placementMode = placement?.mode ?? "managed";
     const customPlacement =
       placementMode === "direct" || placementMode === "managed-link";
-    const sourceTarget = path.resolve(input.sourcePath);
+    let persistedPlacementPath: string | null;
+    let sourceTarget: string;
+    try {
+      sourceTarget = normalizeProjectSourcePath(input.sourcePath);
+      persistedPlacementPath = placement
+        ? normalizeProjectSourcePath(placement.canonicalPath)
+        : null;
+    } catch {
+      return blocked(
+        "target-not-found",
+        "The persisted project source path is not a supported native path.",
+        false,
+      );
+    }
     if (
-      placement &&
-      !pathsEqual(path.resolve(placement.canonicalPath), sourceTarget)
+      persistedPlacementPath &&
+      !pathsEqual(persistedPlacementPath, sourceTarget)
     ) {
       return blocked(
         "target-mismatch",
@@ -2768,20 +2785,14 @@ export class GithubClient {
     });
     const validation =
       placementMode === "direct"
-        ? await this.validateDirectReplica(
-            input.sourcePath,
-            input.nameWithOwner,
-          )
-        : await this.validateManagedReplica(
-            input.sourcePath,
-            input.nameWithOwner,
-          );
+        ? await this.validateDirectReplica(sourceTarget, input.nameWithOwner)
+        : await this.validateManagedReplica(sourceTarget, input.nameWithOwner);
     if (!validation.ok) {
       return blocked(validation.code, validation.message, false);
     }
     const target = validation.path;
     if (customPlacement && placement && input.repositoryFingerprint) {
-      const canonicalTarget = await realpath(target);
+      const canonicalTarget = await canonicalProjectSourcePath(target);
       const gitCommonDir = await this.gitCommonDirectory(canonicalTarget);
       const repositoryFingerprint = createHash("sha256")
         .update(gitCommonDir)
@@ -3484,7 +3495,7 @@ export class GithubClient {
     targetPath: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const target = path.resolve(targetPath);
+    const target = normalizeProjectSourcePath(targetPath);
     const previous =
       this.replicaOperationQueues.get(target) ?? Promise.resolve();
     let release!: () => void;
@@ -3533,7 +3544,16 @@ export class GithubClient {
         message: string;
       }
   > {
-    const target = path.resolve(repositoryPath);
+    let target: string;
+    try {
+      target = normalizeProjectSourcePath(repositoryPath);
+    } catch {
+      return {
+        ok: false,
+        code: "target-not-found",
+        message: "The direct repository path is not a supported native path.",
+      };
+    }
     try {
       const entry = await lstat(target);
       if (!entry.isDirectory() || entry.isSymbolicLink()) {
@@ -3634,7 +3654,16 @@ export class GithubClient {
       }
   > {
     const root = this.repositoriesRoot();
-    const target = path.resolve(repositoryPath);
+    let target: string;
+    try {
+      target = normalizeProjectSourcePath(repositoryPath);
+    } catch {
+      return {
+        ok: false,
+        code: "target-not-found",
+        message: "The managed repository path is not a supported native path.",
+      };
+    }
     try {
       const entry = await lstat(target);
       if (!entry.isDirectory() || entry.isSymbolicLink()) {
@@ -3655,8 +3684,8 @@ export class GithubClient {
       throw error;
     }
     const [resolvedRoot, resolvedTarget] = await Promise.all([
-      realpath(root),
-      realpath(target),
+      canonicalProjectSourcePath(root),
+      canonicalProjectSourcePath(target),
     ]);
     if (
       !pathIsWithin(resolvedRoot, resolvedTarget) ||
@@ -3702,7 +3731,7 @@ export class GithubClient {
         message: `The replica points at a different origin: ${origin}`,
       };
     }
-    return { ok: true, path: target };
+    return { ok: true, path: resolvedTarget };
   }
 
   private async revisionAt(repositoryPath: string, revision: string) {

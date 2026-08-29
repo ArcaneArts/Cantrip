@@ -293,19 +293,34 @@ describe("durable project replica jobs", () => {
       resolvedMaterialization: "attached",
       resolvedOwnership: "user",
     });
-    expect(
-      await second.repository.getProjectReplica(
-        LOCAL_USER_ID,
-        project.id,
-        secondReplica.projectReplicaId!,
-      ),
-    ).toMatchObject({
+    const provisionedReplica = await second.repository.getProjectReplica(
+      LOCAL_USER_ID,
+      project.id,
+      secondReplica.projectReplicaId!,
+    );
+    expect(provisionedReplica).toMatchObject({
       path: `ctrr_${"T".repeat(43)}`,
       placementMode: "direct",
       ownershipKind: "user",
       requestedPath: `ctrr_${"R".repeat(43)}`,
       linkPath: null,
     });
+    await expect(
+      second.repository.reconcileWorkerProjectObservationPaths(
+        LOCAL_USER_ID,
+        "replica-worker-two",
+        [
+          {
+            expectedSourcePath: `ctrr_${"T".repeat(43)}`,
+            expectedWorktreePath: `ctrr_${"T".repeat(43)}`,
+            projectId: project.id,
+            sourcePath: `ctrr_${"V".repeat(43)}`,
+            worktreeId: provisionedReplica!.primaryWorktreeId!,
+            worktreePath: `ctrr_${"V".repeat(43)}`,
+          },
+        ],
+      ),
+    ).resolves.toBe(2);
     const synchronization =
       await second.repository.projectReplicaJobs.createSynchronize(
         LOCAL_USER_ID,
@@ -333,7 +348,7 @@ describe("durable project replica jobs", () => {
         synchronizationAttempt!.commandId,
       ),
     ).toMatchObject({
-      sourcePath: `ctrr_${"T".repeat(43)}`,
+      sourcePath: `ctrr_${"V".repeat(43)}`,
       placementMode: "direct",
       ownershipKind: "user",
       requestedPath: `ctrr_${"R".repeat(43)}`,
@@ -347,7 +362,7 @@ describe("durable project replica jobs", () => {
         status: "ready",
         jobId: synchronization.id,
         attempt: 1,
-        path: `ctrr_${"T".repeat(43)}`,
+        path: `ctrr_${"U".repeat(43)}`,
         previousRevision: "b".repeat(40),
         resolvedRevision: "c".repeat(40),
         branch: "main",
@@ -360,7 +375,11 @@ describe("durable project replica jobs", () => {
         project.id,
         secondReplica.projectReplicaId!,
       ),
-    ).toMatchObject({ head: "c".repeat(40), branch: "main" });
+    ).toMatchObject({
+      path: `ctrr_${"U".repeat(43)}`,
+      head: "c".repeat(40),
+      branch: "main",
+    });
     await expect(
       second.repository.projectReplicaJobs.createRemove(
         LOCAL_USER_ID,
@@ -421,7 +440,7 @@ describe("durable project replica jobs", () => {
         status: "removed",
         jobId: removal.id,
         attempt: 1,
-        path: `ctrr_${"T".repeat(43)}`,
+        path: `ctrr_${"U".repeat(43)}`,
         localFilesDeleted: false,
         warning: "The retained checkout was left untouched.",
       },

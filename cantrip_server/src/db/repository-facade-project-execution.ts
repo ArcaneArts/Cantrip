@@ -156,6 +156,7 @@ import type {
 } from "./repository/worktree-lifecycle.js";
 import type {
   WorktreeStateRepository,
+  ProjectObservationPathReconciliation,
   ProjectWorktreeObservationContext,
   ProjectWorktreeStatusRecord,
 } from "./repository/worktree-state.js";
@@ -668,6 +669,18 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
       workerId,
       sourcePath,
       worktreePath,
+    );
+  }
+
+  async reconcileWorkerProjectObservationPaths(
+    ownerId: string,
+    workerId: string,
+    reconciliations: readonly ProjectObservationPathReconciliation[],
+  ): Promise<number> {
+    return this.worktreeState.reconcileWorkerProjectObservationPaths(
+      ownerId,
+      workerId,
+      reconciliations,
     );
   }
 

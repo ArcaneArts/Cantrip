@@ -4,6 +4,7 @@ import { worktreePolicySchema } from "./worktrees.js";
 import { cantripMcpReadResultBaseSchema } from "./cantrip-mcp-tools.js";
 import { gitStatusSchema } from "./git-contracts.js";
 import { gitManagedOperationContextSchema } from "./git-actions.js";
+import { repositoryRoutingHandleSchema } from "./repository-operation.js";
 
 export const workerWorktreeSummarySchema = z.object({
   path: z.string().min(1),
@@ -215,6 +216,21 @@ export const codeGraphObservationTargetsSchema = z
     }
   });
 
+export const worktreeObservationPathReconciliationSchema = z.object({
+  projectId: z.string().uuid(),
+  worktreeId: z.string().min(1).max(200),
+  sourcePath: repositoryRoutingHandleSchema,
+  worktreePath: repositoryRoutingHandleSchema,
+});
+
+export const worktreeObservationConfigurationResultSchema = z.object({
+  accepted: z.literal(true),
+  paths: z
+    .array(worktreeObservationPathReconciliationSchema)
+    .max(256)
+    .default([]),
+});
+
 export const projectWorktreeCreateSchema = z.object({
   name: z.string().trim().min(1).max(200),
   mode: worktreeCreateModeSchema,
@@ -267,6 +283,12 @@ export type WorktreeObservationTarget = z.infer<
 >;
 export type CodeGraphObservationTarget = z.infer<
   typeof codeGraphObservationTargetSchema
+>;
+export type WorktreeObservationPathReconciliation = z.infer<
+  typeof worktreeObservationPathReconciliationSchema
+>;
+export type WorktreeObservationConfigurationResult = z.infer<
+  typeof worktreeObservationConfigurationResultSchema
 >;
 export type ProjectWorktreeCreate = z.infer<typeof projectWorktreeCreateSchema>;
 export type ProjectWorktreeLock = z.infer<typeof projectWorktreeLockSchema>;

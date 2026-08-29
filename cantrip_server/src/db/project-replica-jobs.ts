@@ -1220,14 +1220,21 @@ export class ProjectReplicaJobRepository {
           ),
         )
         .limit(1);
-      if (!source[0] || source[0].path !== result.path) {
+      if (!source[0]) {
         throw new ProjectReplicaJobConflictError(
-          "The worker synchronized a different replica path.",
+          "The synchronized project replica no longer exists.",
         );
+      }
+      if (source[0].path !== result.path) {
+        await transaction
+          .update(schema.projectSources)
+          .set({ absolutePath: result.path, updatedAt: now })
+          .where(eq(schema.projectSources.id, job.projectReplicaId));
       }
       await transaction
         .update(schema.projectWorktrees)
         .set({
+          absolutePath: result.path,
           branch: result.branch,
           detached: result.branch === null,
           head: result.resolvedRevision,

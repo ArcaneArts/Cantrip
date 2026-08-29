@@ -173,7 +173,7 @@ const workerBridge: WorkerCommandBus = {
         workerLogStreamStops += 1;
         return { stopped: true };
       case "worktree.observation.configure":
-        return { accepted: true };
+        return { accepted: true, paths: [] };
       case "git.operation.inspect":
         gitOperationInspections += 1;
         if (!gitOperationInspection) {

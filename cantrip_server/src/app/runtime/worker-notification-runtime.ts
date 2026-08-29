@@ -1,6 +1,7 @@
 import {
   codeGraphProjectStatusSchema,
   gitManagedOperationWorkerStateSchema,
+  worktreeObservationConfigurationResultSchema,
   type AppLiveResource,
   type CodeGraphProjectStatus,
   type GitConflictList,
@@ -188,17 +189,48 @@ export function createWorkerNotificationRuntime({
         };
       }),
     );
-    await bridge.request(workerId, {
-      type: "worktree.observation.configure",
-      targets: configuredTargets,
-      codegraphTargets: codegraphTargets.map((target) => ({
-        projectId: target.projectId,
-        worktreeId: target.worktreeId,
-        rootKind: target.rootKind,
-        sourcePath: target.sourcePath,
-        worktreePath: target.worktreePath,
-      })),
-    });
+    const configuredCodegraphTargets = codegraphTargets.map((target) => ({
+      projectId: target.projectId,
+      worktreeId: target.worktreeId,
+      rootKind: target.rootKind,
+      sourcePath: target.sourcePath,
+      worktreePath: target.worktreePath,
+    }));
+    const result = worktreeObservationConfigurationResultSchema.parse(
+      await bridge.request(workerId, {
+        type: "worktree.observation.configure",
+        targets: configuredTargets,
+        codegraphTargets: configuredCodegraphTargets,
+      }),
+    );
+    const requested = new Map(
+      [...configuredTargets, ...configuredCodegraphTargets].map((target) => [
+        `${target.projectId}\0${target.worktreeId}`,
+        target,
+      ]),
+    );
+    const changed = await repository.reconcileWorkerProjectObservationPaths(
+      ownerId,
+      workerId,
+      result.paths.flatMap((resolved) => {
+        const expected = requested.get(
+          `${resolved.projectId}\0${resolved.worktreeId}`,
+        );
+        return expected
+          ? [
+              {
+                expectedSourcePath: expected.sourcePath,
+                expectedWorktreePath: expected.worktreePath,
+                projectId: resolved.projectId,
+                sourcePath: resolved.sourcePath,
+                worktreeId: resolved.worktreeId,
+                worktreePath: resolved.worktreePath,
+              },
+            ]
+          : [];
+      }),
+    );
+    if (changed > 0) scheduleWorkerWorktreeObservation(workerId);
   };
   const scheduleWorkerWorktreeObservation = (workerId: string): void => {
     if (!bridge.subscribeNotifications) return;

@@ -63,6 +63,24 @@ describe("WorkerRoutingRegistry", () => {
     )) as { path: string; displayPath: string };
     expect(protectedScratch.path).toMatch(/^ctrr_/u);
     expect(protectedScratch.displayPath).toMatch(/^ctrr_/u);
+    const protectedObservation = (await registry.protectResult(
+      "worktree.observation.configure",
+      {
+        accepted: true,
+        paths: [
+          {
+            projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb349",
+            worktreeId: "primary",
+            sourcePath: "/Users/example/private-repository",
+            worktreePath: "/Users/example/private-repository",
+          },
+        ],
+      },
+    )) as { paths: Array<{ sourcePath: string; worktreePath: string }> };
+    expect(protectedObservation.paths[0]).toMatchObject({
+      sourcePath: protectedResult.worktree.path,
+      worktreePath: protectedResult.worktree.path,
+    });
     expect(
       await readFile(
         path.join(dataDirectory, "repository-routing.json"),

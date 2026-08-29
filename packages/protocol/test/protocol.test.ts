@@ -224,6 +224,7 @@ import {
   workerProjectShareDescriptorSchema,
   workerProjectShareOpenResultSchema,
   worktreeCreateMutationFailureSchema,
+  worktreeObservationConfigurationResultSchema,
   worktreeInventorySchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
@@ -3425,6 +3426,32 @@ describe("Cantrip protocol", () => {
       targets: [{ operation: { id: operationId } }],
       codegraphTargets: [{ rootKind: "folder-root" }],
     });
+    expect(
+      worktreeObservationConfigurationResultSchema.parse({
+        accepted: true,
+        paths: [
+          {
+            projectId,
+            worktreeId,
+            sourcePath: `ctrr_${"a".repeat(43)}`,
+            worktreePath: `ctrr_${"b".repeat(43)}`,
+          },
+        ],
+      }),
+    ).toMatchObject({ accepted: true, paths: [{ projectId, worktreeId }] });
+    expect(() =>
+      worktreeObservationConfigurationResultSchema.parse({
+        accepted: true,
+        paths: [
+          {
+            projectId,
+            worktreeId,
+            sourcePath: "C:\\private\\Cantrip",
+            worktreePath: "C:\\private\\Cantrip",
+          },
+        ],
+      }),
+    ).toThrow();
     expect(
       workerCommandSchema.parse({
         type: "codegraph.status",
