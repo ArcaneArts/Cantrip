@@ -340,6 +340,10 @@ import {
   StandaloneChatPlacementUnavailableError,
 } from "./repository/chat-catalog.js";
 import {
+  TerminalRepository,
+  type TerminalExecutionContext,
+} from "./repository/terminals.js";
+import {
   TelemetryRepository,
   ZERO_AGENT_TIME,
   ZERO_TOKEN_USAGE,
@@ -448,6 +452,7 @@ export {
   type StandaloneChatExecutionContext,
 } from "./repository/chat-execution-lanes.js";
 export { StandaloneChatPlacementUnavailableError } from "./repository/chat-catalog.js";
+export type { TerminalExecutionContext } from "./repository/terminals.js";
 export type {
   ModelBehaviorObservationInput,
   ProviderQuotaObservationInput,
@@ -486,22 +491,6 @@ export class SurfacePrivateStateConflictError extends Error {}
 export class AgentInteractionConflictError extends Error {}
 export class CodeCapabilityUnavailableError extends Error {}
 class StaleCodeSessionRuntimeError extends Error {}
-
-export interface TerminalExecutionContext {
-  kind: TerminalWireSummary["kind"];
-  linkedChatId: string | null;
-  projectId: string;
-  rootKind: ProjectWorktreeSummary["rootKind"];
-  serviceEnabled: boolean;
-  stateProtection: TerminalWireSummary["stateProtection"];
-  status: TerminalWireSummary["status"];
-  terminalId: string;
-  workerId: string;
-  worktreePath: string;
-  worktreeId: string;
-  runConfigurationId: string | null;
-  runConfigurationRuntimeId: string | null;
-}
 
 export type ChatExecutionAttribution =
   | {
@@ -1218,6 +1207,7 @@ export class ServerRepository {
   readonly worktreeLifecycle: WorktreeLifecycleRepository;
   readonly chatExecutionLanes: ChatExecutionLaneRepository;
   readonly chatCatalog: ChatCatalogRepository;
+  readonly terminals: TerminalRepository;
   readonly telemetry: TelemetryRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
@@ -1350,6 +1340,32 @@ export class ServerRepository {
       toArchivedStandaloneChatWireSummary,
       toChatWireSummary,
       toStandaloneChatWireSummary,
+    });
+    this.terminals = new TerminalRepository(database, {
+      getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
+        this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
+      getTerminalExecutionContext: (ownerId, terminalId) =>
+        this.getTerminalExecutionContext(ownerId, terminalId),
+      nextProjectTabPosition: (projectId) =>
+        this.nextProjectTabPosition(projectId),
+      requiredProjectChatWorktreeId,
+      resolveProjectExecutionPlacement: (
+        ownerId,
+        projectId,
+        surfaceKind,
+        target,
+        isWorkerConnected,
+        allowOfflineExplicit,
+      ) =>
+        this.resolveProjectExecutionPlacement(
+          ownerId,
+          projectId,
+          surfaceKind,
+          target,
+          isWorkerConnected,
+          allowOfflineExplicit,
+        ),
+      toTerminalWireSummary,
     });
     this.telemetry = new TelemetryRepository(database);
     this.chatImportJobs = new ChatImportJobRepository(database);
@@ -3861,19 +3877,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
   ): Promise<TerminalWireSummary[]> {
-    const rows = await this.database
-      .select({ terminal: schema.terminals })
-      .from(schema.terminals)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.terminals.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.terminals.projectId, projectId))
-      .orderBy(asc(schema.terminals.position), asc(schema.terminals.createdAt));
-    return rows.map(({ terminal }) => toTerminalWireSummary(terminal));
+    return this.terminals.listTerminals(ownerId, projectId);
   }
 
   async createTerminal(
@@ -3882,48 +3886,12 @@ export class ServerRepository {
     input: EncryptedTerminalCreate,
     isWorkerConnected?: (workerId: string) => boolean,
   ): Promise<TerminalWireSummary | null> {
-    const target =
-      input.target ??
-      (input.worktreeId
-        ? ({
-            kind: "worktree",
-            projectId,
-            worktreeId: input.worktreeId,
-          } as const)
-        : undefined);
-    const { placement } = await this.resolveProjectExecutionPlacement(
+    return this.terminals.createTerminal(
       ownerId,
       projectId,
-      "terminal",
-      target,
+      input,
       isWorkerConnected,
     );
-    const workerId = placement.workerId;
-    const worktreeId = placement.worktreeId!;
-
-    const position = await this.nextProjectTabPosition(projectId);
-    return this.database.transaction(async (transaction) => {
-      const result = await transaction
-        .insert(schema.terminals)
-        .values({
-          id: input.id,
-          projectId,
-          protectedLabel: input.titleProtection,
-          protectedState: input.stateProtection,
-          position,
-          activeWorkerId: workerId,
-          worktreeId,
-        })
-        .returning();
-      const terminal = firstOrThrow(result, "creating a terminal");
-      await attachProjectTab(transaction, {
-        projectId,
-        tabGroupId: input.tabGroupId,
-        tabId: terminal.id,
-        tabKind: "terminal",
-      });
-      return toTerminalWireSummary(terminal);
-    });
   }
 
   async getOrCreateChatConsole(
@@ -3934,52 +3902,7 @@ export class ServerRepository {
       "id" | "titleProtection" | "stateProtection"
     >,
   ): Promise<TerminalWireSummary | null> {
-    const rows = await this.database
-      .select({ chat: schema.chats, worktree: schema.projectWorktrees })
-      .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .innerJoin(
-        schema.projectWorktrees,
-        eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
-      )
-      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    const projectId = requiredProjectChatProjectId(row.chat.projectId);
-    const worktreeId = requiredProjectChatWorktreeId(row.chat.activeWorktreeId);
-
-    const existing = await this.database
-      .select()
-      .from(schema.terminals)
-      .where(eq(schema.terminals.linkedChatId, chatId))
-      .limit(1);
-    if (existing[0]) return toTerminalWireSummary(existing[0]);
-
-    const result = await this.database
-      .insert(schema.terminals)
-      .values({
-        id: input.id,
-        projectId,
-        protectedLabel: input.titleProtection,
-        protectedState: input.stateProtection,
-        position: row.chat.position,
-        status: "running",
-        activeWorkerId: row.worktree.workerId,
-        worktreeId,
-        linkedChatId: row.chat.id,
-        kind: "chat-console",
-      })
-      .returning();
-    return toTerminalWireSummary(
-      firstOrThrow(result, "creating a chat console"),
-    );
+    return this.terminals.getOrCreateChatConsole(ownerId, chatId, input);
   }
 
   async updateTerminal(
@@ -3987,19 +3910,7 @@ export class ServerRepository {
     terminalId: string,
     input: EncryptedTerminalUpdate,
   ): Promise<TerminalWireSummary | null> {
-    const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
-    if (!owned) return null;
-    if (owned.kind === "run-configuration") {
-      throw new Error(
-        "Run configuration terminal titles come from their shared definition.",
-      );
-    }
-    const result = await this.database
-      .update(schema.terminals)
-      .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
-      .where(eq(schema.terminals.id, terminalId))
-      .returning();
-    return result[0] ? toTerminalWireSummary(result[0]) : null;
+    return this.terminals.updateTerminal(ownerId, terminalId, input);
   }
 
   async updateTerminalService(
@@ -4007,59 +3918,14 @@ export class ServerRepository {
     terminalId: string,
     input: EncryptedTerminalServiceConfiguration,
   ): Promise<TerminalWireSummary | null> {
-    const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
-    if (!owned) return null;
-    if (owned.kind === "run-configuration") {
-      throw new Error(
-        "Run configuration terminals are controlled by their runtime.",
-      );
-    }
-    if (owned.linkedChatId) {
-      throw new Error("Linked Codex consoles cannot run terminal services.");
-    }
-    const result = await this.database
-      .update(schema.terminals)
-      .set({
-        serviceEnabled: input.enabled,
-        protectedState: input.stateProtection,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.terminals.id, terminalId))
-      .returning();
-    return result[0] ? toTerminalWireSummary(result[0]) : null;
+    return this.terminals.updateTerminalService(ownerId, terminalId, input);
   }
 
   async listTerminalServicesForWorker(
     workerId: string,
     serverId: string,
   ): Promise<TerminalServiceRuntimeConfiguration[]> {
-    const rows = await this.database
-      .select({
-        terminal: schema.terminals,
-        worktree: schema.projectWorktrees,
-      })
-      .from(schema.terminals)
-      .innerJoin(
-        schema.projectWorktrees,
-        eq(schema.projectWorktrees.id, schema.terminals.worktreeId),
-      )
-      .where(
-        and(
-          eq(schema.projectWorktrees.workerId, workerId),
-          eq(schema.terminals.serviceEnabled, true),
-        ),
-      );
-    return rows.map(({ terminal, worktree }) => {
-      if (!terminal.protectedState) {
-        throw new Error("Terminal service protection is unavailable.");
-      }
-      return {
-        terminalId: terminal.id,
-        serverId,
-        worktreePath: worktree.absolutePath,
-        stateProtection: terminal.protectedState,
-      };
-    });
+    return this.terminals.listTerminalServicesForWorker(workerId, serverId);
   }
 
   async updateTerminalWorktree(
@@ -4067,47 +3933,7 @@ export class ServerRepository {
     terminalId: string,
     input: WorktreeSelection,
   ): Promise<TerminalWireSummary | null> {
-    const rows = await this.database
-      .select({ terminal: schema.terminals })
-      .from(schema.terminals)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.terminals.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(eq(schema.terminals.id, terminalId))
-      .limit(1);
-    const terminal = rows[0]?.terminal;
-    if (!terminal) return null;
-    if (terminal.kind === "run-configuration") {
-      throw new Error("Run configuration terminals cannot change worktrees.");
-    }
-    if (terminal.linkedChatId) {
-      throw new Error(
-        "Linked Codex consoles inherit their parent chat worktree.",
-      );
-    }
-    if (terminal.status === "running") {
-      throw new Error("Stop the terminal before changing its worktree.");
-    }
-    const target = await this.getProjectWorktreeContext(
-      ownerId,
-      terminal.projectId,
-      input.worktreeId,
-    );
-    if (!target || target.worktree.lifecycleState !== "ready") return null;
-    const updated = await this.database
-      .update(schema.terminals)
-      .set({
-        activeWorkerId: target.workerId,
-        worktreeId: target.worktree.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.terminals.id, terminalId))
-      .returning();
-    return updated[0] ? toTerminalWireSummary(updated[0]) : null;
+    return this.terminals.updateTerminalWorktree(ownerId, terminalId, input);
   }
 
   async listExplorers(
@@ -5526,99 +5352,21 @@ export class ServerRepository {
     ownerId: string,
     terminalId: string,
   ): Promise<TerminalExecutionContext | null> {
-    const context = await this.getTerminalExecutionContext(ownerId, terminalId);
-    if (!context) return null;
-    if (context.kind === "run-configuration") {
-      const active = await this.database
-        .select({ state: schema.runConfigurationRuntimes.state })
-        .from(schema.runConfigurationRuntimes)
-        .where(
-          and(
-            eq(schema.runConfigurationRuntimes.ownerId, ownerId),
-            eq(schema.runConfigurationRuntimes.terminalId, terminalId),
-            sql`${schema.runConfigurationRuntimes.state} IN ('starting', 'running', 'restarting', 'stopping')`,
-          ),
-        )
-        .limit(1);
-      if (active[0]) {
-        throw new Error(
-          "Stop the active Run configuration before closing its terminal.",
-        );
-      }
-    }
-    await this.database.transaction(async (transaction) => {
-      await transaction
-        .update(schema.runConfigurationRuntimes)
-        .set({ terminalId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(schema.runConfigurationRuntimes.ownerId, ownerId),
-            eq(schema.runConfigurationRuntimes.terminalId, terminalId),
-          ),
-        );
-      await detachProjectTab(
-        transaction,
-        context.projectId,
-        projectTabKey("terminal", terminalId),
-      );
-      await transaction
-        .delete(schema.terminals)
-        .where(eq(schema.terminals.id, terminalId));
-    });
-    return context;
+    return this.terminals.deleteTerminal(ownerId, terminalId);
   }
 
   async getTerminalExecutionContext(
     ownerId: string,
     terminalId: string,
   ): Promise<TerminalExecutionContext | null> {
-    const rows = await this.database
-      .select({
-        terminal: schema.terminals,
-        worktree: schema.projectWorktrees,
-      })
-      .from(schema.terminals)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.terminals.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .innerJoin(
-        schema.projectWorktrees,
-        eq(schema.projectWorktrees.id, schema.terminals.worktreeId),
-      )
-      .where(eq(schema.terminals.id, terminalId))
-      .limit(1);
-    const row = rows[0];
-    return row
-      ? {
-          terminalId: row.terminal.id,
-          projectId: row.terminal.projectId,
-          kind: row.terminal.kind,
-          rootKind: row.worktree.rootKind,
-          workerId: row.terminal.activeWorkerId,
-          worktreeId: row.worktree.id,
-          worktreePath: row.worktree.absolutePath,
-          linkedChatId: row.terminal.linkedChatId,
-          runConfigurationId: row.terminal.runConfigurationId,
-          runConfigurationRuntimeId: row.terminal.runConfigurationRuntimeId,
-          serviceEnabled: row.terminal.serviceEnabled,
-          stateProtection: row.terminal.protectedState,
-          status: row.terminal.status as TerminalWireSummary["status"],
-        }
-      : null;
+    return this.terminals.getTerminalExecutionContext(ownerId, terminalId);
   }
 
   async setTerminalStatus(
     terminalId: string,
     status: TerminalWireSummary["status"],
   ): Promise<void> {
-    await this.database
-      .update(schema.terminals)
-      .set({ status, updatedAt: new Date() })
-      .where(eq(schema.terminals.id, terminalId));
+    return this.terminals.setTerminalStatus(terminalId, status);
   }
 
   async updateChat(
