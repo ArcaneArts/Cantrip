@@ -143,6 +143,7 @@ export class ProjectEncryptionAdapter {
   private async hydrateRoutingMetadata(
     project: ProjectWireSummary,
   ): Promise<ProjectWireSummary> {
+    const unavailablePath = "Protected path unavailable";
     let routedProject = project;
     const workerId =
       project.source?.workerId ??
@@ -158,6 +159,13 @@ export class ProjectEncryptionAdapter {
     const protectedSetupError =
       project.setupError &&
       repositoryRoutingHandleSchema.safeParse(project.setupError).success;
+    const protectedSourcePath =
+      project.source &&
+      repositoryRoutingHandleSchema.safeParse(project.source.path).success;
+    const protectedSourceDisplayPath =
+      project.source &&
+      repositoryRoutingHandleSchema.safeParse(project.source.displayPath)
+        .success;
     if (
       workerId &&
       this.api.resolveMetadata &&
@@ -194,6 +202,53 @@ export class ProjectEncryptionAdapter {
       }
     }
     if (
+      project.source &&
+      this.api.resolveMetadata &&
+      (protectedSourcePath || protectedSourceDisplayPath)
+    ) {
+      try {
+        const resolved = await this.api.resolveMetadata({
+          workerId: project.source.workerId,
+          scopeId: project.id,
+          values: {
+            ...(protectedSourcePath ? { path: project.source.path } : {}),
+            ...(protectedSourceDisplayPath
+              ? { displayPath: project.source.displayPath }
+              : {}),
+          },
+        });
+        routedProject = {
+          ...routedProject,
+          source: {
+            ...project.source,
+            path: protectedSourcePath
+              ? typeof resolved.values.path === "string"
+                ? resolved.values.path
+                : unavailablePath
+              : project.source.path,
+            displayPath: protectedSourceDisplayPath
+              ? typeof resolved.values.displayPath === "string"
+                ? resolved.values.displayPath
+                : unavailablePath
+              : project.source.displayPath,
+          },
+        };
+      } catch {
+        routedProject = {
+          ...routedProject,
+          source: {
+            ...project.source,
+            path: protectedSourcePath
+              ? unavailablePath
+              : project.source.path,
+            displayPath: protectedSourceDisplayPath
+              ? unavailablePath
+              : project.source.displayPath,
+          },
+        };
+      }
+    }
+    if (
       !this.api.listWorktrees ||
       (!project.source && project.replicas.length === 0)
     ) {
@@ -206,7 +261,6 @@ export class ProjectEncryptionAdapter {
       // Fail closed: server-returned routing handles are never presented as
       // filesystem metadata when the authorized worker cannot open them.
     }
-    const unavailablePath = "Protected path unavailable";
     const hydratedReplicas = [...project.replicas];
     if (this.api.resolveMetadata) {
       const replicasByWorker = new Map<
@@ -284,17 +338,29 @@ export class ProjectEncryptionAdapter {
       : undefined;
     return {
       ...routedProject,
-      source: project.source
+      source: routedProject.source
         ? {
-            ...project.source,
+            ...routedProject.source,
             ...(sourcePlacement
               ? {
                   requestedPath: sourcePlacement.requestedPath,
                   linkPath: sourcePlacement.linkPath,
                 }
               : {}),
-            path: sourceWorktree?.path ?? unavailablePath,
-            displayPath: sourceWorktree?.displayPath ?? unavailablePath,
+            path:
+              sourceWorktree?.path ??
+              (repositoryRoutingHandleSchema.safeParse(
+                routedProject.source.path,
+              ).success
+                ? unavailablePath
+                : routedProject.source.path),
+            displayPath:
+              sourceWorktree?.displayPath ??
+              (repositoryRoutingHandleSchema.safeParse(
+                routedProject.source.displayPath,
+              ).success
+                ? unavailablePath
+                : routedProject.source.displayPath),
           }
         : null,
       replicas: hydratedReplicas.map((replica) => {

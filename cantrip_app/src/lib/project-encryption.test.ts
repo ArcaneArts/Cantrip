@@ -378,9 +378,53 @@ describe("encrypted project display names", () => {
     expect(project?.replicas[0]?.requestedPath).toBe(
       "/Users/example/linked-repository",
     );
-    expect(api.metadataResolutionCalls).toBe(1);
+    expect(api.metadataResolutionCalls).toBe(2);
     expect(JSON.stringify(api.rows)).not.toContain(
       "/Users/example/private-repository",
     );
+  });
+
+  it("falls back to protected source metadata when worktree status is unavailable", async () => {
+    const { adapter, api } = fixture();
+    await adapter.createGithub({
+      workerId: "worker-a",
+      repositoryId: "repository-1",
+      nameWithOwner: "ArcaneArts/SentinelProject",
+      url: "https://github.com/ArcaneArts/SentinelProject",
+    });
+    const pathHandle = `ctrr_${"a".repeat(43)}`;
+    const displayPathHandle = `ctrr_${"d".repeat(43)}`;
+    const row = api.rows[0]!;
+    row.setupStatus = "ready";
+    row.source = {
+      id: "source-a",
+      sourceKind: "git",
+      workerId: "worker-a",
+      path: pathHandle,
+      displayPath: displayPathHandle,
+      placementMode: "managed",
+      ownershipKind: "cantrip",
+      requestedPath: null,
+      linkPath: null,
+    };
+    api.routingValues.set(
+      pathHandle,
+      "C:\\Cantrip\\runtime\\worker\\repositories\\SentinelProject",
+    );
+    api.routingValues.set(
+      displayPathHandle,
+      "C:\\Cantrip\\runtime\\worker\\repositories\\SentinelProject",
+    );
+
+    const [project] = await adapter.list();
+
+    expect(project?.source?.path).toBe(
+      "C:\\Cantrip\\runtime\\worker\\repositories\\SentinelProject",
+    );
+    expect(project?.source?.displayPath).toBe(
+      "C:\\Cantrip\\runtime\\worker\\repositories\\SentinelProject",
+    );
+    expect(project?.source?.path).not.toContain("Protected path unavailable");
+    expect(api.metadataResolutionCalls).toBe(1);
   });
 });
