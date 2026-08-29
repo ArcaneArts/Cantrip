@@ -99,6 +99,28 @@ describe("project settings", () => {
     ).toEqual([
       expect.objectContaining({ id: "codegraph", sectionId: "worktrees" }),
     ]);
+    expect(
+      settingsSearchResults(
+        "abcdef123456",
+        projectSettingsTabsForProject(
+          {
+            capabilities: {
+              git: true,
+              github: true,
+              worktrees: true,
+              replicas: true,
+              relocation: true,
+            },
+          },
+          [worktree],
+        ),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: "worktree:worktree-primary",
+        sectionId: "worktrees",
+      }),
+    ]);
   });
 
   it("summarizes clean, dirty, offline, and conflicting worktrees", () => {

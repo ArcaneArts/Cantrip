@@ -87,7 +87,7 @@ describe("settings navigation", () => {
     expect(markup).toContain('data-slot="settings-sidebar"');
     expect(markup).toContain('data-slot="settings-mobile-categories"');
     expect(markup).toContain('aria-current="page"');
-    expect(markup).toContain("Choose a category or search every setting.");
+    expect(markup).not.toContain("Choose a category or search every setting.");
     expect(markup).toContain("All settings");
     expect(markup).toContain("General settings content");
     expect(markup).not.toContain('role="tablist"');

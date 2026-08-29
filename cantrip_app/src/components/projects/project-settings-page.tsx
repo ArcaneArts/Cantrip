@@ -286,12 +286,43 @@ export const projectSettingsSections: readonly SettingsNavigationSection<Project
 
 export function projectSettingsTabsForProject(
   project: Pick<ProjectSummary, "capabilities">,
+  worktrees: readonly ProjectWorktreeSummary[] = [],
+  workers: readonly WorkerSummary[] = [],
 ): readonly SettingsNavigationSection<ProjectSettingsSection>[] {
-  return projectSettingsSections.filter(
-    ({ id }) =>
-      (id !== "replicas" || project.capabilities.replicas) &&
-      (id !== "worktrees" || project.capabilities.worktrees),
-  );
+  return projectSettingsSections
+    .filter(
+      ({ id }) =>
+        (id !== "replicas" || project.capabilities.replicas) &&
+        (id !== "worktrees" || project.capabilities.worktrees),
+    )
+    .map((section) =>
+      section.id === "worktrees"
+        ? {
+            ...section,
+            searchItems: [
+              ...section.searchItems,
+              ...worktrees.map((worktree) => {
+                const worker = workers.find(
+                  ({ workerId }) => workerId === worktree.workerId,
+                );
+                return {
+                  id: `worktree:${worktree.id}`,
+                  label: worktree.name,
+                  description: worktree.displayPath,
+                  keywords: [
+                    worktree.path,
+                    worktree.branch ?? "detached",
+                    worktree.head ?? "",
+                    worker?.name ?? worktree.workerId,
+                    worktree.isPrimary ? "primary" : "isolated",
+                    worktree.locked ? "locked" : "unlocked",
+                  ],
+                };
+              }),
+            ],
+          }
+        : section,
+    );
 }
 
 const policies: Array<{
@@ -522,7 +553,10 @@ export function ProjectSettingsPage({
   worktrees: ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
-  const visibleSettingsSections = projectSettingsTabsForProject(project);
+  const visibleSettingsSections = useMemo(
+    () => projectSettingsTabsForProject(project, worktrees, workers),
+    [project, workers, worktrees],
+  );
   const normalizedInitialSection = visibleSettingsSections.some(
     ({ id }) => id === initialSection,
   )
