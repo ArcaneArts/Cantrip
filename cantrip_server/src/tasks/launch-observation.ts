@@ -1,4 +1,5 @@
 import type { TaskDispatchCycleSummary } from "@cantrip/protocol";
+import { cantripVersion } from "@cantrip/version";
 import type { FastifyInstance } from "fastify";
 
 export type TaskLaunchStage =
@@ -76,6 +77,7 @@ export async function observeTaskLaunchStage<T>(
       status: "started",
       chatId: cycle.chatId,
       cycleId: cycle.id,
+      serverVersion: cantripVersion.version,
       stage,
     },
     "Scheduled Task launch stage started",
@@ -94,6 +96,7 @@ export async function observeTaskLaunchStage<T>(
           chatId: cycle.chatId,
           cycleId: cycle.id,
           durationMs: Date.now() - startedAt,
+          serverVersion: cantripVersion.version,
           stage,
         },
         "Scheduled Task launch stage is still waiting",
@@ -116,6 +119,7 @@ export async function observeTaskLaunchStage<T>(
         chatId: cycle.chatId,
         cycleId: cycle.id,
         durationMs: Date.now() - startedAt,
+        serverVersion: cantripVersion.version,
         stage,
       },
       "Scheduled Task launch stage completed",
@@ -135,6 +139,7 @@ export async function observeTaskLaunchStage<T>(
         chatId: cycle.chatId,
         cycleId: cycle.id,
         durationMs: Date.now() - startedAt,
+        serverVersion: cantripVersion.version,
         stage,
         err: error,
       },

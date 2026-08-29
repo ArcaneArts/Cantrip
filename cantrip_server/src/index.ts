@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { cantripVersion } from "@cantrip/version";
+
 import { buildApp } from "./app.js";
 import { readServerConfig, resolveServerDataDirectory } from "./config.js";
 import { CodeTunnelBroker } from "./code/tunnel.js";
@@ -24,6 +26,7 @@ async function start(): Promise<void> {
     event: "server.startup.started",
     subsystem: "server-lifecycle",
     operation: "start",
+    serverVersion: cantripVersion.version,
     status: "starting",
     deploymentMode: config.deploymentMode,
     databaseEngine: config.databaseUrl ? "postgres" : "pglite",
@@ -116,6 +119,7 @@ async function start(): Promise<void> {
     event: "server.startup.completed",
     subsystem: "server-lifecycle",
     operation: "start",
+    serverVersion: cantripVersion.version,
     status: "ready",
     durationMs: Date.now() - startedAtMs,
     databaseEngine: database.engine,
@@ -129,6 +133,7 @@ start().catch(async (error: unknown) => {
     subsystem: "server-lifecycle",
     operation: "start",
     status: "failed",
+    serverVersion: cantripVersion.version,
     reasonCode: "startup-error",
     error: error instanceof Error ? error : new Error(String(error)),
   });

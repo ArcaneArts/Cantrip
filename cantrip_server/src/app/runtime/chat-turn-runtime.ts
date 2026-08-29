@@ -26,6 +26,7 @@ import {
   type TaskOperationRelayRequest,
 } from "@cantrip/protocol/tasks";
 import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
+import { cantripVersion } from "@cantrip/version";
 import type { FastifyInstance } from "fastify";
 
 import { ModelBehaviorTracker } from "../../analytics/model-behavior.js";
@@ -70,9 +71,22 @@ type ModelRoutingRuntime = ReturnType<typeof createModelRoutingRuntime>;
 type OwnerRunner = <T>(ownerId: string, operation: () => T) => T;
 type TaskTurnBootstrapStage =
   | "acquire-execution-lane"
+  | "append-task-message"
+  | "attribute-task-message"
+  | "load-message-headers"
+  | "load-worker-attribution"
   | "mark-dispatch-running"
+  | "notify-code-agent-started"
+  | "persist-chat-runtime"
+  | "persist-turn-mode"
   | "prepare-code-editors"
-  | "resolve-mcp-servers";
+  | "record-model-behavior"
+  | "record-token-usage"
+  | "resolve-attachments"
+  | "resolve-effective-policies"
+  | "resolve-mcp-servers"
+  | "resolve-model"
+  | "resolve-model-routes";
 
 export type ChatTurnInput = Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
   attachmentIds?: string[];
@@ -268,6 +282,7 @@ export function createChatTurnRuntime({
           chatId: context.chatId,
           cycleId: lease.cycleId,
           operationId: lease.operationId,
+          serverVersion: cantripVersion.version,
           stage,
         },
         "Scheduled Task turn bootstrap stage started",
@@ -283,6 +298,7 @@ export function createChatTurnRuntime({
             chatId: context.chatId,
             cycleId: lease.cycleId,
             operationId: lease.operationId,
+            serverVersion: cantripVersion.version,
             stage,
             durationMs: Date.now() - startedAt,
           },
@@ -299,6 +315,7 @@ export function createChatTurnRuntime({
             chatId: context.chatId,
             cycleId: lease.cycleId,
             operationId: lease.operationId,
+            serverVersion: cantripVersion.version,
             stage,
             durationMs: Date.now() - startedAt,
             err: error,
@@ -333,7 +350,9 @@ export function createChatTurnRuntime({
       options.structuredResult?.taskOperation?.classification.kind === "direct";
     const encryptedTaskMessages = options.encryptedTaskMessages ?? null;
     let encryptedChatMessages = options.encryptedChatMessages ?? null;
-    const modelId = await resolveModelId(context, input.modelId);
+    const modelId = await observeTaskTurnBootstrapStage("resolve-model", () =>
+      resolveModelId(context, input.modelId),
+    );
     const requestedReasoningEffort =
       input.reasoningEffort !== undefined
         ? input.reasoningEffort
@@ -359,16 +378,20 @@ export function createChatTurnRuntime({
             ? input.subagentReasoningEffort
             : context.modelConfiguration.subagentReasoningEffort,
     });
-    const routePairs = await routePairsForConfiguration(
-      context,
-      turnModelConfiguration,
-      options.runtimes,
+    const routePairs = await observeTaskTurnBootstrapStage(
+      "resolve-model-routes",
+      () =>
+        routePairsForConfiguration(
+          context,
+          turnModelConfiguration,
+          options.runtimes,
+        ),
     );
     const preparedRuntimes = routePairs.map(({ root }) => root);
     const runtimes = preparedRuntimes.map(({ runtime }) => runtime);
-    const attachments = await resolvePromptAttachments(
-      context,
-      input.attachmentIds ?? [],
+    const attachments = await observeTaskTurnBootstrapStage(
+      "resolve-attachments",
+      () => resolvePromptAttachments(context, input.attachmentIds ?? []),
     );
     const turnMode = input.mode ?? "default";
     const turnPlanMode = turnMode === "plan" ? "plan" : "default";
@@ -420,14 +443,23 @@ export function createChatTurnRuntime({
         },
       };
     }
-    const effectivePolicies =
-      context.contextKind === "project"
-        ? await repository.policies.resolveEffective(ownerId, context.projectId)
-        : { policies: [] };
-    const standalonePolicies =
-      context.contextKind === "standalone"
-        ? await repository.policies.resolveStandalone(ownerId)
-        : { policies: [] };
+    const { effectivePolicies, standalonePolicies } =
+      await observeTaskTurnBootstrapStage(
+        "resolve-effective-policies",
+        async () => ({
+          effectivePolicies:
+            context.contextKind === "project"
+              ? await repository.policies.resolveEffective(
+                  ownerId,
+                  context.projectId,
+                )
+              : { policies: [] },
+          standalonePolicies:
+            context.contextKind === "standalone"
+              ? await repository.policies.resolveStandalone(ownerId)
+              : { policies: [] },
+        }),
+      );
     if (context.contextKind === "project" && !effectivePolicies) {
       throw new Error("The chat project is no longer available.");
     }
@@ -539,10 +571,12 @@ export function createChatTurnRuntime({
           );
         }
       }
-      await updateLiveChatPlanMode(ownerId, execution.chatId, turnPlanMode);
-      const priorHeaders = await repository.listMessageHeaders(
-        ownerId,
-        execution.chatId,
+      await observeTaskTurnBootstrapStage("persist-turn-mode", () =>
+        updateLiveChatPlanMode(ownerId, execution.chatId, turnPlanMode),
+      );
+      const priorHeaders = await observeTaskTurnBootstrapStage(
+        "load-message-headers",
+        () => repository.listMessageHeaders(ownerId, execution.chatId),
       );
       for (let index = priorHeaders.length - 1; index >= 0; index -= 1) {
         const message = priorHeaders[index]!;
@@ -580,25 +614,32 @@ export function createChatTurnRuntime({
           },
         );
       } else if (encryptedTaskMessages) {
-        const appended = await appendLiveTaskMessage(
-          ownerId,
-          execution.chatId,
-          encryptedTaskMessages.userMessage,
-          attribution,
-          execution,
+        const appended = await observeTaskTurnBootstrapStage(
+          "append-task-message",
+          () =>
+            appendLiveTaskMessage(
+              ownerId,
+              execution.chatId,
+              encryptedTaskMessages.userMessage,
+              attribution,
+              execution,
+            ),
         );
         if (!appended) throw new Error("Encrypted Task Chat not found.");
         userMessage = taskMessageServerStub(appended);
-        await setLiveTaskMessageModelRoute(
-          ownerId,
-          userMessage.id,
-          modelId,
-          runtimes[0]!,
-          {
-            appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
-            reasoningAdjusted: preparedRuntimes[0]!.adjusted,
-          },
-          execution,
+        await observeTaskTurnBootstrapStage("attribute-task-message", () =>
+          setLiveTaskMessageModelRoute(
+            ownerId,
+            userMessage.id,
+            modelId,
+            runtimes[0]!,
+            {
+              appliedReasoningEffort:
+                preparedRuntimes[0]!.appliedReasoningEffort,
+              reasoningAdjusted: preparedRuntimes[0]!.adjusted,
+            },
+            execution,
+          ),
         );
       } else {
         throw new Error("Chat turn content was not encrypted.");
@@ -615,6 +656,7 @@ export function createChatTurnRuntime({
           modelId,
           providerAccountId: runtimes[0]!.provider.accountId,
           providerId: runtimes[0]!.provider.id,
+          serverVersion: cantripVersion.version,
           workerId: execution.workerId,
           projectId: execution.projectId,
         },
@@ -630,10 +672,28 @@ export function createChatTurnRuntime({
       throw error;
     }
 
-    const attributedWorker = await repository.getWorker(
-      ownerId,
-      execution.workerId,
+    const attributedWorker = await observeTaskTurnBootstrapStage(
+      "load-worker-attribution",
+      () => repository.getWorker(ownerId, execution.workerId),
     );
+    if (options.taskDispatchLease) {
+      app.log.info(
+        {
+          event: "task.turn-bootstrap-ready",
+          subsystem: "task-scheduler",
+          operation: "bootstrap-turn",
+          status: "ready",
+          chatId: execution.chatId,
+          cycleId: options.taskDispatchLease.cycleId,
+          operationId: options.taskDispatchLease.operationId,
+          clientMessageId: userMessage.id,
+          executionLaneId,
+          serverVersion: cantripVersion.version,
+          workerId: execution.workerId,
+        },
+        "Scheduled Task turn bootstrap is ready for worker dispatch",
+      );
+    }
     void runAsOwner(ownerId, async () => {
       let anyActivity = false;
       let workerObservationSequence = 0;
@@ -677,7 +737,9 @@ export function createChatTurnRuntime({
       taskDispatchHeartbeat?.unref();
       try {
         if (execution.contextKind === "project") {
-          await notifyCodeAgentState(execution, "started");
+          await observeTaskTurnBootstrapStage("notify-code-agent-started", () =>
+            notifyCodeAgentState(execution, "started"),
+          );
         }
         for (const [index, runtime] of runtimes.entries()) {
           const executionAttemptId = `${userMessage.id}:${runtime.routeId}:${index}`;
@@ -789,15 +851,17 @@ export function createChatTurnRuntime({
               attribution,
             );
           }
-          await repository.updateChatRuntime(
-            execution.chatId,
-            execution.workerId,
-            execution.worktreeId,
-            threadId,
-            runtime.routeId,
-            "starting",
-            runtime.provider.accountId,
-            execution.scratchRootId,
+          await observeTaskTurnBootstrapStage("persist-chat-runtime", () =>
+            repository.updateChatRuntime(
+              execution.chatId,
+              execution.workerId,
+              execution.worktreeId,
+              threadId,
+              runtime.routeId,
+              "starting",
+              runtime.provider.accountId,
+              execution.scratchRootId,
+            ),
           );
           captureRuntimeQuota(
             runtime,
@@ -809,36 +873,40 @@ export function createChatTurnRuntime({
               : "turn-starting",
             executionAttemptId,
           );
-          await recordRuntimeTokenUsage(
-            tokenUsageSourceKey,
-            execution.projectId,
-            execution.chatId,
-            runtime,
-            undefined,
-            {
-              workerId: execution.workerId,
-              executionAttemptId,
-              attemptKind: "chat-turn",
-              attemptStatus: "running",
-              startedAt: attemptStartedAt,
-              codexVersion: attributedWorker?.codexVersion ?? null,
-            },
+          await observeTaskTurnBootstrapStage("record-token-usage", () =>
+            recordRuntimeTokenUsage(
+              tokenUsageSourceKey,
+              execution.projectId,
+              execution.chatId,
+              runtime,
+              undefined,
+              {
+                workerId: execution.workerId,
+                executionAttemptId,
+                attemptKind: "chat-turn",
+                attemptStatus: "running",
+                startedAt: attemptStartedAt,
+                codexVersion: attributedWorker?.codexVersion ?? null,
+              },
+            ),
           );
-          await recordRuntimeModelBehavior(
-            behaviorSourceKey,
-            execution,
-            runtime,
-            behaviorTracker,
-            {
-              executionAttemptId,
-              attemptStatus: "running",
-              routeAttemptIndex: index,
-              retryFailoverCount: index,
-              startedAt: attemptStartedAt,
-              immediateCorrectiveFollowup,
-              userRetryRegeneration: Boolean(options.retryMessageId),
-              codexVersion: attributedWorker?.codexVersion ?? null,
-            },
+          await observeTaskTurnBootstrapStage("record-model-behavior", () =>
+            recordRuntimeModelBehavior(
+              behaviorSourceKey,
+              execution,
+              runtime,
+              behaviorTracker,
+              {
+                executionAttemptId,
+                attemptStatus: "running",
+                routeAttemptIndex: index,
+                retryFailoverCount: index,
+                startedAt: attemptStartedAt,
+                immediateCorrectiveFollowup,
+                userRetryRegeneration: Boolean(options.retryMessageId),
+                codexVersion: attributedWorker?.codexVersion ?? null,
+              },
+            ),
           );
           try {
             app.log.debug(
@@ -860,6 +928,24 @@ export function createChatTurnRuntime({
               },
               "Agent turn route dispatched",
             );
+            if (options.taskDispatchLease) {
+              app.log.info(
+                {
+                  event: "task.worker-turn.dispatched",
+                  subsystem: "task-scheduler",
+                  operation: "dispatch-worker-turn",
+                  status: "dispatched",
+                  chatId: execution.chatId,
+                  cycleId: options.taskDispatchLease.cycleId,
+                  operationId: options.taskDispatchLease.operationId,
+                  clientMessageId: userMessage.id,
+                  executionLaneId,
+                  serverVersion: cantripVersion.version,
+                  workerId: execution.workerId,
+                },
+                "Scheduled Task turn dispatched to the worker",
+              );
+            }
             const rawResult = await bridge.request(
               execution.workerId,
               {
