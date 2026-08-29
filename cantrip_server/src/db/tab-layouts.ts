@@ -10,7 +10,7 @@ import type {
   TabGroupMemberOrder,
   TabGroupOrder,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 

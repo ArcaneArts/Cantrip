@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type {
   RunConfigurationRuntime,
-  RunConfigurationRuntimeFailure,
   RunConfigurationRuntimeObservationApplyResult,
   RunConfigurationRuntimeOperation,
   RunConfigurationRuntimeOperationRecord,
