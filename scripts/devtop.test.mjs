@@ -44,6 +44,10 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
     launcher,
     /exec tauri dev --config \.\.\/\.cantrip\/dev\/tauri-dev\.conf\.json/u,
   );
+  assert.match(
+    launcher,
+    /CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true/u,
+  );
   assert.ok(
     launcher.indexOf("await ensureDevtopTauriConfig") <
       launcher.indexOf("await forceKillRecordedDevtop"),

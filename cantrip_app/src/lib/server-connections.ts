@@ -36,6 +36,11 @@ type StoredServerConnections = {
 };
 
 const localId = "local";
+
+function isLocalOnlyDevelopmentMode(): boolean {
+  return import.meta.env.VITE_CANTRIP_LOCAL_ONLY === "true";
+}
+
 let state: StoredServerConnections = {
   activeId: "",
   connections: [],
@@ -52,8 +57,7 @@ type ServerConnectionsHotState = {
   >;
 };
 const serverConnectionsHotState = import.meta.hot?.data as
-  | ServerConnectionsHotState
-  | undefined;
+  ServerConnectionsHotState | undefined;
 const serverIdentityListeners =
   serverConnectionsHotState?.serverIdentityListeners ??
   new Set<(change: ServerConnectionIdentityChange) => void>();
@@ -184,11 +188,12 @@ async function refreshServerConnections(): Promise<void> {
     : [...stored.connections];
   state = {
     ...stored,
-    activeId: connections.some(
-      (connection) => connection.id === stored.activeId,
-    )
-      ? stored.activeId
-      : (local?.id ?? connections[0]?.id ?? ""),
+    activeId:
+      local && isLocalOnlyDevelopmentMode()
+        ? local.id
+        : connections.some((connection) => connection.id === stored.activeId)
+          ? stored.activeId
+          : (local?.id ?? connections[0]?.id ?? ""),
     connections,
   };
   clientLogger.debug("Restored newer server connection state", {
@@ -239,10 +244,12 @@ export async function initializeServerConnections(): Promise<void> {
     : [...(stored?.connections ?? [])];
   state = {
     activeId:
-      stored?.activeId &&
-      connections.some((item) => item.id === stored.activeId)
-        ? stored.activeId
-        : (connections[0]?.id ?? ""),
+      desktopApp && isLocalOnlyDevelopmentMode()
+        ? localId
+        : stored?.activeId &&
+            connections.some((item) => item.id === stored.activeId)
+          ? stored.activeId
+          : (connections[0]?.id ?? ""),
     connections,
     updatedAt: stored?.updatedAt ?? 0,
     version: 1,
@@ -336,6 +343,9 @@ export async function saveServerConnection(input: {
 
 export async function selectServerConnection(id: string): Promise<void> {
   await refreshServerConnections();
+  if (isLocalOnlyDevelopmentMode() && id !== localId) {
+    throw new Error("Local-only development mode can only use Local.");
+  }
   if (!state.connections.some((connection) => connection.id === id)) {
     throw new Error("That server connection no longer exists.");
   }
