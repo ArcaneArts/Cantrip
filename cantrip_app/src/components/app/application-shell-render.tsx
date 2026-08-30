@@ -92,7 +92,6 @@ export function ApplicationShellRender({
     setPendingSurfaceSelection,
     setRunConfigurationEditorId,
     setShowCustomizations,
-    setTerminalCommandPaletteTerminalId,
     setTerminalServiceTerminalId,
     setWorkspaceDragError,
     settings,
@@ -105,7 +104,6 @@ export function ApplicationShellRender({
     sidebarCollapsed,
     surfaceCreationFailure,
     tabLayout,
-    terminalCommandPaletteTerminalId,
     terminalServiceTerminalId,
     visibleProjects,
     workers,
@@ -175,23 +173,6 @@ export function ApplicationShellRender({
                 current === selectedStandaloneTerminal.id
                   ? null
                   : selectedStandaloneTerminal.id,
-              ),
-          }
-        : null,
-    terminalCommandPalette:
-      !showImporter &&
-      !showSettings &&
-      !showServerAdmin &&
-      !showProjectSettings &&
-      selectedStandaloneTerminal &&
-      selectedStandaloneTerminal.kind !== "run-configuration"
-        ? {
-            active:
-              terminalCommandPaletteTerminalId ===
-              selectedStandaloneTerminal.id,
-            open: () =>
-              setTerminalCommandPaletteTerminalId(
-                selectedStandaloneTerminal.id,
               ),
           }
         : null,

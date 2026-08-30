@@ -12,7 +12,6 @@ import {
   ListTodo,
   MessageSquare,
   Bot,
-  Palette,
   Pencil,
   Power,
   RefreshCw,
@@ -34,11 +33,6 @@ import {
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
-
-interface TerminalCommandPaletteAction {
-  active: boolean;
-  open(): void;
-}
 
 interface TerminalServiceAction {
   active: boolean;
@@ -80,7 +74,6 @@ export interface ContentHeaderActionsProps {
   git?: GitHistoryHeaderState | null;
   popout?: PopoutAction | null;
   task?: TaskViewAction | null;
-  terminalCommandPalette?: TerminalCommandPaletteAction | null;
   terminalService?: TerminalServiceAction | null;
 }
 
@@ -318,7 +311,6 @@ export function ContentHeaderActions({
   git,
   popout,
   task,
-  terminalCommandPalette,
   terminalService,
 }: ContentHeaderActionsProps) {
   return (
@@ -383,18 +375,6 @@ export function ContentHeaderActions({
         >
           <ServerCog className="size-4" />
           <span className="sr-only">Configure terminal service</span>
-        </Button>
-      ) : null}
-      {terminalCommandPalette ? (
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-pressed={terminalCommandPalette.active}
-          onClick={terminalCommandPalette.open}
-          title="Run a project command"
-        >
-          <Palette className="size-4" />
-          <span className="sr-only">Run a project command</span>
         </Button>
       ) : null}
       {popout ? (

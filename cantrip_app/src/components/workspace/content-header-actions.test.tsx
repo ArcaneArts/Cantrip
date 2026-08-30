@@ -95,7 +95,6 @@ describe("ContentHeaderActions", () => {
         explorer={explorerHeader()}
         code={{ header: codeHeader() }}
         terminalService={{ active: true, open: vi.fn() }}
-        terminalCommandPalette={{ active: true, open: vi.fn() }}
         popout={{ error: null, pending: false, open: vi.fn() }}
         task={{ change: vi.fn(), view: "task" }}
         chat={{
@@ -128,9 +127,7 @@ describe("ContentHeaderActions", () => {
     expect(markup).toContain('title="Save all editors"');
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('title="Configure terminal service"');
-    expect(markup.indexOf("Configure terminal service")).toBeLessThan(
-      markup.indexOf("Run a project command"),
-    );
+    expect(markup).not.toContain('title="Run a project command"');
     expect(markup).toContain('title="Open this tab in a new window"');
     expect(markup).toContain('title="Show Task"');
     expect(markup).toContain('title="Show Task chat"');
