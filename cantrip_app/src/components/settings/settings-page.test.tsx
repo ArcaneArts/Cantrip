@@ -193,6 +193,16 @@ describe("account settings", () => {
     expect(markup).toContain('<option value="dark">Dark</option>');
   });
 
+  it("keeps random agent names disabled by default", () => {
+    const markup = renderSettings("general");
+
+    expect(markup).toContain("Agent chat names");
+    expect(markup).toContain('aria-label="Use random agent names"');
+    expect(markup).not.toContain(
+      'aria-label="Use random agent names" checked=""',
+    );
+  });
+
   it("exposes the visual reveal laboratory as its own section", () => {
     const markup = renderSettings("elite");
     expect(markup).toContain("Elite reveal laboratory");

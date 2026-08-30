@@ -509,6 +509,7 @@ export function App() {
   const newChat = useProjectChatCreationOperation({
     openCreatedTab,
     queryClient,
+    randomAgentNames: settings.data?.preferences.randomAgentNames ?? false,
     resources: projectWorkspaceResources,
   });
   const {
@@ -522,6 +523,7 @@ export function App() {
     bootstrap,
     persistAppDestination,
     queryClient,
+    randomAgentNames: settings.data?.preferences.randomAgentNames ?? false,
     selectedStandaloneChatId,
     setSelectedStandaloneChatId,
     setShowArchivedStandaloneChats,

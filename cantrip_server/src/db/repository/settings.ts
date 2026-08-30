@@ -85,6 +85,7 @@ export class SettingsRepository {
         proMode: false,
         proModeOpacity: 80,
         sidebarWidth: 288,
+        randomAgentNames: false,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
         defaultModelId: DEFAULT_MODEL_ID,
@@ -113,6 +114,7 @@ export class SettingsRepository {
         proMode: false,
         proModeOpacity: 80,
         sidebarWidth: 288,
+        randomAgentNames: false,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
         defaultModelId: null,
@@ -289,6 +291,7 @@ export class SettingsRepository {
       eliteMode: settings.eliteMode,
       eliteRevealConfig: settings.eliteRevealConfig,
       sidebarWidth: settings.sidebarWidth,
+      randomAgentNames: settings.randomAgentNames,
       desktopFrameRate:
         settings.desktopFrameRate as UserSettings["desktopFrameRate"],
       desktopStreamQuality:
