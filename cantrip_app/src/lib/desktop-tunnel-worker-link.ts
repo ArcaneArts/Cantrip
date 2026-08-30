@@ -193,9 +193,16 @@ export async function attachDesktopTunnelWorkerLinkForward(
 
 export async function stopDesktopTunnelWorkerLinkForward(
   tunnelId: string,
+  expectedAttachmentId?: string,
 ): Promise<void> {
   const controller = activeForwards.get(tunnelId);
   if (!controller) return;
+  if (
+    expectedAttachmentId &&
+    !controller.belongsToAttachment(expectedAttachmentId)
+  ) {
+    return;
+  }
   activeForwards.delete(tunnelId);
   controller.stop();
 }
@@ -237,6 +244,10 @@ class DesktopTunnelWorkerLinkController {
     const route = await this.#connect();
     await this.#publishRoute(this.#generation, route);
     return route;
+  }
+
+  belongsToAttachment(attachmentId: string): boolean {
+    return this.input.attachmentId === attachmentId;
   }
 
   stop(): void {

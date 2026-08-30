@@ -222,6 +222,17 @@ describe("desktop tunnel WorkerLink bridge", () => {
     );
   });
 
+  it("does not let stale attachment cleanup stop a replacement controller", async () => {
+    const fixture = setup();
+    await startDesktopTunnelWorkerLinkForward(input(), fixture.dependencies);
+
+    await stopDesktopTunnelWorkerLinkForward(tunnelId, "attachment-stale");
+    expect(fixture.connections[0]!.close).not.toHaveBeenCalled();
+
+    await stopDesktopTunnelWorkerLinkForward(tunnelId, attachmentId);
+    expect(fixture.connections[0]!.close).toHaveBeenCalledOnce();
+  });
+
   it("reopens only the WorkerLink stream after a route failure", async () => {
     vi.useFakeTimers();
     const fixture = setup(["local", "relay"]);

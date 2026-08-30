@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   explorerCodeSessionBindingCurrent: vi.fn(),
   listDesktopTunnelsWithOptions: vi.fn(),
   releaseDesktopCodeTransport: vi.fn(),
+  retireDesktopCodeTransportGeneration: vi.fn(),
   startBrowserCodeAttachment: vi.fn(),
   startSharedBrowserCodeAttachment: vi.fn(),
   startDesktopTunnel: vi.fn(),
@@ -38,6 +39,8 @@ vi.mock("@/lib/desktop-tunnel", () => ({
   forceDesktopTunnelRelay: mocks.forceDesktopTunnelRelay,
   listDesktopTunnelsWithOptions: mocks.listDesktopTunnelsWithOptions,
   releaseDesktopCodeTransport: mocks.releaseDesktopCodeTransport,
+  retireDesktopCodeTransportGeneration:
+    mocks.retireDesktopCodeTransportGeneration,
   startDesktopTunnel: mocks.startDesktopTunnel,
   stopDesktopTunnel: mocks.stopDesktopTunnel,
   stopDesktopTunnelForward: mocks.stopDesktopTunnelForward,
@@ -95,6 +98,7 @@ beforeEach(() => {
   mocks.isTauri.mockReturnValue(true);
   mocks.explorerCodeSessionBindingCurrent.mockReturnValue(true);
   mocks.releaseDesktopCodeTransport.mockResolvedValue(true);
+  mocks.retireDesktopCodeTransportGeneration.mockResolvedValue(true);
   mocks.retainSharedBrowserCodeAttachment.mockResolvedValue(undefined);
   mocks.stopSharedBrowserCodeAttachment.mockResolvedValue(undefined);
   mocks.invoke.mockResolvedValue([]);
@@ -202,6 +206,7 @@ describe("shared desktop Code attachment", () => {
       },
       generation: "generation-one",
       leaseId,
+      reused: true,
       serverUrl: "https://server.example.test",
       workerId: "worker-one",
     };
@@ -252,6 +257,52 @@ describe("shared desktop Code attachment", () => {
     expect(mocks.releaseDesktopCodeTransport).toHaveBeenLastCalledWith(
       secondLease,
     );
+  });
+
+  it("retires one stale reused generation and reconnects the same session", async () => {
+    const owned = ownedAttachment();
+    const staleLease = lease("lease-stale");
+    const replacementLease = {
+      ...lease("lease-replacement"),
+      forward: {
+        ...staleLease.forward,
+        attachmentId: "physical-attachment-two",
+        diagnosticTraceId: "99999999-9999-4999-8999-999999999999",
+        localPort: 52_346,
+      },
+      generation: "generation-two",
+      reused: false,
+    };
+    mocks.acquireDesktopCodeTransport
+      .mockResolvedValueOnce(staleLease)
+      .mockResolvedValueOnce(replacementLease);
+    mocks.fetch
+      .mockRejectedValueOnce(new TypeError("stale loopback listener"))
+      .mockResolvedValue({ body: null, ok: true });
+    mocks.invoke.mockResolvedValue([
+      {
+        destinationRejectedCount: 1,
+        lastDestinationRejectionCode: "protected-record-unavailable",
+        tunnelId: owned.attachment.transport.transportId,
+      },
+    ]);
+
+    await expect(
+      preferSharedProtectedCodeAttachment(owned),
+    ).resolves.toMatchObject({
+      attachment: {
+        url: `http://127.0.0.1:52346/sessions/${"A".repeat(43)}/code/`,
+      },
+      sharedTransportGeneration: "generation-two",
+      sharedTransportLeaseId: "lease-replacement",
+    });
+
+    expect(mocks.retireDesktopCodeTransportGeneration).toHaveBeenCalledOnce();
+    expect(mocks.retireDesktopCodeTransportGeneration).toHaveBeenCalledWith(
+      staleLease,
+    );
+    expect(mocks.acquireDesktopCodeTransport).toHaveBeenCalledTimes(2);
+    expect(mocks.releaseDesktopCodeTransport).not.toHaveBeenCalled();
   });
 
   it("delegates browser shared-session leases without invoking native ownership", async () => {

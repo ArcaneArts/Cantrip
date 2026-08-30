@@ -31,6 +31,7 @@ import {
   acquireDesktopCodeTransport,
   listDesktopTunnelsWithOptions,
   releaseDesktopCodeTransport,
+  retireDesktopCodeTransportGeneration,
   startDesktopTunnel,
   stopDesktopTunnel,
   subscribeDesktopTunnelForwardTerminal,
@@ -765,78 +766,121 @@ export async function preferSharedProtectedCodeAttachment(
   }
   options.signal?.throwIfAborted();
   const wire = owned.attachment;
-  const lease = await acquireDesktopCodeTransport(owned, options);
-  const forward = lease.forward;
-  try {
-    const assertCurrent = () => {
-      options.signal?.throwIfAborted();
-      if (!explorerCodeSessionBindingCurrent(owned.binding)) {
-        throw new Error(
-          "The Cantrip Code server or authentication identity changed while connecting.",
+  let lease = await acquireDesktopCodeTransport(owned, options);
+  let recoveredStaleGeneration = false;
+  for (;;) {
+    const forward = lease.forward;
+    try {
+      const assertCurrent = () => {
+        options.signal?.throwIfAborted();
+        if (!explorerCodeSessionBindingCurrent(owned.binding)) {
+          throw new Error(
+            "The Cantrip Code server or authentication identity changed while connecting.",
+          );
+        }
+      };
+      assertCurrent();
+      const basePath = `${codeSessionRouteBasePath(wire.session.routeGrant)}/`;
+      const url = new URL(
+        basePath,
+        `http://${forward.localHost}:${forward.localPort}`,
+      );
+      if (wire.session.runtime.workspaceUri) {
+        const workspace = new URL(wire.session.runtime.workspaceUri);
+        if (workspace.protocol !== "file:") {
+          throw new Error("Cantrip Code supplied an invalid workspace URI.");
+        }
+        url.searchParams.set(
+          "workspace",
+          decodeURIComponent(workspace.pathname),
         );
       }
-    };
-    assertCurrent();
-    const basePath = `${codeSessionRouteBasePath(wire.session.routeGrant)}/`;
-    const url = new URL(
-      basePath,
-      `http://${forward.localHost}:${forward.localPort}`,
-    );
-    if (wire.session.runtime.workspaceUri) {
-      const workspace = new URL(wire.session.runtime.workspaceUri);
-      if (workspace.protocol !== "file:") {
-        throw new Error("Cantrip Code supplied an invalid workspace URI.");
-      }
-      url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
-    }
-    const attachment = {
-      attachmentId: wire.session.attachmentId,
-      sessionId: wire.session.sessionId,
-      url: url.toString(),
-      expiresAt: wire.session.expiresAt,
-      runtime: wire.session.runtime,
-    } satisfies CodeAttachment;
-    const health = async (
-      phase: "direct" | "initial" | "relay",
-      timeoutMs: number,
-    ) =>
-      waitForDirectCodeAttachmentReady(attachment, {
+      const attachment = {
         attachmentId: wire.session.attachmentId,
-        ...(forward.diagnosticTraceId
-          ? { diagnosticTraceId: forward.diagnosticTraceId }
-          : {}),
-        destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
-        healthPhase: phase,
         sessionId: wire.session.sessionId,
-        signal: options.signal,
-        totalTimeoutMs: timeoutMs,
-        tunnelId: wire.transport.transportId,
-      });
-    await health("initial", CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS);
-    assertCurrent();
-    const desktopRouteIdentity = {
-      attachmentId: forward.attachmentId,
-      diagnosticTraceId: forward.diagnosticTraceId,
-      directCapabilityId: forward.directCapabilityId,
-    };
-    const ownedLeases =
-      sharedProtectedAttachmentLeases.get(owned) ??
-      new Map<string, DesktopCodeTransportLease>();
-    ownedLeases.set(lease.leaseId, lease);
-    sharedProtectedAttachmentLeases.set(owned, ownedLeases);
-    return {
-      attachment,
-      desktopRouteIdentity,
-      directTunnelId: wire.transport.transportId,
-      sharedTransportGeneration: lease.generation,
-      sharedTransportLeaseId: lease.leaseId,
-      sharedOwnedAttachment: owned,
-      transportKind:
-        forward.routeState === "local-direct" ? "local-direct" : "relay",
-    };
-  } catch (error) {
-    await releaseDesktopCodeTransport(lease).catch(() => undefined);
-    throw error;
+        url: url.toString(),
+        expiresAt: wire.session.expiresAt,
+        runtime: wire.session.runtime,
+      } satisfies CodeAttachment;
+      const health = async (
+        phase: "direct" | "initial" | "relay",
+        timeoutMs: number,
+      ) =>
+        waitForDirectCodeAttachmentReady(attachment, {
+          attachmentId: wire.session.attachmentId,
+          ...(forward.diagnosticTraceId
+            ? { diagnosticTraceId: forward.diagnosticTraceId }
+            : {}),
+          destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
+          healthPhase: phase,
+          sessionId: wire.session.sessionId,
+          signal: options.signal,
+          totalTimeoutMs: timeoutMs,
+          tunnelId: wire.transport.transportId,
+        });
+      await health(
+        "initial",
+        lease.reused && !recoveredStaleGeneration
+          ? CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS
+          : CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS,
+      );
+      assertCurrent();
+      const desktopRouteIdentity = {
+        attachmentId: forward.attachmentId,
+        diagnosticTraceId: forward.diagnosticTraceId,
+        directCapabilityId: forward.directCapabilityId,
+      };
+      const ownedLeases =
+        sharedProtectedAttachmentLeases.get(owned) ??
+        new Map<string, DesktopCodeTransportLease>();
+      ownedLeases.set(lease.leaseId, lease);
+      sharedProtectedAttachmentLeases.set(owned, ownedLeases);
+      return {
+        attachment,
+        desktopRouteIdentity,
+        directTunnelId: wire.transport.transportId,
+        sharedTransportGeneration: lease.generation,
+        sharedTransportLeaseId: lease.leaseId,
+        sharedOwnedAttachment: owned,
+        transportKind:
+          forward.routeState === "local-direct" ? "local-direct" : "relay",
+      };
+    } catch (error) {
+      const staleReusableGeneration =
+        !recoveredStaleGeneration &&
+        lease.reused &&
+        error instanceof CodeAttachmentHealthError &&
+        error.relayFallbackEligible &&
+        !options.signal?.aborted &&
+        explorerCodeSessionBindingCurrent(owned.binding);
+      if (staleReusableGeneration) {
+        clientLogger.event(
+          "warn",
+          "Retiring an unresponsive shared Code transport generation",
+          {
+            attachmentId: wire.session.attachmentId,
+            event: "code.transport.generation.retiring",
+            generation: lease.generation,
+            operation: "retire-stale-generation",
+            reasonCode: "health-unresponsive",
+            sessionId: wire.session.sessionId,
+            status: "started",
+            subsystem: "code",
+            tunnelId: wire.transport.transportId,
+          },
+        );
+        const retired = await retireDesktopCodeTransportGeneration(lease).catch(
+          () => false,
+        );
+        if (retired) {
+          recoveredStaleGeneration = true;
+          lease = await acquireDesktopCodeTransport(owned, options);
+          continue;
+        }
+      }
+      await releaseDesktopCodeTransport(lease).catch(() => undefined);
+      throw error;
+    }
   }
 }
 

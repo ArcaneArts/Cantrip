@@ -1032,6 +1032,7 @@ pub fn run() {
             tunnel_forward::acquire_code_transport_forward,
             tunnel_forward::claim_code_transport_maintenance,
             tunnel_forward::claim_worker_link_tunnel_bridge,
+            tunnel_forward::retire_code_transport_forward,
             tunnel_forward::register_code_transport_window_instance,
             tunnel_forward::invalidate_code_transport_pool,
             tunnel_forward::wait_code_transport_forward,
