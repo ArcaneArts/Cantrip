@@ -238,9 +238,7 @@ export class ProjectEncryptionAdapter {
           ...routedProject,
           source: {
             ...project.source,
-            path: protectedSourcePath
-              ? unavailablePath
-              : project.source.path,
+            path: protectedSourcePath ? unavailablePath : project.source.path,
             displayPath: protectedSourceDisplayPath
               ? unavailablePath
               : project.source.displayPath,
@@ -336,6 +334,14 @@ export class ProjectEncryptionAdapter {
     const sourcePlacement = project.source
       ? hydratedReplicas.find(({ id }) => id === project.source?.id)
       : undefined;
+    const sourceWorktreePath =
+      sourceWorktree?.path === unavailablePath
+        ? undefined
+        : sourceWorktree?.path;
+    const sourceWorktreeDisplayPath =
+      sourceWorktree?.displayPath === unavailablePath
+        ? undefined
+        : sourceWorktree?.displayPath;
     return {
       ...routedProject,
       source: routedProject.source
@@ -348,14 +354,14 @@ export class ProjectEncryptionAdapter {
                 }
               : {}),
             path:
-              sourceWorktree?.path ??
+              sourceWorktreePath ??
               (repositoryRoutingHandleSchema.safeParse(
                 routedProject.source.path,
               ).success
                 ? unavailablePath
                 : routedProject.source.path),
             displayPath:
-              sourceWorktree?.displayPath ??
+              sourceWorktreeDisplayPath ??
               (repositoryRoutingHandleSchema.safeParse(
                 routedProject.source.displayPath,
               ).success
