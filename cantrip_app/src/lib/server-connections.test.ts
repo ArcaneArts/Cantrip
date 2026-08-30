@@ -47,6 +47,7 @@ class MemoryStorage implements Storage {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   tauriApi.invoke.mockReset();
   tauriApi.isTauri.mockReset();
   tauriApi.isTauri.mockReturnValue(false);
@@ -144,6 +145,40 @@ describe("server connections", () => {
       },
     ]);
     expect(getActiveServerConnection()?.kind).toBe("local");
+  });
+
+  it("forces devtop to Local without deleting saved remote profiles", async () => {
+    tauriApi.isTauri.mockReturnValue(true);
+    tauriApi.invoke.mockResolvedValue("http://127.0.0.1:4310");
+    vi.stubEnv("VITE_CANTRIP_LOCAL_ONLY", "true");
+    localStorage.setItem(
+      serverConnectionStorageKey,
+      JSON.stringify({
+        activeId: "winterhold",
+        connections: [
+          {
+            id: "winterhold",
+            kind: "remote",
+            name: "Winterhold",
+            url: "https://winterhold.cantrip.art",
+          },
+        ],
+        updatedAt: Date.now(),
+        version: 1,
+      }),
+    );
+
+    await initializeServerConnections();
+
+    expect(getServerConnections().map(({ id }) => id)).toEqual([
+      "local",
+      "winterhold",
+    ]);
+    expect(getActiveServerConnection()?.id).toBe("local");
+    await expect(selectServerConnection("winterhold")).rejects.toThrow(
+      /local-only development mode/i,
+    );
+    expect(getActiveServerConnection()?.id).toBe("local");
   });
 
   it("pins a remote server to one account unless sign-in explicitly replaces it", async () => {
