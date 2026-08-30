@@ -117,14 +117,21 @@ describe("Explorer Code connection retry classification", () => {
 });
 
 describe("Explorer Code editor navigation", () => {
-  it("recovers the existing route after bounded transient control retries", () => {
+  it("replaces a stale attachment after a control timeout", () => {
     const timeout = codeWorkbenchStageError(
       "file",
       new CodeControlOperationTimeoutError(),
     );
 
-    expect(explorerCodeEditorOpenRecovery(timeout, 0, 0)).toBe("retry");
-    expect(explorerCodeEditorOpenRecovery(timeout, 1, 0)).toBe("recover-route");
+    expect(explorerCodeEditorOpenRecovery(timeout, 0, 0)).toBe(
+      "replace-attachment",
+    );
+    expect(explorerCodeEditorOpenRecovery(timeout, 1, 0)).toBe(
+      "replace-attachment",
+    );
+  });
+
+  it("recovers the existing route after bounded transient network retries", () => {
     expect(
       explorerCodeEditorOpenRecovery(new TypeError("Load failed"), 0, 0),
     ).toBe("retry");
