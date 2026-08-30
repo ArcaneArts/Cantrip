@@ -1,4 +1,8 @@
-import { EliteReveal } from "@cantrip/glitch";
+import {
+  DEFAULT_ELITE_REVEAL_CONFIG,
+  EliteReveal,
+  type EliteRevealConfig,
+} from "@cantrip/glitch";
 import {
   Activity,
   AppWindow,
@@ -44,8 +48,6 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
-  SITE_DEMO_GLITCH_CONFIG,
-  SITE_HERO_GLITCH_CONFIG,
   SITE_REDUCED_MOTION_GLITCH_CONFIG,
   usePrefersReducedMotion,
 } from "./site-glitch";
@@ -625,7 +627,7 @@ function GitDemo() {
   );
 }
 
-function ProductDemo({ glitchEnabled }: { glitchEnabled: boolean }) {
+function ProductDemo({ glitchConfig }: { glitchConfig: EliteRevealConfig }) {
   const [active, setActive] = useState<DemoTab>("editor");
   const [replayKey, setReplayKey] = useState(0);
   const tabs: Array<{ icon: LucideIcon; label: string; value: DemoTab }> = [
@@ -694,11 +696,7 @@ function ProductDemo({ glitchEnabled }: { glitchEnabled: boolean }) {
           </div>
           <EliteReveal
             className="demo-reveal"
-            config={
-              glitchEnabled
-                ? SITE_DEMO_GLITCH_CONFIG
-                : SITE_REDUCED_MOTION_GLITCH_CONFIG
-            }
+            config={glitchConfig}
             replayKey={replayKey}
           >
             {active === "editor" && <EditorDemo />}
@@ -779,7 +777,9 @@ function WorkflowBoard() {
 function App() {
   const { mode, setMode } = useTheme();
   const reducedMotion = usePrefersReducedMotion();
-  const glitchEnabled = !reducedMotion;
+  const glitchConfig = reducedMotion
+    ? SITE_REDUCED_MOTION_GLITCH_CONFIG
+    : DEFAULT_ELITE_REVEAL_CONFIG;
 
   return (
     <div className="site-shell" id="top">
@@ -819,130 +819,168 @@ function App() {
       <main>
         <section className="hero section-wrap">
           <div className="hero-copy">
-            <div className="status-line">
-              <i /> EDITOR · TERMINALS · GIT · AGENTS · EVERY DEVICE
-            </div>
+            <EliteReveal
+              config={glitchConfig}
+              contentKind="text"
+              index={0}
+              replayKey={0}
+            >
+              <div className="status-line">
+                <i /> EDITOR · TERMINALS · GIT · AGENTS · EVERY DEVICE
+              </div>
+            </EliteReveal>
             <EliteReveal
               className="hero-title-reveal"
-              config={
-                glitchEnabled
-                  ? SITE_HERO_GLITCH_CONFIG
-                  : SITE_REDUCED_MOTION_GLITCH_CONFIG
-              }
+              config={glitchConfig}
               contentKind="text"
+              index={1}
               replayKey={0}
             >
               <h1>The last agentic IDE you’ll need.</h1>
             </EliteReveal>
-            <p className="hero-lede">
-              Cantrip is a complete development environment where you and your
-              agents edit, run, review, and ship together. Keep the editor,
-              terminal, Git, browser, automation, and project context in one
-              local-first IDE that follows you to every device.
-            </p>
-            <div className="hero-actions">
-              <a
-                className="button button-primary"
-                href={APP_URL}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <AppWindow size={18} /> Open the IDE <ArrowRight size={16} />
-              </a>
-              <a
-                className="button button-quiet"
-                href={GITHUB_URL}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <GitPullRequest size={17} /> View source
-              </a>
-            </div>
-            <div className="hero-proof">
-              <div>
-                <Code2 size={17} />
-                <span>
-                  <strong>A complete editor at the center.</strong>
-                  <small>Monaco for speed. VS Code when you want it all.</small>
-                </span>
+            <EliteReveal
+              config={glitchConfig}
+              contentKind="text"
+              index={2}
+              replayKey={0}
+            >
+              <p className="hero-lede">
+                Cantrip is a complete development environment where you and your
+                agents edit, run, review, and ship together. Keep the editor,
+                terminal, Git, browser, automation, and project context in one
+                local-first IDE that follows you to every device.
+              </p>
+            </EliteReveal>
+            <EliteReveal
+              config={glitchConfig}
+              contentKind="control"
+              index={3}
+              replayKey={0}
+            >
+              <div className="hero-actions">
+                <a
+                  className="button button-primary"
+                  href={APP_URL}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <AppWindow size={18} /> Open the IDE <ArrowRight size={16} />
+                </a>
+                <a
+                  className="button button-quiet"
+                  href={GITHUB_URL}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <GitPullRequest size={17} /> View source
+                </a>
               </div>
-              <div>
-                <Bot size={17} />
-                <span>
-                  <strong>Agents belong inside the IDE.</strong>
-                  <small>
-                    Delegate with context, then inspect every change.
-                  </small>
-                </span>
+            </EliteReveal>
+            <EliteReveal config={glitchConfig} index={4} replayKey={0}>
+              <div className="hero-proof">
+                <div>
+                  <Code2 size={17} />
+                  <span>
+                    <strong>A complete editor at the center.</strong>
+                    <small>
+                      Monaco for speed. VS Code when you want it all.
+                    </small>
+                  </span>
+                </div>
+                <div>
+                  <Bot size={17} />
+                  <span>
+                    <strong>Agents belong inside the IDE.</strong>
+                    <small>
+                      Delegate with context, then inspect every change.
+                    </small>
+                  </span>
+                </div>
+                <div>
+                  <ShieldCheck size={17} />
+                  <span>
+                    <strong>Your source stays on your worker.</strong>
+                    <small>Local-first, protected, and self-hostable.</small>
+                  </span>
+                </div>
               </div>
-              <div>
-                <ShieldCheck size={17} />
-                <span>
-                  <strong>Your source stays on your worker.</strong>
-                  <small>Local-first, protected, and self-hostable.</small>
-                </span>
-              </div>
-            </div>
+            </EliteReveal>
           </div>
-          <ProductDemo glitchEnabled={glitchEnabled} />
+          <EliteReveal config={glitchConfig} index={5} replayKey={0}>
+            <ProductDemo glitchConfig={glitchConfig} />
+          </EliteReveal>
         </section>
 
         <section
           className="deployment-rail"
           aria-label="Cantrip deployment modes"
         >
-          <div className="section-wrap deployment-rail-inner">
-            <span>
-              <Code2 size={16} /> EDITOR + EXPLORER
-            </span>
-            <span>
-              <TerminalSquare size={16} /> TERMINALS + GIT
-            </span>
-            <span>
-              <Bot size={16} /> AGENTS + AUTOMATION
-            </span>
-            <span>
-              <Smartphone size={16} /> DESKTOP + WEB + MOBILE
-            </span>
-          </div>
+          <EliteReveal config={glitchConfig} index={6} replayKey={0}>
+            <div className="section-wrap deployment-rail-inner">
+              <span>
+                <Code2 size={16} /> EDITOR + EXPLORER
+              </span>
+              <span>
+                <TerminalSquare size={16} /> TERMINALS + GIT
+              </span>
+              <span>
+                <Bot size={16} /> AGENTS + AUTOMATION
+              </span>
+              <span>
+                <Smartphone size={16} /> DESKTOP + WEB + MOBILE
+              </span>
+            </div>
+          </EliteReveal>
         </section>
 
         <section className="release-section section-wrap">
-          <div className="section-heading split-heading">
-            <div>
-              <SectionLabel>THE WHOLE DEVELOPMENT LOOP</SectionLabel>
-              <h2>A real IDE first. Agentic all the way through.</h2>
+          <EliteReveal
+            config={glitchConfig}
+            contentKind="text"
+            index={7}
+            replayKey={0}
+          >
+            <div className="section-heading split-heading">
+              <div>
+                <SectionLabel>THE WHOLE DEVELOPMENT LOOP</SectionLabel>
+                <h2>A real IDE first. Agentic all the way through.</h2>
+              </div>
+              <p>
+                Cantrip starts with the tools developers already rely on, then
+                makes agents, remote machines, and durable automation native to
+                the same environment.
+              </p>
             </div>
-            <p>
-              Cantrip starts with the tools developers already rely on, then
-              makes agents, remote machines, and durable automation native to
-              the same environment.
-            </p>
-          </div>
-          <div className="release-grid">
-            {ideHighlights.map(
-              ({ description, features, icon: Icon, label, title }, index) => (
-                <article className="release-card" key={label}>
-                  <div className="release-card-topline">
-                    <span className="release-icon">
-                      <Icon size={20} />
-                    </span>
-                    <small>{label}</small>
-                    <span className="release-number">0{index + 1}</span>
-                  </div>
-                  <h3>{title}</h3>
-                  <p>{description}</p>
-                  <ul>
-                    {features.map((feature) => (
-                      <li key={feature}>
-                        <Check size={13} /> {feature}
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              ),
-            )}
-          </div>
+          </EliteReveal>
+          <EliteReveal config={glitchConfig} index={8} replayKey={0}>
+            <div className="release-grid">
+              {ideHighlights.map(
+                (
+                  { description, features, icon: Icon, label, title },
+                  index,
+                ) => (
+                  <article className="release-card" key={label}>
+                    <div className="release-card-topline">
+                      <span className="release-icon">
+                        <Icon size={20} />
+                      </span>
+                      <small>{label}</small>
+                      <span className="release-number">0{index + 1}</span>
+                    </div>
+                    <h3>{title}</h3>
+                    <p>{description}</p>
+                    <ul>
+                      {features.map((feature) => (
+                        <li key={feature}>
+                          <Check size={13} /> {feature}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ),
+              )}
+            </div>
+          </EliteReveal>
           <div className="release-footer">
             <span>
               <Activity size={14} /> BUILT IN THE OPEN
@@ -958,110 +996,142 @@ function App() {
         </section>
 
         <section className="workspace-section section-wrap" id="workspace">
-          <div className="section-heading split-heading">
-            <div>
-              <SectionLabel>ONE COMPLETE IDE</SectionLabel>
-              <h2>Everything serious software work touches.</h2>
+          <EliteReveal
+            config={glitchConfig}
+            contentKind="text"
+            index={9}
+            replayKey={0}
+          >
+            <div className="section-heading split-heading">
+              <div>
+                <SectionLabel>ONE COMPLETE IDE</SectionLabel>
+                <h2>Everything serious software work touches.</h2>
+              </div>
+              <p>
+                Edit directly, drop into a full workbench, run commands, inspect
+                Git, and collaborate with agents without rebuilding context in a
+                stack of disconnected tools.
+              </p>
             </div>
-            <p>
-              Edit directly, drop into a full workbench, run commands, inspect
-              Git, and collaborate with agents without rebuilding context in a
-              stack of disconnected tools.
-            </p>
-          </div>
-          <div className="surface-grid">
-            {surfaces.map(({ description, icon: Icon, meta, title }, index) => (
-              <article
-                className={`surface-card surface-${index + 1}`}
-                key={title}
-              >
-                <div className="surface-icon">
-                  <Icon size={21} />
-                </div>
-                <span className="surface-index">0{index + 1}</span>
-                <h3>{title}</h3>
-                <small className="surface-meta">{meta}</small>
-                <p>{description}</p>
-              </article>
-            ))}
-          </div>
+          </EliteReveal>
+          <EliteReveal config={glitchConfig} index={10} replayKey={0}>
+            <div className="surface-grid">
+              {surfaces.map(
+                ({ description, icon: Icon, meta, title }, index) => (
+                  <article
+                    className={`surface-card surface-${index + 1}`}
+                    key={title}
+                  >
+                    <div className="surface-icon">
+                      <Icon size={21} />
+                    </div>
+                    <span className="surface-index">0{index + 1}</span>
+                    <h3>{title}</h3>
+                    <small className="surface-meta">{meta}</small>
+                    <p>{description}</p>
+                  </article>
+                ),
+              )}
+            </div>
+          </EliteReveal>
         </section>
 
         <section className="capabilities-section section-wrap">
-          <div className="section-heading split-heading">
-            <div>
-              <SectionLabel>THE IDE IS THE WORKFLOW</SectionLabel>
-              <h2>From first edit to shipped change.</h2>
+          <EliteReveal
+            config={glitchConfig}
+            contentKind="text"
+            index={11}
+            replayKey={0}
+          >
+            <div className="section-heading split-heading">
+              <div>
+                <SectionLabel>THE IDE IS THE WORKFLOW</SectionLabel>
+                <h2>From first edit to shipped change.</h2>
+              </div>
+              <p>
+                Organization, source control, agents, automation, and deployment
+                all share the same durable project context instead of becoming
+                separate products you have to stitch together.
+              </p>
             </div>
-            <p>
-              Organization, source control, agents, automation, and deployment
-              all share the same durable project context instead of becoming
-              separate products you have to stitch together.
-            </p>
-          </div>
-          <div className="capability-grid">
-            {capabilityGroups.map(
-              ({ description, features, icon: Icon, label, title }) => (
-                <article className="capability-card" key={label}>
-                  <div className="capability-heading">
-                    <span className="capability-icon">
-                      <Icon size={19} />
-                    </span>
-                    <small>{label}</small>
-                  </div>
-                  <h3>{title}</h3>
-                  <p>{description}</p>
-                  <ul>
-                    {features.map((feature) => (
-                      <li key={feature}>
-                        <Check size={13} /> {feature}
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              ),
-            )}
-          </div>
+          </EliteReveal>
+          <EliteReveal config={glitchConfig} index={12} replayKey={0}>
+            <div className="capability-grid">
+              {capabilityGroups.map(
+                ({ description, features, icon: Icon, label, title }) => (
+                  <article className="capability-card" key={label}>
+                    <div className="capability-heading">
+                      <span className="capability-icon">
+                        <Icon size={19} />
+                      </span>
+                      <small>{label}</small>
+                    </div>
+                    <h3>{title}</h3>
+                    <p>{description}</p>
+                    <ul>
+                      {features.map((feature) => (
+                        <li key={feature}>
+                          <Check size={13} /> {feature}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ),
+              )}
+            </div>
+          </EliteReveal>
         </section>
 
         <section className="toolkit-section section-wrap" id="toolkit">
-          <div className="section-heading split-heading">
-            <div>
-              <SectionLabel>IDE-NATIVE TOOLKIT</SectionLabel>
-              <h2>The editor, runtime, and agent share one workspace.</h2>
+          <EliteReveal
+            config={glitchConfig}
+            contentKind="text"
+            index={13}
+            replayKey={0}
+          >
+            <div className="section-heading split-heading">
+              <div>
+                <SectionLabel>IDE-NATIVE TOOLKIT</SectionLabel>
+                <h2>The editor, runtime, and agent share one workspace.</h2>
+              </div>
+              <p>
+                Cantrip gives people and agents the same durable view of files,
+                processes, editor state, and execution targets—without copying
+                the repository into the control plane.
+              </p>
             </div>
-            <p>
-              Cantrip gives people and agents the same durable view of files,
-              processes, editor state, and execution targets—without copying the
-              repository into the control plane.
-            </p>
-          </div>
-          <div className="toolkit-grid">
-            {toolkitFeatures.map(
-              ({ description, features, icon: Icon, label, title }, index) => (
-                <article
-                  className={`toolkit-card toolkit-card-${index + 1}`}
-                  key={label}
-                >
-                  <div className="toolkit-card-heading">
-                    <span>
-                      <Icon size={20} />
-                    </span>
-                    <small>{label}</small>
-                  </div>
-                  <h3>{title}</h3>
-                  <p>{description}</p>
-                  <ul>
-                    {features.map((feature) => (
-                      <li key={feature}>
-                        <Check size={13} /> {feature}
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              ),
-            )}
-          </div>
+          </EliteReveal>
+          <EliteReveal config={glitchConfig} index={14} replayKey={0}>
+            <div className="toolkit-grid">
+              {toolkitFeatures.map(
+                (
+                  { description, features, icon: Icon, label, title },
+                  index,
+                ) => (
+                  <article
+                    className={`toolkit-card toolkit-card-${index + 1}`}
+                    key={label}
+                  >
+                    <div className="toolkit-card-heading">
+                      <span>
+                        <Icon size={20} />
+                      </span>
+                      <small>{label}</small>
+                    </div>
+                    <h3>{title}</h3>
+                    <p>{description}</p>
+                    <ul>
+                      {features.map((feature) => (
+                        <li key={feature}>
+                          <Check size={13} /> {feature}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ),
+              )}
+            </div>
+          </EliteReveal>
         </section>
 
         <section className="agent-section section-wrap" id="agents">
