@@ -66,6 +66,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     pinSidebarFile,
     pinSidebarFileMutation,
     projectOverviewSelected,
+    projectSidebarSurfaces,
     projectRevealButtonLabel,
     projectRevealLabel,
     projectSetupJobs,
@@ -78,13 +79,12 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     renameProjectViewMutation,
     renameSidebarFileEntry,
     renameStandaloneChat,
-    renameTabGroupMutation,
     renameTerminalMutation,
     requestDeleteExplorer,
     resizeSidebarWithKeyboard,
     restoreStandaloneChat,
     retrySidebarFileTree,
-    selectGroupFromSidebar,
+    selectTopTab,
     selectProjectFromSidebar,
     selectProjectWorkspace,
     selectStandaloneChat,
@@ -343,6 +343,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     codeTabs={codeTabs.data ?? []}
                     explorers={explorers.data ?? []}
                     projectViews={projectViews.data ?? []}
+                    surfaces={projectSidebarSurfaces}
                     terminals={displayTerminals}
                     workers={workers.data ?? []}
                     worktrees={worktrees.data ?? []}
@@ -408,14 +409,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     onRenameChat={(chatId, title) =>
                       renameChatMutation.mutate({ chatId, title })
                     }
-                    onRenameGroup={(groupId, title) => {
-                      if (!selectedProjectId) return;
-                      renameTabGroupMutation.mutate({
-                        groupId,
-                        projectId: selectedProjectId,
-                        title,
-                      });
-                    }}
                     onDuplicateChat={(chatId) =>
                       forkChatMutation.mutate(chatId)
                     }
@@ -468,7 +461,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     projectRevealLabel={projectRevealLabel ?? undefined}
                     onRevealProject={revealProjectInNativeFileManager}
                     onSelectProject={selectProjectFromSidebar}
-                    onSelectGroup={selectGroupFromSidebar}
+                    onSelectTab={selectTopTab}
                   />
                 </nav>
               </>

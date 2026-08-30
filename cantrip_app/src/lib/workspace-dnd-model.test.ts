@@ -50,27 +50,52 @@ const layout: ProjectTabLayoutSummary = {
         },
       ],
     },
+    {
+      id: "group-c",
+      projectId: "project-1",
+      title: "Explorer c",
+      position: 2,
+      anchorTabKey: "explorer:c",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      members: [
+        {
+          groupId: "group-c",
+          projectId: "project-1",
+          tabKind: "explorer",
+          tabId: "c",
+          tabKey: "explorer:c",
+          title: "Explorer c",
+          position: 0,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+    },
   ],
 };
 
 describe("workspace drag legality", () => {
-  it("sorts top tabs within their own group", () => {
+  it("splits and sorts sidebar surfaces without creating nested tabs", () => {
     expect(
       decideWorkspaceDrop(
         layout,
         {
           type: "surface",
+          lane: "sidebar",
           projectId: "project-1",
           groupId: "group-a",
           tabKey: "chat:a",
           label: "Chat",
+          lanePosition: 0,
           visualKind: "chat",
         },
         {
-          type: "top-tab",
+          type: "sidebar-tab",
           projectId: "project-1",
           groupId: "group-a",
           tabKey: "terminal:a",
+          lanePosition: 1,
           memberPosition: 1,
         },
       ),
@@ -78,29 +103,36 @@ describe("workspace drag legality", () => {
       status: "valid",
       operation: {
         command: {
-          type: "reorder-members",
-          tabKeys: ["terminal:a", "chat:a"],
+          type: "move-member",
+          tabKey: "chat:a",
+          targetGroupId: null,
+          targetGroupPosition: 1,
         },
       },
     });
   });
 
-  it("allows singleton sidebar groups into the visible top bar", () => {
+  it("sorts project-wide file tabs across their stored groups", () => {
     expect(
       decideWorkspaceDrop(
         layout,
         {
-          type: "group",
+          type: "surface",
+          lane: "file-tabs",
           projectId: "project-1",
           groupId: "group-b",
-          label: "Explorer",
+          tabKey: "explorer:b",
+          label: "Explorer b",
+          lanePosition: 0,
           visualKind: "explorer",
         },
         {
-          type: "top-bar",
+          type: "top-tab",
           projectId: "project-1",
-          groupId: "group-a",
-          memberPosition: 2,
+          groupId: "group-c",
+          tabKey: "explorer:c",
+          lanePosition: 1,
+          memberPosition: 0,
         },
       ),
     ).toMatchObject({
@@ -109,56 +141,58 @@ describe("workspace drag legality", () => {
         command: {
           type: "move-member",
           tabKey: "explorer:b",
-          targetGroupId: "group-a",
-          targetMemberPosition: 2,
+          targetGroupId: null,
+          targetGroupPosition: 2,
         },
       },
     });
   });
 
-  it("rejects grouped sidebar rows and self-grouping", () => {
-    const grouped = {
-      type: "group" as const,
-      projectId: "project-1",
-      groupId: "group-a",
-      label: "Chat",
-      visualKind: "mixed" as const,
-    };
-    expect(
-      decideWorkspaceDrop(layout, grouped, {
-        type: "top-bar",
-        projectId: "project-1",
-        groupId: "group-b",
-        memberPosition: 1,
-      }),
-    ).toMatchObject({ status: "invalid" });
-    expect(
-      decideWorkspaceDrop(layout, grouped, {
-        type: "top-bar",
-        projectId: "project-1",
-        groupId: "group-a",
-        memberPosition: 2,
-      }),
-    ).toMatchObject({ status: "invalid" });
-  });
-
-  it("splits a top tab into a sidebar singleton", () => {
+  it("rejects moving sidebar surfaces into the file bar", () => {
     expect(
       decideWorkspaceDrop(
         layout,
         {
           type: "surface",
+          lane: "sidebar",
           projectId: "project-1",
           groupId: "group-a",
-          tabKey: "terminal:a",
-          label: "Terminal",
-          visualKind: "terminal",
+          tabKey: "chat:a",
+          label: "Chat",
+          lanePosition: 0,
+          visualKind: "chat",
         },
         {
-          type: "sidebar-group",
+          type: "top-tab",
           projectId: "project-1",
           groupId: "group-b",
-          groupPosition: 1,
+          tabKey: "explorer:b",
+          lanePosition: 0,
+          memberPosition: 0,
+        },
+      ),
+    ).toMatchObject({ status: "invalid" });
+  });
+
+  it("moves a sidebar surface to the end of its lane", () => {
+    expect(
+      decideWorkspaceDrop(
+        layout,
+        {
+          type: "surface",
+          lane: "sidebar",
+          projectId: "project-1",
+          groupId: "group-a",
+          tabKey: "chat:a",
+          label: "Chat",
+          lanePosition: 0,
+          visualKind: "chat",
+        },
+        {
+          type: "sidebar-project",
+          projectId: "project-1",
+          groupPosition: 3,
+          lanePosition: 2,
         },
       ),
     ).toMatchObject({
@@ -166,9 +200,9 @@ describe("workspace drag legality", () => {
       operation: {
         command: {
           type: "move-member",
-          tabKey: "terminal:a",
+          tabKey: "chat:a",
           targetGroupId: null,
-          targetGroupPosition: 1,
+          targetGroupPosition: 3,
         },
       },
     });
@@ -180,16 +214,20 @@ describe("workspace drag legality", () => {
         layout,
         {
           type: "surface",
+          lane: "sidebar",
           projectId: "project-1",
           groupId: "group-a",
           tabKey: "chat:a",
           label: "Chat",
+          lanePosition: 0,
           visualKind: "chat",
         },
         {
           type: "top-bar",
           projectId: "project-2",
           groupId: "other",
+          tabKey: "explorer:other",
+          lanePosition: 1,
           memberPosition: 0,
         },
       ),

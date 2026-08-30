@@ -1,4 +1,8 @@
-import type { ChatSummary, ProjectTabLayoutSummary } from "@cantrip/protocol";
+import type {
+  ChatSummary,
+  ExplorerSummary,
+  ProjectTabLayoutSummary,
+} from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import { buildProjectSurfaceIndex } from "@/lib/project-surface";
@@ -35,6 +39,21 @@ function chat(id: string): ChatSummary {
   };
 }
 
+function file(id: string): ExplorerSummary {
+  return {
+    id: `file-${id}`,
+    projectId: "project-1",
+    title: `${id}.ts`,
+    position: 0,
+    activeWorkerId: "worker-1",
+    worktreeId: "worktree-1",
+    selectedPath: `src/${id}.ts`,
+    fileMode: "edit",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 const layout: ProjectTabLayoutSummary = {
   projectId: "project-1",
   revision: 1,
@@ -47,18 +66,21 @@ const layout: ProjectTabLayoutSummary = {
     createdAt: timestamp,
     updatedAt: timestamp,
     members: [
+      { tabKind: "chat" as const, tabId: id, title: id },
       {
-        tabKey: `chat:${id}`,
-        groupId: `group-${id}`,
-        projectId: "project-1",
-        tabKind: "chat" as const,
-        tabId: id,
-        title: id,
-        position: 0,
-        createdAt: timestamp,
-        updatedAt: timestamp,
+        tabKind: "explorer" as const,
+        tabId: `file-${id}`,
+        title: `${id}.ts`,
       },
-    ],
+    ].map((member, memberPosition) => ({
+      ...member,
+      tabKey: `${member.tabKind}:${member.tabId}`,
+      groupId: `group-${id}`,
+      projectId: "project-1",
+      position: memberPosition,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })),
   })),
 };
 
@@ -66,7 +88,7 @@ const surfaceIndex = buildProjectSurfaceIndex(layout, {
   browsers: [],
   chats: [chat("one"), chat("two")],
   codeTabs: [],
-  explorers: [],
+  explorers: [file("one"), file("two")],
   projectViews: [],
   terminals: [],
 });
@@ -91,7 +113,7 @@ describe("project workspace selection", () => {
     });
   });
 
-  it("uses the preview group for the tab bar only while the preview is active", () => {
+  it("keeps file tabs on top and non-file surfaces in the sidebar", () => {
     const workspaceSelection = {
       ...emptyWorkspaceSelection("project-1"),
       activeTabByGroup: { "group-one": "chat:one" },
@@ -106,21 +128,27 @@ describe("project workspace selection", () => {
       projectId: "project-1",
     };
 
+    const activePreview = workspaceGroupSelection({
+      projectSurfaceIndex: surfaceIndex,
+      sidebarFilePreview: preview,
+      tabLayout: layout,
+      workspaceSelection,
+    });
+    const inactivePreview = workspaceGroupSelection({
+      projectSurfaceIndex: surfaceIndex,
+      sidebarFilePreview: { ...preview, active: false },
+      tabLayout: layout,
+      workspaceSelection,
+    });
+
     expect(
-      workspaceGroupSelection({
-        projectSurfaceIndex: surfaceIndex,
-        sidebarFilePreview: preview,
-        tabLayout: layout,
-        workspaceSelection,
-      }).projectTabBarSurfaces.map(({ tabKey }) => tabKey),
-    ).toEqual(["chat:two"]);
+      activePreview.projectTabBarSurfaces.map(({ tabKey }) => tabKey),
+    ).toEqual(["explorer:file-one", "explorer:file-two"]);
     expect(
-      workspaceGroupSelection({
-        projectSurfaceIndex: surfaceIndex,
-        sidebarFilePreview: { ...preview, active: false },
-        tabLayout: layout,
-        workspaceSelection,
-      }).projectTabBarSurfaces.map(({ tabKey }) => tabKey),
-    ).toEqual(["chat:one"]);
+      activePreview.projectSidebarSurfaces.map(({ tabKey }) => tabKey),
+    ).toEqual(["chat:one", "chat:two"]);
+    expect(inactivePreview.projectTabBarSurfaces).toEqual(
+      activePreview.projectTabBarSurfaces,
+    );
   });
 });

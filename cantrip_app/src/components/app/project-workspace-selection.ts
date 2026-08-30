@@ -13,6 +13,7 @@ import type { ProjectWorkspaceResources } from "@/components/app/project-workspa
 import { useAppLiveScope } from "@/lib/app-live-react";
 import {
   buildProjectSurfaceIndex,
+  projectSurfaceIsFile,
   projectSurfaceTabId,
 } from "@/lib/project-surface";
 import {
@@ -239,6 +240,10 @@ export function workspaceGroupSelection({
   tabLayout: ProjectTabLayoutSummary | undefined;
   workspaceSelection: WorkspaceSelection;
 }) {
+  const orderedProjectSurfaces =
+    tabLayout?.groups.flatMap(
+      ({ id }) => projectSurfaceIndex.byGroupId.get(id) ?? [],
+    ) ?? [];
   const selectedTabGroup = tabLayout?.groups.find(
     (group) => group.id === workspaceSelection.selectedGroupId,
   );
@@ -246,13 +251,11 @@ export function workspaceGroupSelection({
     ? (projectSurfaceIndex.byGroupId.get(workspaceSelection.selectedGroupId) ??
       [])
     : [];
-  const sidebarPreviewGroupSurfaces = sidebarFilePreview?.groupId
-    ? (projectSurfaceIndex.byGroupId.get(sidebarFilePreview.groupId) ?? [])
-    : [];
   return {
-    projectTabBarSurfaces: sidebarFilePreview?.active
-      ? sidebarPreviewGroupSurfaces
-      : selectedGroupSurfaces,
+    projectSidebarSurfaces: orderedProjectSurfaces.filter(
+      (surface) => !projectSurfaceIsFile(surface),
+    ),
+    projectTabBarSurfaces: orderedProjectSurfaces.filter(projectSurfaceIsFile),
     selectedGroupSurfaces,
     selectedTabGroup,
     showSidebarPreviewTab: Boolean(

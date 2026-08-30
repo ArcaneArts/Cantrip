@@ -20,6 +20,8 @@ export type ProjectSurface =
   | ProjectSurfaceBase<"issues", ProjectViewSummary>
   | ProjectSurfaceBase<"remote-desktop", ProjectViewSummary>;
 
+export type ProjectFileSurface = Extract<ProjectSurface, { kind: "explorer" }>;
+
 export interface ProjectSurfaceBase<Kind extends ProjectTabKind, Entity> {
   entity: Entity;
   groupId: string;
@@ -44,6 +46,12 @@ export interface ProjectSurfaceIndex {
   byGroupId: ReadonlyMap<string, ProjectSurface[]>;
   byTabKey: ReadonlyMap<string, ProjectSurface>;
   unresolvedTabKeys: readonly string[];
+}
+
+export function projectSurfaceIsFile(
+  surface: ProjectSurface,
+): surface is ProjectFileSurface {
+  return surface.kind === "explorer" && surface.entity.selectedPath !== null;
 }
 
 export function projectSurfaceTabKey(

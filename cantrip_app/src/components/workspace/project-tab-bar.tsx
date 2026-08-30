@@ -7,26 +7,22 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  CopyPlus,
   FileCode2,
   MoreHorizontal,
   Pencil,
-  Play,
   Plus,
   Trash2,
   X,
 } from "lucide-react";
-import type { ExecutionTarget, TerminalSummary } from "@cantrip/protocol";
+import type { ExecutionTarget } from "@cantrip/protocol";
 import { useState, type ReactNode } from "react";
 
-import { ProjectSurfaceIcon } from "./project-surface-icon";
 import {
   ProjectSurfaceCreateMenu,
   type ProjectSurfaceCreateKind,
   type ProjectSurfacePlacementContext,
 } from "./project-surface-create-menu";
 import { InlineRenameLabel, SurfaceActionsMenu } from "./surface-tab-controls";
-import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -34,7 +30,7 @@ import {
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
 import { nextProjectTabAfterRemoval } from "@/lib/project-tab-group";
-import type { ProjectSurface } from "@/lib/project-surface";
+import type { ProjectFileSurface } from "@/lib/project-surface";
 import {
   closeTabOnMiddleClick,
   preventMiddleMouseDefault,
@@ -46,42 +42,14 @@ import {
   workspaceTopBarDropId,
 } from "@/lib/workspace-dnd-model";
 
-function surfaceIsActiveAgent(surface: ProjectSurface): boolean {
-  return (
-    surface.kind === "chat" &&
-    (surface.entity.status === "running" ||
-      surface.entity.status === "waiting-for-approval")
-  );
-}
-
-function surfaceIsActiveRun(
-  surface: ProjectSurface,
-): surface is Extract<ProjectSurface, { kind: "terminal" }> {
-  return (
-    surface.kind === "terminal" &&
-    surface.entity.kind === "run-configuration" &&
-    surface.entity.status === "running"
-  );
-}
-
-export function projectTabRemovalDisposition(
-  surface: ProjectSurface,
-): "delete" | "stop-and-close-run" | "blocked-active-agent" {
-  if (surfaceIsActiveAgent(surface)) return "blocked-active-agent";
-  if (surfaceIsActiveRun(surface)) return "stop-and-close-run";
-  return "delete";
-}
-
 export interface ProjectTabBarProps {
   activeTabKey: string;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
-  onClose(surface: ProjectSurface): void;
-  onDelete(surface: ProjectSurface): void;
-  onDuplicate?(surface: ProjectSurface): void;
-  onRename(surface: ProjectSurface, title: string): void;
+  onClose(surface: ProjectFileSurface): void;
+  onDelete(surface: ProjectFileSurface): void;
+  onRename(surface: ProjectFileSurface, title: string): void;
   onSelect(tabKey: string): void;
-  onStopAndCloseRunTerminal(terminal: TerminalSummary): Promise<void>;
   placement?: ProjectSurfacePlacementContext;
   previewFile?: {
     active: boolean;
@@ -92,7 +60,7 @@ export interface ProjectTabBarProps {
     onPin(): void;
     onSelect(): void;
   };
-  surfaces: readonly ProjectSurface[];
+  surfaces: readonly ProjectFileSurface[];
 }
 
 export function ProjectTabBar({
@@ -101,20 +69,19 @@ export function ProjectTabBar({
   onCreate,
   onClose,
   onDelete,
-  onDuplicate,
   onRename,
   onSelect,
-  onStopAndCloseRunTerminal,
   placement,
   previewFile,
   surfaces,
 }: ProjectTabBarProps) {
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [deletePending, setDeletePending] = useState(false);
-  const groupId = surfaces[0]?.groupId ?? "empty";
+  const [deleteTarget, setDeleteTarget] = useState<ProjectFileSurface | null>(
+    null,
+  );
+  const lastSurface = surfaces.at(-1);
+  const groupId = lastSurface?.groupId ?? "empty";
   const projectId = surfaces[0]?.projectId ?? previewFile?.projectId ?? "empty";
   const topBarDrop = useDroppable({
     id: workspaceTopBarDropId(groupId),
@@ -124,26 +91,23 @@ export function ProjectTabBar({
         type: "top-bar",
         projectId,
         groupId,
-        memberPosition: surfaces.length,
+        tabKey: lastSurface?.tabKey ?? "empty",
+        lanePosition: surfaces.length,
+        memberPosition: (lastSurface?.member.position ?? -1) + 1,
       },
     } satisfies WorkspaceDndData,
   });
 
-  const beginRename = (surface: ProjectSurface) => {
+  const beginRename = (surface: ProjectFileSurface) => {
     setEditingTabKey(surface.tabKey);
     setRenameValue(surface.title);
   };
-  const finishRename = (surface: ProjectSurface) => {
+  const finishRename = (surface: ProjectFileSurface) => {
     const title = renameValue.trim();
     setEditingTabKey(null);
     if (title && title !== surface.title) onRename(surface, title);
   };
-  const closeImmediately = (surface: ProjectSurface) => {
-    if (projectTabRemovalDisposition(surface) !== "delete") {
-      setDeleteError(null);
-      setDeleteTarget(surface);
-      return;
-    }
+  const closeImmediately = (surface: ProjectFileSurface) => {
     if (surface.tabKey === activeTabKey) {
       const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
       if (nextTabKey) onSelect(nextTabKey);
@@ -161,7 +125,7 @@ export function ProjectTabBar({
             topBarDrop.isOver && "bg-muted/30",
           )}
           role="tablist"
-          aria-label="Project tabs"
+          aria-label="Project file tabs"
         >
           <SortableContext
             items={surfaces.map((surface) =>
@@ -169,7 +133,7 @@ export function ProjectTabBar({
             )}
             strategy={horizontalListSortingStrategy}
           >
-            {surfaces.map((surface, memberPosition) => {
+            {surfaces.map((surface, lanePosition) => {
               const active =
                 !previewFile?.active && surface.tabKey === activeTabKey;
               const editing = editingTabKey === surface.tabKey;
@@ -177,7 +141,7 @@ export function ProjectTabBar({
                 <SortableProjectTabFrame
                   disabled={editing}
                   key={surface.tabKey}
-                  memberPosition={memberPosition}
+                  lanePosition={lanePosition}
                   surface={surface}
                 >
                   <ContextMenu.Root>
@@ -213,70 +177,18 @@ export function ProjectTabBar({
                             onClick={() => onSelect(surface.tabKey)}
                             onDoubleClick={(event) => {
                               event.preventDefault();
-                              if (
-                                surface.kind !== "terminal" ||
-                                surface.entity.kind !== "run-configuration"
-                              ) {
-                                beginRename(surface);
-                              }
+                              beginRename(surface);
                             }}
                           >
-                            {surface.kind === "terminal" &&
-                            surface.entity.kind === "run-configuration" ? (
-                              <Play className="size-3.5 shrink-0 fill-current" />
-                            ) : surface.kind === "explorer" &&
-                              surface.entity.selectedPath ? (
-                              <FileCode2 className="size-3.5 shrink-0" />
-                            ) : (
-                              <ProjectSurfaceIcon
-                                kind={
-                                  surface.kind === "chat" &&
-                                  surface.entity.experience === "task"
-                                    ? "task"
-                                    : surface.kind
-                                }
-                                className="size-3.5 shrink-0"
-                              />
-                            )}
+                            <FileCode2 className="size-3.5 shrink-0" />
                             <span className="truncate">{surface.title}</span>
-                            {surface.kind === "terminal" &&
-                            surface.entity.kind === "run-configuration" ? (
-                              <span
-                                aria-label={
-                                  surface.entity.status === "running"
-                                    ? "Run configuration running"
-                                    : "Run configuration inactive"
-                                }
-                                className={cn(
-                                  "size-1.5 shrink-0 rounded-full bg-muted-foreground/40",
-                                  surface.entity.status === "running" &&
-                                    "bg-emerald-500",
-                                  surface.entity.status === "failed" &&
-                                    "bg-red-500",
-                                )}
-                              />
-                            ) : null}
-                            {surface.kind === "chat" ? (
-                              <ChatActivityStatus chat={surface.entity} />
-                            ) : null}
                           </button>
                         )}
                         {!editing ? (
                           <SurfaceActionsMenu
-                            deleteDisabled={surfaceIsActiveAgent(surface)}
                             title={surface.title}
                             onDelete={() => setDeleteTarget(surface)}
-                            onDuplicate={
-                              surface.kind === "chat" && onDuplicate
-                                ? () => onDuplicate(surface)
-                                : undefined
-                            }
-                            onRename={
-                              surface.kind === "terminal" &&
-                              surface.entity.kind === "run-configuration"
-                                ? undefined
-                                : () => beginRename(surface)
-                            }
+                            onRename={() => beginRename(surface)}
                             trigger={
                               <button
                                 type="button"
@@ -299,25 +211,14 @@ export function ProjectTabBar({
                     </ContextMenu.Trigger>
                     <ContextMenu.Portal>
                       <StyledContextMenuContent className="min-w-40">
-                        {surface.kind !== "terminal" ||
-                        surface.entity.kind !== "run-configuration" ? (
-                          <StyledContextMenuItem
-                            onSelect={() => beginRename(surface)}
-                          >
-                            <Pencil className="size-4" /> Rename
-                          </StyledContextMenuItem>
-                        ) : null}
-                        {surface.kind === "chat" && onDuplicate ? (
-                          <StyledContextMenuItem
-                            onSelect={() => onDuplicate(surface)}
-                          >
-                            <CopyPlus className="size-4" /> Duplicate
-                          </StyledContextMenuItem>
-                        ) : null}
+                        <StyledContextMenuItem
+                          onSelect={() => beginRename(surface)}
+                        >
+                          <Pencil className="size-4" /> Rename
+                        </StyledContextMenuItem>
                         <ContextMenu.Separator className="my-1 h-px bg-border" />
                         <StyledContextMenuItem
                           className="text-destructive focus:bg-destructive/10"
-                          disabled={surfaceIsActiveAgent(surface)}
                           onSelect={() => setDeleteTarget(surface)}
                         >
                           <Trash2 className="size-4" /> Delete
@@ -388,7 +289,7 @@ export function ProjectTabBar({
                 size="icon"
                 variant="ghost"
                 className="my-1 size-8 shrink-0"
-                aria-label="Add tab to this group"
+                aria-label="Add project surface"
               >
                 <Plus className="size-4" />
               </Button>
@@ -398,67 +299,22 @@ export function ProjectTabBar({
       </div>
 
       <ConfirmDialog
-        confirmDisabled={Boolean(
-          deleteTarget && surfaceIsActiveAgent(deleteTarget),
-        )}
-        confirmLabel={
-          deleteTarget && surfaceIsActiveRun(deleteTarget)
-            ? "Stop and close"
-            : "Delete"
-        }
-        confirmPendingLabel="Stopping and closing…"
-        description={
-          deleteTarget && surfaceIsActiveAgent(deleteTarget)
-            ? "Stop the active agent before removing this tab."
-            : deleteTarget && surfaceIsActiveRun(deleteTarget)
-              ? "The active process will be stopped immediately, then this Run terminal tab will be removed. The shared Run configuration remains available."
-              : deleteTarget?.kind === "chat"
-                ? "Agents with conversation history move to Archive for 90 days. Empty agents are deleted immediately."
-                : `This permanently removes the ${deleteTarget?.kind ?? "surface"} tab and its Cantrip-owned state. Project files are not deleted.`
-        }
-        error={deleteError}
-        pending={deletePending}
+        confirmLabel="Delete"
+        description="This closes the pinned file tab and removes its Cantrip-owned view state. The project file is not deleted."
         onConfirm={() => {
           if (deleteTarget) {
             const nextTabKey = nextProjectTabAfterRemoval(
               surfaces,
               deleteTarget.tabKey,
             );
-            if (surfaceIsActiveRun(deleteTarget)) {
-              setDeletePending(true);
-              setDeleteError(null);
-              void onStopAndCloseRunTerminal(deleteTarget.entity)
-                .then(() => {
-                  if (nextTabKey) onSelect(nextTabKey);
-                  setDeleteTarget(null);
-                })
-                .catch((error: unknown) =>
-                  setDeleteError(
-                    error instanceof Error
-                      ? error.message
-                      : "Could not stop and close this Run terminal.",
-                  ),
-                )
-                .finally(() => setDeletePending(false));
-              return;
-            }
             if (nextTabKey) onSelect(nextTabKey);
             onDelete(deleteTarget);
           }
           setDeleteTarget(null);
         }}
         open={Boolean(deleteTarget)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDeleteError(null);
-            setDeleteTarget(null);
-          }
-        }}
-        title={
-          deleteTarget && surfaceIsActiveRun(deleteTarget)
-            ? `Stop and close ${deleteTarget.title}?`
-            : `Delete ${deleteTarget?.title ?? "tab"}?`
-        }
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`Delete ${deleteTarget?.title ?? "file tab"}?`}
       />
     </>
   );
@@ -467,13 +323,13 @@ export function ProjectTabBar({
 function SortableProjectTabFrame({
   children,
   disabled,
-  memberPosition,
+  lanePosition,
   surface,
 }: {
   children: ReactNode;
   disabled: boolean;
-  memberPosition: number;
-  surface: ProjectSurface;
+  lanePosition: number;
+  surface: ProjectFileSurface;
 }) {
   const sortable = useSortable({
     disabled,
@@ -481,10 +337,12 @@ function SortableProjectTabFrame({
     data: {
       drag: {
         type: "surface",
+        lane: "file-tabs",
         projectId: surface.projectId,
         groupId: surface.groupId,
         tabKey: surface.tabKey,
         label: surface.title,
+        lanePosition,
         visualKind: surface.kind,
       },
       drop: {
@@ -492,7 +350,8 @@ function SortableProjectTabFrame({
         projectId: surface.projectId,
         groupId: surface.groupId,
         tabKey: surface.tabKey,
-        memberPosition,
+        lanePosition,
+        memberPosition: surface.member.position,
       },
     } satisfies WorkspaceDndData,
   });

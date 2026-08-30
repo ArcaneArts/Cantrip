@@ -7,6 +7,7 @@ import type {
 } from "react";
 
 import { InlineRenameLabel } from "@/components/workspace/surface-tab-controls";
+import type { WorkspaceDndData } from "@/lib/workspace-dnd-model";
 import {
   closeTabOnMiddleClick,
   preventMiddleMouseDefault,
@@ -43,6 +44,7 @@ export function openSidebarActionsMenu(event: ReactMouseEvent<HTMLElement>) {
 export function SortableSidebarSurfaceRow({
   actions,
   active,
+  dndData,
   editing,
   icon,
   onCancelRename,
@@ -60,6 +62,7 @@ export function SortableSidebarSurfaceRow({
 }: {
   actions?: ReactNode;
   active: boolean;
+  dndData?: WorkspaceDndData;
   editing: boolean;
   icon: ReactNode;
   onCancelRename(): void;
@@ -75,7 +78,7 @@ export function SortableSidebarSurfaceRow({
   title: string;
   trailing?: ReactNode;
 }) {
-  const sortable = useSortable({ id: sortId });
+  const sortable = useSortable({ data: dndData, id: sortId });
   const row = (
     <div
       ref={sortable.setNodeRef}

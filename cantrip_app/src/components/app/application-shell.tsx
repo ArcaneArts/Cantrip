@@ -823,6 +823,7 @@ export function App() {
     showSettings,
   });
   const {
+    projectSidebarSurfaces,
     projectTabBarSurfaces,
     selectedGroupSurfaces,
     selectedTabGroup,
@@ -1723,7 +1724,7 @@ export function App() {
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
     pinSidebarFilePath, popOutActiveView, popOutProjectOverviewView, popoutError, popoutPending,
     prepareExplorerRebind, projectOverviewGitProject, projectOverviewGitSection, projectOverviewPopoutTarget, projectOverviewSelected,
-    projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSurfaces,
+    projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSidebarSurfaces, projectSurfaces,
     projectTabBarSurfaces, projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
     projects, queryClient, remoteDesktop, removeActiveMobileBottomTab, removeMobileBottomTabById,
     removeProjectMutation, renameChatMutation, renameExplorerMutation, renameProjectViewMutation, renameSidebarFileEntry,
