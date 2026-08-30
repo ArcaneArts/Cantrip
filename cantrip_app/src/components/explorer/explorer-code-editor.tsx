@@ -60,6 +60,7 @@ import { errorMessage } from "@/lib/error-message";
 import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 import { SerialTaskQueue } from "@/lib/serial-task-queue";
 import {
+  DeferredEffectCleanup,
   retireAttachmentBestEffort,
   SerializedAttachmentLifecycle,
 } from "@/lib/serialized-attachment-lifecycle";
@@ -378,6 +379,10 @@ export function ExplorerCodeEditor({
     new SerializedAttachmentLifecycle<ExplorerCodeAttachmentOwnership>(
       retireExplorerCodeAttachment,
     );
+  const attachmentEffectCleanupRef = useRef<DeferredEffectCleanup | null>(null);
+  attachmentEffectCleanupRef.current ??= new DeferredEffectCleanup();
+  const editorUnmountCleanupRef = useRef<DeferredEffectCleanup | null>(null);
+  editorUnmountCleanupRef.current ??= new DeferredEffectCleanup();
   const prepareClose = useCallback((): Promise<void> => {
     if (closePromiseRef.current) return closePromiseRef.current;
     const identity = editorIdentityRef.current;
@@ -395,6 +400,7 @@ export function ExplorerCodeEditor({
       worktreeId: identity.worktreeId,
     });
     closingRef.current = true;
+    attachmentEffectCleanupRef.current!.cancel();
     const committed = new Promise<void>((resolve) => {
       closeCommitResolverRef.current = resolve;
     });
@@ -563,6 +569,7 @@ export function ExplorerCodeEditor({
   }, [path, startLaunchTiming]);
 
   useEffect(() => {
+    const effectLease = editorUnmountCleanupRef.current!.retain();
     clientLogger.info("Explorer Code editor mounted", {
       ...explorerFileIntentContext(explorerId),
       ...editorDiagnosticStateRef.current,
@@ -577,21 +584,23 @@ export function ExplorerCodeEditor({
       worktreeId,
     });
     return () => {
-      launchTimingRef.current?.cancel("surface-unmounted");
-      launchTimingRef.current = null;
-      clientLogger.info("Explorer Code editor unmounted", {
-        ...explorerFileIntentContext(explorerId),
-        ...editorDiagnosticStateRef.current,
-        editorInstanceId,
-        event: "code.editor.lifecycle.unmounted",
-        explorerId,
-        lifecycleKind: "unmounted",
-        operation: "unmount-editor",
-        reasonCode: "react-unmount",
-        status: "completed",
-        subsystem: "code",
-        workerId,
-        worktreeId,
+      editorUnmountCleanupRef.current!.release(effectLease, () => {
+        launchTimingRef.current?.cancel("surface-unmounted");
+        launchTimingRef.current = null;
+        clientLogger.info("Explorer Code editor unmounted", {
+          ...explorerFileIntentContext(explorerId),
+          ...editorDiagnosticStateRef.current,
+          editorInstanceId,
+          event: "code.editor.lifecycle.unmounted",
+          explorerId,
+          lifecycleKind: "unmounted",
+          operation: "unmount-editor",
+          reasonCode: "react-unmount",
+          status: "completed",
+          subsystem: "code",
+          workerId,
+          worktreeId,
+        });
       });
     };
   }, [editorInstanceId, explorerId, workerId, worktreeId]);
@@ -855,6 +864,7 @@ export function ExplorerCodeEditor({
   }, [explorerId, workerId, worktreeId]);
 
   useEffect(() => {
+    const effectLease = attachmentEffectCleanupRef.current!.retain();
     if (closing) return;
     let cancelled = false;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1049,22 +1059,24 @@ export function ExplorerCodeEditor({
         connectionRetryTimerRef.current = null;
       }
       connectionInFlightRef.current = false;
-      clientLogger.info("Explorer Code attachment retirement requested", {
-        ...explorerFileIntentContext(explorerId),
-        editorInstanceId,
-        event: "code.editor.attachment.retirement-requested",
-        explorerId,
-        operation: "retire-attachment",
-        reasonCode: "connection-effect-cleanup",
-        retirementKind: "effect-cleanup",
-        status: "started",
-        subsystem: "code",
-        workerId,
-        worktreeId,
+      attachmentEffectCleanupRef.current!.release(effectLease, async () => {
+        clientLogger.info("Explorer Code attachment retirement requested", {
+          ...explorerFileIntentContext(explorerId),
+          editorInstanceId,
+          event: "code.editor.attachment.retirement-requested",
+          explorerId,
+          operation: "retire-attachment",
+          reasonCode: "connection-effect-cleanup",
+          retirementKind: "effect-cleanup",
+          status: "started",
+          subsystem: "code",
+          workerId,
+          worktreeId,
+        });
+        await attachmentLifecycleRef.current!.retire(
+          "Explorer Code connection superseded.",
+        );
       });
-      void attachmentLifecycleRef.current!.retire(
-        "Explorer Code connection superseded.",
-      );
     };
   }, [
     bindingKey,

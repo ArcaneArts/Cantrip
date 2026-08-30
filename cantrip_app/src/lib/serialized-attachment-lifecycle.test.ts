@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DeferredEffectCleanup,
   retireAttachmentBestEffort,
   SerializedAttachmentLifecycle,
 } from "./serialized-attachment-lifecycle";
@@ -12,6 +13,40 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+afterEach(() => vi.useRealTimers());
+
+describe("DeferredEffectCleanup", () => {
+  it("cancels a Strict Mode probe cleanup when the effect is reacquired", async () => {
+    vi.useFakeTimers();
+    const cleanup = vi.fn();
+    const deferredCleanup = new DeferredEffectCleanup();
+
+    const probe = deferredCleanup.retain();
+    deferredCleanup.release(probe, cleanup);
+    deferredCleanup.retain();
+    await vi.runAllTimersAsync();
+
+    expect(cleanup).not.toHaveBeenCalled();
+  });
+
+  it("runs only the current generation cleanup once after a real release", async () => {
+    vi.useFakeTimers();
+    const staleCleanup = vi.fn();
+    const currentCleanup = vi.fn(async () => undefined);
+    const deferredCleanup = new DeferredEffectCleanup();
+
+    const stale = deferredCleanup.retain();
+    deferredCleanup.release(stale, staleCleanup);
+    const current = deferredCleanup.retain();
+    deferredCleanup.release(stale, staleCleanup);
+    deferredCleanup.release(current, currentCleanup);
+    await vi.runAllTimersAsync();
+
+    expect(staleCleanup).not.toHaveBeenCalled();
+    expect(currentCleanup).toHaveBeenCalledOnce();
+  });
+});
 
 describe("SerializedAttachmentLifecycle", () => {
   it("releases the server attachment once when local stop rejects", async () => {
