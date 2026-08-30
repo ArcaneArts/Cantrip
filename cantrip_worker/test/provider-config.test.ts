@@ -85,10 +85,11 @@ describe("Codex provider configuration", () => {
       expect.arrayContaining([
         "features.multi_agent=false",
         "features.multi_agent_v2.enabled=true",
-        'features.multi_agent_v2.tool_namespace="agents"',
+        'features.multi_agent_v2.tool_namespace="cantrip_agents"',
       ]),
     );
     expect(chatGptArguments).not.toContain("features.multi_agent=true");
+    expect(chatGptArguments.join(" ")).not.toContain("collaboration");
 
     for (const kind of ["ollama", "openai-compatible", "grok"] as const) {
       const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
