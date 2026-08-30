@@ -31,7 +31,6 @@ describe("Codex provider configuration", () => {
     ] as const) {
       const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
       expect(arguments_).toContain("features.fast_mode=false");
-      expect(arguments_).toContain("features.multi_agent=true");
       expect(arguments_).toContain("agents.enabled=true");
       expect(arguments_.join(" ")).not.toContain("service_tier=");
     }
@@ -78,18 +77,23 @@ describe("Codex provider configuration", () => {
     }
   });
 
-  it("uses a non-reserved MultiAgent V2 namespace for ChatGPT runtimes", () => {
-    const compatibilityArgument =
-      'features.multi_agent_v2.tool_namespace="agents"';
-
-    expect(codexProviderConfiguration(provider("chatgpt")).arguments).toContain(
-      compatibilityArgument,
+  it("selects namespaced MultiAgent V2 tools for ChatGPT runtimes", () => {
+    const chatGptArguments = codexProviderConfiguration(
+      provider("chatgpt"),
+    ).arguments;
+    expect(chatGptArguments).toEqual(
+      expect.arrayContaining([
+        "features.multi_agent=false",
+        "features.multi_agent_v2.enabled=true",
+        'features.multi_agent_v2.tool_namespace="agents"',
+      ]),
     );
+    expect(chatGptArguments).not.toContain("features.multi_agent=true");
 
     for (const kind of ["ollama", "openai-compatible", "grok"] as const) {
-      expect(
-        codexProviderConfiguration(provider(kind)).arguments,
-      ).not.toContain(compatibilityArgument);
+      const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
+      expect(arguments_).toContain("features.multi_agent=true");
+      expect(arguments_.join(" ")).not.toContain("multi_agent_v2");
     }
   });
 });

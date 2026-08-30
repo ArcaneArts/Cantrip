@@ -16,14 +16,18 @@ export interface CodexProviderConfiguration {
 const CANTRIP_CODEX_RUNTIME_POLICY = [
   'web_search="disabled"',
   "features.fast_mode=false",
-  "features.multi_agent=true",
   "agents.enabled=true",
 ] as const;
 
-// ChatGPT reserves `collaboration.*`; keep Codex's local V2 subagents available
-// under a caller-defined namespace whose schemas the backend accepts.
-const CHATGPT_MULTI_AGENT_V2_COMPATIBILITY_POLICY =
-  'features.multi_agent_v2.tool_namespace="agents"';
+const MULTI_AGENT_V1_POLICY = "features.multi_agent=true";
+
+// ChatGPT reserves `collaboration.*`, which is also Codex's V1 namespace.
+// Select V2 explicitly before moving its tools under a backend-safe namespace.
+const CHATGPT_MULTI_AGENT_COMPATIBILITY_POLICY = [
+  "features.multi_agent=false",
+  "features.multi_agent_v2.enabled=true",
+  'features.multi_agent_v2.tool_namespace="agents"',
+] as const;
 
 export function isZaiRuntimeProvider(provider: CodexProvider): boolean {
   return (
@@ -48,7 +52,7 @@ export function codexProviderConfiguration(
     return {
       arguments: [
         ...CANTRIP_CODEX_RUNTIME_POLICY,
-        CHATGPT_MULTI_AGENT_V2_COMPATIBILITY_POLICY,
+        ...CHATGPT_MULTI_AGENT_COMPATIBILITY_POLICY,
         'model_provider="openai"',
       ],
       environment: {},
@@ -56,7 +60,11 @@ export function codexProviderConfiguration(
   }
   if (modelProvider === "ollama") {
     return {
-      arguments: [...CANTRIP_CODEX_RUNTIME_POLICY, 'model_provider="ollama"'],
+      arguments: [
+        ...CANTRIP_CODEX_RUNTIME_POLICY,
+        MULTI_AGENT_V1_POLICY,
+        'model_provider="ollama"',
+      ],
       environment: {
         CODEX_OSS_BASE_URL: normalizeResponsesBaseUrl(provider.baseUrl),
       },
@@ -68,6 +76,7 @@ export function codexProviderConfiguration(
   return {
     arguments: [
       ...CANTRIP_CODEX_RUNTIME_POLICY,
+      MULTI_AGENT_V1_POLICY,
       'model_provider="cantrip_runtime"',
       `model_providers.cantrip_runtime.name=${JSON.stringify(providerName)}`,
       `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(provider.baseUrl))}`,
