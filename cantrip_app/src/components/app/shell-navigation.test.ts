@@ -44,13 +44,11 @@ function commandHarness(
     persistAppDestination: vi.fn().mockResolvedValue(undefined),
     projects: [{ id: "project-current" }] as CommandOptions["projects"],
     projectWorkspaces: [],
-    resetMobileBottomTabs: vi.fn(),
     setActiveProjectWorkspaceId: vi.fn(),
     setCommandBarOpen: vi.fn(),
     setDesktopSidebarDrawerOpen: vi.fn(),
     setDetachedGroupId: vi.fn(),
     setFolderProjectDialogOpen: vi.fn(),
-    setMobileTabGridOpen: vi.fn(),
     setPendingSurfaceSelection: vi.fn(),
     setSidebarFilePreview: vi.fn(),
     setWorkspaceSelection: vi.fn(),
@@ -128,7 +126,6 @@ describe("shell navigation commands", () => {
     expect(
       options.navigation.setProjectOverviewWorktreeId,
     ).toHaveBeenCalledWith(null);
-    expect(options.resetMobileBottomTabs).toHaveBeenCalledOnce();
     expect(options.persistAppDestination).toHaveBeenCalledWith({
       lastAppMode: "ide",
       lastIdeProjectId: "project-next",
@@ -249,12 +246,10 @@ describe("created tab selection", () => {
       },
       persistAppDestination: vi.fn().mockResolvedValue(undefined),
       queryClient,
-      resetMobileBottomTabs: vi.fn(),
       setCreatedRepositoryOnboarding: vi.fn(),
       setDesktopSidebarDrawerOpen: vi.fn(),
       setFolderProjectDialogMode: vi.fn(),
       setFolderProjectDialogOpen: vi.fn(),
-      setMobileTabGridOpen: vi.fn(),
       setPendingSurfaceSelection,
       setProjectTaskChatIds: vi.fn(),
       setSidebarFilePreview: vi.fn(),

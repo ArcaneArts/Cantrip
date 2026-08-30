@@ -343,7 +343,7 @@ describe("project overview", () => {
     expect(markup).toContain("Worker offline");
   });
 
-  it("replaces the full surface inventory with a compact tabs action", () => {
+  it("leaves compact surface navigation to the mobile bottom bar", () => {
     const markup = renderToStaticMarkup(
       <ProjectOverview
         compact
@@ -357,12 +357,12 @@ describe("project overview", () => {
         worktrees={[worktree]}
         onCreateSurface={vi.fn()}
         onOpenSurface={vi.fn()}
-        onOpenTabs={vi.fn()}
       />,
     );
 
-    expect(markup).toContain("Open tabs");
-    expect(markup).toContain("1 open · 1 running");
+    expect(markup).not.toContain(
+      'data-elite-global="project-overview:project-1:open-tabs"',
+    );
     expect(markup).not.toContain("Active services");
     expect(markup).not.toContain("Ship project overview");
   });

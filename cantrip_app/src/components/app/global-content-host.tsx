@@ -39,7 +39,6 @@ import {
 } from "@/components/chat/chat-surface-capabilities";
 import { MobileBottomNavigation } from "@/components/mobile/mobile-bottom-navigation";
 import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
-import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
@@ -52,7 +51,6 @@ import { RepositoryImporter } from "@/components/projects/repository-importer";
 import { SettingsPage } from "@/components/settings/settings-page";
 import { ServerAdminPage } from "@/components/servers/server-admin-page";
 import { errorMessage as errorText } from "@/lib/error-message";
-import { PRIMARY_MOBILE_BOTTOM_TAB_ID } from "@/lib/mobile-navigation";
 import { Button } from "@/components/ui/button";
 import {
   EmptyState,
@@ -116,14 +114,11 @@ export function GlobalContentHost({
   bindings: GlobalContentBindings;
 }) {
   const {
-    activeMobileBottomTab,
-    activeMobileBottomTabId,
     activeProjectOverviewSection,
     activeProjectTaskChat,
     activeProjectTaskChatId,
     activeProjectTaskView,
     activeProjectWorkspace,
-    addMobileBottomTab,
     agentInspectOpenChats,
     appMode,
     archiveStandaloneChat,
@@ -150,10 +145,9 @@ export function GlobalContentHost({
     groupOwnedElsewhere,
     isPopout,
     linkedConsoleChat,
-    mobileBottomNavigationItems,
+    mobileNavigationSurfaces,
     mobileProjectSelectorOpen,
     mobileSettingsSectionOpen,
-    mobileTabGridOpen,
     narrowViewport,
     newBrowser,
     newChat,
@@ -169,7 +163,6 @@ export function GlobalContentHost({
     openCompactRootSettings,
     openCreatedProject,
     openCreatedTab,
-    openMobileBottomTabSwitcher,
     openProjectCreateSource,
     openProjectExplorerFile,
     openProjectSettings,
@@ -196,18 +189,14 @@ export function GlobalContentHost({
     projects,
     queryClient: untypedQueryClient,
     remoteDesktop,
-    removeActiveMobileBottomTab,
-    removeMobileBottomTabById,
     renameChatMutation,
     renameStandaloneChat,
     repositoryStats,
     resolvedProjectOverviewWorktreeId,
     restoreStandaloneChat,
+    returnToCompactProjectOverview,
     retryFolderSetupMutation,
     runConfigurations,
-    selectGroupFromMobileSwitcher,
-    selectMobileBottomTab,
-    selectMobileOverview,
     selectProjectFromSidebar,
     selectProjectWorkspace,
     selectStandaloneChat,
@@ -232,6 +221,7 @@ export function GlobalContentHost({
     selectedRunStopProblem,
     selectedRunTargetLabel,
     selectedStandaloneChat,
+    selectedTabKey,
     selectedTabGroup,
     selectedTerminal,
     selectedWorker,
@@ -240,7 +230,6 @@ export function GlobalContentHost({
     setChatConsoleOpen,
     setChatRelocationOpen,
     setGitHistoryHeader,
-    setMobileTabGridOpen,
     setMobileSettingsSectionOpen,
     setPendingTerminalInputs,
     setProjectOverviewSection,
@@ -501,24 +490,6 @@ export function GlobalContentHost({
           workerId={onlineWorker?.workerId ?? null}
           workers={workers.data ?? []}
           workspaces={projectWorkspaces.data ?? []}
-        />
-      ) : compactShell && mobileTabGridOpen && selectedProject ? (
-        <MobileProjectTabGrid
-          activeGroupId={activeMobileBottomTab?.groupId}
-          activeTabByGroup={workspaceSelection.activeTabByGroup}
-          creatingKinds={creatingSurfaceKinds}
-          layout={tabLayout.data}
-          surfaces={projectSurfaces}
-          onCreate={(kind, target) =>
-            createProjectSurface(selectedProject.id, kind, undefined, target)
-          }
-          placement={selectedPlacementContext}
-          onRemoveBottomTab={
-            activeMobileBottomTabId === PRIMARY_MOBILE_BOTTOM_TAB_ID
-              ? undefined
-              : removeActiveMobileBottomTab
-          }
-          onSelectGroup={selectGroupFromMobileSwitcher}
         />
       ) : groupOwnedElsewhere && selectedTabGroup ? (
         <DetachedGroupPlaceholder
@@ -1145,7 +1116,6 @@ export function GlobalContentHost({
                       }
                       placement={selectedPlacementContext}
                       onOpenSurface={selectTopTab}
-                      onOpenTabs={() => setMobileTabGridOpen(true)}
                       onRevealProject={(preferLocalFolder) =>
                         revealProjectInNativeFileManager(
                           selectedProject,
@@ -1284,17 +1254,16 @@ export function GlobalContentHost({
       !showServerAdmin &&
       !showProjectSettings ? (
         <MobileBottomNavigation
-          activeItemId={activeMobileBottomTabId}
-          gridOpen={mobileTabGridOpen}
-          items={mobileBottomNavigationItems}
-          onAdd={addMobileBottomTab}
-          onOverview={selectMobileOverview}
-          onRemove={removeMobileBottomTabById}
-          onReset={openMobileBottomTabSwitcher}
-          onSelect={selectMobileBottomTab}
-          overviewSelected={
-            !mobileTabGridOpen && workspaceSelection.destination === "overview"
+          activeTabKey={selectedTabKey}
+          creatingKinds={creatingSurfaceKinds}
+          onCreate={(kind, target) =>
+            createProjectSurface(selectedProject.id, kind, undefined, target)
           }
+          onOverview={returnToCompactProjectOverview}
+          onSelect={selectTopTab}
+          overviewSelected={workspaceSelection.destination === "overview"}
+          placement={selectedPlacementContext}
+          surfaces={mobileNavigationSurfaces}
         />
       ) : null}
     </>

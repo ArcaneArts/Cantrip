@@ -182,7 +182,6 @@ export function ProjectOverview({
   creatingKinds,
   onCreateSurface,
   onOpenSurface,
-  onOpenTabs,
   onRevealProject,
   placement,
   project,
@@ -204,7 +203,6 @@ export function ProjectOverview({
     target?: ExecutionTarget,
   ): void;
   onOpenSurface(tabKey: string): void;
-  onOpenTabs?: () => void;
   onRevealProject?(preferLocalFolder: boolean): Promise<void>;
   placement?: ProjectSurfacePlacementContext;
   project: ProjectSummary;
@@ -474,25 +472,7 @@ export function ProjectOverview({
             !compact && "lg:grid-cols-[minmax(0,1fr)_18rem]",
           )}
         >
-          {compact ? (
-            <button
-              data-elite-global={`${eliteKeyPrefix}:open-tabs`}
-              className="group flex items-center gap-4 rounded-2xl border bg-card p-5 text-left shadow-sm outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={onOpenTabs}
-              type="button"
-            >
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted">
-                <Rows3 className="size-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold">Open tabs</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {orderedSurfaces.length} open · {runningCount} running
-                </span>
-              </span>
-              <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-            </button>
-          ) : (
+          {!compact ? (
             <div
               data-elite-global={`${eliteKeyPrefix}:services`}
               className="overflow-hidden rounded-2xl border bg-card shadow-sm"
@@ -612,7 +592,7 @@ export function ProjectOverview({
                 </div>
               )}
             </div>
-          )}
+          ) : null}
 
           <aside className="space-y-5">
             <div

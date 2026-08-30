@@ -81,7 +81,6 @@ function commandHarness({
     selectedTabGroup: layout.groups[0],
     setDesktopSidebarDrawerOpen: vi.fn(),
     setDetachedGroupId: vi.fn(),
-    setMobileTabGridOpen: vi.fn(),
     setPopoutError: vi.fn(),
     setWorkspaceSelection: vi.fn(),
     sidebarExplorerCreationInput: null,
