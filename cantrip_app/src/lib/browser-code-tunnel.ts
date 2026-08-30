@@ -2831,6 +2831,27 @@ class BrowserCodeSession {
     void this.close();
   }
 
+  #retireFailedRootDocument(
+    request: HttpProxyRequest,
+    controller: AbortController,
+    error: Error,
+  ): void {
+    if (controller.signal.aborted || request.method !== "GET") return;
+    let url: URL;
+    try {
+      url = new URL(request.url);
+    } catch {
+      return;
+    }
+    if (
+      url.origin !== window.location.origin ||
+      url.pathname !== `/__cantrip_code/${this.adapterId}/code/`
+    ) {
+      return;
+    }
+    this.#terminal(error);
+  }
+
   readonly #http = (
     event: MessageEvent<HttpProxyRequest | HttpProxyCancel>,
   ) => {
@@ -2878,25 +2899,36 @@ class BrowserCodeSession {
       signal: controller.signal,
       upstreamBasePath: this.upstreamBasePath,
     })
-      .then((response) =>
+      .then((response) => {
         responsePort.postMessage({
           adapterId: this.adapterId,
           type: "cantrip-code-http-response-v1",
           requestId: request.requestId,
           ...response,
-        }),
-      )
-      .catch((error) =>
+        });
+        if (response.status >= 400) {
+          this.#retireFailedRootDocument(
+            request,
+            controller,
+            new Error(
+              `Protected Code root document returned HTTP ${response.status}.`,
+            ),
+          );
+        }
+      })
+      .catch((error) => {
+        const failure =
+          error instanceof Error
+            ? error
+            : new Error("Protected Code request failed.");
         responsePort.postMessage({
           adapterId: this.adapterId,
           type: "cantrip-code-http-response-v1",
           requestId: request.requestId,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Protected Code request failed.",
-        }),
-      )
+          error: failure.message,
+        });
+        this.#retireFailedRootDocument(request, controller, failure);
+      })
       .finally(() => {
         if (this.#httpRequests.get(request.requestId) === controller) {
           this.#httpRequests.delete(request.requestId);

@@ -660,14 +660,26 @@ export async function preferProtectedCodeAttachment(
 ): Promise<PreferredCodeAttachment> {
   options.signal?.throwIfAborted();
   if (!isTauri()) {
-    return {
-      attachment: await (options.signal
-        ? startBrowserCodeAttachment(wire, { signal: options.signal })
-        : startBrowserCodeAttachment(wire)),
-      desktopRouteIdentity: null,
-      directTunnelId: wire.tunnelId,
-      transportKind: "relay",
-    };
+    const attachment = await (options.signal
+      ? startBrowserCodeAttachment(wire, { signal: options.signal })
+      : startBrowserCodeAttachment(wire));
+    try {
+      await waitForDirectCodeAttachmentReady(attachment, {
+        attachmentId: wire.attachmentId,
+        healthPhase: "initial",
+        sessionId: wire.sessionId,
+        signal: options.signal,
+      });
+      return {
+        attachment,
+        desktopRouteIdentity: null,
+        directTunnelId: wire.tunnelId,
+        transportKind: "relay",
+      };
+    } catch (error) {
+      await stopBrowserCodeAttachment(wire.tunnelId).catch(() => undefined);
+      throw error;
+    }
   }
   const diagnosticTraceId = crypto.randomUUID();
   const forward = await startDesktopTunnel(wire.tunnelId, {
@@ -754,15 +766,28 @@ export async function preferSharedProtectedCodeAttachment(
 ): Promise<PreferredCodeAttachment> {
   if (!isTauri()) {
     const preferred = await startSharedBrowserCodeAttachment(owned, options);
-    return {
-      attachment: preferred.attachment,
-      desktopRouteIdentity: null,
-      directTunnelId: owned.attachment.transport.transportId,
-      sharedOwnedAttachment: owned,
-      sharedTransportGeneration: preferred.transportGeneration,
-      sharedTransportLeaseId: preferred.leaseId,
-      transportKind: "relay",
-    };
+    try {
+      await waitForDirectCodeAttachmentReady(preferred.attachment, {
+        attachmentId: owned.attachment.session.attachmentId,
+        healthPhase: "initial",
+        sessionId: owned.attachment.session.sessionId,
+        signal: options.signal,
+      });
+      return {
+        attachment: preferred.attachment,
+        desktopRouteIdentity: null,
+        directTunnelId: owned.attachment.transport.transportId,
+        sharedOwnedAttachment: owned,
+        sharedTransportGeneration: preferred.transportGeneration,
+        sharedTransportLeaseId: preferred.leaseId,
+        transportKind: "relay",
+      };
+    } catch (error) {
+      await stopSharedBrowserCodeAttachment(owned, preferred.leaseId).catch(
+        () => undefined,
+      );
+      throw error;
+    }
   }
   options.signal?.throwIfAborted();
   const wire = owned.attachment;
