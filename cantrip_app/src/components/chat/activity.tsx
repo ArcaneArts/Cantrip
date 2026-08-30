@@ -190,8 +190,10 @@ export function activityLabel(activity: AgentActivity): string {
       return `${activity.state === "entered" ? "Entered" : "Exited"} review mode`;
     case "contextCompaction":
       return activity.status === "running"
-        ? "Compacting context"
-        : "Compacted context";
+        ? "Context automatically compacting"
+        : activity.status === "completed"
+          ? "Context automatically compacted"
+          : "Context compaction failed";
     case "notice":
       return activity.message;
     case "usage":
@@ -538,6 +540,21 @@ function RichActivityDetails({ activity }: { activity: AgentActivity }) {
 
 export function Activity({ activity }: { activity: AgentActivity }) {
   if (activity.type === "instructionContext") return null;
+  if (activity.type === "contextCompaction") {
+    return (
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-2 py-1.5 text-sm text-muted-foreground",
+          activity.status === "failed" && "text-destructive",
+        )}
+        data-slot="context-compaction-activity"
+        role="status"
+      >
+        <Combine className="size-4 shrink-0" />
+        <span className="min-w-0 truncate">{activityLabel(activity)}</span>
+      </div>
+    );
+  }
   if (activity.type === "reasoning") {
     return activity.summary.length > 0 ? (
       <div className="min-w-0 space-y-2 py-1 text-xs leading-5 text-muted-foreground">
@@ -614,9 +631,7 @@ export function Activity({ activity }: { activity: AgentActivity }) {
                   ? Boolean(activity.review)
                   : activity.type === "notice"
                     ? Boolean(activity.details || activity.willRetry !== null)
-                    : activity.type === "contextCompaction"
-                      ? false
-                      : true;
+                    : true;
     return (
       <details
         className="group min-w-0 py-1 text-sm"

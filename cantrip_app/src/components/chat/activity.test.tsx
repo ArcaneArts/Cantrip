@@ -56,6 +56,31 @@ describe("rich Codex activity", () => {
     expect(markup).not.toContain("private");
   });
 
+  it("renders context compaction as a quiet inline lifecycle row", () => {
+    const running: AgentActivity = {
+      type: "contextCompaction",
+      id: "compaction-1",
+      status: "running",
+    };
+    const completed: AgentActivity = {
+      ...running,
+      status: "completed",
+    };
+
+    const runningMarkup = renderToStaticMarkup(<Activity activity={running} />);
+    const completedMarkup = renderToStaticMarkup(
+      <Activity activity={completed} />,
+    );
+    expect(activityLabel(running)).toBe("Context automatically compacting");
+    expect(activityLabel(completed)).toBe("Context automatically compacted");
+    expect(runningMarkup).toContain('data-slot="context-compaction-activity"');
+    expect(runningMarkup).toContain("Context automatically compacting");
+    expect(runningMarkup).not.toContain("<details");
+    expect(runningMarkup).not.toContain("animate-spin");
+    expect(completedMarkup).toContain("Context automatically compacted");
+    expect(completedMarkup).not.toContain("text-emerald");
+  });
+
   it("provides concise labels for tools, subagents, and usage", () => {
     expect(
       activityLabel({

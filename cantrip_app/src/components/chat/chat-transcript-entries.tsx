@@ -96,6 +96,23 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
           </CompletedTurnActivityGroup>
         );
       }
+      if (entry.kind === "compaction") {
+        return (
+          <div
+            data-turn-id={entry.turnId ?? undefined}
+            data-turn-key={entry.turnKey}
+            key={entry.key}
+          >
+            {entry.messages.map((message) => (
+              <MessageContent
+                key={message.id}
+                message={message}
+                onOpenFile={onOpenFile}
+              />
+            ))}
+          </div>
+        );
+      }
       const groupedActivities = entry.messages.flatMap((message) =>
         message.content.flatMap((item) =>
           item.type === "activity" ? [item.activity] : [],
