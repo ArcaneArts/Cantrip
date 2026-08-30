@@ -19,9 +19,11 @@ import {
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
   explorerFileSchema,
+  explorerMarkdownFileForPath,
   explorerMediaFileChunkSchema,
   explorerMediaFileSchema,
   explorerMediaTypeForPath,
+  explorerTextFileForPath,
   type ExplorerDirectoryCommits,
   type ExplorerDirectory,
   type ExplorerEntryMutationResult,
@@ -35,76 +37,13 @@ const DIRECTORY_LIMIT = 1_000;
 const FILE_SIZE_LIMIT = 2 * 1024 * 1024;
 const GIT_STDERR_LIMIT = 64 * 1024;
 const execFileAsync = promisify(execFile);
-const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown", ".mdx"]);
-const TEXT_EXTENSIONS = new Set([
-  ".c",
-  ".bat",
-  ".cc",
-  ".conf",
-  ".config",
-  ".cpp",
-  ".cs",
-  ".css",
-  ".csv",
-  ".dart",
-  ".env",
-  ".go",
-  ".gradle",
-  ".graphql",
-  ".h",
-  ".hpp",
-  ".html",
-  ".ini",
-  ".ignore",
-  ".java",
-  ".js",
-  ".json",
-  ".jsx",
-  ".kt",
-  ".kts",
-  ".less",
-  ".log",
-  ".lua",
-  ".mjs",
-  ".properties",
-  ".py",
-  ".rb",
-  ".rs",
-  ".scss",
-  ".sh",
-  ".sol",
-  ".sql",
-  ".swift",
-  ".toml",
-  ".ts",
-  ".tsx",
-  ".txt",
-  ".vue",
-  ".xml",
-  ".yaml",
-  ".yml",
-  ...MARKDOWN_EXTENSIONS,
-]);
-const TEXT_FILENAMES = new Set([
-  ".dockerignore",
-  ".editorconfig",
-  ".gitattributes",
-  ".gitignore",
-  ".npmrc",
-  "dockerfile",
-  "gradlew",
-  "license",
-  "makefile",
-  "readme",
-]);
 
 function markdownFile(name: string): boolean {
-  return MARKDOWN_EXTENSIONS.has(path.extname(name).toLowerCase());
+  return explorerMarkdownFileForPath(name);
 }
 
 function textFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return TEXT_FILENAMES.has(lower) || TEXT_EXTENSIONS.has(path.extname(lower));
+  return explorerTextFileForPath(name);
 }
 
 function viewableFile(name: string): boolean {

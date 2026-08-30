@@ -1,7 +1,10 @@
 import type { ExplorerSummary, ProjectSummary } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { sidebarExplorerProvisioningDetails } from "./sidebar-explorer-controller";
+import {
+  sidebarExplorerProvisioningDetails,
+  sidebarFilePinCompletion,
+} from "./sidebar-explorer-controller";
 
 const project = {
   id: "project-1",
@@ -77,6 +80,48 @@ describe("sidebar Explorer provisioning", () => {
     ).toMatchObject({
       sidebarExplorerCreationKey: "project-1:worktree-1",
       sidebarHasDesiredExplorer: true,
+    });
+  });
+});
+
+describe("sidebar file pin completion", () => {
+  const source = {
+    id: "explorer-source",
+    projectId: "project-1",
+  } as ExplorerSummary;
+  const destination = {
+    id: "explorer-pinned",
+    projectId: "project-1",
+  } as ExplorerSummary;
+  const handoff = {
+    destinationExplorer: destination,
+    destinationExplorerId: destination.id,
+    ready: true,
+    sourceExplorer: source,
+    sourcePath: "scripts/setup.ps1",
+    transactionId: "pin-1",
+  };
+
+  it("activates a completed dock even if its transient preview rerendered inactive", () => {
+    expect(
+      sidebarFilePinCompletion(
+        handoff,
+        {
+          active: false,
+          explorerId: source.id,
+          groupId: "group-1",
+          path: handoff.sourcePath,
+          projectId: source.projectId,
+        },
+        source.projectId,
+      ),
+    ).toEqual({ action: "activate", clearPreview: true, destination });
+  });
+
+  it("refreshes without stealing focus after the user changes projects", () => {
+    expect(sidebarFilePinCompletion(handoff, null, "project-2")).toEqual({
+      action: "refresh",
+      destination,
     });
   });
 });

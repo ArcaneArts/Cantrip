@@ -48,6 +48,35 @@ type OpenCreatedTab = (
   tabId: string,
 ) => void;
 
+export type SidebarFilePinCompletion =
+  | { action: "wait" }
+  | {
+      action: "activate";
+      clearPreview: boolean;
+      destination: ExplorerSummary;
+    }
+  | { action: "refresh"; destination: ExplorerSummary };
+
+export function sidebarFilePinCompletion(
+  handoff: SidebarFilePinHandoffState,
+  preview: SidebarFilePreviewState | null,
+  selectedProjectId: string | null,
+): SidebarFilePinCompletion {
+  const destination = handoff.destinationExplorer;
+  if (!destination) return { action: "wait" };
+  if (selectedProjectId !== destination.projectId) {
+    return { action: "refresh", destination };
+  }
+  return {
+    action: "activate",
+    clearPreview: Boolean(
+      preview?.explorerId === handoff.sourceExplorer.id &&
+      preview.path === handoff.sourcePath,
+    ),
+    destination,
+  };
+}
+
 export function useSidebarFileState() {
   const [sidebarFilePreview, setSidebarFilePreview] =
     useState<SidebarFilePreviewState | null>(null);
@@ -611,27 +640,27 @@ export function useSidebarFilePinHandoffLifecycle({
         sidebarFilePinHandoffRef.current = readyHandoff;
         setSidebarFilePinHandoff(readyHandoff);
       }
-      const destination = readyHandoff.destinationExplorer;
-      if (!destination) return;
-      const preview = sidebarFilePreviewRef.current;
-      if (
-        preview?.active &&
-        selectedProjectIdRef.current === destination.projectId &&
-        preview.explorerId === readyHandoff.sourceExplorer.id &&
-        preview.path === readyHandoff.sourcePath
-      ) {
-        sidebarFilePreviewLifecycleRef.current = null;
-        sidebarFilePreviewRef.current = null;
-        setSidebarFilePreview(null);
+      const completion = sidebarFilePinCompletion(
+        readyHandoff,
+        sidebarFilePreviewRef.current,
+        selectedProjectIdRef.current,
+      );
+      if (completion.action === "wait") return;
+      if (completion.action === "activate") {
+        if (completion.clearPreview) {
+          sidebarFilePreviewLifecycleRef.current = null;
+          sidebarFilePreviewRef.current = null;
+          setSidebarFilePreview(null);
+        }
         openCreatedTabRef.current(
-          destination.projectId,
+          completion.destination.projectId,
           "explorer",
-          destination.id,
+          completion.destination.id,
         );
         return;
       }
       void queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", destination.projectId],
+        queryKey: ["project-tab-layout", completion.destination.projectId],
       });
     },
     [
