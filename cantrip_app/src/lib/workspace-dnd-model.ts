@@ -14,10 +14,12 @@ export type WorkspaceDragItem =
     }
   | {
       type: "surface";
+      lane: "file-tabs" | "sidebar";
       projectId: string;
       groupId: string;
       tabKey: string;
       label: string;
+      lanePosition: number;
       visualKind: ProjectSurface["kind"];
     };
 
@@ -33,11 +35,22 @@ export type WorkspaceDropTarget =
       type: "sidebar-project";
       projectId: string;
       groupPosition: number;
+      lanePosition: number;
+    }
+  | {
+      type: "sidebar-tab";
+      projectId: string;
+      groupId: string;
+      tabKey: string;
+      lanePosition: number;
+      memberPosition: number;
     }
   | {
       type: "top-bar";
       projectId: string;
       groupId: string;
+      tabKey: string;
+      lanePosition: number;
       memberPosition: number;
     }
   | {
@@ -45,6 +58,7 @@ export type WorkspaceDropTarget =
       projectId: string;
       groupId: string;
       tabKey: string;
+      lanePosition: number;
       memberPosition: number;
     };
 
@@ -148,36 +162,9 @@ export function decideWorkspaceDrop(
         },
       };
     }
-    if (drop.type !== "top-bar" && drop.type !== "top-tab") {
-      return {
-        status: "invalid",
-        reason: "A group can only be sorted or added to the visible tab bar.",
-      };
-    }
-    if (sourceGroup.id === drop.groupId) {
-      return {
-        status: "invalid",
-        reason: "A group cannot be dropped into its own tab bar.",
-      };
-    }
-    if (sourceGroup.members.length !== 1) {
-      return {
-        status: "invalid",
-        reason: "Only singleton sidebar groups can join another tab bar.",
-      };
-    }
     return {
-      status: "valid",
-      operation: {
-        type: "tab-layout",
-        projectId: drag.projectId,
-        command: {
-          type: "move-member",
-          tabKey: sourceGroup.members[0]!.tabKey,
-          targetGroupId: drop.groupId,
-          targetMemberPosition: drop.memberPosition,
-        },
-      },
+      status: "invalid",
+      reason: "Sidebar groups can only be sorted in the sidebar.",
     };
   }
 
@@ -185,21 +172,24 @@ export function decideWorkspaceDrop(
   if (!sourceGroup) {
     return { status: "invalid", reason: "The dragged tab no longer exists." };
   }
-  if (drop.type === "top-tab" || drop.type === "top-bar") {
-    if (drop.groupId !== sourceGroup.id) {
-      return {
-        status: "invalid",
-        reason: "Use a singleton sidebar group to join another visible group.",
-      };
-    }
-    const from = sourceGroup.members.findIndex(
-      ({ tabKey }) => tabKey === drag.tabKey,
-    );
-    const to = drop.memberPosition;
-    if (
-      from === to ||
-      (drop.type === "top-tab" && drop.tabKey === drag.tabKey)
-    ) {
+  const fileDrop = drop.type === "top-tab" || drop.type === "top-bar";
+  const sidebarDrop =
+    drop.type === "sidebar-tab" || drop.type === "sidebar-project";
+  if (
+    (drag.lane === "file-tabs" && !fileDrop) ||
+    (drag.lane === "sidebar" && !sidebarDrop)
+  ) {
+    return {
+      status: "invalid",
+      reason:
+        drag.lane === "file-tabs"
+          ? "File tabs stay in the top file bar."
+          : "Project surfaces stay in the sidebar.",
+    };
+  }
+
+  if (drop.type === "sidebar-project") {
+    if (drag.lanePosition === drop.lanePosition - 1) {
       return { status: "noop" };
     }
     return {
@@ -208,32 +198,36 @@ export function decideWorkspaceDrop(
         type: "tab-layout",
         projectId: drag.projectId,
         command: {
-          type: "reorder-members",
-          groupId: sourceGroup.id,
-          tabKeys: moved(
-            sourceGroup.members.map(({ tabKey }) => tabKey),
-            from,
-            to,
-          ),
+          type: "move-member",
+          tabKey: drag.tabKey,
+          targetGroupId: null,
+          targetMemberPosition: 0,
+          targetGroupPosition: drop.groupPosition,
         },
       },
     };
   }
-  if (drop.type === "sidebar-group" && drop.groupId === sourceGroup.id) {
-    return {
-      status: "invalid",
-      reason: "A tab cannot be split onto its own sidebar group.",
-    };
+
+  if (
+    drop.type !== "top-tab" &&
+    drop.type !== "top-bar" &&
+    drop.type !== "sidebar-tab"
+  ) {
+    return { status: "invalid", reason: "This is not a tab drop target." };
   }
+  if (drop.tabKey === drag.tabKey) return { status: "noop" };
+  const targetGroup = layout.groups.find(({ id }) => id === drop.groupId);
+  if (!targetGroup) {
+    return { status: "invalid", reason: "The target tab no longer exists." };
+  }
+  const sourceGroupWillRemain = sourceGroup.members.length > 1;
+  const targetPositionAfterRemoval =
+    !sourceGroupWillRemain && sourceGroup.position < targetGroup.position
+      ? targetGroup.position - 1
+      : targetGroup.position;
   const targetGroupPosition =
-    drop.type === "sidebar-group"
-      ? drop.groupPosition
-      : drop.type === "sidebar-project"
-        ? drop.groupPosition
-        : null;
-  if (targetGroupPosition === null) {
-    return { status: "invalid", reason: "This is not a sidebar drop target." };
-  }
+    targetPositionAfterRemoval +
+    (drag.lanePosition < drop.lanePosition ? 1 : 0);
   return {
     status: "valid",
     operation: {

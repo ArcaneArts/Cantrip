@@ -1,15 +1,15 @@
 import { DndContext } from "@dnd-kit/core";
 import {
-  chatSummarySchema,
+  explorerSummarySchema,
   projectTabMemberSummarySchema,
 } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProjectSurface } from "@/lib/project-surface";
+import type { ProjectFileSurface } from "@/lib/project-surface";
 
-import { ProjectTabBar, projectTabRemovalDisposition } from "./project-tab-bar";
+import { ProjectTabBar } from "./project-tab-bar";
 
 vi.mock("@radix-ui/react-context-menu", async () => {
   const React = await import("react");
@@ -85,55 +85,43 @@ function textContent(value: unknown): string {
   return "";
 }
 
-function chatSurface(options: {
-  running?: boolean;
-  unreadCompletion?: boolean;
-}): ProjectSurface {
-  const chat = chatSummarySchema.parse({
-    id: "chat-1",
+function fileSurface(): ProjectFileSurface {
+  const explorer = explorerSummarySchema.parse({
+    id: "explorer-1",
     projectId: "project-1",
-    experience: "agent",
+    title: "index.ts",
     position: 0,
-    status: options.running ? "running" : "idle",
-    activeWorkerId: null,
-    activeWorktreeId: "worktree-1",
-    placementRevision: 1,
-    worktreeMode: "agent-managed",
-    modelId: null,
-    reasoningEffort: null,
-    permissionProfileId: null,
-    planMode: "default",
-    hasPendingPlanQuestion: false,
-    hasUnreadCompletion: options.unreadCompletion ?? false,
-    automationPaused: false,
+    activeWorkerId: "worker-1",
+    worktreeId: "worktree-1",
+    selectedPath: "src/index.ts",
+    fileMode: "edit",
     createdAt: now,
     updatedAt: now,
-    title: "Agent",
   });
   const member = projectTabMemberSummarySchema.parse({
-    tabKey: `chat:${chat.id}`,
+    tabKey: `explorer:${explorer.id}`,
     groupId: "group-1",
-    projectId: chat.projectId,
-    tabKind: "chat",
-    tabId: chat.id,
-    title: chat.title,
+    projectId: explorer.projectId,
+    tabKind: "explorer",
+    tabId: explorer.id,
+    title: explorer.title,
     position: 0,
     createdAt: now,
     updatedAt: now,
   });
   return {
-    entity: chat,
+    entity: explorer,
     groupId: member.groupId,
-    kind: "chat",
+    kind: "explorer",
     member,
-    projectId: chat.projectId,
-    tabId: chat.id,
+    projectId: explorer.projectId,
+    tabId: explorer.id,
     tabKey: member.tabKey,
-    title: chat.title,
+    title: explorer.title,
   };
 }
 
-function renderTabs(surface: ProjectSurface) {
+function renderTabs(surface: ProjectFileSurface) {
   return renderToStaticMarkup(
     <DndContext>
       <ProjectTabBar
@@ -143,58 +131,16 @@ function renderTabs(surface: ProjectSurface) {
         onDelete={vi.fn()}
         onRename={vi.fn()}
         onSelect={vi.fn()}
-        onStopAndCloseRunTerminal={vi.fn()}
         surfaces={[surface]}
       />
     </DndContext>,
   );
 }
 
-function runSurface(running: boolean): ProjectSurface {
-  const entity = {
-    id: "run-terminal-1",
-    projectId: "project-1",
-    kind: "run-configuration" as const,
-    title: "Development server",
-    position: 0,
-    status: running ? ("running" as const) : ("exited" as const),
-    activeWorkerId: "worker-1",
-    worktreeId: "worktree-1",
-    linkedChatId: null,
-    runConfigurationId: "15f6add0-873f-409f-a5ab-6e9e509359e2",
-    runConfigurationRuntimeId: "a0b8f948-09b5-47e5-9a4f-2a3ce8025802",
-    directoryPath: null,
-    service: { enabled: false, command: "" },
-    createdAt: now,
-    updatedAt: now,
-  };
-  const member = projectTabMemberSummarySchema.parse({
-    tabKey: `terminal:${entity.id}`,
-    groupId: "group-1",
-    projectId: entity.projectId,
-    tabKind: "terminal",
-    tabId: entity.id,
-    title: entity.title,
-    position: 0,
-    createdAt: now,
-    updatedAt: now,
-  });
-  return {
-    entity,
-    groupId: member.groupId,
-    kind: "terminal",
-    member,
-    projectId: entity.projectId,
-    tabId: entity.id,
-    tabKey: member.tabKey,
-    title: entity.title,
-  };
-}
-
 describe("project tab bar", () => {
   it("selects the full tab title and disables dragging while renaming", async () => {
     const select = vi.fn();
-    const surface = chatSurface({});
+    const surface = fileSurface();
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = TestRenderer.create(
@@ -206,7 +152,6 @@ describe("project tab bar", () => {
             onDelete={vi.fn()}
             onRename={vi.fn()}
             onSelect={vi.fn()}
-            onStopAndCloseRunTerminal={vi.fn()}
             surfaces={[surface]}
           />
         </DndContext>,
@@ -228,8 +173,9 @@ describe("project tab bar", () => {
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(
-      renderer.root.findByProps({ "aria-label": "Rename Agent" }).props.value,
-    ).toBe("Agent");
+      renderer.root.findByProps({ "aria-label": "Rename index.ts" }).props
+        .value,
+    ).toBe("index.ts");
     expect(select).toHaveBeenCalledOnce();
     frame = renderer.root.findByProps({
       "data-project-tab-frame": surface.tabKey,
@@ -254,7 +200,6 @@ describe("project tab bar", () => {
             onDelete={vi.fn()}
             onRename={vi.fn()}
             onSelect={vi.fn()}
-            onStopAndCloseRunTerminal={vi.fn()}
             previewFile={{
               active: true,
               path: "src/preview-file.ts",
@@ -301,7 +246,6 @@ describe("project tab bar", () => {
             onDelete={vi.fn()}
             onRename={vi.fn()}
             onSelect={vi.fn()}
-            onStopAndCloseRunTerminal={vi.fn()}
             previewFile={{
               active: true,
               path: "src/file.ts",
@@ -336,27 +280,11 @@ describe("project tab bar", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("shows the running and unread-completion states on top tabs", () => {
-    const running = renderTabs(chatSurface({ running: true }));
-    const completed = renderTabs(chatSurface({ unreadCompletion: true }));
+  it("renders only the pinned file presentation", () => {
+    const markup = renderTabs(fileSurface());
 
-    expect(running).toContain("animate-spin");
-    expect(running).not.toContain("bg-sky-400");
-    expect(completed).toContain("bg-sky-400");
-    expect(completed).toContain("Agent turn finished; open to dismiss");
-  });
-
-  it("uses Run-specific icon, status, and stop-and-close disposition", () => {
-    const running = runSurface(true);
-    const exited = runSurface(false);
-    const markup = renderTabs(running);
-
-    expect(markup).toContain("lucide-play");
-    expect(markup).toContain("bg-emerald-500");
-    expect(projectTabRemovalDisposition(running)).toBe("stop-and-close-run");
-    expect(projectTabRemovalDisposition(exited)).toBe("delete");
-    expect(projectTabRemovalDisposition(chatSurface({ running: true }))).toBe(
-      "blocked-active-agent",
-    );
+    expect(markup).toContain("lucide-file-code-corner");
+    expect(markup).toContain("index.ts");
+    expect(markup).toContain('aria-label="Project file tabs"');
   });
 });

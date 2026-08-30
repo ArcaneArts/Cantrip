@@ -35,7 +35,6 @@ export function PersistentSurfaceLayer({
     explorerGraphRequest,
     explorerSurfaceVisible,
     folderRevealLabel,
-    forkChatMutation,
     groupOwnedElsewhere,
     handleExplorerChanged,
     handleExplorerLifecycleChange,
@@ -55,7 +54,6 @@ export function PersistentSurfaceLayer({
     selectTopTab,
     selectedCodeTab,
     selectedExplorer,
-    selectedGroupSurfaces,
     selectedPlacementContext,
     selectedProject,
     selectedProjectId,
@@ -77,7 +75,6 @@ export function PersistentSurfaceLayer({
     sidebarInlineExplorer,
     sidebarPreviewSuccessorExplorer,
     sidebarPreviewExplorer,
-    stopAndDeleteRunTerminalMutation,
     worktreeStatuses,
   } = bindings;
   return (
@@ -90,10 +87,8 @@ export function PersistentSurfaceLayer({
       !showServerAdmin &&
       !showProjectSettings &&
       !groupOwnedElsewhere &&
-      ((selectedTabKey &&
-        selectedTabGroup &&
-        selectedGroupSurfaces.length > 0) ||
-        showSidebarPreviewTab) ? (
+      Boolean(selectedProject) &&
+      (projectTabBarSurfaces.length > 0 || showSidebarPreviewTab) ? (
         <ProjectTabBar
           activeTabKey={selectedTabKey ?? ""}
           creatingKinds={creatingSurfaceKinds}
@@ -101,25 +96,15 @@ export function PersistentSurfaceLayer({
           onCreate={(kind, target) => {
             const groupId = sidebarFilePreview?.active
               ? sidebarFilePreview.groupId
-              : selectedTabGroup?.id;
-            if (selectedProject && groupId) {
+              : (selectedTabGroup?.id ?? projectTabBarSurfaces.at(-1)?.groupId);
+            if (selectedProject) {
               createProjectSurface(selectedProject.id, kind, groupId, target);
             }
           }}
           onClose={deleteSurfaceImmediately}
           onDelete={deleteSurface}
-          onDuplicate={(surface) => {
-            if (surface.kind === "chat") {
-              forkChatMutation.mutate(surface.tabId);
-            }
-          }}
           onRename={renameSurface}
           onSelect={selectTopTab}
-          onStopAndCloseRunTerminal={(terminal) =>
-            stopAndDeleteRunTerminalMutation
-              .mutateAsync(terminal)
-              .then(() => undefined)
-          }
           placement={selectedPlacementContext}
           previewFile={
             showSidebarPreviewTab && sidebarFilePreview
