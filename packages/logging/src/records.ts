@@ -264,6 +264,41 @@ const PERSISTED_STRING_CONTEXT_KEYS = new Set([
   "transportKind",
   "windowKind",
 ]);
+const PERSISTED_ENUM_CONTEXT_KEYS = new Set([
+  "actionKind",
+  "launchKind",
+  "lifecycleKind",
+  "ownershipKind",
+  "phase",
+  "retirementKind",
+  "transitionKind",
+]);
+const PERSISTED_BOOLEAN_CONTEXT_KEYS = new Set([
+  "active",
+  "attachmentReadyAtRequest",
+  "closing",
+  "codeEditorVisible",
+  "dirty",
+  "enabled",
+  "handoffDestination",
+  "handoffSource",
+  "hasAttachment",
+  "keepInlineCodeWarm",
+  "openOwner",
+  "pathChanged",
+  "pathPresent",
+  "prewarm",
+  "ready",
+  "retained",
+  "retainedPathPresent",
+  "samePath",
+  "sharedTransport",
+  "success",
+  "transient",
+  "visible",
+  "workbenchReadyAtRequest",
+  "workerOnlineAtRequest",
+]);
 const PERSISTED_DESTINATION_REJECTION_CODES = new Set([
   "target-unavailable",
   "target-rejected",
@@ -280,6 +315,7 @@ const PERSISTED_NUMBER_CONTEXT_KEY =
 const PERSISTED_ID_CONTEXT_KEY = /Ids?$/u;
 const PERSISTED_VERSION_CONTEXT_KEY = /Version$/u;
 const PERSISTED_FAILURE_STAGE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const PERSISTED_ENUM_VALUE = /^[a-z0-9]+(?:[-+][a-z0-9]+)*$/u;
 
 function minimizeLogContext(
   value: unknown,
@@ -316,6 +352,12 @@ function minimizeLogContext(
       }
       continue;
     }
+    if (typeof nested === "string" && PERSISTED_ENUM_CONTEXT_KEYS.has(key)) {
+      if (nested.length <= 100 && PERSISTED_ENUM_VALUE.test(nested)) {
+        output[key] = nested;
+      }
+      continue;
+    }
     if (
       typeof nested === "string" &&
       (PERSISTED_STRING_CONTEXT_KEYS.has(key) ||
@@ -335,7 +377,7 @@ function minimizeLogContext(
     }
     if (
       typeof nested === "boolean" &&
-      /^(?:active|enabled|success)$/u.test(key)
+      PERSISTED_BOOLEAN_CONTEXT_KEYS.has(key)
     ) {
       output[key] = nested;
     }

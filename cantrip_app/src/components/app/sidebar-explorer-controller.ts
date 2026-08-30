@@ -29,8 +29,10 @@ import {
   pinExplorer,
   updateExplorerViewState,
 } from "@/lib/api";
+import { clientLogger } from "@/lib/client-log-relay";
 import { openDesktopExplorerFile } from "@/lib/desktop-popout";
 import { errorMessage as errorText } from "@/lib/error-message";
+import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
   dedicatedSidebarExplorer,
@@ -225,12 +227,23 @@ export function useSidebarExplorerMutations({
       destinationExplorerId,
       groupId,
       path,
+      transactionId,
     }: {
       destinationExplorerId: string;
       groupId: string | null;
       path: string;
       transactionId: string;
     }) => {
+      clientLogger.info("Explorer file pin mutation started", {
+        ...explorerFileIntentContext(destinationExplorerId),
+        event: "explorer.file.pin.phase",
+        explorerId: destinationExplorerId,
+        operation: "pin-file",
+        phase: "mutation-started",
+        status: "started",
+        subsystem: "explorer",
+        transactionId,
+      });
       const explorer = await pinExplorer(
         destinationExplorerId,
         sidebarFileName(path),
@@ -240,6 +253,19 @@ export function useSidebarExplorerMutations({
         },
         groupId ?? undefined,
       );
+      clientLogger.info("Explorer file pin mutation updated surface", {
+        ...explorerFileIntentContext(destinationExplorerId),
+        event: "explorer.file.pin.phase",
+        explorerId: destinationExplorerId,
+        operation: "pin-file",
+        phase: "surface-pinned",
+        projectId: explorer.projectId,
+        samePath: explorer.selectedPath === path,
+        status: "completed",
+        subsystem: "explorer",
+        transactionId,
+        worktreeId: explorer.worktreeId,
+      });
       const layout = await getProjectTabLayout(explorer.projectId);
       return { explorer, layout };
     },
@@ -265,6 +291,20 @@ export function useSidebarExplorerMutations({
         explorer.selectedPath !== input.path ||
         explorer.fileMode !== expectedFileMode
       ) {
+        clientLogger.warn("Explorer file pin mutation returned invalid state", {
+          ...explorerFileIntentContext(input.destinationExplorerId),
+          event: "explorer.file.pin.phase",
+          explorerId: input.destinationExplorerId,
+          operation: "pin-file",
+          phase: "mutation-validation",
+          projectId: explorer.projectId,
+          reasonCode: "destination-state-mismatch",
+          samePath: explorer.selectedPath === input.path,
+          status: "failed",
+          subsystem: "explorer",
+          transactionId: input.transactionId,
+          worktreeId: explorer.worktreeId,
+        });
         sidebarFilePinHandoffRef.current = null;
         setSidebarFilePinHandoff(null);
         void queryClient.invalidateQueries({
@@ -289,6 +329,19 @@ export function useSidebarExplorerMutations({
       sidebarExplorerCreationKeyRef.current = null;
       sidebarFilePinHandoffRef.current = nextHandoff;
       setSidebarFilePinHandoff(nextHandoff);
+      clientLogger.info("Explorer file pin handoff destination ready", {
+        ...explorerFileIntentContext(explorer.id),
+        event: "explorer.file.pin.phase",
+        explorerId: explorer.id,
+        operation: "pin-file",
+        phase: "destination-ready",
+        projectId: explorer.projectId,
+        ready: true,
+        status: "completed",
+        subsystem: "explorer",
+        transactionId: input.transactionId,
+        worktreeId: explorer.worktreeId,
+      });
     },
     onError: (error, input) => {
       const handoff = sidebarFilePinHandoffRef.current;
@@ -302,6 +355,18 @@ export function useSidebarExplorerMutations({
           queryKey: ["project-tab-layout", handoff.sourceExplorer.projectId],
         });
       }
+      clientLogger.warn("Explorer file pin mutation failed", {
+        ...explorerFileIntentContext(input.destinationExplorerId),
+        errorClass: error instanceof Error ? error.name : typeof error,
+        event: "explorer.file.pin.phase",
+        explorerId: input.destinationExplorerId,
+        operation: "pin-file",
+        phase: "mutation",
+        reasonCode: "mutation-failed",
+        status: "failed",
+        subsystem: "explorer",
+        transactionId: input.transactionId,
+      });
       setPopoutError(errorText(error));
     },
   });
@@ -640,6 +705,19 @@ export function useSidebarFilePinHandoffLifecycle({
         sidebarFilePinHandoffRef.current = readyHandoff;
         setSidebarFilePinHandoff(readyHandoff);
       }
+      clientLogger.info("Explorer file pin handoff completion evaluated", {
+        ...explorerFileIntentContext(explorerId),
+        event: "explorer.file.pin.phase",
+        explorerId,
+        operation: "pin-file",
+        phase: "completion-evaluated",
+        projectId: handoff.sourceExplorer.projectId,
+        ready: readyHandoff.ready,
+        status: "completed",
+        subsystem: "explorer",
+        transactionId: handoff.transactionId,
+        worktreeId: handoff.sourceExplorer.worktreeId,
+      });
       const completion = sidebarFilePinCompletion(
         readyHandoff,
         sidebarFilePreviewRef.current,
@@ -652,6 +730,18 @@ export function useSidebarFilePinHandoffLifecycle({
           sidebarFilePreviewRef.current = null;
           setSidebarFilePreview(null);
         }
+        clientLogger.info("Explorer file pin handoff activated destination", {
+          ...explorerFileIntentContext(explorerId),
+          event: "explorer.file.pin.phase",
+          explorerId,
+          operation: "pin-file",
+          phase: "destination-activated",
+          projectId: completion.destination.projectId,
+          status: "completed",
+          subsystem: "explorer",
+          transactionId: handoff.transactionId,
+          worktreeId: completion.destination.worktreeId,
+        });
         openCreatedTabRef.current(
           completion.destination.projectId,
           "explorer",
@@ -725,6 +815,18 @@ export function useSidebarFilePinHandoffLifecycle({
     }
     sidebarFilePinHandoffRef.current = null;
     setSidebarFilePinHandoff(null);
+    clientLogger.info("Explorer file pin handoff ownership settled", {
+      ...explorerFileIntentContext(sidebarFilePinHandoff.destinationExplorerId),
+      event: "explorer.file.pin.phase",
+      explorerId: sidebarFilePinHandoff.destinationExplorerId,
+      operation: "pin-file",
+      phase: "handoff-cleared",
+      projectId: sidebarFilePinHandoff.sourceExplorer.projectId,
+      status: "completed",
+      subsystem: "explorer",
+      transactionId: sidebarFilePinHandoff.transactionId,
+      worktreeId: sidebarFilePinHandoff.sourceExplorer.worktreeId,
+    });
   }, [
     openExplorerIds,
     setSidebarFilePinHandoff,

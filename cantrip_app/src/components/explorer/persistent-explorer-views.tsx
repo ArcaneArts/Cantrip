@@ -4,7 +4,7 @@ import type {
   ExplorerSummary,
   GitStatus,
 } from "@cantrip/protocol";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ExplorerView,
@@ -13,8 +13,41 @@ import {
   type ExplorerLifecycleActions,
   type TransientExplorerFile,
 } from "@/components/explorer/explorer-view";
+import { clientLogger } from "@/lib/client-log-relay";
+import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 
 export const MAX_RETAINED_EXPLORER_VIEWS = 8;
+
+interface ExplorerOwnershipDiagnostic {
+  active: boolean;
+  explorerId: string;
+  handoffDestination: boolean;
+  handoffSource: boolean;
+  openOwner: boolean;
+  ownershipKind: string;
+  prewarm: boolean;
+  projectId: string;
+  transient: boolean;
+  worktreeId: string;
+}
+
+function sameExplorerOwnershipDiagnostic(
+  left: ExplorerOwnershipDiagnostic | undefined,
+  right: ExplorerOwnershipDiagnostic,
+): boolean {
+  return (
+    left?.active === right.active &&
+    left.explorerId === right.explorerId &&
+    left.handoffDestination === right.handoffDestination &&
+    left.handoffSource === right.handoffSource &&
+    left.openOwner === right.openOwner &&
+    left.ownershipKind === right.ownershipKind &&
+    left.prewarm === right.prewarm &&
+    left.projectId === right.projectId &&
+    left.transient === right.transient &&
+    left.worktreeId === right.worktreeId
+  );
+}
 
 export function retainExplorerSurfaceTabs(
   retained: ExplorerSummary[],
@@ -234,6 +267,95 @@ export function PersistentExplorerViews({
       ]),
     [handoffExplorer, handoffSourceExplorer, openExplorers],
   );
+  const ownershipDiagnostics = useMemo<ExplorerOwnershipDiagnostic[]>(
+    () =>
+      renderedExplorers.map((explorer) => {
+        const active = activeExplorer?.id === explorer.id;
+        const handoffDestination = handoffExplorer?.id === explorer.id;
+        const handoffSource = handoffSourceExplorer?.id === explorer.id;
+        const openOwner = Boolean(
+          openExplorers?.some(({ id }) => id === explorer.id),
+        );
+        const prewarm = prewarmExplorer?.id === explorer.id;
+        const transient = transientFile?.explorerId === explorer.id;
+        const roles = [
+          active ? "active" : null,
+          openOwner ? "open" : null,
+          transient ? "transient" : null,
+          prewarm ? "prewarm" : null,
+          handoffSource ? "handoff-source" : null,
+          handoffDestination ? "handoff-destination" : null,
+        ].filter((role): role is string => role !== null);
+        return {
+          active,
+          explorerId: explorer.id,
+          handoffDestination,
+          handoffSource,
+          openOwner,
+          ownershipKind: roles.join("+") || "retained-only",
+          prewarm,
+          projectId: explorer.projectId,
+          transient,
+          worktreeId: explorer.worktreeId,
+        };
+      }),
+    [
+      activeExplorer?.id,
+      handoffExplorer?.id,
+      handoffSourceExplorer?.id,
+      openExplorers,
+      prewarmExplorer?.id,
+      renderedExplorers,
+      transientFile?.explorerId,
+    ],
+  );
+  const previousOwnershipRef = useRef(
+    new Map<string, ExplorerOwnershipDiagnostic>(),
+  );
+
+  useEffect(() => {
+    const current = new Map(
+      ownershipDiagnostics.map((diagnostic) => [
+        diagnostic.explorerId,
+        diagnostic,
+      ]),
+    );
+    for (const diagnostic of ownershipDiagnostics) {
+      if (
+        sameExplorerOwnershipDiagnostic(
+          previousOwnershipRef.current.get(diagnostic.explorerId),
+          diagnostic,
+        )
+      ) {
+        continue;
+      }
+      clientLogger.info("Explorer retained ownership observed", {
+        ...explorerFileIntentContext(diagnostic.explorerId),
+        ...diagnostic,
+        counts: { renderedExplorers: ownershipDiagnostics.length },
+        event: "explorer.retention.observed",
+        operation: "retain-surface",
+        status: "observed",
+        subsystem: "explorer",
+        surfaceId: diagnostic.explorerId,
+      });
+    }
+    for (const [explorerId, previous] of previousOwnershipRef.current) {
+      if (current.has(explorerId)) continue;
+      clientLogger.info("Explorer retained ownership removed", {
+        ...explorerFileIntentContext(explorerId),
+        ...previous,
+        counts: { renderedExplorers: ownershipDiagnostics.length },
+        event: "explorer.retention.removed",
+        operation: "release-surface",
+        reasonCode: "ownership-removed",
+        status: "completed",
+        subsystem: "explorer",
+        surfaceId: explorerId,
+      });
+    }
+    previousOwnershipRef.current = current;
+  }, [ownershipDiagnostics]);
 
   const handleLifecycleChange = useCallback(
     (explorerId: string, actions: ExplorerLifecycleActions | null) => {

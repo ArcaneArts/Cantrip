@@ -54,6 +54,7 @@ import {
   updateExplorerViewState,
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
+import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 import { cn } from "@/lib/utils";
 
 const StructuredFileVisual = lazy(async () => {
@@ -323,6 +324,7 @@ export function ExplorerView({
   transientFile?: TransientExplorerFile;
   workerOnline?: boolean;
 }) {
+  const surfaceInstanceId = useRef(crypto.randomUUID()).current;
   const transientFilePath = transientFile?.path;
   const transientFileCloseRef = useRef(transientFile?.close);
   transientFileCloseRef.current = transientFile?.close;
@@ -524,6 +526,22 @@ export function ExplorerView({
   const codeEditorPath =
     !graphVisible && codeEditorVisible ? displayedSelectedPath : null;
   const codeEditorVisibleOnSurface = Boolean(active && codeEditorPath);
+  const surfaceLifecycleState = {
+    active,
+    codeEditorVisible: codeEditorVisibleOnSurface,
+    keepInlineCodeWarm,
+    pathPresent: displayedSelectedPath !== null,
+    transient: transientFilePath !== undefined,
+  };
+  const surfaceLifecycleStateRef = useRef(surfaceLifecycleState);
+  surfaceLifecycleStateRef.current = surfaceLifecycleState;
+  const previousSurfaceLifecycleStateRef = useRef<{
+    active: boolean;
+    codeEditorVisible: boolean;
+    keepInlineCodeWarm: boolean;
+    path: string | null;
+    transient: boolean;
+  } | null>(null);
   const dirty = draftVersion !== null && draft !== baselineContent;
   dirtyRef.current = dirty;
   draftRef.current = draft;
@@ -534,25 +552,65 @@ export function ExplorerView({
   useEffect(() => {
     mountedRef.current = true;
     clientLogger.info("Explorer surface opened", {
+      ...explorerFileIntentContext(explorer.id),
+      ...surfaceLifecycleStateRef.current,
       event: "explorer.surface.opened",
+      lifecycleKind: "mounted",
       operation: "open-surface",
       projectId: explorer.projectId,
       subsystem: "explorer",
       surfaceId: explorer.id,
+      surfaceInstanceId,
       worktreeId: explorer.worktreeId,
     });
     return () => {
       mountedRef.current = false;
       clientLogger.info("Explorer surface closed", {
+        ...explorerFileIntentContext(explorer.id),
+        ...surfaceLifecycleStateRef.current,
         event: "explorer.surface.closed",
+        lifecycleKind: "unmounted",
         operation: "close-surface",
         projectId: explorer.projectId,
         subsystem: "explorer",
         surfaceId: explorer.id,
+        surfaceInstanceId,
         worktreeId: explorer.worktreeId,
       });
     };
-  }, [explorer.id, explorer.projectId, explorer.worktreeId]);
+  }, [explorer.id, explorer.projectId, explorer.worktreeId, surfaceInstanceId]);
+
+  useEffect(() => {
+    const previous = previousSurfaceLifecycleStateRef.current;
+    clientLogger.info("Explorer surface lifecycle state observed", {
+      ...explorerFileIntentContext(explorer.id),
+      ...surfaceLifecycleStateRef.current,
+      event: "explorer.surface.lifecycle",
+      lifecycleKind: previous ? "updated" : "initial",
+      operation: "observe-surface",
+      pathChanged: previous !== null && previous.path !== displayedSelectedPath,
+      projectId: explorer.projectId,
+      status: "observed",
+      subsystem: "explorer",
+      surfaceId: explorer.id,
+      surfaceInstanceId,
+      worktreeId: explorer.worktreeId,
+    });
+    previousSurfaceLifecycleStateRef.current = {
+      ...surfaceLifecycleStateRef.current,
+      path: displayedSelectedPath,
+    };
+  }, [
+    active,
+    codeEditorVisibleOnSurface,
+    displayedSelectedPath,
+    explorer.id,
+    explorer.projectId,
+    explorer.worktreeId,
+    keepInlineCodeWarm,
+    surfaceInstanceId,
+    transientFilePath,
+  ]);
 
   useEffect(() => {
     setGraphRootPath(undefined);

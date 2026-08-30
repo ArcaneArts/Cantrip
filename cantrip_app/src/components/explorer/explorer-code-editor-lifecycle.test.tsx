@@ -65,6 +65,7 @@ const frameRuntime = vi.hoisted(() => ({
 
 const logging = vi.hoisted(() => ({
   event: vi.fn(),
+  info: vi.fn(),
   warn: vi.fn(),
 }));
 

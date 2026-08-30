@@ -249,6 +249,50 @@ describe("structured service logs", () => {
     expect(filesystemRecord.context).not.toHaveProperty("path");
   });
 
+  it("preserves safe editor lifecycle diagnostics without persisting file paths", () => {
+    const minimized = minimizeServiceLogRecordInput({
+      ...baseRecord,
+      context: {
+        actionKind: "pin-preview",
+        attachmentReadyAtRequest: true,
+        event: "code.editor.launch.phase",
+        interactionId: "interaction-one",
+        launchKind: "file",
+        operation: "launch-editor",
+        path: "/private/project/src/private-file.ts",
+        phase: "workbench-ready",
+        retained: true,
+        samePath: true,
+        status: "completed",
+        subsystem: "code",
+        workbenchReadyAtRequest: false,
+        workerOnlineAtRequest: true,
+      },
+    });
+
+    expect(minimized.context).toMatchObject({
+      actionKind: "pin-preview",
+      attachmentReadyAtRequest: true,
+      interactionId: "interaction-one",
+      launchKind: "file",
+      phase: "workbench-ready",
+      retained: true,
+      samePath: true,
+      workbenchReadyAtRequest: false,
+      workerOnlineAtRequest: true,
+    });
+    expect(minimized.context).not.toHaveProperty("path");
+
+    const unsafeEnum = minimizeServiceLogRecordInput({
+      ...baseRecord,
+      context: {
+        event: "code.editor.launch.phase",
+        phase: "/private/project/src/private-file.ts",
+      },
+    });
+    expect(unsafeEnum.context).not.toHaveProperty("phase");
+  });
+
   it("persists only stable destination rejection codes", () => {
     const persisted = minimizeServiceLogRecordInput({
       ...baseRecord,

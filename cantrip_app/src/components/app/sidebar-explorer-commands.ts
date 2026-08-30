@@ -23,8 +23,13 @@ import {
   renameExplorerEntry,
   updateExplorerViewState,
 } from "@/lib/api";
+import { clientLogger } from "@/lib/client-log-relay";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { errorMessage as errorText } from "@/lib/error-message";
+import {
+  explorerFileIntentContext,
+  recordExplorerFileIntent,
+} from "@/lib/explorer-lifecycle-trace";
 import {
   moveSidebarPath,
   pinnedExplorerForPath,
@@ -41,6 +46,33 @@ interface MutationOperation<Input> {
   isPending?: boolean;
   mutate(input: Input): void;
   reset(): void;
+}
+
+function logSidebarFilePinPhase({
+  explorer,
+  phase,
+  status,
+  transactionId,
+  ...details
+}: {
+  explorer: ExplorerSummary;
+  phase: string;
+  status: string;
+  transactionId: string;
+} & Record<string, unknown>): void {
+  clientLogger.info("Explorer file pin handoff phase", {
+    ...explorerFileIntentContext(explorer.id),
+    ...details,
+    event: "explorer.file.pin.phase",
+    explorerId: explorer.id,
+    operation: "pin-file",
+    phase,
+    projectId: explorer.projectId,
+    status,
+    subsystem: "explorer",
+    transactionId,
+    worktreeId: explorer.worktreeId,
+  });
 }
 
 export function createSidebarExplorerCommands({
@@ -141,6 +173,14 @@ export function createSidebarExplorerCommands({
     entry: ExplorerEntry,
   ) => {
     if (entry.kind !== "file" || !entry.viewable) return;
+    recordExplorerFileIntent({
+      actionKind: "open-preview",
+      explorerId: explorer.id,
+      projectId: explorer.projectId,
+      samePath:
+        sidebarFilePreview?.explorerId === explorer.id &&
+        sidebarFilePreview.path === entry.path,
+    });
     const pinned = pinnedExplorerForPath({
       explorers: explorers ?? [],
       layout: tabLayout,
@@ -203,11 +243,32 @@ export function createSidebarExplorerCommands({
       path,
       worktreeId: explorer.worktreeId,
     });
+    const currentHandoff = sidebarFilePinHandoffRef.current;
+    const repeatedTransactionId =
+      currentHandoff?.sourceExplorer.id === explorer.id &&
+      currentHandoff.sourcePath === path
+        ? currentHandoff.transactionId
+        : undefined;
+    const requestedTransactionId = repeatedTransactionId ?? crypto.randomUUID();
+    recordExplorerFileIntent({
+      actionKind: "pin-preview",
+      explorerId: explorer.id,
+      projectId: explorer.projectId,
+      samePath:
+        sidebarFilePreview?.explorerId === explorer.id &&
+        sidebarFilePreview.path === path,
+      transactionId: requestedTransactionId,
+    });
     if (pinned) {
+      logSidebarFilePinPhase({
+        explorer,
+        phase: "already-pinned",
+        status: "completed",
+        transactionId: requestedTransactionId,
+      });
       focusPinnedSidebarFile(pinned);
       return;
     }
-    const currentHandoff = sidebarFilePinHandoffRef.current;
     if (currentHandoff) {
       // Double-click emits both click and double-click activity. Treat an
       // exact repeated pin as the same transaction and serialize other pins
@@ -216,8 +277,22 @@ export function createSidebarExplorerCommands({
         currentHandoff.sourceExplorer.id === explorer.id &&
         currentHandoff.sourcePath === path
       ) {
+        logSidebarFilePinPhase({
+          explorer,
+          phase: "duplicate-request",
+          reasonCode: "handoff-in-progress",
+          status: "ignored",
+          transactionId: currentHandoff.transactionId,
+        });
         return;
       }
+      logSidebarFilePinPhase({
+        explorer,
+        phase: "request-blocked",
+        reasonCode: "another-handoff-in-progress",
+        status: "ignored",
+        transactionId: requestedTransactionId,
+      });
       return;
     }
     const handoff: SidebarFilePinHandoffState = {
@@ -226,16 +301,30 @@ export function createSidebarExplorerCommands({
       ready: false,
       sourceExplorer: explorer,
       sourcePath: path,
-      transactionId: crypto.randomUUID(),
+      transactionId: requestedTransactionId,
     };
     sidebarFilePinHandoffRef.current = handoff;
     setSidebarFilePinHandoff(handoff);
+    logSidebarFilePinPhase({
+      explorer,
+      phase: "handoff-created",
+      status: "completed",
+      transactionId: handoff.transactionId,
+    });
     const previewLifecycle =
       sidebarFilePreview?.explorerId === explorer.id &&
       sidebarFilePreview.path === path
         ? sidebarFilePreviewLifecycleRef.current
         : null;
     if (previewLifecycle?.dirty && !(await previewLifecycle.save())) {
+      logSidebarFilePinPhase({
+        dirty: true,
+        explorer,
+        phase: "preview-save",
+        reasonCode: "save-failed",
+        status: "failed",
+        transactionId: handoff.transactionId,
+      });
       if (
         sidebarFilePinHandoffRef.current?.transactionId ===
         handoff.transactionId
@@ -254,6 +343,12 @@ export function createSidebarExplorerCommands({
       destinationExplorerId: handoff.destinationExplorerId,
       groupId: sidebarFileGroupId(explorer),
       path,
+      transactionId: handoff.transactionId,
+    });
+    logSidebarFilePinPhase({
+      explorer,
+      phase: "mutation-dispatched",
+      status: "completed",
       transactionId: handoff.transactionId,
     });
   };
@@ -478,6 +573,14 @@ export function createSidebarExplorerCommands({
     ) {
       return;
     }
+    if (sidebarFilePreview) {
+      recordExplorerFileIntent({
+        actionKind: "close-preview",
+        explorerId: sidebarFilePreview.explorerId,
+        projectId: sidebarFilePreview.projectId,
+        samePath: true,
+      });
+    }
     const handoff = sidebarFilePinHandoffRef.current;
     if (
       handoff &&
@@ -491,6 +594,12 @@ export function createSidebarExplorerCommands({
   };
   const activateSidebarFilePreview = () => {
     if (!sidebarFilePreview) return;
+    recordExplorerFileIntent({
+      actionKind: "activate-preview",
+      explorerId: sidebarFilePreview.explorerId,
+      projectId: sidebarFilePreview.projectId,
+      samePath: true,
+    });
     if (sidebarFilePreview.active) return;
     if (tabLayout && sidebarFilePreview.groupId) {
       setWorkspaceSelection((current) =>
