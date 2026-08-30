@@ -4,6 +4,7 @@ import { ExplorerCodeLaunchTiming } from "./explorer-code-launch-timing";
 
 const context = {
   attachmentReadyAtRequest: false,
+  editorInstanceId: "editor-one",
   explorerId: "explorer-one",
   launchKind: "file" as const,
   workerId: "worker-one",

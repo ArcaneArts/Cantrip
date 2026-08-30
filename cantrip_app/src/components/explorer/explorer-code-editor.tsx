@@ -57,6 +57,7 @@ import {
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
+import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 import { SerialTaskQueue } from "@/lib/serial-task-queue";
 import {
   retireAttachmentBestEffort,
@@ -291,6 +292,9 @@ export function ExplorerCodeEditor({
   workerId: string;
   workerOnline?: boolean;
 }) {
+  const editorInstanceId = useRef(crypto.randomUUID()).current;
+  const editorIdentityRef = useRef({ explorerId, workerId, worktreeId });
+  editorIdentityRef.current = { explorerId, workerId, worktreeId };
   const [preferredAttachment, setPreferredAttachment] =
     useState<PreferredCodeAttachment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -370,6 +374,20 @@ export function ExplorerCodeEditor({
     );
   const prepareClose = useCallback((): Promise<void> => {
     if (closePromiseRef.current) return closePromiseRef.current;
+    const identity = editorIdentityRef.current;
+    clientLogger.info("Explorer Code attachment retirement requested", {
+      ...explorerFileIntentContext(identity.explorerId),
+      editorInstanceId,
+      event: "code.editor.attachment.retirement-requested",
+      explorerId: identity.explorerId,
+      operation: "retire-attachment",
+      reasonCode: "surface-closing",
+      retirementKind: "prepared-close",
+      status: "started",
+      subsystem: "code",
+      workerId: identity.workerId,
+      worktreeId: identity.worktreeId,
+    });
     closingRef.current = true;
     const committed = new Promise<void>((resolve) => {
       closeCommitResolverRef.current = resolve;
@@ -383,15 +401,28 @@ export function ExplorerCodeEditor({
     })();
     closePromiseRef.current = closePromise;
     return closePromise;
-  }, []);
+  }, [editorInstanceId]);
   const cancelClose = useCallback(() => {
     if (!closingRef.current) return;
+    const identity = editorIdentityRef.current;
+    clientLogger.info("Explorer Code prepared close cancelled", {
+      ...explorerFileIntentContext(identity.explorerId),
+      editorInstanceId,
+      event: "code.editor.close.cancelled",
+      explorerId: identity.explorerId,
+      operation: "cancel-close",
+      reasonCode: "surface-retained",
+      status: "cancelled",
+      subsystem: "code",
+      workerId: identity.workerId,
+      worktreeId: identity.worktreeId,
+    });
     closingRef.current = false;
     closeCommitResolverRef.current?.();
     closeCommitResolverRef.current = null;
     closePromiseRef.current = null;
     setClosing(false);
-  }, []);
+  }, [editorInstanceId]);
   const pathRef = useRef(path);
   const bindingKey = explorerCodeEditorBindingKey({
     explorerId,
@@ -468,6 +499,20 @@ export function ExplorerCodeEditor({
     readyKey !== null &&
     readyKey === requestedReadyKey,
   );
+  const editorDiagnosticStateRef = useRef({
+    active,
+    closing,
+    hasAttachment: preferredAttachment !== null,
+    pathPresent: path !== null,
+    ready,
+  });
+  editorDiagnosticStateRef.current = {
+    active,
+    closing,
+    hasAttachment: preferredAttachment !== null,
+    pathPresent: path !== null,
+    ready,
+  };
 
   useLayoutEffect(() => {
     frameReadyRef.current = frameReady;
@@ -477,7 +522,9 @@ export function ExplorerCodeEditor({
     (requestedPath: string | null, previousReasonCode: string) => {
       launchTimingRef.current?.cancel(previousReasonCode);
       launchTimingRef.current = new ExplorerCodeLaunchTiming({
+        ...explorerFileIntentContext(explorerId),
         attachmentReadyAtRequest: preferredAttachmentRef.current !== null,
+        editorInstanceId,
         explorerId,
         launchKind: requestedPath === null ? "prewarm" : "file",
         workerId,
@@ -486,20 +533,72 @@ export function ExplorerCodeEditor({
         worktreeId,
       });
     },
-    [explorerId, workerId, worktreeId],
+    [editorInstanceId, explorerId, workerId, worktreeId],
   );
 
   useLayoutEffect(() => {
     startLaunchTiming(path, "request-superseded");
   }, [path, startLaunchTiming]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    clientLogger.info("Explorer Code editor mounted", {
+      ...explorerFileIntentContext(explorerId),
+      ...editorDiagnosticStateRef.current,
+      editorInstanceId,
+      event: "code.editor.lifecycle.mounted",
+      explorerId,
+      lifecycleKind: "mounted",
+      operation: "mount-editor",
+      status: "completed",
+      subsystem: "code",
+      workerId,
+      worktreeId,
+    });
+    return () => {
       launchTimingRef.current?.cancel("surface-unmounted");
       launchTimingRef.current = null;
-    },
-    [],
-  );
+      clientLogger.info("Explorer Code editor unmounted", {
+        ...explorerFileIntentContext(explorerId),
+        ...editorDiagnosticStateRef.current,
+        editorInstanceId,
+        event: "code.editor.lifecycle.unmounted",
+        explorerId,
+        lifecycleKind: "unmounted",
+        operation: "unmount-editor",
+        reasonCode: "react-unmount",
+        status: "completed",
+        subsystem: "code",
+        workerId,
+        worktreeId,
+      });
+    };
+  }, [editorInstanceId, explorerId, workerId, worktreeId]);
+
+  useEffect(() => {
+    clientLogger.info("Explorer Code editor lifecycle state observed", {
+      ...explorerFileIntentContext(explorerId),
+      ...editorDiagnosticStateRef.current,
+      editorInstanceId,
+      event: "code.editor.lifecycle.observed",
+      explorerId,
+      lifecycleKind: "updated",
+      operation: "observe-editor",
+      status: "observed",
+      subsystem: "code",
+      workerId,
+      worktreeId,
+    });
+  }, [
+    active,
+    closing,
+    editorInstanceId,
+    explorerId,
+    path,
+    preferredAttachment,
+    ready,
+    workerId,
+    worktreeId,
+  ]);
 
   useEffect(() => {
     if (!ready || !preferredAttachment) return;
@@ -755,6 +854,18 @@ export function ExplorerCodeEditor({
       const connectionAppearance = appearanceRef.current;
       let failurePhase: ExplorerCodeLaunchPhase = "session-route";
       try {
+        clientLogger.info("Explorer Code attachment replacement requested", {
+          ...explorerFileIntentContext(explorerId),
+          editorInstanceId,
+          event: "code.editor.attachment.replace-requested",
+          explorerId,
+          operation: "replace-attachment",
+          reasonCode: "connection-effect-started",
+          status: "started",
+          subsystem: "code",
+          workerId,
+          worktreeId,
+        });
         const preferred = await attachmentLifecycleRef.current!.replace(
           async () => {
             const sharedTiming =
@@ -832,6 +943,20 @@ export function ExplorerCodeEditor({
             attachmentId: preferred.attachment.attachmentId,
           };
           setPreferredAttachment(preferred);
+          clientLogger.info("Explorer Code attachment bound", {
+            ...explorerFileIntentContext(explorerId),
+            attachmentId: preferred.attachment.attachmentId,
+            editorInstanceId,
+            event: "code.editor.attachment.bound",
+            explorerId,
+            operation: "bind-attachment",
+            sessionId: preferred.attachment.sessionId,
+            status: "completed",
+            subsystem: "code",
+            transportKind: preferred.transportKind,
+            workerId,
+            worktreeId,
+          });
         }
       } catch (connectError) {
         if (!cancelled && !closingRef.current) {
@@ -898,6 +1023,19 @@ export function ExplorerCodeEditor({
         connectionRetryTimerRef.current = null;
       }
       connectionInFlightRef.current = false;
+      clientLogger.info("Explorer Code attachment retirement requested", {
+        ...explorerFileIntentContext(explorerId),
+        editorInstanceId,
+        event: "code.editor.attachment.retirement-requested",
+        explorerId,
+        operation: "retire-attachment",
+        reasonCode: "connection-effect-cleanup",
+        retirementKind: "effect-cleanup",
+        status: "started",
+        subsystem: "code",
+        workerId,
+        worktreeId,
+      });
       void attachmentLifecycleRef.current!.retire(
         "Explorer Code connection superseded.",
       );
@@ -906,6 +1044,7 @@ export function ExplorerCodeEditor({
     bindingKey,
     closing,
     connectionAttempt,
+    editorInstanceId,
     explorerId,
     requestConnectionRetry,
     workerId,
@@ -1251,6 +1390,18 @@ export function ExplorerCodeEditor({
         frameRetryTimerRef.current = null;
       }
       setError(null);
+      clientLogger.info("Explorer Code workbench ready message received", {
+        ...explorerFileIntentContext(explorerId),
+        attachmentId: preferredAttachmentRef.current?.attachment.attachmentId,
+        editorInstanceId,
+        event: "code.editor.workbench.ready-received",
+        explorerId,
+        operation: "receive-workbench-ready",
+        status: "completed",
+        subsystem: "code",
+        workerId,
+        worktreeId,
+      });
       if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
         workbenchReadyTimingRef.current.timing.complete({
           attachmentId: preferredAttachmentRef.current?.attachment.attachmentId,
@@ -1282,7 +1433,16 @@ export function ExplorerCodeEditor({
       clearTimeout(timeout);
       window.removeEventListener("message", receiveReady);
     };
-  }, [bindingKey, frameFailureNonce, frameMount, scheduleFrameRetry]);
+  }, [
+    bindingKey,
+    editorInstanceId,
+    explorerId,
+    frameFailureNonce,
+    frameMount,
+    scheduleFrameRetry,
+    workerId,
+    worktreeId,
+  ]);
 
   useEffect(() => {
     if (!preferredAttachment || !frameReady || !frameMount) return;
@@ -1581,12 +1741,24 @@ export function ExplorerCodeEditor({
             scheduleFrameRetry(bindingKey, frameMount.nonce);
           }}
           onLoad={() => {
-            if (
-              !frameMount ||
-              !frameLoadsRef.current.observe(frameMount.nonce)
-            ) {
+            if (!frameMount) {
               return;
             }
+            const repeated = frameLoadsRef.current.observe(frameMount.nonce);
+            clientLogger.info("Explorer Code frame document loaded", {
+              ...explorerFileIntentContext(explorerId),
+              attachmentId: preferredAttachment.attachment.attachmentId,
+              attemptKind: repeated ? "repeated-document" : "initial-document",
+              editorInstanceId,
+              event: "code.editor.frame.loaded",
+              explorerId,
+              operation: "load-frame-document",
+              status: "completed",
+              subsystem: "code",
+              workerId,
+              worktreeId,
+            });
+            if (!repeated) return;
             if (frameDocumentTimingRef.current?.nonce === frameMount.nonce) {
               frameDocumentTimingRef.current.timing.complete({
                 attachmentId: preferredAttachment.attachment.attachmentId,

@@ -1,11 +1,13 @@
 import type { CodeAppearance } from "@cantrip/protocol";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ExplorerCodeEditor,
   type ExplorerCodeEditorLifecycleActions,
 } from "@/components/explorer/explorer-code-editor";
 import { INLINE_CODE_WORKBENCH_RETENTION_MS } from "@/components/explorer/use-retained-inline-workbench";
+import { clientLogger } from "@/lib/client-log-relay";
+import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 import { cn } from "@/lib/utils";
 
 export function RetainedExplorerCodeEditor({
@@ -33,6 +35,7 @@ export function RetainedExplorerCodeEditor({
   workerId: string;
   worktreeId: string;
 }) {
+  const retainerInstanceId = useRef(crypto.randomUUID()).current;
   const [retainedPath, setRetainedPath] = useState(path);
 
   useEffect(() => {
@@ -54,6 +57,79 @@ export function RetainedExplorerCodeEditor({
   }, [path, retained, retainedPath]);
 
   const workbenchPath = retained ? (path ?? retainedPath) : null;
+  const diagnosticState = {
+    pathPresent: workbenchPath !== null,
+    prewarm,
+    retained,
+    retainedPathPresent: retainedPath !== null,
+    visible,
+  };
+  const diagnosticStateRef = useRef(diagnosticState);
+  diagnosticStateRef.current = diagnosticState;
+  const previousPathRef = useRef(workbenchPath);
+
+  useEffect(() => {
+    clientLogger.info("Explorer Code retainer mounted", {
+      ...explorerFileIntentContext(explorerId),
+      ...diagnosticStateRef.current,
+      event: "code.editor.retainer.mounted",
+      explorerId,
+      lifecycleKind: "mounted",
+      operation: "retain-editor",
+      retainerInstanceId,
+      status: "completed",
+      subsystem: "code",
+      workerId,
+      worktreeId,
+    });
+    return () => {
+      clientLogger.info("Explorer Code retainer unmounted", {
+        ...explorerFileIntentContext(explorerId),
+        ...diagnosticStateRef.current,
+        event: "code.editor.retainer.unmounted",
+        explorerId,
+        lifecycleKind: "unmounted",
+        operation: "release-editor",
+        reasonCode: "react-unmount",
+        retainerInstanceId,
+        status: "completed",
+        subsystem: "code",
+        workerId,
+        worktreeId,
+      });
+    };
+  }, [explorerId, retainerInstanceId, workerId, worktreeId]);
+
+  useEffect(() => {
+    const previousPath = previousPathRef.current;
+    clientLogger.info("Explorer Code retention state observed", {
+      ...explorerFileIntentContext(explorerId),
+      ...diagnosticStateRef.current,
+      event: "code.editor.retention.observed",
+      explorerId,
+      lifecycleKind: "updated",
+      operation: "retain-editor",
+      pathChanged: previousPath !== workbenchPath,
+      retainerInstanceId,
+      status: "observed",
+      subsystem: "code",
+      workerId,
+      worktreeId,
+    });
+    previousPathRef.current = workbenchPath;
+  }, [
+    explorerId,
+    path,
+    prewarm,
+    retained,
+    retainedPath,
+    retainerInstanceId,
+    visible,
+    workbenchPath,
+    workerId,
+    worktreeId,
+  ]);
+
   if (!retained || (!prewarm && !workbenchPath)) return null;
 
   return (

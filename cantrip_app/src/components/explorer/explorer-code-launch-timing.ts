@@ -13,9 +13,14 @@ export type ExplorerCodeLaunchPhase =
   | "file-open";
 
 export interface ExplorerCodeLaunchContext {
+  actionKind?: string;
   attachmentReadyAtRequest: boolean;
+  editorInstanceId: string;
   explorerId: string;
+  interactionId?: string;
+  intentAgeMs?: number;
   launchKind: ExplorerCodeLaunchKind;
+  requestedAtMs?: number;
   workerId: string;
   workerOnlineAtRequest: boolean;
   workbenchReadyAtRequest: boolean;
