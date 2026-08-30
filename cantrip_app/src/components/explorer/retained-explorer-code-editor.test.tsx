@@ -162,6 +162,14 @@ describe("RetainedExplorerCodeEditor", () => {
     });
     expect(mountedEditor.props["data-editor-path"]).toBe("src/inactive.ts");
     expect(mountedEditor.props["data-editor-active"]).toBe(false);
+    const retainedSurface = renderer.root.findByProps({
+      "data-slot": "retained-explorer-code-editor",
+    });
+    expect(retainedSurface.props.inert).toBe(true);
+    expect(retainedSurface.props.className).toContain("invisible");
+    expect(retainedSurface.props.className.split(/\s+/)).not.toContain(
+      "hidden",
+    );
 
     await act(async () => renderer.unmount());
   });

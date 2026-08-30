@@ -137,7 +137,13 @@ export function RetainedExplorerCodeEditor({
   return (
     <div
       aria-hidden={!visible}
-      className={cn("min-h-0 flex-1", visible ? "flex" : "hidden")}
+      inert={visible ? undefined : true}
+      className={cn(
+        "min-h-0 flex-1",
+        visible
+          ? "flex"
+          : "pointer-events-none invisible absolute inset-0 flex",
+      )}
       data-slot="retained-explorer-code-editor"
     >
       <ExplorerCodeEditor
