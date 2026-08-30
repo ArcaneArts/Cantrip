@@ -254,28 +254,25 @@ export function ProjectSwitcher({
             </Command>
           </PopoverContent>
         </Popover>
-        <ProjectSurfaceCreateMenu
-          align="end"
-          creatingKinds={creatingTabKinds}
-          onCreate={onCreateTab}
-          placement={tabPlacement}
-          trigger={
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="size-7 shrink-0"
-              aria-label={
-                selectedProject
-                  ? `Add tab to ${selectedProject.name}`
-                  : "Select a project before adding a tab"
-              }
-              disabled={!selectedProject}
-            >
-              <Plus className="size-4" />
-            </Button>
-          }
-        />
+        {selectedProject ? (
+          <ProjectSurfaceCreateMenu
+            align="end"
+            creatingKinds={creatingTabKinds}
+            onCreate={onCreateTab}
+            placement={tabPlacement}
+            trigger={
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="size-7 shrink-0"
+                aria-label={`Add tab to ${selectedProject.name}`}
+              >
+                <Plus className="size-4" />
+              </Button>
+            }
+          />
+        ) : null}
       </div>
 
       <WorkspaceCreateDialog

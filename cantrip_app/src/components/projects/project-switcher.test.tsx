@@ -49,4 +49,25 @@ describe("project switcher", () => {
     expect(markup).toContain('aria-label="Add tab to CareMap"');
     expect(markup).not.toContain('aria-label="Add project to Client work"');
   });
+
+  it("hides the add-tab action when no project is selected", () => {
+    const markup = renderToStaticMarkup(
+      <ProjectSwitcher
+        activeWorkspaceId="client"
+        projects={projects}
+        selectedProjectId={null}
+        workspaces={workspaces}
+        onAddProject={vi.fn()}
+        onCreateTab={vi.fn()}
+        onCreateWorkspace={vi.fn()}
+        onManageWorkspaces={vi.fn()}
+        onSelectProject={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Select project");
+    expect(markup).not.toContain('aria-label="Add tab');
+    expect(markup).not.toContain("Select a project before adding a tab");
+  });
 });
