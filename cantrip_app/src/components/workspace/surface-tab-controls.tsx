@@ -1,6 +1,6 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { CopyPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,8 +24,15 @@ export function InlineRenameLabel({
   onSubmit(): void;
   value: string;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.select();
+  }, []);
+
   return (
     <input
+      ref={inputRef}
       autoFocus
       aria-label={ariaLabel}
       data-elite-ignore=""
