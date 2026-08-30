@@ -40,6 +40,12 @@ describe("server configuration safety", () => {
       ollamaBaseUrl: "http://127.0.0.1:11434/v1",
       licenseWhitelistEnabled: true,
     });
+    expect(readServerConfig().appOrigins).toEqual(
+      expect.arrayContaining([
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+      ]),
+    );
   });
 
   it("refuses to expose the no-auth foundation beyond loopback", () => {

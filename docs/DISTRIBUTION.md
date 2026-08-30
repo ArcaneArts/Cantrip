@@ -483,6 +483,12 @@ stores, so sharing one anonymous encryption registry would lock whichever
 client did not initialize it. Each lane remains stable across restarts without
 weakening the production or packaged-client encryption model.
 
+Browser development automatically creates a built-in Local server profile for
+the current Vite origin and reaches the development API through Vite's loopback
+proxy. Both `127.0.0.1:5173` and `localhost:5173` are approved local application
+origins, so opening either loopback spelling does not fall into remote-server
+onboarding.
+
 Both `pnpm dev` and `pnpm devtop` ensure the fingerprinted Cantrip Code build is
 available. A matching cache is reused immediately; after cloning or whenever
 the pinned editor, patchset, product configuration, extension source, or native

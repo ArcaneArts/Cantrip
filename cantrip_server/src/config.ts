@@ -18,7 +18,7 @@ import {
 const DEFAULT_WORKER_TOKEN = "cantrip-local-development";
 const DEFAULT_WORKER_LINK_STUN_URLS = ["stun:stun.cloudflare.com:3478"];
 const DEFAULT_APP_ORIGINS =
-  "http://127.0.0.1:5173,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost,capacitor://localhost";
+  "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost,capacitor://localhost";
 const TRUST_PROXY_ALIASES = new Set(["linklocal", "loopback", "uniquelocal"]);
 
 function readPort(

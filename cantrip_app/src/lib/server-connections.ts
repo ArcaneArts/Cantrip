@@ -219,6 +219,7 @@ export async function initializeServerConnections(): Promise<void> {
   const startedAt = performance.now();
   const stored = newestStoredConnections(await readServerConnectionPayloads());
   const desktopApp = isTauri();
+  const localOnlyDevelopment = isLocalOnlyDevelopmentMode();
   let localUrl = "";
   if (desktopApp) {
     try {
@@ -229,27 +230,29 @@ export async function initializeServerConnections(): Promise<void> {
       // optional embedded service is unavailable during desktop startup.
       localUrl = "";
     }
+  } else if (localOnlyDevelopment) {
+    localUrl = window.location.origin;
   }
-  const connections: ServerConnection[] = desktopApp
-    ? [
-        {
-          accountId: null,
-          id: localId,
-          kind: "local",
-          name: "Local",
-          url: localUrl,
-        },
-        ...(stored?.connections ?? []),
-      ]
-    : [...(stored?.connections ?? [])];
+  const connections: ServerConnection[] =
+    desktopApp || localOnlyDevelopment
+      ? [
+          {
+            accountId: null,
+            id: localId,
+            kind: "local",
+            name: "Local",
+            url: localUrl,
+          },
+          ...(stored?.connections ?? []),
+        ]
+      : [...(stored?.connections ?? [])];
   state = {
-    activeId:
-      desktopApp && isLocalOnlyDevelopmentMode()
-        ? localId
-        : stored?.activeId &&
-            connections.some((item) => item.id === stored.activeId)
-          ? stored.activeId
-          : (connections[0]?.id ?? ""),
+    activeId: localOnlyDevelopment
+      ? localId
+      : stored?.activeId &&
+          connections.some((item) => item.id === stored.activeId)
+        ? stored.activeId
+        : (connections[0]?.id ?? ""),
     connections,
     updatedAt: stored?.updatedAt ?? 0,
     version: 1,

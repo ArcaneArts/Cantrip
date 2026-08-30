@@ -631,7 +631,7 @@ pnpm test:e2e
 
 Suggested local defaults:
 
-- Vite app: `http://localhost:5173`;
+- Vite app: `http://127.0.0.1:5173` (`localhost:5173` is also accepted);
 - server/API: `http://localhost:4310`;
 - browser `pnpm dev` PGlite and worker state: `.cantrip/browser-dev/`, gitignored;
 - Tauri `pnpm devtop` PGlite and worker state: `.cantrip/dev/`, gitignored and paired with that worktree's persisted development app identity;
