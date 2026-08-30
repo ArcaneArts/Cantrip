@@ -242,7 +242,7 @@ describe("Cantrip workbench bridge", () => {
     expect(Date.now() - startedAt).toBeLessThan(250);
   });
 
-  it("retires an unresponsive surface and replays its theme on reconnect", async () => {
+  it("keeps a surface connected when theme delivery stalls and replays the latest theme", async () => {
     const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 25 });
     bridges.push(bridge);
     await bridge.start();
@@ -250,15 +250,21 @@ describe("Cantrip workbench bridge", () => {
     const stale = await openSocket(url);
     await nextRequest(stale);
 
+    const stalledTheme = nextRequest(stale);
     await expect(
       bridge.setTheme("recovering-session", "high-contrast-light"),
     ).resolves.toBeUndefined();
-    await new Promise<void>((resolve) => {
-      if (stale.readyState === WebSocket.CLOSED) resolve();
-      else stale.once("close", () => resolve());
+    expect(await stalledTheme).toMatchObject({
+      method: "setTheme",
+      params: { appearance: "high-contrast-light" },
     });
-    expect(bridge.connected("recovering-session")).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(stale.readyState).toBe(WebSocket.OPEN);
+    expect(bridge.connected("recovering-session")).toBe(true);
 
+    const staleClosed = waitForClose(stale);
+    stale.close();
+    await staleClosed;
     const recovered = await openSocket(url);
     const recoveredTheme = await nextRequest(recovered);
     expect(recoveredTheme).toMatchObject({

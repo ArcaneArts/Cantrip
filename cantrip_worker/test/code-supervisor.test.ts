@@ -604,7 +604,7 @@ describe("Cantrip Code supervisor", () => {
     bridge.socket.close();
   });
 
-  it.each(["openFile", "setPresentation", "setTheme"] as const)(
+  it.each(["openFile", "setPresentation"] as const)(
     "invalidates an in-flight %s mutation when stop arrives",
     async (mutationKind) => {
       const { dataDirectory, repository, supervisor } = await fixture();
@@ -622,9 +622,7 @@ describe("Cantrip Code supervisor", () => {
       const mutation =
         mutationKind === "openFile"
           ? supervisor.openFile(sessionId, "next.ts")
-          : mutationKind === "setPresentation"
-            ? supervisor.setPresentation(sessionId, "editor")
-            : supervisor.setTheme(sessionId, "follow-cantrip", "light");
+          : supervisor.setPresentation(sessionId, "editor");
       const request = await blockedRequest;
       expect(request.method).toBe(mutationKind);
 
@@ -645,6 +643,41 @@ describe("Cantrip Code supervisor", () => {
       bridge.socket.close();
     },
   );
+
+  it("does not let unacknowledged theme delivery block presentation", async () => {
+    const { repository, supervisor } = await fixture();
+    const sessionId = "theme-before-presentation";
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    const target = supervisor.proxyTarget(sessionId);
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, string> };
+    const bridge = await openControlledBridge(
+      workspace.settings["cantrip.bridgeUrl"]!,
+    );
+
+    const themeRequestPromise = bridge.nextRequest();
+    const themeUpdate = supervisor.setTheme(
+      sessionId,
+      "follow-cantrip",
+      "light",
+    );
+    const themeRequest = await themeRequestPromise;
+    expect(themeRequest.method).toBe("setTheme");
+    await expect(themeUpdate).resolves.toMatchObject({ status: "running" });
+
+    const presentationRequestPromise = bridge.nextRequest();
+    const presentationUpdate = supervisor.setPresentation(sessionId, "editor");
+    const presentationRequest = await presentationRequestPromise;
+    expect(presentationRequest.method).toBe("setPresentation");
+    bridge.respond(presentationRequest);
+    await expect(presentationUpdate).resolves.toMatchObject({
+      status: "running",
+    });
+
+    bridge.respond(themeRequest);
+    bridge.socket.close();
+  });
 
   it("cancels a disconnected open-file wait when stop arrives", async () => {
     const { repository, supervisor } = await fixture();
