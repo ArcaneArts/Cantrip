@@ -1,74 +1,10 @@
-const languageByExtension: Record<string, string> = {
-  bat: "bat",
-  c: "cpp",
-  cc: "cpp",
-  conf: "ini",
-  config: "ini",
-  cpp: "cpp",
-  cs: "csharp",
-  css: "css",
-  csv: "plaintext",
-  dart: "dart",
-  env: "ini",
-  go: "go",
-  gradle: "plaintext",
-  graphql: "graphql",
-  h: "cpp",
-  hpp: "cpp",
-  html: "html",
-  ignore: "plaintext",
-  ini: "ini",
-  java: "java",
-  js: "javascript",
-  json: "json",
-  jsx: "javascript",
-  kt: "kotlin",
-  kts: "kotlin",
-  less: "less",
-  log: "plaintext",
-  lua: "lua",
-  markdown: "markdown",
-  md: "markdown",
-  mdx: "mdx",
-  mjs: "javascript",
-  properties: "ini",
-  py: "python",
-  rb: "ruby",
-  rs: "rust",
-  scss: "scss",
-  sh: "shell",
-  sol: "sol",
-  sql: "sql",
-  swift: "swift",
-  toml: "ini",
-  ts: "typescript",
-  tsx: "typescript",
-  txt: "plaintext",
-  vue: "html",
-  xml: "xml",
-  yaml: "yaml",
-  yml: "yaml",
-};
-
-const languageByFilename: Record<string, string> = {
-  ".dockerignore": "plaintext",
-  ".editorconfig": "ini",
-  ".gitattributes": "plaintext",
-  ".gitignore": "plaintext",
-  ".npmrc": "ini",
-  dockerfile: "dockerfile",
-  gradlew: "shell",
-  license: "plaintext",
-  makefile: "plaintext",
-  readme: "plaintext",
-};
+import {
+  explorerTextLanguageForPath,
+  type ExplorerFileMode,
+} from "@cantrip/protocol";
 
 export function monacoLanguageForPath(path: string): string | null {
-  const filename = path.split("/").at(-1)?.toLowerCase() ?? "";
-  const languageForFilename = languageByFilename[filename];
-  if (languageForFilename) return languageForFilename;
-  const extension = filename.includes(".") ? filename.split(".").at(-1) : null;
-  return extension ? (languageByExtension[extension] ?? null) : null;
+  return explorerTextLanguageForPath(path);
 }
 
 export function monacoModelPath(explorerId: string, path: string): string {
@@ -116,4 +52,3 @@ export function usesCantripCodeEditor(
 ): boolean {
   return mode === "edit" && monacoLanguageForPath(path) !== null;
 }
-import type { ExplorerFileMode } from "@cantrip/protocol";

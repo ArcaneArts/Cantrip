@@ -904,19 +904,26 @@ fn reveal_native_target(target: &NativeRevealTarget) -> Result<(), String> {
 
 #[cfg(windows)]
 fn reveal_native_target(target: &NativeRevealTarget) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
 
-    let output = Command::new("explorer.exe")
-        .arg(windows_reveal_argument(target))
+    let mut command = Command::new("explorer.exe");
+    if target.kind == NativeRevealTargetKind::File {
+        // Explorer's `/select,` switch is not a normal argv token. Passing it
+        // through Command::arg quotes the entire token when the path contains
+        // spaces, which makes the shell ignore the switch. Preserve the
+        // documented `/select,"path"` command-line form verbatim.
+        command.raw_arg(windows_reveal_argument(target));
+    } else {
+        command.arg(windows_reveal_argument(target));
+    }
+    command
+        .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| format!("Could not start File Explorer: {error}"))?;
-    output
-        .status
-        .success()
-        .then_some(())
-        .ok_or_else(|| process_failure("File Explorer could not reveal the project entry", &output))
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not start File Explorer: {error}"))
 }
 
 #[cfg(any(windows, test))]
@@ -925,8 +932,9 @@ fn windows_reveal_argument(target: &NativeRevealTarget) -> std::ffi::OsString {
     if target.kind == NativeRevealTargetKind::Directory {
         return path.as_os_str().to_owned();
     }
-    let mut selection = std::ffi::OsString::from("/select,");
+    let mut selection = std::ffi::OsString::from("/select,\"");
     selection.push(path);
+    selection.push("\"");
     selection
 }
 
@@ -1075,7 +1083,7 @@ mod tests {
         );
         assert!(windows_reveal_argument(&file_target)
             .to_string_lossy()
-            .starts_with("/select,"));
+            .starts_with("/select,\""));
 
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -1098,7 +1106,7 @@ mod tests {
         };
         assert_eq!(
             windows_reveal_argument(&file),
-            std::ffi::OsString::from(r"/select,C:\Users\example\Cantrip\README.md")
+            std::ffi::OsString::from(r#"/select,"C:\Users\example\Cantrip\README.md""#)
         );
     }
 

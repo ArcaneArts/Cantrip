@@ -142,15 +142,22 @@ export async function coordinateDesktopProjectReveal(
 }
 
 export async function coordinateDesktopProjectRevealPreference(
-  preferLocalFolder: boolean,
+  requireLocalFolder: boolean,
   operations: {
     revealLocalFolder(): Promise<LocalProjectRevealResult | boolean>;
     revealNetworkShare(): Promise<void>;
   },
 ): Promise<void> {
-  if (preferLocalFolder) {
-    const result = await operations.revealLocalFolder();
-    if (result === "opened" || result === true) return;
+  let result: LocalProjectRevealResult | boolean;
+  try {
+    result = await operations.revealLocalFolder();
+  } catch (error) {
+    if (requireLocalFolder) throw error;
+    await operations.revealNetworkShare();
+    return;
+  }
+  if (result === "opened" || result === true) return;
+  if (requireLocalFolder) {
     if (result === false) {
       throw new Error("The local folder is not available on this desktop.");
     }

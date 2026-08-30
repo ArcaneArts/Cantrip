@@ -46,6 +46,8 @@ describe("project explorer", () => {
     directories.push(root);
     await mkdir(path.join(root, "src"));
     await writeFile(path.join(root, "README.md"), "# Explorer\n");
+    await writeFile(path.join(root, "setup.ps1"), "Write-Output 'ready'\n");
+    await writeFile(path.join(root, "Cantrip.csproj"), "<Project />\n");
     await writeFile(path.join(root, "image.png"), Buffer.from([0, 1, 2]));
     await writeFile(path.join(root, "sound.mp3"), Buffer.from([3, 4]));
     await writeFile(path.join(root, "video.mp4"), Buffer.from([5, 6, 7]));
@@ -53,8 +55,10 @@ describe("project explorer", () => {
     const directory = await listExplorerDirectory(root, "");
     expect(directory.entries.map(({ name }) => name)).toEqual([
       "src",
+      "Cantrip.csproj",
       "image.png",
       "README.md",
+      "setup.ps1",
       "sound.mp3",
       "video.mp4",
     ]);
@@ -74,6 +78,12 @@ describe("project explorer", () => {
       directory.entries.find(({ name }) => name === "sound.mp3"),
     ).toMatchObject({ viewable: true });
     expect(
+      directory.entries.find(({ name }) => name === "setup.ps1"),
+    ).toMatchObject({ viewable: true, markdown: false });
+    expect(
+      directory.entries.find(({ name }) => name === "Cantrip.csproj"),
+    ).toMatchObject({ viewable: true, markdown: false });
+    expect(
       directory.entries.find(({ name }) => name === "video.mp4"),
     ).toMatchObject({ viewable: true });
     const original = await readExplorerFile(root, "README.md");
@@ -82,6 +92,9 @@ describe("project explorer", () => {
       markdown: true,
     });
     expect(original.version).toMatch(/^[a-f0-9]{64}$/u);
+    await expect(readExplorerFile(root, "setup.ps1")).resolves.toMatchObject({
+      content: "Write-Output 'ready'\n",
+    });
     const saved = await writeExplorerFile(
       root,
       "README.md",

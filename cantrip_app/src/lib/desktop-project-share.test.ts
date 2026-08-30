@@ -101,7 +101,7 @@ describe("desktop project reveal", () => {
     expect(revealNetworkShare).not.toHaveBeenCalled();
   });
 
-  it("opens the network share directly without a local-folder preference", async () => {
+  it("uses the local worker path automatically when this desktop owns it", async () => {
     const revealLocalFolder = vi.fn().mockResolvedValue("opened");
     const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
 
@@ -110,7 +110,32 @@ describe("desktop project reveal", () => {
       revealNetworkShare,
     });
 
-    expect(revealLocalFolder).not.toHaveBeenCalled();
+    expect(revealLocalFolder).toHaveBeenCalledOnce();
+    expect(revealNetworkShare).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the network share when the worker is remote", async () => {
+    const revealLocalFolder = vi.fn().mockResolvedValue("worker-not-local");
+    const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
+
+    await coordinateDesktopProjectRevealPreference(false, {
+      revealLocalFolder,
+      revealNetworkShare,
+    });
+
+    expect(revealLocalFolder).toHaveBeenCalledOnce();
+    expect(revealNetworkShare).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to the network share when the local bridge fails", async () => {
+    const revealLocalFolder = vi.fn().mockRejectedValue(new Error("offline"));
+    const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
+
+    await coordinateDesktopProjectRevealPreference(false, {
+      revealLocalFolder,
+      revealNetworkShare,
+    });
+
     expect(revealNetworkShare).toHaveBeenCalledOnce();
   });
 

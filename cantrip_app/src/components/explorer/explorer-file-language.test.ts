@@ -14,6 +14,10 @@ describe("explorer file editing", () => {
     expect(monacoLanguageForPath("src/App.tsx")).toBe("typescript");
     expect(monacoLanguageForPath("Dockerfile")).toBe("dockerfile");
     expect(monacoLanguageForPath("contracts/Token.sol")).toBe("sol");
+    expect(monacoLanguageForPath("scripts/setup.ps1")).toBe("powershell");
+    expect(monacoLanguageForPath("Cantrip.csproj")).toBe("xml");
+    expect(monacoLanguageForPath("Cantrip.sln")).toBe("plaintext");
+    expect(monacoLanguageForPath("build.cmd")).toBe("bat");
     expect(monacoLanguageForPath("assets/photo.png")).toBeNull();
     expect(monacoLanguageForPath("assets/logo.svg")).toBeNull();
   });
@@ -26,6 +30,8 @@ describe("explorer file editing", () => {
     expect(defaultExplorerFileMode("data.csv")).toBe("edit");
     expect(defaultExplorerFileMode("gradle.properties")).toBe("edit");
     expect(defaultExplorerFileMode(".env")).toBe("edit");
+    expect(defaultExplorerFileMode("scripts/setup.ps1")).toBe("edit");
+    expect(defaultExplorerFileMode("Cantrip.csproj")).toBe("edit");
     expect(defaultExplorerFileMode("README.md")).toBe("preview");
     expect(defaultExplorerFileMode("docs/guide.mdx")).toBe("preview");
     expect(defaultExplorerFileMode("ChangeLog.txt")).toBe("edit");

@@ -62,6 +62,165 @@ export const explorerMediaFileChunkSchema = explorerMediaFileSchema.extend({
   eof: z.boolean(),
 });
 
+const explorerTextLanguagesByExtension: Readonly<Record<string, string>> = {
+  adoc: "plaintext",
+  astro: "html",
+  bash: "shell",
+  bat: "bat",
+  c: "cpp",
+  cc: "cpp",
+  cfg: "ini",
+  clj: "clojure",
+  cmd: "bat",
+  conf: "ini",
+  config: "ini",
+  cpp: "cpp",
+  cs: "csharp",
+  csproj: "xml",
+  css: "css",
+  csv: "plaintext",
+  dart: "dart",
+  diff: "diff",
+  dockerfile: "dockerfile",
+  editorconfig: "ini",
+  env: "ini",
+  erl: "erlang",
+  ex: "elixir",
+  exs: "elixir",
+  fish: "shell",
+  fs: "fsharp",
+  fsi: "fsharp",
+  fsproj: "xml",
+  fsx: "fsharp",
+  go: "go",
+  gradle: "plaintext",
+  graphql: "graphql",
+  groovy: "groovy",
+  h: "cpp",
+  hcl: "plaintext",
+  hpp: "cpp",
+  hrl: "erlang",
+  htm: "html",
+  html: "html",
+  http: "plaintext",
+  ignore: "plaintext",
+  ini: "ini",
+  java: "java",
+  js: "javascript",
+  json: "json",
+  jsonc: "json",
+  jsx: "javascript",
+  kt: "kotlin",
+  kts: "kotlin",
+  less: "less",
+  lock: "plaintext",
+  log: "plaintext",
+  lua: "lua",
+  markdown: "markdown",
+  md: "markdown",
+  mdx: "mdx",
+  mjs: "javascript",
+  nuspec: "xml",
+  patch: "diff",
+  php: "php",
+  pl: "perl",
+  plist: "xml",
+  properties: "ini",
+  props: "xml",
+  proto: "protobuf",
+  ps1: "powershell",
+  psd1: "powershell",
+  psm1: "powershell",
+  py: "python",
+  r: "r",
+  rb: "ruby",
+  reg: "plaintext",
+  rest: "plaintext",
+  resx: "xml",
+  rs: "rust",
+  rst: "plaintext",
+  scala: "scala",
+  scss: "scss",
+  sh: "shell",
+  sln: "plaintext",
+  slnx: "xml",
+  sol: "sol",
+  sql: "sql",
+  svelte: "html",
+  swift: "swift",
+  targets: "xml",
+  tex: "latex",
+  tf: "plaintext",
+  tfvars: "plaintext",
+  toml: "ini",
+  ts: "typescript",
+  tsx: "typescript",
+  txt: "plaintext",
+  vb: "vb",
+  vbproj: "xml",
+  vbs: "vb",
+  vue: "html",
+  xml: "xml",
+  yaml: "yaml",
+  yml: "yaml",
+  zsh: "shell",
+};
+
+const explorerTextLanguagesByFilename: Readonly<Record<string, string>> = {
+  ".babelrc": "json",
+  ".dockerignore": "plaintext",
+  ".editorconfig": "ini",
+  ".eslintrc": "json",
+  ".gitattributes": "plaintext",
+  ".gitignore": "plaintext",
+  ".gitmodules": "ini",
+  ".node-version": "plaintext",
+  ".npmrc": "ini",
+  ".nvmrc": "plaintext",
+  ".prettierignore": "plaintext",
+  ".prettierrc": "json",
+  ".python-version": "plaintext",
+  ".tool-versions": "plaintext",
+  authors: "plaintext",
+  changelog: "plaintext",
+  cmakelists: "plaintext",
+  "cmakelists.txt": "plaintext",
+  copying: "plaintext",
+  dockerfile: "dockerfile",
+  gemfile: "ruby",
+  gradlew: "shell",
+  justfile: "plaintext",
+  license: "plaintext",
+  makefile: "plaintext",
+  notice: "plaintext",
+  procfile: "plaintext",
+  rakefile: "ruby",
+  readme: "plaintext",
+};
+
+function explorerFilename(filePath: string): string {
+  return filePath.split(/[\\/]/u).at(-1)?.toLowerCase() ?? "";
+}
+
+export function explorerTextLanguageForPath(filePath: string): string | null {
+  const filename = explorerFilename(filePath);
+  const languageForFilename = explorerTextLanguagesByFilename[filename];
+  if (languageForFilename) return languageForFilename;
+  const extension = filename.includes(".") ? filename.split(".").at(-1) : null;
+  return extension
+    ? (explorerTextLanguagesByExtension[extension] ?? null)
+    : null;
+}
+
+export function explorerTextFileForPath(filePath: string): boolean {
+  return explorerTextLanguageForPath(filePath) !== null;
+}
+
+export function explorerMarkdownFileForPath(filePath: string): boolean {
+  const language = explorerTextLanguageForPath(filePath);
+  return language === "markdown" || language === "mdx";
+}
+
 const explorerMediaTypesByExtension: Readonly<
   Record<
     string,
