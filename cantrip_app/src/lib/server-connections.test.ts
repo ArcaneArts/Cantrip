@@ -106,6 +106,28 @@ describe("server connections", () => {
     expect(getActiveServerConnection()).toBeNull();
   });
 
+  it("creates the built-in Local profile for browser development", async () => {
+    vi.stubEnv("VITE_CANTRIP_LOCAL_ONLY", "true");
+    vi.stubGlobal("window", {
+      localStorage,
+      location: { origin: "http://localhost:5173" },
+    });
+
+    await initializeServerConnections();
+
+    expect(tauriApi.invoke).not.toHaveBeenCalled();
+    expect(getServerConnections()).toEqual([
+      {
+        accountId: null,
+        id: "local",
+        kind: "local",
+        name: "Local",
+        url: "http://localhost:5173",
+      },
+    ]);
+    expect(getActiveServerConnection()?.id).toBe("local");
+  });
+
   it("locks in-memory encryption keys when switching servers", async () => {
     await initializeServerConnections();
     const first = await saveServerConnection({
