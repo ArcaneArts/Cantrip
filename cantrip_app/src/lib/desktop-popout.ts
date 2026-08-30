@@ -973,6 +973,10 @@ async function openDesktopWindow(
   const popout = new WebviewWindow(label, {
     backgroundThrottling: desktopBackgroundThrottlingPolicy,
     center: true,
+    // Tauri's native file-drop handler prevents the webview's HTML5 drop
+    // events from receiving File objects on Windows. Chat tabs can live in
+    // detached groups, so pop-outs must match the main window configuration.
+    dragDropEnabled: false,
     focus: behavior.focus ?? true,
     height: size?.height ?? 760,
     hiddenTitle: macos,

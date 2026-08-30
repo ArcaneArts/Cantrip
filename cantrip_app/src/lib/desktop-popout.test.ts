@@ -73,7 +73,10 @@ const webviews = vi.hoisted(() => {
     readonly show = vi.fn(async () => undefined);
     readonly unminimize = vi.fn(async () => undefined);
 
-    constructor(readonly label: string) {
+    constructor(
+      readonly label: string,
+      readonly options?: Record<string, unknown>,
+    ) {
       windows.set(label, this);
     }
 
@@ -125,6 +128,7 @@ import {
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
   observeDesktopWindowFocus,
+  openDesktopPopoutGroup,
   openDesktopExplorerFile,
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
@@ -193,6 +197,29 @@ describe("desktop pop-out groups", () => {
 
   it("keeps live pop-out clients running while macOS considers them occluded", () => {
     expect(desktopBackgroundThrottlingPolicy).toBe("disabled");
+  });
+
+  it("lets detached chat groups receive frontend file drops", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    vi.stubGlobal("window", {
+      location: { pathname: "/" },
+    });
+
+    try {
+      await expect(
+        openDesktopPopoutGroup(target, "Detached chat"),
+      ).resolves.toBe("created");
+
+      expect(
+        webviews.windows.get(desktopPopoutGroupWindowLabel(target.groupId))
+          ?.options,
+      ).toMatchObject({ dragDropEnabled: false });
+    } finally {
+      for (const window of webviews.windows.values()) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("resumes immediately when the detached window is already gone", async () => {
