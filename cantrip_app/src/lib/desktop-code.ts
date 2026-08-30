@@ -1103,7 +1103,7 @@ export async function directCodeAttachmentHealthyWithin(
 export async function openDirectCodeAttachmentFile(
   attachment: CodeAttachment,
   relativePath: string,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<CodeOpenFileResult> {
   const endpoint = new URL("_cantrip/open-file", attachment.url);
   return boundedCodeControlOperation(async (signal) => {

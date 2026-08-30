@@ -67,6 +67,7 @@ import {
 
 const FILE_OPEN_RETRY_DELAY_MS = 250;
 const FILE_OPEN_RECONNECT_LIMIT = 1;
+const FILE_OPEN_TIMEOUT_MS = 3_000;
 const THEME_UPDATE_RETRY_DELAY_MS = 500;
 const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
 const SHARED_SESSION_RENEWAL_MIN_DELAY_MS = 30_000;
@@ -143,14 +144,12 @@ export function explorerCodeEditorOpenRecovery(
   error: unknown,
   attempt: number,
   automaticReconnects: number,
-): "error" | "recover-route" | "retry" {
+): "error" | "recover-route" | "replace-attachment" | "retry" {
   const controlTimeout = isCodeControlOperationTimeout(error);
   const transient = isTransientFileOpenFailure(error);
-  if (attempt === 0 && (controlTimeout || transient)) return "retry";
-  if (
-    (controlTimeout || transient) &&
-    automaticReconnects < FILE_OPEN_RECONNECT_LIMIT
-  ) {
+  if (controlTimeout) return "replace-attachment";
+  if (attempt === 0 && transient) return "retry";
+  if (transient && automaticReconnects < FILE_OPEN_RECONNECT_LIMIT) {
     return "recover-route";
   }
   return "error";
@@ -1649,7 +1648,10 @@ export function ExplorerCodeEditor({
               const opened = await openDirectCodeAttachmentFile(
                 preferredAttachment.attachment,
                 path,
-                { signal: navigationController.signal },
+                {
+                  signal: navigationController.signal,
+                  timeoutMs: FILE_OPEN_TIMEOUT_MS,
+                },
               );
               fileTiming?.complete({
                 attachmentId: preferredAttachment.attachment.attachmentId,
@@ -1689,6 +1691,10 @@ export function ExplorerCodeEditor({
             () => void openFile(attempt + 1),
             FILE_OPEN_RETRY_DELAY_MS,
           );
+          return;
+        }
+        if (recovery === "replace-attachment") {
+          requestAutomaticReplacement(bindingKey);
           return;
         }
         if (recovery === "recover-route") {

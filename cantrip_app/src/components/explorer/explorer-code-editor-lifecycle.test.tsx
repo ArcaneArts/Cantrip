@@ -32,6 +32,7 @@ const api = vi.hoisted(() => ({
 }));
 
 const desktopCode = vi.hoisted(() => ({
+  CodeControlOperationTimeoutError: class extends Error {},
   openDirectCodeAttachmentFile: vi.fn(),
   preferProtectedCodeAttachment: vi.fn(),
   preferSharedProtectedCodeAttachment: vi.fn(),
@@ -112,6 +113,7 @@ vi.mock("@/lib/code-workbench-frame", () => ({
     Object.assign(
       new Error(
         reason instanceof Error ? reason.message : String(reason ?? stage),
+        reason === undefined ? undefined : { cause: reason },
       ),
       { stage },
     ),
@@ -130,7 +132,6 @@ vi.mock("@/lib/code-workbench-frame", () => ({
 vi.mock("@/lib/desktop-code", () => ({
   ...desktopCode,
   CodeAttachmentHealthError: class extends Error {},
-  CodeControlOperationTimeoutError: class extends Error {},
 }));
 vi.mock("@/lib/client-log-relay", () => ({
   clientLogger: logging,
@@ -1501,6 +1502,64 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(4);
     expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("replaces an attachment whose ready workbench stops acknowledging control requests", async () => {
+    const replacementWire = {
+      ...wire,
+      attachmentId: "33333333-3333-4333-8333-333333333333",
+      sessionId: "44444444-4444-4444-8444-444444444444",
+      tunnelId: "33333333-3333-4333-8333-333333333333",
+    } as CodeProtectedAttachmentWire;
+    const replacementAttachment = {
+      ...attachment,
+      attachmentId: replacementWire.attachmentId,
+      sessionId: replacementWire.sessionId,
+      url: `http://127.0.0.1:43123/code/${replacementWire.attachmentId}/`,
+    } as CodeAttachment;
+    api.createProtectedExplorerCodeAttachment
+      .mockResolvedValueOnce(wire)
+      .mockResolvedValueOnce(replacementWire);
+    desktopCode.preferProtectedCodeAttachment
+      .mockResolvedValueOnce({
+        attachment,
+        desktopRouteIdentity: null,
+        directTunnelId: wire.tunnelId,
+        transportKind: "relay",
+      })
+      .mockResolvedValueOnce({
+        attachment: replacementAttachment,
+        desktopRouteIdentity: null,
+        directTunnelId: replacementWire.tunnelId,
+        transportKind: "relay",
+      });
+    desktopCode.openDirectCodeAttachmentFile
+      .mockRejectedValueOnce(new desktopCode.CodeControlOperationTimeoutError())
+      .mockImplementationOnce(
+        async (_attachment: CodeAttachment, relativePath: string) => ({
+          relativePath,
+        }),
+      );
+
+    const { renderer } = await mount("src/stale.ts", true);
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2);
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenLastCalledWith(
+      replacementAttachment,
+      "src/stale.ts",
+      { signal: expect.any(AbortSignal), timeoutMs: 3_000 },
+    );
 
     await act(async () => renderer.unmount());
   });

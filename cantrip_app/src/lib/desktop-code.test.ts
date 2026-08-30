@@ -606,6 +606,28 @@ describe("stopDirectCodeAttachment", () => {
 });
 
 describe("openDirectCodeAttachmentFile", () => {
+  it("honors a shorter caller deadline for a ready editor", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.fetch.mockImplementation(() => new Promise(() => undefined));
+
+      const request = openDirectCodeAttachmentFile(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        "src/hung.ts",
+        { timeoutMs: 3_000 },
+      );
+      const rejected = expect(request).rejects.toMatchObject({
+        timeoutMs: 3_000,
+      });
+
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("aborts and rejects a noncooperative control fetch at the internal deadline", async () => {
     vi.useFakeTimers();
     try {
