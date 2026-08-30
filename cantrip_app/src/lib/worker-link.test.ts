@@ -1411,18 +1411,12 @@ describe("WorkerLinkManager", () => {
     await manager.close();
   });
 
-  it("reprobes direct routes on network changes while retaining RELAY", async () => {
+  it("keeps a healthy local carrier and its streams across environment reprobes", async () => {
     vi.useFakeTimers();
     const initialLocal = new FakeCarrier("local", 4);
-    const replacementLocal = new FakeCarrier("local", 6);
-    const resumedLocal = new FakeCarrier("local", 5);
     const relay = new FakeCarrier("relay", 30);
     const openRelay = vi.fn(async () => relay as WorkerLinkCarrier);
-    const local = vi
-      .fn<() => Promise<WorkerLinkCarrier>>()
-      .mockResolvedValueOnce(initialLocal)
-      .mockResolvedValueOnce(replacementLocal)
-      .mockResolvedValueOnce(resumedLocal);
+    const local = vi.fn(async () => initialLocal as WorkerLinkCarrier);
     const setup = dependencies({
       enabled: ["local", "relay"],
       local,
@@ -1447,25 +1441,35 @@ describe("WorkerLinkManager", () => {
 
     setup.triggerEnvironment("network-change");
     await vi.advanceTimersByTimeAsync(0);
-    await vi.waitFor(() => expect(local).toHaveBeenCalledTimes(2));
-    expect(closed).toHaveBeenCalledWith("route-replaced");
-    expect(initialLocal.closed).toBe(true);
+    expect(local).toHaveBeenCalledOnce();
+    expect(closed).not.toHaveBeenCalled();
+    expect(initialLocal.closed).toBe(false);
     expect(relay.closed).toBe(false);
     expect(reference.link.preferredRoute).toBe("local");
     expect(setup.dependency.createSession).toHaveBeenCalledOnce();
     expect(manager.getStatusSnapshot()[0]).toEqual(
       expect.objectContaining({
         state: "active",
-        transitionReason: "route-promoted",
+        transitionReason: "network-change",
       }),
     );
 
     setup.triggerEnvironment("application-resume");
     await vi.advanceTimersByTimeAsync(0);
-    await vi.waitFor(() => expect(local).toHaveBeenCalledTimes(3));
-    expect(replacementLocal.closed).toBe(true);
-    expect(resumedLocal.closed).toBe(false);
+    expect(local).toHaveBeenCalledOnce();
+    expect(closed).not.toHaveBeenCalled();
+    expect(initialLocal.closed).toBe(false);
     expect(relay.closed).toBe(false);
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({
+        state: "active",
+        transitionReason: "application-resume",
+      }),
+    );
+    const sentBeforeResumeWrite = initialLocal.sent.length;
+    expect(stream.write(new Uint8Array([1, 2, 3]))).toBe(true);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(initialLocal.sent).toHaveLength(sentBeforeResumeWrite + 1);
 
     reference.release();
     await manager.close();
