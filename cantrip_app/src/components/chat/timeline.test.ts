@@ -121,6 +121,56 @@ describe("chat activity timeline", () => {
     );
   });
 
+  it("breaks active context compaction out into its own inline row", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Do the work" },
+      ]),
+      message("command", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-1",
+            command: "rg --files",
+            cwd: ".",
+            status: "completed",
+            exitCode: 0,
+            output: null,
+          },
+        },
+      ]),
+      message("compaction", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "contextCompaction",
+            id: "compaction-1",
+            status: "running",
+          },
+        },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(3);
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      kind: "tool",
+      endedAt: "2026-08-07T12:00:02.000Z",
+    });
+    expect(timeline[2]).toMatchObject({
+      type: "activityGroup",
+      kind: "compaction",
+      endedAt: null,
+      messages: [
+        { content: [{ activity: { id: "compaction-1", status: "running" } }] },
+      ],
+    });
+    expect(findLatestLiveActivityGroupKey(timeline)).toBe(
+      timeline[2]?.type === "activityGroup" ? timeline[2].key : null,
+    );
+  });
+
   it("does not complete a turn from assistant text that is still streaming", () => {
     const timeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [

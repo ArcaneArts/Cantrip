@@ -22,7 +22,7 @@ interface ChatTimelineActivityGroupBase {
 type ChatTimelineActivityGroup =
   | (ChatTimelineActivityGroupBase & { kind: "turn"; endedAt: string })
   | (ChatTimelineActivityGroupBase & {
-      kind: "tool";
+      kind: "compaction" | "tool";
       endedAt: string | null;
     });
 
@@ -314,6 +314,25 @@ function projectWorkEntries(input: {
   for (const message of input.displayedMessages) {
     message.content.forEach((content, contentIndex) => {
       const segment = segmentedMessage(message, content, contentIndex);
+      if (
+        content.type === "activity" &&
+        content.activity.type === "contextCompaction"
+      ) {
+        flushActivities(message.createdAt);
+        projected.push({
+          type: "activityGroup",
+          kind: "compaction",
+          key: `compaction:${segment.id}`,
+          messages: [segment],
+          startedAt: message.createdAt,
+          endedAt:
+            content.activity.status === "running" ? null : message.createdAt,
+          turnId: input.identity.turnId,
+          turnKey: input.identity.turnKey,
+        });
+        groupStartedAt = message.createdAt;
+        return;
+      }
       if (!thoughtContent(content)) {
         activityMessages.push(segment);
         return;
