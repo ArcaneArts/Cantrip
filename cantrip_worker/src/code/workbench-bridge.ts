@@ -883,25 +883,25 @@ export class CodeWorkbenchBridge {
       );
       return;
     }
-    // The workspace file is the durable theme source. A workbench socket can
-    // remain OPEN after its extension host has stopped responding, so theme
-    // delivery must converge when a healthy surface reconnects rather than
-    // making Code availability depend on an acknowledgement from every view.
-    const results = await Promise.allSettled(requests);
-    const rejected = results.filter((result) => result.status === "rejected");
-    workerLogger.event(
-      "debug",
-      "Cantrip Code theme delivered to workbench bridge",
-      {
-        event: "code.bridge.theme-delivered",
-        subsystem: "code",
-        operation: "set-theme",
-        status: rejected.length === 0 ? "completed" : "degraded",
-        appearance,
-        sessionId,
-        counts: { failedSockets: rejected.length, sockets: results.length },
-      },
-    );
+    // The workspace file is the durable theme source. Delivery to a live
+    // surface is best-effort and must never occupy the session's serialized
+    // control lane ahead of presentation or file-open requests.
+    void Promise.allSettled(requests).then((results) => {
+      const rejected = results.filter((result) => result.status === "rejected");
+      workerLogger.event(
+        "debug",
+        "Cantrip Code theme delivered to workbench bridge",
+        {
+          event: "code.bridge.theme-delivered",
+          subsystem: "code",
+          operation: "set-theme",
+          status: rejected.length === 0 ? "completed" : "degraded",
+          appearance,
+          sessionId,
+          counts: { failedSockets: rejected.length, sockets: results.length },
+        },
+      );
+    });
   }
 
   async notifyExternalFiles(
@@ -1055,14 +1055,14 @@ export class CodeWorkbenchBridge {
       false,
     ).catch((error) => {
       workerLogger.event(
-        "warn",
-        "Cantrip Code initial bridge theme request failed",
+        "debug",
+        "Cantrip Code initial bridge theme delivery deferred",
         {
           event: "code.bridge.theme-delivery-failed",
           subsystem: "code",
           operation: "set-theme",
           reasonCode: "request-failed",
-          status: "degraded",
+          status: "deferred",
           appearance: session.appearance,
           error: workerLogError(error),
           sessionId,
@@ -1244,17 +1244,29 @@ export class CodeWorkbenchBridge {
         const error = new Error(
           `Cantrip workbench ${method} request timed out.`,
         );
-        workerLogger.event("warn", "Cantrip Code bridge request timed out", {
-          event: "code.bridge.request-timeout",
-          subsystem: "code",
-          operation: method,
-          reasonCode: "timeout",
-          status: "failed",
-          method,
-          sessionId,
-        });
+        const optionalThemeDelivery = method === "setTheme";
+        workerLogger.event(
+          optionalThemeDelivery ? "debug" : "warn",
+          optionalThemeDelivery
+            ? "Cantrip Code theme delivery deferred"
+            : "Cantrip Code bridge request timed out",
+          {
+            event: "code.bridge.request-timeout",
+            subsystem: "code",
+            operation: method,
+            reasonCode: "timeout",
+            status: optionalThemeDelivery ? "deferred" : "failed",
+            method,
+            sessionId,
+          },
+        );
         pending.reject(error);
-        this.#retireSocket(session, socket, error.message);
+        // Theme synchronization is optional and replayed from durable state on
+        // connect. Only acknowledged control failures should retire a surface;
+        // the independent liveness probe owns dead-socket detection.
+        if (!optionalThemeDelivery) {
+          this.#retireSocket(session, socket, error.message);
+        }
       }, timeoutMs);
       const abortListener = signal
         ? () => {
