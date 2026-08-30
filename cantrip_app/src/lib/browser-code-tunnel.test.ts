@@ -2026,6 +2026,40 @@ describe("browser Code attachment terminal state", () => {
     ).toBe(false);
   });
 
+  it("accepts a WebSocket URL from the matching HTTP adapter origin", async () => {
+    (window as unknown as { location: { origin: string } }).location.origin =
+      "http://cantrip.example";
+    const attachment = await startBrowserCodeAttachment(wire());
+    const adapterId = attachmentAdapterId(attachment);
+    const relay = sockets[0]!;
+    const target = attachmentFrame(attachment);
+
+    window.dispatchEvent(
+      windowMessage(
+        {
+          adapterId,
+          socketId: "page-origin-socket",
+          type: "cantrip-code-websocket-open-v1",
+          url: `ws://cantrip.example/__cantrip_code/${adapterId}/code/websocket`,
+          protocols: [] as string[],
+        },
+        target,
+      ),
+    );
+
+    const [open] = await waitForOpenFrames(relay, 1);
+    await completeBrowserSocketHandshake(relay, open!);
+    await vi.waitFor(() => {
+      expect(
+        target.postMessage.mock.calls.some(
+          ([message]) =>
+            Reflect.get(message, "event") === "open" &&
+            Reflect.get(message, "socketId") === "page-origin-socket",
+        ),
+      ).toBe(true);
+    });
+  });
+
   it("does not retain a socket closed in the same relay chunk as its handshake", async () => {
     const attachment = await startBrowserCodeAttachment(wire());
     const adapterId = attachmentAdapterId(attachment);

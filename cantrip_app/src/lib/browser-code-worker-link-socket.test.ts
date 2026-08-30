@@ -44,7 +44,10 @@ class FakeConnection implements TunnelWorkerLinkConnection {
   constructor(readonly route: WorkerLinkRoute) {}
 }
 
-function setup(selectedRoute: WorkerLinkRoute = "relay") {
+function setup(
+  selectedRoute: WorkerLinkRoute = "relay",
+  queue: BrowserCodeWorkerLinkSocketDependencies["queue"] = queueMicrotask,
+) {
   const connection = new FakeConnection(selectedRoute);
   let options:
     Parameters<BrowserCodeWorkerLinkSocketDependencies["openLink"]>[0] | null =
@@ -54,7 +57,7 @@ function setup(selectedRoute: WorkerLinkRoute = "relay") {
       options = input;
       return connection;
     }),
-    queue: queueMicrotask,
+    queue,
   };
   const socket = createBrowserCodeWorkerLinkSocket(
     {
@@ -125,6 +128,30 @@ describe("browser Code WorkerLink socket", () => {
     fixture.options()!.onClose("lifetime-expired");
 
     await expect(closed).resolves.toMatchObject({ code: 1008 });
+  });
+
+  it("invokes the browser scheduler without an illegal receiver", async () => {
+    const queue = vi.fn(function (
+      this: unknown,
+      callback: () => void,
+    ): void {
+      if (this !== undefined) throw new TypeError("Illegal invocation");
+      callback();
+    });
+    const fixture = setup("relay", queue);
+    await new Promise<void>((resolve) =>
+      fixture.socket.addEventListener("open", () => resolve(), { once: true }),
+    );
+    fixture.socket.setMessageConsumer!(async () => undefined);
+
+    fixture.socket.send(
+      JSON.stringify({ type: "initialize", clientId: "web-code:client-1" }),
+    );
+
+    await vi.waitFor(() =>
+      expect(fixture.connection.activate).toHaveBeenCalledOnce(),
+    );
+    expect(queue).toHaveBeenCalledOnce();
   });
 
   it("does not acknowledge WorkerLink input until the Code consumer drains it", async () => {
