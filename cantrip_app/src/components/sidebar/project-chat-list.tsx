@@ -466,6 +466,7 @@ export function ProjectChatList({
   codeTabs,
   explorers,
   fileExplorer,
+  filePreviewReady,
   filePreviewPath,
   fileTreeError,
   fileGraphAvailable,
@@ -527,6 +528,7 @@ export function ProjectChatList({
   codeTabs: CodeTabSummary[];
   explorers: ExplorerSummary[];
   fileExplorer: ExplorerSummary | null;
+  filePreviewReady: boolean;
   filePreviewPath: string | null;
   fileTreeError?: string | null;
   fileGraphAvailable: boolean;
@@ -1293,6 +1295,7 @@ export function ProjectChatList({
                       activePath={filePreviewPath}
                       error={fileTreeError}
                       explorer={fileExplorer}
+                      filePreviewReady={filePreviewReady}
                       loading={fileTreeLoading}
                       onDelete={(entry, authorization) => {
                         if (!fileExplorer) {

@@ -14,6 +14,8 @@ export interface SidebarFilePreviewState {
   projectId: string;
 }
 
+export const SIDEBAR_EXPLORER_POOL_SIZE = 2;
+
 export function sidebarFilePreviewMatches(
   preview: SidebarFilePreviewState | null,
   target: Omit<SidebarFilePreviewState, "active">,
@@ -28,8 +30,6 @@ export function sidebarFilePreviewMatches(
 }
 
 export function sidebarExplorerPrewarmTarget({
-  hasOpenExplorer,
-  pinInProgress,
   isPopout,
   sidebarExplorer,
 }: {
@@ -38,9 +38,7 @@ export function sidebarExplorerPrewarmTarget({
   isPopout: boolean;
   sidebarExplorer: ExplorerSummary | null;
 }): ExplorerSummary | null {
-  return !isPopout && !pinInProgress && !hasOpenExplorer
-    ? sidebarExplorer
-    : null;
+  return !isPopout ? sidebarExplorer : null;
 }
 
 export function sidebarFileName(path: string): string {
@@ -166,12 +164,37 @@ export function sidebarExplorerCanOwnPreview({
   explorerId,
   layout,
   pinInProgress,
+  workbenchReady = true,
 }: {
   explorerId: string;
   layout: ProjectTabLayoutSummary | null | undefined;
   pinInProgress: boolean;
+  workbenchReady?: boolean;
 }): boolean {
-  return !pinInProgress && !tabbedExplorerIds(layout).has(explorerId);
+  return (
+    workbenchReady &&
+    !pinInProgress &&
+    !tabbedExplorerIds(layout).has(explorerId)
+  );
+}
+
+export function dedicatedSidebarExplorers({
+  desiredWorktreeId,
+  explorers,
+  layout,
+}: {
+  desiredWorktreeId: string | null;
+  explorers: readonly ExplorerSummary[];
+  layout: ProjectTabLayoutSummary | null | undefined;
+}): ExplorerSummary[] {
+  const tabbed = tabbedExplorerIds(layout);
+  return explorers
+    .filter(
+      (explorer) =>
+        !tabbed.has(explorer.id) &&
+        (!desiredWorktreeId || explorer.worktreeId === desiredWorktreeId),
+    )
+    .slice(0, SIDEBAR_EXPLORER_POOL_SIZE);
 }
 
 export function dedicatedSidebarExplorer({
@@ -183,13 +206,9 @@ export function dedicatedSidebarExplorer({
   explorers: readonly ExplorerSummary[];
   layout: ProjectTabLayoutSummary | null | undefined;
 }): ExplorerSummary | null {
-  const tabbed = tabbedExplorerIds(layout);
   return (
-    explorers.find(
-      (explorer) =>
-        !tabbed.has(explorer.id) &&
-        (!desiredWorktreeId || explorer.worktreeId === desiredWorktreeId),
-    ) ?? null
+    dedicatedSidebarExplorers({ desiredWorktreeId, explorers, layout })[0] ??
+    null
   );
 }
 

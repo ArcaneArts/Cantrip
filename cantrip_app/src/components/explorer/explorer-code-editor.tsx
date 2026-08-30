@@ -277,6 +277,7 @@ export function ExplorerCodeEditor({
   explorerId,
   onLifecycleChange,
   onReady,
+  onWorkbenchReadinessChange,
   path,
   worktreeId,
   workerId,
@@ -287,6 +288,7 @@ export function ExplorerCodeEditor({
   explorerId: string;
   onLifecycleChange?(actions: ExplorerCodeEditorLifecycleActions | null): void;
   onReady?: () => void;
+  onWorkbenchReadinessChange?(ready: boolean): void;
   path: string | null;
   worktreeId: string;
   workerId: string;
@@ -304,6 +306,9 @@ export function ExplorerCodeEditor({
   const [frameReadyNonce, setFrameReadyNonce] = useState<string | null>(null);
   const [frameDocumentVersion, setFrameDocumentVersion] = useState(0);
   const [readyKey, setReadyKey] = useState<string | null>(null);
+  const [workbenchReadyKey, setWorkbenchReadyKey] = useState<string | null>(
+    null,
+  );
   const [reloadVersion, setReloadVersion] = useState(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [closing, setClosing] = useState(false);
@@ -363,6 +368,7 @@ export function ExplorerCodeEditor({
   const previousActiveRef = useRef(active);
   const previousPathRef = useRef(path);
   const onReadyRef = useRef(onReady);
+  const onWorkbenchReadinessChangeRef = useRef(onWorkbenchReadinessChange);
   const workerOnlineRef = useRef(workerOnline);
   const attachmentLifecycleRef =
     useRef<SerializedAttachmentLifecycle<ExplorerCodeAttachmentOwnership> | null>(
@@ -459,6 +465,7 @@ export function ExplorerCodeEditor({
     bindingKeyRef.current = bindingKey;
     frameMountRef.current = frameMount;
     onReadyRef.current = onReady;
+    onWorkbenchReadinessChangeRef.current = onWorkbenchReadinessChange;
     pathRef.current = path;
     preferredAttachmentRef.current = preferredAttachment;
     workerOnlineRef.current = workerOnline;
@@ -467,6 +474,7 @@ export function ExplorerCodeEditor({
     bindingKey,
     frameMount,
     onReady,
+    onWorkbenchReadinessChange,
     path,
     preferredAttachment,
     workerOnline,
@@ -483,6 +491,20 @@ export function ExplorerCodeEditor({
   }, [frameMount, preferredAttachment]);
   const frameReady =
     frameMount !== null && frameReadyNonce === frameMount.nonce;
+  const workbenchGenerationKey =
+    preferredAttachment && frameMount
+      ? [
+          bindingKey,
+          preferredAttachment.attachment.attachmentId,
+          frameMount.nonce,
+        ].join("\0")
+      : null;
+  const workbenchReady = Boolean(
+    !closing &&
+    frameReady &&
+    workbenchGenerationKey !== null &&
+    workbenchReadyKey === workbenchGenerationKey,
+  );
   const navigationIdentity =
     preferredAttachment && frameMount
       ? [
@@ -599,6 +621,10 @@ export function ExplorerCodeEditor({
     workerId,
     worktreeId,
   ]);
+
+  useEffect(() => {
+    onWorkbenchReadinessChangeRef.current?.(workbenchReady);
+  }, [workbenchReady]);
 
   useEffect(() => {
     if (!ready || !preferredAttachment) return;
@@ -1461,9 +1487,15 @@ export function ExplorerCodeEditor({
     }
     setError(null);
     let presentationRecorded = false;
+    const markWorkbenchReady = () => {
+      if (workbenchGenerationKey) {
+        setWorkbenchReadyKey(workbenchGenerationKey);
+      }
+    };
     const recordCachedPresentation = () => {
       if (presentationRecorded) return;
       presentationRecorded = true;
+      markWorkbenchReady();
       launchTimingRef.current?.milestone("presentation-ready", {
         attachmentId: preferredAttachment.attachment.attachmentId,
         reused: true,
@@ -1479,6 +1511,7 @@ export function ExplorerCodeEditor({
           { signal: navigationController.signal },
         );
         presentationRecorded = true;
+        markWorkbenchReady();
         presentationTiming?.complete({
           attachmentId: preferredAttachment.attachment.attachmentId,
           reused: false,
@@ -1555,6 +1588,7 @@ export function ExplorerCodeEditor({
           );
           if (!cancelled) {
             recordCachedPresentation();
+            markWorkbenchReady();
             resetNavigationRetry();
             setError(null);
             setReadyKey(null);
@@ -1620,6 +1654,7 @@ export function ExplorerCodeEditor({
           signal: navigationController.signal,
         });
         if (!cancelled && result.relativePath === path) {
+          markWorkbenchReady();
           automaticReconnectsRef.current = 0;
           resetNavigationRetry();
           setError(null);
@@ -1694,6 +1729,7 @@ export function ExplorerCodeEditor({
     preferredAttachment,
     requestAutomaticReplacement,
     requestNavigationRetry,
+    workbenchGenerationKey,
   ]);
 
   useEffect(() => {

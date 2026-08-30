@@ -108,7 +108,9 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     sidebarCollapsed,
     sidebarExpanded,
     sidebarExplorer,
+    sidebarFilePinHandoff,
     sidebarFilePreview,
+    sidebarFileWorkbenchReady,
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
     sidebarRef,
@@ -354,6 +356,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     selectedTabKey={selectedTabKey}
                     tabLayout={tabLayout.data ?? null}
                     fileExplorer={sidebarExplorer}
+                    filePreviewReady={sidebarFileWorkbenchReady}
                     fileGraphAvailable={explorerRepositoryGraphAvailable(
                       selectedProject?.capabilities,
                     )}
@@ -376,7 +379,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     fileTreePinningPath={
                       pinSidebarFileMutation.isPending
                         ? (pinSidebarFileMutation.variables?.path ?? null)
-                        : null
+                        : (sidebarFilePinHandoff?.sourcePath ?? null)
                     }
                     fileTreeWorkerId={sidebarFileWorkerId}
                     fileTreeWorkerOnline={sidebarFileWorkerOnline}

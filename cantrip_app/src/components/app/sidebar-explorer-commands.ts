@@ -109,8 +109,10 @@ export function createSidebarExplorerCommands({
     SidebarFileState,
     | "setSidebarFilePinHandoff"
     | "setSidebarFilePreview"
+    | "sidebarFileWorkbenchReadyIdsRef"
     | "sidebarFilePinHandoffRef"
     | "sidebarFilePreview"
+    | "waitForSidebarFileSuccessor"
   >;
   lifecycle: ExplorerLifecycleRefs;
   newGraphExplorer: MutationOperation<{
@@ -147,8 +149,10 @@ export function createSidebarExplorerCommands({
   const {
     setSidebarFilePinHandoff,
     setSidebarFilePreview,
+    sidebarFileWorkbenchReadyIdsRef,
     sidebarFilePinHandoffRef,
     sidebarFilePreview,
+    waitForSidebarFileSuccessor,
   } = fileState;
   const {
     explorerLifecycleRef,
@@ -179,6 +183,9 @@ export function createSidebarExplorerCommands({
         explorerId: explorer.id,
         layout: tabLayout,
         pinInProgress: Boolean(sidebarFilePinHandoffRef.current),
+        workbenchReady: sidebarFileWorkbenchReadyIdsRef.current.has(
+          explorer.id,
+        ),
       })
     ) {
       clientLogger.info("Explorer file preview deferred for provisioning", {
@@ -189,7 +196,9 @@ export function createSidebarExplorerCommands({
         projectId: explorer.projectId,
         reasonCode: sidebarFilePinHandoffRef.current
           ? "pin-handoff-in-progress"
-          : "preview-owner-is-tabbed",
+          : !sidebarFileWorkbenchReadyIdsRef.current.has(explorer.id)
+            ? "preview-owner-not-ready"
+            : "preview-owner-is-tabbed",
         status: "deferred",
         subsystem: "explorer",
         worktreeId: explorer.worktreeId,
@@ -323,12 +332,17 @@ export function createSidebarExplorerCommands({
         explorerId: explorer.id,
         layout: tabLayout,
         pinInProgress: false,
+        workbenchReady: sidebarFileWorkbenchReadyIdsRef.current.has(
+          explorer.id,
+        ),
       })
     ) {
       logSidebarFilePinPhase({
         explorer,
         phase: "request-blocked",
-        reasonCode: "preview-owner-is-tabbed",
+        reasonCode: !sidebarFileWorkbenchReadyIdsRef.current.has(explorer.id)
+          ? "preview-owner-not-ready"
+          : "preview-owner-is-tabbed",
         status: "ignored",
         transactionId: requestedTransactionId,
       });
@@ -378,6 +392,33 @@ export function createSidebarExplorerCommands({
     ) {
       return;
     }
+    const successor = await waitForSidebarFileSuccessor(explorer.id);
+    if (
+      sidebarFilePinHandoffRef.current?.transactionId !== handoff.transactionId
+    ) {
+      return;
+    }
+    if (!successor) {
+      logSidebarFilePinPhase({
+        explorer,
+        phase: "successor-ready",
+        reasonCode: "successor-readiness-timeout",
+        status: "failed",
+        transactionId: handoff.transactionId,
+      });
+      abandonSidebarFilePinHandoff(
+        handoff,
+        "The next editor did not become ready before pinning timed out.",
+      );
+      return;
+    }
+    logSidebarFilePinPhase({
+      explorer,
+      phase: "successor-ready",
+      status: "completed",
+      successorExplorerId: successor.id,
+      transactionId: handoff.transactionId,
+    });
     pinSidebarFileMutation.mutate({
       destinationExplorerId: handoff.destinationExplorerId,
       groupId: sidebarFileGroupId(explorer),

@@ -319,6 +319,87 @@ describe("retainExplorerSurfaceTabs", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("promotes the warm successor without remounting it and provisions one replacement", async () => {
+    const source = {
+      ...explorer("preview-source"),
+      activeWorkerId: "worker-one",
+      projectId: "project-one",
+      worktreeId: "worktree-one",
+    } as ExplorerSummary;
+    const successor = {
+      ...source,
+      id: "preview-successor",
+    } as ExplorerSummary;
+    const replacement = {
+      ...source,
+      id: "preview-replacement",
+    } as ExplorerSummary;
+    const render = ({
+      active,
+      open,
+      primary,
+      next,
+    }: {
+      active: ExplorerSummary;
+      open: readonly ExplorerSummary[];
+      primary: ExplorerSummary;
+      next: ExplorerSummary;
+    }) =>
+      createElement(PersistentExplorerViews, {
+        activeExplorer: active,
+        appearance: "dark",
+        gitStatuses: {},
+        openExplorers: open,
+        prewarmExplorer: primary,
+        prewarmSuccessorExplorer: next,
+        repositoryGraphAvailable: false,
+      });
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        render({ active: source, next: successor, open: [], primary: source }),
+      );
+    });
+    const successorInstance = renderer.root.findByProps({
+      "data-explorer-id": successor.id,
+    }).props["data-instance"];
+
+    await act(async () => {
+      renderer.update(
+        render({
+          active: successor,
+          next: replacement,
+          open: [source],
+          primary: successor,
+        }),
+      );
+    });
+    const views = renderer.root.findAllByProps({
+      "data-mock-explorer-view": true,
+    });
+    expect(views.map((view) => view.props["data-explorer-id"])).toEqual([
+      source.id,
+      successor.id,
+      replacement.id,
+    ]);
+    expect(
+      renderer.root.findByProps({ "data-explorer-id": successor.id }).props[
+        "data-instance"
+      ],
+    ).toBe(successorInstance);
+    expect(
+      renderer.root.findByProps({ "data-explorer-id": successor.id }).props[
+        "data-active"
+      ],
+    ).toBe(true);
+    expect(
+      views.filter((view) => view.props["data-prewarm-inline-code"]),
+    ).toHaveLength(2);
+
+    await act(async () => renderer.unmount());
+  });
+
   it("owns every open Explorer tab across switches and removes only a closed tab", async () => {
     const first = {
       ...explorer("first-explorer"),

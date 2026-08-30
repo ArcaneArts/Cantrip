@@ -76,8 +76,9 @@ export function retainRequestedExplorerSurfaceTabs(
   prewarm: ExplorerSummary | null | undefined,
   dirtyIds: ReadonlySet<string>,
   protectedIds: ReadonlySet<string> = new Set(),
+  prewarmSuccessor?: ExplorerSummary | null,
 ): ExplorerSummary[] {
-  const requested = [prewarm, active].filter(
+  const requested = [prewarm, prewarmSuccessor, active].filter(
     (explorer): explorer is ExplorerSummary =>
       explorer !== null && explorer !== undefined,
   );
@@ -112,12 +113,14 @@ export function ownedExplorerSurfaceTabs(
   prewarm: ExplorerSummary | null | undefined,
   handoff?: ExplorerSummary | null,
   handoffSource?: ExplorerSummary | null,
+  prewarmSuccessor?: ExplorerSummary | null,
 ): ExplorerSummary[] {
   const owned: ExplorerSummary[] = [];
   const indexById = new Map<string, number>();
   for (const explorer of [
     ...openExplorers,
     prewarm,
+    prewarmSuccessor,
     handoffSource,
     handoff,
     active,
@@ -146,6 +149,7 @@ export function PersistentExplorerViews({
   onChanged,
   onHeaderChange,
   onInlineCodeReady,
+  onInlineCodeWorkbenchReadinessChange,
   onLifecycleChange,
   onTransientLifecycleChange,
   onOpenFile,
@@ -154,6 +158,7 @@ export function PersistentExplorerViews({
   onOpenTerminal,
   openExplorers,
   prewarmExplorer,
+  prewarmSuccessorExplorer,
   repositoryGraphAvailable,
 }: {
   activeExplorer: ExplorerSummary | null;
@@ -170,6 +175,10 @@ export function PersistentExplorerViews({
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
   onInlineCodeReady?(explorerId: string): void;
+  onInlineCodeWorkbenchReadinessChange?(
+    explorerId: string,
+    ready: boolean,
+  ): void;
   onLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
@@ -191,6 +200,7 @@ export function PersistentExplorerViews({
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   openExplorers?: readonly ExplorerSummary[];
   prewarmExplorer?: ExplorerSummary | null;
+  prewarmSuccessorExplorer?: ExplorerSummary | null;
   repositoryGraphAvailable: boolean;
 }) {
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
@@ -202,7 +212,9 @@ export function PersistentExplorerViews({
 
   useEffect(() => {
     if (openExplorers) return;
-    if (!activeExplorer && !prewarmExplorer) return;
+    if (!activeExplorer && !prewarmExplorer && !prewarmSuccessorExplorer) {
+      return;
+    }
     setRetainedExplorers((current) =>
       retainRequestedExplorerSurfaceTabs(
         current,
@@ -210,6 +222,7 @@ export function PersistentExplorerViews({
         prewarmExplorer,
         dirtyIds,
         transientFile ? new Set([transientFile.explorerId]) : undefined,
+        prewarmSuccessorExplorer,
       ),
     );
   }, [
@@ -217,6 +230,7 @@ export function PersistentExplorerViews({
     dirtyIds,
     openExplorers,
     prewarmExplorer,
+    prewarmSuccessorExplorer,
     transientFile?.explorerId,
   ]);
 
@@ -229,6 +243,7 @@ export function PersistentExplorerViews({
             prewarmExplorer,
             handoffExplorer,
             handoffSourceExplorer,
+            prewarmSuccessorExplorer,
           )
         : ownedExplorerSurfaceTabs(
             retainRequestedExplorerSurfaceTabs(
@@ -237,11 +252,13 @@ export function PersistentExplorerViews({
               prewarmExplorer,
               dirtyIds,
               transientFile ? new Set([transientFile.explorerId]) : undefined,
+              prewarmSuccessorExplorer,
             ),
             activeExplorer,
             prewarmExplorer,
             handoffExplorer,
             handoffSourceExplorer,
+            prewarmSuccessorExplorer,
           ),
     [
       activeExplorer,
@@ -250,6 +267,7 @@ export function PersistentExplorerViews({
       handoffSourceExplorer,
       openExplorers,
       prewarmExplorer,
+      prewarmSuccessorExplorer,
       retainedExplorers,
       transientFile?.explorerId,
     ],
@@ -276,7 +294,9 @@ export function PersistentExplorerViews({
         const openOwner = Boolean(
           openExplorers?.some(({ id }) => id === explorer.id),
         );
-        const prewarm = prewarmExplorer?.id === explorer.id;
+        const prewarm =
+          prewarmExplorer?.id === explorer.id ||
+          prewarmSuccessorExplorer?.id === explorer.id;
         const transient = transientFile?.explorerId === explorer.id;
         const roles = [
           active ? "active" : null,
@@ -305,6 +325,7 @@ export function PersistentExplorerViews({
       handoffSourceExplorer?.id,
       openExplorers,
       prewarmExplorer?.id,
+      prewarmSuccessorExplorer?.id,
       renderedExplorers,
       transientFile?.explorerId,
     ],
@@ -382,7 +403,9 @@ export function PersistentExplorerViews({
         ? transientFile.file
         : undefined;
     const transient = Boolean(explorerTransientFile);
-    const prewarm = prewarmExplorer?.id === explorer.id;
+    const prewarm =
+      prewarmExplorer?.id === explorer.id ||
+      prewarmSuccessorExplorer?.id === explorer.id;
     return (
       <ExplorerView
         active={active}
@@ -400,6 +423,12 @@ export function PersistentExplorerViews({
         onHeaderChange={active ? onHeaderChange : undefined}
         onInlineCodeReady={
           onInlineCodeReady ? () => onInlineCodeReady(explorer.id) : undefined
+        }
+        onInlineCodeWorkbenchReadinessChange={
+          onInlineCodeWorkbenchReadinessChange
+            ? (ready) =>
+                onInlineCodeWorkbenchReadinessChange(explorer.id, ready)
+            : undefined
         }
         onLifecycleChange={handleLifecycleChange}
         onOpenFile={

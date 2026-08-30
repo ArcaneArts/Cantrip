@@ -25,9 +25,16 @@ const previewOwner = {
 function commandHarness({
   handoff = null,
   layout,
+  waitForSuccessor = vi.fn().mockResolvedValue({
+    ...previewOwner,
+    id: "explorer-successor",
+  }),
 }: {
   handoff?: SidebarFilePinHandoffState | null;
   layout: ProjectTabLayoutSummary;
+  waitForSuccessor?: (
+    sourceExplorerId: string,
+  ) => Promise<ExplorerSummary | null>;
 }) {
   const setSidebarFilePreview = vi.fn();
   const pinMutation = { isPending: false, mutate: vi.fn(), reset: vi.fn() };
@@ -43,6 +50,9 @@ function commandHarness({
     fileState: {
       setSidebarFilePinHandoff: vi.fn(),
       setSidebarFilePreview,
+      sidebarFileWorkbenchReadyIdsRef: {
+        current: new Set([previewOwner.id]),
+      },
       sidebarFilePinHandoffRef: { current: handoff },
       sidebarFilePreview: {
         active: true,
@@ -51,6 +61,7 @@ function commandHarness({
         path: "src/first.ts",
         projectId: previewOwner.projectId,
       },
+      waitForSidebarFileSuccessor: waitForSuccessor,
     },
     lifecycle: {
       explorerLifecycleRef: { current: new Map() },
@@ -127,5 +138,34 @@ describe("sidebar Explorer ownership commands", () => {
 
     expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
     expect(harness.pinMutation.mutate).not.toHaveBeenCalled();
+  });
+
+  it("does not pin the active preview until its warm successor is ready", async () => {
+    let resolveSuccessor!: (explorer: ExplorerSummary) => void;
+    const waitForSuccessor = vi.fn(
+      () =>
+        new Promise<ExplorerSummary>((resolve) => {
+          resolveSuccessor = resolve;
+        }),
+    );
+    const harness = commandHarness({
+      layout: layout([]),
+      waitForSuccessor,
+    });
+
+    const pinning = harness.commands.pinSidebarFilePath(
+      previewOwner,
+      entry.path,
+    );
+    await Promise.resolve();
+    expect(waitForSuccessor).toHaveBeenCalledWith(previewOwner.id);
+    expect(harness.pinMutation.mutate).not.toHaveBeenCalled();
+
+    resolveSuccessor({
+      ...previewOwner,
+      id: "explorer-successor",
+    });
+    await pinning;
+    expect(harness.pinMutation.mutate).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   dedicatedSidebarExplorer,
+  dedicatedSidebarExplorers,
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   moveSidebarPath,
@@ -63,7 +64,7 @@ describe("sidebar file tabs", () => {
     ).toBe(false);
   });
 
-  it("does not prewarm a replacement editor while pinning or after a tab is open", () => {
+  it("keeps sidebar workbenches prewarmed through pinning and open tabs", () => {
     const sidebarExplorer = explorer("sidebar", "worktree-1");
     const initial = {
       hasOpenExplorer: false,
@@ -75,10 +76,10 @@ describe("sidebar file tabs", () => {
     expect(sidebarExplorerPrewarmTarget(initial)).toBe(sidebarExplorer);
     expect(
       sidebarExplorerPrewarmTarget({ ...initial, pinInProgress: true }),
-    ).toBeNull();
+    ).toBe(sidebarExplorer);
     expect(
       sidebarExplorerPrewarmTarget({ ...initial, hasOpenExplorer: true }),
-    ).toBeNull();
+    ).toBe(sidebarExplorer);
     expect(
       sidebarExplorerPrewarmTarget({ ...initial, isPopout: true }),
     ).toBeNull();
@@ -195,6 +196,14 @@ describe("sidebar file tabs", () => {
     ).toBe(false);
     expect(
       sidebarExplorerCanOwnPreview({
+        explorerId: "preview",
+        layout: layout(),
+        pinInProgress: false,
+        workbenchReady: false,
+      }),
+    ).toBe(false);
+    expect(
+      sidebarExplorerCanOwnPreview({
         explorerId: "pinned",
         layout: layout("pinned"),
         pinInProgress: false,
@@ -220,6 +229,14 @@ describe("sidebar file tabs", () => {
         layout: layout("visible"),
       }),
     ).toBe(hidden);
+
+    expect(
+      dedicatedSidebarExplorers({
+        desiredWorktreeId: "worktree-1",
+        explorers: [visible, hidden, explorer("second", "worktree-1")],
+        layout: layout("visible"),
+      }).map(({ id }) => id),
+    ).toEqual(["hidden", "second"]);
   });
 
   it("keeps the preview Explorer stable across worktree selection", () => {

@@ -35,9 +35,10 @@ import { errorMessage as errorText } from "@/lib/error-message";
 import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
-  dedicatedSidebarExplorer,
+  dedicatedSidebarExplorers,
   preferredSidebarExplorer,
   primaryWorktreeId,
+  SIDEBAR_EXPLORER_POOL_SIZE,
   sidebarFileName,
   surfaceWorktreeId,
   tabbedExplorerIds,
@@ -86,6 +87,85 @@ export function useSidebarFileState() {
     useState<SidebarFilePinHandoffState | null>(null);
   const sidebarFilePinHandoffRef = useRef(sidebarFilePinHandoff);
   sidebarFilePinHandoffRef.current = sidebarFilePinHandoff;
+  const [sidebarFileWorkbenchReadyIds, setSidebarFileWorkbenchReadyIds] =
+    useState<ReadonlySet<string>>(() => new Set());
+  const sidebarFileWorkbenchReadyIdsRef = useRef(sidebarFileWorkbenchReadyIds);
+  sidebarFileWorkbenchReadyIdsRef.current = sidebarFileWorkbenchReadyIds;
+  const sidebarExplorerPoolRef = useRef<readonly ExplorerSummary[]>([]);
+  const sidebarSuccessorWaitersRef = useRef(new Set<() => void>());
+  const notifySidebarSuccessorWaiters = useCallback(() => {
+    for (const waiter of sidebarSuccessorWaitersRef.current) waiter();
+  }, []);
+  const updateSidebarFileWorkbenchReadiness = useCallback(
+    (explorerId: string, ready: boolean) => {
+      const current = sidebarFileWorkbenchReadyIdsRef.current;
+      if (current.has(explorerId) === ready) return;
+      const next = new Set(current);
+      if (ready) next.add(explorerId);
+      else next.delete(explorerId);
+      sidebarFileWorkbenchReadyIdsRef.current = next;
+      setSidebarFileWorkbenchReadyIds(next);
+      notifySidebarSuccessorWaiters();
+    },
+    [notifySidebarSuccessorWaiters],
+  );
+  const updateSidebarExplorerPool = useCallback(
+    (pool: readonly ExplorerSummary[]) => {
+      sidebarExplorerPoolRef.current = pool.slice(
+        0,
+        SIDEBAR_EXPLORER_POOL_SIZE,
+      );
+      const poolIds = new Set(
+        sidebarExplorerPoolRef.current.map(({ id }) => id),
+      );
+      const current = sidebarFileWorkbenchReadyIdsRef.current;
+      const next = new Set([...current].filter((id) => poolIds.has(id)));
+      if (next.size !== current.size) {
+        sidebarFileWorkbenchReadyIdsRef.current = next;
+        setSidebarFileWorkbenchReadyIds(next);
+      }
+      notifySidebarSuccessorWaiters();
+    },
+    [notifySidebarSuccessorWaiters],
+  );
+  const waitForSidebarFileSuccessor = useCallback(
+    (
+      sourceExplorerId: string,
+      timeoutMs = SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS,
+    ): Promise<ExplorerSummary | null> => {
+      const readySuccessor = () => {
+        const successor = sidebarExplorerPoolRef.current.find(
+          ({ id }) => id !== sourceExplorerId,
+        );
+        return successor &&
+          sidebarFileWorkbenchReadyIdsRef.current.has(successor.id)
+          ? successor
+          : null;
+      };
+      const immediate = readySuccessor();
+      if (immediate) return Promise.resolve(immediate);
+      return new Promise((resolve) => {
+        let settled = false;
+        let timeout: ReturnType<typeof setTimeout>;
+        let check: () => void;
+        const finish = (successor: ExplorerSummary | null) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          sidebarSuccessorWaitersRef.current.delete(check);
+          resolve(successor);
+        };
+        check = () => {
+          const successor = readySuccessor();
+          if (successor) finish(successor);
+        };
+        timeout = setTimeout(() => finish(null), timeoutMs);
+        sidebarSuccessorWaitersRef.current.add(check);
+        check();
+      });
+    },
+    [],
+  );
   const [explorerGraphRequest, setExplorerGraphRequest] =
     useState<ExplorerGraphRequest | null>(null);
   return {
@@ -93,9 +173,14 @@ export function useSidebarFileState() {
     setExplorerGraphRequest,
     setSidebarFilePinHandoff,
     setSidebarFilePreview,
+    sidebarFileWorkbenchReadyIds,
+    sidebarFileWorkbenchReadyIdsRef,
     sidebarFilePinHandoff,
     sidebarFilePinHandoffRef,
     sidebarFilePreview,
+    updateSidebarExplorerPool,
+    updateSidebarFileWorkbenchReadiness,
+    waitForSidebarFileSuccessor,
   } as const;
 }
 
@@ -206,9 +291,6 @@ export function useSidebarExplorerMutations({
         undefined,
         { attachToTabLayout: false },
       ),
-    onError: (_error, input) => {
-      sidebarExplorerCreationKeyRef.current = `${input.projectId}:${input.worktreeId ?? "default"}`;
-    },
     onSuccess: (explorer) => {
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", explorer.projectId],
@@ -323,9 +405,8 @@ export function useSidebarExplorerMutations({
         destinationExplorer: explorer,
         ready: true,
       };
-      // This Explorer is now a tab. Permit the creation effect to provision
-      // the next lightweight sidebar Explorer record. It is not opened until
-      // the user selects another file.
+      // This Explorer is now a tab. Permit the creation effect to replenish
+      // the bounded pool with a retained, prewarmed successor.
       sidebarExplorerCreationKeyRef.current = null;
       sidebarFilePinHandoffRef.current = nextHandoff;
       setSidebarFilePinHandoff(nextHandoff);
@@ -531,11 +612,17 @@ export function useSidebarExplorerModel({
       ? sidebarFilePreview.explorerId
       : null,
   });
-  const sidebarInlineExplorer = dedicatedSidebarExplorer({
-    desiredWorktreeId: sidebarDesiredWorktreeId,
-    explorers: explorers ?? [],
-    layout: tabLayout,
-  });
+  const sidebarInlineExplorers = useMemo(
+    () =>
+      dedicatedSidebarExplorers({
+        desiredWorktreeId: sidebarDesiredWorktreeId,
+        explorers: explorers ?? [],
+        layout: tabLayout,
+      }),
+    [explorers, sidebarDesiredWorktreeId, tabLayout],
+  );
+  const sidebarInlineExplorer = sidebarInlineExplorers[0] ?? null;
+  const sidebarPreviewSuccessorExplorer = sidebarInlineExplorers[1] ?? null;
   const connectedExplorerGroupIds = useMemo(() => {
     if (projectOverviewPopoutTarget || explorerFileTarget) {
       return new Set<string>();
@@ -577,6 +664,8 @@ export function useSidebarExplorerModel({
     sidebarExplorer,
     sidebarFilePreviewRef,
     sidebarInlineExplorer,
+    sidebarInlineExplorers,
+    sidebarPreviewSuccessorExplorer,
     sidebarPreviewExplorer,
   } as const;
 }
@@ -589,14 +678,14 @@ export function sidebarExplorerProvisioningDetails({
   selectedProjectWorkerId,
   sidebarDesiredWorktreeId,
   sidebarExplorer,
-  sidebarInlineExplorer,
+  sidebarInlineExplorers,
 }: {
   onlineWorkerIds: ReadonlySet<string>;
   selectedProject: ProjectSummary | undefined;
   selectedProjectWorkerId: string | null;
   sidebarDesiredWorktreeId: string | null;
   sidebarExplorer: ExplorerSummary | null;
-  sidebarInlineExplorer: ExplorerSummary | null;
+  sidebarInlineExplorers: readonly ExplorerSummary[];
 }) {
   const sidebarFileWorkerId =
     sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
@@ -615,10 +704,11 @@ export function sidebarExplorerProvisioningDetails({
         }
       : null;
   const sidebarExplorerCreationKey = sidebarExplorerCreationInput
-    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}`
+    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}:${sidebarInlineExplorers.length}`
     : null;
   const sidebarHasDesiredExplorer = Boolean(
-    sidebarExplorerCreationInput && sidebarInlineExplorer,
+    sidebarExplorerCreationInput &&
+    sidebarInlineExplorers.length >= SIDEBAR_EXPLORER_POOL_SIZE,
   );
   return {
     sidebarExplorerCreationInput,
@@ -626,6 +716,7 @@ export function sidebarExplorerProvisioningDetails({
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
     sidebarHasDesiredExplorer,
+    sidebarExplorerPoolSize: sidebarInlineExplorers.length,
   } as const;
 }
 
@@ -857,7 +948,10 @@ export function useSidebarExplorerProvisioning({
   explorersIsSuccess: boolean;
   fileState: Pick<
     SidebarFileState,
-    "setSidebarFilePreview" | "sidebarFilePreview"
+    | "setSidebarFilePreview"
+    | "sidebarFilePreview"
+    | "sidebarFileWorkbenchReadyIds"
+    | "updateSidebarExplorerPool"
   >;
   isPopout: boolean;
   lifecycle: Pick<
@@ -869,6 +963,7 @@ export function useSidebarExplorerProvisioning({
     | "sidebarDesiredWorktreeId"
     | "sidebarExplorer"
     | "sidebarInlineExplorer"
+    | "sidebarInlineExplorers"
     | "sidebarPreviewExplorer"
   >;
   mutations: Pick<SidebarExplorerMutations, "createSidebarExplorerMutation">;
@@ -878,13 +973,19 @@ export function useSidebarExplorerProvisioning({
   tabLayoutIsSuccess: boolean;
   workers: WorkerSummary[] | undefined;
 }) {
-  const { setSidebarFilePreview, sidebarFilePreview } = fileState;
+  const {
+    setSidebarFilePreview,
+    sidebarFilePreview,
+    sidebarFileWorkbenchReadyIds,
+    updateSidebarExplorerPool,
+  } = fileState;
   const { sidebarExplorerCreationKeyRef, sidebarFilePreviewLifecycleRef } =
     lifecycle;
   const {
     sidebarDesiredWorktreeId,
     sidebarExplorer,
     sidebarInlineExplorer,
+    sidebarInlineExplorers,
     sidebarPreviewExplorer,
   } = model;
   const { createSidebarExplorerMutation } = mutations;
@@ -909,8 +1010,11 @@ export function useSidebarExplorerProvisioning({
     selectedProjectWorkerId,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
-    sidebarInlineExplorer,
+    sidebarInlineExplorers,
   });
+  useEffect(() => {
+    updateSidebarExplorerPool(sidebarInlineExplorers);
+  }, [sidebarInlineExplorers, updateSidebarExplorerPool]);
   useEffect(() => {
     if (
       isPopout ||
@@ -959,5 +1063,8 @@ export function useSidebarExplorerProvisioning({
     sidebarExplorerCreationKey,
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
+    sidebarFileWorkbenchReady: Boolean(
+      sidebarExplorer && sidebarFileWorkbenchReadyIds.has(sidebarExplorer.id),
+    ),
   } as const;
 }

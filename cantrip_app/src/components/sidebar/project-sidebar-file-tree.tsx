@@ -72,6 +72,7 @@ function SidebarFileRow({
   onOpenNative,
   onOpen,
   onOpenTerminal,
+  openEnabled = true,
   onPin,
   onRename,
   onRenameCancel,
@@ -91,6 +92,7 @@ function SidebarFileRow({
   onOpenNative?(localFolder: boolean): void;
   onOpen(): void;
   onOpenTerminal?(): void;
+  openEnabled?: boolean;
   onPin?(): void;
   onRename(): void;
   onRenameCancel(): void;
@@ -101,7 +103,8 @@ function SidebarFileRow({
   revealLabel?: string;
 }) {
   const Icon = entryIcon(entry, expanded);
-  const openable = entry.kind === "directory" || entry.viewable;
+  const openable =
+    entry.kind === "directory" || (entry.viewable && openEnabled);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameOnBlurRef = useRef(false);
   const revealLocalFolder = useRef(false);
@@ -272,6 +275,7 @@ function SidebarDirectoryNode({
   onOpenNative,
   onPreview,
   onOpenTerminal,
+  filePreviewReady,
   onPin,
   onRename,
   onRenameCancel,
@@ -298,6 +302,7 @@ function SidebarDirectoryNode({
   onOpenNative?(entry: ExplorerEntry, localFolder: boolean): void;
   onPreview(entry: ExplorerEntry): void;
   onOpenTerminal?(entry: ExplorerEntry): void;
+  filePreviewReady: boolean;
   onPin(entry: ExplorerEntry): void;
   onRename(entry: ExplorerEntry): void;
   onRenameCancel(): void;
@@ -392,6 +397,7 @@ function SidebarDirectoryNode({
                   onOpenNative={onOpenNative}
                   onPreview={onPreview}
                   onOpenTerminal={onOpenTerminal}
+                  filePreviewReady={filePreviewReady}
                   onPin={onPin}
                   onRename={onRename}
                   onRenameCancel={onRenameCancel}
@@ -420,6 +426,7 @@ function SidebarDirectoryNode({
                       : undefined
                   }
                   onOpen={() => onPreview(child)}
+                  openEnabled={filePreviewReady}
                   onPin={() => onPin(child)}
                   onRename={() => onRename(child)}
                   onRenameCancel={onRenameCancel}
@@ -442,6 +449,7 @@ export function ProjectSidebarFileTree({
   activePath,
   error,
   explorer,
+  filePreviewReady = true,
   loading,
   onDelete,
   onOpenGraph,
@@ -459,6 +467,7 @@ export function ProjectSidebarFileTree({
   activePath: string | null;
   error?: string | null;
   explorer: ExplorerSummary | null;
+  filePreviewReady?: boolean;
   loading: boolean;
   onDelete(
     entry: ExplorerEntry,
@@ -764,68 +773,81 @@ export function ProjectSidebarFileTree({
             ) : null}
           </div>
         ) : explorer ? (
-          <div role="tree" aria-label="Project files">
-            {visibleEntries.map((entry) =>
-              entry.kind === "directory" ? (
-                <SidebarDirectoryNode
-                  activePath={activePath}
-                  continuityKey={streamEncryption.continuityKey}
-                  depth={0}
-                  editingPath={renameTarget?.path ?? null}
-                  entry={entry}
-                  expandedPaths={expandedPaths}
-                  explorerId={explorer.id}
-                  key={entry.path}
-                  onDelete={setDeleteTarget}
-                  onOpenGraph={onOpenGraph}
-                  onOpenNative={onOpenNative}
-                  onPreview={onPreview}
-                  onOpenTerminal={onOpenTerminal}
-                  onPin={onPin}
-                  onRename={beginRename}
-                  onRenameCancel={cancelRename}
-                  onRenameSubmit={submitRename}
-                  onRenameValueChange={setRenameValue}
-                  onToggle={toggle}
-                  projectId={explorer.projectId}
-                  queryEnabled={streamEncryption.ready}
-                  queryScope={streamEncryption.bindingKey!}
-                  renamePending={renamePending}
-                  renameValue={renameValue}
-                  revealLabel={revealLabel}
-                  worktreeId={explorer.worktreeId}
-                />
-              ) : (
-                <SidebarFileRow
-                  active={activePath === entry.path}
-                  depth={0}
-                  editing={renameTarget?.path === entry.path}
-                  entry={entry}
-                  key={entry.path}
-                  onDelete={() => setDeleteTarget(entry)}
-                  onOpenNative={
-                    onOpenNative
-                      ? (localFolder) => onOpenNative(entry, localFolder)
-                      : undefined
-                  }
-                  onOpen={() => onPreview(entry)}
-                  onPin={() => onPin(entry)}
-                  onRename={() => beginRename(entry)}
-                  onRenameCancel={cancelRename}
-                  onRenameSubmit={submitRename}
-                  onRenameValueChange={setRenameValue}
-                  renamePending={renamePending}
-                  renameValue={renameValue}
-                  revealLabel={revealLabel}
-                />
-              ),
-            )}
-            {visibleEntries.length === 0 ? (
-              <p className="px-3 py-4 text-center text-[10px] text-muted-foreground">
-                This folder is empty.
+          <>
+            {!filePreviewReady ? (
+              <p
+                className="px-2 pb-1 text-[10px] leading-4 text-muted-foreground"
+                data-slot="sidebar-file-editor-preparing"
+                role="status"
+              >
+                Preparing editor…
               </p>
             ) : null}
-          </div>
+            <div role="tree" aria-label="Project files">
+              {visibleEntries.map((entry) =>
+                entry.kind === "directory" ? (
+                  <SidebarDirectoryNode
+                    activePath={activePath}
+                    continuityKey={streamEncryption.continuityKey}
+                    depth={0}
+                    editingPath={renameTarget?.path ?? null}
+                    entry={entry}
+                    expandedPaths={expandedPaths}
+                    explorerId={explorer.id}
+                    key={entry.path}
+                    onDelete={setDeleteTarget}
+                    onOpenGraph={onOpenGraph}
+                    onOpenNative={onOpenNative}
+                    onPreview={onPreview}
+                    onOpenTerminal={onOpenTerminal}
+                    filePreviewReady={filePreviewReady}
+                    onPin={onPin}
+                    onRename={beginRename}
+                    onRenameCancel={cancelRename}
+                    onRenameSubmit={submitRename}
+                    onRenameValueChange={setRenameValue}
+                    onToggle={toggle}
+                    projectId={explorer.projectId}
+                    queryEnabled={streamEncryption.ready}
+                    queryScope={streamEncryption.bindingKey!}
+                    renamePending={renamePending}
+                    renameValue={renameValue}
+                    revealLabel={revealLabel}
+                    worktreeId={explorer.worktreeId}
+                  />
+                ) : (
+                  <SidebarFileRow
+                    active={activePath === entry.path}
+                    depth={0}
+                    editing={renameTarget?.path === entry.path}
+                    entry={entry}
+                    key={entry.path}
+                    onDelete={() => setDeleteTarget(entry)}
+                    onOpenNative={
+                      onOpenNative
+                        ? (localFolder) => onOpenNative(entry, localFolder)
+                        : undefined
+                    }
+                    onOpen={() => onPreview(entry)}
+                    openEnabled={filePreviewReady}
+                    onPin={() => onPin(entry)}
+                    onRename={() => beginRename(entry)}
+                    onRenameCancel={cancelRename}
+                    onRenameSubmit={submitRename}
+                    onRenameValueChange={setRenameValue}
+                    renamePending={renamePending}
+                    renameValue={renameValue}
+                    revealLabel={revealLabel}
+                  />
+                ),
+              )}
+              {visibleEntries.length === 0 ? (
+                <p className="px-3 py-4 text-center text-[10px] text-muted-foreground">
+                  This folder is empty.
+                </p>
+              ) : null}
+            </div>
+          </>
         ) : (
           <p className="px-3 py-4 text-center text-[10px] leading-4 text-muted-foreground">
             Preparing the project files…
