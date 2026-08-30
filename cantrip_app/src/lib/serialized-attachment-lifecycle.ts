@@ -1,5 +1,65 @@
 import { SerialTaskQueue } from "./serial-task-queue";
 
+interface DeferredEffectCleanupDependencies {
+  clearTimer(timer: ReturnType<typeof setTimeout>): void;
+  setTimer(callback: () => void): ReturnType<typeof setTimeout>;
+}
+
+const defaultDeferredEffectCleanupDependencies: DeferredEffectCleanupDependencies =
+  {
+    clearTimer: (timer) => globalThis.clearTimeout(timer),
+    setTimer: (callback) => globalThis.setTimeout(callback, 0),
+  };
+
+/**
+ * Defers an effect cleanup by one task so React Strict Mode's immediate effect
+ * replay can reacquire the same owner without tearing down live resources.
+ * Every cleanup is generation-scoped, so a stale task cannot release a newer
+ * effect generation.
+ */
+export class DeferredEffectCleanup {
+  readonly #dependencies: DeferredEffectCleanupDependencies;
+  #generation = 0;
+  #timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    dependencies: DeferredEffectCleanupDependencies = defaultDeferredEffectCleanupDependencies,
+  ) {
+    this.#dependencies = dependencies;
+  }
+
+  retain(): number {
+    this.#generation += 1;
+    this.#clearTimer();
+    return this.#generation;
+  }
+
+  release(generation: number, cleanup: () => void | Promise<void>): void {
+    if (generation !== this.#generation) return;
+    this.#clearTimer();
+    this.#timer = this.#dependencies.setTimer(() => {
+      this.#timer = null;
+      if (generation !== this.#generation) return;
+      try {
+        void Promise.resolve(cleanup()).catch(() => undefined);
+      } catch {
+        // Effect cleanup remains best-effort after the owner is gone.
+      }
+    });
+  }
+
+  cancel(): void {
+    this.#generation += 1;
+    this.#clearTimer();
+  }
+
+  #clearTimer(): void {
+    if (this.#timer === null) return;
+    this.#dependencies.clearTimer(this.#timer);
+    this.#timer = null;
+  }
+}
+
 interface LifecycleEntry<TOwned> {
   controller: AbortController;
   generation: number;

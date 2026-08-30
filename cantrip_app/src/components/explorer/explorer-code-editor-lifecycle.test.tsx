@@ -6,6 +6,7 @@ import type {
 import {
   createElement,
   startTransition,
+  StrictMode,
   Suspense,
   type ComponentProps,
   type ComponentType,
@@ -426,6 +427,116 @@ afterEach(() => {
 });
 
 describe("ExplorerCodeEditor warm lifecycle", () => {
+  it("keeps one committed attachment through Strict Mode effect replay", async () => {
+    tauri.enabled = true;
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(StrictMode, null, editor(null)),
+        {
+          createNodeMock: (element: { type: unknown }) =>
+            element.type === "iframe" ? { contentWindow: frameWindow } : null,
+          unstable_strictMode: true,
+        } as never,
+      );
+    });
+    await settle();
+
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalled();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(
+      logging.event.mock.calls.some(
+        ([, , context]) =>
+          context.event === "code.editor.launch.cancelled" &&
+          context.reasonCode === "surface-unmounted",
+      ),
+    ).toBe(false);
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+    expect(
+      logging.event.mock.calls.some(
+        ([, , context]) => context.event === "code.editor.launch.completed",
+      ),
+    ).toBe(true);
+
+    await act(async () => renderer.unmount());
+    await settle();
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+  });
+
+  it("releases one Strict Mode editor without disturbing its sibling", async () => {
+    tauri.enabled = true;
+    const Pair = ({ first }: { first: boolean }) =>
+      createElement(
+        StrictMode,
+        null,
+        first
+          ? editor(null, {
+              explorerId: "explorer-first",
+              worktreeId: "worktree-first",
+            })
+          : null,
+        editor(null, {
+          explorerId: "explorer-second",
+          worktreeId: "worktree-second",
+        }),
+      );
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Pair, { first: true }), {
+        createNodeMock: (element: { type: unknown }) =>
+          element.type === "iframe" ? { contentWindow: frameWindow } : null,
+        unstable_strictMode: true,
+      } as never);
+    });
+    await settle();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      renderer.update(createElement(Pair, { first: false }));
+    });
+    await settle();
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(renderer.root.findAllByType("iframe")).toHaveLength(1);
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+
+    await act(async () => renderer.unmount());
+    await settle();
+    expect(desktopCode.stopSharedProtectedCodeAttachment).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledTimes(2);
+  });
+
   it("records correlated timings through workbench and file readiness", async () => {
     const { renderer } = await mount("src/timed.ts");
 
