@@ -37,6 +37,8 @@ describe("ShellHeader mobile Chat chrome", () => {
     expect(markup).toContain("Beth");
     expect(markup).toContain("Standalone conversation · idle");
     expect(markup).toContain('aria-label="Open sidebar"');
+    expect(markup).toContain("relative size-9");
+    expect(markup).not.toContain("absolute size-8");
     expect(markup).not.toContain(" title=");
     expect(markup).not.toContain("Imperium");
   });

@@ -244,8 +244,9 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               size="icon"
               variant="ghost"
               className={cn(
-                "absolute size-8",
-                overlayTitlebar ? "left-20 top-1" : "left-4 top-4",
+                compactShell ? "relative size-9" : "absolute size-8",
+                !compactShell &&
+                  (overlayTitlebar ? "left-20 top-1" : "left-4 top-4"),
               )}
               onClick={() =>
                 desktopSidebarDrawer
@@ -266,6 +267,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               overlayTitlebar &&
                 "flex flex-1 items-center gap-2 overflow-hidden",
               sidebarToggleVisible &&
+                !compactShell &&
                 (overlayTitlebar ? "pl-[6.25rem]" : "pl-10"),
             )}
             data-tauri-drag-region={overlayTitlebar ? "" : undefined}
