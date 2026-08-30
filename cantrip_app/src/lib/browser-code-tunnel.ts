@@ -1542,8 +1542,14 @@ function virtualCodePath(
 ): string {
   const prefix = `/__cantrip_code/${adapterId}`;
   const codePath = `${prefix}/code`;
+  const requestOrigin =
+    url.protocol === "ws:"
+      ? `http://${url.host}`
+      : url.protocol === "wss:"
+        ? `https://${url.host}`
+        : url.origin;
   if (
-    url.origin !== window.location.origin ||
+    requestOrigin !== window.location.origin ||
     (url.pathname !== codePath && !url.pathname.startsWith(`${codePath}/`))
   ) {
     throw new Error("Protected Code request escaped its browser adapter.");

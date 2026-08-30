@@ -135,7 +135,8 @@ class BrowserCodeWorkerLinkSocket
       } satisfies TunnelAttachmentReady;
       void this.#deliver(JSON.stringify(ready)).then(
         () => {
-          this.dependencies.queue(() => this.#connection?.activate());
+          const queue = this.dependencies.queue;
+          queue(() => this.#connection?.activate());
         },
         () => this.#fail("The protected Code transport rejected readiness."),
       );
