@@ -67,7 +67,6 @@ export function ApplicationShellRender({
     isPopout,
     linkedConsoleChat,
     mobileProjectSelectorOpen,
-    mobileTabGridOpen,
     openChatConsole,
     overlayTitlebar,
     popOutActiveView,
@@ -244,7 +243,6 @@ export function ApplicationShellRender({
     !showSettings &&
     !showServerAdmin &&
     !showProjectSettings &&
-    !(compactShell && mobileTabGridOpen) &&
     !groupOwnedElsewhere,
   );
   const explorerSurfaceVisible = Boolean(
@@ -255,7 +253,6 @@ export function ApplicationShellRender({
     !showSettings &&
     !showServerAdmin &&
     !showProjectSettings &&
-    !(compactShell && mobileTabGridOpen) &&
     !groupOwnedElsewhere,
   );
   if (explorerFileTarget) {

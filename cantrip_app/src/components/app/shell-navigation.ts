@@ -612,13 +612,11 @@ export function createShellNavigationCommands({
   persistAppDestination,
   projects,
   projectWorkspaces,
-  resetMobileBottomTabs,
   setActiveProjectWorkspaceId,
   setCommandBarOpen,
   setDesktopSidebarDrawerOpen,
   setDetachedGroupId,
   setFolderProjectDialogOpen,
-  setMobileTabGridOpen,
   setPendingSurfaceSelection,
   setSidebarFilePreview,
   setWorkspaceSelection,
@@ -651,13 +649,11 @@ export function createShellNavigationCommands({
   ): Promise<void>;
   projects: ProjectSummary[] | undefined;
   projectWorkspaces: ProjectWorkspaceSummary[] | undefined;
-  resetMobileBottomTabs(): void;
   setActiveProjectWorkspaceId: Dispatch<SetStateAction<string | null>>;
   setCommandBarOpen: Dispatch<SetStateAction<boolean>>;
   setDesktopSidebarDrawerOpen: Dispatch<SetStateAction<boolean>>;
   setDetachedGroupId: Dispatch<SetStateAction<string | null>>;
   setFolderProjectDialogOpen: Dispatch<SetStateAction<boolean>>;
-  setMobileTabGridOpen: Dispatch<SetStateAction<boolean>>;
   setPendingSurfaceSelection: Dispatch<
     SetStateAction<PendingSurfaceSelection | null>
   >;
@@ -757,7 +753,6 @@ export function createShellNavigationCommands({
     if (compactShell) {
       setSelectedProjectId(null);
       setWorkspaceSelection(emptyWorkspaceSelection());
-      resetMobileBottomTabs();
       setPendingSurfaceSelection(null);
       setShowImporter(false);
       setShowSettings(false);
@@ -798,7 +793,6 @@ export function createShellNavigationCommands({
     setProjectOverviewSection("overview");
     setProjectOverviewWorktreeId(null);
     setWorkspaceSelection(emptyWorkspaceSelection(projectId));
-    resetMobileBottomTabs();
     setPendingSurfaceSelection(null);
     setDetachedGroupId(null);
     revealWorkspace();
@@ -828,7 +822,6 @@ export function createShellNavigationCommands({
   const closeCompactProject = () => {
     setSelectedProjectId(null);
     setWorkspaceSelection(emptyWorkspaceSelection());
-    resetMobileBottomTabs();
     setPendingSurfaceSelection(null);
     setDetachedGroupId(null);
     setShowImporter(false);
@@ -841,7 +834,6 @@ export function createShellNavigationCommands({
   const openCompactRootSettings = (section: SettingsSection = "general") => {
     setSelectedProjectId(null);
     setWorkspaceSelection(emptyWorkspaceSelection());
-    resetMobileBottomTabs();
     setPendingSurfaceSelection(null);
     setSettingsSection(section);
     setShowSettings(true);
@@ -857,12 +849,10 @@ export function createShellNavigationCommands({
     setShowSettings(false);
     setShowArchivedStandaloneChats(false);
     setShowProjectSettings(false);
-    setMobileTabGridOpen(false);
   };
   const returnToCompactProjectOverview = () => {
     setShowProjectSettings(false);
     setSelectedWorkflowIntentId(null);
-    setMobileTabGridOpen(false);
     setWorkspaceSelection((current) =>
       selectWorkspaceOverview(current, selectedProjectId),
     );
@@ -889,12 +879,10 @@ export function createShellProjectNavigationCommands({
   navigation,
   persistAppDestination,
   queryClient,
-  resetMobileBottomTabs,
   setCreatedRepositoryOnboarding,
   setDesktopSidebarDrawerOpen,
   setFolderProjectDialogMode,
   setFolderProjectDialogOpen,
-  setMobileTabGridOpen,
   setPendingSurfaceSelection,
   setProjectTaskChatIds,
   setSidebarFilePreview,
@@ -918,14 +906,12 @@ export function createShellProjectNavigationCommands({
     patch: Omit<AppDestinationUpdate, "expectedRevision">,
   ): Promise<void>;
   queryClient: QueryClient;
-  resetMobileBottomTabs(): void;
   setCreatedRepositoryOnboarding: Dispatch<
     SetStateAction<{ openInitialChat: boolean; projectId: string } | null>
   >;
   setDesktopSidebarDrawerOpen: Dispatch<SetStateAction<boolean>>;
   setFolderProjectDialogMode: Dispatch<SetStateAction<FolderSourceMode>>;
   setFolderProjectDialogOpen: Dispatch<SetStateAction<boolean>>;
-  setMobileTabGridOpen: Dispatch<SetStateAction<boolean>>;
   setPendingSurfaceSelection: Dispatch<
     SetStateAction<PendingSurfaceSelection | null>
   >;
@@ -955,7 +941,6 @@ export function createShellProjectNavigationCommands({
     if (resetProjectSelection) {
       setSelectedProjectId(null);
       setWorkspaceSelection(emptyWorkspaceSelection());
-      resetMobileBottomTabs();
       setPendingSurfaceSelection(null);
     }
     setShowImporter(source === "github");
@@ -971,7 +956,6 @@ export function createShellProjectNavigationCommands({
     setSidebarFilePreview(null);
     setSelectedProjectId(project.id);
     setWorkspaceSelection(emptyWorkspaceSelection(project.id));
-    resetMobileBottomTabs();
     setPendingSurfaceSelection(null);
     setShowImporter(false);
     setFolderProjectDialogOpen(false);
@@ -1021,7 +1005,6 @@ export function createShellProjectNavigationCommands({
         queryKey: ["project-tab-layout", projectId],
       });
     }
-    setMobileTabGridOpen(false);
     setShowImporter(false);
     setShowSettings(false);
     setShowServerAdmin(false);
@@ -1048,7 +1031,6 @@ export function createShellProjectNavigationCommands({
     setProjectOverviewSection("tasks");
     setWorkspaceSelection(emptyWorkspaceSelection(projectId));
     setPendingSurfaceSelection(null);
-    setMobileTabGridOpen(false);
     setShowImporter(false);
     setShowSettings(false);
     setShowServerAdmin(false);
@@ -1082,7 +1064,6 @@ export function createShellProjectNavigationCommands({
     setShowProjectSettings(true);
     setProjectSettingsSection(section);
     setSelectedWorkflowIntentId(workflowId);
-    setMobileTabGridOpen(false);
     void persistAppDestination({
       lastAppMode: "ide",
       lastIdeProjectId: projectId,

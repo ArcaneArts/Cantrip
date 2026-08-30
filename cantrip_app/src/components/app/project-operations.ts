@@ -23,7 +23,6 @@ import {
 export function useProjectSetupOperations({
   activeProjectWorkspaceStorageKey,
   queryClient,
-  resetMobileBottomTabs,
   setActiveProjectWorkspaceId,
   setDismissedLongPathFailure,
   setSelectedProjectId,
@@ -36,7 +35,6 @@ export function useProjectSetupOperations({
 }: {
   activeProjectWorkspaceStorageKey: string;
   queryClient: QueryClient;
-  resetMobileBottomTabs: () => void;
   setActiveProjectWorkspaceId: (workspaceId: string | null) => void;
   setDismissedLongPathFailure: (failure: string | null) => void;
   setSelectedProjectId: (projectId: string | null) => void;
@@ -74,7 +72,6 @@ export function useProjectSetupOperations({
       );
       setSelectedProjectId(null);
       setWorkspaceSelection(emptyWorkspaceSelection());
-      resetMobileBottomTabs();
       setShowImporter(false);
       setShowSettings(false);
       setShowArchivedStandaloneChats(false);

@@ -13,14 +13,8 @@ import {
   useOrphanedDesktopPopoutEffect,
 } from "@/components/app/desktop-popout-lifecycle";
 import {
-  createMobileProjectNavigationCommands,
+  mobileProjectSurfaces,
   mobileProjectShellModel,
-  resetMobileProjectNavigation,
-  useMobileBottomTabsPersistence,
-  useMobileProjectNavigationEffects,
-  useMobileProjectNavigationModel,
-  useMobileProjectNavigationRefs,
-  useMobileProjectNavigationState,
 } from "@/components/app/mobile-project-navigation";
 import {
   useBrowserCodeViewCreationOperations,
@@ -316,9 +310,6 @@ export function App() {
   >(() => window.localStorage.getItem(activeProjectWorkspaceStorageKey));
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [chatRelocationOpen, setChatRelocationOpen] = useState(false);
-  const mobileProjectNavigation = useMobileProjectNavigationState();
-  const { activeMobileBottomTabId, mobileTabGridOpen, setMobileTabGridOpen } =
-    mobileProjectNavigation;
   const {
     contentRootRef,
     contentScrolled,
@@ -377,8 +368,6 @@ export function App() {
   );
   const { codeAppearance, proModeActive, setCodeAppearance, setProModeActive } =
     useShellAppearanceState();
-  const mobileProjectNavigationRefs = useMobileProjectNavigationRefs();
-
   const {
     handleExplorerChanged,
     handleExplorerLifecycleChange,
@@ -389,13 +378,6 @@ export function App() {
     lifecycle: explorerLifecycle,
     queryClient,
   });
-
-  const resetMobileBottomTabs = () => {
-    resetMobileProjectNavigation(
-      mobileProjectNavigation,
-      mobileProjectNavigationRefs,
-    );
-  };
 
   const {
     closeProjectTask,
@@ -421,12 +403,10 @@ export function App() {
     },
     persistAppDestination: (patch) => persistAppDestination(patch),
     queryClient,
-    resetMobileBottomTabs,
     setCreatedRepositoryOnboarding,
     setDesktopSidebarDrawerOpen,
     setFolderProjectDialogMode,
     setFolderProjectDialogOpen,
-    setMobileTabGridOpen,
     setPendingSurfaceSelection,
     setProjectTaskChatIds,
     setSidebarFilePreview,
@@ -441,7 +421,6 @@ export function App() {
     destinationWriteRef,
     queryClient,
   });
-  const saveMobileBottomTabs = useMobileBottomTabsPersistence(queryClient);
   const saveSidebarWidth = useSidebarWidthPersistence(queryClient);
   const projectInventory = useProjectInventory({
     appMode,
@@ -468,7 +447,6 @@ export function App() {
     useProjectSetupOperations({
       activeProjectWorkspaceStorageKey,
       queryClient,
-      resetMobileBottomTabs,
       setActiveProjectWorkspaceId,
       setDismissedLongPathFailure,
       setSelectedProjectId,
@@ -729,7 +707,6 @@ export function App() {
     mobileProjectShellModel({
       appMode,
       compactShell,
-      mobileTabGridOpen,
       projectOverviewSelected,
       selectedProject: Boolean(selectedProject),
       selectedProjectId,
@@ -801,18 +778,13 @@ export function App() {
     tabLayoutIsSuccess: tabLayout.isSuccess,
     workers: workers.data,
   });
-  const mobileProjectNavigationModel = useMobileProjectNavigationModel({
-    projectSurfaceIndex,
-    selectedProjectId,
-    state: mobileProjectNavigation,
-    tabLayout: tabLayout.data,
-    workspaceSelection,
-  });
-  const { activeMobileBottomTab, mobileBottomNavigationItems } =
-    mobileProjectNavigationModel;
   const projectSurfaces = useMemo(
     () => [...projectSurfaceIndex.byTabKey.values()],
     [projectSurfaceIndex],
+  );
+  const mobileNavigationSurfaces = useMemo(
+    () => mobileProjectSurfaces(projectSurfaces, selectedTabKey),
+    [projectSurfaces, selectedTabKey],
   );
   const sidebarFilePreviewVisible = sidebarFilePreviewIsVisible({
     previewActive: sidebarFilePreview?.active ?? false,
@@ -1477,18 +1449,6 @@ export function App() {
     setWorkspaceSelection,
   });
 
-  useMobileProjectNavigationEffects({
-    compactShell,
-    model: mobileProjectNavigationModel,
-    refs: mobileProjectNavigationRefs,
-    saveMobileBottomTabs,
-    selectedProjectId,
-    settings,
-    state: mobileProjectNavigation,
-    tabLayout: tabLayout.data,
-    workspaceSelection,
-  });
-
   useOrphanedDesktopPopoutEffect({
     isLayoutMutationPending: tabLayoutMutation.isPending,
     layout: tabLayout.data,
@@ -1532,13 +1492,11 @@ export function App() {
     persistAppDestination,
     projects: projects.data,
     projectWorkspaces: projectWorkspaces.data,
-    resetMobileBottomTabs,
     setActiveProjectWorkspaceId,
     setCommandBarOpen,
     setDesktopSidebarDrawerOpen,
     setDetachedGroupId,
     setFolderProjectDialogOpen,
-    setMobileTabGridOpen,
     setPendingSurfaceSelection,
     setSidebarFilePreview,
     setWorkspaceSelection,
@@ -1569,7 +1527,6 @@ export function App() {
     } else if (selectedProjectId) {
       setPendingSurfaceSelection({ projectId: selectedProjectId, tabKey });
     }
-    setMobileTabGridOpen(false);
     setDetachedGroupId(null);
     revealWorkspace();
   };
@@ -1613,27 +1570,11 @@ export function App() {
     selectedTabGroup,
     setDesktopSidebarDrawerOpen,
     setDetachedGroupId,
-    setMobileTabGridOpen,
     setPopoutError,
     setWorkspaceSelection,
     sidebarExplorerCreationInput,
     sidebarExplorerCreationKey,
     tabLayout: tabLayout.data,
-  });
-  const {
-    addMobileBottomTab,
-    openMobileBottomTabSwitcher,
-    removeActiveMobileBottomTab,
-    removeMobileBottomTabById,
-    selectGroupFromMobileSwitcher,
-    selectMobileBottomTab,
-    selectMobileOverview,
-  } = createMobileProjectNavigationCommands({
-    refs: mobileProjectNavigationRefs,
-    selectGroup: selectGroupFromSidebar,
-    selectedProjectId,
-    setWorkspaceSelection,
-    state: mobileProjectNavigation,
   });
   const {
     createProjectSurface,
@@ -1696,10 +1637,10 @@ export function App() {
   // into sidebar, header, persistent-surface, content-host, and overlay views.
   // prettier-ignore
   const renderBindings = {
-    activateSidebarFilePreview, activeChat, activeExplorerHeader, activeMobileBottomTab, activeMobileBottomTabId,
+    activateSidebarFilePreview, activeChat, activeExplorerHeader,
     activePopout, activeProjectOverviewPopout, activeProjectOverviewSection, activeProjectTaskChat, activeProjectTaskChatId,
     activeProjectTaskView, activeProjectWorkspace, activeRelocation, activeWorktree, activeWorktreeId,
-    activeWorktreeTarget, addMobileBottomTab, agentInspectOpenChats, appActionContext, appMode,
+    activeWorktreeTarget, agentInspectOpenChats, appActionContext, appMode,
     appToast, archiveStandaloneChat, archivedStandaloneChats, beginSidebarResize, bindChatWorktree,
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
     chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
@@ -1713,12 +1654,12 @@ export function App() {
     focusDetachedGroup, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,
     forkChatMutation, forkStandaloneChat, gitHistoryHeader, gitHistoryProject, groupOwnedElsewhere,
     handleExplorerChanged, handleExplorerLifecycleChange, handleSidebarFilePreviewLifecycleChange, handleWorkspaceDrop, isPopout,
-    linkedConsoleChat, mobileBottomNavigationItems, mobileProjectSelectorOpen, mobileTabGridOpen, moveSidebarResize,
+    linkedConsoleChat, mobileNavigationSurfaces, mobileProjectSelectorOpen, moveSidebarResize,
     narrowViewport, newBrowser, newChat, newCodeTab, newExplorer,
     newProjectView, newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
     openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
-    openExplorerFileWindow, openExplorers, openMobileBottomTabSwitcher, openProjectCreateSource, openProjectExplorerFile,
+    openExplorerFileWindow, openExplorers, openProjectCreateSource, openProjectExplorerFile,
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
@@ -1726,13 +1667,13 @@ export function App() {
     prepareExplorerRebind, projectOverviewGitProject, projectOverviewGitSection, projectOverviewPopoutTarget, projectOverviewSelected,
     projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSidebarSurfaces, projectSurfaces,
     projectTabBarSurfaces, projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
-    projects, queryClient, remoteDesktop, removeActiveMobileBottomTab, removeMobileBottomTabById,
+    projects, queryClient, remoteDesktop,
     removeProjectMutation, renameChatMutation, renameExplorerMutation, renameProjectViewMutation, renameSidebarFileEntry,
     renameStandaloneChat, renameSurface, renameTabGroupMutation, renameTerminalMutation, repositoryStats,
     requestBindWorktree, requestDeleteExplorer, resizeSidebarWithKeyboard, resolvedProjectOverviewWorktreeId, restoreStandaloneChat,
     retryFolderSetupMutation, retryLongPathSetupMutation, retrySidebarFileTree, returnToCompactProjectOverview, revealWorkspace,
     runConfigurationEditorId, runConfigurationRuntimes, runConfigurations, runProjectScriptCommand, scriptCommandWorktreeId,
-    selectGroupFromMobileSwitcher, selectGroupFromSidebar, selectMobileBottomTab, selectMobileOverview, selectProjectFromCommandBar,
+    selectGroupFromSidebar, selectProjectFromCommandBar,
     selectProjectFromSidebar, selectProjectWorkspace, selectStandaloneChat, selectTopTab, selectedBrowser,
     selectedChat, selectedCodeTab, selectedExplorer, selectedFolderSetupJob, selectedFolderSetupNeedsAttention,
     selectedGroupSurfaces, selectedLongPathFailure, selectedLongPathSetupJob, selectedPlacementContext, selectedProject,
@@ -1742,7 +1683,7 @@ export function App() {
     selectedTabGroup, selectedTabKey, selectedTerminal, selectedWorker, selectedWorkflowIntentId,
     setActiveProjectTaskView, setAgentInspectOpen, setAppToast, setChatConsoleOpen, setChatRelocationOpen,
     setCodeHeader, setCommandBarOpen, setDesktopSidebarDrawerOpen, setDismissedLongPathFailure, setExplorerHeader,
-    setFolderProjectDialogMode, setFolderProjectDialogOpen, setGitHistoryHeader, setMobileTabGridOpen, setPendingSurfaceSelection,
+    setFolderProjectDialogMode, setFolderProjectDialogOpen, setGitHistoryHeader, setPendingSurfaceSelection,
     setPendingTerminalInputs, setProjectOverviewSection, setProjectOverviewWorktreeId, setRunConfigurationEditorId, setSettingsPolicyId,
     setSettingsSection, setShowArchivedStandaloneChats, setShowCustomizations, setShowImporter, setShowProjectSettings,
     setShowServerAdmin, setShowSettings, setSidebarCollapsed, setSidebarFilePreviewHeader, setStandaloneFilePath,

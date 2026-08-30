@@ -41,7 +41,6 @@ export function PersistentSurfaceLayer({
     handleSidebarFilePreviewLifecycleChange,
     updateSidebarFileWorkbenchReadiness,
     isPopout,
-    mobileTabGridOpen,
     newTerminal,
     onlineWorkerIds,
     openExplorerFileWindow,
@@ -80,7 +79,7 @@ export function PersistentSurfaceLayer({
   return (
     <>
       {appMode === "ide" &&
-      (!compactShell || !mobileTabGridOpen) &&
+      !compactShell &&
       !showImporter &&
       !showSettings &&
       !showArchivedStandaloneChats &&

@@ -63,7 +63,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     gitHistoryProject,
     isPopout,
     linkedConsoleChat,
-    mobileTabGridOpen,
     mobileSettingsSectionOpen,
     narrowViewport,
     openChatExplorerHere,
@@ -178,21 +177,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
           }
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Project settings"
-        />
-      ) : compactShell &&
-        appMode === "ide" &&
-        mobileTabGridOpen &&
-        selectedProject ? (
-        <MobileProjectHeader
-          actions={renderProjectRunConfigurationControl(true)}
-          appMode={appMode}
-          context={`Tabs · ${
-            selectedProject.github?.nameWithOwner ??
-            selectedProject.source?.displayPath ??
-            selectedProject.name
-          }`}
-          onSwitchAppMode={switchAppMode ?? undefined}
-          title={selectedProject.name}
         />
       ) : compactShell &&
         appMode === "ide" &&

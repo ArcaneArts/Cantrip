@@ -92,7 +92,6 @@ export function createSidebarExplorerCommands({
   selectedTabGroup,
   setDesktopSidebarDrawerOpen,
   setDetachedGroupId,
-  setMobileTabGridOpen,
   setPopoutError,
   setWorkspaceSelection,
   sidebarExplorerCreationInput,
@@ -136,7 +135,6 @@ export function createSidebarExplorerCommands({
   selectedTabGroup: TabGroupSummary | undefined;
   setDesktopSidebarDrawerOpen: (open: boolean) => void;
   setDetachedGroupId: (groupId: string | null) => void;
-  setMobileTabGridOpen: (open: boolean) => void;
   setPopoutError: (error: string | null) => void;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
   sidebarExplorerCreationInput: {
@@ -261,7 +259,6 @@ export function createSidebarExplorerCommands({
       projectId: explorer.projectId,
     });
     setDesktopSidebarDrawerOpen(false);
-    setMobileTabGridOpen(false);
     setDetachedGroupId(null);
     revealWorkspace();
   };
@@ -689,7 +686,6 @@ export function createSidebarExplorerCommands({
     setSidebarFilePreview((current) =>
       current ? { ...current, active: true } : null,
     );
-    setMobileTabGridOpen(false);
     setDetachedGroupId(null);
     revealWorkspace();
   };

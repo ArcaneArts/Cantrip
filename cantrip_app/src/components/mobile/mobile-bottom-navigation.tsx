@@ -1,89 +1,36 @@
-import { LayoutDashboard, LayoutGrid, Plus } from "lucide-react";
-import { useEffect, useRef } from "react";
+import type { ExecutionTarget } from "@cantrip/protocol";
+import { LayoutDashboard, Plus } from "lucide-react";
 
 import { performMobileNavigationHaptic } from "@/components/mobile/mobile-navigation-haptics";
+import {
+  ProjectSurfaceCreateMenu,
+  type ProjectSurfaceCreateKind,
+  type ProjectSurfacePlacementContext,
+} from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
-export const MOBILE_BOTTOM_TAB_LONG_PRESS_MS = 500;
-
-export interface MobileBottomNavigationItem {
-  id: string;
-  label?: string;
-  removable?: boolean;
-  surface?: ProjectSurface;
-}
-
-export function mobileBottomNavigationLongPressAction({
-  removable,
-  selectorVisible,
-}: {
-  removable: boolean;
-  selectorVisible: boolean;
-}): "remove" | "reset" {
-  return removable && selectorVisible ? "remove" : "reset";
-}
-
 export function MobileBottomNavigation({
-  activeItemId,
-  gridOpen,
-  items,
-  onAdd,
+  activeTabKey,
+  creatingKinds,
+  onCreate,
   onOverview,
-  onRemove,
-  onReset,
   onSelect,
   overviewSelected,
+  placement,
+  surfaces,
 }: {
-  activeItemId: string;
-  gridOpen: boolean;
-  items: readonly MobileBottomNavigationItem[];
-  onAdd(): void;
+  activeTabKey: string | null;
+  creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
+  onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOverview(): void;
-  onRemove(itemId: string): void;
-  onReset(itemId: string): void;
-  onSelect(itemId: string): void;
+  onSelect(tabKey: string): void;
   overviewSelected: boolean;
+  placement?: ProjectSurfacePlacementContext;
+  surfaces: readonly ProjectSurface[];
 }) {
-  const evenlyDivided = items.length + 2 <= 5;
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressTriggeredRef = useRef(false);
-
-  const cancelLongPress = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-  const completeBottomTabLongPress = (
-    itemId: string,
-    action: "remove" | "reset",
-  ) => {
-    cancelLongPress();
-    if (longPressTriggeredRef.current) return;
-    longPressTriggeredRef.current = true;
-    void performMobileNavigationHaptic("reset");
-    if (action === "remove") onRemove(itemId);
-    else onReset(itemId);
-  };
-  const beginLongPress = (itemId: string, action: "remove" | "reset") => {
-    cancelLongPress();
-    longPressTriggeredRef.current = false;
-    void performMobileNavigationHaptic("press");
-    longPressTimerRef.current = setTimeout(() => {
-      longPressTimerRef.current = null;
-      completeBottomTabLongPress(itemId, action);
-    }, MOBILE_BOTTOM_TAB_LONG_PRESS_MS);
-  };
-  useEffect(
-    () => () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
-    },
-    [],
-  );
+  const evenlyDivided = surfaces.length + 2 <= 5;
 
   return (
     <nav
@@ -115,88 +62,64 @@ export function MobileBottomNavigation({
             />
             <span>Overview</span>
           </button>
-          {items.map((item) => {
-            const active = !overviewSelected && item.id === activeItemId;
-            const showSwitcher = gridOpen && item.id === activeItemId;
-            const longPressAction = mobileBottomNavigationLongPressAction({
-              removable: Boolean(item.removable),
-              selectorVisible: showSwitcher || !item.surface,
-            });
+          {surfaces.map((surface) => {
+            const active = !overviewSelected && surface.tabKey === activeTabKey;
+            const label =
+              surface.kind === "explorer" ? "Explorer" : surface.title;
             return (
               <button
                 aria-current={active ? "page" : undefined}
-                aria-label={
-                  showSwitcher || !item.surface
-                    ? "Choose project tab group"
-                    : (item.label ?? item.surface.title)
-                }
+                aria-label={`Open ${label}`}
                 className={cn(
-                  "flex touch-manipulation select-none flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex touch-manipulation flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
                   evenlyDivided
                     ? "min-w-0 flex-1"
                     : "min-w-[4.5rem] max-w-28 shrink-0 px-2",
                   active && "text-foreground",
                 )}
-                key={item.id}
-                onClick={() => {
-                  if (longPressTriggeredRef.current) {
-                    longPressTriggeredRef.current = false;
-                    return;
-                  }
-                  onSelect(item.id);
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  completeBottomTabLongPress(item.id, longPressAction);
-                }}
-                onPointerCancel={cancelLongPress}
-                onPointerDown={() => beginLongPress(item.id, longPressAction)}
-                onPointerLeave={cancelLongPress}
-                onPointerUp={cancelLongPress}
-                title={
-                  longPressAction === "remove"
-                    ? "Hold to remove bottom tab"
-                    : "Hold to choose another project tab group"
+                key={surface.tabKey}
+                onClick={() => onSelect(surface.tabKey)}
+                onPointerDown={() =>
+                  void performMobileNavigationHaptic("press")
                 }
                 type="button"
               >
-                {showSwitcher || !item.surface ? (
-                  <LayoutGrid
-                    className="size-4"
-                    fill={active ? "currentColor" : "none"}
-                  />
-                ) : (
-                  <ProjectSurfaceIcon
-                    className="size-4"
-                    filled={active}
-                    kind={
-                      item.surface.kind === "chat" &&
-                      item.surface.entity.experience === "task"
-                        ? "task"
-                        : item.surface.kind
-                    }
-                  />
-                )}
-                <span className="max-w-full truncate">
-                  {showSwitcher || !item.surface
-                    ? "Tabs"
-                    : (item.label ?? item.surface.title)}
-                </span>
+                <ProjectSurfaceIcon
+                  className="size-4"
+                  filled={active}
+                  kind={
+                    surface.kind === "chat" &&
+                    surface.entity.experience === "task"
+                      ? "task"
+                      : surface.kind
+                  }
+                />
+                <span className="max-w-full truncate">{label}</span>
               </button>
             );
           })}
-          <button
-            aria-label="Add bottom tab"
-            className={cn(
-              "grid place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-              evenlyDivided ? "min-w-0 flex-1" : "min-w-[4.5rem] shrink-0",
-            )}
-            onClick={onAdd}
-            onPointerDown={() => void performMobileNavigationHaptic("press")}
-            type="button"
-          >
-            <Plus className="size-5" />
-          </button>
+          <ProjectSurfaceCreateMenu
+            align="end"
+            creatingKinds={creatingKinds}
+            onCreate={onCreate}
+            placement={placement}
+            trigger={
+              <button
+                aria-label="Create project surface"
+                className={cn(
+                  "grid place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                  evenlyDivided ? "min-w-0 flex-1" : "min-w-[4.5rem] shrink-0",
+                )}
+                onPointerDown={() =>
+                  void performMobileNavigationHaptic("press")
+                }
+                type="button"
+              >
+                <Plus className="size-5" />
+                <span className="sr-only">New project surface</span>
+              </button>
+            }
+          />
         </div>
       </div>
     </nav>
