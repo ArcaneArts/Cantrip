@@ -732,6 +732,13 @@ function httpRequest(requestId: string, adapterId = TUNNEL_ID) {
   };
 }
 
+function assetHttpRequest(requestId: string, adapterId: string) {
+  return {
+    ...httpRequest(requestId, adapterId),
+    url: `https://cantrip.example/__cantrip_code/${adapterId}/code/static/workbench.js`,
+  };
+}
+
 function attachmentAdapterId(attachment: { url: string }): string {
   const match = /^\/__cantrip_code\/([^/]+)\/code(?:\/|$)/u.exec(
     new URL(attachment.url).pathname,
@@ -1007,6 +1014,48 @@ describe("shared browser Code transport pooling", () => {
     );
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledOnce();
     expect(sockets[0]!.readyState).toBe(FakeWebSocket.CLOSED);
+  });
+
+  it("retires only the browser session whose root document proxy fails", async () => {
+    const first = sharedOwned(0);
+    const second = sharedOwned(1);
+    const [firstOpened, secondOpened] = await Promise.all([
+      startSharedBrowserCodeAttachment(first),
+      startSharedBrowserCodeAttachment(second),
+    ]);
+    const unavailable = vi.fn();
+    const unsubscribe = subscribeBrowserCodeAttachmentUnavailable(unavailable);
+    const firstAdapterId = attachmentAdapterId(firstOpened.attachment);
+    const channel = httpChannel(firstAdapterId);
+
+    channel.receive(httpRequest("root-document", firstAdapterId));
+    const [open] = await waitForOpenFrames(sockets[0]!, 1);
+    deliverControl(sockets[0]!, {
+      ...destinationHeader(open!, 0),
+      kind: "rejected",
+      code: "protected-record-unavailable",
+    });
+
+    await vi.waitFor(() => {
+      expect(responseFor(channel, "root-document")).toHaveProperty("error");
+      expect(unavailable).toHaveBeenCalledWith({
+        attachmentId: first.attachment.session.attachmentId,
+        leaseId: firstOpened.leaseId,
+        reason: "The worker rejected the protected Code route.",
+        transportGeneration: firstOpened.transportGeneration,
+        tunnelId: TUNNEL_ID,
+      });
+    });
+    expect(sharedBrowserCodeAttachmentHealthy(first, firstOpened.leaseId)).toBe(
+      false,
+    );
+    expect(
+      sharedBrowserCodeAttachmentHealthy(second, secondOpened.leaseId),
+    ).toBe(true);
+    expect(sockets[0]!.readyState).toBe(FakeWebSocket.OPEN);
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledOnce();
+
+    unsubscribe();
   });
 
   it("keeps the exact pool key fenced until final relay cleanup completes", async () => {
@@ -1803,8 +1852,8 @@ describe("browser Code attachment terminal state", () => {
     const adapterId = attachmentAdapterId(attachment);
     const socket = sockets[0]!;
     const channel = httpChannel();
-    channel.receive(httpRequest("corrupt-stream", adapterId));
-    channel.receive(httpRequest("healthy-sibling", adapterId));
+    channel.receive(assetHttpRequest("corrupt-stream", adapterId));
+    channel.receive(assetHttpRequest("healthy-sibling", adapterId));
     const [corrupt, sibling] = await waitForOpenFrames(socket, 2);
     await acceptConnection(socket, corrupt!);
     await acceptConnection(socket, sibling!);
@@ -1867,8 +1916,8 @@ describe("browser Code attachment terminal state", () => {
     const adapterId = attachmentAdapterId(attachment);
     const socket = sockets[0]!;
     const channel = httpChannel();
-    channel.receive(httpRequest("sequence-invalid", adapterId));
-    channel.receive(httpRequest("sequence-sibling", adapterId));
+    channel.receive(assetHttpRequest("sequence-invalid", adapterId));
+    channel.receive(assetHttpRequest("sequence-sibling", adapterId));
     const [invalid, sibling] = await waitForOpenFrames(socket, 2);
     await acceptConnection(socket, invalid!);
     await acceptConnection(socket, sibling!);

@@ -308,6 +308,12 @@ describe("shared desktop Code attachment", () => {
   it("delegates browser shared-session leases without invoking native ownership", async () => {
     mocks.isTauri.mockReturnValue(false);
     const owned = ownedAttachment();
+    const drainHealthBody = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    mocks.fetch.mockResolvedValue({
+      arrayBuffer: drainHealthBody,
+      body: {},
+      ok: true,
+    });
     mocks.startSharedBrowserCodeAttachment.mockResolvedValue({
       attachment: {
         attachmentId: owned.attachment.session.attachmentId,
@@ -325,6 +331,17 @@ describe("shared desktop Code attachment", () => {
     expect(mocks.startSharedBrowserCodeAttachment).toHaveBeenCalledWith(owned, {
       signal: undefined,
     });
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      new URL(
+        "https://server.example.test/__cantrip_code/adapter/code/_cantrip/health",
+      ),
+      {
+        cache: "no-store",
+        credentials: "omit",
+        signal: expect.any(AbortSignal),
+      },
+    );
+    expect(drainHealthBody).toHaveBeenCalledOnce();
     expect(preferred).toMatchObject({
       directTunnelId: owned.attachment.transport.transportId,
       sharedOwnedAttachment: owned,
@@ -339,6 +356,33 @@ describe("shared desktop Code attachment", () => {
       owned,
       "browser-lease-one",
     );
+  });
+
+  it("releases a browser shared-session lease whose proxied endpoint is not ready", async () => {
+    mocks.isTauri.mockReturnValue(false);
+    const owned = ownedAttachment();
+    mocks.startSharedBrowserCodeAttachment.mockResolvedValue({
+      attachment: {
+        attachmentId: owned.attachment.session.attachmentId,
+        expiresAt: owned.attachment.session.expiresAt,
+        runtime: owned.attachment.session.runtime,
+        sessionId: owned.attachment.session.sessionId,
+        url: "https://server.example.test/__cantrip_code/adapter/code/",
+      },
+      leaseId: "browser-lease-one",
+      transportGeneration: "browser-generation-one",
+    });
+    mocks.fetch.mockResolvedValue({ body: null, ok: false, status: 502 });
+
+    await expect(preferSharedProtectedCodeAttachment(owned)).rejects.toThrow(
+      "HTTP 502",
+    );
+
+    expect(mocks.stopSharedBrowserCodeAttachment).toHaveBeenCalledWith(
+      owned,
+      "browser-lease-one",
+    );
+    expect(mocks.acquireDesktopCodeTransport).not.toHaveBeenCalled();
   });
 });
 
@@ -1068,6 +1112,12 @@ describe("directCodeAttachmentHealthy", () => {
 describe("preferProtectedCodeAttachment", () => {
   it("classifies the browser transport as relay without changing its tunnel identity", async () => {
     mocks.isTauri.mockReturnValue(false);
+    const drainHealthBody = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    mocks.fetch.mockResolvedValue({
+      arrayBuffer: drainHealthBody,
+      body: {},
+      ok: true,
+    });
     mocks.startBrowserCodeAttachment.mockResolvedValue({
       attachmentId: "11111111-1111-4111-8111-111111111111",
       sessionId: "22222222-2222-4222-8222-222222222222",
@@ -1088,6 +1138,17 @@ describe("preferProtectedCodeAttachment", () => {
       transportKind: "relay",
     });
     expect(mocks.startBrowserCodeAttachment).toHaveBeenCalledWith(wire);
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      new URL(
+        "https://cantrip.test/__cantrip_code/11111111-1111-4111-8111-111111111111/code/_cantrip/health",
+      ),
+      {
+        cache: "no-store",
+        credentials: "omit",
+        signal: expect.any(AbortSignal),
+      },
+    );
+    expect(drainHealthBody).toHaveBeenCalledOnce();
     expect(mocks.startDesktopTunnel).not.toHaveBeenCalled();
   });
 
