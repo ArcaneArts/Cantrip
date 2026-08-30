@@ -12,6 +12,7 @@ import {
   sidebarExplorerProvisioningDetails,
   sidebarFilePinCompletion,
   useSidebarExplorerModel,
+  useSidebarFileState,
 } from "./sidebar-explorer-controller";
 
 (
@@ -38,7 +39,7 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: null,
         sidebarExplorer: null,
-        sidebarInlineExplorer: null,
+        sidebarInlineExplorers: [],
       }).sidebarExplorerCreationInput,
     ).toBeNull();
 
@@ -49,14 +50,14 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: null,
-        sidebarInlineExplorer: null,
+        sidebarInlineExplorers: [],
       }),
     ).toMatchObject({
       sidebarExplorerCreationInput: {
         projectId: "project-1",
         worktreeId: "worktree-1",
       },
-      sidebarExplorerCreationKey: "project-1:worktree-1",
+      sidebarExplorerCreationKey: "project-1:worktree-1:0",
       sidebarHasDesiredExplorer: false,
     });
   });
@@ -69,7 +70,7 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: explorer(),
-        sidebarInlineExplorer: explorer(),
+        sidebarInlineExplorers: [explorer(), explorer()],
       }),
     ).toMatchObject({
       sidebarFileWorkerId: "worker-explorer",
@@ -78,7 +79,7 @@ describe("sidebar Explorer provisioning", () => {
     });
   });
 
-  it("does not provision a speculative spare while one sidebar Explorer owns preview navigation", () => {
+  it("provisions one bounded warm successor while a sidebar Explorer owns preview navigation", () => {
     const previewExplorer = explorer();
     expect(
       sidebarExplorerProvisioningDetails({
@@ -87,10 +88,26 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: previewExplorer,
-        sidebarInlineExplorer: previewExplorer,
+        sidebarInlineExplorers: [previewExplorer],
       }),
     ).toMatchObject({
-      sidebarExplorerCreationKey: "project-1:worktree-1",
+      sidebarExplorerCreationKey: "project-1:worktree-1:1",
+      sidebarExplorerPoolSize: 1,
+      sidebarHasDesiredExplorer: false,
+    });
+
+    expect(
+      sidebarExplorerProvisioningDetails({
+        onlineWorkerIds: new Set(["worker-explorer"]),
+        selectedProject: project,
+        selectedProjectWorkerId: "worker-project",
+        sidebarDesiredWorktreeId: "worktree-1",
+        sidebarExplorer: previewExplorer,
+        sidebarInlineExplorers: [previewExplorer, explorer()],
+      }),
+    ).toMatchObject({
+      sidebarExplorerCreationKey: "project-1:worktree-1:2",
+      sidebarExplorerPoolSize: 2,
       sidebarHasDesiredExplorer: true,
     });
   });
@@ -135,6 +152,54 @@ describe("sidebar file pin completion", () => {
       action: "refresh",
       destination,
     });
+  });
+});
+
+describe("sidebar preview workbench readiness", () => {
+  it("waits event-driven for the already-provisioned successor", async () => {
+    const source = {
+      id: "explorer-source",
+      projectId: "project-1",
+      worktreeId: "worktree-1",
+    } as ExplorerSummary;
+    const successor = {
+      ...source,
+      id: "explorer-successor",
+    } as ExplorerSummary;
+    const observed: {
+      current: ReturnType<typeof useSidebarFileState> | null;
+    } = { current: null };
+    const Probe = () => {
+      observed.current = useSidebarFileState();
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(StrictMode, null, createElement(Probe)),
+      );
+    });
+    act(() => {
+      observed.current?.updateSidebarExplorerPool([source, successor]);
+      observed.current?.updateSidebarFileWorkbenchReadiness(source.id, true);
+    });
+
+    let settled = false;
+    const waiting = observed
+      .current!.waitForSidebarFileSuccessor(source.id)
+      .then((value) => {
+        settled = true;
+        return value;
+      });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    act(() => {
+      observed.current?.updateSidebarFileWorkbenchReadiness(successor.id, true);
+    });
+    await expect(waiting).resolves.toBe(successor);
+    await act(async () => renderer.unmount());
   });
 });
 

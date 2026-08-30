@@ -269,6 +269,7 @@ function editor(
       actions: ExplorerCodeEditorLifecycleActions | null,
     ): void;
     onReady?: () => void;
+    onWorkbenchReadinessChange?(ready: boolean): void;
     workerId?: string;
     workerOnline?: boolean;
     worktreeId?: string;
@@ -280,6 +281,7 @@ function editor(
     explorerId: options.explorerId ?? "explorer-1",
     onLifecycleChange: options.onLifecycleChange,
     onReady: options.onReady,
+    onWorkbenchReadinessChange: options.onWorkbenchReadinessChange,
     path,
     workerId: options.workerId ?? "worker-1",
     workerOnline: options.workerOnline ?? true,
@@ -835,6 +837,38 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
       ),
     ).toHaveLength(3);
 
+    await act(async () => renderer.unmount());
+  });
+
+  it("reports exact-generation workbench readiness after prewarm presentation", async () => {
+    const onWorkbenchReadinessChange = vi.fn();
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        editor(null, { onWorkbenchReadinessChange }),
+        {
+          createNodeMock: (element) =>
+            element.type === "iframe" ? { contentWindow: frameWindow } : null,
+        },
+      );
+    });
+    await settle();
+    expect(onWorkbenchReadinessChange).toHaveBeenLastCalledWith(false);
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledOnce();
+    expect(onWorkbenchReadinessChange).toHaveBeenLastCalledWith(true);
+
+    await act(async () => {
+      renderer.update(editor("src/reused.ts", { onWorkbenchReadinessChange }));
+    });
+    await settle();
+    expect(onWorkbenchReadinessChange).toHaveBeenLastCalledWith(true);
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
     await act(async () => renderer.unmount());
   });
 

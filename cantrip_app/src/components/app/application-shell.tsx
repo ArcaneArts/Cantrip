@@ -233,6 +233,7 @@ export function App() {
     sidebarFilePinHandoff,
     sidebarFilePinHandoffRef,
     sidebarFilePreview,
+    updateSidebarFileWorkbenchReadiness,
   } = sidebarFileState;
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
     ReadonlySet<string>
@@ -765,6 +766,7 @@ export function App() {
     sidebarExplorer,
     sidebarFilePreviewRef,
     sidebarInlineExplorer,
+    sidebarPreviewSuccessorExplorer,
     sidebarPreviewExplorer,
   } = sidebarExplorerModel;
   const { abandonSidebarFilePinHandoff, completeSidebarFilePinHandoff } =
@@ -782,6 +784,7 @@ export function App() {
     sidebarExplorerCreationKey,
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
+    sidebarFileWorkbenchReady,
   } = useSidebarExplorerProvisioning({
     explorers: explorers.data,
     explorersIsSuccess: explorers.isSuccess,
@@ -1745,10 +1748,11 @@ export function App() {
     showChatConsole, showContentTitlebar, showCustomizations, showImporter, showProjectSettings,
     showServerAdmin, showSettings, showSidebarPreviewTab, sidebarCollapsed, sidebarExplorer,
     sidebarFilePinHandoff, sidebarFilePreview, sidebarFilePreviewVisible, sidebarFileWorkerId, sidebarFileWorkerOnline,
-    sidebarInlineExplorer, sidebarPreviewExplorer, sidebarRef, sidebarResizing, sidebarWidth,
+    sidebarFileWorkbenchReady, sidebarInlineExplorer, sidebarPreviewExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
     tabLayout, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
+    updateSidebarFileWorkbenchReadiness,
     visibleProjects, workers, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };

@@ -40,6 +40,7 @@ export function PersistentSurfaceLayer({
     handleExplorerChanged,
     handleExplorerLifecycleChange,
     handleSidebarFilePreviewLifecycleChange,
+    updateSidebarFileWorkbenchReadiness,
     isPopout,
     mobileTabGridOpen,
     newTerminal,
@@ -74,6 +75,7 @@ export function PersistentSurfaceLayer({
     sidebarFilePreview,
     sidebarFilePreviewVisible,
     sidebarInlineExplorer,
+    sidebarPreviewSuccessorExplorer,
     sidebarPreviewExplorer,
     stopAndDeleteRunTerminalMutation,
     worktreeStatuses,
@@ -214,6 +216,9 @@ export function PersistentSurfaceLayer({
               : setExplorerHeader
           }
           onInlineCodeReady={completeSidebarFilePinHandoff}
+          onInlineCodeWorkbenchReadinessChange={
+            updateSidebarFileWorkbenchReadiness
+          }
           onLifecycleChange={handleExplorerLifecycleChange}
           onTransientLifecycleChange={handleSidebarFilePreviewLifecycleChange}
           onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
@@ -260,6 +265,12 @@ export function PersistentSurfaceLayer({
             isPopout,
             pinInProgress: Boolean(sidebarFilePinHandoff),
             sidebarExplorer: sidebarInlineExplorer,
+          })}
+          prewarmSuccessorExplorer={sidebarExplorerPrewarmTarget({
+            hasOpenExplorer: openExplorers.length > 0,
+            isPopout,
+            pinInProgress: Boolean(sidebarFilePinHandoff),
+            sidebarExplorer: sidebarPreviewSuccessorExplorer,
           })}
         />
       </Suspense>

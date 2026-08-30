@@ -15,6 +15,7 @@ export function RetainedExplorerCodeEditor({
   explorerId,
   onLifecycleChange,
   onReady,
+  onWorkbenchReadinessChange,
   path,
   prewarm,
   retained,
@@ -27,6 +28,7 @@ export function RetainedExplorerCodeEditor({
   explorerId: string;
   onLifecycleChange?(actions: ExplorerCodeEditorLifecycleActions | null): void;
   onReady?: () => void;
+  onWorkbenchReadinessChange?(ready: boolean): void;
   path: string | null;
   prewarm: boolean;
   retained: boolean;
@@ -144,6 +146,7 @@ export function RetainedExplorerCodeEditor({
         explorerId={explorerId}
         onLifecycleChange={onLifecycleChange}
         onReady={onReady}
+        onWorkbenchReadinessChange={onWorkbenchReadinessChange}
         path={workbenchPath}
         workerOnline={workerOnline}
         workerId={workerId}
