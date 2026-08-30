@@ -150,21 +150,28 @@ export function preferredSidebarExplorer({
   layout: ProjectTabLayoutSummary | null | undefined;
   previewExplorerId?: string | null;
 }): ExplorerSummary | null {
+  const tabbed = tabbedExplorerIds(layout);
   const preview = previewExplorerId
     ? explorers.find((explorer) => explorer.id === previewExplorerId)
     : undefined;
-  if (preview) return preview;
+  if (preview && !tabbed.has(preview.id)) return preview;
 
   const candidates = desiredWorktreeId
     ? explorers.filter((explorer) => explorer.worktreeId === desiredWorktreeId)
     : [...explorers];
-  const tabbed = tabbedExplorerIds(layout);
-  return (
-    candidates.find((explorer) => !tabbed.has(explorer.id)) ??
-    candidates.find((explorer) => explorer.selectedPath === null) ??
-    candidates[0] ??
-    null
-  );
+  return candidates.find((explorer) => !tabbed.has(explorer.id)) ?? null;
+}
+
+export function sidebarExplorerCanOwnPreview({
+  explorerId,
+  layout,
+  pinInProgress,
+}: {
+  explorerId: string;
+  layout: ProjectTabLayoutSummary | null | undefined;
+  pinInProgress: boolean;
+}): boolean {
+  return !pinInProgress && !tabbedExplorerIds(layout).has(explorerId);
 }
 
 export function dedicatedSidebarExplorer({

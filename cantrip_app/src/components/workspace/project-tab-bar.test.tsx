@@ -24,6 +24,19 @@ vi.mock("./project-surface-create-menu", () => ({
 
 const now = "2026-08-23T12:00:00.000Z";
 
+function textContent(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.map(textContent).join("");
+  if (value && typeof value === "object" && "props" in value) {
+    return textContent(
+      (value as { props: { children?: unknown } }).props.children,
+    );
+  }
+  return "";
+}
+
 function chatSurface(options: {
   running?: boolean;
   unreadCompletion?: boolean;
@@ -131,6 +144,54 @@ function runSurface(running: boolean): ProjectSurface {
 }
 
 describe("project tab bar", () => {
+  it("renders a left-clicked file as an italic filename preview in its target group", async () => {
+    const onPin = vi.fn();
+    const onSelect = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DndContext>
+          <ProjectTabBar
+            activeTabKey=""
+            onClose={vi.fn()}
+            onCreate={vi.fn()}
+            onDelete={vi.fn()}
+            onRename={vi.fn()}
+            onSelect={vi.fn()}
+            onStopAndCloseRunTerminal={vi.fn()}
+            previewFile={{
+              active: true,
+              path: "src/preview-file.ts",
+              projectId: "project-1",
+              title: "preview-file.ts",
+              onClose: vi.fn(),
+              onPin,
+              onSelect,
+            }}
+            surfaces={[]}
+          />
+        </DndContext>,
+      );
+    });
+
+    const preview = renderer.root.findByProps({
+      "data-preview-file-path": "src/preview-file.ts",
+    });
+    const previewButton = preview.findByProps({ role: "tab" });
+    expect(textContent(previewButton.props.children)).toContain(
+      "preview-file.ts",
+    );
+    expect(previewButton.props.className).toContain("italic");
+
+    await act(async () => previewButton.props.onClick());
+    expect(onSelect).toHaveBeenCalledOnce();
+    const event = { preventDefault: vi.fn() };
+    await act(async () => previewButton.props.onDoubleClick(event));
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(onPin).toHaveBeenCalledOnce();
+    await act(async () => renderer.unmount());
+  });
+
   it("closes a File preview tab on middle click", async () => {
     const onClose = vi.fn();
     let renderer!: TestRenderer.ReactTestRenderer;

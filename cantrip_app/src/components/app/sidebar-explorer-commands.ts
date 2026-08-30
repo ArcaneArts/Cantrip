@@ -33,6 +33,7 @@ import {
 import {
   moveSidebarPath,
   pinnedExplorerForPath,
+  sidebarExplorerCanOwnPreview,
   sidebarFilePreviewMatches,
   sidebarFileTargetGroupId,
   sidebarPathAtOrBelow,
@@ -173,6 +174,28 @@ export function createSidebarExplorerCommands({
     entry: ExplorerEntry,
   ) => {
     if (entry.kind !== "file" || !entry.viewable) return;
+    if (
+      !sidebarExplorerCanOwnPreview({
+        explorerId: explorer.id,
+        layout: tabLayout,
+        pinInProgress: Boolean(sidebarFilePinHandoffRef.current),
+      })
+    ) {
+      clientLogger.info("Explorer file preview deferred for provisioning", {
+        ...explorerFileIntentContext(explorer.id),
+        event: "explorer.file.preview.deferred",
+        explorerId: explorer.id,
+        operation: "open-preview",
+        projectId: explorer.projectId,
+        reasonCode: sidebarFilePinHandoffRef.current
+          ? "pin-handoff-in-progress"
+          : "preview-owner-is-tabbed",
+        status: "deferred",
+        subsystem: "explorer",
+        worktreeId: explorer.worktreeId,
+      });
+      return;
+    }
     recordExplorerFileIntent({
       actionKind: "open-preview",
       explorerId: explorer.id,
@@ -290,6 +313,22 @@ export function createSidebarExplorerCommands({
         explorer,
         phase: "request-blocked",
         reasonCode: "another-handoff-in-progress",
+        status: "ignored",
+        transactionId: requestedTransactionId,
+      });
+      return;
+    }
+    if (
+      !sidebarExplorerCanOwnPreview({
+        explorerId: explorer.id,
+        layout: tabLayout,
+        pinInProgress: false,
+      })
+    ) {
+      logSidebarFilePinPhase({
+        explorer,
+        phase: "request-blocked",
+        reasonCode: "preview-owner-is-tabbed",
         status: "ignored",
         transactionId: requestedTransactionId,
       });

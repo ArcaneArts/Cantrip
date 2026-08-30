@@ -9,6 +9,7 @@ import {
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   moveSidebarPath,
+  sidebarExplorerCanOwnPreview,
   sidebarExplorerPrewarmTarget,
   sidebarFileName,
   sidebarFilePreviewMatches,
@@ -129,6 +130,76 @@ describe("sidebar file tabs", () => {
         layout: layout("visible"),
       }),
     ).toBe(hidden);
+  });
+
+  it("never falls back to a tabbed Explorer while a dedicated preview owner is provisioning", () => {
+    const pinnedEmpty = explorer("pinned-empty", "worktree-1");
+    const pinnedFile = explorer("pinned-file", "worktree-1", "src/existing.ts");
+    const tabLayout = layout(pinnedEmpty.id, pinnedFile.id);
+
+    expect(
+      preferredSidebarExplorer({
+        desiredWorktreeId: "worktree-1",
+        explorers: [pinnedEmpty, pinnedFile],
+        layout: tabLayout,
+      }),
+    ).toBeNull();
+    expect(
+      preferredSidebarExplorer({
+        desiredWorktreeId: "worktree-1",
+        explorers: [pinnedEmpty, pinnedFile],
+        layout: tabLayout,
+        previewExplorerId: pinnedFile.id,
+      }),
+    ).toBeNull();
+  });
+
+  it("hands sidebar ownership to the first dedicated replacement after pinning", () => {
+    const pinned = explorer("pinned", "worktree-1", "src/first.ts");
+    const replacement = explorer("replacement", "worktree-1");
+    const otherWorktree = explorer("other", "worktree-2");
+    const tabLayout = layout(pinned.id);
+
+    expect(
+      preferredSidebarExplorer({
+        desiredWorktreeId: "worktree-1",
+        explorers: [pinned, otherWorktree],
+        layout: tabLayout,
+        previewExplorerId: pinned.id,
+      }),
+    ).toBeNull();
+    expect(
+      preferredSidebarExplorer({
+        desiredWorktreeId: "worktree-1",
+        explorers: [pinned, otherWorktree, replacement],
+        layout: tabLayout,
+        previewExplorerId: pinned.id,
+      }),
+    ).toBe(replacement);
+  });
+
+  it("blocks stale preview interactions during pin handoff or for a tabbed owner", () => {
+    expect(
+      sidebarExplorerCanOwnPreview({
+        explorerId: "preview",
+        layout: layout(),
+        pinInProgress: false,
+      }),
+    ).toBe(true);
+    expect(
+      sidebarExplorerCanOwnPreview({
+        explorerId: "preview",
+        layout: layout(),
+        pinInProgress: true,
+      }),
+    ).toBe(false);
+    expect(
+      sidebarExplorerCanOwnPreview({
+        explorerId: "pinned",
+        layout: layout("pinned"),
+        pinInProgress: false,
+      }),
+    ).toBe(false);
   });
 
   it("requires a non-tabbed Explorer for inline sidebar prewarm", () => {
