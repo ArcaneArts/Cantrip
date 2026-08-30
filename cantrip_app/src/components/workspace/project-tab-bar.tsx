@@ -175,6 +175,7 @@ export function ProjectTabBar({
               const editing = editingTabKey === surface.tabKey;
               return (
                 <SortableProjectTabFrame
+                  disabled={editing}
                   key={surface.tabKey}
                   memberPosition={memberPosition}
                   surface={surface}
@@ -465,14 +466,17 @@ export function ProjectTabBar({
 
 function SortableProjectTabFrame({
   children,
+  disabled,
   memberPosition,
   surface,
 }: {
   children: ReactNode;
+  disabled: boolean;
   memberPosition: number;
   surface: ProjectSurface;
 }) {
   const sortable = useSortable({
+    disabled,
     id: workspaceSurfaceDragId(surface.tabKey),
     data: {
       drag: {
@@ -494,6 +498,7 @@ function SortableProjectTabFrame({
   });
   return (
     <div
+      data-project-tab-frame={surface.tabKey}
       ref={sortable.setNodeRef}
       style={{
         transform: CSS.Transform.toString(sortable.transform),
@@ -501,8 +506,8 @@ function SortableProjectTabFrame({
         opacity: sortable.isDragging ? 0.25 : 1,
         zIndex: sortable.isDragging ? 10 : undefined,
       }}
-      {...sortable.attributes}
-      {...sortable.listeners}
+      {...(disabled ? {} : sortable.attributes)}
+      {...(disabled ? {} : sortable.listeners)}
     >
       {children}
     </div>

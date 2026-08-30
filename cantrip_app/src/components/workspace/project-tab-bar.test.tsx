@@ -11,6 +11,54 @@ import type { ProjectSurface } from "@/lib/project-surface";
 
 import { ProjectTabBar, projectTabRemovalDisposition } from "./project-tab-bar";
 
+vi.mock("@radix-ui/react-context-menu", async () => {
+  const React = await import("react");
+  const Container = React.forwardRef<unknown, { children?: React.ReactNode }>(
+    ({ children }, _ref) => React.createElement(React.Fragment, null, children),
+  );
+  const Item = React.forwardRef<
+    unknown,
+    { children?: React.ReactNode; onSelect?(): void }
+  >(({ children, onSelect }, _ref) =>
+    React.createElement(
+      "button",
+      { onClick: onSelect, type: "button" },
+      children,
+    ),
+  );
+  return {
+    Content: Container,
+    Item,
+    Portal: Container,
+    Root: Container,
+    Separator: () => null,
+    Trigger: Container,
+  };
+});
+vi.mock("@radix-ui/react-dropdown-menu", async () => {
+  const React = await import("react");
+  const Container = React.forwardRef<unknown, { children?: React.ReactNode }>(
+    ({ children }, _ref) => React.createElement(React.Fragment, null, children),
+  );
+  const Item = React.forwardRef<
+    unknown,
+    { children?: React.ReactNode; onSelect?(): void }
+  >(({ children, onSelect }, _ref) =>
+    React.createElement(
+      "button",
+      { onClick: onSelect, type: "button" },
+      children,
+    ),
+  );
+  return {
+    Content: Container,
+    Item,
+    Portal: Container,
+    Root: Container,
+    Separator: () => null,
+    Trigger: Container,
+  };
+});
 vi.mock("@/components/ui/confirm-dialog", () => ({
   ConfirmDialog: () => null,
 }));
@@ -144,6 +192,54 @@ function runSurface(running: boolean): ProjectSurface {
 }
 
 describe("project tab bar", () => {
+  it("selects the full tab title and disables dragging while renaming", async () => {
+    const select = vi.fn();
+    const surface = chatSurface({});
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DndContext>
+          <ProjectTabBar
+            activeTabKey={surface.tabKey}
+            onClose={vi.fn()}
+            onCreate={vi.fn()}
+            onDelete={vi.fn()}
+            onRename={vi.fn()}
+            onSelect={vi.fn()}
+            onStopAndCloseRunTerminal={vi.fn()}
+            surfaces={[surface]}
+          />
+        </DndContext>,
+        {
+          createNodeMock: (element) =>
+            element.type === "input" ? { select } : null,
+        },
+      );
+    });
+
+    let frame = renderer.root.findByProps({
+      "data-project-tab-frame": surface.tabKey,
+    });
+    expect(frame.props.onPointerDown).toEqual(expect.any(Function));
+    const tab = renderer.root.findByProps({ role: "tab" });
+    const event = { preventDefault: vi.fn() };
+
+    await act(async () => tab.props.onDoubleClick(event));
+
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(
+      renderer.root.findByProps({ "aria-label": "Rename Agent" }).props.value,
+    ).toBe("Agent");
+    expect(select).toHaveBeenCalledOnce();
+    frame = renderer.root.findByProps({
+      "data-project-tab-frame": surface.tabKey,
+    });
+    expect(frame.props.onPointerDown).toBeUndefined();
+    expect(frame.props.onKeyDown).toBeUndefined();
+
+    await act(async () => renderer.unmount());
+  });
+
   it("renders a left-clicked file as an italic filename preview in its target group", async () => {
     const onPin = vi.fn();
     const onSelect = vi.fn();
