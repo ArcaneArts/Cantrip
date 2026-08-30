@@ -475,6 +475,14 @@ packaging smoke tests.
 shell points its Local profile at the externally orchestrated development
 server so TypeScript watchers and Vite hot reload remain fast.
 
+Plain browser `pnpm dev` and Tauri `pnpm devtop` keep separate durable
+development lanes. Browser development uses `.cantrip/browser-dev`, while
+desktop development uses `.cantrip/dev` paired with the worktree's persisted
+Tauri application identity. The clients have separate nonextractable key
+stores, so sharing one anonymous encryption registry would lock whichever
+client did not initialize it. Each lane remains stable across restarts without
+weakening the production or packaged-client encryption model.
+
 Both `pnpm dev` and `pnpm devtop` ensure the fingerprinted Cantrip Code build is
 available. A matching cache is reused immediately; after cloning or whenever
 the pinned editor, patchset, product configuration, extension source, or native
