@@ -31,7 +31,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     codeTabs,
     createProjectSurface,
     createSidebarExplorerMutation,
-    createWorkspaceMutation,
     creatingSurfaceKinds,
     deleteBrowserMutation,
     deleteChatMutation,
@@ -307,9 +306,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     workspaces={projectWorkspaces.data ?? []}
                     onSelectWorkspace={selectProjectWorkspace}
                     onSelectProject={selectProjectFromSidebar}
-                    onCreateWorkspace={async (name) => {
-                      await createWorkspaceMutation.mutateAsync(name);
-                    }}
                     creatingTabKinds={creatingSurfaceKinds}
                     onAddProject={openProjectCreateSource}
                     onCreateTab={(kind, target) => {

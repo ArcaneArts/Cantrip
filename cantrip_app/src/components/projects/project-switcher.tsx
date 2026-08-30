@@ -3,14 +3,7 @@ import type {
   ProjectSummary,
   ProjectWorkspaceSummary,
 } from "@cantrip/protocol";
-import {
-  Check,
-  ChevronDown,
-  FolderGit2,
-  Layers3,
-  Plus,
-  Settings,
-} from "lucide-react";
+import { Check, ChevronDown, FolderGit2, Plus, Settings } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -30,7 +23,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { WorkspaceCreateDialog } from "@/components/workspaces/workspace-create-dialog";
 import {
   ProjectSurfaceCreateMenu,
   type ProjectSurfaceCreateKind,
@@ -60,7 +52,6 @@ export function ProjectSwitcher({
   creatingTabKinds,
   onAddProject,
   onCreateTab,
-  onCreateWorkspace,
   onManageWorkspaces,
   onSelectProject,
   onSelectWorkspace,
@@ -73,7 +64,6 @@ export function ProjectSwitcher({
   creatingTabKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onAddProject(source: ProjectCreateSource): void;
   onCreateTab(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
-  onCreateWorkspace(name: string): Promise<void>;
   onManageWorkspaces(): void;
   onSelectProject(projectId: string): void;
   onSelectWorkspace(workspaceId: string): void;
@@ -91,7 +81,6 @@ export function ProjectSwitcher({
     projects.find(({ id }) => id === selectedProjectId) ?? null;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const results = useMemo(
     () => searchProjects(projects, workspaces, activeWorkspace, query),
     [activeWorkspace, projects, query, workspaces],
@@ -207,7 +196,24 @@ export function ProjectSwitcher({
                   </div>
                 )}
               </CommandList>
-              <div className="border-t p-1">
+              <div
+                className="flex items-center justify-between gap-1 border-t p-1"
+                data-slot="project-switcher-footer"
+              >
+                <Button
+                  aria-label="Manage workspaces"
+                  className="size-8 shrink-0"
+                  onClick={() => {
+                    setOpen(false);
+                    onManageWorkspaces();
+                  }}
+                  title="Manage workspaces"
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                >
+                  <Settings className="size-3.5" />
+                </Button>
                 <ProjectCreateMenu
                   contentClassName="z-[90]"
                   onSelect={(source) => {
@@ -216,7 +222,7 @@ export function ProjectSwitcher({
                   }}
                 >
                   <Button
-                    className="h-8 w-full justify-start px-2 text-xs"
+                    className="h-8 px-2 text-xs"
                     type="button"
                     variant="ghost"
                   >
@@ -224,32 +230,6 @@ export function ProjectSwitcher({
                     New project
                   </Button>
                 </ProjectCreateMenu>
-                <div className="grid grid-cols-2 gap-1">
-                  <Button
-                    className="h-8 justify-start px-2 text-xs"
-                    onClick={() => {
-                      setOpen(false);
-                      setWorkspaceDialogOpen(true);
-                    }}
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Layers3 className="size-3.5" />
-                    New workspace
-                  </Button>
-                  <Button
-                    className="h-8 justify-start px-2 text-xs"
-                    onClick={() => {
-                      setOpen(false);
-                      onManageWorkspaces();
-                    }}
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Settings className="size-3.5" />
-                    Manage
-                  </Button>
-                </div>
               </div>
             </Command>
           </PopoverContent>
@@ -274,12 +254,6 @@ export function ProjectSwitcher({
           />
         ) : null}
       </div>
-
-      <WorkspaceCreateDialog
-        onCreate={onCreateWorkspace}
-        onOpenChange={setWorkspaceDialogOpen}
-        open={workspaceDialogOpen}
-      />
     </>
   );
 }
