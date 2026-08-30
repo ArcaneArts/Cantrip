@@ -2,10 +2,19 @@ import type {
   ProjectSummary,
   ProjectWorkspaceSummary,
 } from "@cantrip/protocol";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { ProjectSwitcher } from "./project-switcher";
+
+vi.mock("@/components/ui/popover", () => ({
+  Popover: ({ children }: { children: ReactNode }) => <>{children}</>,
+  PopoverContent: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  PopoverTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 
 const projects = [
   { id: "project-1", name: "Cantrip" },
@@ -36,7 +45,6 @@ describe("project switcher", () => {
         workspaces={workspaces}
         onAddProject={vi.fn()}
         onCreateTab={vi.fn()}
-        onCreateWorkspace={vi.fn()}
         onManageWorkspaces={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
@@ -48,6 +56,12 @@ describe("project switcher", () => {
     expect(markup).toContain("CareMap");
     expect(markup).toContain('aria-label="Add tab to CareMap"');
     expect(markup).not.toContain('aria-label="Add project to Client work"');
+    expect(markup).toContain('data-slot="project-switcher-footer"');
+    expect(markup).toContain("justify-between");
+    expect(markup).toContain('aria-label="Manage workspaces"');
+    expect(markup).not.toContain(">Manage<");
+    expect(markup).toContain("New project");
+    expect(markup).not.toContain("New workspace");
   });
 
   it("hides the add-tab action when no project is selected", () => {
@@ -59,7 +73,6 @@ describe("project switcher", () => {
         workspaces={workspaces}
         onAddProject={vi.fn()}
         onCreateTab={vi.fn()}
-        onCreateWorkspace={vi.fn()}
         onManageWorkspaces={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
