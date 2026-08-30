@@ -21,12 +21,13 @@ const CANTRIP_CODEX_RUNTIME_POLICY = [
 
 const MULTI_AGENT_V1_POLICY = "features.multi_agent=true";
 
-// ChatGPT reserves `collaboration.*`, which is also Codex's V1 namespace.
-// Select V2 explicitly before moving its tools under a backend-safe namespace.
+// GPT backends reserve `collaboration.*` and reject the entire request when a
+// client-defined tool under that namespace drifts from the server-owned schema.
+// Select V2 explicitly and keep Cantrip's tools under a product-owned namespace.
 const CHATGPT_MULTI_AGENT_COMPATIBILITY_POLICY = [
   "features.multi_agent=false",
   "features.multi_agent_v2.enabled=true",
-  'features.multi_agent_v2.tool_namespace="agents"',
+  'features.multi_agent_v2.tool_namespace="cantrip_agents"',
 ] as const;
 
 export function isZaiRuntimeProvider(provider: CodexProvider): boolean {

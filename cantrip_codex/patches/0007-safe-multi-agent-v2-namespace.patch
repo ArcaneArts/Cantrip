@@ -1,0 +1,25 @@
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -11567,6 +11567,10 @@ async fn multi_agent_v2_default_session_thread_cap_counts_root() -> std::io::Res
+         .fallback_cwd(Some(codex_home.path().to_path_buf()))
+         .build()
+         .await?;
++    assert_eq!(
++        config.multi_agent_v2.tool_namespace.as_deref(),
++        Some("cantrip_agents")
++    );
+ 
+     assert_eq!(
+         config.multi_agent_v2,
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -232,6 +232,6 @@ pub(crate) const DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS: i64 = 10_000;
+ pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_WAIT_TIMEOUT_MS: i64 = 3600 * 1000;
+ pub(crate) const DEFAULT_MULTI_AGENT_V2_DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;
+-const DEFAULT_MULTI_AGENT_V2_TOOL_NAMESPACE: &str = "collaboration";
++const DEFAULT_MULTI_AGENT_V2_TOOL_NAMESPACE: &str = "cantrip_agents";
+ 
+ pub(crate) const HARD_MIN_MULTI_AGENT_V2_TIMEOUT_MS: i64 = 0;
+ pub(crate) const HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS: i64 =
