@@ -4,6 +4,7 @@ import {
   AGENT_CHAT_NAME_ATTEMPTS,
   AGENT_CHAT_NAMES,
   DEFAULT_AGENT_CHAT_TITLE,
+  newAgentChatTitle,
   parseAgentChatNames,
   randomAgentChatTitle,
 } from "./agent-chat-name";
@@ -14,6 +15,12 @@ function randomSequence(values: number[]): () => number {
 }
 
 describe("agent chat names", () => {
+  it("uses the standard title unless random names are enabled", () => {
+    expect(newAgentChatTitle(["New agent"], false)).toBe(
+      DEFAULT_AGENT_CHAT_TITLE,
+    );
+  });
+
   it("loads and deduplicates the preset name file", () => {
     expect(AGENT_CHAT_NAMES).toContain("Adam");
     expect(AGENT_CHAT_NAMES).toContain("Dom");

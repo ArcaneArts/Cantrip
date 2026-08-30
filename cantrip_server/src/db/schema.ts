@@ -1047,6 +1047,7 @@ export const userSettings = pgTable(
         },
       }),
     sidebarWidth: integer("sidebar_width").notNull().default(288),
+    randomAgentNames: boolean("random_agent_names").notNull().default(false),
     desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
     desktopStreamQuality: text("desktop_stream_quality")
       .notNull()

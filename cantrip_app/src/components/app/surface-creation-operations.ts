@@ -20,7 +20,7 @@ import type {
   ProjectInventory,
 } from "@/components/app/project-inventory";
 import type { ProjectWorkspaceResources } from "@/components/app/project-workspace-resources";
-import { randomAgentChatTitle } from "@/components/chat/agent-chat-name";
+import { newAgentChatTitle } from "@/components/chat/agent-chat-name";
 import { explorerGraphRootForEntry } from "@/components/explorer/explorer-graph-routing";
 import type { ExplorerGraphRequest } from "@/components/explorer/explorer-view";
 import {
@@ -59,10 +59,12 @@ type OpenCreatedTab = (
 export function useProjectChatCreationOperation({
   openCreatedTab,
   queryClient,
+  randomAgentNames,
   resources,
 }: {
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
+  randomAgentNames: boolean;
   resources: Pick<
     ProjectWorkspaceResources,
     | "browsers"
@@ -100,7 +102,7 @@ export function useProjectChatCreationOperation({
         .map((surface) => surface.title);
       return createChat(
         projectId,
-        randomAgentChatTitle(existingTitles),
+        newAgentChatTitle(existingTitles, randomAgentNames),
         worktreeId,
         worktreeMode,
         tabGroupId,
@@ -133,6 +135,7 @@ export function useStandaloneChatOperations({
   bootstrap,
   persistAppDestination,
   queryClient,
+  randomAgentNames,
   selectedStandaloneChatId,
   setSelectedStandaloneChatId,
   setShowArchivedStandaloneChats,
@@ -145,6 +148,7 @@ export function useStandaloneChatOperations({
     lastStandaloneChatId?: string | null;
   }) => Promise<void>;
   queryClient: QueryClient;
+  randomAgentNames: boolean;
   selectedStandaloneChatId: string | null;
   setSelectedStandaloneChatId: (chatId: string | null) => void;
   setShowArchivedStandaloneChats: (show: boolean) => void;
@@ -165,8 +169,9 @@ export function useStandaloneChatOperations({
         );
       }
       return createStandaloneChat(
-        randomAgentChatTitle(
+        newAgentChatTitle(
           (standaloneChats.data ?? []).map(({ title }) => title),
+          randomAgentNames,
         ),
       );
     },

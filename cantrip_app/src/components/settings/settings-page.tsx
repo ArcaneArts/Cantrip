@@ -1445,6 +1445,12 @@ export function SettingsPage({
       generalSearch,
       "default new agent standalone chat ide permissions sandbox read only workspace full access yolo approvals",
     );
+  const agentNamingMatches =
+    !generalSearch ||
+    matchesSearch(
+      generalSearch,
+      "agent chat names random generated title new agent",
+    );
   const desktopUpdateMatches =
     desktopUpdatesAvailable &&
     (!generalSearch ||
@@ -1497,6 +1503,7 @@ export function SettingsPage({
       ? providersMatch || modelsMatch
       : appearanceMatches ||
         permissionDefaultsMatch ||
+        agentNamingMatches ||
         desktopStreamingMatches ||
         desktopUpdateMatches;
 
@@ -1692,6 +1699,41 @@ export function SettingsPage({
                           </Button>
                         ))}
                       </div>
+                    </div>
+                  </section>
+                ) : null}
+
+                {section === "general" && agentNamingMatches ? (
+                  <section>
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Sparkles className="size-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">
+                            Agent chat names
+                          </h2>
+                          <p className="text-xs text-muted-foreground">
+                            Choose how newly created agent chats are named.
+                          </p>
+                        </div>
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                        <input
+                          type="checkbox"
+                          aria-label="Use random agent names"
+                          className="size-3.5 accent-primary"
+                          checked={
+                            settings.data?.preferences.randomAgentNames ?? false
+                          }
+                          disabled={preferences.isPending}
+                          onChange={(event) =>
+                            preferences.mutate({
+                              randomAgentNames: event.target.checked,
+                            })
+                          }
+                        />
+                        Use random names
+                      </label>
                     </div>
                   </section>
                 ) : null}

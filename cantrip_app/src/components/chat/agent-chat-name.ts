@@ -38,3 +38,12 @@ export function randomAgentChatTitle(
   }
   return DEFAULT_AGENT_CHAT_TITLE;
 }
+
+export function newAgentChatTitle(
+  existingTitles: readonly string[],
+  randomNames: boolean,
+): string {
+  return randomNames
+    ? randomAgentChatTitle(existingTitles)
+    : DEFAULT_AGENT_CHAT_TITLE;
+}
