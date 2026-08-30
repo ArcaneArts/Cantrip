@@ -20,6 +20,7 @@ import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { WorktreeControl } from "@/components/worktrees/worktree-control";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import { desktopPopoutTitlebarLeftInset } from "@/lib/desktop-popout";
 import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
@@ -239,7 +240,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
           }}
         >
           {sidebarToggleVisible ? (
-            <Button
+            <TooltipButton
               size="icon"
               variant="ghost"
               className={cn(
@@ -251,13 +252,13 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                   ? setDesktopSidebarDrawerOpen(true)
                   : setSidebarCollapsed(false)
               }
-              title={desktopSidebarDrawer ? "Open sidebar" : "Expand sidebar"}
+              tooltip={desktopSidebarDrawer ? "Open sidebar" : "Expand sidebar"}
             >
               <PanelLeftOpen className="size-4" />
               <span className="sr-only">
                 {desktopSidebarDrawer ? "Open sidebar" : "Expand sidebar"}
               </span>
-            </Button>
+            </TooltipButton>
           ) : null}
           <div
             className={cn(
@@ -492,16 +493,16 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
             data-tauri-drag-region={overlayTitlebar ? "" : undefined}
           >
             {appMode === "chat" && selectedStandaloneChat ? (
-              <Button
+              <TooltipButton
                 aria-pressed={standaloneFilesOpen}
                 onClick={() => setStandaloneFilesOpen((open: boolean) => !open)}
                 size="sm"
-                title="Open Chat files"
+                tooltip="Open Chat files"
                 variant={standaloneFilesOpen ? "outline" : "ghost"}
               >
                 <FolderOpen className="size-4" />
                 Files
-              </Button>
+              </TooltipButton>
             ) : null}
             {appMode === "ide" &&
             narrowViewport &&
@@ -522,9 +523,10 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
             ) : null}
             {!isPopout && !compactShell && appMode === "ide" ? (
               <>
-                <Button
+                <TooltipButton
                   size="icon"
                   variant="ghost"
+                  tooltip="Open settings"
                   onClick={() => {
                     setSettingsSection("general");
                     setShowSettings(true);
@@ -535,7 +537,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                 >
                   <Settings className="size-4" />
                   <span className="sr-only">Open settings</span>
-                </Button>
+                </TooltipButton>
                 <ProjectCreateMenu onSelect={openProjectCreateSource}>
                   <Button size="sm" variant="outline">
                     <Plus className="size-4" />
@@ -553,16 +555,16 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
             data-tauri-drag-region={overlayTitlebar ? "" : undefined}
           >
             {appMode === "chat" && selectedStandaloneChat ? (
-              <Button
+              <TooltipButton
                 aria-pressed={standaloneFilesOpen}
                 onClick={() => setStandaloneFilesOpen((open: boolean) => !open)}
                 size="sm"
-                title="Open Chat files"
+                tooltip="Open Chat files"
                 variant={standaloneFilesOpen ? "outline" : "ghost"}
               >
                 <FolderOpen className="size-4" />
                 Files
-              </Button>
+              </TooltipButton>
             ) : null}
             {appMode === "ide" ? (
               <ContentHeaderActions {...contentHeaderActions} />

@@ -5,8 +5,11 @@ import type {
   ProjectWorkspaceSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { MobileProjectHeader } from "./mobile-project-header";
 import { MobileProjectSelector } from "./mobile-project-selector";
@@ -45,9 +48,15 @@ const workers = [
   { workerId: "worker-1", name: "Local Worker", online: true },
 ] as WorkerSummary[];
 
+function renderMobile(children: ReactNode) {
+  return renderToStaticMarkup(
+    <TooltipProvider delayDuration={0}>{children}</TooltipProvider>,
+  );
+}
+
 describe("mobile project selector", () => {
   it("renders root controls and only the active workspace before search", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderMobile(
       <MobileProjectSelector
         activeWorkspace={workspaces[0]!}
         currentUserName="Local User"
@@ -86,7 +95,7 @@ describe("mobile project selector", () => {
       kind: "provision",
       progress: { percent: 47 },
     } as ProjectReplicaJobSummary;
-    const markup = renderToStaticMarkup(
+    const markup = renderMobile(
       <MobileProjectSelector
         activeWorkspace={workspaces[0]!}
         currentUserName="Local User"
@@ -131,7 +140,7 @@ describe("mobile project selector", () => {
         retryable: true,
       },
     } as ProjectFolderSetupJobSummary;
-    const markup = renderToStaticMarkup(
+    const markup = renderMobile(
       <MobileProjectSelector
         activeWorkspace={workspaces[0]!}
         currentUserName="Local User"
@@ -157,7 +166,7 @@ describe("mobile project selector", () => {
   });
 
   it("exposes project settings and close actions in the overview header", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderMobile(
       <MobileProjectHeader
         context="ArcaneArts/Cantrip"
         onCloseProject={vi.fn()}
@@ -174,7 +183,7 @@ describe("mobile project selector", () => {
   });
 
   it("keeps project actions in the compact header", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderMobile(
       <MobileProjectHeader
         actions={
           <div data-run-configuration-control="true">Run configuration</div>
@@ -190,7 +199,7 @@ describe("mobile project selector", () => {
   });
 
   it("exposes a compact app mode switch after project actions", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderMobile(
       <MobileProjectHeader
         actions={<div data-run-configuration-control="true" />}
         appMode="ide"
@@ -206,7 +215,7 @@ describe("mobile project selector", () => {
   });
 
   it("offers a return to the IDE from compact Chat headers", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderMobile(
       <MobileProjectHeader
         appMode="chat"
         onSwitchAppMode={vi.fn()}
@@ -218,7 +227,7 @@ describe("mobile project selector", () => {
   });
 
   it("keeps the Run control at the right edge after project settings", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderMobile(
       <MobileProjectHeader
         actions={<div data-run-configuration-control="true" />}
         onOpenProjectSettings={vi.fn()}
