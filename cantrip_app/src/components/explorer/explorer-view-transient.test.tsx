@@ -204,8 +204,15 @@ describe("ExplorerView transient selection", () => {
     const editor = renderer.root.findByProps({
       "data-retained-code-editor": true,
     });
+    const surface = renderer.root.findByProps({
+      "data-slot": "explorer-view",
+    });
     expect(editor.props["data-path"]).toBe("src/pinned.ts");
     expect(editor.props["data-visible"]).toBe(false);
+    expect(surface.props["aria-hidden"]).toBe(true);
+    expect(surface.props.inert).toBe(true);
+    expect(surface.props.className).toContain("invisible");
+    expect(surface.props.className.split(/\s+/)).not.toContain("hidden");
 
     await act(async () => renderer.unmount());
     client.clear();
