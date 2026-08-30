@@ -1,9 +1,11 @@
 import { settingsBundleSchema, type SettingsBundle } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import TestRenderer, { act } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  ProModePreferenceControl,
   SettingsPage,
   changedAccountLabel,
   initialProviderName,
@@ -29,6 +31,69 @@ function renderSettings(
 }
 
 describe("account settings", () => {
+  it("opens Pro Mode configuration without letting a secondary click toggle it", async () => {
+    const configured: boolean[] = [];
+    const checkedChanges: boolean[] = [];
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <ProModePreferenceControl
+          checked={false}
+          disabled={false}
+          onCheckedChange={(checked) => checkedChanges.push(checked)}
+          onConfigure={() => configured.push(true)}
+        />,
+      );
+    });
+    const label = renderer.root.findByType("label");
+    const secondaryMouseDown = {
+      button: 2,
+      ctrlKey: false,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    const contextMenu = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    const secondaryClick = {
+      button: 2,
+      ctrlKey: false,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+
+    label.props.onMouseDownCapture(secondaryMouseDown);
+    label.props.onClickCapture(secondaryClick);
+    label.props.onContextMenuCapture(contextMenu);
+
+    expect(secondaryMouseDown.preventDefault).toHaveBeenCalledOnce();
+    expect(secondaryMouseDown.stopPropagation).toHaveBeenCalledOnce();
+    expect(secondaryClick.preventDefault).toHaveBeenCalledOnce();
+    expect(secondaryClick.stopPropagation).toHaveBeenCalledOnce();
+    expect(contextMenu.preventDefault).toHaveBeenCalledOnce();
+    expect(contextMenu.stopPropagation).toHaveBeenCalledOnce();
+    expect(configured).toEqual([true]);
+    expect(checkedChanges).toEqual([]);
+
+    const primaryMouseDown = {
+      button: 0,
+      ctrlKey: false,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    label.props.onMouseDownCapture(primaryMouseDown);
+    renderer.root.findByType("input").props.onChange({
+      target: { checked: true },
+    });
+
+    expect(primaryMouseDown.preventDefault).not.toHaveBeenCalled();
+    expect(primaryMouseDown.stopPropagation).not.toHaveBeenCalled();
+    expect(checkedChanges).toEqual([true]);
+
+    await act(async () => renderer.unmount());
+  });
+
   it("defaults new Ollama providers to the Ollama name", () => {
     expect(initialProviderName(null)).toBe("Ollama");
     expect(initialProviderName({ name: "Local models" })).toBe("Local models");

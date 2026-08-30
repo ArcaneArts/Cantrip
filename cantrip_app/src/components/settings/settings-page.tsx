@@ -52,6 +52,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 
@@ -561,6 +562,48 @@ export function EliteModeButton({ onOpen }: { onOpen(): void }) {
       <ScanLine className="size-4" />
       Elite Mode
     </Button>
+  );
+}
+
+function preventProModeContextToggle(event: ReactMouseEvent<HTMLLabelElement>) {
+  if (event.button === 0 && !event.ctrlKey) return;
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+export function ProModePreferenceControl({
+  checked,
+  disabled,
+  onCheckedChange,
+  onConfigure,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange(checked: boolean): void;
+  onConfigure(): void;
+}) {
+  return (
+    <label
+      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
+      title="Use a translucent native macOS material. Right-click to adjust opacity."
+      onAuxClickCapture={preventProModeContextToggle}
+      onClickCapture={preventProModeContextToggle}
+      onContextMenuCapture={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onConfigure();
+      }}
+      onMouseDownCapture={preventProModeContextToggle}
+    >
+      <input
+        type="checkbox"
+        className="size-3.5 accent-primary"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onCheckedChange(event.target.checked)}
+      />
+      &quot;Pro&quot; Mode
+    </label>
   );
 }
 
@@ -1554,30 +1597,19 @@ export function SettingsPage({
                           }}
                         />
                         {macosDesktopRuntime ? (
-                          <label
-                            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
-                            title="Use a translucent native macOS material. Right-click to adjust opacity."
-                            onContextMenu={(event) => {
-                              event.preventDefault();
+                          <ProModePreferenceControl
+                            checked={
+                              settings.data?.preferences.proMode ?? false
+                            }
+                            disabled={preferences.isPending}
+                            onCheckedChange={(checked) =>
+                              preferences.mutate({ proMode: checked })
+                            }
+                            onConfigure={() => {
                               setProModeOpacityDraft(savedProModeOpacity);
                               setProModeOpacityDialogOpen(true);
                             }}
-                          >
-                            <input
-                              type="checkbox"
-                              className="size-3.5 accent-primary"
-                              checked={
-                                settings.data?.preferences.proMode ?? false
-                              }
-                              disabled={preferences.isPending}
-                              onChange={(event) =>
-                                preferences.mutate({
-                                  proMode: event.target.checked,
-                                })
-                              }
-                            />
-                            &quot;Pro&quot; Mode
-                          </label>
+                          />
                         ) : null}
                       </div>
                     </div>
