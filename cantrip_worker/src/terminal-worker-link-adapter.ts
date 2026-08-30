@@ -109,8 +109,6 @@ class TerminalWorkerLinkChannel {
       opened = this.options.terminals.attachExisting(
         this.options.terminalId,
         this.options.attachmentId,
-        80,
-        24,
         (event) => this.#scheduleRuntimeEvent(event),
       );
     } catch (error) {

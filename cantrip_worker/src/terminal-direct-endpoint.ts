@@ -282,13 +282,7 @@ export class TerminalDirectEndpointManager {
           });
         }
       };
-      opened = this.terminals.attachExisting(
-        terminalId,
-        attachmentId,
-        80,
-        24,
-        emit,
-      );
+      opened = this.terminals.attachExisting(terminalId, attachmentId, emit);
     } catch (error) {
       workerLogger.event("warn", "Direct terminal attachment failed", {
         event: "terminal.direct.attach-failed",

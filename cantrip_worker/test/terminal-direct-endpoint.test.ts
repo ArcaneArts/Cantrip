@@ -41,13 +41,11 @@ describe("TerminalDirectEndpointManager", () => {
     const resize = vi.fn();
     const detach = vi.fn(() => ({ status: "detached" as const }));
     const terminal = {
-      attachExisting: vi.fn(
-        (_terminalId, _attachmentId, _cols, _rows, emit) => {
-          emit({ type: "terminal.output", data: "hello" });
-          emit({ type: "terminal.ready" });
-          return new Promise(() => undefined);
-        },
-      ),
+      attachExisting: vi.fn((_terminalId, _attachmentId, emit) => {
+        emit({ type: "terminal.output", data: "hello" });
+        emit({ type: "terminal.ready" });
+        return new Promise(() => undefined);
+      }),
       detach,
       input,
       resize,

@@ -48,6 +48,7 @@ export type TerminalRuntimeEvent =
 
 interface TerminalSession {
   buffer: string;
+  bufferTruncated: boolean;
   cols: number;
   cwd: string;
   exited: Extract<TerminalOpenResult, { status: "exited" }> | null;
@@ -303,14 +304,7 @@ export class TerminalManager {
       } else if (!serviceSession.process && !serviceSession.restartTimer) {
         this.#startService(service, serviceSession);
       }
-      return this.#attach(
-        terminalId,
-        serviceSession,
-        attachmentId,
-        cols,
-        rows,
-        emit,
-      );
+      return this.#attach(terminalId, serviceSession, attachmentId, emit);
     }
 
     let session = this.#sessions.get(terminalId);
@@ -322,6 +316,7 @@ export class TerminalManager {
       ensureSpawnHelperExecutable();
       session = {
         buffer: "",
+        bufferTruncated: false,
         cols,
         cwd,
         exited: null,
@@ -343,7 +338,7 @@ export class TerminalManager {
     }
 
     if (session.exited) return Promise.resolve(session.exited);
-    return this.#attach(terminalId, session, attachmentId, cols, rows, emit);
+    return this.#attach(terminalId, session, attachmentId, emit);
   }
 
   detach(terminalId: string, attachmentId: string): TerminalOpenResult {
@@ -368,8 +363,6 @@ export class TerminalManager {
   attachExisting(
     terminalId: string,
     attachmentId: string,
-    cols: number,
-    rows: number,
     emit: (event: TerminalRuntimeEvent) => void,
   ): Promise<TerminalOpenResult> {
     const session = this.#sessions.get(terminalId);
@@ -377,7 +370,7 @@ export class TerminalManager {
       throw new Error(`Terminal ${terminalId} is not running.`);
     }
     if (session.exited) return Promise.resolve(session.exited);
-    return this.#attach(terminalId, session, attachmentId, cols, rows, emit);
+    return this.#attach(terminalId, session, attachmentId, emit);
   }
 
   input(terminalId: string, data: string): void {
@@ -388,9 +381,24 @@ export class TerminalManager {
   resize(terminalId: string, cols: number, rows: number): void {
     const session = this.#sessions.get(terminalId);
     if (!session) throw new Error(`Terminal ${terminalId} is not running.`);
+    const previousCols = session.cols;
+    const previousRows = session.rows;
     session.cols = cols;
     session.rows = rows;
     if (session.process) session.process.resize(cols, rows);
+    if (previousCols !== cols || previousRows !== rows) {
+      workerLogger.event("debug", "Terminal session resized", {
+        event: "terminal.session.resized",
+        subsystem: "terminal",
+        operation: "resize",
+        status: "completed",
+        terminalId,
+        dimensions: {
+          previous: { cols: previousCols, rows: previousRows },
+          current: { cols, rows },
+        },
+      });
+    }
   }
 
   snapshot(terminalId: string, maxChars: number): TerminalSnapshotResult {
@@ -476,13 +484,8 @@ export class TerminalManager {
     terminalId: string,
     session: TerminalSession,
     attachmentId: string,
-    cols: number,
-    rows: number,
     emit: (event: TerminalRuntimeEvent) => void,
   ): Promise<TerminalOpenResult> {
-    session.cols = cols;
-    session.rows = rows;
-    if (session.process) session.process.resize(cols, rows);
     session.subscribers.set(attachmentId, emit);
     workerLogger.event("debug", "Terminal client attached", {
       event: "terminal.client.attached",
@@ -491,6 +494,11 @@ export class TerminalManager {
       status: "completed",
       terminalId,
       attachmentId,
+      dimensions: { cols: session.cols, rows: session.rows },
+      replay: {
+        characters: session.buffer.length,
+        truncated: session.bufferTruncated,
+      },
       counts: { clients: session.subscribers.size },
     });
     // Replayed control sequences can make terminal emulators emit replies, so
@@ -501,7 +509,11 @@ export class TerminalManager {
   }
 
   #appendOutput(session: TerminalSession, data: string): void {
-    session.buffer = `${session.buffer}${data}`.slice(-MAX_SCROLLBACK_CHARS);
+    const nextBuffer = `${session.buffer}${data}`;
+    if (nextBuffer.length > MAX_SCROLLBACK_CHARS) {
+      session.bufferTruncated = true;
+    }
+    session.buffer = nextBuffer.slice(-MAX_SCROLLBACK_CHARS);
     for (const subscriber of session.subscribers.values()) {
       subscriber({ type: "terminal.output", data });
     }
@@ -560,6 +572,7 @@ export class TerminalManager {
   ): TerminalSession {
     const session = existing ?? {
       buffer: "",
+      bufferTruncated: false,
       cols: 80,
       cwd: service.cwd,
       exited: null,

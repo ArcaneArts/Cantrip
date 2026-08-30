@@ -228,17 +228,30 @@ export function TerminalView({
         delay,
       );
     };
-    const sendSize = () => {
-      if (!ready || !connection) return;
+    const sendSize = (beforeReady = false) => {
+      if ((!ready && !beforeReady) || !connection) return false;
+      const cols = xterm.cols;
+      const rows = xterm.rows;
       if (
         !connection.send({
           type: "resize",
-          cols: xterm.cols,
-          rows: xterm.rows,
+          cols,
+          rows,
         })
       ) {
         connection.close("congested");
+        return false;
       }
+      clientLogger.debug("Terminal surface size sent", {
+        event: "surface.terminal.resize-sent",
+        operation: "resize",
+        status: "completed",
+        subsystem: "terminal",
+        surfaceId: terminal.id,
+        dimensions: { cols, rows },
+        phase: beforeReady ? "initial" : "layout",
+      });
+      return true;
     };
     const resize = () => {
       try {
@@ -253,8 +266,28 @@ export function TerminalView({
           if (rows !== xterm.rows) xterm.resize(xterm.cols, rows);
         }
         sendSize();
-      } catch {
-        // The terminal may be between mount and layout during navigation.
+      } catch (fitError) {
+        clientLogger.rateLimited(
+          `terminal-fit:${terminal.id}`,
+          "warn",
+          "Terminal surface fit failed",
+          {
+            ...operationalErrorMetadata(fitError),
+            event: "surface.terminal.fit.failed",
+            operation: "fit",
+            reasonCode: "layout-unavailable",
+            status: "failed",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+            dimensions: {
+              cols: xterm.cols,
+              rows: xterm.rows,
+              width: container.clientWidth,
+              height: container.clientHeight,
+            },
+          },
+          { summaryEvery: 10, windowMs: 30_000 },
+        );
       }
     };
     const resizeObserver = new ResizeObserver(resize);
@@ -462,6 +495,11 @@ export function TerminalView({
             surfaceId: terminal.id,
             transport: nextConnection.route,
           });
+          // Fit and send the real viewport before replay is consumed. The
+          // resulting PTY resize gives alternate-screen TUIs a fresh redraw
+          // opportunity after a detached browser terminal is reconstructed.
+          resize();
+          if (!sendSize(true)) return;
           nextConnection.activate();
         })
         .catch((error: unknown) => {
