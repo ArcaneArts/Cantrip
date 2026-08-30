@@ -50,8 +50,6 @@ describe("TerminalManager", () => {
     const reattached = manager.attachExisting(
       "terminal-replay",
       "attachment-replay",
-      80,
-      24,
       (event) => replayEvents.push(event),
     );
 
@@ -64,6 +62,47 @@ describe("TerminalManager", () => {
     await expect(reattached).resolves.toEqual({ status: "detached" });
     manager.close("terminal-replay");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "preserves the live PTY dimensions while a terminal view reattaches",
+    async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
+      directories.push(directory);
+      const manager = new TerminalManager();
+      const initialAttachment = manager.open(
+        "terminal-dimensions",
+        "attachment-initial",
+        directory,
+        80,
+        24,
+        { type: "shell" },
+        () => undefined,
+      );
+      manager.resize("terminal-dimensions", 132, 43);
+      manager.detach("terminal-dimensions", "attachment-initial");
+      await expect(initialAttachment).resolves.toEqual({ status: "detached" });
+
+      let output = "";
+      const reattached = manager.attachExisting(
+        "terminal-dimensions",
+        "attachment-replay",
+        (event) => {
+          if (event.type === "terminal.output") output += event.data;
+        },
+      );
+      manager.input(
+        "terminal-dimensions",
+        "printf 'CANTRIP_SIZE:'; stty size\r",
+      );
+      await expect
+        .poll(() => output, { timeout: 5_000 })
+        .toMatch(/CANTRIP_SIZE:\s*43 132/);
+
+      manager.detach("terminal-dimensions", "attachment-replay");
+      await expect(reattached).resolves.toEqual({ status: "detached" });
+      manager.close("terminal-dimensions");
+    },
+  );
 
   it("runs an interactive shell in the requested source folder", async () => {
     const afterCursor = readWorkerLogs({

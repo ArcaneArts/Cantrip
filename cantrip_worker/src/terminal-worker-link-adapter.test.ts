@@ -102,8 +102,6 @@ describe("TerminalWorkerLinkAdapter", () => {
         (
           _terminalId: string,
           _attachmentId: string,
-          _cols: number,
-          _rows: number,
           emit: typeof runtimeEmit,
         ) => {
           runtimeEmit = emit;
@@ -151,6 +149,12 @@ describe("TerminalWorkerLinkAdapter", () => {
       emit,
       session,
     });
+
+    expect(terminals.attachExisting).toHaveBeenCalledWith(
+      "terminal-1",
+      `worker-link:${channelId}`,
+      expect.any(Function),
+    );
 
     runtimeEmit!({ type: "terminal.output", data: "historical output" });
     runtimeEmit!({ type: "terminal.ready" });
