@@ -18,7 +18,7 @@ import {
   Plus,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 
 import { StatusDot } from "@/components/app/status-dot";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
@@ -46,6 +46,30 @@ import { projectSetupErrorMessage } from "@/lib/job-status-message";
 import { createGithubProject } from "@/lib/project-encryption";
 import { cn } from "@/lib/utils";
 
+export const REPOSITORY_IMPORT_PAGE_SIZE = 100;
+export const REPOSITORY_IMPORT_LOAD_THRESHOLD_PX = 480;
+
+export function nextRepositoryImportRenderCount(
+  current: number,
+  total: number,
+): number {
+  return Math.min(total, current + REPOSITORY_IMPORT_PAGE_SIZE);
+}
+
+export function shouldLoadMoreRepositories(input: {
+  clientHeight: number;
+  renderedCount: number;
+  scrollHeight: number;
+  scrollTop: number;
+  totalCount: number;
+}): boolean {
+  return (
+    input.renderedCount < input.totalCount &&
+    input.scrollHeight - input.clientHeight - input.scrollTop <=
+      REPOSITORY_IMPORT_LOAD_THRESHOLD_PX
+  );
+}
+
 export function RepositoryImporter({
   activeWorkspaceId,
   onCreatedProject,
@@ -65,6 +89,9 @@ export function RepositoryImporter({
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [renderedRepositoryCount, setRenderedRepositoryCount] = useState(
+    REPOSITORY_IMPORT_PAGE_SIZE,
+  );
   const [createRepositoryOpen, setCreateRepositoryOpen] = useState(false);
   const [customRepository, setCustomRepository] =
     useState<GithubRepository | null>(null);
@@ -72,6 +99,7 @@ export function RepositoryImporter({
     new Set(),
   );
   const pendingRepositoryIdsRef = useRef(new Set<string>());
+  const repositoryListRef = useRef<HTMLDivElement>(null);
   const [importErrors, setImportErrors] = useState<Map<string, string>>(
     new Map(),
   );
@@ -83,6 +111,10 @@ export function RepositoryImporter({
       new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
     );
   }, [activeWorkspaceId]);
+  useEffect(() => {
+    setRenderedRepositoryCount(REPOSITORY_IMPORT_PAGE_SIZE);
+    repositoryListRef.current?.scrollTo({ top: 0 });
+  }, [workerId]);
   const github = useQuery({
     enabled: Boolean(workerId),
     queryFn: () => getGithubStatus(workerId!),
@@ -206,6 +238,29 @@ export function RepositoryImporter({
           : true,
     );
   }, [cachedRepositories.data, repositories.data, search]);
+  const visibleRepositories = useMemo(
+    () => filtered.slice(0, renderedRepositoryCount),
+    [filtered, renderedRepositoryCount],
+  );
+  const loadMoreRepositories = () => {
+    setRenderedRepositoryCount((current) =>
+      nextRepositoryImportRenderCount(current, filtered.length),
+    );
+  };
+  const handleRepositoryScroll = (event: UIEvent<HTMLDivElement>) => {
+    const { clientHeight, scrollHeight, scrollTop } = event.currentTarget;
+    if (
+      shouldLoadMoreRepositories({
+        clientHeight,
+        renderedCount: visibleRepositories.length,
+        scrollHeight,
+        scrollTop,
+        totalCount: filtered.length,
+      })
+    ) {
+      loadMoreRepositories();
+    }
+  };
   const hasRepositoryData = Boolean(
     repositories.data || cachedRepositories.data?.length,
   );
@@ -283,7 +338,11 @@ export function RepositoryImporter({
                   <GitBranch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <input
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setRenderedRepositoryCount(REPOSITORY_IMPORT_PAGE_SIZE);
+                      repositoryListRef.current?.scrollTo({ top: 0 });
+                    }}
                     placeholder="Search repositories"
                     className="h-10 w-full rounded-md border bg-background pl-10 pr-3 text-sm outline-none ring-ring focus:ring-2"
                   />
@@ -345,7 +404,11 @@ export function RepositoryImporter({
                 {errorText(repositories.error)}
               </p>
             ) : (
-              <div className="mt-4 min-h-0 flex-1 overflow-auto border-y">
+              <div
+                className="mt-4 min-h-0 flex-1 overflow-auto border-y"
+                ref={repositoryListRef}
+                onScroll={handleRepositoryScroll}
+              >
                 <table className="w-full table-fixed border-collapse text-left text-sm">
                   <thead
                     data-slot="table-header-surface"
@@ -370,7 +433,7 @@ export function RepositoryImporter({
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((repository) => {
+                    {visibleRepositories.map((repository) => {
                       const project = projects.find(
                         (candidate) =>
                           candidate.github?.repositoryId === repository.id,
@@ -509,6 +572,20 @@ export function RepositoryImporter({
                     })}
                   </tbody>
                 </table>
+                {visibleRepositories.length < filtered.length ? (
+                  <div className="flex items-center justify-center gap-3 border-t px-4 py-3 text-xs text-muted-foreground">
+                    <span>
+                      Showing {visibleRepositories.length} of {filtered.length}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={loadMoreRepositories}
+                    >
+                      Show more
+                    </Button>
+                  </div>
+                ) : null}
                 {filtered.length === 0 ? (
                   <div className="grid min-h-40 place-items-center p-8 text-center text-sm text-muted-foreground">
                     No matching repositories.
