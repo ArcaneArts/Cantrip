@@ -370,7 +370,8 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     }
                     fileTreeLoading={
                       explorers.isLoading ||
-                      createSidebarExplorerMutation.isPending
+                      createSidebarExplorerMutation.isPending ||
+                      pinSidebarFileMutation.isPending
                     }
                     fileTreePinningPath={
                       pinSidebarFileMutation.isPending

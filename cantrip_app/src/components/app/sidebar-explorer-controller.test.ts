@@ -1,10 +1,22 @@
-import type { ExplorerSummary, ProjectSummary } from "@cantrip/protocol";
-import { describe, expect, it } from "vitest";
+import type {
+  ExplorerSummary,
+  ProjectSummary,
+  ProjectTabLayoutSummary,
+  ProjectWorktreeSummary,
+} from "@cantrip/protocol";
+import { createElement, StrictMode } from "react";
+import TestRenderer, { act } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   sidebarExplorerProvisioningDetails,
   sidebarFilePinCompletion,
+  useSidebarExplorerModel,
 } from "./sidebar-explorer-controller";
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const project = {
   id: "project-1",
@@ -123,5 +135,90 @@ describe("sidebar file pin completion", () => {
       action: "refresh",
       destination,
     });
+  });
+});
+
+describe("sidebar preview ownership handoff", () => {
+  it("keeps the promoted preview surface addressable without returning it to the file tree under Strict Mode", async () => {
+    const pinned = {
+      id: "explorer-pinned",
+      projectId: "project-1",
+      selectedPath: "src/first.ts",
+      worktreeId: "worktree-1",
+    } as ExplorerSummary;
+    const replacement = {
+      id: "explorer-replacement",
+      projectId: "project-1",
+      selectedPath: null,
+      worktreeId: "worktree-1",
+    } as ExplorerSummary;
+    const tabLayout = {
+      groups: [
+        {
+          id: "group-1",
+          members: [{ tabId: pinned.id, tabKind: "explorer" }],
+        },
+      ],
+    } as ProjectTabLayoutSummary;
+    const worktrees = [
+      { id: "worktree-1", isPrimary: true },
+    ] as ProjectWorktreeSummary[];
+    const preview = {
+      active: true,
+      explorerId: pinned.id,
+      groupId: "group-1",
+      path: "src/first.ts",
+      projectId: "project-1",
+    };
+    const observed: {
+      current: ReturnType<typeof useSidebarExplorerModel> | null;
+    } = { current: null };
+    const Probe = ({ explorers }: { explorers: ExplorerSummary[] }) => {
+      observed.current = useSidebarExplorerModel({
+        detachedGroupId: null,
+        environment: {
+          explorerFileTarget: null,
+          popoutTarget: null,
+          projectOverviewPopoutTarget: null,
+        },
+        explorers,
+        fileState: {
+          sidebarFilePinHandoff: null,
+          sidebarFilePreview: preview,
+        },
+        openCreatedTab: vi.fn(),
+        selectedProjectId: "project-1",
+        selectedSurface: undefined,
+        tabLayout,
+        worktrees,
+      });
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(
+          StrictMode,
+          null,
+          createElement(Probe, { explorers: [pinned] }),
+        ),
+      );
+    });
+    expect(observed.current?.sidebarPreviewExplorer).toBe(pinned);
+    expect(observed.current?.sidebarExplorer).toBeNull();
+
+    await act(async () => {
+      renderer.update(
+        createElement(
+          StrictMode,
+          null,
+          createElement(Probe, { explorers: [pinned, replacement] }),
+        ),
+      );
+    });
+    expect(observed.current?.sidebarPreviewExplorer).toBe(pinned);
+    expect(observed.current?.sidebarExplorer).toBe(replacement);
+    await act(async () => renderer.unmount());
   });
 });
