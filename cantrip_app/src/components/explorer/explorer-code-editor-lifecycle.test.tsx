@@ -63,6 +63,11 @@ const frameRuntime = vi.hoisted(() => ({
       ) => boolean),
 }));
 
+const logging = vi.hoisted(() => ({
+  event: vi.fn(),
+  warn: vi.fn(),
+}));
+
 vi.mock("@/components/code/code-view", () => ({
   codeWorkbenchFrameClassName: (ready: boolean) =>
     ready ? "frame-ready" : "frame-loading",
@@ -124,6 +129,12 @@ vi.mock("@/lib/desktop-code", () => ({
   ...desktopCode,
   CodeAttachmentHealthError: class extends Error {},
   CodeControlOperationTimeoutError: class extends Error {},
+}));
+vi.mock("@/lib/client-log-relay", () => ({
+  clientLogger: logging,
+  operationalErrorMetadata: (error: unknown) => ({
+    errorClass: error instanceof Error ? error.name : "NonError",
+  }),
 }));
 
 import {
@@ -412,6 +423,59 @@ afterEach(() => {
 });
 
 describe("ExplorerCodeEditor warm lifecycle", () => {
+  it("records correlated timings through workbench and file readiness", async () => {
+    const { renderer } = await mount("src/timed.ts");
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+
+    const records = logging.event.mock.calls.map(
+      ([level, message, context]) => ({ level, message, ...context }),
+    );
+    const started = records.find(
+      (record) => record.event === "code.editor.launch.started",
+    );
+    expect(started).toMatchObject({
+      attachmentReadyAtRequest: false,
+      launchKind: "file",
+      status: "started",
+      workbenchReadyAtRequest: false,
+    });
+    const launchId = started?.launchId;
+    expect(launchId).toEqual(expect.any(String));
+    const completedPhases = records
+      .filter(
+        (record) =>
+          record.event === "code.editor.launch.phase" &&
+          record.status === "completed" &&
+          record.launchId === launchId,
+      )
+      .map((record) => record.phase);
+    expect(completedPhases).toEqual(
+      expect.arrayContaining([
+        "session-route",
+        "transport-ready",
+        "workbench-ready",
+        "presentation-ready",
+        "file-open",
+      ]),
+    );
+    expect(
+      records.find(
+        (record) =>
+          record.event === "code.editor.launch.completed" &&
+          record.launchId === launchId,
+      ),
+    ).toMatchObject({
+      attachmentId: attachment.attachmentId,
+      durationMs: expect.any(Number),
+      sessionId: attachment.sessionId,
+      status: "completed",
+    });
+
+    await act(async () => renderer.unmount());
+  });
+
   it("quiesces and retires the local lease and session before Explorer deletion", async () => {
     tauri.enabled = true;
     const order: string[] = [];
@@ -745,6 +809,30 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
     expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+    const launchStarts = logging.event.mock.calls
+      .map(([, , context]) => context)
+      .filter((context) => context.event === "code.editor.launch.started");
+    expect(launchStarts).toHaveLength(3);
+    expect(launchStarts.map((context) => context.launchKind)).toEqual([
+      "prewarm",
+      "file",
+      "file",
+    ]);
+    expect(launchStarts.slice(1)).toEqual([
+      expect.objectContaining({
+        attachmentReadyAtRequest: true,
+        workbenchReadyAtRequest: true,
+      }),
+      expect.objectContaining({
+        attachmentReadyAtRequest: true,
+        workbenchReadyAtRequest: true,
+      }),
+    ]);
+    expect(
+      logging.event.mock.calls.filter(
+        ([, , context]) => context.event === "code.editor.launch.completed",
+      ),
+    ).toHaveLength(3);
 
     await act(async () => renderer.unmount());
   });

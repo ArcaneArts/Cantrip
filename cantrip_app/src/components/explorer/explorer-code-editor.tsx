@@ -17,6 +17,11 @@ import {
   codeWorkbenchFrameClassName,
   isDarkCodeAppearance,
 } from "@/components/code/code-view";
+import {
+  ExplorerCodeLaunchTiming,
+  type ExplorerCodeLaunchPhase,
+  type ExplorerCodeLaunchPhaseTiming,
+} from "@/components/explorer/explorer-code-launch-timing";
 import { Button } from "@/components/ui/button";
 import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
 import {
@@ -217,6 +222,38 @@ function sharedExplorerCodeAttachment(
   return "attachment" in owned;
 }
 
+function explorerCodeOwnershipTimingDetails(
+  owned: ExplorerCodeAttachmentOwnership,
+): Record<string, unknown> {
+  if (sharedExplorerCodeAttachment(owned)) {
+    return {
+      attachmentId: owned.attachment.session.attachmentId,
+      sessionId: owned.attachment.session.sessionId,
+      sharedTransport: true,
+      tunnelId: owned.attachment.transport.transportId,
+    };
+  }
+  return {
+    attachmentId: owned.attachmentId,
+    sessionId: owned.sessionId,
+    sharedTransport: false,
+    tunnelId: owned.tunnelId,
+  };
+}
+
+function explorerCodeLaunchFailurePhase(
+  error: unknown,
+  fallback: ExplorerCodeLaunchPhase,
+): ExplorerCodeLaunchPhase {
+  if (!error || typeof error !== "object") return fallback;
+  const stage = Reflect.get(error, "stage");
+  if (stage === "file") return "file-open";
+  if (stage === "frame") return "frame-document";
+  if (stage === "presentation") return "presentation-ready";
+  if (stage === "workbench") return "workbench-ready";
+  return fallback;
+}
+
 async function retireExplorerCodeAttachment(
   owned: ExplorerCodeAttachmentOwnership,
 ): Promise<void> {
@@ -287,6 +324,16 @@ export function ExplorerCodeEditor({
   const frameFailureNonceRef = useRef<string | null>(null);
   const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const frameDocumentTimingRef = useRef<{
+    nonce: string;
+    timing: ExplorerCodeLaunchPhaseTiming;
+  } | null>(null);
+  const workbenchReadyTimingRef = useRef<{
+    nonce: string;
+    timing: ExplorerCodeLaunchPhaseTiming;
+  } | null>(null);
+  const launchTimingRef = useRef<ExplorerCodeLaunchTiming | null>(null);
+  const frameReadyRef = useRef(false);
   const closingRef = useRef(false);
   const closeCommitResolverRef = useRef<(() => void) | null>(null);
   const closePromiseRef = useRef<Promise<void> | null>(null);
@@ -422,9 +469,47 @@ export function ExplorerCodeEditor({
     readyKey === requestedReadyKey,
   );
 
+  useLayoutEffect(() => {
+    frameReadyRef.current = frameReady;
+  }, [frameReady]);
+
+  const startLaunchTiming = useCallback(
+    (requestedPath: string | null, previousReasonCode: string) => {
+      launchTimingRef.current?.cancel(previousReasonCode);
+      launchTimingRef.current = new ExplorerCodeLaunchTiming({
+        attachmentReadyAtRequest: preferredAttachmentRef.current !== null,
+        explorerId,
+        launchKind: requestedPath === null ? "prewarm" : "file",
+        workerId,
+        workerOnlineAtRequest: workerOnlineRef.current,
+        workbenchReadyAtRequest: frameReadyRef.current,
+        worktreeId,
+      });
+    },
+    [explorerId, workerId, worktreeId],
+  );
+
+  useLayoutEffect(() => {
+    startLaunchTiming(path, "request-superseded");
+  }, [path, startLaunchTiming]);
+
+  useEffect(
+    () => () => {
+      launchTimingRef.current?.cancel("surface-unmounted");
+      launchTimingRef.current = null;
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (ready) onReadyRef.current?.();
-  }, [ready]);
+    if (!ready || !preferredAttachment) return;
+    launchTimingRef.current?.complete({
+      attachmentId: preferredAttachment.attachment.attachmentId,
+      sessionId: preferredAttachment.attachment.sessionId,
+      transportKind: preferredAttachment.transportKind,
+    });
+    onReadyRef.current?.();
+  }, [preferredAttachment, ready]);
 
   useEffect(() => {
     onLifecycleChange?.({ cancelClose, prepareClose });
@@ -440,11 +525,12 @@ export function ExplorerCodeEditor({
 
   const reload = useCallback(() => {
     if (closingRef.current) return;
+    startLaunchTiming(pathRef.current, "manual-retry");
     automaticReplacementCountRef.current = 0;
     automaticReplacementPendingRef.current = true;
     setError(null);
     setReloadVersion((version) => version + 1);
-  }, []);
+  }, [startLaunchTiming]);
 
   const requestAutomaticReplacement = useCallback(
     (expectedBindingKey: string): boolean => {
@@ -667,34 +753,74 @@ export function ExplorerCodeEditor({
       connectionInFlightRef.current = true;
       connectionStartedRef.current = true;
       const connectionAppearance = appearanceRef.current;
+      let failurePhase: ExplorerCodeLaunchPhase = "session-route";
       try {
         const preferred = await attachmentLifecycleRef.current!.replace(
           async () => {
+            const sharedTiming =
+              launchTimingRef.current?.beginPhase("session-route");
             try {
-              return await createProtectedExplorerCodeSessionAttachment(
+              const shared = await createProtectedExplorerCodeSessionAttachment(
                 explorerId,
                 pathRef.current,
                 workerId,
                 worktreeId,
                 connectionAppearance,
               );
+              sharedTiming?.complete(
+                explorerCodeOwnershipTimingDetails(shared),
+              );
+              return shared;
             } catch (sharedError) {
-              if (isTauri() || !allowsLegacyExplorerCodeFallback(sharedError)) {
-                throw sharedError;
+              const fallbackToLegacy =
+                !isTauri() && allowsLegacyExplorerCodeFallback(sharedError);
+              if (fallbackToLegacy) {
+                sharedTiming?.cancel("legacy-fallback");
+              } else {
+                sharedTiming?.fail(sharedError);
               }
-              return createProtectedExplorerCodeAttachment(
-                explorerId,
-                pathRef.current,
-                workerId,
-                worktreeId,
-                connectionAppearance,
-              );
+              if (!fallbackToLegacy) throw sharedError;
+              const legacyTiming =
+                launchTimingRef.current?.beginPhase("session-route");
+              try {
+                const legacy = await createProtectedExplorerCodeAttachment(
+                  explorerId,
+                  pathRef.current,
+                  workerId,
+                  worktreeId,
+                  connectionAppearance,
+                );
+                legacyTiming?.complete(
+                  explorerCodeOwnershipTimingDetails(legacy),
+                );
+                return legacy;
+              } catch (legacyError) {
+                legacyTiming?.fail(legacyError, { fallbackToLegacy: true });
+                throw legacyError;
+              }
             }
           },
-          (owned, signal) =>
-            sharedExplorerCodeAttachment(owned)
-              ? preferSharedProtectedCodeAttachment(owned, { signal })
-              : preferProtectedCodeAttachment(owned, { signal }),
+          async (owned, signal) => {
+            failurePhase = "transport-ready";
+            const transportTiming =
+              launchTimingRef.current?.beginPhase("transport-ready");
+            try {
+              const preferred = sharedExplorerCodeAttachment(owned)
+                ? await preferSharedProtectedCodeAttachment(owned, { signal })
+                : await preferProtectedCodeAttachment(owned, { signal });
+              transportTiming?.complete({
+                attachmentId: preferred.attachment.attachmentId,
+                sessionId: preferred.attachment.sessionId,
+                sharedTransportGeneration:
+                  preferred.sharedTransportGeneration ?? null,
+                transportKind: preferred.transportKind,
+              });
+              return preferred;
+            } catch (transportError) {
+              transportTiming?.fail(transportError);
+              throw transportError;
+            }
+          },
         );
         if (!cancelled && !closingRef.current && preferred) {
           connectionInFlightRef.current = false;
@@ -712,6 +838,7 @@ export function ExplorerCodeEditor({
           connectionInFlightRef.current = false;
           const retryable =
             isRetryableExplorerCodeConnectionError(connectError);
+          let willRetry = false;
           connectionRetryableRef.current = retryable;
           setError(
             errorMessage(
@@ -724,6 +851,7 @@ export function ExplorerCodeEditor({
             pendingConnectionWakeRef.current &&
             workerOnlineRef.current
           ) {
+            willRetry = true;
             pendingConnectionWakeRef.current = false;
             requestConnectionRetry(bindingKey);
           } else if (
@@ -731,6 +859,7 @@ export function ExplorerCodeEditor({
             connectionRetryCountRef.current <
               EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT
           ) {
+            willRetry = true;
             const delay = explorerCodeEditorRetryDelayMs(
               connectionRetryCountRef.current,
             );
@@ -746,6 +875,11 @@ export function ExplorerCodeEditor({
               requestConnectionRetry(bindingKey);
             }, delay);
             connectionRetryTimerRef.current = retryTimer;
+          }
+          if (!willRetry) {
+            launchTimingRef.current?.fail(failurePhase, connectError, {
+              retryable,
+            });
           }
         }
       } finally {
@@ -1062,6 +1196,32 @@ export function ExplorerCodeEditor({
   }, [preferredAttachment?.attachment.attachmentId]);
 
   useLayoutEffect(() => {
+    if (!frameMount) return;
+    const timing = launchTimingRef.current;
+    if (!timing) return;
+    const frameDocument = {
+      nonce: frameMount.nonce,
+      timing: timing.beginPhase("frame-document"),
+    };
+    const workbenchReady = {
+      nonce: frameMount.nonce,
+      timing: timing.beginPhase("workbench-ready"),
+    };
+    frameDocumentTimingRef.current = frameDocument;
+    workbenchReadyTimingRef.current = workbenchReady;
+    return () => {
+      frameDocument.timing.cancel("frame-replaced");
+      workbenchReady.timing.cancel("frame-replaced");
+      if (frameDocumentTimingRef.current === frameDocument) {
+        frameDocumentTimingRef.current = null;
+      }
+      if (workbenchReadyTimingRef.current === workbenchReady) {
+        workbenchReadyTimingRef.current = null;
+      }
+    };
+  }, [frameMount]);
+
+  useLayoutEffect(() => {
     setFrameReadyNonce(null);
     if (!frameMount || frameFailureNonce === frameMount.nonce) return;
     if (frameFailureNonceRef.current !== frameMount.nonce) {
@@ -1091,19 +1251,30 @@ export function ExplorerCodeEditor({
         frameRetryTimerRef.current = null;
       }
       setError(null);
+      if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
+        workbenchReadyTimingRef.current.timing.complete({
+          attachmentId: preferredAttachmentRef.current?.attachment.attachmentId,
+        });
+        workbenchReadyTimingRef.current = null;
+      }
       setFrameReadyNonce(frameMount.nonce);
     };
     window.addEventListener("message", receiveReady);
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      setFrameFailureNonce(frameMount.nonce);
-      setError(
-        codeWorkbenchStageError(
-          "workbench",
-          "The embedded editor timed out after its endpoint loaded.",
-        ).message,
+      const timeoutError = codeWorkbenchStageError(
+        "workbench",
+        "The embedded editor timed out after its endpoint loaded.",
       );
+      if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
+        workbenchReadyTimingRef.current.timing.fail(timeoutError, {
+          retryScheduled: true,
+        });
+        workbenchReadyTimingRef.current = null;
+      }
+      setFrameFailureNonce(frameMount.nonce);
+      setError(timeoutError.message);
       scheduleFrameRetry(bindingKey, frameMount.nonce);
     }, CODE_WORKBENCH_READY_TIMEOUT_MS);
     return () => {
@@ -1129,14 +1300,31 @@ export function ExplorerCodeEditor({
       }
     }
     setError(null);
+    let presentationRecorded = false;
+    const recordCachedPresentation = () => {
+      if (presentationRecorded) return;
+      presentationRecorded = true;
+      launchTimingRef.current?.milestone("presentation-ready", {
+        attachmentId: preferredAttachment.attachment.attachmentId,
+        reused: true,
+      });
+    };
     const setPresentation = async () => {
+      const presentationTiming =
+        launchTimingRef.current?.beginPhase("presentation-ready");
       try {
         await setDirectCodeAttachmentPresentation(
           preferredAttachment.attachment,
           "editor",
           { signal: navigationController.signal },
         );
+        presentationRecorded = true;
+        presentationTiming?.complete({
+          attachmentId: preferredAttachment.attachment.attachmentId,
+          reused: false,
+        });
       } catch (presentationError) {
+        presentationTiming?.fail(presentationError);
         throw codeWorkbenchStageError("presentation", presentationError);
       }
     };
@@ -1206,9 +1394,16 @@ export function ExplorerCodeEditor({
             navigationController.signal,
           );
           if (!cancelled) {
+            recordCachedPresentation();
             resetNavigationRetry();
             setError(null);
             setReadyKey(null);
+            launchTimingRef.current?.complete({
+              attachmentId: preferredAttachment.attachment.attachmentId,
+              prewarmed: true,
+              sessionId: preferredAttachment.attachment.sessionId,
+              transportKind: preferredAttachment.transportKind,
+            });
           }
         } catch (presentationError) {
           if (!cancelled) {
@@ -1242,13 +1437,21 @@ export function ExplorerCodeEditor({
         const result = await configureExplorerCodeEditorNavigation({
           frameNonce: frameMount.nonce,
           openFile: async () => {
+            recordCachedPresentation();
+            const fileTiming = launchTimingRef.current?.beginPhase("file-open");
             try {
-              return await openDirectCodeAttachmentFile(
+              const opened = await openDirectCodeAttachmentFile(
                 preferredAttachment.attachment,
                 path,
                 { signal: navigationController.signal },
               );
+              fileTiming?.complete({
+                attachmentId: preferredAttachment.attachment.attachmentId,
+                openAttempt: attempt + 1,
+              });
+              return opened;
             } catch (fileError) {
+              fileTiming?.fail(fileError, { openAttempt: attempt + 1 });
               throw codeWorkbenchStageError("file", fileError);
             }
           },
@@ -1310,6 +1513,11 @@ export function ExplorerCodeEditor({
         setError(
           errorMessage(openError, "Cantrip Code could not open this file."),
         );
+        launchTimingRef.current?.fail(
+          explorerCodeLaunchFailurePhase(openError, "file-open"),
+          openError,
+          { openAttempt: attempt + 1 },
+        );
       }
     };
     void navigationQueueRef.current.run(async () => {
@@ -1351,14 +1559,25 @@ export function ExplorerCodeEditor({
           className={codeWorkbenchFrameClassName(ready)}
           onError={() => {
             if (!frameMount) return;
+            const frameError = codeWorkbenchStageError(
+              "frame",
+              "The embedded editor document could not load.",
+            );
+            if (frameDocumentTimingRef.current?.nonce === frameMount.nonce) {
+              frameDocumentTimingRef.current.timing.fail(frameError, {
+                retryScheduled: true,
+              });
+              frameDocumentTimingRef.current = null;
+            }
+            if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
+              workbenchReadyTimingRef.current.timing.cancel(
+                "frame-load-failed",
+              );
+              workbenchReadyTimingRef.current = null;
+            }
             frameFailureNonceRef.current = frameMount.nonce;
             setFrameFailureNonce(frameMount.nonce);
-            setError(
-              codeWorkbenchStageError(
-                "frame",
-                "The embedded editor document could not load.",
-              ).message,
-            );
+            setError(frameError.message);
             scheduleFrameRetry(bindingKey, frameMount.nonce);
           }}
           onLoad={() => {
@@ -1367,6 +1586,12 @@ export function ExplorerCodeEditor({
               !frameLoadsRef.current.observe(frameMount.nonce)
             ) {
               return;
+            }
+            if (frameDocumentTimingRef.current?.nonce === frameMount.nonce) {
+              frameDocumentTimingRef.current.timing.complete({
+                attachmentId: preferredAttachment.attachment.attachmentId,
+              });
+              frameDocumentTimingRef.current = null;
             }
             setFrameReadyNonce(null);
             setFrameFailureNonce(null);
