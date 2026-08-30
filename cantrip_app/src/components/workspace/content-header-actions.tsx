@@ -32,6 +32,12 @@ import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
+import {
+  Tooltip,
+  TooltipButton,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface TerminalServiceAction {
@@ -87,68 +93,76 @@ function CodeHeaderActions({ header }: { header: CodeHeaderState | null }) {
   return (
     <div className="flex items-center gap-1.5">
       {runtimeIssue ? (
-        <span
-          className="grid size-8 place-items-center text-destructive"
-          role="status"
-          title={runtimeIssue}
-        >
-          <CircleAlert className="size-4" />
-          <span className="sr-only">{runtimeIssue}</span>
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="grid size-8 place-items-center text-destructive"
+              role="status"
+            >
+              <CircleAlert className="size-4" />
+              <span className="sr-only">{runtimeIssue}</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{runtimeIssue}</TooltipContent>
+        </Tooltip>
       ) : header?.isBusy ? (
-        <span
-          className="grid size-8 place-items-center text-muted-foreground"
-          role="status"
-          title="Connecting to editor"
-        >
-          <Loader2 className="size-4 animate-spin" />
-          <span className="sr-only">Connecting to editor</span>
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="grid size-8 place-items-center text-muted-foreground"
+              role="status"
+            >
+              <Loader2 className="size-4 animate-spin" />
+              <span className="sr-only">Connecting to editor</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Connecting to editor</TooltipContent>
+        </Tooltip>
       ) : null}
-      <Button
+      <TooltipButton
         size="icon"
         variant="ghost"
         className="size-8"
         disabled={!header || header.isBusy || !header.runtime}
         onClick={() => void header?.saveAll()}
-        title="Save all editors"
+        tooltip="Save all editors"
       >
         <Save className="size-4" />
         <span className="sr-only">Save all editors</span>
-      </Button>
-      <Button
+      </TooltipButton>
+      <TooltipButton
         size="icon"
         variant="ghost"
         className="size-8"
         disabled={!header || header.isBusy}
         onClick={header?.reload}
-        title="Reload editor surface"
+        tooltip="Reload editor surface"
       >
         <RefreshCw className="size-4" />
         <span className="sr-only">Reload editor surface</span>
-      </Button>
-      <Button
+      </TooltipButton>
+      <TooltipButton
         size="icon"
         variant="ghost"
         className="size-8"
         disabled={!header || header.isBusy}
         onClick={() => void header?.restart()}
-        title="Restart editor"
+        tooltip="Restart editor"
       >
         <RotateCcw className="size-4" />
         <span className="sr-only">Restart editor</span>
-      </Button>
-      <Button
+      </TooltipButton>
+      <TooltipButton
         size="icon"
         variant="ghost"
         className="size-8"
         disabled={!header || header.isBusy || !header.runtime}
         onClick={() => void header?.stop()}
-        title="Stop editor"
+        tooltip="Stop editor"
       >
         <Power className="size-4" />
         <span className="sr-only">Stop editor</span>
-      </Button>
+      </TooltipButton>
     </div>
   );
 }
@@ -173,17 +187,21 @@ function ExplorerHeaderActions({
         <>
           {header.canEdit || header.canVisual ? (
             <DropdownMenuPrimitive.Root>
-              <DropdownMenuPrimitive.Trigger asChild>
-                <Button
-                  aria-label={`${mode.label} mode`}
-                  className="size-8"
-                  size="icon"
-                  title={`${mode.label} mode`}
-                  variant="ghost"
-                >
-                  <ModeIcon className="size-4" />
-                </Button>
-              </DropdownMenuPrimitive.Trigger>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuPrimitive.Trigger asChild>
+                    <Button
+                      aria-label={`${mode.label} mode`}
+                      className="size-8"
+                      size="icon"
+                      variant="ghost"
+                    >
+                      <ModeIcon className="size-4" />
+                    </Button>
+                  </DropdownMenuPrimitive.Trigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{mode.label} mode</TooltipContent>
+              </Tooltip>
               <DropdownMenuPrimitive.Portal>
                 <StyledDropdownMenuContent align="end" className="min-w-36">
                   <StyledDropdownMenuItem
@@ -228,13 +246,17 @@ function ExplorerHeaderActions({
               </DropdownMenuPrimitive.Portal>
             </DropdownMenuPrimitive.Root>
           ) : (
-            <span
-              aria-label="View mode"
-              className="grid size-8 place-items-center text-muted-foreground"
-              title="View mode"
-            >
-              <Eye className="size-4" />
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-label="View mode"
+                  className="grid size-8 place-items-center text-muted-foreground"
+                >
+                  <Eye className="size-4" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">View mode</TooltipContent>
+            </Tooltip>
           )}
           {!compact && header.dirty ? (
             <span className="px-1 text-[10px] font-medium text-amber-500">
@@ -242,13 +264,13 @@ function ExplorerHeaderActions({
             </span>
           ) : null}
           {header.canEdit ? (
-            <Button
+            <TooltipButton
               aria-keyshortcuts="Meta+S Control+S"
               className="relative size-8"
               disabled={!header.dirty || header.isSaving}
               onClick={() => void header.save()}
               size="icon"
-              title={header.dirty ? "Save file" : "File is saved"}
+              tooltip={header.dirty ? "Save file" : "File is saved"}
               variant="ghost"
             >
               {header.isSaving ? (
@@ -260,23 +282,23 @@ function ExplorerHeaderActions({
                 <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-400" />
               ) : null}
               <span className="sr-only">Save file</span>
-            </Button>
+            </TooltipButton>
           ) : null}
         </>
       ) : null}
-      <Button
+      <TooltipButton
         className="size-8"
         disabled={header.isFetching}
         onClick={header.refresh}
         size="icon"
-        title="Refresh Explorer"
+        tooltip="Refresh Explorer"
         variant="ghost"
       >
         <RefreshCw
           className={cn("size-4", header.isFetching && "animate-spin")}
         />
         <span className="sr-only">Refresh Explorer</span>
-      </Button>
+      </TooltipButton>
     </div>
   );
 }
@@ -290,16 +312,16 @@ export function ExplorerFileCloseButton({
 }) {
   if (!header || (!header.selectedPath && !header.canGoBack)) return null;
   return (
-    <Button
+    <TooltipButton
       className={compact ? "size-6 shrink-0" : "size-8 shrink-0"}
       onClick={header.back}
       size="icon"
-      title={header.backLabel ?? "Close file"}
+      tooltip={header.backLabel ?? "Close file"}
       variant="ghost"
     >
       <X className={compact ? "size-3" : "size-4"} />
       <span className="sr-only">{header.backLabel ?? "Close file"}</span>
-    </Button>
+    </TooltipButton>
   );
 }
 
@@ -317,34 +339,34 @@ export function ContentHeaderActions({
     <>
       {git ? (
         <>
-          <Button
+          <TooltipButton
             size={compact ? "icon" : "sm"}
             variant="ghost"
             disabled={git.isGitActionPending}
             onClick={git.pull}
-            title="Fetch remotes and pull"
+            tooltip="Fetch remotes and pull"
           >
             <ArrowDownToLine className="size-4" />
             {compact ? <span className="sr-only">Fetch and pull</span> : "Pull"}
-          </Button>
+          </TooltipButton>
           {git.canPush ? (
-            <Button
+            <TooltipButton
               size={compact ? "icon" : "sm"}
               variant="ghost"
               disabled={git.isGitActionPending}
               onClick={git.push}
-              title="Push local commits"
+              tooltip="Push local commits"
             >
               <ArrowUpFromLine className="size-4" />
               {compact ? <span className="sr-only">Push</span> : "Push"}
-            </Button>
+            </TooltipButton>
           ) : null}
-          <Button
+          <TooltipButton
             size="icon"
             variant="ghost"
             disabled={git.isFetching}
             onClick={git.refresh}
-            title={
+            tooltip={
               git.section === "graph"
                 ? "Refresh repository graph"
                 : "Refresh Git history"
@@ -358,7 +380,7 @@ export function ContentHeaderActions({
                 ? "Refresh repository graph"
                 : "Refresh Git history"}
             </span>
-          </Button>
+          </TooltipButton>
         </>
       ) : null}
       {explorer ? (
@@ -366,25 +388,25 @@ export function ContentHeaderActions({
       ) : null}
       {code ? <CodeHeaderActions header={code.header} /> : null}
       {terminalService ? (
-        <Button
+        <TooltipButton
           size="icon"
           variant="ghost"
           aria-pressed={terminalService.active}
           onClick={terminalService.open}
-          title="Configure terminal service"
+          tooltip="Configure terminal service"
         >
           <ServerCog className="size-4" />
           <span className="sr-only">Configure terminal service</span>
-        </Button>
+        </TooltipButton>
       ) : null}
       {popout ? (
-        <Button
+        <TooltipButton
           size="icon"
           variant="ghost"
           disabled={popout.pending}
           className={cn(popout.error && "text-destructive")}
           onClick={popout.open}
-          title={popout.error ?? "Open this tab in a new window"}
+          tooltip={popout.error ?? "Open this tab in a new window"}
         >
           {popout.pending ? (
             <Loader2 className="size-4 animate-spin" />
@@ -392,7 +414,7 @@ export function ContentHeaderActions({
             <ExternalLink className="size-4" />
           )}
           <span className="sr-only">Open this tab in a new window</span>
-        </Button>
+        </TooltipButton>
       ) : null}
       {task ? (
         <div
@@ -400,7 +422,7 @@ export function ContentHeaderActions({
           className="flex h-7 items-center rounded-md bg-muted/60 p-0.5"
           role="group"
         >
-          <Button
+          <TooltipButton
             aria-pressed={task.view === "task"}
             className={cn(
               "h-6 gap-1 px-1.5 text-[10px]",
@@ -408,13 +430,13 @@ export function ContentHeaderActions({
             )}
             onClick={() => task.change("task")}
             size="sm"
-            title="Show Task"
+            tooltip="Show Task"
             variant="ghost"
           >
             <ListTodo className="size-3" />
             {!compact ? "Task" : <span className="sr-only">Task</span>}
-          </Button>
-          <Button
+          </TooltipButton>
+          <TooltipButton
             aria-pressed={task.view === "chat"}
             className={cn(
               "h-6 gap-1 px-1.5 text-[10px]",
@@ -422,24 +444,24 @@ export function ContentHeaderActions({
             )}
             onClick={() => task.change("chat")}
             size="sm"
-            title="Show Task chat"
+            tooltip="Show Task chat"
             variant="ghost"
           >
             <MessageSquare className="size-3" />
             {!compact ? "Chat" : <span className="sr-only">Chat</span>}
-          </Button>
+          </TooltipButton>
         </div>
       ) : null}
       {chat ? (
         <>
           {chat.relocation.available ? (
-            <Button
+            <TooltipButton
               size="icon"
               variant="ghost"
               aria-pressed={chat.relocation.open}
               className={cn(chat.relocation.problem && "text-destructive")}
               onClick={chat.relocation.show}
-              title={
+              tooltip={
                 chat.relocation.problem
                   ? "Agent move needs attention"
                   : chat.relocation.active
@@ -459,24 +481,24 @@ export function ContentHeaderActions({
                   ? "View agent move progress"
                   : "Move agent to another worker"}
               </span>
-            </Button>
+            </TooltipButton>
           ) : null}
-          <Button
+          <TooltipButton
             size="icon"
             variant="ghost"
             onClick={chat.inspectCustomizations}
-            title="Inspect Codex customizations"
+            tooltip="Inspect Codex customizations"
           >
             <WandSparkles className="size-4" />
             <span className="sr-only">Inspect Codex customizations</span>
-          </Button>
-          <Button
+          </TooltipButton>
+          <TooltipButton
             size="icon"
             variant="ghost"
             aria-pressed={chat.consoleActive}
             disabled={!chat.consoleActive && chat.consolePending}
             onClick={chat.toggleConsole}
-            title={chat.consoleActive ? "Show agent" : "Show Codex console"}
+            tooltip={chat.consoleActive ? "Show agent" : "Show Codex console"}
           >
             {chat.consoleActive ? (
               <Bot className="size-4" />
@@ -488,13 +510,13 @@ export function ContentHeaderActions({
             <span className="sr-only">
               {chat.consoleActive ? "Show agent" : "Show Codex console"}
             </span>
-          </Button>
-          <Button
+          </TooltipButton>
+          <TooltipButton
             size="icon"
             variant="ghost"
             aria-pressed={chat.inspectActive}
             onClick={chat.toggleInspect}
-            title={
+            tooltip={
               chat.inspectActive ? "Close agent Inspect" : "Open agent Inspect"
             }
           >
@@ -504,7 +526,7 @@ export function ContentHeaderActions({
                 ? "Close agent Inspect"
                 : "Open agent Inspect"}
             </span>
-          </Button>
+          </TooltipButton>
         </>
       ) : null}
     </>

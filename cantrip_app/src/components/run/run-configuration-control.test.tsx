@@ -1,14 +1,34 @@
 import type { ProjectWorktreeSummary, WorkerSummary } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ComponentProps, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import type { RunConfigurationListInventory } from "@/lib/run-configuration-api";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { MobileProjectHeader } from "../mobile/mobile-project-header";
 import { RunConfigurationControl } from "./run-configuration-control";
+
+vi.mock("@/components/ui/tooltip", async () => {
+  const { Button } = await import("@/components/ui/button");
+  return {
+    Tooltip: ({ children }: { children?: ReactNode }) => children,
+    TooltipButton: ({
+      tooltip: _tooltip,
+      tooltipSide: _tooltipSide,
+      ...props
+    }: ComponentProps<typeof Button> & {
+      tooltip: ReactNode;
+      tooltipSide?: "top" | "right" | "bottom" | "left";
+    }) => <Button {...props} />,
+    TooltipContent: () => null,
+    TooltipProvider: ({ children }: { children?: ReactNode }) => children,
+    TooltipTrigger: ({ children }: { children?: ReactNode }) => children,
+  };
+});
 
 const configurationId = "00000000-0000-4000-8000-000000000001";
 const worktree = {
@@ -90,20 +110,22 @@ function markup(
   listedInventory: RunConfigurationListInventory = inventory,
 ) {
   return renderToStaticMarkup(
-    <QueryClientProvider client={new QueryClient()}>
-      <RunConfigurationControl
-        editorConfigurationId={null}
-        inventory={listedInventory}
-        loading={false}
-        projectId="project"
-        renderEditor={false}
-        runtimes={runtimes}
-        workers={[worker]}
-        worktrees={[worktree]}
-        onEditorConfigurationChange={vi.fn()}
-        onFocusTerminal={vi.fn()}
-      />
-    </QueryClientProvider>,
+    <TooltipProvider delayDuration={0}>
+      <QueryClientProvider client={new QueryClient()}>
+        <RunConfigurationControl
+          editorConfigurationId={null}
+          inventory={listedInventory}
+          loading={false}
+          projectId="project"
+          renderEditor={false}
+          runtimes={runtimes}
+          workers={[worker]}
+          worktrees={[worktree]}
+          onEditorConfigurationChange={vi.fn()}
+          onFocusTerminal={vi.fn()}
+        />
+      </QueryClientProvider>
+    </TooltipProvider>,
   );
 }
 
@@ -116,6 +138,7 @@ describe("Run configuration control", () => {
     expect(html).toContain("Development server");
     expect(html).toContain('aria-label="Run"');
     expect(html).toContain("text-emerald");
+    expect(html).not.toContain(" title=");
     expect(html).not.toContain("Worker Online");
     expect(selector).toContain("hover:bg-accent");
     expect(selector).not.toContain("border-input");
@@ -139,20 +162,22 @@ describe("Run configuration control", () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = TestRenderer.create(
-        <QueryClientProvider client={new QueryClient()}>
-          <RunConfigurationControl
-            editorConfigurationId={null}
-            inventory={emptyInventory}
-            loading={false}
-            projectId="project"
-            renderEditor={false}
-            runtimes={[]}
-            workers={[worker]}
-            worktrees={[worktree]}
-            onEditorConfigurationChange={onEditorConfigurationChange}
-            onFocusTerminal={vi.fn()}
-          />
-        </QueryClientProvider>,
+        <TooltipProvider delayDuration={0}>
+          <QueryClientProvider client={new QueryClient()}>
+            <RunConfigurationControl
+              editorConfigurationId={null}
+              inventory={emptyInventory}
+              loading={false}
+              projectId="project"
+              renderEditor={false}
+              runtimes={[]}
+              workers={[worker]}
+              worktrees={[worktree]}
+              onEditorConfigurationChange={onEditorConfigurationChange}
+              onFocusTerminal={vi.fn()}
+            />
+          </QueryClientProvider>
+        </TooltipProvider>,
       );
     });
 
@@ -212,27 +237,29 @@ describe("Run configuration control", () => {
 
   it("renders the real control inside the compact project header", () => {
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={new QueryClient()}>
-        <MobileProjectHeader
-          actions={
-            <RunConfigurationControl
-              compact
-              editorConfigurationId={null}
-              inventory={inventory}
-              loading={false}
-              projectId="project"
-              renderEditor={false}
-              runtimes={[]}
-              workers={[worker]}
-              worktrees={[worktree]}
-              onEditorConfigurationChange={vi.fn()}
-              onFocusTerminal={vi.fn()}
-            />
-          }
-          context="ArcaneArts/Cantrip"
-          title="Cantrip"
-        />
-      </QueryClientProvider>,
+      <TooltipProvider delayDuration={0}>
+        <QueryClientProvider client={new QueryClient()}>
+          <MobileProjectHeader
+            actions={
+              <RunConfigurationControl
+                compact
+                editorConfigurationId={null}
+                inventory={inventory}
+                loading={false}
+                projectId="project"
+                renderEditor={false}
+                runtimes={[]}
+                workers={[worker]}
+                worktrees={[worktree]}
+                onEditorConfigurationChange={vi.fn()}
+                onFocusTerminal={vi.fn()}
+              />
+            }
+            context="ArcaneArts/Cantrip"
+            title="Cantrip"
+          />
+        </QueryClientProvider>
+      </TooltipProvider>,
     );
 
     expect(html).toContain('data-slot="mobile-project-header-actions"');

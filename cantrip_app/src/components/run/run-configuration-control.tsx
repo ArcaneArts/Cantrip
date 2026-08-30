@@ -50,6 +50,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  Tooltip,
+  TooltipButton,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
@@ -122,7 +128,7 @@ function LifecycleButtons({
   const stopping = runtime?.state === "stopping";
   if (!active) {
     return (
-      <button
+      <TooltipButton
         aria-label="Run"
         className={cn(
           "grid shrink-0 place-items-center rounded text-emerald-600 hover:bg-emerald-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-400",
@@ -133,20 +139,22 @@ function LifecycleButtons({
           event.stopPropagation();
           onOperate("start");
         }}
-        title={disabledReason ?? "Run"}
+        size="icon"
+        tooltip={disabledReason ?? "Run"}
         type="button"
+        variant="ghost"
       >
         {pending ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
           <Play className="size-4 fill-current" />
         )}
-      </button>
+      </TooltipButton>
     );
   }
   return (
     <span className="flex shrink-0 items-center">
-      <button
+      <TooltipButton
         aria-label="Restart"
         className={cn(
           "grid place-items-center rounded text-emerald-600 hover:bg-emerald-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-400",
@@ -157,16 +165,18 @@ function LifecycleButtons({
           event.stopPropagation();
           onOperate("restart");
         }}
-        title={disabledReason ?? "Restart"}
+        size="icon"
+        tooltip={disabledReason ?? "Restart"}
         type="button"
+        variant="ghost"
       >
         {pending && !stopping ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
           <RotateCw className="size-4" />
         )}
-      </button>
-      <button
+      </TooltipButton>
+      <TooltipButton
         aria-label="Stop"
         className={cn(
           "grid place-items-center rounded text-red-600 hover:bg-red-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-red-400",
@@ -177,15 +187,17 @@ function LifecycleButtons({
           event.stopPropagation();
           onOperate("stop");
         }}
-        title={stopDisabledReason ?? "Stop"}
+        size="icon"
+        tooltip={stopDisabledReason ?? "Stop"}
         type="button"
+        variant="ghost"
       >
         {stopping ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
           <Square className="size-3.5 fill-current" />
         )}
-      </button>
+      </TooltipButton>
     </span>
   );
 }
@@ -417,27 +429,35 @@ export function RunConfigurationControl({
           if (!open) setSearch("");
         }}
       >
-        <PopoverTrigger asChild>
-          <Button
-            aria-label={emptyRepository ? "Add Run Configuration" : undefined}
-            className={cn(
-              emptyRepository
-                ? "size-8 text-muted-foreground hover:text-foreground"
-                : "min-w-0 justify-between px-2",
-              !emptyRepository && (compact ? "max-w-36" : "max-w-64"),
-            )}
-            disabled={emptyRepository && loading}
-            size={emptyRepository ? "icon" : "sm"}
-            title={
-              selected
-                ? `${selected.name} · ${selected.targetLabel}`
-                : "Add Run Configuration"
-            }
-            variant="ghost"
-          >
-            {selectorContent}
-          </Button>
-        </PopoverTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex min-w-0 shrink-0">
+              <PopoverTrigger asChild>
+                <Button
+                  aria-label={
+                    emptyRepository ? "Add Run Configuration" : undefined
+                  }
+                  className={cn(
+                    emptyRepository
+                      ? "size-8 text-muted-foreground hover:text-foreground"
+                      : "min-w-0 justify-between px-2",
+                    !emptyRepository && (compact ? "max-w-36" : "max-w-64"),
+                  )}
+                  disabled={emptyRepository && loading}
+                  size={emptyRepository ? "icon" : "sm"}
+                  variant="ghost"
+                >
+                  {selectorContent}
+                </Button>
+              </PopoverTrigger>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {selected
+              ? `${selected.name} · ${selected.targetLabel}`
+              : "Add Run Configuration"}
+          </TooltipContent>
+        </Tooltip>
         <PopoverContent
           align="end"
           className="w-[min(34rem,calc(100vw-1rem))] p-0"
@@ -451,18 +471,18 @@ export function RunConfigurationControl({
                   onValueChange={setSearch}
                 />
               </div>
-              <Button
+              <TooltipButton
                 aria-label="New Run configuration"
                 onClick={() => {
                   setMenuOpen(false);
                   onEditorConfigurationChange("new");
                 }}
                 size="icon"
-                title="New Run configuration"
+                tooltip="New Run configuration"
                 variant="ghost"
               >
                 <Plus className="size-4" />
-              </Button>
+              </TooltipButton>
             </div>
             <CommandList className="max-h-[28rem]">
               <CommandEmpty>No matching Run configurations.</CommandEmpty>
@@ -634,15 +654,17 @@ export function RunConfigurationControl({
         </PopoverContent>
       </Popover>
       {error || lifecycle.error ? (
-        <button
+        <TooltipButton
           aria-label="Run configuration problem"
           className="grid size-7 shrink-0 place-items-center rounded text-destructive hover:bg-destructive/10"
           onClick={() => setMenuOpen(true)}
-          title={error ?? lifecycle.error?.message}
+          size="icon"
+          tooltip={error ?? lifecycle.error?.message}
           type="button"
+          variant="ghost"
         >
           <CircleAlert className="size-4" />
-        </button>
+        </TooltipButton>
       ) : null}
 
       {renderEditor ? (

@@ -1,10 +1,12 @@
 import type { CodeRuntimeStatus } from "@cantrip/protocol";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CodeHeaderState } from "@/components/code/code-view";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import type { GitHistoryHeaderState } from "@/components/git/git-history";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 import {
   ContentHeaderActions,
@@ -87,9 +89,15 @@ function explorerHeader(): ExplorerHeaderState {
   };
 }
 
+function renderActions(children: ReactNode) {
+  return renderToStaticMarkup(
+    <TooltipProvider delayDuration={0}>{children}</TooltipProvider>,
+  );
+}
+
 describe("ContentHeaderActions", () => {
   it("renders the complete desktop action set with labeled Git actions", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderActions(
       <ContentHeaderActions
         git={gitHeader()}
         explorer={explorerHeader()}
@@ -117,39 +125,39 @@ describe("ContentHeaderActions", () => {
 
     expect(markup).toContain("Pull</button>");
     expect(markup).toContain("Push</button>");
-    expect(markup).not.toContain('title="Back to files"');
-    expect(markup).toContain('title="Edit mode"');
+    expect(markup).not.toContain(" title=");
+    expect(markup).toContain('aria-label="Edit mode"');
     expect(markup).not.toContain("Preview</button>");
     expect(markup).not.toContain("Edit</button>");
     expect(markup).toContain("Unsaved");
-    expect(markup).toContain('title="Save file"');
-    expect(markup).toContain('title="Refresh Explorer"');
-    expect(markup).toContain('title="Save all editors"');
+    expect(markup).toContain('aria-label="Save file"');
+    expect(markup).toContain('aria-label="Refresh Explorer"');
+    expect(markup).toContain('aria-label="Save all editors"');
     expect(markup).toContain('aria-pressed="true"');
-    expect(markup).toContain('title="Configure terminal service"');
-    expect(markup).not.toContain('title="Run a project command"');
-    expect(markup).toContain('title="Open this tab in a new window"');
-    expect(markup).toContain('title="Show Task"');
-    expect(markup).toContain('title="Show Task chat"');
+    expect(markup).toContain('aria-label="Configure terminal service"');
+    expect(markup).toContain('aria-label="Open this tab in a new window"');
+    expect(markup).toContain('aria-label="Show Task"');
+    expect(markup).toContain('aria-label="Show Task chat"');
     expect(markup).toContain('aria-label="Task view"');
-    expect(markup).toContain('title="Inspect Codex customizations"');
-    expect(markup).toContain('title="View agent move progress"');
-    expect(markup).toContain('title="Show Codex console"');
-    expect(markup).toContain('title="Close agent Inspect"');
+    expect(markup).toContain('aria-label="Inspect Codex customizations"');
+    expect(markup).toContain('aria-label="View agent move progress"');
+    expect(markup).toContain('aria-label="Show Codex console"');
+    expect(markup).toContain('aria-label="Close agent Inspect"');
     expect(markup.indexOf("Show Codex console")).toBeLessThan(
       markup.indexOf("Close agent Inspect"),
     );
   });
 
   it("renders the Explorer file close action independently for the left title cluster", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderActions(
       <ExplorerFileCloseButton header={explorerHeader()} />,
     );
 
-    expect(markup).toContain('title="Close file"');
+    expect(markup).not.toContain(" title=");
+    expect(markup).toContain('aria-label="Close file"');
     expect(markup).toContain(">Close file</span>");
     expect(
-      renderToStaticMarkup(
+      renderActions(
         <ExplorerFileCloseButton
           header={{ ...explorerHeader(), selectedPath: null }}
         />,
@@ -158,7 +166,7 @@ describe("ContentHeaderActions", () => {
   });
 
   it("renders Explorer graph back-navigation without pretending a file is open", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderActions(
       <ExplorerFileCloseButton
         header={{
           ...explorerHeader(),
@@ -169,12 +177,13 @@ describe("ContentHeaderActions", () => {
       />,
     );
 
-    expect(markup).toContain('title="Close graph"');
+    expect(markup).not.toContain(" title=");
+    expect(markup).toContain('aria-label="Close graph"');
     expect(markup).toContain(">Close graph</span>");
   });
 
   it("labels the structured Explorer mode as Visual", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderActions(
       <ContentHeaderActions
         explorer={{
           ...explorerHeader(),
@@ -184,11 +193,12 @@ describe("ContentHeaderActions", () => {
       />,
     );
 
-    expect(markup).toContain('title="Visual mode"');
+    expect(markup).not.toContain(" title=");
+    expect(markup).toContain('aria-label="Visual mode"');
   });
 
   it("uses icon-only Git actions in the compact variant", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderActions(
       <ContentHeaderActions compact git={gitHeader()} />,
     );
 
@@ -201,14 +211,14 @@ describe("ContentHeaderActions", () => {
   it("omits unavailable actions and exposes Code runtime errors", () => {
     const failedCode = codeHeader();
     failedCode.error = "Editor connection failed.";
-    const markup = renderToStaticMarkup(
+    const markup = renderActions(
       <ContentHeaderActions
         git={gitHeader(false)}
         code={{ header: failedCode }}
       />,
     );
 
-    expect(markup).not.toContain('title="Push local commits"');
+    expect(markup).not.toContain('aria-label="Push local commits"');
     expect(markup).toContain('role="status"');
     expect(markup).toContain("Editor connection failed.");
   });

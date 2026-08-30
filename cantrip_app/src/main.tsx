@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { DesktopExplorerWindowLoadingShell } from "@/components/explorer/desktop-explorer-window-shell";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   clientLogger,
   installClientLogCapture,
@@ -46,7 +47,9 @@ async function start(): Promise<void> {
       await import("@/components/settings/synthetic-build-progress-window");
     createRoot(document.getElementById("root")!).render(
       <StrictMode>
-        <SyntheticBuildProgressWindow />
+        <TooltipProvider>
+          <SyntheticBuildProgressWindow />
+        </TooltipProvider>
       </StrictMode>,
     );
     return;
@@ -63,18 +66,22 @@ async function start(): Promise<void> {
       overlayTitlebar,
     );
     root.render(
-      <DesktopExplorerWindowLoadingShell
-        path={explorerWindowTarget.path}
-        titlebarLeftInset={titlebarLeftInset}
-      />,
+      <TooltipProvider>
+        <DesktopExplorerWindowLoadingShell
+          path={explorerWindowTarget.path}
+          titlebarLeftInset={titlebarLeftInset}
+        />
+      </TooltipProvider>,
     );
     const { DesktopExplorerFileWindow } =
       await import("@/components/explorer/desktop-explorer-file-window");
     root.render(
-      <DesktopExplorerFileWindow
-        initialPath={explorerWindowTarget.path}
-        launchId={explorerWindowTarget.launchId}
-      />,
+      <TooltipProvider>
+        <DesktopExplorerFileWindow
+          initialPath={explorerWindowTarget.path}
+          launchId={explorerWindowTarget.launchId}
+        />
+      </TooltipProvider>,
     );
     return;
   }
@@ -122,7 +129,9 @@ async function start(): Promise<void> {
     await import("@/components/auth/application-session");
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <ApplicationSession />
+      <TooltipProvider>
+        <ApplicationSession />
+      </TooltipProvider>
     </StrictMode>,
   );
   requestAnimationFrame(() => {

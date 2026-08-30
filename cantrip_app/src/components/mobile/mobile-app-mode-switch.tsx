@@ -1,6 +1,6 @@
 import { Code2, MessageSquare } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 
 export function MobileAppModeSwitch({
   currentMode,
@@ -17,16 +17,16 @@ export function MobileAppModeSwitch({
   const Icon = switchingToChat ? MessageSquare : Code2;
 
   return (
-    <Button
+    <TooltipButton
       aria-label={accessibleLabel}
       className={labeled ? undefined : "size-9"}
       onClick={onSwitch}
       size={labeled ? "sm" : "icon"}
-      title={accessibleLabel}
+      tooltip={accessibleLabel}
       variant="ghost"
     >
       <Icon className="size-4" />
       {labeled ? label : null}
-    </Button>
+    </TooltipButton>
   );
 }
