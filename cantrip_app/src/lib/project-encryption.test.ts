@@ -384,21 +384,20 @@ describe("encrypted project display names", () => {
     );
   });
 
-  it("falls back to protected source metadata when worktree status is unavailable", async () => {
+  it("keeps resolved source metadata when worktree status returns unavailable paths", async () => {
     const { adapter, api } = fixture();
-    await adapter.createGithub({
+    await adapter.createManagedFolder({
+      name: "SentinelProject",
       workerId: "worker-a",
-      repositoryId: "repository-1",
-      nameWithOwner: "ArcaneArts/SentinelProject",
-      url: "https://github.com/ArcaneArts/SentinelProject",
     });
     const pathHandle = `ctrr_${"a".repeat(43)}`;
     const displayPathHandle = `ctrr_${"d".repeat(43)}`;
     const row = api.rows[0]!;
     row.setupStatus = "ready";
+    row.folderManagement = "external";
     row.source = {
       id: "source-a",
-      sourceKind: "git",
+      sourceKind: "folder",
       workerId: "worker-a",
       path: pathHandle,
       displayPath: displayPathHandle,
@@ -415,6 +414,28 @@ describe("encrypted project display names", () => {
       displayPathHandle,
       "C:\\Cantrip\\runtime\\worker\\repositories\\SentinelProject",
     );
+    api.worktrees.push({
+      id: "worktree-a",
+      projectSourceId: "source-a",
+      projectId: row.id,
+      rootKind: "folder-root",
+      workerId: "worker-a",
+      name: "Primary",
+      path: "Protected path unavailable",
+      displayPath: "Protected path unavailable",
+      isPrimary: true,
+      isDefault: true,
+      origin: "external",
+      lifecycleState: "ready",
+      branch: null,
+      head: null,
+      detached: false,
+      locked: false,
+      lockReason: null,
+      lastScannedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
 
     const [project] = await adapter.list();
 
