@@ -349,6 +349,7 @@ export interface DesktopCodeTransportLease {
   forward: DesktopTunnelForwardSummary;
   generation: string;
   leaseId: string;
+  reused: boolean;
   serverUrl: string;
   workerId: string;
 }
@@ -768,6 +769,7 @@ export async function acquireDesktopCodeTransport(
           forward: acquisition.forward,
           generation: acquisition.generation,
           leaseId: acquisition.leaseId,
+          reused: true,
           serverUrl: owned.binding.serverUrl,
           workerId: wire.transport.workerId,
         }).catch(() => undefined);
@@ -787,6 +789,7 @@ export async function acquireDesktopCodeTransport(
         forward: acquisition.forward,
         generation: acquisition.generation,
         leaseId: acquisition.leaseId,
+        reused: true,
         serverUrl: owned.binding.serverUrl,
         workerId: wire.transport.workerId,
       });
@@ -906,6 +909,7 @@ export async function acquireDesktopCodeTransport(
         forward: published.forward,
         generation: published.generation,
         leaseId: published.leaseId,
+        reused: false,
         serverUrl: owned.binding.serverUrl,
         workerId: wire.transport.workerId,
       };
@@ -956,6 +960,52 @@ export async function releaseDesktopCodeTransport(
   return attempt;
 }
 
+export async function retireDesktopCodeTransportGeneration(
+  lease: DesktopCodeTransportLease,
+): Promise<boolean> {
+  if (!isTauri()) return true;
+  const transportId = lease.forward.tunnelId;
+  const stopped = await invoke<DesktopTunnelTerminalSnapshot | null>(
+    "retire_code_transport_forward",
+    {
+      generation: lease.generation,
+      leaseId: lease.leaseId,
+      transportId,
+      windowInstanceId: desktopCodeWindowInstanceId,
+    },
+  );
+  if (stopped) {
+    await stopDesktopTunnelWorkerLinkForward(
+      stopped.tunnelId,
+      stopped.attachmentId,
+    );
+    if (explorerCodeSessionBindingCurrent(lease.binding)) {
+      await reportFinalDesktopTunnelTelemetry(stopped, {
+        serverUrl: lease.serverUrl,
+      }).catch(() => undefined);
+      if (explorerCodeSessionBindingCurrent(lease.binding)) {
+        await deleteTunnelAttachment(stopped.attachmentId, {
+          serverUrl: lease.serverUrl,
+        }).catch(() => undefined);
+      }
+    }
+  }
+  const generationLeases = [...codeTransportMaintenanceLeases.values()].filter(
+    (candidate) =>
+      candidate.forward.tunnelId === transportId &&
+      candidate.generation === lease.generation,
+  );
+  if (
+    !generationLeases.some((candidate) => candidate.leaseId === lease.leaseId)
+  ) {
+    generationLeases.push(lease);
+  }
+  const released = await Promise.all(
+    generationLeases.map((candidate) => releaseDesktopCodeTransport(candidate)),
+  );
+  return released.every(Boolean);
+}
+
 async function releaseDesktopCodeTransportOnce(
   lease: DesktopCodeTransportLease,
 ): Promise<boolean> {
@@ -977,7 +1027,10 @@ async function releaseDesktopCodeTransportOnce(
   }
   untrackDesktopCodeTransportLease(lease);
   if (!result.stopped) return true;
-  await stopDesktopTunnelWorkerLinkForward(result.stopped.tunnelId);
+  await stopDesktopTunnelWorkerLinkForward(
+    result.stopped.tunnelId,
+    result.stopped.attachmentId,
+  );
   // A native exact-generation release is always safe. Server cleanup is not:
   // after a server/account switch, attaching the new credentials to the old
   // origin would cross the authentication boundary. The old server expires or

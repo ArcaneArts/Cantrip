@@ -54,6 +54,7 @@ import {
   refreshDesktopTunnelRelay,
   refreshDesktopTunnelWorkerLinkAttachment,
   releaseDesktopCodeTransport,
+  retireDesktopCodeTransportGeneration,
   startDesktopTunnel,
   stopDesktopTunnel,
 } from "./desktop-tunnel";
@@ -213,6 +214,7 @@ describe("shared desktop Code transport", () => {
       forward,
       generation: "generation-hot",
       leaseId: "lease-hot",
+      reused: true,
       serverUrl: "https://bound-server.example",
       workerId: "worker-1",
     };
@@ -530,6 +532,7 @@ describe("shared desktop Code transport", () => {
       forward,
       generation: "generation-one",
       leaseId: "lease-one",
+      reused: true,
       serverUrl: "https://bound-server.example",
       workerId: "worker-1",
     };
@@ -540,11 +543,74 @@ describe("shared desktop Code transport", () => {
     await releaseDesktopCodeTransport({ ...first, leaseId: "lease-two" });
     expect(mocks.stopDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith(
       "tunnel-1",
+      "attachment-1",
     );
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledOnce();
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1", {
       serverUrl: "https://bound-server.example",
     });
+  });
+
+  it("retires and cleans the exact stale transport generation before releasing its leases", async () => {
+    const staleForward = {
+      ...forward,
+      attachmentId: "attachment-stale",
+      tunnelId: "tunnel-stale",
+    };
+    const lease = {
+      binding: sharedOwnedAttachment().binding,
+      forward: staleForward,
+      generation: "77777777-7777-4777-8777-777777777777",
+      leaseId: "88888888-8888-4888-8888-888888888888",
+      reused: true,
+      serverUrl: "https://bound-server.example",
+      workerId: "worker-1",
+    };
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "retire_code_transport_forward") {
+        return {
+          attachmentId: staleForward.attachmentId,
+          bytesFromLocal: 0,
+          bytesToLocal: 0,
+          connectionsClosed: 1,
+          connectionsOpened: 1,
+          directCapabilityId: null,
+          tunnelId: staleForward.tunnelId,
+        };
+      }
+      if (command === "release_code_transport_forward") {
+        return { released: true, remainingLeases: 0, stopped: null };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    await expect(retireDesktopCodeTransportGeneration(lease)).resolves.toBe(
+      true,
+    );
+
+    expect(mocks.invoke).toHaveBeenCalledWith("retire_code_transport_forward", {
+      generation: lease.generation,
+      leaseId: lease.leaseId,
+      transportId: staleForward.tunnelId,
+      windowInstanceId: expect.any(String),
+    });
+    expect(mocks.stopDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith(
+      staleForward.tunnelId,
+      staleForward.attachmentId,
+    );
+    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith(
+      staleForward.attachmentId,
+      { serverUrl: lease.serverUrl },
+    );
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "release_code_transport_forward",
+      {
+        generation: lease.generation,
+        leaseId: lease.leaseId,
+        transportId: staleForward.tunnelId,
+        windowInstanceId: expect.any(String),
+      },
+    );
   });
 
   it("retries a transient native release failure without maintaining the retired lease", async () => {
@@ -553,6 +619,7 @@ describe("shared desktop Code transport", () => {
       forward,
       generation: "generation-retry",
       leaseId: "lease-retry",
+      reused: true,
       serverUrl: "https://bound-server.example",
       workerId: "worker-1",
     };

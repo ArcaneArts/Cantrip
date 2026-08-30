@@ -567,6 +567,42 @@ pub fn claim_code_transport_maintenance(
 }
 
 #[tauri::command]
+pub async fn retire_code_transport_forward(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    state: State<'_, TunnelForwards>,
+    transport_id: String,
+    generation: String,
+    lease_id: String,
+    window_instance_id: String,
+) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
+    #[cfg(desktop)]
+    return desktop::retire_code_transport_forward(
+        &app,
+        &state,
+        window.label(),
+        &transport_id,
+        &generation,
+        &lease_id,
+        &window_instance_id,
+    )
+    .await;
+    #[cfg(mobile)]
+    {
+        let _ = (
+            app,
+            window,
+            state,
+            transport_id,
+            generation,
+            lease_id,
+            window_instance_id,
+        );
+        Err("Shared Code transports are only available in the desktop app.".into())
+    }
+}
+
+#[tauri::command]
 pub async fn wait_code_transport_forward(
     state: State<'_, TunnelForwards>,
     transport_id: String,
@@ -2183,6 +2219,121 @@ mod desktop {
         active.maintenance = Some((lease_id.to_string(), now + CODE_TRANSPORT_MAINTENANCE_LEASE));
         active.forward = authoritative.clone();
         Ok(Some(authoritative))
+    }
+
+    fn begin_code_transport_retirement(
+        state: &State<'_, TunnelForwards>,
+        window_label: &str,
+        transport_id: &str,
+        generation: &str,
+        lease_id: &str,
+        window_instance_id: &str,
+    ) -> Result<Option<TunnelForwardSummary>, String> {
+        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
+        Uuid::parse_str(lease_id)
+            .map_err(|_| "The shared Code transport lease is invalid.".to_string())?;
+        let mut pool = state
+            .code_pool
+            .lock()
+            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
+        Ok(take_code_transport_generation_for_retirement(
+            &mut pool,
+            window_label,
+            transport_id,
+            generation,
+            lease_id,
+            window_instance_id,
+        ))
+    }
+
+    fn take_code_transport_generation_for_retirement(
+        pool: &mut CodeTransportPool,
+        window_label: &str,
+        transport_id: &str,
+        generation: &str,
+        lease_id: &str,
+        window_instance_id: &str,
+    ) -> Option<TunnelForwardSummary> {
+        let Some(entry) = pool.entries.remove(transport_id) else {
+            return None;
+        };
+        let CodeTransportPoolEntry::Active(active) = entry else {
+            pool.entries.insert(transport_id.to_string(), entry);
+            return None;
+        };
+        let authorized = active.generation == generation
+            && active.leases.get(lease_id).is_some_and(|lease| {
+                lease.window_label == window_label && lease.window_instance_id == window_instance_id
+            });
+        if !authorized {
+            pool.entries.insert(
+                transport_id.to_string(),
+                CodeTransportPoolEntry::Active(active),
+            );
+            return None;
+        }
+
+        active.retirement_fence.retire();
+        let forward = active.forward.clone();
+        let identity = active.identity.clone();
+        let changes = active.changes;
+        pool.terminated.insert(
+            (transport_id.to_string(), generation.to_string()),
+            TerminatedCodeTransport {
+                cleanup: None,
+                created_at: Instant::now(),
+                identity: identity.clone(),
+                leases: active.leases,
+            },
+        );
+        prune_terminated_code_transports(pool);
+        pool.entries.insert(
+            transport_id.to_string(),
+            CodeTransportPoolEntry::Stopping(StoppingCodeTransport {
+                changes,
+                generation: generation.to_string(),
+                identity,
+            }),
+        );
+        Some(forward)
+    }
+
+    pub async fn retire_code_transport_forward(
+        app: &AppHandle,
+        state: &State<'_, TunnelForwards>,
+        window_label: &str,
+        transport_id: &str,
+        generation: &str,
+        lease_id: &str,
+        window_instance_id: &str,
+    ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
+        let Some(forward) = begin_code_transport_retirement(
+            state,
+            window_label,
+            transport_id,
+            generation,
+            lease_id,
+            window_instance_id,
+        )?
+        else {
+            return Ok(None);
+        };
+        let stopped = stop(
+            app,
+            state,
+            transport_id,
+            Some(&forward.attachment_id),
+            forward.diagnostic_trace_id.as_deref(),
+            forward.direct_capability_id.as_deref(),
+            Some(generation),
+            "attachment-invalidated",
+        )
+        .await;
+        // `stop` normally clears this exact stopping generation after the
+        // forward task exits. Also clear it when the authoritative forward was
+        // already gone so followers cannot wait forever on a stale generation.
+        code_transport_forward_terminated(state, transport_id, generation, None);
+        stopped
     }
 
     pub async fn wait_code_transport_forward(
@@ -6634,6 +6785,60 @@ mod desktop {
                 ),
                 ForwardSessionResolution::Outcome(Ok(SessionOutcome::Disconnected))
             ));
+        }
+
+        #[test]
+        fn explicit_code_retirement_fences_reuse_and_preserves_leases() {
+            let transport_id = "33333333-3333-4333-8333-333333333333";
+            let generation = "77777777-7777-4777-8777-777777777777";
+            let lease_id = "88888888-8888-4888-8888-888888888888";
+            let window_instance_id = "11111111-1111-4111-8111-111111111111";
+            let retirement_fence = Arc::new(ForwardRetirementFence::default());
+            let mut pool = CodeTransportPool::default();
+            let (changes, _) = watch::channel(0_u64);
+            pool.entries.insert(
+                transport_id.into(),
+                CodeTransportPoolEntry::Active(ActiveCodeTransport {
+                    changes,
+                    forward: test_code_pool_forward(),
+                    generation: generation.into(),
+                    identity: test_code_pool_identity(),
+                    leases: HashMap::from([(
+                        lease_id.into(),
+                        CodeTransportLease {
+                            acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
+                            consumer_id: "consumer-one".into(),
+                            window_label: "main".into(),
+                            window_instance_id: window_instance_id.into(),
+                        },
+                    )]),
+                    maintenance: None,
+                    publication_acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
+                    publication_reservation_id: "33333333-3333-4333-8333-333333333333".into(),
+                    retirement_fence: retirement_fence.clone(),
+                }),
+            );
+
+            let retired = take_code_transport_generation_for_retirement(
+                &mut pool,
+                "main",
+                transport_id,
+                generation,
+                lease_id,
+                window_instance_id,
+            );
+
+            assert!(retired.is_some());
+            assert!(retirement_fence.is_retiring());
+            assert!(matches!(
+                pool.entries.get(transport_id),
+                Some(CodeTransportPoolEntry::Stopping(entry))
+                    if entry.generation == generation
+            ));
+            assert!(pool
+                .terminated
+                .get(&(transport_id.into(), generation.into()))
+                .is_some_and(|entry| entry.leases.contains_key(lease_id)));
         }
 
         #[test]
