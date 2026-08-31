@@ -124,20 +124,25 @@ import {
   desktopPopoutGroupWindowLabel,
   desktopProjectOverviewSearch,
   desktopProjectOverviewWindowLabel,
+  desktopStandaloneChatFileSearch,
+  desktopStandaloneChatFileWindowLabel,
   desktopWindowThemeOverride,
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
   observeDesktopWindowFocus,
   openDesktopPopoutGroup,
   openDesktopExplorerFile,
+  openDesktopStandaloneChatFile,
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
   parseDesktopProjectOverviewTarget,
+  parseDesktopStandaloneChatFileTarget,
   prewarmDesktopExplorerFile,
   shouldUseOverlayTitlebar,
   type DesktopExplorerFileTarget,
   type DesktopPopoutGroupTarget,
   type DesktopProjectOverviewTarget,
+  type DesktopStandaloneChatFileTarget,
 } from "./desktop-popout";
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -508,6 +513,54 @@ describe("desktop Explorer file windows", () => {
       expect(
         brokerModule.createDesktopExplorerWindowBroker,
       ).toHaveBeenCalledOnce();
+    } finally {
+      for (const window of webviews.windows.values()) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("desktop standalone Chat file windows", () => {
+  const target: DesktopStandaloneChatFileTarget = {
+    chatId: "chat one",
+    path: "reports/file name.md",
+  };
+
+  it("round-trips the Chat file target", () => {
+    expect(
+      parseDesktopStandaloneChatFileTarget(
+        desktopStandaloneChatFileSearch(target),
+      ),
+    ).toEqual(target);
+  });
+
+  it("rejects incomplete Chat file targets", () => {
+    expect(
+      parseDesktopStandaloneChatFileTarget(
+        "?cantrip-chat-file=reports%2Ffile.md",
+      ),
+    ).toBeNull();
+    expect(
+      parseDesktopStandaloneChatFileTarget("?cantrip-chat-id=chat-one"),
+    ).toBeNull();
+  });
+
+  it("opens one stable native window per Chat file", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+
+    try {
+      await expect(
+        openDesktopStandaloneChatFile(target, "file name.md"),
+      ).resolves.toBe("created");
+
+      const label = desktopStandaloneChatFileWindowLabel(target);
+      expect(label).toMatch(/^cantrip-chat-file-[a-z0-9]+$/u);
+      expect(webviews.windows.get(label)?.options).toMatchObject({
+        url: `/${desktopStandaloneChatFileSearch(target)}`,
+      });
     } finally {
       for (const window of webviews.windows.values()) await window.close();
       tauri.isTauri.mockReturnValue(false);

@@ -19,6 +19,7 @@ import {
   useMemo,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 
 import { ApplicationLoadingSplash } from "@/components/auth/application-loading-splash";
@@ -659,9 +660,11 @@ function EncryptionErrorScreen({
 }
 
 function AuthenticatedApplication({
+  authenticatedContent,
   bootstrap,
   user,
 }: {
+  authenticatedContent?: ReactNode;
   bootstrap: ServerBootstrap;
   user: UserSummary;
 }) {
@@ -759,14 +762,18 @@ function AuthenticatedApplication({
           <WorkerObservationSession client={observationClient} />
           <WorkerObservationBackgroundDemandSession />
           <DesktopWorkerRecoverySession />
-          <RouterProvider router={router} />
+          {authenticatedContent ?? <RouterProvider router={router} />}
         </WorkerObservationProvider>
       </AppLiveProvider>
     </QueryClientProvider>
   );
 }
 
-export function ApplicationSession() {
+export function ApplicationSession({
+  authenticatedContent,
+}: {
+  authenticatedContent?: ReactNode;
+} = {}) {
   const [state, setState] = useState<ApplicationSessionState>({
     kind: "loading",
   });
@@ -919,6 +926,10 @@ export function ApplicationSession() {
     );
   }
   return (
-    <AuthenticatedApplication bootstrap={state.bootstrap} user={state.user} />
+    <AuthenticatedApplication
+      authenticatedContent={authenticatedContent}
+      bootstrap={state.bootstrap}
+      user={state.user}
+    />
   );
 }
