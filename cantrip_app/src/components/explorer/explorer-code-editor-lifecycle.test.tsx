@@ -858,6 +858,68 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("reconnects a terminal shared transport without replacing its editor session or frame", async () => {
+    tauri.enabled = true;
+    desktopCode.preferSharedProtectedCodeAttachment
+      .mockResolvedValueOnce(sharedPreferred("lease-one"))
+      .mockRejectedValueOnce(new TypeError("Transport unavailable"))
+      .mockResolvedValueOnce(sharedPreferred("lease-two"));
+    const { renderer } = await mount("src/reconnect.ts", true);
+    const initialFrame = renderer.root.findByType("iframe");
+    const initialFrameUrl = initialFrame.props.src;
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    api.createProtectedExplorerCodeSessionAttachment.mockClear();
+    api.releaseProtectedExplorerCodeSessionAttachment.mockClear();
+    desktopCode.openDirectCodeAttachmentFile.mockClear();
+    await act(async () => emitBrowserUnavailable(sharedTransportId));
+    await settle();
+
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+    expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+
+    await act(async () => renderer.root.findByType("button").props.onClick());
+    await settle();
+
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledTimes(3);
+    expect(
+      desktopCode.retainSharedProtectedCodeAttachmentLease,
+    ).toHaveBeenCalledWith(sharedOwned, "lease-two");
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      sharedAttachment,
+      "src/reconnect.ts",
+      { signal: expect.any(AbortSignal), timeoutMs: 3_000 },
+    );
+
+    await act(async () => renderer.unmount());
+  });
+
   it("reports readiness only after the exact pinned path is open", async () => {
     const onReady = vi.fn();
     const { renderer } = await mount("src/pinned.ts", true, onReady);
