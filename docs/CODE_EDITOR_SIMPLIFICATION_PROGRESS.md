@@ -86,7 +86,7 @@ Focused verification:
 
 ### Pass 3: remove automatic editor replacement
 
-Status: in progress on `codex/code-editor-remove-auto-replacement-pass3`.
+Status: merged in [PR #1515](https://github.com/ArcaneArts/Cantrip/pull/1515).
 
 Implemented locally:
 
@@ -113,7 +113,34 @@ Focused verification:
 - TypeScript project build passed.
 - Vite production build passed after refreshing the generated protocol package.
 
-Merged PR: pending.
+### Pass 4: dormant retained editors
+
+Status: in progress on `codex/code-editor-dormant-retention`.
+
+Implemented locally:
+
+- removed the hidden Code-workbench prewarm input from Explorer view staging;
+- an inactive Explorer that has never displayed Code creates no editor
+  encryption lease, attachment, or iframe;
+- once displayed, an inactive retained editor keeps its exact attachment,
+  iframe, and latest path without sending file, theme, or recovery commands;
+- transport recovery is deferred until the retained editor becomes active and
+  then resumes the latest path once on the same session and iframe;
+- workbench readiness messages may still be observed while hidden, but the
+  readiness deadline and iframe retry are paused until activation;
+- a hidden binding change or expired retention lease drops the old workbench
+  instead of prewarming the replacement binding.
+
+Focused verification:
+
+- inactive cold surfaces create no attachment or iframe;
+- hidden warm surfaces issue no file, theme, or transport-recovery commands;
+- activation recovers the same shared session and opens only the latest path;
+- a hidden workbench does not reload after its readiness deadline;
+- retention, staged Explorer ownership, and editor lifecycle suites pass;
+- 56 tests passed locally.
+- TypeScript project build passed.
+- Vite production build passed.
 
 ## Measurements
 
@@ -133,16 +160,19 @@ Merged PR: pending.
 
 ## Server deployment
 
-No server or protocol changes are present in Passes 1-3. Deployment
+No server or protocol changes are present in Passes 1-4. Deployment
 requirement: none so far.
 
 ## Remaining work
 
-- Merge Pass 3 and capture a real warm LOCAL trace.
-- Make inactive retained editors dormant.
-- Verify Tauri, browser, and Capacitor/mobile runtime behavior.
+- Merge Pass 4.
+- Unify the remaining Tauri and non-Tauri editor entry semantics without
+  changing their transport implementations.
+- Capture real warm/cold traces and verify Tauri, browser, and
+  Capacitor/mobile runtime behavior.
 
 ## Next pass
 
-Pass 4 will make retained inactive editors dormant while keeping their session,
-iframe, workbench, and unsaved state available for immediate reuse.
+Pass 5 will remove the remaining platform-entry differences so Tauri, browser,
+and Capacitor/mobile all enter the same minimal editor lifecycle while retaining
+their existing native or protected-browser transport adapters.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export const INLINE_CODE_WORKBENCH_RETENTION_MS = 30 * 60 * 1_000;
 
@@ -10,32 +10,30 @@ export const INLINE_CODE_WORKBENCH_RETENTION_MS = 30 * 60 * 1_000;
  */
 export function useRetainedInlineWorkbench(
   active: boolean,
-  retentionMs = INLINE_CODE_WORKBENCH_RETENTION_MS,
-  prewarm = false,
-  prewarmIdentity = "default",
+  identity: string,
   owned = false,
+  retentionMs = INLINE_CODE_WORKBENCH_RETENTION_MS,
 ): boolean {
-  const [retained, setRetained] = useState(active || prewarm || owned);
-  const prewarmToken = prewarm ? prewarmIdentity : null;
-  const previousPrewarmTokenRef = useRef(prewarmToken);
+  const [lease, setLease] = useState({ identity, retained: active });
+  const retained = lease.identity === identity && lease.retained;
 
   useEffect(() => {
-    const prewarmActivated =
-      prewarmToken !== null && prewarmToken !== previousPrewarmTokenRef.current;
-    previousPrewarmTokenRef.current = prewarmToken;
-    if (active || owned) {
-      setRetained(true);
+    if (lease.identity !== identity) {
+      setLease({ identity, retained: active });
       return;
     }
-    if (prewarmActivated && !retained) {
-      setRetained(true);
+    if (active) {
+      if (!retained) setLease({ identity, retained: true });
       return;
     }
-    if (!retained) return;
+    if (!retained || owned) return;
 
-    const timeout = setTimeout(() => setRetained(false), retentionMs);
+    const timeout = setTimeout(
+      () => setLease({ identity, retained: false }),
+      retentionMs,
+    );
     return () => clearTimeout(timeout);
-  }, [active, owned, prewarmToken, retained, retentionMs]);
+  }, [active, identity, lease.identity, owned, retained, retentionMs]);
 
-  return active || owned || retained;
+  return active || retained;
 }

@@ -31,7 +31,6 @@ const baseProps = {
   appearance: "dark" as const,
   explorerId: "explorer-1",
   visible: true,
-  prewarm: false,
   retained: true,
   workerOnline: true,
   workerId: "worker-1",
@@ -110,66 +109,80 @@ describe("RetainedExplorerCodeEditor", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("mounts one hidden pathless workbench and reuses it on first click", async () => {
+  it("does not create an inactive workbench before that surface is visible", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = TestRenderer.create(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          path: null,
-          prewarm: true,
+          path: "src/first.ts",
+          retained: false,
           visible: false,
         }),
       );
     });
-    const mountedEditor = renderer.root.findByProps({
-      "data-mock-code-editor": true,
-    });
-    expect(mountedEditor.props["data-editor-path"]).toBeNull();
+    expect(
+      renderer.root.findAllByProps({ "data-mock-code-editor": true }),
+    ).toHaveLength(0);
 
     await act(async () => {
       renderer.update(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
           path: "src/first.ts",
-          prewarm: true,
         }),
       );
     });
+    const mountedEditor = renderer.root.findByProps({
+      "data-mock-code-editor": true,
+    });
+    expect(mountedEditor.props["data-editor-path"]).toBe("src/first.ts");
 
+    await act(async () => {
+      renderer.update(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          path: "src/first.ts",
+          visible: false,
+        }),
+      );
+    });
     expect(renderer.root.findByProps({ "data-mock-code-editor": true })).toBe(
       mountedEditor,
     );
-    expect(mountedEditor.props["data-editor-path"]).toBe("src/first.ts");
+    expect(mountedEditor.props["data-editor-active"]).toBe(false);
 
     await act(async () => renderer.unmount());
   });
 
-  it("mounts an owned tab's Code path while the tab is inactive", async () => {
+  it("unmounts immediately when its binding retention is revoked", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = TestRenderer.create(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          path: "src/inactive.ts",
-          visible: false,
+          path: "src/active.ts",
         }),
       );
     });
+    expect(
+      renderer.root.findAllByProps({ "data-mock-code-editor": true }),
+    ).toHaveLength(1);
 
-    const mountedEditor = renderer.root.findByProps({
-      "data-mock-code-editor": true,
+    await act(async () => {
+      renderer.update(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          path: "src/active.ts",
+          retained: false,
+          visible: false,
+          workerId: "worker-2",
+        }),
+      );
     });
-    expect(mountedEditor.props["data-editor-path"]).toBe("src/inactive.ts");
-    expect(mountedEditor.props["data-editor-active"]).toBe(false);
-    const retainedSurface = renderer.root.findByProps({
-      "data-slot": "retained-explorer-code-editor",
-    });
-    expect(retainedSurface.props.inert).toBe(true);
-    expect(retainedSurface.props.className).toContain("invisible");
-    expect(retainedSurface.props.className.split(/\s+/)).not.toContain(
-      "hidden",
-    );
+    expect(
+      renderer.root.findAllByProps({ "data-mock-code-editor": true }),
+    ).toHaveLength(0);
 
     await act(async () => renderer.unmount());
   });

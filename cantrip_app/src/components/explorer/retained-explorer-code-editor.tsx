@@ -17,7 +17,6 @@ export function RetainedExplorerCodeEditor({
   onReady,
   onWorkbenchReadinessChange,
   path,
-  prewarm,
   retained,
   visible,
   workerOnline,
@@ -30,7 +29,6 @@ export function RetainedExplorerCodeEditor({
   onReady?: () => void;
   onWorkbenchReadinessChange?(ready: boolean): void;
   path: string | null;
-  prewarm: boolean;
   retained: boolean;
   visible: boolean;
   workerOnline: boolean;
@@ -61,7 +59,6 @@ export function RetainedExplorerCodeEditor({
   const workbenchPath = retained ? (path ?? retainedPath) : null;
   const diagnosticState = {
     pathPresent: workbenchPath !== null,
-    prewarm,
     retained,
     retainedPathPresent: retainedPath !== null,
     visible,
@@ -122,7 +119,6 @@ export function RetainedExplorerCodeEditor({
   }, [
     explorerId,
     path,
-    prewarm,
     retained,
     retainedPath,
     retainerInstanceId,
@@ -132,7 +128,7 @@ export function RetainedExplorerCodeEditor({
     worktreeId,
   ]);
 
-  if (!retained || (!prewarm && !workbenchPath)) return null;
+  if (!retained || !workbenchPath) return null;
 
   return (
     <div
