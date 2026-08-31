@@ -571,7 +571,6 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
         "session-route",
         "transport-ready",
         "workbench-ready",
-        "presentation-ready",
         "file-open",
       ]),
     );
@@ -903,6 +902,21 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
       desktopCode.setDirectCodeAttachmentPresentation,
     ).toHaveBeenCalledOnce();
     expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+    for (const operation of [
+      api.createProtectedExplorerCodeAttachment,
+      api.createProtectedExplorerCodeSessionAttachment,
+      api.releaseCodeAttachment,
+      api.releaseProtectedExplorerCodeSessionAttachment,
+      desktopCode.preferProtectedCodeAttachment,
+      desktopCode.preferSharedProtectedCodeAttachment,
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+      desktopCode.setDirectCodeAttachmentPresentation,
+      desktopCode.setDirectCodeAttachmentTheme,
+      desktopCode.stopDirectCodeAttachment,
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ]) {
+      operation.mockClear();
+    }
 
     await act(async () => renderer.update(editor("src/first.ts")));
     await settle();
@@ -921,7 +935,29 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
       "src/second.ts",
       expect.any(Object),
     );
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(desktopCode.preferProtectedCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalled();
+    expect(
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+    ).not.toHaveBeenCalled();
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).not.toHaveBeenCalled();
+    expect(desktopCode.setDirectCodeAttachmentTheme).not.toHaveBeenCalled();
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalled();
+    expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
     expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
     const launchStarts = logging.event.mock.calls
@@ -1207,13 +1243,17 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("retries pathless presentation on the same attachment and frame", async () => {
-    desktopCode.setDirectCodeAttachmentPresentation
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockResolvedValueOnce(undefined);
+  it("does not block or churn a pathless editor when presentation fails", async () => {
+    desktopCode.setDirectCodeAttachmentPresentation.mockRejectedValueOnce(
+      new TypeError("Load failed"),
+    );
     const { renderer } = await mount(null, true);
     const initialFrame = renderer.root.findByType("iframe");
     const initialFrameUrl = initialFrame.props.src;
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    api.createProtectedExplorerCodeAttachment.mockClear();
+    desktopCode.recoverPreferredCodeAttachmentRoute.mockClear();
+    desktopCode.stopDirectCodeAttachment.mockClear();
 
     await act(async () => testWindow.sendMessage());
     await settle();
@@ -1221,15 +1261,15 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
       desktopCode.setDirectCodeAttachmentPresentation,
     ).toHaveBeenCalledOnce();
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 550));
-    });
-    await settle();
-
     expect(
       desktopCode.setDirectCodeAttachmentPresentation,
-    ).toHaveBeenCalledTimes(2);
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    ).toHaveBeenCalledOnce();
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+    expect(
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+    ).not.toHaveBeenCalled();
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
     expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
 
@@ -1428,138 +1468,78 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("caps navigation retries across timer and worker-online wakes", async () => {
-    vi.useFakeTimers();
-    desktopCode.setDirectCodeAttachmentPresentation.mockRejectedValue(
-      new TypeError("Load failed"),
-    );
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      renderer = TestRenderer.create(editor(null), {
-        createNodeMock: (element) =>
-          element.type === "iframe" ? { contentWindow: {} as Window } : null,
-      });
-    });
-    await flushImmediateTimers();
-    await act(async () => testWindow.sendMessage());
-    await flushImmediateTimers();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    await flushImmediateTimers();
-    for (
-      let attempt = 1;
-      attempt < EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
-      attempt += 1
-    ) {
-      await act(async () =>
-        renderer.update(editor(null, { workerOnline: false })),
-      );
-      await act(async () =>
-        renderer.update(editor(null, { workerOnline: true })),
-      );
-      await flushImmediateTimers();
-    }
-    expect(
-      desktopCode.setDirectCodeAttachmentPresentation,
-    ).toHaveBeenCalledTimes(EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1);
-
-    await act(async () =>
-      renderer.update(editor(null, { workerOnline: false })),
-    );
-    await act(async () =>
-      renderer.update(editor(null, { workerOnline: true })),
-    );
-    await flushImmediateTimers();
-    expect(
-      desktopCode.setDirectCodeAttachmentPresentation,
-    ).toHaveBeenCalledTimes(EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1);
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
-
-    await act(async () => renderer.unmount());
-  });
-
-  it("retries file open after the bridge reconnects without replacing the attachment", async () => {
-    desktopCode.openDirectCodeAttachmentFile
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockImplementationOnce(
-        async (_attachment: CodeAttachment, relativePath: string) => ({
-          relativePath,
-        }),
-      );
-    const { renderer } = await mount("src/first.ts", true);
+  it("keeps a warm editor intact when one file-open request times out", async () => {
+    const { renderer } = await mount(null, true);
     const initialFrame = renderer.root.findByType("iframe");
+    const initialFrameUrl = initialFrame.props.src;
 
     await act(async () => testWindow.sendMessage());
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1_100));
-    });
     await settle();
 
-    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(4);
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
-    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
-
-    await act(async () => renderer.unmount());
-  });
-
-  it("replaces an attachment whose ready workbench stops acknowledging control requests", async () => {
-    const replacementWire = {
-      ...wire,
-      attachmentId: "33333333-3333-4333-8333-333333333333",
-      sessionId: "44444444-4444-4444-8444-444444444444",
-      tunnelId: "33333333-3333-4333-8333-333333333333",
-    } as CodeProtectedAttachmentWire;
-    const replacementAttachment = {
-      ...attachment,
-      attachmentId: replacementWire.attachmentId,
-      sessionId: replacementWire.sessionId,
-      url: `http://127.0.0.1:43123/code/${replacementWire.attachmentId}/`,
-    } as CodeAttachment;
-    api.createProtectedExplorerCodeAttachment
-      .mockResolvedValueOnce(wire)
-      .mockResolvedValueOnce(replacementWire);
-    desktopCode.preferProtectedCodeAttachment
-      .mockResolvedValueOnce({
-        attachment,
-        desktopRouteIdentity: null,
-        directTunnelId: wire.tunnelId,
-        transportKind: "relay",
-      })
-      .mockResolvedValueOnce({
-        attachment: replacementAttachment,
-        desktopRouteIdentity: null,
-        directTunnelId: replacementWire.tunnelId,
-        transportKind: "relay",
-      });
+    for (const operation of [
+      api.createProtectedExplorerCodeAttachment,
+      api.createProtectedExplorerCodeSessionAttachment,
+      api.releaseCodeAttachment,
+      api.releaseProtectedExplorerCodeSessionAttachment,
+      desktopCode.preferProtectedCodeAttachment,
+      desktopCode.preferSharedProtectedCodeAttachment,
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+      desktopCode.setDirectCodeAttachmentPresentation,
+      desktopCode.stopDirectCodeAttachment,
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ]) {
+      operation.mockClear();
+    }
     desktopCode.openDirectCodeAttachmentFile
-      .mockRejectedValueOnce(new desktopCode.CodeControlOperationTimeoutError())
+      .mockRejectedValueOnce(
+        new desktopCode.CodeControlOperationTimeoutError(
+          "Cantrip Code control request timed out.",
+        ),
+      )
       .mockImplementationOnce(
         async (_attachment: CodeAttachment, relativePath: string) => ({
           relativePath,
         }),
       );
 
-    const { renderer } = await mount("src/stale.ts", true);
-
-    await act(async () => testWindow.sendMessage());
+    await act(async () => renderer.update(editor("src/stale.ts")));
     await settle();
 
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(desktopCode.preferProtectedCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalled();
+    expect(
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+    ).not.toHaveBeenCalled();
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalled();
+    expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
 
-    await act(async () => testWindow.sendMessage());
+    await act(async () => renderer.root.findByType("button").props.onClick());
     await settle();
 
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2);
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenLastCalledWith(
-      replacementAttachment,
+      attachment,
       "src/stale.ts",
       { signal: expect.any(AbortSignal), timeoutMs: 3_000 },
     );
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
 
     await act(async () => renderer.unmount());
   });

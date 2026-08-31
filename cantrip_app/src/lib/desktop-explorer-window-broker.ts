@@ -11,7 +11,6 @@ import {
 import {
   openDirectCodeAttachmentFile,
   preferSharedProtectedCodeAttachment,
-  recoverPreferredCodeAttachmentRoute,
   retainSharedProtectedCodeAttachmentLease,
   setDirectCodeAttachmentPresentation,
   stopSharedProtectedCodeAttachment,
@@ -49,16 +48,8 @@ export interface DesktopExplorerWindowBrokerOptions {
   signal?: AbortSignal;
 }
 
-const editorControlRetryDelaysMs = [250, 750] as const;
-const editorRouteRecoveryRetryLimit = 2;
 const sharedSessionRenewalMaxDelayMs = 5 * 60_000;
 const sharedSessionRenewalMinDelayMs = 30_000;
-
-function isTransientEditorControlError(error: unknown): boolean {
-  return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
-    errorMessage(error, ""),
-  );
-}
 
 function waitForAbortable<T>(
   operation: Promise<T>,
@@ -84,16 +75,6 @@ function waitForAbortable<T>(
   });
 }
 
-async function abortableDelay(
-  delayMs: number,
-  signal: AbortSignal,
-): Promise<void> {
-  await waitForAbortable(
-    new Promise<void>((resolve) => setTimeout(resolve, delayMs)),
-    signal,
-  );
-}
-
 async function waitForAbortableTimeout<T>(
   operation: Promise<T>,
   signal: AbortSignal,
@@ -113,25 +94,6 @@ async function waitForAbortableTimeout<T>(
     );
   } finally {
     if (timeout) clearTimeout(timeout);
-  }
-}
-
-async function retryEditorControl<T>(
-  operation: () => Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  for (let attempt = 0; ; attempt += 1) {
-    signal.throwIfAborted();
-    try {
-      return await operation();
-    } catch (error) {
-      if (signal.aborted) signal.throwIfAborted();
-      const retryDelayMs = editorControlRetryDelaysMs[attempt];
-      if (retryDelayMs === undefined || !isTransientEditorControlError(error)) {
-        throw error;
-      }
-      await abortableDelay(retryDelayMs, signal);
-    }
   }
 }
 
@@ -394,33 +356,17 @@ export function createDesktopExplorerWindowBroker(
     signal.throwIfAborted();
     if (revision !== navigationRevision) return;
     if (presentationNonce !== nonce) {
-      try {
-        await retryEditorControl(
-          () =>
-            setDirectCodeAttachmentPresentation(result.attachment, "editor", {
-              signal,
-            }),
-          signal,
-        );
-      } catch (error) {
-        if (signal.aborted) signal.throwIfAborted();
-        throw codeWorkbenchStageError("presentation", error);
-      }
-      signal.throwIfAborted();
-      if (revision !== navigationRevision || nonce !== activeWorkbenchNonce)
-        return;
       presentationNonce = nonce;
+      void setDirectCodeAttachmentPresentation(result.attachment, "editor", {
+        signal: preparationController.signal,
+      }).catch(() => undefined);
     }
     if (path === null) return;
     let opened: Awaited<ReturnType<typeof openDirectCodeAttachmentFile>>;
     try {
-      opened = await retryEditorControl(
-        () =>
-          openDirectCodeAttachmentFile(result.attachment, path, {
-            signal,
-          }),
+      opened = await openDirectCodeAttachmentFile(result.attachment, path, {
         signal,
-      );
+      });
     } catch (error) {
       if (signal.aborted) signal.throwIfAborted();
       throw codeWorkbenchStageError("file", error);
@@ -451,7 +397,6 @@ export function createDesktopExplorerWindowBroker(
   const scheduleConfiguration = (
     path: string | null,
     requestedAtMs: number,
-    routeRecoveryAttempt = 0,
   ): Promise<void> => {
     navigationRevision += 1;
     const revision = navigationRevision;
@@ -471,25 +416,6 @@ export function createDesktopExplorerWindowBroker(
     return navigate.catch(async (error: unknown) => {
       if (controller.signal.aborted && !preparationController.signal.aborted) {
         return;
-      }
-      if (prepared && isTransientEditorControlError(error)) {
-        const recovery = await recoverPreferredCodeAttachmentRoute(prepared, {
-          signal,
-        }).catch(() => "recovering" as const);
-        if (recovery === "replace-required") {
-          await recoverEditorAttachment(error);
-          return;
-        }
-        if (routeRecoveryAttempt < editorRouteRecoveryRetryLimit) {
-          await abortableDelay(recovery === "available" ? 250 : 1_000, signal);
-          if (revision !== navigationRevision) return;
-          await scheduleConfiguration(
-            path,
-            requestedAtMs,
-            routeRecoveryAttempt + 1,
-          );
-          return;
-        }
       }
       reportEditorError(error, path === null ? "presentation" : "file");
       throw error;
@@ -627,7 +553,12 @@ export function createDesktopExplorerWindowBroker(
         ? "file"
         : "presentation",
     );
-    await releaseOwnedEditor();
+    if (
+      error instanceof CodeWorkbenchStageError &&
+      (error.stage === "frame" || error.stage === "workbench")
+    ) {
+      await releaseOwnedEditor();
+    }
   });
 
   const dispose = (): Promise<void> => {

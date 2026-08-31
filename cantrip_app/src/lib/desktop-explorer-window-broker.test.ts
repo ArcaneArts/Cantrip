@@ -380,10 +380,10 @@ describe("desktop Explorer window broker", () => {
     await broker.dispose();
   });
 
-  it("recovers transient control failures without poisoning the editor broker", async () => {
-    desktopCode.setDirectCodeAttachmentPresentation
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockResolvedValueOnce({ presentation: "editor" });
+  it("requires an explicit retry after one transient file-open failure", async () => {
+    desktopCode.setDirectCodeAttachmentPresentation.mockRejectedValueOnce(
+      new TypeError("Load failed"),
+    );
     desktopCode.openDirectCodeAttachmentFile
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
       .mockResolvedValueOnce({ relativePath: "src/recovered.ts" });
@@ -410,18 +410,37 @@ describe("desktop Explorer window broker", () => {
     });
     client.start();
 
-    await expect(broker.ready).resolves.toBeUndefined();
-    expect(broker.failed).toBe(false);
+    await expect(broker.ready).rejects.toThrow("Failed to fetch");
+    expect(broker.failed).toBe(true);
     expect(
       desktopCode.setDirectCodeAttachmentPresentation,
-    ).toHaveBeenCalledTimes(2);
+    ).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+    ).not.toHaveBeenCalled();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+
+    await expect(broker.openFile("src/recovered.ts")).resolves.toBeUndefined();
+    expect(broker.failed).toBe(false);
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2);
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalled();
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
 
     client.dispose();
     await broker.dispose();
   });
 
-  it("marks a broker unavailable after non-transient startup failure", async () => {
+  it("opens the initial file without waiting for presentation", async () => {
     desktopCode.setDirectCodeAttachmentPresentation.mockRejectedValueOnce(
       new Error("Workbench rejected the request."),
     );
@@ -448,10 +467,12 @@ describe("desktop Explorer window broker", () => {
     });
     client.start();
 
-    await expect(broker.ready).rejects.toThrow(
-      "Workbench rejected the request.",
-    );
-    expect(broker.failed).toBe(true);
+    await expect(broker.ready).resolves.toBeUndefined();
+    expect(broker.failed).toBe(false);
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
 
     client.dispose();
     await broker.dispose();
@@ -915,7 +936,7 @@ describe("desktop Explorer window broker", () => {
     vi.useRealTimers();
   });
 
-  it("replaces a terminal route only after a control operation fails", async () => {
+  it("keeps the same popout session after a file-open failure", async () => {
     desktopCode.recoverPreferredCodeAttachmentRoute
       .mockReset()
       .mockResolvedValueOnce("replace-required");
@@ -946,10 +967,9 @@ describe("desktop Explorer window broker", () => {
     client.start();
     await broker.ready;
 
-    desktopCode.openDirectCodeAttachmentFile
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockRejectedValueOnce(new TypeError("Load failed"));
+    desktopCode.openDirectCodeAttachmentFile.mockRejectedValueOnce(
+      new TypeError("Load failed"),
+    );
     let openFailure: unknown;
     await broker.openFile("src/next.ts").catch((error: unknown) => {
       openFailure = error;
@@ -957,78 +977,26 @@ describe("desktop Explorer window broker", () => {
 
     expect(
       desktopCode.recoverPreferredCodeAttachmentRoute,
-    ).toHaveBeenCalledOnce();
-    expect(openFailure).toBeUndefined();
+    ).not.toHaveBeenCalled();
+    expect(openFailure).toBeInstanceOf(Error);
     expect(
       api.createProtectedExplorerCodeSessionAttachment,
-    ).toHaveBeenCalledTimes(2);
+    ).toHaveBeenCalledOnce();
     expect(
       desktopCode.stopSharedProtectedCodeAttachment,
-    ).toHaveBeenCalledOnce();
+    ).not.toHaveBeenCalled();
     expect(
       api.releaseProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(endpointCount).toBe(1);
+
+    await expect(broker.openFile("src/next.ts")).resolves.toBeUndefined();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
     ).toHaveBeenCalledOnce();
-    expect(endpointCount).toBe(2);
+    expect(endpointCount).toBe(1);
 
     client.dispose();
     await broker.dispose();
   });
-
-  it.each(["available", "recovering"] as const)(
-    "retries the requested file on the retained route after %s recovery",
-    async (recovery) => {
-      vi.useFakeTimers();
-      desktopCode.recoverPreferredCodeAttachmentRoute
-        .mockReset()
-        .mockResolvedValue(recovery);
-      let client!: DesktopExplorerWindowClient;
-      const broker = createDesktopExplorerWindowBroker({
-        appearance: "dark",
-        explorer: {
-          activeWorkerId: "worker-one",
-          id: `explorer-${recovery}-route`,
-          projectId: "project-one",
-          worktreeId: "worktree-one",
-        } as ExplorerSummary,
-        path: "src/current.ts",
-      });
-      client = new DesktopExplorerWindowClient(broker.launchId, {
-        onContext: vi.fn(),
-        onEditorEndpoint: () => {
-          client.editorWorkbenchMounted(frameNonce);
-          client.editorWorkbenchReady(frameNonce);
-        },
-        onEditorError: vi.fn(),
-        onEditorReady: vi.fn(),
-        onLaunchError: vi.fn(),
-      });
-      client.start();
-      await broker.ready;
-
-      desktopCode.openDirectCodeAttachmentFile
-        .mockRejectedValueOnce(new TypeError("Load failed"))
-        .mockRejectedValueOnce(new TypeError("Load failed"))
-        .mockRejectedValueOnce(new TypeError("Load failed"));
-      const opening = broker.openFile("src/next.ts");
-      await vi.advanceTimersByTimeAsync(3_000);
-      await expect(opening).resolves.toBeUndefined();
-
-      expect(
-        desktopCode.recoverPreferredCodeAttachmentRoute,
-      ).toHaveBeenCalledOnce();
-      expect(
-        api.createProtectedExplorerCodeSessionAttachment,
-      ).toHaveBeenCalledOnce();
-      expect(
-        desktopCode.stopSharedProtectedCodeAttachment,
-      ).not.toHaveBeenCalled();
-      expect(
-        api.releaseProtectedExplorerCodeSessionAttachment,
-      ).not.toHaveBeenCalled();
-
-      client.dispose();
-      await broker.dispose();
-      vi.useRealTimers();
-    },
-  );
 });

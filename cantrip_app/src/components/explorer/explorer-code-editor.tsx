@@ -42,12 +42,10 @@ import {
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
 import {
-  CodeControlOperationTimeoutError,
   CodeAttachmentHealthError,
   openDirectCodeAttachmentFile,
   preferProtectedCodeAttachment,
   preferSharedProtectedCodeAttachment,
-  recoverPreferredCodeAttachmentRoute,
   retainSharedProtectedCodeAttachmentLease,
   setDirectCodeAttachmentPresentation,
   setDirectCodeAttachmentTheme,
@@ -65,8 +63,6 @@ import {
   SerializedAttachmentLifecycle,
 } from "@/lib/serialized-attachment-lifecycle";
 
-const FILE_OPEN_RETRY_DELAY_MS = 250;
-const FILE_OPEN_RECONNECT_LIMIT = 1;
 const FILE_OPEN_TIMEOUT_MS = 3_000;
 const THEME_UPDATE_RETRY_DELAY_MS = 500;
 const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
@@ -123,38 +119,6 @@ export function allowsLegacyExplorerCodeFallback(error: unknown): boolean {
   );
 }
 
-function isCodeControlOperationTimeout(error: unknown): boolean {
-  const visited = new Set<unknown>();
-  let candidate = error;
-  while (candidate instanceof Error && !visited.has(candidate)) {
-    if (candidate instanceof CodeControlOperationTimeoutError) return true;
-    visited.add(candidate);
-    candidate = candidate.cause;
-  }
-  return false;
-}
-
-function isTransientFileOpenFailure(error: unknown): boolean {
-  return /(?:failed to fetch|load failed|network|not connected|unavailable|timed out|timeout|disconnected|offline)/iu.test(
-    errorMessage(error, ""),
-  );
-}
-
-export function explorerCodeEditorOpenRecovery(
-  error: unknown,
-  attempt: number,
-  automaticReconnects: number,
-): "error" | "recover-route" | "replace-attachment" | "retry" {
-  const controlTimeout = isCodeControlOperationTimeout(error);
-  const transient = isTransientFileOpenFailure(error);
-  if (controlTimeout) return "replace-attachment";
-  if (attempt === 0 && transient) return "retry";
-  if (transient && automaticReconnects < FILE_OPEN_RECONNECT_LIMIT) {
-    return "recover-route";
-  }
-  return "error";
-}
-
 export class ExplorerCodePresentationCache {
   #nonce: string | null = null;
 
@@ -171,22 +135,6 @@ export class ExplorerCodePresentationCache {
   }
 }
 
-export async function configureExplorerCodeEditorNavigation<TResult>(options: {
-  frameNonce: string;
-  openFile(): Promise<TResult>;
-  presentation: ExplorerCodePresentationCache;
-  setPresentation(): Promise<void>;
-  signal: AbortSignal;
-}): Promise<TResult> {
-  await options.presentation.ensure(
-    options.frameNonce,
-    options.setPresentation,
-    options.signal,
-  );
-  options.signal.throwIfAborted();
-  return options.openFile();
-}
-
 export function explorerCodeEditorBindingKey(input: {
   explorerId: string;
   reloadVersion: number;
@@ -199,14 +147,6 @@ export function explorerCodeEditorBindingKey(input: {
     input.workerId,
     input.reloadVersion,
   ].join("\0");
-}
-
-export function explorerCodeEditorReadyKey(
-  attachmentId: string,
-  path: string,
-  bindingKey: string,
-): string {
-  return `${bindingKey}\0${attachmentId}\0${path}`;
 }
 
 type ExplorerCodeAttachmentOwnership =
@@ -312,11 +252,10 @@ export function ExplorerCodeEditor({
   const [reloadVersion, setReloadVersion] = useState(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [closing, setClosing] = useState(false);
-  const [navigationRecoveryAttempt, setNavigationRecoveryAttempt] = useState(0);
+  const [navigationAttempt, setNavigationAttempt] = useState(0);
   const [themeRecoveryAttempt, setThemeRecoveryAttempt] = useState(0);
   const [sharedTransportRecoveryAttempt, setSharedTransportRecoveryAttempt] =
     useState(0);
-  const automaticReconnectsRef = useRef(0);
   const automaticReplacementCountRef = useRef(0);
   const automaticReplacementPendingRef = useRef(false);
   const appearanceRef = useRef(appearance);
@@ -347,12 +286,6 @@ export function ExplorerCodeEditor({
   const closeCommitResolverRef = useRef<(() => void) | null>(null);
   const closePromiseRef = useRef<Promise<void> | null>(null);
   const navigationQueueRef = useRef(new SerialTaskQueue());
-  const navigationRetryCountRef = useRef(0);
-  const navigationRetryIdentityRef = useRef<string | null>(null);
-  const navigationRetryPendingRef = useRef(false);
-  const navigationRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
   const lastSharedRecoveryAttemptRef = useRef(0);
   const pendingConnectionWakeRef = useRef(false);
   const pendingThemeRef = useRef<{
@@ -442,15 +375,6 @@ export function ExplorerCodeEditor({
     worktreeId,
   });
   const bindingKeyRef = useRef(bindingKey);
-  const requestedReadyKey = preferredAttachment
-    ? path === null
-      ? null
-      : explorerCodeEditorReadyKey(
-          preferredAttachment.attachment.attachmentId,
-          path,
-          bindingKey,
-        )
-    : null;
   const frameMount = useMemo(
     () =>
       !closing && preferredAttachment
@@ -510,21 +434,13 @@ export function ExplorerCodeEditor({
     workbenchGenerationKey !== null &&
     workbenchReadyKey === workbenchGenerationKey,
   );
-  const navigationIdentity =
-    preferredAttachment && frameMount
-      ? [
-          bindingKey,
-          preferredAttachment.attachment.attachmentId,
-          frameMount.nonce,
-          path ?? "<prewarm>",
-        ].join("\0")
-      : null;
   const ready = Boolean(
     !closing &&
     path !== null &&
     frameReady &&
+    workbenchGenerationKey !== null &&
     readyKey !== null &&
-    readyKey === requestedReadyKey,
+    readyKey === workbenchGenerationKey,
   );
   const editorDiagnosticStateRef = useRef({
     active,
@@ -635,16 +551,6 @@ export function ExplorerCodeEditor({
   }, [workbenchReady]);
 
   useEffect(() => {
-    if (!ready || !preferredAttachment) return;
-    launchTimingRef.current?.complete({
-      attachmentId: preferredAttachment.attachment.attachmentId,
-      sessionId: preferredAttachment.attachment.sessionId,
-      transportKind: preferredAttachment.transportKind,
-    });
-    onReadyRef.current?.();
-  }, [preferredAttachment, ready]);
-
-  useEffect(() => {
     onLifecycleChange?.({ cancelClose, prepareClose });
     return () => onLifecycleChange?.(null);
   }, [cancelClose, onLifecycleChange, prepareClose]);
@@ -659,6 +565,15 @@ export function ExplorerCodeEditor({
   const reload = useCallback(() => {
     if (closingRef.current) return;
     startLaunchTiming(pathRef.current, "manual-retry");
+    if (
+      preferredAttachmentRef.current &&
+      frameReadyRef.current &&
+      pathRef.current !== null
+    ) {
+      setError(null);
+      setNavigationAttempt((attempt) => attempt + 1);
+      return;
+    }
     automaticReplacementCountRef.current = 0;
     automaticReplacementPendingRef.current = true;
     setError(null);
@@ -796,35 +711,6 @@ export function ExplorerCodeEditor({
     [requestFrameRetry],
   );
 
-  const requestNavigationRetry = useCallback(
-    (expectedNavigationIdentity: string | null): boolean => {
-      if (
-        closingRef.current ||
-        expectedNavigationIdentity === null ||
-        navigationRetryIdentityRef.current !== expectedNavigationIdentity ||
-        !navigationRetryPendingRef.current ||
-        !workerOnlineRef.current
-      ) {
-        return false;
-      }
-      if (
-        navigationRetryCountRef.current >= EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT
-      ) {
-        navigationRetryPendingRef.current = false;
-        return false;
-      }
-      navigationRetryCountRef.current += 1;
-      if (navigationRetryTimerRef.current) {
-        clearTimeout(navigationRetryTimerRef.current);
-        navigationRetryTimerRef.current = null;
-      }
-      navigationRetryPendingRef.current = false;
-      setNavigationRecoveryAttempt((attempt) => attempt + 1);
-      return true;
-    },
-    [],
-  );
-
   useEffect(() => {
     automaticReplacementPendingRef.current = false;
     connectionRetryCountRef.current = 0;
@@ -834,23 +720,12 @@ export function ExplorerCodeEditor({
     pendingConnectionWakeRef.current = false;
     frameRetryCountRef.current = 0;
     frameRetryPendingRef.current = false;
-    navigationRetryCountRef.current = 0;
-    navigationRetryIdentityRef.current = null;
-    navigationRetryPendingRef.current = false;
-    for (const timerRef of [
-      connectionRetryTimerRef,
-      frameRetryTimerRef,
-      navigationRetryTimerRef,
-    ]) {
+    for (const timerRef of [connectionRetryTimerRef, frameRetryTimerRef]) {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     return () => {
-      for (const timerRef of [
-        connectionRetryTimerRef,
-        frameRetryTimerRef,
-        navigationRetryTimerRef,
-      ]) {
+      for (const timerRef of [connectionRetryTimerRef, frameRetryTimerRef]) {
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = null;
       }
@@ -1104,18 +979,15 @@ export function ExplorerCodeEditor({
     if (wasOnline || !workerOnline) return;
     if (preferredAttachment) {
       requestFrameRetry(bindingKey, frameMount?.nonce ?? null);
-      requestNavigationRetry(navigationIdentity);
       return;
     }
     requestConnectionRetry(bindingKey);
   }, [
     bindingKey,
     frameMount?.nonce,
-    navigationIdentity,
     preferredAttachment,
     requestConnectionRetry,
     requestFrameRetry,
-    requestNavigationRetry,
     workerOnline,
   ]);
 
@@ -1148,16 +1020,13 @@ export function ExplorerCodeEditor({
       return;
     }
     requestFrameRetry(bindingKey, frameMount?.nonce ?? null);
-    requestNavigationRetry(navigationIdentity);
   }, [
     active,
     bindingKey,
     frameMount?.nonce,
-    navigationIdentity,
     preferredAttachment,
     requestConnectionRetry,
     requestFrameRetry,
-    requestNavigationRetry,
   ]);
 
   useEffect(() => {
@@ -1227,10 +1096,6 @@ export function ExplorerCodeEditor({
     preferredAttachment,
     themeRecoveryAttempt,
   ]);
-
-  useEffect(() => {
-    automaticReconnectsRef.current = 0;
-  }, [path]);
 
   useEffect(() => {
     if (closing || !preferredAttachment) return;
@@ -1482,271 +1347,153 @@ export function ExplorerCodeEditor({
   ]);
 
   useEffect(() => {
-    if (!preferredAttachment || !frameReady || !frameMount) return;
-    const navigationController = new AbortController();
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    if (navigationIdentity === null) return;
-    if (navigationRetryIdentityRef.current !== navigationIdentity) {
-      navigationRetryIdentityRef.current = navigationIdentity;
-      navigationRetryCountRef.current = 0;
-      navigationRetryPendingRef.current = false;
-      if (navigationRetryTimerRef.current) {
-        clearTimeout(navigationRetryTimerRef.current);
-        navigationRetryTimerRef.current = null;
-      }
+    if (
+      !preferredAttachment ||
+      !frameReady ||
+      !frameMount ||
+      !workbenchGenerationKey
+    ) {
+      return;
     }
-    setError(null);
-    let presentationRecorded = false;
-    const markWorkbenchReady = () => {
-      if (workbenchGenerationKey) {
-        setWorkbenchReadyKey(workbenchGenerationKey);
-      }
-    };
-    const recordCachedPresentation = () => {
-      if (presentationRecorded) return;
-      presentationRecorded = true;
-      markWorkbenchReady();
-      launchTimingRef.current?.milestone("presentation-ready", {
-        attachmentId: preferredAttachment.attachment.attachmentId,
-        reused: true,
-      });
-    };
-    const setPresentation = async () => {
-      const presentationTiming =
-        launchTimingRef.current?.beginPhase("presentation-ready");
-      try {
-        await setDirectCodeAttachmentPresentation(
-          preferredAttachment.attachment,
-          "editor",
-          { signal: navigationController.signal },
-        );
-        presentationRecorded = true;
-        markWorkbenchReady();
+    const presentationController = new AbortController();
+    let cancelled = false;
+    let applied = false;
+    setWorkbenchReadyKey(workbenchGenerationKey);
+    const presentationTiming =
+      launchTimingRef.current?.beginPhase("presentation-ready");
+    void presentationRef.current
+      .ensure(
+        frameMount.nonce,
+        async () => {
+          applied = true;
+          await setDirectCodeAttachmentPresentation(
+            preferredAttachment.attachment,
+            "editor",
+            { signal: presentationController.signal },
+          );
+        },
+        presentationController.signal,
+      )
+      .then(() => {
+        if (cancelled) return;
         presentationTiming?.complete({
           attachmentId: preferredAttachment.attachment.attachmentId,
-          reused: false,
+          reused: !applied,
         });
-      } catch (presentationError) {
-        presentationTiming?.fail(presentationError);
-        throw codeWorkbenchStageError("presentation", presentationError);
-      }
-    };
-    const cleanup = () => {
-      cancelled = true;
-      navigationController.abort(
-        new DOMException("Explorer Code navigation superseded.", "AbortError"),
-      );
-      if (retryTimer) clearTimeout(retryTimer);
-      if (navigationRetryTimerRef.current === retryTimer) {
-        navigationRetryTimerRef.current = null;
-      }
-    };
-    const resetNavigationRetry = () => {
-      navigationRetryCountRef.current = 0;
-      navigationRetryPendingRef.current = false;
-      if (navigationRetryTimerRef.current) {
-        clearTimeout(navigationRetryTimerRef.current);
-        navigationRetryTimerRef.current = null;
-      }
-    };
-    const scheduleNavigationRetry = (
-      failure: unknown,
-      fallbackMessage: string,
-    ): boolean => {
-      if (
-        !isCodeControlOperationTimeout(failure) &&
-        !isTransientFileOpenFailure(failure)
-      ) {
-        return false;
-      }
-      setError(errorMessage(failure, fallbackMessage));
-      if (
-        navigationRetryCountRef.current >= EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT
-      ) {
-        navigationRetryPendingRef.current = false;
-        return true;
-      }
-      navigationRetryPendingRef.current = true;
-      if (!workerOnlineRef.current) return true;
-      if (navigationRetryTimerRef.current) return true;
-      const delay = explorerCodeEditorRetryDelayMs(
-        navigationRetryCountRef.current,
-      );
-      retryTimer = setTimeout(() => {
-        if (
-          cancelled ||
-          navigationRetryIdentityRef.current !== navigationIdentity ||
-          navigationRetryTimerRef.current !== retryTimer
-        ) {
-          return;
+        if (pathRef.current === null) {
+          launchTimingRef.current?.complete({
+            attachmentId: preferredAttachment.attachment.attachmentId,
+            prewarmed: true,
+            sessionId: preferredAttachment.attachment.sessionId,
+            transportKind: preferredAttachment.transportKind,
+          });
         }
-        navigationRetryTimerRef.current = null;
-        requestNavigationRetry(navigationIdentity);
-      }, delay);
-      navigationRetryTimerRef.current = retryTimer;
-      return true;
-    };
-
-    if (path === null) {
-      void navigationQueueRef.current.run(async () => {
-        if (cancelled) return;
-        try {
-          await presentationRef.current.ensure(
-            frameMount.nonce,
-            setPresentation,
-            navigationController.signal,
-          );
-          if (!cancelled) {
-            recordCachedPresentation();
-            markWorkbenchReady();
-            resetNavigationRetry();
-            setError(null);
-            setReadyKey(null);
-            launchTimingRef.current?.complete({
-              attachmentId: preferredAttachment.attachment.attachmentId,
-              prewarmed: true,
-              sessionId: preferredAttachment.attachment.sessionId,
-              transportKind: preferredAttachment.transportKind,
-            });
-          }
-        } catch (presentationError) {
-          if (!cancelled) {
-            if (
-              scheduleNavigationRetry(
-                presentationError,
-                "Cantrip Code could not prepare the editor.",
-              )
-            ) {
-              return;
-            }
-            setError(
-              errorMessage(
-                presentationError,
-                "Cantrip Code could not prepare the editor.",
-              ),
-            );
-          }
+      })
+      .catch((presentationError: unknown) => {
+        if (cancelled || presentationController.signal.aborted) return;
+        presentationTiming?.fail(presentationError);
+        clientLogger.event(
+          "warn",
+          "Cantrip Code presentation update failed without blocking the editor",
+          {
+            attachmentId: preferredAttachment.attachment.attachmentId,
+            event: "code.editor.presentation.failed",
+            operation: "set-presentation",
+            status: "failed",
+            subsystem: "code",
+          },
+        );
+        if (pathRef.current === null) {
+          launchTimingRef.current?.complete({
+            attachmentId: preferredAttachment.attachment.attachmentId,
+            presentationApplied: false,
+            prewarmed: true,
+            sessionId: preferredAttachment.attachment.sessionId,
+            transportKind: preferredAttachment.transportKind,
+          });
         }
       });
-      return cleanup;
-    }
+    return () => {
+      cancelled = true;
+      presentationController.abort(
+        new DOMException(
+          "Explorer Code presentation superseded.",
+          "AbortError",
+        ),
+      );
+    };
+  }, [frameMount, frameReady, preferredAttachment, workbenchGenerationKey]);
 
-    const navigationReadyKey = explorerCodeEditorReadyKey(
-      preferredAttachment.attachment.attachmentId,
-      path,
-      bindingKey,
-    );
-    const openFile = async (attempt: number) => {
+  useEffect(() => {
+    if (
+      !preferredAttachment ||
+      !frameReady ||
+      !frameMount ||
+      !workbenchGenerationKey ||
+      path === null
+    ) {
+      return;
+    }
+    const navigationController = new AbortController();
+    let cancelled = false;
+    setError(null);
+    void navigationQueueRef.current.run(async () => {
+      if (cancelled) return;
+      const fileTiming = launchTimingRef.current?.beginPhase("file-open");
       try {
-        const result = await configureExplorerCodeEditorNavigation({
-          frameNonce: frameMount.nonce,
-          openFile: async () => {
-            recordCachedPresentation();
-            const fileTiming = launchTimingRef.current?.beginPhase("file-open");
-            try {
-              const opened = await openDirectCodeAttachmentFile(
-                preferredAttachment.attachment,
-                path,
-                {
-                  signal: navigationController.signal,
-                  timeoutMs: FILE_OPEN_TIMEOUT_MS,
-                },
-              );
-              fileTiming?.complete({
-                attachmentId: preferredAttachment.attachment.attachmentId,
-                openAttempt: attempt + 1,
-              });
-              return opened;
-            } catch (fileError) {
-              fileTiming?.fail(fileError, { openAttempt: attempt + 1 });
-              throw codeWorkbenchStageError("file", fileError);
-            }
+        const result = await openDirectCodeAttachmentFile(
+          preferredAttachment.attachment,
+          path,
+          {
+            signal: navigationController.signal,
+            timeoutMs: FILE_OPEN_TIMEOUT_MS,
           },
-          presentation: presentationRef.current,
-          setPresentation,
-          signal: navigationController.signal,
-        });
-        if (!cancelled && result.relativePath === path) {
-          markWorkbenchReady();
-          automaticReconnectsRef.current = 0;
-          resetNavigationRetry();
-          setError(null);
-          setReadyKey(navigationReadyKey);
-        } else if (!cancelled) {
+        );
+        if (cancelled) return;
+        if (result.relativePath !== path) {
           throw codeWorkbenchStageError(
             "file",
             `Worker acknowledged ${result.relativePath} instead of ${path}.`,
           );
         }
+        fileTiming?.complete({
+          attachmentId: preferredAttachment.attachment.attachmentId,
+          openAttempt: 1,
+        });
+        setError(null);
+        setReadyKey(workbenchGenerationKey);
+        launchTimingRef.current?.complete({
+          attachmentId: preferredAttachment.attachment.attachmentId,
+          sessionId: preferredAttachment.attachment.sessionId,
+          transportKind: preferredAttachment.transportKind,
+        });
+        onReadyRef.current?.();
       } catch (openError) {
         if (cancelled) return;
-        const recovery = explorerCodeEditorOpenRecovery(
-          openError,
-          attempt,
-          automaticReconnectsRef.current,
-        );
-        if (recovery === "retry") {
-          retryTimer = setTimeout(
-            () => void openFile(attempt + 1),
-            FILE_OPEN_RETRY_DELAY_MS,
-          );
-          return;
-        }
-        if (recovery === "replace-attachment") {
-          requestAutomaticReplacement(bindingKey);
-          return;
-        }
-        if (recovery === "recover-route") {
-          const routeRecovery = await recoverPreferredCodeAttachmentRoute(
-            preferredAttachment,
-            { signal: navigationController.signal },
-          ).catch(() => "recovering" as const);
-          if (cancelled) return;
-          if (routeRecovery === "replace-required") {
-            automaticReconnectsRef.current += 1;
-            requestAutomaticReplacement(bindingKey);
-            return;
-          }
-          automaticReconnectsRef.current += 1;
-          retryTimer = setTimeout(
-            () => void openFile(attempt + 1),
-            routeRecovery === "available" ? FILE_OPEN_RETRY_DELAY_MS : 1_000,
-          );
-          return;
-        }
-        if (
-          scheduleNavigationRetry(
-            openError,
-            "Cantrip Code could not open this file.",
-          )
-        ) {
-          return;
-        }
+        fileTiming?.fail(openError, { openAttempt: 1 });
+        setReadyKey(null);
         setError(
           errorMessage(openError, "Cantrip Code could not open this file."),
         );
         launchTimingRef.current?.fail(
           explorerCodeLaunchFailurePhase(openError, "file-open"),
           openError,
-          { openAttempt: attempt + 1 },
+          { openAttempt: 1 },
         );
       }
-    };
-    void navigationQueueRef.current.run(async () => {
-      if (!cancelled) await openFile(0);
     });
-    return cleanup;
+    return () => {
+      cancelled = true;
+      navigationController.abort(
+        new DOMException("Explorer Code navigation superseded.", "AbortError"),
+      );
+    };
   }, [
-    bindingKey,
     frameMount,
     frameReady,
-    navigationIdentity,
-    navigationRecoveryAttempt,
+    navigationAttempt,
     path,
     preferredAttachment,
-    requestAutomaticReplacement,
-    requestNavigationRetry,
     workbenchGenerationKey,
   ]);
 
