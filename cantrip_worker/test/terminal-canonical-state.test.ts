@@ -123,6 +123,32 @@ describe("TerminalCanonicalState", () => {
     }
   });
 
+  it("continues an in-flight synchronized update across snapshot hydration", async () => {
+    const terminal = new TerminalCanonicalState(60, 16);
+    const restored = new TerminalCanonicalState(60, 16);
+    try {
+      await terminal.write(
+        "\x1b[?1049h\x1b[2J" +
+          "\x1b[1;1HSTATIC HEADER" +
+          "\x1b[16;1HSTATIC FOOTER" +
+          "\x1b[?2026h\x1b[8;1Hdynamic: 41",
+      );
+      const snapshot = terminal.snapshot();
+      expect(snapshot.modes.synchronizedOutputMode).toBe(true);
+
+      await restored.write(snapshot.data);
+      await restored.write("\x1b[8;1Hdynamic: 42\x1b[?2026l");
+      const completed = restored.snapshot();
+      expect(completed.modes.synchronizedOutputMode).toBe(false);
+      expect(completed.data).toContain("STATIC HEADER");
+      expect(completed.data).toContain("STATIC FOOTER");
+      expect(completed.data).toContain("dynamic: 42");
+    } finally {
+      terminal.dispose();
+      restored.dispose();
+    }
+  });
+
   it("bounds serialized normal-buffer scrollback", async () => {
     const terminal = new TerminalCanonicalState(400, 24);
     try {

@@ -6433,6 +6433,8 @@ describe("Cantrip protocol", () => {
         synchronizedOutputMode: false,
         wraparoundMode: true,
       },
+      outputBoundary: 9_001,
+      processGeneration: 3,
       rows: 40,
       scrollbackRows: 250,
       snapshotCharacters: 12_000,
@@ -6448,6 +6450,26 @@ describe("Cantrip protocol", () => {
         hydration,
       }),
     ).toMatchObject({ hydration });
+    expect(
+      terminalHydrationMetadataSchema.parse({
+        cols: 80,
+        format: "legacy-raw",
+        generation: 4,
+        outputBoundary: 9_001,
+        processGeneration: 3,
+        recovery: "redraw-failed",
+        recoveryReason: "resize-failed",
+        rows: 24,
+        snapshotCharacters: 2_000_000,
+        snapshotChunks: 62,
+        truncated: true,
+        version: 1,
+      }),
+    ).toMatchObject({
+      recovery: "redraw-failed",
+      recoveryReason: "resize-failed",
+      truncated: true,
+    });
     expect(
       workerEventEnvelopeSchema.parse({
         kind: "event",

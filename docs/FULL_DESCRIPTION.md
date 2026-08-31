@@ -522,6 +522,9 @@ A terminal can optionally be a durable **service terminal**:
   process and prevents automatic restart.
 
 Service configuration is server-owned; process supervision is worker-owned.
+Live navigation, canonical replay, atomic attachment ordering, mixed-version
+fallback, and privacy-safe diagnostics are specified in
+[TERMINALS.md](TERMINALS.md).
 
 ### Explorer and persistent file editor
 

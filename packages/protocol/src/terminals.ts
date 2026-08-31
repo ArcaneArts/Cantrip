@@ -240,6 +240,8 @@ export const terminalClientMessageSchema = z.discriminatedUnion("type", [
 const terminalHydrationDimensionsSchema = z.object({
   cols: z.number().int().min(1).max(1_000),
   rows: z.number().int().min(1).max(1_000),
+  outputBoundary: z.number().int().nonnegative().safe().optional(),
+  processGeneration: z.number().int().positive().safe().optional(),
 });
 
 export const terminalHydrationMetadataSchema = z.discriminatedUnion("format", [
@@ -273,6 +275,10 @@ export const terminalHydrationMetadataSchema = z.discriminatedUnion("format", [
     version: z.literal(1),
     generation: z.number().int().nonnegative().safe(),
     truncated: z.boolean(),
+    recovery: z
+      .enum(["not-needed", "redraw-requested", "redraw-failed"])
+      .optional(),
+    recoveryReason: z.enum(["no-live-process", "resize-failed"]).optional(),
     snapshotCharacters: z.number().int().nonnegative().safe(),
     snapshotChunks: z.number().int().positive().safe(),
   }),

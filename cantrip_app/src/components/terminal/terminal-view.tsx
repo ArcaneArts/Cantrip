@@ -9,7 +9,7 @@ import {
   terminalInputContentSchema,
   terminalOutputContentSchema,
 } from "@cantrip/protocol/surface-stream";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { getWorkers } from "@/lib/api";
@@ -27,7 +27,10 @@ import {
 } from "@/lib/terminal-worker-link";
 
 import { terminalCommandInput } from "./terminal-command-palette";
-import { TerminalHydrationController } from "./terminal-hydration";
+import {
+  TerminalHydrationController,
+  terminalHydrationRecoveryError,
+} from "./terminal-hydration";
 import {
   createTerminalContentGlitchRenderer,
   type TerminalContentGlitchRenderer,
@@ -119,6 +122,7 @@ export function TerminalView({
     "connecting",
   );
   const [error, setError] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [loadedTerminalId, setLoadedTerminalId] = useState<string | null>(null);
   const [terminalFocused, setTerminalFocused] = useState(false);
   const mobileKeyboard = useMobileTerminalKeyboard(terminalSurfaceRef);
@@ -143,6 +147,7 @@ export function TerminalView({
     }
     setState(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
     setError(null);
+    setRecoveryError(null);
     const connectionStartedAt = performance.now();
     const operationId = crypto.randomUUID();
     clientLogger.info("Terminal surface connection started", {
@@ -210,6 +215,7 @@ export function TerminalView({
     let outputSequence = 0;
     let outputQueue = Promise.resolve();
     const hydration = new TerminalHydrationController();
+    let hydrationStartedAt: number | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleReconnect = () => {
       if (disposed || reconnectTimer) return;
@@ -367,12 +373,55 @@ export function TerminalView({
     const input = xterm.onData(sendInput);
     const handleMessage = (message: TerminalServerMessage): Promise<void> => {
       if (message.type === "ready") {
+        let completedHydration: ReturnType<
+          TerminalHydrationController["assertReady"]
+        >;
         try {
-          hydration.assertReady();
-        } catch {
+          completedHydration = hydration.assertReady();
+        } catch (hydrationError) {
           setError("The terminal snapshot was incomplete.");
+          clientLogger.warn("Terminal snapshot hydration failed", {
+            ...operationalErrorMetadata(hydrationError),
+            event: "surface.terminal.hydration.failed",
+            operation: "hydrate",
+            reasonCode: "incomplete-snapshot",
+            status: "failed",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+          });
           connection?.close("protocol-error");
           return Promise.resolve();
+        }
+        if (completedHydration) {
+          const recoveryWarning =
+            terminalHydrationRecoveryError(completedHydration);
+          const fallbackFailed = recoveryWarning !== null;
+          if (recoveryWarning) setRecoveryError(recoveryWarning);
+          clientLogger.info("Terminal snapshot hydration completed", {
+            durationMs:
+              hydrationStartedAt === null
+                ? undefined
+                : Math.round(performance.now() - hydrationStartedAt),
+            event: "surface.terminal.hydration.completed",
+            operation: "hydrate",
+            status: fallbackFailed ? "degraded" : "completed",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+            snapshot: {
+              characters: completedHydration.snapshotCharacters,
+              chunks: completedHydration.snapshotChunks,
+              format: completedHydration.format,
+              generation: completedHydration.generation,
+              outputBoundary: completedHydration.outputBoundary,
+              processGeneration: completedHydration.processGeneration,
+              recovery:
+                completedHydration.format === "legacy-raw"
+                  ? completedHydration.recovery
+                  : "not-needed",
+              version: completedHydration.version,
+            },
+          });
+          hydrationStartedAt = null;
         }
         // xterm can answer capability queries while parsing scrollback. Keep
         // input closed until every replay write ahead of ready has finished.
@@ -416,7 +465,24 @@ export function TerminalView({
         outputQueue = outputQueue
           .then(async () => {
             if (message.hydration) {
+              hydrationStartedAt = performance.now();
               hydration.begin(message.hydration, xterm);
+              clientLogger.info("Terminal snapshot hydration started", {
+                event: "surface.terminal.hydration.started",
+                operation: "hydrate",
+                status: "started",
+                subsystem: "terminal",
+                surfaceId: terminal.id,
+                snapshot: {
+                  characters: message.hydration.snapshotCharacters,
+                  chunks: message.hydration.snapshotChunks,
+                  format: message.hydration.format,
+                  generation: message.hydration.generation,
+                  outputBoundary: message.hydration.outputBoundary,
+                  processGeneration: message.hydration.processGeneration,
+                  version: message.hydration.version,
+                },
+              });
             }
             const content = await openSurfaceStreamContent({
               context: {
@@ -446,9 +512,18 @@ export function TerminalView({
             }
             hydration.consumedOutput();
           })
-          .catch(() => {
+          .catch((outputError: unknown) => {
             if (!disposed) {
               setError("The protected terminal output could not be opened.");
+              clientLogger.warn("Terminal output or hydration failed", {
+                ...operationalErrorMetadata(outputError),
+                event: "surface.terminal.hydration.failed",
+                operation: "hydrate-output",
+                reasonCode: "invalid-protected-output",
+                status: "failed",
+                subsystem: "terminal",
+                surfaceId: terminal.id,
+              });
               connection?.close("protocol-error");
             }
           });
@@ -721,6 +796,15 @@ export function TerminalView({
               : error
                 ? `${error} Retrying…`
                 : "Reconnecting…"}
+          </div>
+        ) : null}
+        {hasLoaded && recoveryError ? (
+          <div
+            className="absolute inset-x-4 bottom-4 flex items-start gap-2 rounded-md border border-destructive/50 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm"
+            role="alert"
+          >
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <span>{recoveryError}</span>
           </div>
         ) : null}
       </div>

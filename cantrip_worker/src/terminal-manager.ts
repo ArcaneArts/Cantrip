@@ -14,7 +14,7 @@ import {
 import * as pty from "node-pty";
 
 import { codexProviderConfiguration } from "./codex/provider-config.js";
-import { workerLogError, workerLogger } from "./logger.js";
+import { workerLogErrorIdentity, workerLogger } from "./logger.js";
 import type { RuntimeProvider } from "./protected-secrets.js";
 import {
   TerminalCanonicalState,
@@ -24,6 +24,7 @@ import {
 const MAX_SCROLLBACK_CHARS = 2_000_000;
 const MAX_RUNTIME_OUTPUT_CHARS = 32 * 1_024;
 const MAX_HYDRATION_PENDING_CHARS = 2_000_000;
+const RECOVERY_REDRAW_RESTORE_DELAY_MS = 25;
 let spawnHelperChecked = false;
 const require = createRequire(import.meta.url);
 
@@ -85,6 +86,19 @@ interface TerminalSubscriber {
   resnapshotRequired: boolean;
 }
 
+interface TerminalAttachmentSnapshot {
+  outputBoundary: number;
+  processGeneration: number;
+  snapshot: TerminalCanonicalSnapshot;
+}
+
+type TerminalRecoveryRedraw =
+  | { recovery: "not-needed" | "redraw-requested" }
+  | {
+      recovery: "redraw-failed";
+      recoveryReason: "no-live-process" | "resize-failed";
+    };
+
 interface TerminalSession {
   buffer: string;
   bufferTruncated: boolean;
@@ -94,7 +108,13 @@ interface TerminalSession {
   cwd: string;
   exited: Extract<TerminalOpenResult, { status: "exited" }> | null;
   launch: TerminalLaunch;
+  outputBoundary: number;
   process: pty.IPty | null;
+  processGeneration: number;
+  recoveryRedraw: {
+    processGeneration: number;
+    result: Promise<TerminalRecoveryRedraw>;
+  } | null;
   removeAfterExit: boolean;
   restartDelayOverride: number | null;
   restartCount: number;
@@ -218,8 +238,10 @@ function commandLaunch(
 }
 
 export interface TerminalManagerOptions {
+  canonicalStateFactory?(cols: number, rows: number): TerminalCanonicalState;
   environment?: Record<string, string>;
   environmentForCwd?(cwd: string): Record<string, string>;
+  maxScrollbackCharacters?: number;
   observeLifecycle?(observation: TerminalLifecycleObservation): void;
   serviceRestartDelayMs?: number;
 }
@@ -241,19 +263,30 @@ export class TerminalManager {
   readonly #sessions = new Map<string, TerminalSession>();
   readonly #services = new Map<string, TerminalServiceRuntime>();
   readonly #environment: Record<string, string>;
+  readonly #canonicalStateFactory: NonNullable<
+    TerminalManagerOptions["canonicalStateFactory"]
+  >;
   readonly #environmentForCwd: NonNullable<
     TerminalManagerOptions["environmentForCwd"]
   >;
   #observeLifecycle: NonNullable<TerminalManagerOptions["observeLifecycle"]>;
   readonly #serviceRestartDelayMs: number;
+  readonly #maxScrollbackCharacters: number;
   #closing = false;
   #serviceFingerprint = "";
 
   constructor(options: TerminalManagerOptions = {}) {
+    this.#canonicalStateFactory =
+      options.canonicalStateFactory ??
+      ((cols, rows) => new TerminalCanonicalState(cols, rows));
     this.#environment = { ...options.environment };
     this.#environmentForCwd = options.environmentForCwd ?? (() => ({}));
     this.#observeLifecycle = options.observeLifecycle ?? (() => undefined);
     this.#serviceRestartDelayMs = options.serviceRestartDelayMs ?? 5_000;
+    this.#maxScrollbackCharacters = Math.max(
+      1,
+      Math.floor(options.maxScrollbackCharacters ?? MAX_SCROLLBACK_CHARS),
+    );
   }
 
   setLifecycleObserver(
@@ -368,12 +401,15 @@ export class TerminalManager {
         buffer: "",
         bufferTruncated: false,
         canonicalAvailable: true,
-        canonicalState: new TerminalCanonicalState(cols, rows),
+        canonicalState: this.#canonicalStateFactory(cols, rows),
         cols,
         cwd,
         exited: null,
         launch,
+        outputBoundary: 0,
         process: null,
+        processGeneration: 0,
+        recoveryRedraw: null,
         removeAfterExit: false,
         restartDelayOverride: null,
         restartCount: 0,
@@ -492,7 +528,9 @@ export class TerminalManager {
   ): Promise<TerminalCanonicalSnapshot | null> {
     const session = this.#sessions.get(terminalId);
     if (!session) return null;
-    return this.#queueCanonicalSnapshot(terminalId, session);
+    return this.#queueCanonicalSnapshot(terminalId, session).then(
+      (attachment) => attachment?.snapshot ?? null,
+    );
   }
 
   close(terminalId: string): void {
@@ -582,11 +620,12 @@ export class TerminalManager {
     session: TerminalSession,
     data: string,
   ): void {
+    session.outputBoundary += 1;
     const nextBuffer = `${session.buffer}${data}`;
-    if (nextBuffer.length > MAX_SCROLLBACK_CHARS) {
+    if (nextBuffer.length > this.#maxScrollbackCharacters) {
       session.bufferTruncated = true;
     }
-    session.buffer = nextBuffer.slice(-MAX_SCROLLBACK_CHARS);
+    session.buffer = nextBuffer.slice(-this.#maxScrollbackCharacters);
     this.#queueCanonicalMutation(terminalId, session, "write", () =>
       session.canonicalState.write(data),
     );
@@ -660,12 +699,15 @@ export class TerminalManager {
       buffer: "",
       bufferTruncated: false,
       canonicalAvailable: true,
-      canonicalState: new TerminalCanonicalState(80, 24),
+      canonicalState: this.#canonicalStateFactory(80, 24),
       cols: 80,
       cwd: service.cwd,
       exited: null,
       launch: { type: "command" as const, command: service.command },
+      outputBoundary: 0,
       process: null,
+      processGeneration: 0,
+      recoveryRedraw: null,
       removeAfterExit: false,
       restartDelayOverride: null,
       restartCount: 0,
@@ -721,6 +763,8 @@ export class TerminalManager {
 
   #spawn(terminalId: string, session: TerminalSession): void {
     ensureSpawnHelperExecutable();
+    session.processGeneration += 1;
+    session.recoveryRedraw = null;
     const environment = {
       ...terminalEnvironment(this.#environment),
       ...this.#environmentForCwd(session.cwd),
@@ -746,6 +790,7 @@ export class TerminalManager {
       launchType: session.launch.type,
       service: this.#services.has(terminalId),
       attempt: session.restartCount + 1,
+      processGeneration: session.processGeneration,
     });
     const child = pty.spawn(processLaunch.command, processLaunch.args, {
       cols: session.cols,
@@ -767,6 +812,7 @@ export class TerminalManager {
       launchType: session.launch.type,
       service: this.#services.has(terminalId),
       durationMs: Date.now() - startedAtMs,
+      processGeneration: session.processGeneration,
     });
     child.onData((data) => {
       if (session.process !== child) return;
@@ -899,10 +945,34 @@ export class TerminalManager {
   #queueCanonicalSnapshot(
     terminalId: string,
     session: TerminalSession,
-  ): Promise<TerminalCanonicalSnapshot | null> {
+  ): Promise<TerminalAttachmentSnapshot | null> {
+    const startedAtMs = Date.now();
     const snapshot = session.stateQueue.then(() => {
       if (!session.canonicalAvailable) return null;
-      return session.canonicalState.snapshot();
+      const canonical = session.canonicalState.snapshot();
+      const attachment = {
+        outputBoundary: session.outputBoundary,
+        processGeneration: session.processGeneration,
+        snapshot: canonical,
+      } satisfies TerminalAttachmentSnapshot;
+      workerLogger.event("debug", "Terminal canonical snapshot created", {
+        event: "terminal.snapshot.created",
+        subsystem: "terminal",
+        operation: "serialize",
+        status: "completed",
+        terminalId,
+        durationMs: Date.now() - startedAtMs,
+        snapshot: {
+          activeBuffer: canonical.activeBuffer,
+          characters: canonical.data.length,
+          format: "canonical-xterm-v1",
+          generation: canonical.generation,
+          outputBoundary: attachment.outputBoundary,
+          processGeneration: attachment.processGeneration,
+          scrollbackRows: canonical.scrollbackRows,
+        },
+      });
+      return attachment;
     });
     session.stateQueue = snapshot
       .then(() => undefined)
@@ -921,9 +991,26 @@ export class TerminalManager {
   ): Promise<void> {
     const legacyReplay = session.buffer;
     const legacyReplayTruncated = session.bufferTruncated;
+    const legacyOutputBoundary = session.outputBoundary;
+    const legacyProcessGeneration = session.processGeneration;
     const canonicalSnapshot = this.#queueCanonicalSnapshot(terminalId, session);
-    return canonicalSnapshot.then((snapshot) => {
+    return canonicalSnapshot.then(async (attachmentSnapshot) => {
       if (session.subscribers.get(attachmentId) !== subscriber) return;
+      if (
+        !attachmentSnapshot &&
+        legacyProcessGeneration !== session.processGeneration
+      ) {
+        subscriber.pending.length = 0;
+        subscriber.pendingCharacters = 0;
+        subscriber.resnapshotRequired = false;
+        return this.#hydrateSubscriber(
+          terminalId,
+          session,
+          attachmentId,
+          subscriber,
+          attachedAtMs,
+        );
+      }
       if (subscriber.resnapshotRequired) {
         subscriber.pending.length = 0;
         subscriber.pendingCharacters = 0;
@@ -936,7 +1023,55 @@ export class TerminalManager {
           attachedAtMs,
         );
       }
+      const snapshot = attachmentSnapshot?.snapshot ?? null;
       const replayData = snapshot?.data ?? legacyReplay;
+      const recovery = snapshot
+        ? ({ recovery: "not-needed" } as const)
+        : await this.#requestRecoveryRedraw(
+            terminalId,
+            session,
+            legacyReplayTruncated,
+          );
+      if (session.subscribers.get(attachmentId) !== subscriber) return;
+      if (
+        legacyProcessGeneration !== session.processGeneration ||
+        subscriber.resnapshotRequired
+      ) {
+        subscriber.pending.length = 0;
+        subscriber.pendingCharacters = 0;
+        subscriber.resnapshotRequired = false;
+        return this.#hydrateSubscriber(
+          terminalId,
+          session,
+          attachmentId,
+          subscriber,
+          attachedAtMs,
+        );
+      }
+      if (!snapshot) {
+        workerLogger.event(
+          legacyReplayTruncated ? "warn" : "debug",
+          "Terminal legacy replay selected",
+          {
+            event: "terminal.snapshot.legacy-selected",
+            subsystem: "terminal",
+            operation: "hydrate",
+            reasonCode: session.canonicalAvailable
+              ? "canonical-snapshot-unavailable"
+              : "canonical-state-degraded",
+            status: legacyReplayTruncated ? "degraded" : "completed",
+            terminalId,
+            snapshot: {
+              characters: replayData.length,
+              format: "legacy-raw-v1",
+              outputBoundary: legacyOutputBoundary,
+              processGeneration: legacyProcessGeneration,
+              truncated: legacyReplayTruncated,
+            },
+            recovery: recovery.recovery,
+          },
+        );
+      }
       this.#emitHydration(
         subscriber,
         replayData,
@@ -948,6 +1083,8 @@ export class TerminalManager {
               format: "canonical-xterm",
               generation: snapshot.generation,
               modes: snapshot.modes,
+              outputBoundary: attachmentSnapshot!.outputBoundary,
+              processGeneration: attachmentSnapshot!.processGeneration,
               rows: snapshot.rows,
               scrollbackRows: snapshot.scrollbackRows,
               version: 1,
@@ -956,6 +1093,9 @@ export class TerminalManager {
               cols: session.cols,
               format: "legacy-raw",
               generation: session.canonicalState.generation,
+              outputBoundary: legacyOutputBoundary,
+              processGeneration: legacyProcessGeneration,
+              ...recovery,
               rows: session.rows,
               truncated: legacyReplayTruncated,
               version: 1,
@@ -984,6 +1124,11 @@ export class TerminalManager {
           characters: replayData.length,
           format: snapshot ? "canonical-xterm-v1" : "legacy-raw-v1",
           generation: snapshot?.generation ?? session.canonicalState.generation,
+          outputBoundary:
+            attachmentSnapshot?.outputBoundary ?? legacyOutputBoundary,
+          processGeneration:
+            attachmentSnapshot?.processGeneration ?? legacyProcessGeneration,
+          recovery: recovery.recovery,
           truncated: snapshot ? false : legacyReplayTruncated,
         },
         counts: {
@@ -992,6 +1137,129 @@ export class TerminalManager {
         },
       });
     });
+  }
+
+  #requestRecoveryRedraw(
+    terminalId: string,
+    session: TerminalSession,
+    truncated: boolean,
+  ): Promise<TerminalRecoveryRedraw> {
+    if (!truncated) return Promise.resolve({ recovery: "not-needed" });
+    if (
+      session.recoveryRedraw?.processGeneration === session.processGeneration
+    ) {
+      return session.recoveryRedraw.result;
+    }
+    const processGeneration = session.processGeneration;
+    const result = this.#performRecoveryRedraw(
+      terminalId,
+      session,
+      processGeneration,
+    );
+    session.recoveryRedraw = { processGeneration, result };
+    return result;
+  }
+
+  async #performRecoveryRedraw(
+    terminalId: string,
+    session: TerminalSession,
+    processGeneration: number,
+  ): Promise<TerminalRecoveryRedraw> {
+    const process = session.process;
+    if (!process) {
+      return {
+        recovery: "redraw-failed",
+        recoveryReason: "no-live-process",
+      };
+    }
+    const recoveryCols = session.cols === 1 ? 2 : session.cols - 1;
+    try {
+      process.resize(recoveryCols, session.rows);
+      workerLogger.event("info", "Terminal recovery redraw requested", {
+        event: "terminal.recovery-redraw.requested",
+        subsystem: "terminal",
+        operation: "recovery-redraw",
+        reasonCode: "truncated-legacy-replay",
+        status: "started",
+        terminalId,
+        processGeneration,
+        dimensions: {
+          temporary: { cols: recoveryCols, rows: session.rows },
+          restore: { cols: session.cols, rows: session.rows },
+        },
+      });
+    } catch (error) {
+      workerLogger.rateLimited(
+        `terminal-recovery-redraw:${terminalId}`,
+        "warn",
+        "Terminal recovery redraw request failed",
+        {
+          ...workerLogErrorIdentity(error),
+          event: "terminal.recovery-redraw.failed",
+          subsystem: "terminal",
+          operation: "recovery-redraw",
+          reasonCode: "resize-failed",
+          status: "failed",
+          terminalId,
+          processGeneration,
+          phase: "request",
+        },
+        { summaryEvery: 5, windowMs: 30_000 },
+      );
+      return {
+        recovery: "redraw-failed",
+        recoveryReason: "resize-failed",
+      };
+    }
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, RECOVERY_REDRAW_RESTORE_DELAY_MS);
+      timer.unref();
+    });
+    if (
+      session.process !== process ||
+      session.exited ||
+      session.processGeneration !== processGeneration
+    ) {
+      return {
+        recovery: "redraw-failed",
+        recoveryReason: "no-live-process",
+      };
+    }
+    try {
+      process.resize(session.cols, session.rows);
+      workerLogger.event("info", "Terminal recovery dimensions restored", {
+        event: "terminal.recovery-redraw.restored",
+        subsystem: "terminal",
+        operation: "recovery-redraw",
+        status: "completed",
+        terminalId,
+        processGeneration,
+        dimensions: { cols: session.cols, rows: session.rows },
+      });
+      return { recovery: "redraw-requested" };
+    } catch (error) {
+      workerLogger.rateLimited(
+        `terminal-recovery-restore:${terminalId}`,
+        "warn",
+        "Terminal recovery dimensions could not be restored",
+        {
+          ...workerLogErrorIdentity(error),
+          event: "terminal.recovery-redraw.failed",
+          subsystem: "terminal",
+          operation: "recovery-redraw",
+          reasonCode: "resize-failed",
+          status: "failed",
+          terminalId,
+          processGeneration,
+          phase: "restore",
+        },
+        { summaryEvery: 5, windowMs: 30_000 },
+      );
+      return {
+        recovery: "redraw-failed",
+        recoveryReason: "resize-failed",
+      };
+    }
   }
 
   #emitHydration(
@@ -1040,7 +1308,7 @@ export class TerminalManager {
       "warn",
       "Terminal canonical state update failed",
       {
-        ...workerLogError(error),
+        ...workerLogErrorIdentity(error),
         event: "terminal.canonical-state.failed",
         subsystem: "terminal",
         operation,
