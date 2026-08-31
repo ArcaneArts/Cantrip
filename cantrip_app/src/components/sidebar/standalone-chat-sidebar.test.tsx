@@ -126,6 +126,31 @@ describe("standalone Chat sidebar", () => {
     expect(markup).not.toContain("Terminal");
   });
 
+  it("can hide the large mode switch for the desktop titlebar menu", () => {
+    const markup = renderToStaticMarkup(
+      <StandaloneChatSidebar
+        archivedCount={0}
+        archivedSelected={false}
+        chats={[]}
+        creating={false}
+        selectedChatId={null}
+        showModeSwitch={false}
+        workers={[]}
+        onArchive={() => undefined}
+        onFork={() => undefined}
+        onNewChat={() => undefined}
+        onOpenArchived={() => undefined}
+        onOpenSettings={() => undefined}
+        onRename={() => undefined}
+        onSelect={() => undefined}
+        onSwitchIde={() => undefined}
+      />,
+    );
+
+    expect(markup).not.toContain(" IDE</button>");
+    expect(markup).toContain('aria-label="New chat"');
+  });
+
   it("renders Archived as selected navigation without a dialog", () => {
     const markup = renderToStaticMarkup(
       <StandaloneChatSidebar

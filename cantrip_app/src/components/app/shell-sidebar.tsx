@@ -1,4 +1,8 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
+  Check,
+  ChevronDown,
+  Code2,
   MessageSquare,
   PanelLeftClose,
   Settings,
@@ -13,10 +17,72 @@ import { ProjectSwitcher } from "@/components/projects/project-switcher";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { Button } from "@/components/ui/button";
+import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "@/lib/sidebar-resize";
 import { cn } from "@/lib/utils";
 type ShellSidebarBindings = Readonly<Record<string, any>>;
+
+export function DesktopAppModeMenu({
+  appMode,
+  onSwitchChat,
+  onSwitchIde,
+  overlayTitlebar,
+}: {
+  appMode: "chat" | "ide";
+  onSwitchChat(): void;
+  onSwitchIde(): void;
+  overlayTitlebar: boolean;
+}) {
+  const label = appMode === "ide" ? "Cantrip IDE" : "Cantrip Chat";
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          aria-label={`${label}. Switch Cantrip mode`}
+          className={cn(
+            "-ml-1 inline-flex max-w-full items-center gap-1 rounded px-1 py-0.5 font-semibold tracking-tight outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+            overlayTitlebar && "text-xs leading-none",
+          )}
+          type="button"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <StyledDropdownMenuContent align="start" className="min-w-44">
+          <StyledDropdownMenuItem
+            aria-current={appMode === "ide" ? "page" : undefined}
+            className="justify-between"
+            onSelect={onSwitchIde}
+          >
+            <span className="flex items-center gap-2">
+              <Code2 className="size-4" />
+              Cantrip IDE
+            </span>
+            {appMode === "ide" ? <Check className="size-3.5" /> : null}
+          </StyledDropdownMenuItem>
+          <StyledDropdownMenuItem
+            aria-current={appMode === "chat" ? "page" : undefined}
+            className="justify-between"
+            onSelect={onSwitchChat}
+          >
+            <span className="flex items-center gap-2">
+              <MessageSquare className="size-4" />
+              Cantrip Chat
+            </span>
+            {appMode === "chat" ? <Check className="size-3.5" /> : null}
+          </StyledDropdownMenuItem>
+        </StyledDropdownMenuContent>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
 
 export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
   const {
@@ -208,15 +274,24 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                 className="min-w-0 flex-1"
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
               >
-                <p
-                  className={cn(
-                    "font-semibold tracking-tight",
-                    overlayTitlebar && "text-xs leading-none",
-                  )}
-                  data-tauri-drag-region={overlayTitlebar ? "" : undefined}
-                >
-                  Cantrip
-                </p>
+                {desktopSidebarDrawer ? (
+                  <p
+                    className={cn(
+                      "font-semibold tracking-tight",
+                      overlayTitlebar && "text-xs leading-none",
+                    )}
+                    data-tauri-drag-region={overlayTitlebar ? "" : undefined}
+                  >
+                    Cantrip
+                  </p>
+                ) : (
+                  <DesktopAppModeMenu
+                    appMode={appMode}
+                    onSwitchChat={switchToChat}
+                    onSwitchIde={switchToIde}
+                    overlayTitlebar={overlayTitlebar}
+                  />
+                )}
               </div>
               {!overlayTitlebar ? (
                 <StatusDot online={Boolean(onlineWorker)} />
@@ -286,19 +361,22 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   renameStandaloneChat.mutate({ chatId: chat.id, title })
                 }
                 onSelect={selectStandaloneChat}
+                showModeSwitch={desktopSidebarDrawer}
                 onSwitchIde={switchToIde}
               />
             ) : (
               <>
-                <div className="px-3 pb-0 pt-4">
-                  <Button
-                    className="w-full justify-start"
-                    variant="ghost"
-                    onClick={switchToChat}
-                  >
-                    <MessageSquare className="size-4" /> Chats
-                  </Button>
-                </div>
+                {desktopSidebarDrawer ? (
+                  <div className="px-3 pb-0 pt-4">
+                    <Button
+                      className="w-full justify-start"
+                      variant="ghost"
+                      onClick={switchToChat}
+                    >
+                      <MessageSquare className="size-4" /> Chats
+                    </Button>
+                  </div>
+                ) : null}
                 <div className="px-3 pb-2 pt-2">
                   <ProjectSwitcher
                     activeWorkspaceId={activeProjectWorkspace?.id ?? null}
