@@ -274,10 +274,11 @@ export class TerminalDirectEndpointManager {
                   direction: "output",
                   sequence,
                 },
-                content: event,
+                content: { type: "terminal.output", data: event.data },
                 schema: terminalOutputContentSchema,
                 service: encryption,
               }),
+              ...(event.hydration ? { hydration: event.hydration } : {}),
             });
           });
         }

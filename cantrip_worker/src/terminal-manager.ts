@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   terminalOpenResultSchema,
   terminalSnapshotResultSchema,
+  type TerminalHydrationMetadata,
   type TerminalOpenResult,
   type TerminalSnapshotResult,
   type WorkerCommand,
@@ -21,8 +22,29 @@ import {
 } from "./terminal-canonical-state.js";
 
 const MAX_SCROLLBACK_CHARS = 2_000_000;
+const MAX_RUNTIME_OUTPUT_CHARS = 32 * 1_024;
+const MAX_HYDRATION_PENDING_CHARS = 2_000_000;
 let spawnHelperChecked = false;
 const require = createRequire(import.meta.url);
+
+function runtimeOutputChunks(data: string): string[] {
+  if (data.length === 0) return [""];
+  const chunks: string[] = [];
+  for (let offset = 0; offset < data.length;) {
+    let end = Math.min(data.length, offset + MAX_RUNTIME_OUTPUT_CHARS);
+    if (
+      end < data.length &&
+      end > offset &&
+      /[\uD800-\uDBFF]/u.test(data[end - 1]!) &&
+      /[\uDC00-\uDFFF]/u.test(data[end]!)
+    ) {
+      end -= 1;
+    }
+    chunks.push(data.slice(offset, end));
+    offset = end;
+  }
+  return chunks;
+}
 
 export function ensureSpawnHelperExecutable(): void {
   if (spawnHelperChecked || process.platform === "win32") return;
@@ -48,7 +70,20 @@ export function ensureSpawnHelperExecutable(): void {
 }
 
 export type TerminalRuntimeEvent =
-  { type: "terminal.ready" } | { type: "terminal.output"; data: string };
+  | { type: "terminal.ready" }
+  | {
+      type: "terminal.output";
+      data: string;
+      hydration?: TerminalHydrationMetadata;
+    };
+
+interface TerminalSubscriber {
+  emit(event: TerminalRuntimeEvent): void;
+  hydrating: boolean;
+  pending: string[];
+  pendingCharacters: number;
+  resnapshotRequired: boolean;
+}
 
 interface TerminalSession {
   buffer: string;
@@ -67,7 +102,7 @@ interface TerminalSession {
   rows: number;
   startedAtMs: number | null;
   stateQueue: Promise<void>;
-  subscribers: Map<string, (event: TerminalRuntimeEvent) => void>;
+  subscribers: Map<string, TerminalSubscriber>;
   waiters: Map<string, (result: TerminalOpenResult) => void>;
 }
 
@@ -363,6 +398,11 @@ export class TerminalManager {
     const session = this.#sessions.get(terminalId);
     const result = terminalOpenResultSchema.parse({ status: "detached" });
     if (!session) return result;
+    const subscriber = session.subscribers.get(attachmentId);
+    if (subscriber) {
+      subscriber.pending.length = 0;
+      subscriber.pendingCharacters = 0;
+    }
     session.subscribers.delete(attachmentId);
     session.waiters.get(attachmentId)?.(result);
     session.waiters.delete(attachmentId);
@@ -452,14 +492,7 @@ export class TerminalManager {
   ): Promise<TerminalCanonicalSnapshot | null> {
     const session = this.#sessions.get(terminalId);
     if (!session) return null;
-    await session.stateQueue;
-    if (!session.canonicalAvailable) return null;
-    try {
-      return session.canonicalState.snapshot();
-    } catch (error) {
-      this.#recordCanonicalFailure(terminalId, session, "serialize", error);
-      return null;
-    }
+    return this.#queueCanonicalSnapshot(terminalId, session);
   }
 
   close(terminalId: string): void {
@@ -522,27 +555,26 @@ export class TerminalManager {
     attachmentId: string,
     emit: (event: TerminalRuntimeEvent) => void,
   ): Promise<TerminalOpenResult> {
-    session.subscribers.set(attachmentId, emit);
-    workerLogger.event("debug", "Terminal client attached", {
-      event: "terminal.client.attached",
-      subsystem: "terminal",
-      operation: "attach",
-      status: "completed",
+    const attachedAtMs = Date.now();
+    const subscriber: TerminalSubscriber = {
+      emit,
+      hydrating: true,
+      pending: [],
+      pendingCharacters: 0,
+      resnapshotRequired: false,
+    };
+    session.subscribers.set(attachmentId, subscriber);
+    const opened = new Promise<TerminalOpenResult>((resolve) =>
+      session.waiters.set(attachmentId, resolve),
+    );
+    void this.#hydrateSubscriber(
       terminalId,
+      session,
       attachmentId,
-      dimensions: { cols: session.cols, rows: session.rows },
-      replay: {
-        characters: session.buffer.length,
-        format: "legacy-raw-v1",
-        truncated: session.bufferTruncated,
-      },
-      counts: { clients: session.subscribers.size },
-    });
-    // Replayed control sequences can make terminal emulators emit replies, so
-    // keep the input-ready marker behind the historical output.
-    if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
-    emit({ type: "terminal.ready" });
-    return new Promise((resolve) => session.waiters.set(attachmentId, resolve));
+      subscriber,
+      attachedAtMs,
+    );
+    return opened;
   }
 
   #appendOutput(
@@ -559,7 +591,17 @@ export class TerminalManager {
       session.canonicalState.write(data),
     );
     for (const subscriber of session.subscribers.values()) {
-      subscriber({ type: "terminal.output", data });
+      if (!subscriber.hydrating) {
+        this.#emitOutput(subscriber, data);
+        continue;
+      }
+      subscriber.pending.push(data);
+      subscriber.pendingCharacters += data.length;
+      if (subscriber.pendingCharacters > MAX_HYDRATION_PENDING_CHARS) {
+        subscriber.pending.length = 0;
+        subscriber.pendingCharacters = 0;
+        subscriber.resnapshotRequired = true;
+      }
     }
   }
 
@@ -852,6 +894,138 @@ export class TerminalManager {
       .catch((error: unknown) =>
         this.#recordCanonicalFailure(terminalId, session, operation, error),
       );
+  }
+
+  #queueCanonicalSnapshot(
+    terminalId: string,
+    session: TerminalSession,
+  ): Promise<TerminalCanonicalSnapshot | null> {
+    const snapshot = session.stateQueue.then(() => {
+      if (!session.canonicalAvailable) return null;
+      return session.canonicalState.snapshot();
+    });
+    session.stateQueue = snapshot
+      .then(() => undefined)
+      .catch((error: unknown) =>
+        this.#recordCanonicalFailure(terminalId, session, "serialize", error),
+      );
+    return snapshot.catch(() => null);
+  }
+
+  #hydrateSubscriber(
+    terminalId: string,
+    session: TerminalSession,
+    attachmentId: string,
+    subscriber: TerminalSubscriber,
+    attachedAtMs: number,
+  ): Promise<void> {
+    const legacyReplay = session.buffer;
+    const legacyReplayTruncated = session.bufferTruncated;
+    const canonicalSnapshot = this.#queueCanonicalSnapshot(terminalId, session);
+    return canonicalSnapshot.then((snapshot) => {
+      if (session.subscribers.get(attachmentId) !== subscriber) return;
+      if (subscriber.resnapshotRequired) {
+        subscriber.pending.length = 0;
+        subscriber.pendingCharacters = 0;
+        subscriber.resnapshotRequired = false;
+        return this.#hydrateSubscriber(
+          terminalId,
+          session,
+          attachmentId,
+          subscriber,
+          attachedAtMs,
+        );
+      }
+      const replayData = snapshot?.data ?? legacyReplay;
+      this.#emitHydration(
+        subscriber,
+        replayData,
+        snapshot
+          ? {
+              activeBuffer: snapshot.activeBuffer,
+              cols: snapshot.cols,
+              cursor: snapshot.cursor,
+              format: "canonical-xterm",
+              generation: snapshot.generation,
+              modes: snapshot.modes,
+              rows: snapshot.rows,
+              scrollbackRows: snapshot.scrollbackRows,
+              version: 1,
+            }
+          : {
+              cols: session.cols,
+              format: "legacy-raw",
+              generation: session.canonicalState.generation,
+              rows: session.rows,
+              truncated: legacyReplayTruncated,
+              version: 1,
+            },
+      );
+      const queuedDeltas = subscriber.pending.length;
+      for (const data of subscriber.pending) {
+        this.#emitOutput(subscriber, data);
+      }
+      subscriber.pending.length = 0;
+      subscriber.pendingCharacters = 0;
+      subscriber.hydrating = false;
+      // Replayed control sequences can make terminal emulators emit replies,
+      // so keep the input-ready marker behind hydration and queued deltas.
+      subscriber.emit({ type: "terminal.ready" });
+      workerLogger.event("debug", "Terminal client attached", {
+        event: "terminal.client.attached",
+        subsystem: "terminal",
+        operation: "attach",
+        status: "completed",
+        terminalId,
+        attachmentId,
+        durationMs: Date.now() - attachedAtMs,
+        dimensions: { cols: session.cols, rows: session.rows },
+        replay: {
+          characters: replayData.length,
+          format: snapshot ? "canonical-xterm-v1" : "legacy-raw-v1",
+          generation: snapshot?.generation ?? session.canonicalState.generation,
+          truncated: snapshot ? false : legacyReplayTruncated,
+        },
+        counts: {
+          clients: session.subscribers.size,
+          queuedDeltas,
+        },
+      });
+    });
+  }
+
+  #emitHydration(
+    subscriber: TerminalSubscriber,
+    data: string,
+    metadata:
+      | Omit<
+          Extract<TerminalHydrationMetadata, { format: "canonical-xterm" }>,
+          "snapshotCharacters" | "snapshotChunks"
+        >
+      | Omit<
+          Extract<TerminalHydrationMetadata, { format: "legacy-raw" }>,
+          "snapshotCharacters" | "snapshotChunks"
+        >,
+  ): void {
+    const chunks = runtimeOutputChunks(data);
+    const hydration = {
+      ...metadata,
+      snapshotCharacters: data.length,
+      snapshotChunks: chunks.length,
+    } as TerminalHydrationMetadata;
+    for (const [index, chunk] of chunks.entries()) {
+      subscriber.emit({
+        type: "terminal.output",
+        data: chunk,
+        ...(index === 0 ? { hydration } : {}),
+      });
+    }
+  }
+
+  #emitOutput(subscriber: TerminalSubscriber, data: string): void {
+    for (const chunk of runtimeOutputChunks(data)) {
+      subscriber.emit({ type: "terminal.output", data: chunk });
+    }
   }
 
   #recordCanonicalFailure(

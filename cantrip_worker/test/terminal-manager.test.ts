@@ -55,18 +55,48 @@ describe("TerminalManager", () => {
     manager.detach("terminal-replay", "attachment-initial");
     await expect(initialAttachment).resolves.toEqual({ status: "detached" });
 
-    const replayEvents: Array<{ type: string; data?: string }> = [];
+    const replayEvents: Array<{
+      type: string;
+      data?: string;
+      hydration?: { format: string; version: number };
+    }> = [];
     const reattached = manager.attachExisting(
       "terminal-replay",
       "attachment-replay",
       (event) => replayEvents.push(event),
     );
+    manager.input(
+      "terminal-replay",
+      process.platform === "win32"
+        ? "-join (67,65,78,84,82,73,80,95,65,84,79,77,73,67,95,68,69,76,84,65 | ForEach-Object {[char]$_})\r"
+        : "printf '\\103\\101\\116\\124\\122\\111\\120\\137\\101\\124\\117\\115\\111\\103\\137\\104\\105\\114\\124\\101\\n'\r",
+    );
 
+    await expect
+      .poll(
+        () => replayEvents.some((event) => event.type === "terminal.ready"),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
     expect(replayEvents[0]).toMatchObject({
       type: "terminal.output",
       data: expect.stringContaining("CANTRIP_REPLAY_MARKER"),
+      hydration: { format: "canonical-xterm", version: 1 },
     });
-    expect(replayEvents[1]).toEqual({ type: "terminal.ready" });
+    expect(
+      replayEvents.findIndex((event) => event.type === "terminal.ready"),
+    ).toBeGreaterThan(0);
+    await expect
+      .poll(() => replayEvents.map((event) => event.data ?? "").join(""), {
+        timeout: 5_000,
+      })
+      .toContain("CANTRIP_ATOMIC_DELTA");
+    expect(
+      replayEvents
+        .map((event) => event.data ?? "")
+        .join("")
+        .match(/CANTRIP_ATOMIC_DELTA/gu),
+    ).toHaveLength(1);
     manager.detach("terminal-replay", "attachment-replay");
     await expect(reattached).resolves.toEqual({ status: "detached" });
     manager.close("terminal-replay");
@@ -147,7 +177,10 @@ describe("TerminalManager", () => {
       },
     );
 
-    expect(events[0]).toBe("terminal.ready");
+    await expect
+      .poll(() => events.includes("terminal.ready"), { timeout: 5_000 })
+      .toBe(true);
+    expect(events.slice(0, 2)).toEqual(["terminal.output", "terminal.ready"]);
     manager.input(
       "terminal-1",
       process.platform === "win32"

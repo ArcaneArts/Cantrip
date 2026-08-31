@@ -1,6 +1,7 @@
 import type {
   InstalledWorkerLinkGrant,
   SurfaceStreamOpaque,
+  TerminalHydrationMetadata,
   TerminalOpenResult,
   WorkerLinkSession,
 } from "@cantrip/protocol";
@@ -22,6 +23,17 @@ const opaque: SurfaceStreamOpaque = {
     nonce: "AAAAAAAAAAAAAAAA",
     ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
   },
+};
+
+const hydration: TerminalHydrationMetadata = {
+  cols: 80,
+  format: "legacy-raw",
+  generation: 2,
+  rows: 24,
+  snapshotCharacters: 17,
+  snapshotChunks: 1,
+  truncated: false,
+  version: 1,
 };
 
 function authority(): {
@@ -94,6 +106,7 @@ describe("TerminalWorkerLinkAdapter", () => {
             | {
                 type: "terminal.output";
                 data: string;
+                hydration?: TerminalHydrationMetadata;
               },
         ) => void)
       | null = null;
@@ -156,7 +169,11 @@ describe("TerminalWorkerLinkAdapter", () => {
       expect.any(Function),
     );
 
-    runtimeEmit!({ type: "terminal.output", data: "historical output" });
+    runtimeEmit!({
+      type: "terminal.output",
+      data: "historical output",
+      hydration,
+    });
     runtimeEmit!({ type: "terminal.ready" });
     await vi.waitFor(() => expect(emit.data).toHaveBeenCalled());
     expect(sent).toHaveLength(0);
@@ -164,9 +181,11 @@ describe("TerminalWorkerLinkAdapter", () => {
     writable = true;
     channel.credit?.(1024);
     await vi.waitFor(() => expect(sent).toHaveLength(2));
-    expect(
-      sent.map((payload) => JSON.parse(new TextDecoder().decode(payload)).type),
-    ).toEqual(["output", "ready"]);
+    const decoded = sent.map((payload) =>
+      JSON.parse(new TextDecoder().decode(payload)),
+    );
+    expect(decoded.map((message) => message.type)).toEqual(["output", "ready"]);
+    expect(decoded[0]).toMatchObject({ hydration });
 
     opened.resolve({ status: "exited", exitCode: 0, signal: null });
     await vi.waitFor(() => expect(sent).toHaveLength(3));

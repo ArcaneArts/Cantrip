@@ -201,7 +201,7 @@ class TerminalWorkerLinkChannel {
       return;
     }
     this.#pendingPlaintextCharacters += characters;
-    for (const data of chunks) {
+    for (const [chunkIndex, data] of chunks.entries()) {
       const sequence = this.#outputSequence;
       this.#outputSequence += 1;
       this.#outputTail = this.#outputTail
@@ -221,6 +221,9 @@ class TerminalWorkerLinkChannel {
             operationId: this.options.operationId,
             sequence,
             protectedData,
+            ...(chunkIndex === 0 && event.hydration
+              ? { hydration: event.hydration }
+              : {}),
           });
         })
         .catch(() => this.#fail("io-error", "protocol-error"));
