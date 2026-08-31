@@ -238,6 +238,71 @@ export const accountResourceUsageHistorySchema = z.discriminatedUnion(
   ],
 );
 
+export const accountLiveTrafficCursorSchema = z
+  .string()
+  .regex(/^\d+:\d+$/u, "Expected a live traffic cursor.");
+
+export const accountLiveTrafficQuerySchema = z
+  .object({
+    after: accountLiveTrafficCursorSchema.optional(),
+    epoch: z.uuid().optional(),
+  })
+  .strict()
+  .superRefine((query, context) => {
+    if (Boolean(query.after) !== Boolean(query.epoch)) {
+      context.addIssue({
+        code: "custom",
+        message: "Live traffic epoch and cursor must be provided together.",
+        path: query.after ? ["epoch"] : ["after"],
+      });
+    }
+  });
+
+const accountLiveTrafficCounterSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(Number.MAX_SAFE_INTEGER);
+
+export const accountLiveTrafficSampleSchema = z
+  .object({
+    timestamp: z.iso.datetime(),
+    uploadBytes: accountLiveTrafficCounterSchema,
+    downloadBytes: accountLiveTrafficCounterSchema,
+    httpRequests: accountLiveTrafficCounterSchema,
+    websocketMessages: z
+      .object({
+        upload: accountLiveTrafficCounterSchema,
+        download: accountLiveTrafficCounterSchema,
+        total: accountLiveTrafficCounterSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+export const accountLiveTrafficSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    epoch: z.uuid(),
+    cursor: accountLiveTrafficCursorSchema,
+    instanceId: z.string().trim().min(1).max(100),
+    scope: z.literal("current-server-instance"),
+    sampleIntervalSeconds: z.literal(1),
+    windowSeconds: z.literal(300),
+    generatedAt: z.iso.datetime(),
+    reset: z.boolean(),
+    current: accountLiveTrafficSampleSchema,
+    samples: z.array(accountLiveTrafficSampleSchema).max(300),
+    measurement: z
+      .object({
+        basis: z.literal("application-payload"),
+        directTrafficIncluded: z.literal(false),
+        transportOverheadIncluded: z.literal(false),
+      })
+      .strict(),
+  })
+  .strict();
+
 export type AccountBandwidthChannel = z.infer<
   typeof accountBandwidthChannelSchema
 >;
@@ -250,4 +315,11 @@ export type AccountResourceUsageHistory = z.infer<
 >;
 export type AccountResourceUsageHistoryQuery = z.infer<
   typeof accountResourceUsageHistoryQuerySchema
+>;
+export type AccountLiveTraffic = z.infer<typeof accountLiveTrafficSchema>;
+export type AccountLiveTrafficQuery = z.infer<
+  typeof accountLiveTrafficQuerySchema
+>;
+export type AccountLiveTrafficSample = z.infer<
+  typeof accountLiveTrafficSampleSchema
 >;

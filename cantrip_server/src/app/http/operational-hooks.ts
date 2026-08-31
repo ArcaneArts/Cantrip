@@ -7,9 +7,11 @@ import {
   legacyFeatureTransportEndpoint,
 } from "../../operations/legacy-feature-transports.js";
 import { OperationalMetrics } from "../../operations/metrics.js";
+import type { LiveTrafficMeter } from "../../account-usage/live-traffic-meter.js";
 
 export function installOperationalHooks(
   app: FastifyInstance,
+  liveTrafficMeter: Pick<LiveTrafficMeter, "recordHttpRequest">,
 ): OperationalMetrics {
   const operationalMetrics = new OperationalMetrics();
   const requestMetrics = new WeakMap<
@@ -55,6 +57,14 @@ export function installOperationalHooks(
         reply.statusCode,
         metric.startedAt,
       );
+      if (
+        request.method !== "OPTIONS" &&
+        request.headers.upgrade?.toLowerCase() !== "websocket" &&
+        request.principal?.state === "authenticated"
+      ) {
+        const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+        liveTrafficMeter.recordHttpRequest(request.principal.user.id, route);
+      }
       requestMetrics.delete(request);
     }
     done();

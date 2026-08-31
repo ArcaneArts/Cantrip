@@ -61,6 +61,7 @@ export interface AccountUsageMeterOptions {
   meterId?: string;
   now?: () => Date;
   onFlushed?(ownerIds: string[]): void;
+  onMeasurement?(measurement: AccountUsageMeasurement): void;
 }
 
 export interface AccountUsageMeterStats {
@@ -122,6 +123,7 @@ export class AccountUsageMeter implements AccountUsageRecorder {
   readonly #meterId: string;
   readonly #now: () => Date;
   readonly #onFlushed?: AccountUsageMeterOptions["onFlushed"];
+  readonly #onMeasurement?: AccountUsageMeterOptions["onMeasurement"];
   readonly #timer: ReturnType<typeof setInterval>;
   #bufferedBytes = 0n;
   #closed = false;
@@ -151,6 +153,7 @@ export class AccountUsageMeter implements AccountUsageRecorder {
     this.#meterId = options.meterId ?? randomUUID();
     this.#now = options.now ?? (() => new Date());
     this.#onFlushed = options.onFlushed;
+    this.#onMeasurement = options.onMeasurement;
     if (
       !Number.isSafeInteger(this.#flushIntervalMs) ||
       this.#flushIntervalMs < 1 ||
@@ -183,6 +186,30 @@ export class AccountUsageMeter implements AccountUsageRecorder {
       return false;
     }
     if (bytes === 0n && operationCount === 0n) return true;
+
+    try {
+      this.#onMeasurement?.({
+        ownerId,
+        bytes,
+        operationCount,
+        channel: measurement.channel,
+        direction: measurement.direction,
+        notifyChange: measurement.notifyChange,
+      });
+    } catch {
+      this.logger.rateLimited(
+        "account-usage-meter-observer-failed",
+        "warn",
+        "Account bandwidth observer rejected a measurement",
+        {
+          event: "account-usage.observer.failed",
+          subsystem: "account-usage",
+          operation: "observe-bandwidth",
+          reasonCode: "observer-failed",
+          status: "degraded",
+        },
+      );
+    }
 
     const bucketStart = utcHour(now);
     const key = entryKey(

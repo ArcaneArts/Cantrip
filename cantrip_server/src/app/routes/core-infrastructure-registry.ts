@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 import { createAuthRouteSupport } from "../http/auth-route-support.js";
 import type { RequestLimits } from "../http/request-limits.js";
+import { installAccountLiveTrafficRoute } from "./account-live-traffic.js";
 import { installAccountSecurityRoutes } from "./account-security.js";
 import { installApiMetadataRoute } from "./api-meta-and-removed-routes.js";
 import { installAuthSessionRoutes } from "./auth-sessions.js";
@@ -35,6 +36,7 @@ type AccountSecurityRouteDependencies = Parameters<
 export type CoreInfrastructureRouteDependencies = Parameters<
   typeof installInternalWorkerCodeSettingsRoutes
 >[1] &
+  Parameters<typeof installAccountLiveTrafficRoute>[1] &
   Parameters<typeof installInternalProviderCredentialRoutes>[1] &
   Omit<
     AuthSessionRouteDependencies,
@@ -78,6 +80,8 @@ export function installCoreInfrastructureRoutes(
   installAuthSessionRoutes(app, { ...dependencies, ...authSupport });
 
   installAccountSecurityRoutes(app, { ...dependencies, ...authSupport });
+
+  installAccountLiveTrafficRoute(app, dependencies);
 
   installSystemStatusRoutes(app, dependencies);
 
