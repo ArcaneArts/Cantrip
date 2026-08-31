@@ -1,4 +1,8 @@
-import type { ProjectShareAttachment, ProjectSummary } from "@cantrip/protocol";
+import type {
+  ProjectShareAttachment,
+  ProjectSummary,
+  ProjectWorktreeSummary,
+} from "@cantrip/protocol";
 
 import {
   createProjectNetworkShare,
@@ -19,6 +23,10 @@ export type LocalProjectRevealResult =
   | "source-path-missing"
   | "outside-managed-root"
   | "explorer-launch-failed";
+export type DesktopProjectRevealTarget = Pick<
+  ProjectWorktreeSummary,
+  "id" | "isPrimary" | "path" | "workerId"
+>;
 
 const localProjectRevealErrors: Record<
   Exclude<LocalProjectRevealResult, "opened">,
@@ -101,17 +109,21 @@ export function nativeLocalProjectFolderRequest(
   project: ProjectSummary,
   serverUrl: string,
   relativePath = "",
+  target?: DesktopProjectRevealTarget,
 ) {
   const source = project.source;
   if (!source) return null;
   return {
     folderManagement: project.folderManagement ?? null,
-    path: source.path,
+    path: target?.path ?? source.path,
     placementMode: source.placementMode,
     relativePath,
     serverUrl,
     sourceKind: source.sourceKind,
-    workerId: source.workerId,
+    workerId: target?.workerId ?? source.workerId,
+    ...(target
+      ? { worktreeId: target.id, worktreeIsPrimary: target.isPrimary }
+      : {}),
   };
 }
 
@@ -169,9 +181,10 @@ export async function coordinateDesktopProjectRevealPreference(
 async function revealProjectNetworkShare(
   project: ProjectSummary,
   relativePath: string,
+  target?: DesktopProjectRevealTarget,
 ): Promise<void> {
   return coordinateDesktopProjectReveal(project, {
-    createAttachment: () => createProjectNetworkShare(project),
+    createAttachment: () => createProjectNetworkShare(project, target),
     invokeNative: async (attachment, target) => {
       const { invoke } = await import("@tauri-apps/api/core");
       const forward = await startDesktopTunnel(attachment.attachmentId);
@@ -201,6 +214,7 @@ export async function revealProjectInNativeFileManager(
   project: ProjectSummary,
   localFolder = false,
   relativePath = "",
+  target?: DesktopProjectRevealTarget,
 ): Promise<void> {
   return coordinateDesktopProjectRevealPreference(localFolder, {
     revealLocalFolder: async () => {
@@ -208,6 +222,7 @@ export async function revealProjectInNativeFileManager(
         project,
         getActiveServerUrl(),
         relativePath,
+        target,
       );
       if (!request) return "source-path-missing";
       const { invoke } = await import("@tauri-apps/api/core");
@@ -215,6 +230,7 @@ export async function revealProjectInNativeFileManager(
         request,
       });
     },
-    revealNetworkShare: () => revealProjectNetworkShare(project, relativePath),
+    revealNetworkShare: () =>
+      revealProjectNetworkShare(project, relativePath, target),
   });
 }

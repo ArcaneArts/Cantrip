@@ -36,6 +36,13 @@ const attachment = {
   username: "cantrip",
 };
 
+const worktree = {
+  id: "worktree-1",
+  isPrimary: false,
+  path: "/worker/worktrees/project-1/feature",
+  workerId: "desktop-worker-1",
+};
+
 describe("desktop project reveal", () => {
   it("only offers an operating-system label in desktop macOS and Windows shells", () => {
     expect(desktopProjectRevealLabel(false, "Windows NT 10.0")).toBeNull();
@@ -172,6 +179,27 @@ describe("desktop project reveal", () => {
       serverUrl: "https://cantrip.example",
       sourceKind: "git",
       workerId: "desktop-worker-1",
+    });
+  });
+
+  it("reveals the active worktree instead of the project's primary source", () => {
+    expect(
+      nativeLocalProjectFolderRequest(
+        project,
+        "https://cantrip.example",
+        "src/main.ts",
+        worktree,
+      ),
+    ).toEqual({
+      folderManagement: null,
+      path: "/worker/worktrees/project-1/feature",
+      placementMode: "managed",
+      relativePath: "src/main.ts",
+      serverUrl: "https://cantrip.example",
+      sourceKind: "git",
+      workerId: "desktop-worker-1",
+      worktreeId: "worktree-1",
+      worktreeIsPrimary: false,
     });
   });
 

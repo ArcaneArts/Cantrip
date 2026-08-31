@@ -78,6 +78,7 @@ pub(crate) enum DesktopWorkerProjectStorage {
     ExternalFolder,
     Folders,
     Repositories,
+    Worktrees,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -93,6 +94,7 @@ impl DesktopWorkerProjectStorage {
             Self::ExternalFolder => None,
             Self::Folders => Some("folders"),
             Self::Repositories => Some("repositories"),
+            Self::Worktrees => Some("worktrees"),
         }
     }
 }
@@ -1306,9 +1308,13 @@ mod tests {
         let folder = manager
             .profile_directory(worker_id)
             .join("folders/019fdc2c-e848-7552-b2ea-6fc7ef09e9f3");
+        let worktree = manager
+            .profile_directory(worker_id)
+            .join("worktrees/019fdc2c-e848-7552-b2ea-6fc7ef09e9f4/feature");
         let outside = root.join("outside");
         fs::create_dir_all(&repository).unwrap();
         fs::create_dir_all(&folder).unwrap();
+        fs::create_dir_all(&worktree).unwrap();
         fs::create_dir_all(&outside).unwrap();
 
         assert_eq!(
@@ -1335,6 +1341,19 @@ mod tests {
                 .unwrap(),
             Some(LocalProjectDirectoryResolution::Resolved(
                 fs::canonicalize(&folder).unwrap()
+            ))
+        );
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://cantrip.example",
+                    worker_id,
+                    DesktopWorkerProjectStorage::Worktrees,
+                    &worktree,
+                )
+                .unwrap(),
+            Some(LocalProjectDirectoryResolution::Resolved(
+                fs::canonicalize(&worktree).unwrap()
             ))
         );
         assert_eq!(

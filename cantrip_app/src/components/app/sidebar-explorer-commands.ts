@@ -4,6 +4,7 @@ import type {
   ExplorerSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
+  ProjectWorktreeSummary,
   TabGroupSummary,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
@@ -97,6 +98,7 @@ export function createSidebarExplorerCommands({
   sidebarExplorerCreationInput,
   sidebarExplorerCreationKey,
   tabLayout,
+  worktrees,
 }: {
   abandonSidebarFilePinHandoff: (
     handoff: SidebarFilePinHandoffState,
@@ -143,6 +145,7 @@ export function createSidebarExplorerCommands({
   } | null;
   sidebarExplorerCreationKey: string | null;
   tabLayout: ProjectTabLayoutSummary | undefined;
+  worktrees: ProjectWorktreeSummary[] | undefined;
 }) {
   const {
     setSidebarFilePinHandoff,
@@ -610,10 +613,14 @@ export function createSidebarExplorerCommands({
       (candidate) => candidate.id === explorer.projectId,
     );
     if (!project?.source) return;
+    const worktree = worktrees?.find(
+      (candidate) => candidate.id === explorer.worktreeId,
+    );
     void revealProjectInNativeFileManager(
       project,
       localFolder,
       entry.path,
+      worktree,
     ).catch((error: unknown) => setPopoutError(errorText(error)));
   };
   const openSidebarFolderTerminal = (

@@ -46,6 +46,10 @@ pub struct RevealLocalProjectFolderRequest {
     server_url: String,
     source_kind: LocalProjectSourceKind,
     worker_id: String,
+    #[serde(default)]
+    worktree_id: Option<String>,
+    #[serde(default)]
+    worktree_is_primary: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -110,7 +114,12 @@ fn local_project_storage(
     source_kind: LocalProjectSourceKind,
     folder_management: Option<LocalProjectFolderManagement>,
     placement_mode: LocalProjectPlacementMode,
+    worktree_id: Option<&str>,
+    worktree_is_primary: bool,
 ) -> DesktopWorkerProjectStorage {
+    if worktree_id.is_some() && !worktree_is_primary {
+        return DesktopWorkerProjectStorage::Worktrees;
+    }
     match (source_kind, folder_management, placement_mode) {
         (LocalProjectSourceKind::Folder, Some(LocalProjectFolderManagement::External), _) => {
             DesktopWorkerProjectStorage::ExternalFolder
@@ -219,6 +228,8 @@ pub async fn reveal_local_project_folder(
         request.source_kind,
         request.folder_management,
         request.placement_mode,
+        request.worktree_id.as_deref(),
+        request.worktree_is_primary,
     );
     let requested_path = std::path::Path::new(&request.path);
     let bundled_project = runtime
@@ -1184,6 +1195,8 @@ mod tests {
                 LocalProjectSourceKind::Folder,
                 Some(LocalProjectFolderManagement::External),
                 LocalProjectPlacementMode::Managed,
+                None,
+                true,
             ),
             DesktopWorkerProjectStorage::ExternalFolder
         );
@@ -1192,6 +1205,8 @@ mod tests {
                 LocalProjectSourceKind::Folder,
                 Some(LocalProjectFolderManagement::Managed),
                 LocalProjectPlacementMode::Managed,
+                None,
+                true,
             ),
             DesktopWorkerProjectStorage::Folders
         );
@@ -1200,6 +1215,8 @@ mod tests {
                 LocalProjectSourceKind::Git,
                 None,
                 LocalProjectPlacementMode::Managed,
+                None,
+                true,
             ),
             DesktopWorkerProjectStorage::Repositories
         );
@@ -1208,6 +1225,8 @@ mod tests {
                 LocalProjectSourceKind::Git,
                 None,
                 LocalProjectPlacementMode::ManagedLink,
+                None,
+                true,
             ),
             DesktopWorkerProjectStorage::Repositories
         );
@@ -1216,8 +1235,20 @@ mod tests {
                 LocalProjectSourceKind::Git,
                 None,
                 LocalProjectPlacementMode::Direct,
+                None,
+                true,
             ),
             DesktopWorkerProjectStorage::ExternalFolder
+        );
+        assert_eq!(
+            local_project_storage(
+                LocalProjectSourceKind::Git,
+                None,
+                LocalProjectPlacementMode::Managed,
+                Some("worktree-1"),
+                false,
+            ),
+            DesktopWorkerProjectStorage::Worktrees
         );
     }
 

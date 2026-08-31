@@ -4,6 +4,7 @@ import {
   Settings,
   WandSparkles,
 } from "lucide-react";
+import type { ProjectWorktreeSummary } from "@cantrip/protocol";
 import { StatusDot } from "@/components/app/status-dot";
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
@@ -459,7 +460,18 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     }
                     onOpenProjectSettings={openProjectSettings}
                     projectRevealLabel={projectRevealLabel ?? undefined}
-                    onRevealProject={revealProjectInNativeFileManager}
+                    onRevealProject={(project, localFolder) =>
+                      revealProjectInNativeFileManager(
+                        project,
+                        localFolder,
+                        "",
+                        worktrees.data?.find(
+                          (worktree: ProjectWorktreeSummary) =>
+                            worktree.projectSourceId === project.source?.id &&
+                            worktree.isPrimary,
+                        ),
+                      )
+                    }
                     onSelectProject={selectProjectFromSidebar}
                     onSelectTab={selectTopTab}
                   />
