@@ -144,7 +144,7 @@ Focused verification:
 
 ### Pass 5: shared cross-platform entry
 
-Status: implemented on `codex/code-editor-cross-platform-entry`.
+Status: implemented in [PR #1519](https://github.com/ArcaneArts/Cantrip/pull/1519).
 
 Implemented locally:
 
