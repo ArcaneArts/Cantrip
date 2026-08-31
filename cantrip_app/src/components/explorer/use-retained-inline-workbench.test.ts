@@ -18,7 +18,7 @@ describe("inline Code workbench retention", () => {
     vi.useFakeTimers();
     const observed: boolean[] = [];
     const Probe = ({ active }: { active: boolean }) => {
-      observed.push(useRetainedInlineWorkbench(active));
+      observed.push(useRetainedInlineWorkbench(active, "explorer-one"));
       return null;
     };
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -56,60 +56,27 @@ describe("inline Code workbench retention", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("seeds one bounded hidden prewarm before the Explorer is activated", async () => {
+  it("does not prewarm an owned tab but retains it after first activation", async () => {
     vi.useFakeTimers();
     const observed: boolean[] = [];
-    const Probe = ({ prewarm }: { prewarm: boolean }) => {
-      observed.push(useRetainedInlineWorkbench(false, undefined, prewarm));
+    const Probe = ({ active, owned }: { active: boolean; owned: boolean }) => {
+      observed.push(useRetainedInlineWorkbench(active, "explorer-one", owned));
       return null;
     };
     let renderer!: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
-      renderer = TestRenderer.create(createElement(Probe, { prewarm: true }));
-    });
-    expect(observed.at(-1)).toBe(true);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(INLINE_CODE_WORKBENCH_RETENTION_MS);
-    });
-    expect(observed.at(-1)).toBe(false);
-
-    await act(async () => {
-      renderer.update(createElement(Probe, { prewarm: true }));
-    });
-    expect(observed.at(-1)).toBe(false);
-
-    await act(async () => {
-      renderer.update(createElement(Probe, { prewarm: false }));
-    });
-    await act(async () => {
-      renderer.update(createElement(Probe, { prewarm: true }));
-    });
-    expect(observed.at(-1)).toBe(true);
-
-    await act(async () => renderer.unmount());
-  });
-
-  it("does not expire while an open tab owns the workbench", async () => {
-    vi.useFakeTimers();
-    const observed: boolean[] = [];
-    const Probe = ({ owned }: { owned: boolean }) => {
-      observed.push(
-        useRetainedInlineWorkbench(
-          false,
-          undefined,
-          false,
-          "explorer-one",
-          owned,
-        ),
+      renderer = TestRenderer.create(
+        createElement(Probe, { active: false, owned: true }),
       );
-      return null;
-    };
-    let renderer!: TestRenderer.ReactTestRenderer;
+    });
+    expect(observed.at(-1)).toBe(false);
 
     await act(async () => {
-      renderer = TestRenderer.create(createElement(Probe, { owned: true }));
+      renderer.update(createElement(Probe, { active: true, owned: true }));
+    });
+    await act(async () => {
+      renderer.update(createElement(Probe, { active: false, owned: true }));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(INLINE_CODE_WORKBENCH_RETENTION_MS * 2);
@@ -123,7 +90,7 @@ describe("inline Code workbench retention", () => {
     vi.useFakeTimers();
     const observed: boolean[] = [];
     const Probe = ({ active }: { active: boolean }) => {
-      observed.push(useRetainedInlineWorkbench(active));
+      observed.push(useRetainedInlineWorkbench(active, "explorer-one"));
       return null;
     };
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -148,31 +115,38 @@ describe("inline Code workbench retention", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("rewarms after the exact Explorer binding identity changes", async () => {
-    vi.useFakeTimers();
+  it("drops a retained editor synchronously when its binding changes hidden", async () => {
     const observed: boolean[] = [];
-    const Probe = ({ identity }: { identity: string }) => {
-      observed.push(
-        useRetainedInlineWorkbench(false, undefined, true, identity),
-      );
+    const Probe = ({
+      active,
+      identity,
+    }: {
+      active: boolean;
+      identity: string;
+    }) => {
+      observed.push(useRetainedInlineWorkbench(active, identity, true));
       return null;
     };
     let renderer!: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
       renderer = TestRenderer.create(
-        createElement(Probe, { identity: "worker-one" }),
+        createElement(Probe, { active: true, identity: "worker-one" }),
       );
     });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(INLINE_CODE_WORKBENCH_RETENTION_MS);
-    });
-    expect(observed.at(-1)).toBe(false);
-
-    await act(async () => {
-      renderer.update(createElement(Probe, { identity: "worker-two" }));
+      renderer.update(
+        createElement(Probe, { active: false, identity: "worker-one" }),
+      );
     });
     expect(observed.at(-1)).toBe(true);
+
+    await act(async () => {
+      renderer.update(
+        createElement(Probe, { active: false, identity: "worker-two" }),
+      );
+    });
+    expect(observed.at(-1)).toBe(false);
 
     await act(async () => renderer.unmount());
   });

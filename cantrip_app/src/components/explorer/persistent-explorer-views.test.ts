@@ -11,14 +11,12 @@ vi.mock("@/components/explorer/explorer-view", () => ({
     explorer,
     keepInlineCodeWarm,
     onOpenFile,
-    prewarmInlineCode,
     transientFile,
   }: {
     active: boolean;
     explorer: ExplorerSummary;
     keepInlineCodeWarm?: boolean;
     onOpenFile?: () => void;
-    prewarmInlineCode?: boolean;
     transientFile?: { path: string };
   }) => {
     const instance = useRef<number | null>(null);
@@ -30,7 +28,6 @@ vi.mock("@/components/explorer/explorer-view", () => ({
       "data-has-on-open-file": Boolean(onOpenFile),
       "data-keep-inline-code-warm": keepInlineCodeWarm,
       "data-mock-explorer-view": true,
-      "data-prewarm-inline-code": prewarmInlineCode,
       "data-transient-path": transientFile?.path,
     });
   },
@@ -277,7 +274,7 @@ describe("retainExplorerSurfaceTabs", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("retains distinct active and prewarm Explorers once with the active view last", async () => {
+  it("retains distinct active and staged Explorers once with the active view last", async () => {
     const active = {
       ...explorer("active-explorer"),
       activeWorkerId: "worker-active",
@@ -310,10 +307,6 @@ describe("retainExplorerSurfaceTabs", () => {
       "active-explorer",
     ]);
     expect(views.filter((view) => view.props["data-active"])).toHaveLength(1);
-    expect(
-      views.filter((view) => view.props["data-prewarm-inline-code"]),
-    ).toHaveLength(1);
-    expect(views[0]?.props["data-prewarm-inline-code"]).toBe(true);
     expect(views[0]?.props["data-has-on-open-file"]).toBe(false);
 
     await act(async () => renderer.unmount());
@@ -393,10 +386,6 @@ describe("retainExplorerSurfaceTabs", () => {
         "data-active"
       ],
     ).toBe(true);
-    expect(
-      views.filter((view) => view.props["data-prewarm-inline-code"]),
-    ).toHaveLength(2);
-
     await act(async () => renderer.unmount());
   });
 

@@ -291,7 +291,6 @@ export function ExplorerView({
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
-  prewarmInlineCode = false,
   repositoryGraphAvailable,
   transientFile,
   workerOnline = true,
@@ -321,7 +320,6 @@ export function ExplorerView({
   ): void | Promise<void>;
   revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
-  prewarmInlineCode?: boolean;
   repositoryGraphAvailable: boolean;
   transientFile?: TransientExplorerFile;
   workerOnline?: boolean;
@@ -390,12 +388,9 @@ export function ExplorerView({
   const [mediaRevision, setMediaRevision] = useState(0);
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
-  // Layout-backed tabs own their workbench until the tab closes. A transient
-  // sidebar prewarm remains bounded when no open tab owns the Explorer.
+  // Layout-backed tabs own an already-open workbench until the tab closes.
   const retainInlineWorkbench = useRetainedInlineWorkbench(
     active,
-    undefined,
-    prewarmInlineCode,
     [
       explorer.id,
       explorer.projectId,
@@ -1224,7 +1219,6 @@ export function ExplorerView({
             onReady={onInlineCodeReady}
             onWorkbenchReadinessChange={onInlineCodeWorkbenchReadinessChange}
             path={codeEditorPath}
-            prewarm={prewarmInlineCode}
             retained={retainInlineWorkbench}
             visible={codeEditorVisibleOnSurface}
             workerOnline={workerOnline}

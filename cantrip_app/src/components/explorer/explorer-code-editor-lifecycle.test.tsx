@@ -938,6 +938,133 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("does not create an editor attachment until the surface is active", async () => {
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        editor("src/hidden.ts", { active: false }),
+        {
+          createNodeMock: (element) =>
+            element.type === "iframe" ? { contentWindow: frameWindow } : null,
+        },
+      );
+    });
+    await settle();
+
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType("iframe")).toHaveLength(0);
+
+    await act(async () => {
+      renderer.update(editor("src/hidden.ts", { active: true }));
+    });
+    await settle();
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    expect(renderer.root.findByType("iframe")).toBeDefined();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("keeps a hidden editor dormant and resumes only its latest path", async () => {
+    tauri.enabled = true;
+    const { renderer } = await mount("src/one.ts", true);
+    const initialFrame = renderer.root.findByType("iframe");
+    const initialFrameUrl = initialFrame.props.src;
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+    desktopCode.openDirectCodeAttachmentFile.mockClear();
+    desktopCode.preferSharedProtectedCodeAttachment.mockClear();
+    desktopCode.retainSharedProtectedCodeAttachmentLease.mockClear();
+    desktopCode.setDirectCodeAttachmentTheme.mockClear();
+
+    await act(async () => {
+      renderer.update(
+        editor("src/two.ts", { active: false, appearance: "light" }),
+      );
+    });
+    await act(async () => emitBrowserUnavailable(sharedTransportId));
+    await settle();
+
+    expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalled();
+    expect(
+      desktopCode.retainSharedProtectedCodeAttachmentLease,
+    ).not.toHaveBeenCalled();
+    expect(desktopCode.setDirectCodeAttachmentTheme).not.toHaveBeenCalled();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+
+    await act(async () => {
+      renderer.update(
+        editor("src/two.ts", { active: true, appearance: "light" }),
+      );
+    });
+    await settle();
+
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.retainSharedProtectedCodeAttachmentLease,
+    ).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      sharedAttachment,
+      "src/two.ts",
+      { signal: expect.any(AbortSignal), timeoutMs: 3_000 },
+    );
+    expect(desktopCode.setDirectCodeAttachmentTheme).toHaveBeenCalledOnce();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("pauses the workbench readiness deadline while hidden", async () => {
+    vi.useFakeTimers();
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor("src/paused.ts"), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: frameWindow } : null,
+      });
+    });
+    await flushImmediateTimers();
+    const initialFrame = renderer.root.findByType("iframe");
+    const initialFrameUrl = initialFrame.props.src;
+
+    await act(async () => {
+      renderer.update(editor("src/paused.ts", { active: false }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+    expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+
+    await act(async () => testWindow.sendMessage());
+    await act(async () => {
+      renderer.update(editor("src/paused.ts", { active: true }));
+    });
+    await flushImmediateTimers();
+
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+
+    await act(async () => renderer.unmount());
+  });
+
   it("prewarms without a path, then reuses the attachment and frame for two files", async () => {
     const { frameWindow, renderer } = await mount(null);
     const initialFrame = renderer.root.findByType("iframe");

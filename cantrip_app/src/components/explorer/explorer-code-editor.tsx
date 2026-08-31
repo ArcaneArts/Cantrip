@@ -256,6 +256,7 @@ export function ExplorerCodeEditor({
   const [themeRecoveryAttempt, setThemeRecoveryAttempt] = useState(0);
   const [sharedTransportRecoveryAttempt, setSharedTransportRecoveryAttempt] =
     useState(0);
+  const activeRef = useRef(active);
   const appearanceRef = useRef(appearance);
   const connectionInFlightRef = useRef(false);
   const connectionRetryCountRef = useRef(0);
@@ -389,6 +390,7 @@ export function ExplorerCodeEditor({
   const preferredAttachmentRef = useRef(preferredAttachment);
   const frameMountRef = useRef(frameMount);
   useLayoutEffect(() => {
+    activeRef.current = active;
     appearanceRef.current = appearance;
     bindingKeyRef.current = bindingKey;
     frameMountRef.current = frameMount;
@@ -398,6 +400,7 @@ export function ExplorerCodeEditor({
     preferredAttachmentRef.current = preferredAttachment;
     workerOnlineRef.current = workerOnline;
   }, [
+    active,
     appearance,
     bindingKey,
     frameMount,
@@ -479,8 +482,8 @@ export function ExplorerCodeEditor({
   );
 
   useLayoutEffect(() => {
-    startLaunchTiming(path, "request-superseded");
-  }, [path, startLaunchTiming]);
+    if (active) startLaunchTiming(path, "request-superseded");
+  }, [active, path, startLaunchTiming]);
 
   useEffect(() => {
     const effectLease = editorUnmountCleanupRef.current!.retain();
@@ -589,6 +592,7 @@ export function ExplorerCodeEditor({
     (expectedBindingKey: string): boolean => {
       if (
         closingRef.current ||
+        !activeRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         connectionRetryCountRef.current >= EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT
       ) {
@@ -603,6 +607,10 @@ export function ExplorerCodeEditor({
   const requestConnectionRetry = useCallback(
     (expectedBindingKey: string): boolean => {
       if (closingRef.current || bindingKeyRef.current !== expectedBindingKey) {
+        return false;
+      }
+      if (!activeRef.current) {
+        pendingConnectionWakeRef.current = true;
         return false;
       }
       if (connectionInFlightRef.current) {
@@ -638,6 +646,7 @@ export function ExplorerCodeEditor({
     (expectedBindingKey: string, expectedNonce: string | null): boolean => {
       if (
         closingRef.current ||
+        !activeRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         expectedNonce === null ||
         frameMountRef.current?.nonce !== expectedNonce ||
@@ -680,7 +689,13 @@ export function ExplorerCodeEditor({
         return;
       }
       frameRetryPendingRef.current = true;
-      if (frameRetryTimerRef.current || !workerOnlineRef.current) return;
+      if (
+        frameRetryTimerRef.current ||
+        !activeRef.current ||
+        !workerOnlineRef.current
+      ) {
+        return;
+      }
       const delay = explorerCodeEditorRetryDelayMs(frameRetryCountRef.current);
       const timer = setTimeout(() => {
         if (frameRetryTimerRef.current !== timer) return;
@@ -730,6 +745,11 @@ export function ExplorerCodeEditor({
     preferredAppearanceRef.current = null;
 
     const connect = async () => {
+      if (!activeRef.current) {
+        connectionRetryableRef.current = true;
+        pendingConnectionWakeRef.current = true;
+        return;
+      }
       if (!workerOnlineRef.current) {
         connectionRetryableRef.current = true;
         pendingConnectionWakeRef.current = true;
@@ -857,7 +877,10 @@ export function ExplorerCodeEditor({
               "Cantrip Code could not open this file.",
             ),
           );
-          if (
+          if (retryable && !activeRef.current) {
+            willRetry = true;
+            pendingConnectionWakeRef.current = true;
+          } else if (
             retryable &&
             pendingConnectionWakeRef.current &&
             workerOnlineRef.current
@@ -943,6 +966,7 @@ export function ExplorerCodeEditor({
     if (closingRef.current) return;
     const wasOnline = previousWorkerOnlineRef.current;
     previousWorkerOnlineRef.current = workerOnline;
+    if (!activeRef.current) return;
     if (
       !wasOnline &&
       workerOnline &&
@@ -998,6 +1022,13 @@ export function ExplorerCodeEditor({
     const wasActive = previousActiveRef.current;
     previousActiveRef.current = active;
     if (wasActive || !active) return;
+    if (
+      sharedTransportUnavailableRef.current &&
+      preferredAttachment?.sharedOwnedAttachment
+    ) {
+      setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
+      return;
+    }
     if (!preferredAttachment) {
       requestConnectionRetry(bindingKey);
       return;
@@ -1013,7 +1044,14 @@ export function ExplorerCodeEditor({
   ]);
 
   useEffect(() => {
-    if (closing || !preferredAttachment) return;
+    if (
+      closing ||
+      !active ||
+      !preferredAttachment ||
+      sharedTransportUnavailableRef.current
+    ) {
+      return;
+    }
     const attachmentId = preferredAttachment.attachment.attachmentId;
     if (
       preferredAppearanceRef.current?.attachmentId === attachmentId &&
@@ -1073,6 +1111,7 @@ export function ExplorerCodeEditor({
       );
     };
   }, [
+    active,
     appearance,
     closing,
     explorerId,
@@ -1089,7 +1128,9 @@ export function ExplorerCodeEditor({
           sharedTransportUnavailableRef.current = true;
           setReadyKey(null);
           setError(null);
-          setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
+          if (activeRef.current) {
+            setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
+          }
           return;
         }
         setFrameReadyNonce(null);
@@ -1104,6 +1145,7 @@ export function ExplorerCodeEditor({
   useEffect(() => {
     if (
       closing ||
+      !active ||
       !workerOnline ||
       sharedTransportRecoveryAttempt === 0 ||
       sharedTransportRecoveryAttempt <= lastSharedRecoveryAttemptRef.current
@@ -1144,6 +1186,8 @@ export function ExplorerCodeEditor({
         sharedTransportUnavailableRef.current = false;
         setPreferredAttachment(recovered);
         setError(null);
+        setThemeRecoveryAttempt((attempt) => attempt + 1);
+        setNavigationAttempt((attempt) => attempt + 1);
       })
       .catch((recoveryError: unknown) => {
         if (cancelled || bindingKeyRef.current !== expectedBindingKey) return;
@@ -1161,6 +1205,7 @@ export function ExplorerCodeEditor({
       );
     };
   }, [
+    active,
     bindingKey,
     closing,
     preferredAttachment,
@@ -1263,12 +1308,11 @@ export function ExplorerCodeEditor({
   }, [frameMount]);
 
   useLayoutEffect(() => {
-    setFrameReadyNonce(null);
     if (!frameMount || frameFailureNonce === frameMount.nonce) return;
     if (frameFailureNonceRef.current !== frameMount.nonce) {
       frameFailureNonceRef.current = null;
     }
-    let settled = false;
+    let settled = frameReadyNonce === frameMount.nonce;
     const receiveReady = (event: MessageEvent<unknown>) => {
       if (
         settled ||
@@ -1311,34 +1355,39 @@ export function ExplorerCodeEditor({
       setFrameReadyNonce(frameMount.nonce);
     };
     window.addEventListener("message", receiveReady);
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      const timeoutError = codeWorkbenchStageError(
-        "workbench",
-        "The embedded editor timed out after its endpoint loaded.",
-      );
-      if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
-        workbenchReadyTimingRef.current.timing.fail(timeoutError, {
-          retryScheduled: true,
-        });
-        workbenchReadyTimingRef.current = null;
-      }
-      setFrameFailureNonce(frameMount.nonce);
-      setError(timeoutError.message);
-      scheduleFrameRetry(bindingKey, frameMount.nonce);
-    }, CODE_WORKBENCH_READY_TIMEOUT_MS);
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    if (active && !settled) {
+      timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        const timeoutError = codeWorkbenchStageError(
+          "workbench",
+          "The embedded editor timed out after its endpoint loaded.",
+        );
+        if (workbenchReadyTimingRef.current?.nonce === frameMount.nonce) {
+          workbenchReadyTimingRef.current.timing.fail(timeoutError, {
+            retryScheduled: true,
+          });
+          workbenchReadyTimingRef.current = null;
+        }
+        setFrameFailureNonce(frameMount.nonce);
+        setError(timeoutError.message);
+        scheduleFrameRetry(bindingKey, frameMount.nonce);
+      }, CODE_WORKBENCH_READY_TIMEOUT_MS);
+    }
     return () => {
       settled = true;
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       window.removeEventListener("message", receiveReady);
     };
   }, [
+    active,
     bindingKey,
     editorInstanceId,
     explorerId,
     frameFailureNonce,
     frameMount,
+    frameReadyNonce,
     scheduleFrameRetry,
     workerId,
     worktreeId,
@@ -1346,10 +1395,12 @@ export function ExplorerCodeEditor({
 
   useEffect(() => {
     if (
+      !active ||
       !preferredAttachment ||
       !frameReady ||
       !frameMount ||
-      !workbenchGenerationKey
+      !workbenchGenerationKey ||
+      sharedTransportUnavailableRef.current
     ) {
       return;
     }
@@ -1420,15 +1471,23 @@ export function ExplorerCodeEditor({
         ),
       );
     };
-  }, [frameMount, frameReady, preferredAttachment, workbenchGenerationKey]);
+  }, [
+    active,
+    frameMount,
+    frameReady,
+    preferredAttachment,
+    workbenchGenerationKey,
+  ]);
 
   useEffect(() => {
     if (
+      !active ||
       !preferredAttachment ||
       !frameReady ||
       !frameMount ||
       !workbenchGenerationKey ||
-      path === null
+      path === null ||
+      sharedTransportUnavailableRef.current
     ) {
       return;
     }
@@ -1487,6 +1546,7 @@ export function ExplorerCodeEditor({
       );
     };
   }, [
+    active,
     frameMount,
     frameReady,
     navigationAttempt,
@@ -1569,6 +1629,10 @@ export function ExplorerCodeEditor({
             frameFailureNonceRef.current = null;
             setReadyKey(null);
             setError(null);
+            if (!activeRef.current) {
+              frameRetryPendingRef.current = true;
+              return;
+            }
             setFrameDocumentVersion((version) => version + 1);
           }}
           ref={frameRef}
