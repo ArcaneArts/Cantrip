@@ -1,75 +1,52 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   policyTemplateDetailSchema,
   policyTemplateListSchema,
   type PolicyTemplateDetail,
   type PolicyTemplateSummary,
 } from "@cantrip/protocol/policies";
+import { parsePolicyTemplateMarkdownCollection } from "@cantrip/protocol/policy-template-markdown";
 
-const manualChangeProtocolBody = `# Manual Change Protocol
+const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+const templateDirectoryCandidates = [
+  path.resolve(moduleDirectory, "../../policy_templates"),
+  path.resolve(moduleDirectory, "../../../policy_templates"),
+];
 
-Use this policy whenever a user asks you to change a repository without an
-existing tracked workflow that defines another delivery process.
+function loadPackagedPolicyTemplates(): PolicyTemplateDetail[] {
+  for (const directory of templateDirectoryCandidates) {
+    let fileNames: string[];
+    try {
+      fileNames = readdirSync(directory)
+        .filter((fileName) => fileName.endsWith(".md"))
+        .sort();
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? error.code
+          : null;
+      if (code === "ENOENT") continue;
+      throw error;
+    }
+    if (!fileNames.length) continue;
+    return parsePolicyTemplateMarkdownCollection(
+      Object.fromEntries(
+        fileNames.map((fileName) => [
+          fileName,
+          readFileSync(path.join(directory, fileName), "utf8"),
+        ]),
+      ),
+    );
+  }
+  throw new Error(
+    `Packaged policy templates are unavailable. Checked: ${templateDirectoryCandidates.join(", ")}`,
+  );
+}
 
-## Delivery requirements
-
-1. Before editing, inspect repository status, applicable AGENTS.md and policy
-   instructions, upstream state, active branches and worktrees, and overlapping
-   pull requests or change lanes.
-2. Preserve unrelated and user-owned work. Never clean, move, reset, adopt, or
-   combine changes that do not belong to the request.
-3. Create a dedicated branch in an isolated worktree from the appropriate
-   current upstream branch. Do not implement directly in the primary checkout.
-4. Keep the change independently reviewable and mergeable. Split large goals
-   into sequential milestones rather than accumulating them on one long-lived
-   branch.
-5. Follow the repository's contribution instructions and architecture. Run the
-   formatting, tests, builds, and other checks proportional to the change, and
-   report only validation that actually ran.
-6. Push the isolated branch and open a ready pull request with an accurate
-   summary and validation report.
-7. Enable squash auto-merge when the repository supports it, then observe the
-   pull request until it merges. Resolve failures or conflicts only in the
-   isolated branch and never bypass repository protections.
-8. After merge, safely synchronize the primary checkout when it is clean and
-   remove only the worktree and branch created for this change.
-
-For every additional dependent milestone, begin again from the latest upstream
-state and repeat the complete worktree, pull request, merge-observation, and
-cleanup cycle.`;
-
-const codegraphBody = `# Codegraph
-
-\`codegraph\` is available for repository-aware discovery of files, symbols,
-and relationships such as imports, callers, callees, dependencies, affected
-code, and related tests.`;
-
-const packagedTemplates = [
-  policyTemplateDetailSchema.parse({
-    templateKey: "manual-change-protocol",
-    name: "Manual Change Protocol",
-    suggestedPolicyKey: "manual-change-protocol",
-    summary:
-      "Use an isolated worktree and independently merged pull request for every manual repository change. Read the full policy before changing files or Git state with `cantrip policy read manual-change-protocol`.",
-    bodyMarkdown: manualChangeProtocolBody,
-    version: 1,
-    suggestedDefault: false,
-    suggestedEnabled: true,
-    suggestedMandatory: true,
-  }),
-  policyTemplateDetailSchema.parse({
-    templateKey: "codegraph",
-    name: "Codegraph",
-    suggestedPolicyKey: "codegraph",
-    summary:
-      "`codegraph` is available for repository-aware discovery of files, symbols, and relationships such as imports, callers, callees, dependencies, affected code, and related tests.",
-    bodyMarkdown: codegraphBody,
-    version: 1,
-    suggestedDefault: true,
-    suggestedEnabled: true,
-    suggestedMandatory: true,
-  }),
-] as const satisfies readonly PolicyTemplateDetail[];
-
+const packagedTemplates = loadPackagedPolicyTemplates();
 const templatesByKey = new Map(
   packagedTemplates.map((template) => [template.templateKey, template]),
 );
@@ -86,15 +63,7 @@ export function getPackagedPolicyTemplate(
   templateKey: string,
 ): PolicyTemplateDetail | null {
   const template = templatesByKey.get(templateKey);
-  return template ? structuredClone(template) : null;
-}
-
-export function requirePackagedPolicyTemplate(
-  templateKey: string,
-): PolicyTemplateDetail {
-  const template = getPackagedPolicyTemplate(templateKey);
-  if (!template) {
-    throw new Error(`Packaged policy template ${templateKey} is unavailable.`);
-  }
-  return template;
+  return template
+    ? policyTemplateDetailSchema.parse(structuredClone(template))
+    : null;
 }

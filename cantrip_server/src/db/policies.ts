@@ -155,7 +155,7 @@ export class PolicyRepository {
       templateKeys.size
     ) {
       throw new PolicyConflictError(
-        "Policy bootstrap must contain each packaged template exactly once.",
+        "Policy bootstrap must contain each packaged default exactly once.",
         "invalid-order",
       );
     }
@@ -179,24 +179,26 @@ export class PolicyRepository {
         )
         .returning({ ownerId: schema.policyOwnerStates.ownerId });
       if (!claimed[0]) return;
-      const now = new Date();
-      await transaction.insert(schema.policies).values(
-        input.policies.map((policy, position) => ({
-          id: policy.id,
-          ownerId,
-          keyBlindIndex: policy.content.keyBlindIndex,
-          protectedSummary: policy.content.protectedSummary,
-          protectedBody: policy.content.protectedBody,
-          enabled: policy.enabled,
-          mandatory: policy.mandatory,
-          audience: policy.audience,
-          position,
-          templateKey: policy.templateKey,
-          rowVersion: 1,
-          createdAt: now,
-          updatedAt: now,
-        })),
-      );
+      if (input.policies.length) {
+        const now = new Date();
+        await transaction.insert(schema.policies).values(
+          input.policies.map((policy, position) => ({
+            id: policy.id,
+            ownerId,
+            keyBlindIndex: policy.content.keyBlindIndex,
+            protectedSummary: policy.content.protectedSummary,
+            protectedBody: policy.content.protectedBody,
+            enabled: policy.enabled,
+            mandatory: policy.mandatory,
+            audience: policy.audience,
+            position,
+            templateKey: policy.templateKey,
+            rowVersion: 1,
+            createdAt: now,
+            updatedAt: now,
+          })),
+        );
+      }
     });
     return this.list(ownerId);
   }

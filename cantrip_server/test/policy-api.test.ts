@@ -56,7 +56,7 @@ describe.sequential("opaque policy API", () => {
       url: "/api/policy-templates",
     });
     const templates = policyTemplateListSchema.parse(templatesResponse.json());
-    expect(templates).toHaveLength(2);
+    expect(templates).toHaveLength(1);
     expect(
       templates.find(
         ({ templateKey }) => templateKey === "manual-change-protocol",
@@ -69,7 +69,7 @@ describe.sequential("opaque policy API", () => {
     });
     expect(
       policyTemplateDetailSchema.parse(templateResponse.json()).bodyMarkdown,
-    ).toContain("# Manual Change Protocol");
+    ).toContain("## Delivery requirements");
 
     const empty = policyWireListSchema.parse(
       (await app.inject({ method: "GET", url: "/api/policies" })).json(),
@@ -80,18 +80,13 @@ describe.sequential("opaque policy API", () => {
       url: "/api/policies/bootstrap",
       payload: {
         expectedBootstrapVersion: 0,
-        policies: [
-          opaquePolicyCreate("api-codegraph", {
-            mandatory: true,
-            templateKey: "codegraph",
-          }),
-        ],
+        policies: [],
       },
     });
     expect(bootstrap.statusCode).toBe(200);
     const bootstrapped = policyWireListSchema.parse(bootstrap.json());
     expect(bootstrapped).toMatchObject({ bootstrapVersion: 2 });
-    expect(bootstrapped.policies).toHaveLength(1);
+    expect(bootstrapped.policies).toHaveLength(0);
     expect(JSON.stringify(bootstrapped)).not.toContain(
       "Manual Change Protocol",
     );

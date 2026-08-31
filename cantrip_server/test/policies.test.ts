@@ -33,12 +33,7 @@ async function fixture() {
 function defaultBootstrap() {
   return {
     expectedBootstrapVersion: 0,
-    policies: [
-      opaquePolicyCreate("codegraph", {
-        mandatory: true,
-        templateKey: "codegraph",
-      }),
-    ],
+    policies: [],
   };
 }
 
@@ -57,7 +52,6 @@ describe("opaque policy persistence", () => {
               mandatory: true,
               templateKey: "manual-change-protocol",
             }),
-            ...defaultBootstrap().policies,
           ],
         }),
       ).rejects.toMatchObject<Partial<PolicyConflictError>>({
@@ -69,10 +63,10 @@ describe("opaque policy persistence", () => {
         defaultBootstrap(),
       );
       expect(bootstrapped.bootstrapVersion).toBe(2);
-      expect(bootstrapped.policies).toHaveLength(1);
+      expect(bootstrapped.policies).toHaveLength(0);
       expect(
         bootstrapped.policies.map(({ templateKey }) => templateKey),
-      ).toEqual(["codegraph"]);
+      ).toEqual([]);
       expect(JSON.stringify(bootstrapped)).not.toContain(
         "Manual Change Protocol",
       );
@@ -81,7 +75,7 @@ describe("opaque policy persistence", () => {
         LOCAL_USER_ID,
         defaultBootstrap(),
       );
-      expect(raced.policies).toHaveLength(1);
+      expect(raced.policies).toHaveLength(0);
       const raw = await client.query<{
         key_blind_index: string;
         protected_body: unknown;
@@ -91,10 +85,7 @@ describe("opaque policy persistence", () => {
         FROM policies
         WHERE owner_id = '${LOCAL_USER_ID}'
       `);
-      expect(raw.rows).toHaveLength(1);
-      expect(
-        raw.rows.every(({ key_blind_index }) => key_blind_index.length === 43),
-      ).toBe(true);
+      expect(raw.rows).toHaveLength(0);
     } finally {
       await client.close();
     }

@@ -385,7 +385,7 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
     },
     {
       id: "policies",
-      label: "Policies",
+      label: "Policy",
       description: "Agent instructions",
       icon: ShieldCheck,
       searchItems: [

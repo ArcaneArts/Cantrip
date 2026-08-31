@@ -213,7 +213,7 @@ describe("account settings", () => {
 
   it("exposes root policy management as its own settings section", () => {
     const markup = renderSettings("policies");
-    expect(markup).toContain(">Policies<");
+    expect(markup).toContain(">Policy<");
     expect(markup).toContain("Search policies");
     expect(markup).toContain("Policy");
   });
