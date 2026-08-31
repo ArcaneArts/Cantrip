@@ -67,8 +67,6 @@ const FILE_OPEN_TIMEOUT_MS = 3_000;
 const THEME_UPDATE_RETRY_DELAY_MS = 500;
 const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
 const SHARED_SESSION_RENEWAL_MIN_DELAY_MS = 30_000;
-const AUTOMATIC_REPLACEMENT_EXHAUSTED_MESSAGE =
-  "Cantrip Code could not restore this editor automatically. Retry to reconnect.";
 const SHARED_TRANSPORT_RECOVERY_FAILED_MESSAGE =
   "Cantrip Code transport could not reconnect. Retry to reconnect this editor session.";
 const SHARED_TRANSPORT_FALLBACK_CODES = new Set([
@@ -258,8 +256,6 @@ export function ExplorerCodeEditor({
   const [themeRecoveryAttempt, setThemeRecoveryAttempt] = useState(0);
   const [sharedTransportRecoveryAttempt, setSharedTransportRecoveryAttempt] =
     useState(0);
-  const automaticReplacementCountRef = useRef(0);
-  const automaticReplacementPendingRef = useRef(false);
   const appearanceRef = useRef(appearance);
   const connectionInFlightRef = useRef(false);
   const connectionRetryCountRef = useRef(0);
@@ -585,35 +581,9 @@ export function ExplorerCodeEditor({
       setNavigationAttempt((attempt) => attempt + 1);
       return;
     }
-    automaticReplacementCountRef.current = 0;
-    automaticReplacementPendingRef.current = true;
     setError(null);
     setReloadVersion((version) => version + 1);
   }, [startLaunchTiming]);
-
-  const requestAutomaticReplacement = useCallback(
-    (expectedBindingKey: string): boolean => {
-      if (
-        closingRef.current ||
-        bindingKeyRef.current !== expectedBindingKey ||
-        automaticReplacementPendingRef.current
-      ) {
-        return false;
-      }
-      if (
-        automaticReplacementCountRef.current >=
-        EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT
-      ) {
-        setError(AUTOMATIC_REPLACEMENT_EXHAUSTED_MESSAGE);
-        return false;
-      }
-      automaticReplacementCountRef.current += 1;
-      automaticReplacementPendingRef.current = true;
-      setReloadVersion((version) => version + 1);
-      return true;
-    },
-    [],
-  );
 
   const consumeConnectionRetry = useCallback(
     (expectedBindingKey: string): boolean => {
@@ -723,7 +693,6 @@ export function ExplorerCodeEditor({
   );
 
   useEffect(() => {
-    automaticReplacementPendingRef.current = false;
     connectionRetryCountRef.current = 0;
     connectionRetryableRef.current = false;
     connectionStartedRef.current = false;
@@ -743,11 +712,6 @@ export function ExplorerCodeEditor({
       }
     };
   }, [bindingKey]);
-
-  useEffect(() => {
-    automaticReplacementCountRef.current = 0;
-    automaticReplacementPendingRef.current = false;
-  }, [explorerId, workerId, worktreeId]);
 
   useEffect(() => {
     const effectLease = attachmentEffectCleanupRef.current!.retain();
@@ -776,12 +740,12 @@ export function ExplorerCodeEditor({
       const connectionAppearance = appearanceRef.current;
       let failurePhase: ExplorerCodeLaunchPhase = "session-route";
       try {
-        clientLogger.info("Explorer Code attachment replacement requested", {
+        clientLogger.info("Explorer Code attachment connection requested", {
           ...explorerFileIntentContext(explorerId),
           editorInstanceId,
-          event: "code.editor.attachment.replace-requested",
+          event: "code.editor.attachment.connect-requested",
           explorerId,
-          operation: "replace-attachment",
+          operation: "connect-attachment",
           reasonCode: "connection-effect-started",
           status: "started",
           subsystem: "code",
@@ -1128,10 +1092,14 @@ export function ExplorerCodeEditor({
           setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
           return;
         }
-        requestAutomaticReplacement(bindingKey);
+        setFrameReadyNonce(null);
+        setReadyKey(null);
+        setError(
+          "Cantrip Code transport closed. Retry to reconnect this editor.",
+        );
       },
     );
-  }, [bindingKey, closing, preferredAttachment, requestAutomaticReplacement]);
+  }, [closing, preferredAttachment]);
 
   useEffect(() => {
     if (
@@ -1229,17 +1197,22 @@ export function ExplorerCodeEditor({
         schedule();
       } catch (renewalError) {
         if (cancelled) return;
-        if (
+        const authoritative =
           renewalError instanceof CantripApiError &&
-          [401, 403, 404, 409, 410].includes(renewalError.status)
-        ) {
-          requestAutomaticReplacement(bindingKey);
-          return;
-        }
+          [401, 403, 404, 409, 410].includes(renewalError.status);
         const expiresInMs =
           Date.parse(current.attachment.session.expiresAt) - Date.now();
-        if (expiresInMs <= SHARED_SESSION_RENEWAL_MIN_DELAY_MS) {
-          requestAutomaticReplacement(bindingKey);
+        if (
+          authoritative ||
+          expiresInMs <= SHARED_SESSION_RENEWAL_MIN_DELAY_MS
+        ) {
+          setReadyKey(null);
+          setError(
+            errorMessage(
+              renewalError,
+              "Cantrip Code session expired. Retry to reconnect this editor.",
+            ),
+          );
           return;
         }
         schedule(
@@ -1252,7 +1225,7 @@ export function ExplorerCodeEditor({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [bindingKey, closing, preferredAttachment, requestAutomaticReplacement]);
+  }, [closing, preferredAttachment]);
 
   useEffect(() => {
     frameRetryCountRef.current = 0;
@@ -1310,8 +1283,6 @@ export function ExplorerCodeEditor({
       }
       settled = true;
       frameFailureNonceRef.current = frameMount.nonce;
-      automaticReplacementCountRef.current = 0;
-      automaticReplacementPendingRef.current = false;
       frameRetryCountRef.current = 0;
       frameRetryPendingRef.current = false;
       if (frameRetryTimerRef.current) {

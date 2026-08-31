@@ -62,7 +62,7 @@ Focused verification:
 
 ### Pass 2: transport-owned reconnect
 
-Status: in progress on `codex/code-editor-transport-recovery-pass2`.
+Status: merged in [PR #1513](https://github.com/ArcaneArts/Cantrip/pull/1513).
 
 Implemented locally:
 
@@ -84,6 +84,35 @@ Focused verification:
 - TypeScript project build passed.
 - Vite production build passed.
 
+### Pass 3: remove automatic editor replacement
+
+Status: in progress on `codex/code-editor-remove-auto-replacement-pass3`.
+
+Implemented locally:
+
+- removed automatic attachment-replacement counters, pending flags, cooldowns,
+  and replacement-budget error handling from the inline editor;
+- a terminal legacy route now keeps its iframe mounted and waits for explicit
+  Retry before starting a new editor lifecycle;
+- terminal session-renewal failures report the expired session instead of
+  silently replacing it;
+- cold connection telemetry now says `connect-attachment` instead of describing
+  every initial connection as a replacement;
+- desktop popouts no longer replace their logical session when transport
+  reacquisition fails;
+- an explicit popout retry reacquires the transport on the same session and uses
+  the recovered endpoint for subsequent file commands;
+- removed three obsolete automatic-replacement test scenarios.
+
+Focused verification:
+
+- inline legacy terminal recovery requires explicit Retry;
+- popout terminal recovery can fail once, retry, and retain one server session;
+- the Pass 1-2 focused editor suites remain green.
+- 51 tests passed locally.
+- TypeScript project build passed.
+- Vite production build passed after refreshing the generated protocol package.
+
 Merged PR: pending.
 
 ## Measurements
@@ -104,17 +133,16 @@ Merged PR: pending.
 
 ## Server deployment
 
-No server or protocol changes are present in Passes 1-2. Deployment
+No server or protocol changes are present in Passes 1-3. Deployment
 requirement: none so far.
 
 ## Remaining work
 
-- Merge Pass 2 and capture a real warm LOCAL trace.
-- Delete remaining automatic attachment replacement and navigation-era telemetry.
+- Merge Pass 3 and capture a real warm LOCAL trace.
 - Make inactive retained editors dormant.
 - Verify Tauri, browser, and Capacitor/mobile runtime behavior.
 
 ## Next pass
 
-Pass 3 will remove the remaining legacy automatic attachment-replacement state,
-tests, and telemetry that no longer belong in editor navigation.
+Pass 4 will make retained inactive editors dormant while keeping their session,
+iframe, workbench, and unsaved state available for immediate reuse.

@@ -1606,164 +1606,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("recovers a failed unavailable replacement after its cooldown", async () => {
-    api.createProtectedExplorerCodeAttachment
-      .mockResolvedValueOnce(wire)
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockResolvedValueOnce(wire);
-    desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
-      attachment,
-      desktopRouteIdentity: null,
-      directTunnelId: wire.tunnelId,
-      transportKind: "relay",
-    });
-    const { renderer } = await mount(null, true);
-
-    await act(async () => emitBrowserUnavailable(wire.tunnelId));
-    await settle();
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 550));
-    });
-    await settle();
-
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(3);
-    expect(renderer.root.findByType("iframe")).toBeDefined();
-
-    await act(async () => renderer.unmount());
-  });
-
-  it("caps automatic attachment replacement until the workbench is ready", async () => {
-    vi.useFakeTimers();
-    const createdWires: CodeProtectedAttachmentWire[] = [];
-    api.createProtectedExplorerCodeAttachment.mockImplementation(async () => {
-      const sequence = createdWires.length + 1;
-      const createdWire = {
-        ...wire,
-        attachmentId: `attachment-wire-${sequence}`,
-        tunnelId: `tunnel-${sequence}`,
-      } as CodeProtectedAttachmentWire;
-      createdWires.push(createdWire);
-      return createdWire;
-    });
-    desktopCode.preferProtectedCodeAttachment.mockImplementation(
-      async (createdWire: CodeProtectedAttachmentWire) => ({
-        attachment: {
-          ...attachment,
-          attachmentId: createdWire.attachmentId,
-          url: `http://127.0.0.1:43123/code/${createdWire.attachmentId}/`,
-        },
-        desktopRouteIdentity: null,
-        directTunnelId: createdWire.tunnelId,
-        transportKind: "relay",
-      }),
-    );
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      renderer = TestRenderer.create(editor(null), {
-        createNodeMock: (element) =>
-          element.type === "iframe" ? { contentWindow: {} as Window } : null,
-      });
-    });
-    await flushImmediateTimers();
-
-    for (
-      let attempt = 0;
-      attempt < EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
-      attempt += 1
-    ) {
-      await act(async () =>
-        emitBrowserUnavailable(createdWires.at(-1)!.tunnelId),
-      );
-      await flushImmediateTimers();
-    }
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
-      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
-    );
-
-    await act(async () =>
-      emitBrowserUnavailable(createdWires.at(-1)!.tunnelId),
-    );
-    await flushImmediateTimers();
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
-      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
-    );
-
-    await act(async () => testWindow.sendMessage());
-    await flushImmediateTimers();
-    await act(async () =>
-      emitBrowserUnavailable(createdWires.at(-1)!.tunnelId),
-    );
-    await flushImmediateTimers();
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
-      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 2,
-    );
-
-    await act(async () => renderer.unmount());
-  });
-
-  it("lets explicit Retry reset an exhausted attachment replacement budget", async () => {
-    vi.useFakeTimers();
-    const createdWires: CodeProtectedAttachmentWire[] = [];
-    api.createProtectedExplorerCodeAttachment.mockImplementation(async () => {
-      const sequence = createdWires.length + 1;
-      const createdWire = {
-        ...wire,
-        attachmentId: `manual-attachment-wire-${sequence}`,
-        tunnelId: `manual-tunnel-${sequence}`,
-      } as CodeProtectedAttachmentWire;
-      createdWires.push(createdWire);
-      return createdWire;
-    });
-    desktopCode.preferProtectedCodeAttachment.mockImplementation(
-      async (createdWire: CodeProtectedAttachmentWire) => ({
-        attachment: {
-          ...attachment,
-          attachmentId: createdWire.attachmentId,
-          url: `http://127.0.0.1:43123/code/${createdWire.attachmentId}/`,
-        },
-        desktopRouteIdentity: null,
-        directTunnelId: createdWire.tunnelId,
-        transportKind: "relay",
-      }),
-    );
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      renderer = TestRenderer.create(editor(null), {
-        createNodeMock: (element) =>
-          element.type === "iframe" ? { contentWindow: {} as Window } : null,
-      });
-    });
-    await flushImmediateTimers();
-
-    for (
-      let attempt = 0;
-      attempt <= EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
-      attempt += 1
-    ) {
-      await act(async () =>
-        emitBrowserUnavailable(createdWires.at(-1)!.tunnelId),
-      );
-      await flushImmediateTimers();
-    }
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
-      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
-    );
-
-    await act(async () => renderer.root.findByType("button").props.onClick());
-    await flushImmediateTimers();
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
-      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 2,
-    );
-
-    await act(async () => renderer.unmount());
-  });
-
-  it("consumes a failed hidden replacement cooldown on visibility", async () => {
-    api.createProtectedExplorerCodeAttachment
-      .mockResolvedValueOnce(wire)
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockResolvedValueOnce(wire);
+  it("waits for explicit Retry before replacing a legacy terminal attachment", async () => {
     desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
       attachment,
       desktopRouteIdentity: null,
@@ -1771,25 +1614,25 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
       transportKind: "relay",
     });
     const { renderer } = await mount("src/first.ts", true);
+    const initialFrame = renderer.root.findByType("iframe");
+    await act(async () => testWindow.sendMessage());
+    await settle();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    api.createProtectedExplorerCodeAttachment.mockClear();
+    api.releaseCodeAttachment.mockClear();
 
-    await act(async () =>
-      renderer.update(editor("src/first.ts", { active: false })),
-    );
     await act(async () => emitBrowserUnavailable(wire.tunnelId));
     await settle();
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
 
-    await act(async () =>
-      renderer.update(editor("src/first.ts", { active: true })),
-    );
-    await settle();
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(3);
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 550));
-    });
+    await act(async () => renderer.root.findByType("button").props.onClick());
     await settle();
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(3);
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
 
     await act(async () => renderer.unmount());
   });
