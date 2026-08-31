@@ -15,6 +15,8 @@ const BRIDGE_SEND_HIGH_WATER_BYTES = 8 * 1_024 * 1_024;
 const BRIDGE_SEND_TIMEOUT_MS = 10_000;
 const BRIDGE_HANDSHAKE_TIMEOUT_MS = 10_000;
 const SOCKET_OPEN = 1;
+const SOCKET_APPLICATION_ERROR = 4000;
+const SOCKET_APPLICATION_REJECTED = 4001;
 const MIN_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 
@@ -320,7 +322,7 @@ class DesktopTunnelWorkerLinkController {
     } catch (error) {
       if (this.#socket === socket) this.#socket = null;
       if (this.#connection === connection) this.#connection = null;
-      socket?.close(1011, "Tunnel connection failed");
+      socket?.close(SOCKET_APPLICATION_ERROR, "Tunnel connection failed");
       connection?.close("endpoint-disconnected");
       throw error;
     }
@@ -333,7 +335,7 @@ class DesktopTunnelWorkerLinkController {
     const connection = this.#connection;
     this.#socket = null;
     this.#connection = null;
-    socket?.close(1011, "WorkerLink disconnected");
+    socket?.close(SOCKET_APPLICATION_ERROR, "WorkerLink disconnected");
     connection?.close(code);
     this.#scheduleReconnect();
   }
@@ -450,7 +452,7 @@ async function openBridgeSocket(
       }
       settled = true;
       dependencies.cancelSchedule(timeout);
-      socket.close(1008, "Bridge handshake failed");
+      socket.close(SOCKET_APPLICATION_REJECTED, "Bridge handshake failed");
       reject(error);
     };
     socket.onopen = () => {

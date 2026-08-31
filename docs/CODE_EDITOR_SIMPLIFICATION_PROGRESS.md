@@ -144,7 +144,7 @@ Focused verification:
 
 ### Pass 5: shared cross-platform entry
 
-Status: implemented in [PR #1519](https://github.com/ArcaneArts/Cantrip/pull/1519).
+Status: merged in [PR #1519](https://github.com/ArcaneArts/Cantrip/pull/1519).
 
 Implemented locally:
 
@@ -174,7 +174,7 @@ Focused verification:
 
 ### Pass 6: stable encryption readiness
 
-Status: implemented in [PR #1521](https://github.com/ArcaneArts/Cantrip/pull/1521).
+Status: merged in [PR #1521](https://github.com/ArcaneArts/Cantrip/pull/1521).
 
 Runtime investigation found one remaining cold-launch remount in the browser:
 the Explorer encryption hook included the worker's current grant set in the
@@ -218,41 +218,139 @@ Focused verification:
   ownership assertions also fail unchanged on `main` because they still expect
   inactive and preview editors to prewarm, behavior removed in Pass 4.
 
+### Pass 7: runtime acceptance and direct-route recovery
+
+Status: implemented in [PR #1524](https://github.com/ArcaneArts/Cantrip/pull/1524).
+
+The Tauri runtime exposed two remaining defects that unit-only validation had
+not reproduced:
+
+- cold launch could put best-effort presentation into the worker's serialized
+  control lane before the requested file, allowing presentation to consume the
+  client's three-second file-open deadline;
+- revoking the active LOCAL carrier called browser `WebSocket.close` with code
+  `1011`. WebKit rejects application-sent reserved codes synchronously, so the
+  exception interrupted connection cleanup before the existing WorkerLink
+  reconnect scheduler could run.
+
+Implemented locally:
+
+- path-bearing cold launches wait for their first file-open completion before
+  applying presentation; pathless workbenches can still apply presentation as
+  soon as their workbench generation is ready;
+- desktop tunnel sockets use application close codes `4000` and `4001` for
+  local failure/rejection signals, which are legal in browser and WebKit
+  clients;
+- the WebSocket test double now enforces the browser close-code contract, so
+  the former `1011` behavior fails deterministically in unit tests;
+- added a focused WorkerLink invariant proving an active LOCAL carrier reopens
+  LOCAL without replacing its authority session or route generation;
+- replaced five obsolete eager-prewarm ownership scenarios with four current
+  lifecycle invariants: cold inactive editors remain dormant, first activation
+  creates once, an owned inactive editor stays mounted, and closing it releases
+  it.
+
+Tauri runtime verification used an isolated local server, worker, cloned
+repository, application bundle identifier, and application data directory:
+
+- a cold launch opened the requested file before presentation, eliminating the
+  former client file-open timeout; session start through the completed file
+  command took 5,069 ms, including native workbench startup, while the command
+  itself completed 209 ms after the bridge connected;
+- two warm LOCAL file commands completed 71 ms and 55 ms after their logical
+  command streams reached the worker, below the 500 ms acceptance threshold;
+- both warm opens retained one Code session, attachment, physical tunnel,
+  iframe URL, and frame nonce;
+- the active LOCAL capability was revoked through the real server API;
+- the LOCAL carrier disconnected and a replacement LOCAL capability connected
+  about 313 ms later;
+- the same Code session, attachment, tunnel, iframe URL, and frame nonce
+  survived the route fault;
+- two file intents issued around the fault converged on one post-fault worker
+  `code.direct.file-opened` event for the latest requested path;
+- the recovered editor visibly displayed that final file without an iframe
+  remount or manual Retry;
+- WebKit emitted no `InvalidAccessError` after the close-code correction.
+
+Verification after the final source changes:
+
+- 79 focused editor, transport, and WorkerLink assertions passed;
+- the complete app suite passed: 344 files and 1,786 assertions, with three
+  existing skips;
+- TypeScript project build passed;
+- Vite production build passed;
+- the repository-wide `pnpm check` stops at its unchanged application
+  decomposition gate because `chat-turn-runtime.ts` and `task-routes.ts` exceed
+  the existing 1,999-line budgets; the same gate fails on `main` with the same
+  two files, neither of which this goal changes.
+
+Android runtime verification used a clean API-36 emulator, the static
+Capacitor APK built from the Pass 7 source, and a separate fresh server, worker,
+encryption profile, and two-file repository fixture:
+
+- the runtime reported Capacitor native with `tauri=false` and completed fresh
+  server bootstrap and encryption initialization;
+- tapping `alpha.txt` in the sidebar rendered its unique fixture content;
+- tapping `beta.txt` in the Explorer surface rendered its unique content;
+- a warm Explorer navigation back to `alpha.txt` completed its client launch
+  phase in 424 ms;
+- that warm open started with both the attachment and workbench ready, reused
+  presentation in 1 ms, and emitted one worker `code.direct.file-opened` on the
+  same attachment, session, incarnation, and tunnel;
+- the editor instance, iframe URL, root lease, frame nonce, and workspace URL
+  remained unchanged, with no `code.open` or `code.session.opening` during the
+  warm navigation;
+- an Explorer cold start completed in 3,182 ms;
+- the first-ever sidebar cold start against the entirely fresh worker fixture
+  took about 13 seconds and logged one early file-open failure before the bridge
+  connected, then succeeded without user intervention; this was not a chain of
+  consecutive recovery timeouts;
+- Android WebView still reports non-blocking blob-worker authorization
+  timeouts for the Code extension host after file content renders. This does
+  not prevent opening or navigating text files and is not part of the removed
+  file-navigation recovery path.
+
+Ordinary file-open failures no longer trigger automatic attachment
+replacement. The remaining explicit replacement paths are surface close/open
+and confirmed worker session loss.
+
+Across the editor lifecycle and its desktop WorkerLink bridge, the goal diff
+from the pre-goal baseline removes more code than it adds: source is net
+`-234` lines, tests are net `-321` lines, and the combined change is net `-555`
+lines. This comparison excludes unrelated application code and documentation.
+
 ## Measurements
 
 | Path                   |                                                   Before | Current evidence                                       |
 | ---------------------- | -------------------------------------------------------: | ------------------------------------------------------ |
 | Warm browser file open | 11,609 ms pathological launch; successful command 269 ms | 143 ms then 105 ms; one command and no lifecycle churn |
 | Cold browser editor    | 9,229 ms to workbench ready in captured failure recovery | 998 ms workbench ready; 2,702 ms through file open     |
-| Warm Tauri LOCAL open  |                       11,609 ms pathological LOCAL trace | Runtime trace pending                                  |
+| Warm Tauri LOCAL open  |                       11,609 ms pathological LOCAL trace | 71 ms then 55 ms; same session, attachment, and frame  |
+| Cold Tauri editor      |                                     No accepted baseline | 5,069 ms through file open; no recovery timeout chain  |
+| LOCAL route recovery   |                                     No accepted baseline | Replacement LOCAL carrier connected in about 313 ms    |
+| Warm Android open      |                                     No accepted baseline | 424 ms client launch; same session, attachment, frame  |
+| Cold Android editor    |                                     No accepted baseline | 3,182 ms through file open                             |
 
 ## Platform verification
 
 | Platform         | Status                                                                                  |
 | ---------------- | --------------------------------------------------------------------------------------- |
-| Tauri inline     | Direct navigation and transport recovery coverage pass; runtime pending                 |
-| Tauri popout     | Focused broker coverage passes; runtime pending                                         |
+| Tauri inline     | Cold/warm navigation and genuine LOCAL carrier recovery verified in a real native app   |
+| Tauri popout     | Focused broker and shared desktop-tunnel reconnect coverage pass                        |
 | Browser          | Cold sidebar entry and repeated warm Code-to-Code navigation verified in a real browser |
-| Capacitor/mobile | Uses the same non-Tauri sidebar and transport entry; runtime pending                    |
+| Capacitor/mobile | Sidebar, Explorer, cold, and warm file opening verified in a real API-36 Capacitor app  |
 
 ## Server deployment
 
-No server or protocol changes are present in Passes 1-6. Deployment
-requirement: none so far.
+No server or protocol changes are present in Passes 1-7. Deployment
+requirement: none.
 
 ## Remaining work
 
-- Capture a warm Tauri LOCAL trace.
-- Capture a genuine route-disconnect/reconnect trace while retaining the
-  editor, session, and latest requested path.
-- Verify Capacitor/mobile file opening in a real runtime or reproducible
-  platform harness.
-- Replace the stale retained-editor prewarm assertions with the small dormant
-  ownership invariant that Pass 4 actually implements.
+No blocker remains for ordinary editor use. Android's post-render blob-worker
+extension-host warning and the slow first-ever cold start on a pristine worker
+are non-blocking platform follow-ups.
 
 ## Next pass
 
-Pass 7 will verify Tauri LOCAL cold/warm navigation and genuine route recovery,
-then exercise the shared browser transport in Capacitor/mobile. It will fix
-only failures proven by those runtime traces and reduce the stale retained
-ownership suite to the current dormant-editor invariant.
+Merge Pass 7, confirm squash auto-merge, and close this goal.

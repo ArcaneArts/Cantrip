@@ -596,6 +596,36 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("opens the cold file before applying best-effort presentation", async () => {
+    tauri.enabled = true;
+    let finishOpen!: (value: { relativePath: string }) => void;
+    desktopCode.openDirectCodeAttachmentFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOpen = resolve;
+        }),
+    );
+    const { renderer } = await mount("src/cold.ts");
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => finishOpen({ relativePath: "src/cold.ts" }));
+    await settle();
+
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+    await settle();
+  });
+
   it("quiesces and retires the local lease and session before Explorer deletion", async () => {
     tauri.enabled = true;
     const order: string[] = [];

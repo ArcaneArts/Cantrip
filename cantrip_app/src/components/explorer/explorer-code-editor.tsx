@@ -1369,6 +1369,7 @@ export function ExplorerCodeEditor({
       !frameReady ||
       !frameMount ||
       !workbenchGenerationKey ||
+      (path !== null && readyKey !== workbenchGenerationKey) ||
       sharedTransportUnavailableRef.current
     ) {
       return;
@@ -1443,7 +1444,9 @@ export function ExplorerCodeEditor({
     active,
     frameMount,
     frameReady,
+    path,
     preferredAttachment,
+    readyKey,
     workbenchGenerationKey,
   ]);
 
