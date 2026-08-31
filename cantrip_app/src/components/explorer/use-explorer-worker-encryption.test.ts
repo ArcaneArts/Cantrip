@@ -55,6 +55,32 @@ vi.mock("@/lib/client-session", () => ({
   getClientSession: () => runtime.session,
 }));
 vi.mock("@/lib/surface-private-state-worker-encryption", () => ({
+  surfacePrivateStateWorkerCanAttempt: (readiness: string) =>
+    ["ready", "pending-approval", "missing-grant", "stale"].includes(readiness),
+  surfacePrivateStateWorkerReadiness: (
+    worker: typeof runtime.worker | undefined,
+    snapshot: typeof runtime.encryption,
+  ) => {
+    if (!worker?.online) return "offline";
+    if (snapshot.status !== "ready" || !snapshot.masterKeyRevision) {
+      return "unavailable";
+    }
+    if (worker.encryption.state !== "ready") {
+      return worker.encryption.state === "pending-approval"
+        ? "pending-approval"
+        : "unavailable";
+    }
+    const expected = ["surface-private-state", "private-surface-metadata"];
+    return expected.every((component) =>
+      worker.encryption.grants.some(
+        (grant) =>
+          grant.component === component &&
+          grant.keyRevision === snapshot.masterKeyRevision,
+      ),
+    )
+      ? "ready"
+      : "missing-grant";
+  },
   waitForSurfacePrivateStateWorkerEncryption: runtime.wait,
 }));
 vi.mock("@tanstack/react-query", () => ({
@@ -69,6 +95,7 @@ import {
   explorerWorkerEncryptionBindingKey,
   explorerWorkerEncryptionBindingReady,
   explorerWorkerEncryptionContinuityKey,
+  explorerWorkerIdentityFingerprint,
   explorerWorkerSecurityFingerprint,
   resetExplorerWorkerEncryptionReadinessForTests,
   useExplorerWorkerEncryption,
@@ -253,6 +280,32 @@ describe("Explorer worker encryption binding", () => {
     ).not.toBe(current);
   });
 
+  it("keeps the worker identity stable across grant refreshes", () => {
+    const currentIdentity = explorerWorkerIdentityFingerprint(runtime.worker);
+    const currentBinding = binding();
+    const currentContinuity = continuity();
+    runtime.worker = {
+      ...runtime.worker,
+      encryption: {
+        ...runtime.worker.encryption,
+        grants: [
+          { component: "surface-private-state" as const, keyRevision: 4 },
+          {
+            component: "private-surface-metadata" as const,
+            keyRevision: 3,
+          },
+        ],
+        lastSyncedAt: "2026-08-26T00:10:00.000Z",
+      },
+    };
+
+    expect(explorerWorkerIdentityFingerprint(runtime.worker)).toBe(
+      currentIdentity,
+    );
+    expect(binding()).toBe(currentBinding);
+    expect(continuity()).toBe(currentContinuity);
+  });
+
   it("only opens the operation gate for the exact completed binding", () => {
     const current = binding();
     const previous = binding({
@@ -324,6 +377,47 @@ describe("Explorer worker encryption binding", () => {
     });
     expect(runtime.wait).toHaveBeenCalledTimes(1);
     expect(observed.at(-1)).toBe(true);
+    await act(async () => renderer.unmount());
+  });
+
+  it("opens once when a successful grant refresh updates worker status", async () => {
+    runtime.worker = {
+      ...runtime.worker,
+      encryption: {
+        ...runtime.worker.encryption,
+        grants: [
+          { component: "private-surface-metadata" as const, keyRevision: 3 },
+        ],
+      },
+    };
+    const observed: boolean[] = [];
+    const Probe = () => {
+      observed.push(useExplorerWorkerEncryption(explorer, true).ready);
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Probe));
+    });
+    expect(observed.at(-1)).toBe(false);
+
+    const observationsBeforeRefresh = observed.length;
+    runtime.worker = {
+      ...runtime.worker,
+      encryption: {
+        ...runtime.worker.encryption,
+        grants: [
+          { component: "surface-private-state" as const, keyRevision: 3 },
+          { component: "private-surface-metadata" as const, keyRevision: 3 },
+        ],
+      },
+    };
+    await act(async () => renderer.update(createElement(Probe)));
+
+    expect(observed.slice(observationsBeforeRefresh)).toEqual(
+      expect.arrayContaining([true]),
+    );
+    expect(observed.slice(observationsBeforeRefresh)).not.toContain(false);
     await act(async () => renderer.unmount());
   });
 

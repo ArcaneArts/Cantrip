@@ -172,34 +172,87 @@ Focused verification:
 - TypeScript project build passed.
 - Vite production build passed.
 
+### Pass 6: stable encryption readiness
+
+Status: implemented in [PR #1521](https://github.com/ArcaneArts/Cantrip/pull/1521).
+
+Runtime investigation found one remaining cold-launch remount in the browser:
+the Explorer encryption hook included the worker's current grant set in the
+editor binding identity. Its own successful grant refresh therefore changed
+that identity, briefly closed the readiness gate, unmounted the just-ready
+workbench, and started a second editor lifecycle.
+
+Implemented locally:
+
+- split stable worker identity from transient worker authorization material;
+- editor binding continuity now changes for a new worker incarnation,
+  principal, account, server, or master-key revision, but not because the same
+  worker refreshed its grant list or heartbeat;
+- transient grant state still receives a fresh authorization decision and the
+  editor remains unavailable while required grants are absent, stale, revoked,
+  locked, or offline;
+- a successful missing-grant to ready transition opens the existing binding
+  without a false-ready remount in between;
+- no retry, timeout, replacement, or compatibility state was added.
+
+Browser runtime verification used an isolated local server, worker, cloned
+repository, and browser origin. The worker grant set was changed in that
+isolated environment to reproduce the material-fingerprint transition:
+
+- cold click to completed file open: 2,702 ms;
+- cold workbench-ready latency: 998 ms;
+- one editor instance, attachment, session, iframe source, and frame nonce;
+- no remount or replacement after workbench readiness;
+- first warm Code-to-Code file open: 143 ms, including a 137 ms file command;
+- second warm Code-to-Code file open: 105 ms, including a 99 ms file command;
+- both warm opens retained the exact editor, attachment, session, and iframe;
+- neither warm open acquired an attachment, ran health or presentation setup,
+  or rebuilt the frame.
+
+Focused verification:
+
+- 13 encryption binding/readiness tests passed;
+- TypeScript project build passed;
+- Vite production build passed;
+- the broader editor matrix has 190 passing assertions; five stale retained
+  ownership assertions also fail unchanged on `main` because they still expect
+  inactive and preview editors to prewarm, behavior removed in Pass 4.
+
 ## Measurements
 
-| Path                 |                                                   Before | Current evidence                  |
-| -------------------- | -------------------------------------------------------: | --------------------------------- |
-| Warm LOCAL file open | 11,609 ms pathological launch; successful command 269 ms | Runtime trace pending after merge |
-| Cold editor          | 9,229 ms to workbench ready in captured failure recovery | Runtime trace pending             |
+| Path                   |                                                   Before | Current evidence                                       |
+| ---------------------- | -------------------------------------------------------: | ------------------------------------------------------ |
+| Warm browser file open | 11,609 ms pathological launch; successful command 269 ms | 143 ms then 105 ms; one command and no lifecycle churn |
+| Cold browser editor    | 9,229 ms to workbench ready in captured failure recovery | 998 ms workbench ready; 2,702 ms through file open     |
+| Warm Tauri LOCAL open  |                       11,609 ms pathological LOCAL trace | Runtime trace pending                                  |
 
 ## Platform verification
 
-| Platform         | Status                                                                      |
-| ---------------- | --------------------------------------------------------------------------- |
-| Tauri inline     | Direct navigation and transport recovery coverage pass; runtime pending     |
-| Tauri popout     | Focused broker coverage passes; runtime pending                             |
-| Browser          | Immediate sidebar entry and browser fallback coverage pass; runtime pending |
-| Capacitor/mobile | Uses the same non-Tauri sidebar and transport entry; runtime pending        |
+| Platform         | Status                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| Tauri inline     | Direct navigation and transport recovery coverage pass; runtime pending                 |
+| Tauri popout     | Focused broker coverage passes; runtime pending                                         |
+| Browser          | Cold sidebar entry and repeated warm Code-to-Code navigation verified in a real browser |
+| Capacitor/mobile | Uses the same non-Tauri sidebar and transport entry; runtime pending                    |
 
 ## Server deployment
 
-No server or protocol changes are present in Passes 1-5. Deployment
+No server or protocol changes are present in Passes 1-6. Deployment
 requirement: none so far.
 
 ## Remaining work
 
-- Capture real warm/cold traces and verify Tauri, browser, and
-  Capacitor/mobile runtime behavior.
+- Capture a warm Tauri LOCAL trace.
+- Capture a genuine route-disconnect/reconnect trace while retaining the
+  editor, session, and latest requested path.
+- Verify Capacitor/mobile file opening in a real runtime or reproducible
+  platform harness.
+- Replace the stale retained-editor prewarm assertions with the small dormant
+  ownership invariant that Pass 4 actually implements.
 
 ## Next pass
 
-Pass 6 will run the acceptance matrix against real Tauri, browser, and mobile
-runtimes, capture cold and warm timings, and fix only failures proven by those
-traces.
+Pass 7 will verify Tauri LOCAL cold/warm navigation and genuine route recovery,
+then exercise the shared browser transport in Capacitor/mobile. It will fix
+only failures proven by those runtime traces and reduce the stale retained
+ownership suite to the current dormant-editor invariant.

@@ -17,7 +17,11 @@ import type { ClientEncryptionSnapshot } from "@/lib/client-encryption";
 import { clientEncryption } from "@/lib/client-encryption";
 import type { ClientSessionContext } from "@/lib/client-session";
 import { getClientSession } from "@/lib/client-session";
-import { waitForSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
+import {
+  surfacePrivateStateWorkerCanAttempt,
+  surfacePrivateStateWorkerReadiness,
+  waitForSurfacePrivateStateWorkerEncryption,
+} from "@/lib/surface-private-state-worker-encryption";
 
 type ExplorerEncryptionBinding = Pick<
   ExplorerSummary,
@@ -60,6 +64,18 @@ export function explorerWorkerSecurityFingerprint(
   ]);
 }
 
+export function explorerWorkerIdentityFingerprint(
+  worker: ExplorerWorkerSecurityDescriptor | null | undefined,
+): string | null {
+  if (!worker) return null;
+  return JSON.stringify([
+    worker.workerId,
+    worker.startedAt,
+    worker.encryption.supported,
+    worker.encryption.principalId,
+  ]);
+}
+
 export function explorerWorkerEncryptionBindingKey(input: {
   encryption: ClientEncryptionSnapshot;
   explorer: ExplorerEncryptionBinding;
@@ -78,7 +94,7 @@ export function explorerWorkerEncryptionBindingKey(input: {
     input.encryption.identity?.serverId ?? null,
     input.encryption.identity?.ownerId ?? null,
     input.encryption.masterKeyRevision,
-    explorerWorkerSecurityFingerprint(input.worker),
+    explorerWorkerIdentityFingerprint(input.worker),
   ]);
 }
 
@@ -97,7 +113,7 @@ export function explorerWorkerEncryptionContinuityKey(input: {
     input.encryption.identity?.serverId ?? null,
     input.encryption.identity?.ownerId ?? null,
     input.encryption.masterKeyRevision,
-    explorerWorkerSecurityFingerprint(input.worker),
+    explorerWorkerIdentityFingerprint(input.worker),
   ]);
 }
 
@@ -212,6 +228,10 @@ export function useExplorerWorkerEncryption(
   });
   const worker = workers?.find((candidate) => candidate.workerId === workerId);
   const workerSecurityFingerprint = explorerWorkerSecurityFingerprint(worker);
+  const workerReadiness = surfacePrivateStateWorkerReadiness(
+    worker,
+    encryption,
+  );
   const initialWorkerRef = useRef(worker);
   initialWorkerRef.current = worker;
   const bindingKey = explorer
@@ -231,9 +251,13 @@ export function useExplorerWorkerEncryption(
           worker,
         })
       : null;
+  const authorizationRequestKey =
+    authorizationKey && workerSecurityFingerprint
+      ? JSON.stringify([authorizationKey, workerSecurityFingerprint])
+      : null;
   const [readyBinding, setReadyBinding] = useState<{
+    attempt: number;
     bindingKey: string;
-    version: number;
   } | null>(null);
   const [errorBinding, setErrorBinding] = useState<{
     bindingKey: string;
@@ -251,47 +275,37 @@ export function useExplorerWorkerEncryption(
     enabled &&
     identityMatchesSession &&
     authorizationKey &&
+    authorizationRequestKey &&
     bindingKey &&
     workerId &&
-    workerSecurityFingerprint,
+    surfacePrivateStateWorkerCanAttempt(workerReadiness),
   );
-  const authorizationVersionRef = useRef(0);
-  const wasAuthorizationEnabledRef = useRef(false);
-  const activating =
-    authorizationEnabled && !wasAuthorizationEnabledRef.current;
 
   useEffect(() => {
     if (
       !authorizationEnabled ||
-      !authorizationKey ||
+      !authorizationRequestKey ||
       !bindingKey ||
       !workerId
     ) {
-      if (wasAuthorizationEnabledRef.current) {
-        authorizationVersionRef.current += 1;
-      }
-      wasAuthorizationEnabledRef.current = false;
       setReadyBinding(null);
       setErrorBinding(null);
       return;
     }
-    wasAuthorizationEnabledRef.current = true;
-    const authorizationVersion = ++authorizationVersionRef.current;
     let disposed = false;
-    setReadyBinding(null);
     setErrorBinding(null);
     const initialWorker = initialWorkerRef.current;
     if (!initialWorker) return;
     const lease = acquireExplorerWorkerEncryption(
-      authorizationKey,
+      authorizationRequestKey,
       initialWorker,
     );
     void lease.promise
       .then(() => {
         if (!disposed) {
           setReadyBinding({
+            attempt,
             bindingKey,
-            version: authorizationVersion,
           });
         }
       })
@@ -310,18 +324,18 @@ export function useExplorerWorkerEncryption(
   }, [
     attempt,
     authorizationEnabled,
-    authorizationKey,
+    authorizationRequestKey,
     bindingKey,
     workerId,
     workerSecurityFingerprint,
   ]);
   const retry = useCallback(() => {
-    if (authorizationKey) {
-      invalidateExplorerWorkerEncryption(authorizationKey);
+    if (authorizationRequestKey) {
+      invalidateExplorerWorkerEncryption(authorizationRequestKey);
     }
     void refetchWorkers();
     setAttempt((current) => current + 1);
-  }, [authorizationKey, refetchWorkers]);
+  }, [authorizationRequestKey, refetchWorkers]);
 
   const authorizationError =
     errorBinding?.bindingKey === bindingKey ? errorBinding.message : null;
@@ -336,9 +350,9 @@ export function useExplorerWorkerEncryption(
         : null),
     ready: Boolean(
       authorizationEnabled &&
-      !activating &&
+      workerReadiness === "ready" &&
       bindingKey &&
-      readyBinding?.version === authorizationVersionRef.current &&
+      readyBinding?.attempt === attempt &&
       explorerWorkerEncryptionBindingReady(
         bindingKey,
         readyBinding?.bindingKey ?? null,
