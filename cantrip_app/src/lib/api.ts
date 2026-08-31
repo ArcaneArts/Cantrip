@@ -227,8 +227,6 @@ import {
   policyOrderUpdateSchema,
   policyWireDetailSchema,
   policyWireListSchema,
-  policyTemplateDetailSchema,
-  policyTemplateListSchema,
   policyTemplateResetSchema,
   policyUpdateSchema,
   POLICY_BOOTSTRAP_VERSION,
@@ -622,6 +620,10 @@ import {
   protectModelProviderUpdate,
 } from "@/lib/protected-secrets";
 import { openProviderTelemetryWireAnalytics } from "@/lib/provider-telemetry";
+import {
+  getPackagedPolicyTemplate,
+  listPackagedPolicyTemplates,
+} from "@/lib/policy-templates";
 import {
   clientSessionIdentityMatches,
   getClientSession,
@@ -1585,13 +1587,15 @@ export async function setProjectTaskPauseState(
 }
 
 export async function getPolicyTemplates() {
-  return policyTemplateListSchema.parse(await request("/api/policy-templates"));
+  return listPackagedPolicyTemplates();
 }
 
 export async function getPolicyTemplate(templateKey: string) {
-  return policyTemplateDetailSchema.parse(
-    await request(`/api/policy-templates/${encodeURIComponent(templateKey)}`),
-  );
+  const template = getPackagedPolicyTemplate(templateKey);
+  if (!template) {
+    throw new Error(`Packaged policy template ${templateKey} is unavailable.`);
+  }
+  return template;
 }
 
 export async function getPolicies() {

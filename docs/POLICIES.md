@@ -16,12 +16,10 @@ system prompt:
 - a mandatory policy applies to every project owned by that user on the server.
 
 Policies provide reusable operational expectations without copying instruction
-files into every repository. Cantrip packages the Manual Change Protocol and a
-compact Codegraph awareness policy as templates. Account bootstrap creates an
-editable Codegraph policy and marks it mandatory by default; the Manual Change
-Protocol remains available as an opt-in template. Defaults are conveniences
-from the user to their projects, not administrator rules imposed by Cantrip.
-The user may edit, disable, unmark, reorder, or delete them.
+files into every repository. Cantrip packages the Manual Change Protocol as an
+opt-in template. Packaged templates are conveniences from the user to their
+projects, not administrator rules imposed by Cantrip. Policies created from
+them remain fully editable and removable.
 
 This document defines the implemented first complete Policy system. It
 intentionally does not implement Task tabs; Tasks are designed separately in
@@ -29,17 +27,17 @@ intentionally does not implement Task tabs; Tasks are designed separately in
 
 ## Product language
 
-| Term                     | Meaning                                                                                                        |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| **Policy template**      | An immutable starting document packaged with Cantrip Server. Templates do not apply to projects by themselves. |
-| **Policy**               | A mutable server-owned instruction document created by the user or instantiated from a template.               |
-| **Mandatory**            | The user has chosen for the policy to apply to all of their projects across all workspaces.                    |
-| **Workspace assignment** | The policy applies to every project visible in that workspace.                                                 |
-| **Project assignment**   | The policy applies directly to one project.                                                                    |
-| **Effective policy**     | An enabled policy that is mandatory or reaches a project through a workspace/project assignment.               |
-| **Summary**              | Compact instruction text included in Agent context.                                                            |
-| **Body**                 | Full Markdown instructions returned by MCP `policy_read` or CLI `cantrip policy read`.                         |
-| **Policy key**           | Stable user-visible identifier such as manual-change-protocol.                                                 |
+| Term                     | Meaning                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| **Policy template**      | An immutable Markdown starting document packaged with Cantrip clients and Server. Templates do not apply by themselves. |
+| **Policy**               | A mutable server-owned instruction document created by the user or instantiated from a template.                        |
+| **Mandatory**            | The user has chosen for the policy to apply to all of their projects across all workspaces.                             |
+| **Workspace assignment** | The policy applies to every project visible in that workspace.                                                          |
+| **Project assignment**   | The policy applies directly to one project.                                                                             |
+| **Effective policy**     | An enabled policy that is mandatory or reaches a project through a workspace/project assignment.                        |
+| **Summary**              | Compact instruction text included in Agent context.                                                                     |
+| **Body**                 | Full Markdown instructions returned by MCP `policy_read` or CLI `cantrip policy read`.                                  |
+| **Policy key**           | Stable user-visible identifier such as manual-change-protocol.                                                          |
 
 “Global” in this feature means stored on Cantrip Server and available across all
 of the user's projects and workspaces on that server. It does not mean a
@@ -110,8 +108,24 @@ concurrency mechanism is not part of the Agent-facing policy model.
 
 ### Template catalog
 
-Cantrip Server packages a small catalog of immutable policy templates. Each
-template contains:
+The repository-root `policy_templates/` directory is the source of truth for a
+small catalog of immutable policy templates. Each `.md` file uses this shape:
+
+```markdown
+# Policy name
+
+> Short description
+
+Everything below the description is the policy body.
+```
+
+The file name without `.md` is both the template key and suggested policy key.
+The level-one heading is the display name, consecutive blockquote lines form the
+short summary, and all remaining Markdown becomes the editable policy body.
+The shared parser validates size and key constraints and fails malformed assets
+during development, tests, or startup.
+
+Each parsed template contains:
 
 - template key;
 - display name;
@@ -125,11 +139,14 @@ template contains:
 Templates are code/distribution assets, not database policies. Editing or
 deleting a policy instantiated from a template does not modify the template.
 
-The **+ Policy** flow offers:
+The client bundles these root Markdown files directly. Packaged Server
+distributions copy the same directory so the compatibility template API and the
+client catalog use identical source text.
+
+The **+ Policy** flow offers a searchable catalog containing:
 
 - Blank policy;
 - Manual Change Protocol;
-- Codegraph;
 - any future packaged templates.
 
 Selecting a template copies its current contents into a new independent policy.
@@ -138,25 +155,11 @@ proposes a suffix.
 
 ### Default policies
 
-During versioned one-time policy bootstrap for each user, Cantrip creates:
-
-- **Codegraph** (`codegraph`), enabled and mandatory, with a short capability
-  description that makes the Agent aware of repository-aware file, symbol, and
-  relationship discovery without requiring Codegraph for every task.
-
-The **Manual Change Protocol** (`manual-change-protocol`) is not created during
-bootstrap. It remains in the packaged catalog so users can explicitly create an
-editable copy through **+ Policy** when they want that workflow.
-
-Existing users receive each newly introduced default once. Durable versioned
-bootstrap markers prevent older defaults from being recreated and prevent any
-default from being recreated after the user deletes it. Users can always create
-a fresh copy later through **+ Policy**.
-
-The packaged template should be based on
-docs/agents/MANUAL_CHANGE_PROTOCOL.md at build time, but the runtime policy is a
-server database record after bootstrap. Updating the packaged template in a
-future Cantrip release must not overwrite an existing user policy.
+The current catalog has no automatic default. Versioned bootstrap still records
+completion for a fresh account, but creates no policy rows. The **Manual Change
+Protocol** (`manual-change-protocol`) remains explicitly opt-in through **+
+Policy**. Updating a packaged template never overwrites a policy the user has
+already created from it.
 
 ### Template operations
 
@@ -508,6 +511,8 @@ Policy CLI operations are read-only and server-owned:
 - Markdown rendering uses the existing sanitized renderer.
 - Template assets are trusted packaged data; copied policy bodies remain
   user-editable.
+- The client reads templates from its build bundle rather than downloading
+  trusted instruction content from a selected server.
 - Repository files cannot create or assign server policies.
 - Agents receive no mutation-capable policy CLI commands.
 - Effective-policy resolution must not depend on worker availability.
@@ -520,7 +525,7 @@ Policy CLI operations are read-only and server-owned:
 - the next turn omits the deleted policy;
 - disabling a mandatory policy removes it from future effective sets;
 - a missing template never invalidates policies already copied from it;
-- malformed packaged templates fail server startup/build validation rather than
+- malformed packaged templates fail client build/test or server startup rather than
   creating corrupt policy records;
 - workspace membership changes invalidate effective-policy queries;
 - a disconnected worker does not prevent policy editing or assignment.
@@ -584,9 +589,8 @@ observed merged before the dependent milestone starts.
 
 ## Acceptance criteria
 
-- A fresh user receives one editable Codegraph policy, enabled and mandatory.
-- A fresh user does not receive a Manual Change Protocol policy automatically;
-  its packaged template remains selectable.
+- A fresh user receives no policy automatically.
+- The Manual Change Protocol packaged template remains searchable and selectable.
 - Existing Manual Change Protocol policies are preserved and remain editable.
 - Users can create blank or template-based policies only from root Settings.
 - Users can edit, enable/disable, mark/unmark Mandatory, sort, and delete any
@@ -604,9 +608,9 @@ observed merged before the dependent milestone starts.
 
 ## Implemented contract notes
 
-- The packaged server catalog currently contains the immutable Manual Change
-  Protocol template. **Blank** is an explicit root-Settings creation path, not
-  a second packaged template asset.
+- The packaged catalog currently contains the immutable Manual Change Protocol
+  Markdown template. **Blank** is an explicit root-Settings creation path, not a
+  second packaged template asset.
 - Policy collection versions serialize create/delete/order/assignment changes;
   row versions serialize individual edits, resets, and deletes.
 - Policy mutations publish the owner-scoped `policy` live resource. Each app

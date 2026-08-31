@@ -166,7 +166,7 @@ export const encryptedPolicyUpdateSchema = policyOperationalFieldsSchema
 export const encryptedPolicyBootstrapSchema = z
   .object({
     expectedBootstrapVersion: z.number().int().min(0),
-    policies: z.array(encryptedPolicyCreateSchema).min(1).max(100),
+    policies: z.array(encryptedPolicyCreateSchema).max(100),
   })
   .strict();
 

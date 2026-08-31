@@ -123,6 +123,13 @@ async function packageService(name, destination, { standalone = true } = {}) {
     path.join(root, "deploy", `${name}.env.example`),
     path.join(destination, ".env.example"),
   );
+  if (name === "server") {
+    await cp(
+      path.join(root, "policy_templates"),
+      path.join(destination, "policy_templates"),
+      { recursive: true },
+    );
+  }
   if (name === "worker") {
     const bin = path.join(destination, "bin");
     await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });

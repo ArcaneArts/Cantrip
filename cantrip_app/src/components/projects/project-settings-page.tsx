@@ -242,7 +242,7 @@ export const projectSettingsSections: readonly SettingsNavigationSection<Project
     },
     {
       id: "policies",
-      label: "Policies",
+      label: "Policy",
       description: "Project instructions",
       icon: ShieldCheck,
       searchItems: [

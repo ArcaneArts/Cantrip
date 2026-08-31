@@ -86,6 +86,7 @@ import {
   preparePolicyImports,
   serializePolicyFile,
 } from "@/lib/policy-transfer";
+import { filterPolicyTemplates } from "@/lib/policy-templates";
 import { cn } from "@/lib/utils";
 import { SettingsSearchField } from "./settings-controls";
 
@@ -404,6 +405,7 @@ export function PolicySettings({
 }) {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
+  const [templateSearchQuery, setTemplateSearchQuery] = useState("");
   const [chooserOpen, setChooserOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
@@ -633,6 +635,11 @@ export function PolicySettings({
     onError: invalidatePolicies,
   });
   const query = searchQuery.trim().toLowerCase();
+  const templateQuery = templateSearchQuery.trim().toLowerCase();
+  const visibleTemplates = filterPolicyTemplates(
+    templates.data ?? [],
+    templateQuery,
+  );
   const visiblePolicies = query
     ? currentPolicies.filter((policy) =>
         [
@@ -772,7 +779,13 @@ export function PolicySettings({
             )}
             Export all
           </Button>
-          <Button size="sm" onClick={() => setChooserOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setTemplateSearchQuery("");
+              setChooserOpen(true);
+            }}
+          >
             <Plus className="size-3.5" /> Policy
           </Button>
         </div>
@@ -842,7 +855,13 @@ export function PolicySettings({
         ZIP exports contain policy content and settings, but not assignments.
       </p>
 
-      <Dialog open={chooserOpen} onOpenChange={setChooserOpen}>
+      <Dialog
+        open={chooserOpen}
+        onOpenChange={(open) => {
+          setChooserOpen(open);
+          if (!open) setTemplateSearchQuery("");
+        }}
+      >
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>New policy</DialogTitle>
@@ -851,7 +870,13 @@ export function PolicySettings({
               you finish the editor.
             </DialogDescription>
           </DialogHeader>
-          <div className="divide-y overflow-hidden border-y">
+          <SettingsSearchField
+            ariaLabel="Search policy templates"
+            placeholder="Search policy templates"
+            value={templateSearchQuery}
+            onValueChange={setTemplateSearchQuery}
+          />
+          <div className="max-h-[min(28rem,55dvh)] divide-y overflow-y-auto border-y">
             <button
               type="button"
               className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-muted/30"
@@ -865,7 +890,7 @@ export function PolicySettings({
                 </span>
               </span>
             </button>
-            {(templates.data ?? []).map((template) => (
+            {visibleTemplates.map((template) => (
               <button
                 key={template.templateKey}
                 type="button"
@@ -892,6 +917,13 @@ export function PolicySettings({
               >
                 <Loader2 className="size-4 animate-spin" />
               </div>
+            ) : null}
+            {!templates.isLoading &&
+            templateQuery &&
+            !visibleTemplates.length ? (
+              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                No policy templates match your search.
+              </p>
             ) : null}
           </div>
           {templates.isError || loadTemplate.isError ? (

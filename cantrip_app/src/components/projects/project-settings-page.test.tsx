@@ -378,7 +378,7 @@ describe("project settings", () => {
     expect(markup).toContain("Worktrees");
     expect(markup).toContain("Replicas");
     expect(markup).toContain("Tunnels");
-    expect(markup).toContain("Policies");
+    expect(markup).toContain("Policy");
     expect(markup).toContain("Skills");
     expect(markup).toContain("MCP");
     expect(markup).not.toContain("MCP servers");
