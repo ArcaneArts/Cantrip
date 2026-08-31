@@ -34,6 +34,7 @@ export interface ProjectNetworkShareRouteDependencies {
     | "getChatExecutionContext"
     | "getManagedTunnel"
     | "getProjectSource"
+    | "getProjectWorktreeContext"
     | "getTunnel"
     | "getWorker"
   >;
@@ -172,10 +173,20 @@ export function installProjectNetworkShareRoutes(
       if (!source) {
         return reply.code(404).send({ error: "Project source not found." });
       }
-      if (source.workerId !== input.data.workerId) {
+      const worktree = input.data.worktreeId
+        ? await repository.getProjectWorktreeContext(
+            ownerId,
+            request.params.projectId,
+            input.data.worktreeId,
+          )
+        : null;
+      if (input.data.worktreeId && !worktree) {
+        return reply.code(404).send({ error: "Project worktree not found." });
+      }
+      if ((worktree?.workerId ?? source.workerId) !== input.data.workerId) {
         return reply.code(409).send({
           code: "target-mismatch",
-          error: "The protected project share targets another worker.",
+          error: "The protected project share targets another project worker.",
         });
       }
       try {
@@ -230,6 +241,11 @@ export function installProjectNetworkShareRoutes(
       const input = projectShareTunnelCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      if (input.data.worktreeId) {
+        return reply.code(400).send({
+          error: "Scratch network shares cannot target a project worktree.",
+        });
       }
       const ownerId = applicationOwnerId();
       const context = await repository.getChatExecutionContext(

@@ -3819,6 +3819,7 @@ describe.sequential("server worktree control plane", () => {
         payload: {
           tunnelId,
           workerId: "test-worker",
+          worktreeId: primaryId,
           protectedRecord: {
             ...protectedTunnelRecord(revision === 1 ? tunnelId : randomUUID()),
             revision,

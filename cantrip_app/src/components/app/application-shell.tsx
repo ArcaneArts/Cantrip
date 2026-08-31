@@ -1575,6 +1575,7 @@ export function App() {
     sidebarExplorerCreationInput,
     sidebarExplorerCreationKey,
     tabLayout: tabLayout.data,
+    worktrees: worktrees.data,
   });
   const {
     createProjectSurface,

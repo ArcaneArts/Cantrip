@@ -1120,6 +1120,11 @@ export function GlobalContentHost({
                         revealProjectInNativeFileManager(
                           selectedProject,
                           preferLocalFolder,
+                          "",
+                          worktrees.data?.find(
+                            ({ id }: { id: string }) =>
+                              id === resolvedProjectOverviewWorktreeId,
+                          ),
                         )
                       }
                       revealLabel={projectRevealButtonLabel ?? undefined}

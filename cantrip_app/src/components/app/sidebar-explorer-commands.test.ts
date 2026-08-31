@@ -1,12 +1,20 @@
 import type {
   ExplorerEntry,
   ExplorerSummary,
+  ProjectSummary,
   ProjectTabLayoutSummary,
+  ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import type { SidebarFilePinHandoffState } from "./application-shell-model";
 import { createSidebarExplorerCommands } from "./sidebar-explorer-commands";
+
+const revealProjectInNativeFileManager = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/desktop-project-share", () => ({
+  revealProjectInNativeFileManager,
+}));
 
 const entry = {
   kind: "file",
@@ -25,16 +33,20 @@ const previewOwner = {
 function commandHarness({
   handoff = null,
   layout,
+  projects = [],
   waitForSuccessor = vi.fn().mockResolvedValue({
     ...previewOwner,
     id: "explorer-successor",
   }),
+  worktrees = [],
 }: {
   handoff?: SidebarFilePinHandoffState | null;
   layout: ProjectTabLayoutSummary;
+  projects?: ProjectSummary[];
   waitForSuccessor?: (
     sourceExplorerId: string,
   ) => Promise<ExplorerSummary | null>;
+  worktrees?: ProjectWorktreeSummary[];
 }) {
   const setSidebarFilePreview = vi.fn();
   const pinMutation = { isPending: false, mutate: vi.fn(), reset: vi.fn() };
@@ -72,7 +84,7 @@ function commandHarness({
     newTerminal: { isPending: false, mutate: vi.fn(), reset: vi.fn() },
     openCreatedTab: vi.fn(),
     pinSidebarFileMutation: pinMutation,
-    projects: [],
+    projects,
     queryClient: {
       invalidateQueries: vi.fn(),
       setQueryData: vi.fn(),
@@ -86,6 +98,7 @@ function commandHarness({
     sidebarExplorerCreationInput: null,
     sidebarExplorerCreationKey: null,
     tabLayout: layout,
+    worktrees,
   } as unknown as Parameters<typeof createSidebarExplorerCommands>[0];
   return {
     commands: createSidebarExplorerCommands(input),
@@ -110,6 +123,38 @@ function layout(tabbedExplorerIds: string[]): ProjectTabLayoutSummary {
 }
 
 describe("sidebar Explorer ownership commands", () => {
+  it("reveals a folder from the Explorer's active worktree", () => {
+    revealProjectInNativeFileManager.mockResolvedValue(undefined);
+    const project = {
+      id: previewOwner.projectId,
+      source: { workerId: "worker-1" },
+    } as ProjectSummary;
+    const worktree = {
+      id: previewOwner.worktreeId,
+      projectId: previewOwner.projectId,
+    } as ProjectWorktreeSummary;
+    const { commands } = commandHarness({
+      layout: layout([]),
+      projects: [project],
+      worktrees: [worktree],
+    });
+    const folder = {
+      kind: "directory",
+      name: "src",
+      path: "src",
+      viewable: false,
+    } as ExplorerEntry;
+
+    commands.openSidebarFolderNative(previewOwner, folder, false);
+
+    expect(revealProjectInNativeFileManager).toHaveBeenCalledWith(
+      project,
+      false,
+      "src",
+      worktree,
+    );
+  });
+
   it("does not send an immediate second preview click into the owner being pinned", () => {
     const handoff = {
       destinationExplorer: null,

@@ -2167,8 +2167,16 @@ async function currentProjectNetworkShare(projectId: string) {
     );
 }
 
-async function createProjectNetworkShareAttempt(project: ProjectSummary) {
-  const source = project.source;
+type ProjectNetworkShareTarget = Pick<
+  ProjectWorktreeSummary,
+  "id" | "path" | "workerId"
+>;
+
+async function createProjectNetworkShareAttempt(
+  project: ProjectSummary,
+  target?: ProjectNetworkShareTarget,
+) {
+  const source = target ?? project.source;
   if (!source) throw new Error("Project source is unavailable.");
   let existing = await currentProjectNetworkShare(project.id);
   if (existing && !existing.protectedRecord) {
@@ -2220,6 +2228,7 @@ async function createProjectNetworkShareAttempt(project: ProjectSummary) {
         projectShareTunnelCreateSchema.parse({
           tunnelId,
           workerId: source.workerId,
+          ...(target ? { worktreeId: target.id } : {}),
           protectedRecord,
         }),
       ),
@@ -2245,12 +2254,15 @@ async function createProjectNetworkShareAttempt(project: ProjectSummary) {
   }
 }
 
-export async function createProjectNetworkShare(project: ProjectSummary) {
-  const source = project.source;
+export async function createProjectNetworkShare(
+  project: ProjectSummary,
+  target?: ProjectNetworkShareTarget,
+) {
+  const source = target ?? project.source;
   if (!source) throw new Error("Project source is unavailable.");
   await ensureTunnelWorker(source.workerId);
   return recoverStaleProjectShareState({
-    open: () => createProjectNetworkShareAttempt(project),
+    open: () => createProjectNetworkShareAttempt(project, target),
     revokeOrphan: async () => {
       const orphan = await currentProjectNetworkShare(project.id);
       if (orphan) await deleteProjectNetworkShare(orphan.id);

@@ -75,6 +75,7 @@ export function PersistentSurfaceLayer({
     sidebarPreviewSuccessorExplorer,
     sidebarPreviewExplorer,
     worktreeStatuses,
+    worktrees,
   } = bindings;
   return (
     <>
@@ -218,6 +219,9 @@ export function PersistentSurfaceLayer({
                     project,
                     localFolder,
                     entry.path,
+                    worktrees.data?.find(
+                      ({ id }: { id: string }) => id === explorer.worktreeId,
+                    ),
                   );
                 }
               : undefined

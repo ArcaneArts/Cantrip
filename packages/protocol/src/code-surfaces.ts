@@ -525,6 +525,7 @@ export const projectShareTunnelCreateSchema = z
   .object({
     tunnelId: z.string().uuid(),
     workerId: tunnelResourceIdSchema,
+    worktreeId: z.string().min(1).optional(),
     protectedRecord: protectedTunnelContentRecordSchema,
   })
   .strict()
