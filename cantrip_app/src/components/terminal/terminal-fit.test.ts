@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
+import {
+  rowsWithoutPartiallyVisibleLastLine,
+  terminalViewportCanFit,
+} from "./terminal-fit";
 
 describe("terminal fitting", () => {
+  it("does not fit parked or zero-sized terminal hosts", () => {
+    expect(terminalViewportCanFit(false, 1200, 800)).toBe(false);
+    expect(terminalViewportCanFit(true, 0, 800)).toBe(false);
+    expect(terminalViewportCanFit(true, 1200, 0)).toBe(false);
+    expect(terminalViewportCanFit(true, 1200, 800)).toBe(true);
+  });
+
   it("removes one row when the fitted terminal crosses the visible bottom", () => {
     expect(rowsWithoutPartiallyVisibleLastLine(41, 731, 720)).toBe(40);
   });

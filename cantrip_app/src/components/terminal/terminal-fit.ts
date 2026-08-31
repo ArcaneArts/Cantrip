@@ -1,5 +1,13 @@
 const TERMINAL_EDGE_TOLERANCE_PX = 0.5;
 
+export function terminalViewportCanFit(
+  visible: boolean,
+  width: number,
+  height: number,
+): boolean {
+  return visible && width > 0 && height > 0;
+}
+
 export function rowsWithoutPartiallyVisibleLastLine(
   rows: number,
   renderedBottom: number,

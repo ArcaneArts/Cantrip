@@ -1,4 +1,3 @@
-import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import type {
   BrowserFleetService,
   ProjectViewSummary,
@@ -25,7 +24,6 @@ import {
   BrowserView,
   RemoteDesktopView,
   RunTerminalView,
-  TerminalView,
 } from "@/components/app/application-shell-surfaces";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import {
@@ -144,7 +142,6 @@ export function GlobalContentHost({
     folderSetupJobs,
     groupOwnedElsewhere,
     isPopout,
-    linkedConsoleChat,
     mobileNavigationSurfaces,
     mobileProjectSelectorOpen,
     mobileSettingsSectionOpen,
@@ -168,10 +165,7 @@ export function GlobalContentHost({
     openProjectSettings,
     openProjectTask,
     openServerAdmin,
-    openTerminalLink,
-    openTerminalLinkExternally,
     openTunnelOwner,
-    pendingTerminalInputs,
     permanentlyDeleteStandaloneChat,
     projectOverviewGitProject,
     projectOverviewGitSection,
@@ -227,11 +221,9 @@ export function GlobalContentHost({
     selectedWorker,
     selectedWorkflowIntentId,
     setAgentInspectOpen,
-    setChatConsoleOpen,
     setChatRelocationOpen,
     setGitHistoryHeader,
     setMobileSettingsSectionOpen,
-    setPendingTerminalInputs,
     setProjectOverviewSection,
     setProjectOverviewWorktreeId,
     setRunConfigurationEditorId,
@@ -243,8 +235,6 @@ export function GlobalContentHost({
     setShowSettings,
     setStandaloneFilePath,
     setStandaloneFilesOpen,
-    setTerminalCommandPaletteTerminalId,
-    setTerminalServiceTerminalId,
     settings,
     settingsPolicyId,
     settingsSection,
@@ -262,8 +252,6 @@ export function GlobalContentHost({
     standaloneFilesOpen,
     switchToChat,
     tabLayout,
-    terminalCommandPaletteTerminalId,
-    terminalServiceTerminalId,
     updateBrowserMutation,
     workers,
     workspaceSelection,
@@ -688,7 +676,8 @@ export function GlobalContentHost({
                 }}
               />
             </Suspense>
-          ) : selectedExplorer ? null : selectedTerminal ? (
+          ) : selectedExplorer ? null : selectedTerminal?.kind ===
+            "run-configuration" ? (
             <Suspense
               fallback={
                 <div className="grid flex-1 place-items-center text-muted-foreground">
@@ -696,95 +685,32 @@ export function GlobalContentHost({
                 </div>
               }
             >
-              {selectedTerminal.kind === "run-configuration" ? (
-                <RunTerminalView
-                  definitionAvailable={selectedRunDefinitionAvailable}
-                  definitionProblem={
-                    runConfigurations.isError
-                      ? errorText(runConfigurations.error)
-                      : null
-                  }
-                  launchAvailable={selectedRunLaunchAvailable}
-                  launchProblem={selectedRunLaunchProblem}
-                  runtime={selectedRunRuntime}
-                  stopAvailable={selectedRunStopAvailable}
-                  stopProblem={selectedRunStopProblem}
-                  targetLabel={selectedRunTargetLabel}
-                  terminal={selectedTerminal}
-                  onEdit={
-                    selectedRunDefinitionAvailable === true &&
-                    selectedTerminal.runConfigurationId
-                      ? () =>
-                          setRunConfigurationEditorId(
-                            selectedTerminal.runConfigurationId!,
-                          )
-                      : undefined
-                  }
-                />
-              ) : linkedConsoleChat ? (
-                <TerminalView
-                  eliteContentGlitchEnabled={
-                    (settings.data?.preferences.eliteMode ?? false) &&
-                    (settings.data?.preferences.eliteRevealConfig
-                      ?.glitchTerminalContents ??
-                      DEFAULT_ELITE_REVEAL_CONFIG.glitchTerminalContents)
-                  }
-                  eliteRevealConfig={
-                    settings.data?.preferences.eliteRevealConfig ??
-                    DEFAULT_ELITE_REVEAL_CONFIG
-                  }
-                  terminal={selectedTerminal}
-                  onExit={() => setChatConsoleOpen(linkedConsoleChat.id, false)}
-                  onOpenExternalLink={openTerminalLinkExternally}
-                  onOpenLink={openTerminalLink}
-                />
-              ) : (
-                <TerminalView
-                  eliteContentGlitchEnabled={
-                    (settings.data?.preferences.eliteMode ?? false) &&
-                    (settings.data?.preferences.eliteRevealConfig
-                      ?.glitchTerminalContents ??
-                      DEFAULT_ELITE_REVEAL_CONFIG.glitchTerminalContents)
-                  }
-                  eliteRevealConfig={
-                    settings.data?.preferences.eliteRevealConfig ??
-                    DEFAULT_ELITE_REVEAL_CONFIG
-                  }
-                  terminal={selectedTerminal}
-                  commandPaletteOpen={
-                    terminalCommandPaletteTerminalId === selectedTerminal.id
-                  }
-                  onCommandPaletteOpenChange={(open) =>
-                    setTerminalCommandPaletteTerminalId(
-                      open ? selectedTerminal.id : null,
-                    )
-                  }
-                  servicePanelOpen={
-                    terminalServiceTerminalId === selectedTerminal.id
-                  }
-                  onServicePanelOpenChange={(open) =>
-                    setTerminalServiceTerminalId(
-                      open ? selectedTerminal.id : null,
-                    )
-                  }
-                  pendingInput={
-                    pendingTerminalInputs.find(
-                      ({ terminalId }: { terminalId: string }) =>
-                        terminalId === selectedTerminal.id,
-                    ) ?? null
-                  }
-                  onPendingInputSent={(inputId) =>
-                    setPendingTerminalInputs(
-                      (current: Array<{ id: string; terminalId: string }>) =>
-                        current.filter(({ id }) => id !== inputId),
-                    )
-                  }
-                  onOpenExternalLink={openTerminalLinkExternally}
-                  onOpenLink={openTerminalLink}
-                />
-              )}
+              <RunTerminalView
+                definitionAvailable={selectedRunDefinitionAvailable}
+                definitionProblem={
+                  runConfigurations.isError
+                    ? errorText(runConfigurations.error)
+                    : null
+                }
+                launchAvailable={selectedRunLaunchAvailable}
+                launchProblem={selectedRunLaunchProblem}
+                runtime={selectedRunRuntime}
+                stopAvailable={selectedRunStopAvailable}
+                stopProblem={selectedRunStopProblem}
+                targetLabel={selectedRunTargetLabel}
+                terminal={selectedTerminal}
+                onEdit={
+                  selectedRunDefinitionAvailable === true &&
+                  selectedTerminal.runConfigurationId
+                    ? () =>
+                        setRunConfigurationEditorId(
+                          selectedTerminal.runConfigurationId!,
+                        )
+                    : undefined
+                }
+              />
             </Suspense>
-          ) : selectedChat ? (
+          ) : selectedTerminal ? null : selectedChat ? (
             <ChatTranscript
               key={selectedChat.id}
               capabilities={IDE_CHAT_SURFACE_CAPABILITIES}

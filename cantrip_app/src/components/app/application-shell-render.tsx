@@ -83,6 +83,7 @@ export function ApplicationShellRender({
     selectedPlacementContext,
     selectedProject,
     selectedStandaloneTerminal,
+    selectedTerminal,
     setActiveProjectTaskView,
     setAgentInspectOpen,
     setAppToast,
@@ -255,6 +256,17 @@ export function ApplicationShellRender({
     !showProjectSettings &&
     !groupOwnedElsewhere,
   );
+  const terminalSurfaceVisible = Boolean(
+    appMode === "ide" &&
+    selectedTerminal &&
+    selectedTerminal.kind !== "run-configuration" &&
+    !mobileProjectSelectorOpen &&
+    !showImporter &&
+    !showSettings &&
+    !showServerAdmin &&
+    !showProjectSettings &&
+    !groupOwnedElsewhere,
+  );
   if (explorerFileTarget) {
     const explorer =
       explorers.data?.find(
@@ -321,6 +333,7 @@ export function ApplicationShellRender({
     setMobileSettingsSectionOpen,
     sidebarExpanded,
     sidebarToggleVisible,
+    terminalSurfaceVisible,
   };
 
   return (

@@ -1,9 +1,11 @@
+import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import type { ProjectSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
 import { Suspense } from "react";
 import {
   PersistentCodeViews,
   PersistentExplorerViews,
+  PersistentTerminalViews,
 } from "@/components/app/application-shell-surfaces";
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
 import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
@@ -45,6 +47,10 @@ export function PersistentSurfaceLayer({
     onlineWorkerIds,
     openExplorerFileWindow,
     openExplorers,
+    openTerminalLink,
+    openTerminalLinkExternally,
+    ownedTerminals,
+    pendingTerminalInputs,
     pinSidebarFilePath,
     projectTabBarSurfaces,
     projects,
@@ -59,9 +65,15 @@ export function PersistentSurfaceLayer({
     selectedSurface,
     selectedTabGroup,
     selectedTabKey,
+    selectedTerminal,
+    setChatConsoleOpen,
     setCodeHeader,
     setExplorerHeader,
+    setPendingTerminalInputs,
     setSidebarFilePreviewHeader,
+    setTerminalCommandPaletteTerminalId,
+    setTerminalServiceTerminalId,
+    settings,
     showArchivedStandaloneChats,
     showImporter,
     showProjectSettings,
@@ -74,6 +86,9 @@ export function PersistentSurfaceLayer({
     sidebarInlineExplorer,
     sidebarPreviewSuccessorExplorer,
     sidebarPreviewExplorer,
+    terminalCommandPaletteTerminalId,
+    terminalServiceTerminalId,
+    terminalSurfaceVisible,
     worktreeStatuses,
     worktrees,
   } = bindings;
@@ -147,6 +162,55 @@ export function PersistentSurfaceLayer({
             })
           }
           onHeaderChange={setCodeHeader}
+        />
+      </Suspense>
+
+      <Suspense
+        fallback={
+          terminalSurfaceVisible ? (
+            <div className="grid flex-1 place-items-center text-muted-foreground">
+              <Loader2 className="size-5 animate-spin" />
+            </div>
+          ) : null
+        }
+      >
+        <PersistentTerminalViews
+          active={terminalSurfaceVisible}
+          commandPaletteTerminalId={terminalCommandPaletteTerminalId}
+          eliteContentGlitchEnabled={
+            (settings.data?.preferences.eliteMode ?? false) &&
+            (settings.data?.preferences.eliteRevealConfig
+              ?.glitchTerminalContents ??
+              DEFAULT_ELITE_REVEAL_CONFIG.glitchTerminalContents)
+          }
+          eliteRevealConfig={
+            settings.data?.preferences.eliteRevealConfig ??
+            DEFAULT_ELITE_REVEAL_CONFIG
+          }
+          key={selectedProjectId ?? "no-project"}
+          onCommandPaletteOpenChange={(terminalId, open) =>
+            setTerminalCommandPaletteTerminalId(open ? terminalId : null)
+          }
+          onLinkedConsoleExit={(chatId) => setChatConsoleOpen(chatId, false)}
+          onOpenExternalLink={openTerminalLinkExternally}
+          onOpenLink={openTerminalLink}
+          onPendingInputSent={(inputId) =>
+            setPendingTerminalInputs(
+              (current: Array<{ id: string; terminalId: string }>) =>
+                current.filter(({ id }) => id !== inputId),
+            )
+          }
+          onServicePanelOpenChange={(terminalId, open) =>
+            setTerminalServiceTerminalId(open ? terminalId : null)
+          }
+          ownedTerminals={ownedTerminals}
+          pendingInputs={pendingTerminalInputs}
+          selectedTerminal={
+            selectedTerminal?.kind === "run-configuration"
+              ? null
+              : (selectedTerminal ?? null)
+          }
+          servicePanelTerminalId={terminalServiceTerminalId}
         />
       </Suspense>
 
