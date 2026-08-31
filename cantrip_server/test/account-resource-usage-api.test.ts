@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { accountLiveTrafficSchema } from "@cantrip/protocol/resource-usage";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -89,6 +90,53 @@ describe("account resource usage API", () => {
       const secondOwnerId = secondRegistration.json().currentUser.id as string;
       const firstCookie = sessionCookie(firstRegistration);
       const secondCookie = sessionCookie(secondRegistration);
+
+      const meteredRequest = await app.inject({
+        method: "GET",
+        url: "/api/bootstrap",
+        headers: { cookie: firstCookie, origin },
+      });
+      expect(meteredRequest.statusCode).toBe(200);
+      const firstLiveTraffic = await app.inject({
+        method: "GET",
+        url: "/api/account/live-traffic",
+        headers: { cookie: firstCookie, origin },
+      });
+      const secondLiveTraffic = await app.inject({
+        method: "GET",
+        url: "/api/account/live-traffic",
+        headers: { cookie: secondCookie, origin },
+      });
+      expect(firstLiveTraffic.statusCode).toBe(200);
+      expect(secondLiveTraffic.statusCode).toBe(200);
+      const firstLive = accountLiveTrafficSchema.parse(firstLiveTraffic.json());
+      const secondLive = accountLiveTrafficSchema.parse(
+        secondLiveTraffic.json(),
+      );
+      expect(
+        firstLive.samples.reduce(
+          (total, sample) => total + sample.httpRequests,
+          0,
+        ),
+      ).toBe(1);
+      expect(
+        firstLive.samples.reduce(
+          (total, sample) => total + sample.downloadBytes,
+          0,
+        ),
+      ).toBeGreaterThan(0);
+      expect(
+        secondLive.samples.reduce(
+          (total, sample) => total + sample.uploadBytes + sample.downloadBytes,
+          0,
+        ),
+      ).toBe(0);
+      const invalidLiveTraffic = await app.inject({
+        method: "GET",
+        url: `/api/account/live-traffic?after=${encodeURIComponent(firstLive.cursor)}`,
+        headers: { cookie: firstCookie, origin },
+      });
+      expect(invalidLiveTraffic.statusCode).toBe(400);
 
       const extraSession = await app.inject({
         method: "POST",
@@ -239,6 +287,12 @@ describe("account resource usage API", () => {
         headers: { origin },
       });
       expect(unauthenticated.statusCode).toBe(401);
+      const unauthenticatedLiveTraffic = await app.inject({
+        method: "GET",
+        url: "/api/account/live-traffic",
+        headers: { origin },
+      });
+      expect(unauthenticatedLiveTraffic.statusCode).toBe(401);
     } finally {
       await app.close();
     }

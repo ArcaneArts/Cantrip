@@ -191,6 +191,7 @@ export async function buildApp({
     grokCatalogService,
     licenseWhitelistConfigured,
     licenseWhitelistEnabled,
+    liveTrafficMeter,
     normalizedAdminEmail,
     ollamaCatalogService,
     openRouterRuntimeCatalogs,
@@ -894,6 +895,7 @@ export async function buildApp({
     directAttachments,
     licenseWhitelistConfigured,
     licenseWhitelistEnabled,
+    liveTrafficMeter,
     liveHub,
     localUser,
     markCredentialRevoked: (credentialId) => {

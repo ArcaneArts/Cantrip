@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 
 import { AccountUsageMeter } from "../../account-usage/bandwidth-meter.js";
+import { LiveTrafficMeter } from "../../account-usage/live-traffic-meter.js";
 import { normalizeAccountEmail } from "../../auth/service.js";
 import type { ServerConfig } from "../../config.js";
 import type { ServerRepository } from "../../db/repository.js";
@@ -76,7 +77,10 @@ export function createApplicationServiceFoundation({
   const normalizedAdminEmail = config.adminEmail
     ? normalizeAccountEmail(config.adminEmail)
     : null;
-  const operationalMetrics = installOperationalHooks(app);
+  const liveTrafficMeter = new LiveTrafficMeter({
+    instanceId: config.serverInstanceId ?? "local-single-instance",
+  });
+  const operationalMetrics = installOperationalHooks(app, liveTrafficMeter);
   const relayQuotas = providedRelayQuotas ?? new RelayQuotaManager(config);
   let publishAccountResourceUsageChange = (_ownerId: string): void => undefined;
   const accountUsageMeter = new AccountUsageMeter(
@@ -91,6 +95,7 @@ export function createApplicationServiceFoundation({
         for (const ownerId of ownerIds)
           publishAccountResourceUsageChange(ownerId);
       },
+      onMeasurement: (measurement) => liveTrafficMeter.record(measurement),
     },
   );
   const rawBridge = workerBridge ?? new WorkerBridge();
@@ -146,6 +151,7 @@ export function createApplicationServiceFoundation({
     grokCatalogService,
     licenseWhitelistConfigured,
     licenseWhitelistEnabled,
+    liveTrafficMeter,
     normalizedAdminEmail,
     ollamaCatalogService,
     openRouterRuntimeCatalogs,

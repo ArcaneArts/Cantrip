@@ -204,6 +204,53 @@ describe("AccountUsageMeter", () => {
     expect(batches[0]!.entries[0]!.bytes).toBe(4n);
   });
 
+  it("fans valid measurements to a live observer without coupling buffer capacity", async () => {
+    const observed: Array<{ bytes: bigint | number; ownerId: string }> = [];
+    const meter = new AccountUsageMeter(
+      {
+        async flushBandwidthBatch() {
+          return { applied: true, ownerIds: ["owner-1"] };
+        },
+      },
+      logger,
+      {
+        flushIntervalMs: 60_000,
+        flushThresholdBytes: 10_000,
+        maxBufferedEntries: 1,
+        onMeasurement: (measurement) => observed.push(measurement),
+      },
+    );
+    expect(
+      meter.record({
+        ownerId: "owner-1",
+        direction: "ingress",
+        channel: "http",
+        bytes: 4,
+      }),
+    ).toBe(true);
+    expect(
+      meter.record({
+        ownerId: "owner-1",
+        direction: "egress",
+        channel: "http",
+        bytes: 5,
+      }),
+    ).toBe(false);
+    expect(
+      meter.record({
+        ownerId: "owner-1",
+        direction: "egress",
+        channel: "http",
+        bytes: -1,
+      }),
+    ).toBe(false);
+    expect(observed).toEqual([
+      expect.objectContaining({ ownerId: "owner-1", bytes: 4n }),
+      expect.objectContaining({ ownerId: "owner-1", bytes: 5n }),
+    ]);
+    await meter.close();
+  });
+
   it("persists observer traffic without creating a live-refresh loop", async () => {
     const flushedOwners: string[][] = [];
     const meter = new AccountUsageMeter(
