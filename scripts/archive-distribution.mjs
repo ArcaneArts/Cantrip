@@ -39,8 +39,19 @@ async function requirePath(absolute, description) {
 function createTarArchive(source, destination) {
   const result = spawnSync(
     "tar",
-    ["-czf", destination, "-C", path.dirname(source), path.basename(source)],
-    { encoding: "utf8", stdio: "inherit" },
+    [
+      "--no-xattrs",
+      "-czf",
+      destination,
+      "-C",
+      path.dirname(source),
+      path.basename(source),
+    ],
+    {
+      encoding: "utf8",
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
+      stdio: "inherit",
+    },
   );
   if (result.error) throw result.error;
   if (result.status !== 0) {
