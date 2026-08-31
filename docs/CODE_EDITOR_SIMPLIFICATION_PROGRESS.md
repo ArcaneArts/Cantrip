@@ -174,7 +174,7 @@ Focused verification:
 
 ### Pass 6: stable encryption readiness
 
-Status: implemented; PR pending.
+Status: implemented in [PR #1521](https://github.com/ArcaneArts/Cantrip/pull/1521).
 
 Runtime investigation found one remaining cold-launch remount in the browser:
 the Explorer encryption hook included the worker's current grant set in the
