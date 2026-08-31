@@ -128,6 +128,10 @@ try {
       // Preparation can take a while, so clear anything that claimed a devtop
       // port during the build before starting the actual services.
       forceKillDevelopmentPortListeners(undefined, undefined, repositoryRoot);
+      // Keep the Tauri development binary beside this worktree's persisted
+      // client identity. A normal Tauri build uses src-tauri/target and may be
+      // compiled for tauri://localhost; reusing that binary here changes the
+      // webview origin and makes its nonextractable IndexedDB key disappear.
       process.exitCode = await runPnpm([
         "exec",
         "concurrently",
@@ -142,7 +146,7 @@ try {
         "pnpm --filter @cantrip/protocol dev",
         "cross-env FORCE_COLOR=1 CANTRIP_SERVICE_LOG_DIR=../.cantrip/dev/logs/server pnpm --filter @cantrip/server dev",
         "node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_SERVICE_LOG_DIR=../.cantrip/dev/logs/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev",
-        "node scripts/wait-for-server.mjs && cross-env CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true pnpm --filter @cantrip/app exec tauri dev --config ../.cantrip/dev/tauri-dev.conf.json",
+        "node scripts/wait-for-server.mjs && cross-env CARGO_TARGET_DIR=../../.cantrip/dev/tauri/target CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true pnpm --filter @cantrip/app exec tauri dev --config ../.cantrip/dev/tauri-dev.conf.json",
       ]);
     }
   }

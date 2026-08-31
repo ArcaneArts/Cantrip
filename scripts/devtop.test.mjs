@@ -46,6 +46,10 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
   );
   assert.match(
     launcher,
+    /CARGO_TARGET_DIR=\.\.\/\.\.\/\.cantrip\/dev\/tauri\/target/u,
+  );
+  assert.match(
+    launcher,
     /CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true/u,
   );
   assert.ok(
@@ -111,12 +115,17 @@ test("legacy cleanup recognizes an orphaned Tauri development binary", () => {
   const processes = [
     { pid: 10, ppid: 1, command: "target/debug/cantrip-app" },
     {
+      pid: 11,
+      ppid: 1,
+      command: "/workspace/Cantrip/.cantrip/dev/tauri/target/debug/cantrip-app",
+    },
+    {
       pid: 20,
       ppid: 1,
       command: "/Applications/Cantrip.app/Contents/MacOS/cantrip-app",
     },
   ];
-  assert.deepEqual(findLegacyDevtopRootPids(processes), [10]);
+  assert.deepEqual(findLegacyDevtopRootPids(processes), [10, 11]);
 });
 
 test("legacy cleanup recognizes orphaned service watchers in Cantrip worktrees", () => {
