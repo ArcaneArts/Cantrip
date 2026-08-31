@@ -47,6 +47,7 @@ export interface StandaloneChatSidebarProps {
   creating: boolean;
   error?: unknown;
   selectedChatId: string | null;
+  showModeSwitch?: boolean;
   workers: readonly WorkerSummary[];
   onArchive(chat: StandaloneChatSummary): void;
   onFork(chat: StandaloneChatSummary): void;
@@ -67,6 +68,7 @@ export function StandaloneChatSidebar({
   creating,
   error,
   selectedChatId,
+  showModeSwitch = true,
   workers,
   onArchive,
   onFork,
@@ -95,15 +97,17 @@ export function StandaloneChatSidebar({
 
   return (
     <>
-      <div className="px-3 pb-2 pt-4">
-        <Button
-          className="w-full justify-start"
-          variant="ghost"
-          onClick={onSwitchIde}
-        >
-          <Code2 className="size-4" /> IDE
-        </Button>
-      </div>
+      {showModeSwitch ? (
+        <div className="px-3 pb-2 pt-4">
+          <Button
+            className="w-full justify-start"
+            variant="ghost"
+            onClick={onSwitchIde}
+          >
+            <Code2 className="size-4" /> IDE
+          </Button>
+        </div>
+      ) : null}
 
       <nav
         aria-label="Standalone chats"
