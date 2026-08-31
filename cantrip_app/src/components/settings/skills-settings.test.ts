@@ -13,6 +13,7 @@ const skill: SkillSettingsItem = {
   scope: "repo",
   location: "project",
   path: "/workspace/.agents/skills/image-tools/SKILL.md",
+  enabled: true,
   editable: true,
   deletable: true,
 };

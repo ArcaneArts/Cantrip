@@ -116,7 +116,8 @@ describe("verifyCodexInstallation", () => {
         },
         sourceManifestSha256: "a".repeat(64),
         patchesSha256: "b".repeat(64),
-        buildRecipeVersion: 4,
+        skillTemplatesSha256: "c".repeat(64),
+        buildRecipeVersion: 5,
         entrypoint: "codex",
         artifacts: [
           {
@@ -136,8 +137,9 @@ describe("verifyCodexInstallation", () => {
         "arm64",
       ),
     ).resolves.toMatchObject({
-      buildRecipeVersion: 4,
+      buildRecipeVersion: 5,
       patchesSha256: "b".repeat(64),
+      skillTemplatesSha256: "c".repeat(64),
     });
   });
 
@@ -180,6 +182,42 @@ describe("verifyCodexInstallation", () => {
         "arm64",
       ),
     ).resolves.toMatchObject({ version: PINNED_CODEX_VERSION });
+  });
+
+  it("rejects build recipe v5 without a packaged skill digest", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-codex-bundle-"),
+    );
+    temporaryDirectories.push(directory);
+    const binary = path.join(directory, "codex");
+    const manifestPath = path.join(directory, "codex-runtime.json");
+    await writeFile(binary, "codex binary");
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        component: "codex-cli",
+        version: PINNED_CODEX_VERSION,
+        upstream: {
+          repository: "https://github.com/openai/codex.git",
+          ref: PINNED_CODEX_REF,
+          commit: PINNED_CODEX_COMMIT,
+        },
+        buildRecipeVersion: 5,
+        entrypoint: "codex",
+        artifacts: [{ path: "codex" }],
+        target: "darwin-arm64",
+        profile: "release",
+      }),
+    );
+
+    await expect(
+      verifyCodexInstallation(
+        { binary, manifestPath, source: "bundle" },
+        "darwin",
+        "arm64",
+      ),
+    ).rejects.toThrow("Bundled Codex manifest is invalid");
   });
 
   it("accepts a signed binary whose bytes no longer match the build manifest", async () => {
@@ -238,7 +276,8 @@ describe("verifyCodexInstallation", () => {
           ref: PINNED_CODEX_REF,
           commit: PINNED_CODEX_COMMIT,
         },
-        buildRecipeVersion: 4,
+        buildRecipeVersion: 5,
+        skillTemplatesSha256: "c".repeat(64),
         entrypoint: "codex",
         artifacts: [{ path: "codex" }, { path: "missing-helper" }],
         target: "darwin-arm64",

@@ -216,6 +216,8 @@ describe.sequential("skills settings API", () => {
       type: "skills.settings.list",
       cwd: projectPath,
       providerId,
+      model: { id: expect.any(String), name: expect.any(String) },
+      provider: { id: providerId },
     });
   });
 
@@ -274,6 +276,38 @@ describe.sequential("skills settings API", () => {
     expect(
       protectedCustomizationResponseSchema.parse(response.json()),
     ).toMatchObject({ operationId, operation: "skills.settings.delete" });
+  });
+
+  it("configures effective skill enablement through the selected Codex runtime", async () => {
+    const operationId = crypto.randomUUID();
+    const scope = {
+      workerId: "test-worker",
+      providerId,
+      projectId,
+      chatId: null,
+    };
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/skills/configuration",
+      payload: protectedRequest(
+        operationId,
+        "skills.settings.configure",
+        scope,
+      ),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      protectedCustomizationResponseSchema.parse(response.json()),
+    ).toMatchObject({ operationId, operation: "skills.settings.configure" });
+    expect(commands.at(-1)).toMatchObject({
+      type: "skills.settings.configure",
+      cwd: projectPath,
+      providerId,
+      model: { id: expect.any(String), name: expect.any(String) },
+      provider: { id: providerId },
+      protectedRequest: protectedCustomizationContent,
+    });
   });
 
   it("rejects a worker that does not own the project", async () => {

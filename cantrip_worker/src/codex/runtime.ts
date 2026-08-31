@@ -69,6 +69,10 @@ export interface CodexRuntime {
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
     forceReload?: boolean,
   ): Promise<CodexSkill[]>;
+  listSkillInventory(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+    forceReload?: boolean,
+  ): Promise<CodexCustomizationInventory["skills"]>;
   readCustomizationInventory(
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
       threadId: string | null;

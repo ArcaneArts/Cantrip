@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -203,6 +204,42 @@ describe("skill manager", () => {
     await expect(
       manager.write(context, item.id, "SKILL.md", "Missing frontmatter"),
     ).rejects.toThrow("name and description frontmatter");
+  });
+
+  it("merges authoritative Codex enablement by canonical skill path", async () => {
+    const directory = await createSkill(
+      path.join(projectDirectory, ".agents", "skills"),
+      "project-review",
+      "project-review",
+      "Review this repository.",
+    );
+    const skillPath = path.join(directory, "SKILL.md");
+
+    const inventory = await manager.list(context, {
+      items: [
+        {
+          name: "project-review",
+          description: "Review this repository.",
+          displayName: null,
+          path: skillPath,
+          scope: "repo",
+          enabled: false,
+        },
+      ],
+      errors: [{ path: "broken-skill", message: "Invalid frontmatter." }],
+    });
+
+    expect(inventory.project[0]).toMatchObject({
+      name: "project-review",
+      enabled: false,
+    });
+    expect(inventory.errors).toContainEqual({
+      path: "broken-skill",
+      message: "Invalid frontmatter.",
+    });
+    await expect(
+      manager.configurationPath(context, inventory.project[0]!.id),
+    ).resolves.toBe(await realpath(skillPath));
   });
 
   it("moves deletions into worker recovery storage", async () => {

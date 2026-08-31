@@ -256,6 +256,7 @@ export const skillSettingsItemSchema = skillSummarySchema.extend({
   scope: z.enum(["repo", "user", "system", "admin"]),
   location: skillSettingsLocationSchema,
   path: z.string().min(1).max(8_192),
+  enabled: z.boolean().default(true),
   editable: z.boolean(),
   deletable: z.boolean(),
 });
@@ -327,6 +328,16 @@ export const skillSettingsDeleteRequestSchema =
   skillSettingsContextSchema.extend({
     skillId: skillSettingsItemSchema.shape.id,
   });
+
+export const skillSettingsConfigUpdateSchema =
+  skillSettingsDeleteRequestSchema.extend({
+    enabled: z.boolean(),
+  });
+
+export const skillSettingsConfigResultSchema = z.object({
+  skillId: skillSettingsItemSchema.shape.id,
+  effectiveEnabled: z.boolean(),
+});
 
 export const skillSettingsMutationResultSchema = z.object({
   changed: z.literal(true),
@@ -471,6 +482,14 @@ export type SkillSettingsFileUpdate = z.infer<
 
 export type SkillSettingsDeleteRequest = z.infer<
   typeof skillSettingsDeleteRequestSchema
+>;
+
+export type SkillSettingsConfigUpdate = z.infer<
+  typeof skillSettingsConfigUpdateSchema
+>;
+
+export type SkillSettingsConfigResult = z.infer<
+  typeof skillSettingsConfigResultSchema
 >;
 
 export type SkillSettingsMutationResult = z.infer<

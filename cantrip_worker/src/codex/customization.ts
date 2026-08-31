@@ -25,6 +25,7 @@ import {
   type CodexMcpResourceRead,
   type CodexRuntimeReport,
   type CodexSkillConfigResult,
+  type CodexSkillInventoryItem,
   type CodexSkillRootsResult,
   type CustomizationCapability,
 } from "@cantrip/protocol";
@@ -236,7 +237,7 @@ export function parseSkillInventory(response: unknown, cwd: string) {
             description: string(skill.description) ?? "",
             displayName: optionalString(skillInterface?.displayName),
             path: skillPath,
-            scope,
+            scope: scope as CodexSkillInventoryItem["scope"],
             enabled: skill.enabled !== false,
           },
         ];

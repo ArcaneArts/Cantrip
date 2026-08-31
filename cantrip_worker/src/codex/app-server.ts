@@ -111,6 +111,7 @@ import {
   parseMcpResourceRead,
   parseMcpServerPage,
   parseSkillConfigResult,
+  parseSkillInventory,
   resolveProjectSkillRoots,
   selectExternalImportItems,
   skillPathForConfiguration,
@@ -4578,6 +4579,25 @@ export class CodexAppServer implements CodexRuntime {
       forceReload,
     });
     return parseCodexSkills(response, options.cwd);
+  }
+
+  async listSkillInventory(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+    forceReload = false,
+  ): Promise<CodexCustomizationInventory["skills"]> {
+    if (!this.methodAvailable("skills/list")) {
+      throw new Error(
+        "The installed Codex runtime does not support skill discovery.",
+      );
+    }
+    await this.ensureStarted(options.model, options.provider);
+    return parseSkillInventory(
+      await this.request("skills/list", {
+        cwds: [options.cwd],
+        forceReload,
+      }),
+      options.cwd,
+    );
   }
 
   async reloadSkills(

@@ -314,6 +314,8 @@ import {
   skillAudienceSummarySchema,
   skillAudienceUpdateSchema,
   skillSettingsContextSchema,
+  skillSettingsConfigResultSchema,
+  skillSettingsConfigUpdateSchema,
   skillSettingsDeleteRequestSchema,
   skillSettingsDocumentSchema,
   skillSettingsFileRequestSchema,
@@ -510,6 +512,7 @@ import type {
   ReasoningEffort,
   ResourceAudience,
   SkillSettingsContext,
+  SkillSettingsConfigUpdate,
   SkillSettingsDeleteRequest,
   SkillSettingsFileRequest,
   SkillSettingsFileUpdate,
@@ -7458,6 +7461,38 @@ export async function deleteSettingsSkill(input: SkillSettingsDeleteRequest) {
     operation: "skills.settings.delete",
     expectedScope: scope,
     schema: skillSettingsMutationResultSchema,
+  });
+}
+
+export async function configureSettingsSkill(input: SkillSettingsConfigUpdate) {
+  const parsed = skillSettingsConfigUpdateSchema.parse(input);
+  await ensureCustomizationWorker(parsed.workerId);
+  const scope = customizationContentScopeSchema.parse({
+    workerId: parsed.workerId,
+    projectId: parsed.projectId,
+    chatId: null,
+    providerId: parsed.providerId,
+  });
+  const operationId = crypto.randomUUID();
+  const protectedRequest = await protectCustomizationRequest({
+    scope,
+    operationId,
+    operation: "skills.settings.configure",
+    content: { skillId: parsed.skillId, enabled: parsed.enabled },
+    schema: skillSettingsConfigUpdateSchema.pick({
+      skillId: true,
+      enabled: true,
+    }),
+  });
+  return openCustomizationResponse({
+    raw: await request("/api/skills/configuration", {
+      method: "PATCH",
+      body: JSON.stringify(protectedRequest),
+    }),
+    operationId,
+    operation: "skills.settings.configure",
+    expectedScope: scope,
+    schema: skillSettingsConfigResultSchema,
   });
 }
 

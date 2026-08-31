@@ -656,11 +656,21 @@ export function createModelRoutingRuntime({
     if (!bridge.isConnected(workerId)) {
       throw new SkillSettingsRequestError(503, "Selected worker is offline.");
     }
+    const runtime = (
+      await repository.getModelRuntimes(
+        applicationOwnerId(),
+        undefined,
+        undefined,
+        true,
+      )
+    ).find((candidate) => candidate.provider.id === provider.id);
     return {
       cwd: source?.cwd ?? null,
       workerId,
       providerId: provider.id,
       providerKind: provider.kind,
+      model: runtime?.model ?? null,
+      provider: runtime?.provider ?? null,
     };
   };
 

@@ -9,6 +9,9 @@ cantrip_app/src-tauri/target/
 # Mechanically imported upstream sources are verified by content manifest.
 cantrip_codex/upstream/
 
+# Packaged skills may preserve licensed third-party instructions verbatim.
+skill_templates/
+
 # Keep the previously committed architecture plan's compact tables unchanged.
 docs/PLAN.md
 
