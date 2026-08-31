@@ -323,6 +323,12 @@ importers:
       "@mozilla/readability":
         specifier: 0.6.0
         version: 0.6.0
+      "@xterm/addon-serialize":
+        specifier: 0.14.0
+        version: 0.14.0
+      "@xterm/headless":
+        specifier: 6.0.0
+        version: 6.0.0
       "@zavora-ai/computer-use-mcp":
         specifier: 7.0.0
         version: 7.0.0(supports-color@10.2.2)
@@ -4320,6 +4326,18 @@ packages:
     resolution:
       {
         integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==,
+      }
+
+  "@xterm/addon-serialize@0.14.0":
+    resolution:
+      {
+        integrity: sha512-uteyTU1EkrQa2Ux6P/uFl2fzmXI46jy5uoQMKEOM0fKTyiW7cSn0WrFenHm5vO5uEXX/GpwW/FgILvv3r0WbkA==,
+      }
+
+  "@xterm/headless@6.0.0":
+    resolution:
+      {
+        integrity: sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==,
       }
 
   "@xterm/xterm@6.0.0":
@@ -11700,6 +11718,10 @@ snapshots:
   "@xmldom/xmldom@0.9.10": {}
 
   "@xterm/addon-fit@0.11.0": {}
+
+  "@xterm/addon-serialize@0.14.0": {}
+
+  "@xterm/headless@6.0.0": {}
 
   "@xterm/xterm@6.0.0": {}
 

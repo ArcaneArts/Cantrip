@@ -43,6 +43,15 @@ describe("TerminalManager", () => {
     await expect
       .poll(() => initialOutput, { timeout: 5_000 })
       .toContain("CANTRIP_REPLAY_MARKER");
+    await expect(
+      manager.canonicalSnapshot("terminal-replay"),
+    ).resolves.toMatchObject({
+      activeBuffer: "normal",
+      data: expect.stringContaining("CANTRIP_REPLAY_MARKER"),
+    });
+    await expect(
+      manager.canonicalSnapshot("missing-terminal"),
+    ).resolves.toBeNull();
     manager.detach("terminal-replay", "attachment-initial");
     await expect(initialAttachment).resolves.toEqual({ status: "detached" });
 
