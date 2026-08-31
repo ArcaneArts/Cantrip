@@ -149,7 +149,6 @@ export function PersistentExplorerViews({
   onChanged,
   onHeaderChange,
   onInlineCodeReady,
-  onInlineCodeWorkbenchReadinessChange,
   onLifecycleChange,
   onTransientLifecycleChange,
   onOpenFile,
@@ -175,10 +174,6 @@ export function PersistentExplorerViews({
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
   onInlineCodeReady?(explorerId: string): void;
-  onInlineCodeWorkbenchReadinessChange?(
-    explorerId: string,
-    ready: boolean,
-  ): void;
   onLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
@@ -423,12 +418,6 @@ export function PersistentExplorerViews({
         onHeaderChange={active ? onHeaderChange : undefined}
         onInlineCodeReady={
           onInlineCodeReady ? () => onInlineCodeReady(explorer.id) : undefined
-        }
-        onInlineCodeWorkbenchReadinessChange={
-          onInlineCodeWorkbenchReadinessChange
-            ? (ready) =>
-                onInlineCodeWorkbenchReadinessChange(explorer.id, ready)
-            : undefined
         }
         onLifecycleChange={handleLifecycleChange}
         onOpenFile={

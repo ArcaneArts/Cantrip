@@ -110,7 +110,6 @@ export function createSidebarExplorerCommands({
     SidebarFileState,
     | "setSidebarFilePinHandoff"
     | "setSidebarFilePreview"
-    | "sidebarFileWorkbenchReadyIdsRef"
     | "sidebarFilePinHandoffRef"
     | "sidebarFilePreview"
     | "waitForSidebarFileSuccessor"
@@ -150,7 +149,6 @@ export function createSidebarExplorerCommands({
   const {
     setSidebarFilePinHandoff,
     setSidebarFilePreview,
-    sidebarFileWorkbenchReadyIdsRef,
     sidebarFilePinHandoffRef,
     sidebarFilePreview,
     waitForSidebarFileSuccessor,
@@ -184,9 +182,6 @@ export function createSidebarExplorerCommands({
         explorerId: explorer.id,
         layout: tabLayout,
         pinInProgress: Boolean(sidebarFilePinHandoffRef.current),
-        workbenchReady: sidebarFileWorkbenchReadyIdsRef.current.has(
-          explorer.id,
-        ),
       })
     ) {
       clientLogger.info("Explorer file preview deferred for provisioning", {
@@ -197,9 +192,7 @@ export function createSidebarExplorerCommands({
         projectId: explorer.projectId,
         reasonCode: sidebarFilePinHandoffRef.current
           ? "pin-handoff-in-progress"
-          : !sidebarFileWorkbenchReadyIdsRef.current.has(explorer.id)
-            ? "preview-owner-not-ready"
-            : "preview-owner-is-tabbed",
+          : "preview-owner-is-tabbed",
         status: "deferred",
         subsystem: "explorer",
         worktreeId: explorer.worktreeId,
@@ -332,17 +325,12 @@ export function createSidebarExplorerCommands({
         explorerId: explorer.id,
         layout: tabLayout,
         pinInProgress: false,
-        workbenchReady: sidebarFileWorkbenchReadyIdsRef.current.has(
-          explorer.id,
-        ),
       })
     ) {
       logSidebarFilePinPhase({
         explorer,
         phase: "request-blocked",
-        reasonCode: !sidebarFileWorkbenchReadyIdsRef.current.has(explorer.id)
-          ? "preview-owner-not-ready"
-          : "preview-owner-is-tabbed",
+        reasonCode: "preview-owner-is-tabbed",
         status: "ignored",
         transactionId: requestedTransactionId,
       });
@@ -401,20 +389,20 @@ export function createSidebarExplorerCommands({
     if (!successor) {
       logSidebarFilePinPhase({
         explorer,
-        phase: "successor-ready",
-        reasonCode: "successor-readiness-timeout",
+        phase: "successor-available",
+        reasonCode: "successor-provisioning-timeout",
         status: "failed",
         transactionId: handoff.transactionId,
       });
       abandonSidebarFilePinHandoff(
         handoff,
-        "The next editor did not become ready before pinning timed out.",
+        "The next file surface was not provisioned before pinning timed out.",
       );
       return;
     }
     logSidebarFilePinPhase({
       explorer,
-      phase: "successor-ready",
+      phase: "successor-available",
       status: "completed",
       successorExplorerId: successor.id,
       transactionId: handoff.transactionId,

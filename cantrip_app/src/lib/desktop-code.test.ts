@@ -84,6 +84,7 @@ import {
   setDirectCodeAttachmentPresentation,
   setDirectCodeAttachmentTheme,
   retainSharedProtectedCodeAttachmentLease,
+  shouldUseLegacyProtectedCodeAttachmentFallback,
   stopDirectCodeAttachment,
   stopSharedProtectedCodeAttachment,
   subscribePreferredCodeAttachmentUnavailable,
@@ -121,6 +122,44 @@ beforeEach(() => {
     destinationRejectedCount: 1,
     lastDestinationRejectionCode: "protected-record-unavailable",
     tunnelId: "11111111-1111-4111-8111-111111111111",
+  });
+});
+
+describe("protected Code attachment platform fallback", () => {
+  const compatibilityError = (status: number, code?: string) =>
+    Object.assign(new Error("Compatibility boundary."), { code, status });
+
+  it("uses the legacy browser attachment only for explicit compatibility responses", () => {
+    mocks.isTauri.mockReturnValue(false);
+
+    for (const code of [
+      "shared-code-transport-requires-single-server",
+      "shared-code-transport-unsupported",
+    ]) {
+      expect(
+        shouldUseLegacyProtectedCodeAttachmentFallback(
+          compatibilityError(409, code),
+        ),
+      ).toBe(true);
+    }
+    expect(
+      shouldUseLegacyProtectedCodeAttachmentFallback(compatibilityError(409)),
+    ).toBe(false);
+    expect(
+      shouldUseLegacyProtectedCodeAttachmentFallback(
+        compatibilityError(503, "shared-code-transport-unsupported"),
+      ),
+    ).toBe(false);
+  });
+
+  it("never replaces the protected attachment path in Tauri", () => {
+    mocks.isTauri.mockReturnValue(true);
+
+    expect(
+      shouldUseLegacyProtectedCodeAttachmentFallback(
+        compatibilityError(409, "shared-code-transport-unsupported"),
+      ),
+    ).toBe(false);
   });
 });
 

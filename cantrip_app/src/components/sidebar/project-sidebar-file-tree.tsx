@@ -72,7 +72,6 @@ function SidebarFileRow({
   onOpenNative,
   onOpen,
   onOpenTerminal,
-  openEnabled = true,
   onPin,
   onRename,
   onRenameCancel,
@@ -92,7 +91,6 @@ function SidebarFileRow({
   onOpenNative?(localFolder: boolean): void;
   onOpen(): void;
   onOpenTerminal?(): void;
-  openEnabled?: boolean;
   onPin?(): void;
   onRename(): void;
   onRenameCancel(): void;
@@ -103,8 +101,7 @@ function SidebarFileRow({
   revealLabel?: string;
 }) {
   const Icon = entryIcon(entry, expanded);
-  const openable =
-    entry.kind === "directory" || (entry.viewable && openEnabled);
+  const openable = entry.kind === "directory" || entry.viewable;
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameOnBlurRef = useRef(false);
   const revealLocalFolder = useRef(false);
@@ -275,7 +272,6 @@ function SidebarDirectoryNode({
   onOpenNative,
   onPreview,
   onOpenTerminal,
-  filePreviewReady,
   onPin,
   onRename,
   onRenameCancel,
@@ -302,7 +298,6 @@ function SidebarDirectoryNode({
   onOpenNative?(entry: ExplorerEntry, localFolder: boolean): void;
   onPreview(entry: ExplorerEntry): void;
   onOpenTerminal?(entry: ExplorerEntry): void;
-  filePreviewReady: boolean;
   onPin(entry: ExplorerEntry): void;
   onRename(entry: ExplorerEntry): void;
   onRenameCancel(): void;
@@ -397,7 +392,6 @@ function SidebarDirectoryNode({
                   onOpenNative={onOpenNative}
                   onPreview={onPreview}
                   onOpenTerminal={onOpenTerminal}
-                  filePreviewReady={filePreviewReady}
                   onPin={onPin}
                   onRename={onRename}
                   onRenameCancel={onRenameCancel}
@@ -426,7 +420,6 @@ function SidebarDirectoryNode({
                       : undefined
                   }
                   onOpen={() => onPreview(child)}
-                  openEnabled={filePreviewReady}
                   onPin={() => onPin(child)}
                   onRename={() => onRename(child)}
                   onRenameCancel={onRenameCancel}
@@ -449,7 +442,6 @@ export function ProjectSidebarFileTree({
   activePath,
   error,
   explorer,
-  filePreviewReady = true,
   loading,
   onDelete,
   onOpenGraph,
@@ -467,7 +459,6 @@ export function ProjectSidebarFileTree({
   activePath: string | null;
   error?: string | null;
   explorer: ExplorerSummary | null;
-  filePreviewReady?: boolean;
   loading: boolean;
   onDelete(
     entry: ExplorerEntry,
@@ -774,15 +765,6 @@ export function ProjectSidebarFileTree({
           </div>
         ) : explorer ? (
           <>
-            {!filePreviewReady ? (
-              <p
-                className="px-2 pb-1 text-[10px] leading-4 text-muted-foreground"
-                data-slot="sidebar-file-editor-preparing"
-                role="status"
-              >
-                Preparing editor…
-              </p>
-            ) : null}
             <div role="tree" aria-label="Project files">
               {visibleEntries.map((entry) =>
                 entry.kind === "directory" ? (
@@ -800,7 +782,6 @@ export function ProjectSidebarFileTree({
                     onOpenNative={onOpenNative}
                     onPreview={onPreview}
                     onOpenTerminal={onOpenTerminal}
-                    filePreviewReady={filePreviewReady}
                     onPin={onPin}
                     onRename={beginRename}
                     onRenameCancel={cancelRename}
@@ -829,7 +810,6 @@ export function ProjectSidebarFileTree({
                         : undefined
                     }
                     onOpen={() => onPreview(entry)}
-                    openEnabled={filePreviewReady}
                     onPin={() => onPin(entry)}
                     onRename={() => beginRename(entry)}
                     onRenameCancel={cancelRename}

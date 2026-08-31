@@ -284,7 +284,6 @@ export function ExplorerView({
   onChanged,
   onHeaderChange,
   onInlineCodeReady,
-  onInlineCodeWorkbenchReadinessChange,
   onLifecycleChange,
   keepInlineCodeWarm = false,
   onOpenFile,
@@ -303,7 +302,6 @@ export function ExplorerView({
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
   onInlineCodeReady?(): void;
-  onInlineCodeWorkbenchReadinessChange?(ready: boolean): void;
   onLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
@@ -1217,7 +1215,6 @@ export function ExplorerView({
             explorerId={explorer.id}
             onLifecycleChange={handleCodeEditorLifecycleChange}
             onReady={onInlineCodeReady}
-            onWorkbenchReadinessChange={onInlineCodeWorkbenchReadinessChange}
             path={codeEditorPath}
             retained={retainInlineWorkbench}
             visible={codeEditorVisibleOnSurface}

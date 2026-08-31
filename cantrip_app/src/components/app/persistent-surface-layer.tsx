@@ -41,7 +41,6 @@ export function PersistentSurfaceLayer({
     handleExplorerChanged,
     handleExplorerLifecycleChange,
     handleSidebarFilePreviewLifecycleChange,
-    updateSidebarFileWorkbenchReadiness,
     isPopout,
     newTerminal,
     onlineWorkerIds,
@@ -265,9 +264,6 @@ export function PersistentSurfaceLayer({
               : setExplorerHeader
           }
           onInlineCodeReady={completeSidebarFilePinHandoff}
-          onInlineCodeWorkbenchReadinessChange={
-            updateSidebarFileWorkbenchReadiness
-          }
           onLifecycleChange={handleExplorerLifecycleChange}
           onTransientLifecycleChange={handleSidebarFilePreviewLifecycleChange}
           onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}

@@ -62,9 +62,6 @@ function commandHarness({
     fileState: {
       setSidebarFilePinHandoff: vi.fn(),
       setSidebarFilePreview,
-      sidebarFileWorkbenchReadyIdsRef: {
-        current: new Set([previewOwner.id]),
-      },
       sidebarFilePinHandoffRef: { current: handoff },
       sidebarFilePreview: {
         active: true,
