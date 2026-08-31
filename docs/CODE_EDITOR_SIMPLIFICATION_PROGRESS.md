@@ -220,7 +220,7 @@ Focused verification:
 
 ### Pass 7: runtime acceptance and direct-route recovery
 
-Status: implemented in [PR #1524](https://github.com/ArcaneArts/Cantrip/pull/1524).
+Status: merged in [PR #1524](https://github.com/ArcaneArts/Cantrip/pull/1524).
 
 The Tauri runtime exposed two remaining defects that unit-only validation had
 not reproduced:
@@ -353,4 +353,6 @@ are non-blocking platform follow-ups.
 
 ## Next pass
 
-Merge Pass 7, confirm squash auto-merge, and close this goal.
+None. The editor simplification goal is complete; future platform work should
+be tracked independently rather than reopening the removed navigation recovery
+machinery.
