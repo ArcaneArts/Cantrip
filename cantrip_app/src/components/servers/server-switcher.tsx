@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { MobileSignInQrDialog } from "@/components/auth/mobile-sign-in-qr-dialog";
 import { AddServerForm } from "@/components/servers/add-server-form";
+import { ActiveServerTrafficSubmenu } from "@/components/servers/server-live-traffic";
 import {
   Dialog,
   DialogContent,
@@ -243,55 +244,70 @@ export function ServerSwitcher({
             <DropdownMenuPrimitive.Label className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               Servers
             </DropdownMenuPrimitive.Label>
-            {connections.map((connection) => (
-              <DropdownMenuPrimitive.Item
-                className={itemClass}
-                key={connection.id}
-                onSelect={() => void switchTo(connection.id)}
-              >
-                <Server className="size-4 text-muted-foreground" />
-                <span className="min-w-0 flex-1">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="block min-w-0 flex-1 truncate">
-                      {connection.name}
+            {connections.map((connection) => {
+              const row = (
+                <>
+                  <Server className="size-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="block min-w-0 flex-1 truncate">
+                        {connection.name}
+                      </span>
+                      <ServerVersionBadge
+                        serverVersion={serverVersions[connection.id]}
+                      />
                     </span>
-                    <ServerVersionBadge
-                      serverVersion={serverVersions[connection.id]}
-                    />
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      {connection.url || "Development proxy"}
+                    </span>
                   </span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
-                    {connection.url || "Development proxy"}
-                  </span>
-                </span>
-                {connection.id === active?.id ? (
-                  <Check className="size-4" />
-                ) : null}
-                {connection.kind === "remote" ? (
-                  <button
-                    aria-label={`Remove ${connection.name}`}
-                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void removeServerConnection(connection.id)
-                        .then(() => {
-                          clearClientSession();
-                          window.location.reload();
-                        })
-                        .catch((removeError) =>
-                          setError(
-                            removeError instanceof Error
-                              ? removeError.message
-                              : "Could not remove server.",
-                          ),
-                        );
-                    }}
-                    type="button"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                ) : null}
-              </DropdownMenuPrimitive.Item>
-            ))}
+                  {connection.id === active?.id ? (
+                    <Check className="size-4" />
+                  ) : null}
+                  {connection.kind === "remote" ? (
+                    <button
+                      aria-label={`Remove ${connection.name}`}
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void removeServerConnection(connection.id)
+                          .then(() => {
+                            clearClientSession();
+                            window.location.reload();
+                          })
+                          .catch((removeError) =>
+                            setError(
+                              removeError instanceof Error
+                                ? removeError.message
+                                : "Could not remove server.",
+                            ),
+                          );
+                      }}
+                      type="button"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  ) : null}
+                </>
+              );
+              return connection.id === active?.id ? (
+                <ActiveServerTrafficSubmenu
+                  className={itemClass}
+                  key={connection.id}
+                  serverId={connection.id}
+                >
+                  {row}
+                </ActiveServerTrafficSubmenu>
+              ) : (
+                <DropdownMenuPrimitive.Item
+                  className={itemClass}
+                  key={connection.id}
+                  onSelect={() => void switchTo(connection.id)}
+                >
+                  {row}
+                </DropdownMenuPrimitive.Item>
+              );
+            })}
             <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
             <DropdownMenuPrimitive.Item
               className={itemClass}

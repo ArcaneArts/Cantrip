@@ -10,6 +10,8 @@ import {
   accountAdminSummarySchema,
   accountLicenseWhitelistCreateSchema,
   accountLicenseWhitelistEntrySchema,
+  accountLiveTrafficQuerySchema,
+  accountLiveTrafficSchema,
   accountRegistrationSchema,
   accountSessionListSchema,
   accountResourceUsageHistoryQuerySchema,
@@ -405,6 +407,7 @@ import {
   type RepositoryOperationType,
 } from "@cantrip/protocol/repository-operation";
 import type {
+  AccountLiveTrafficQuery,
   AccountResourceUsageHistoryQuery,
   AccountRegistration,
   AuthLogin,
@@ -694,6 +697,19 @@ export async function getAccountResourceUsageHistory(
     await request(
       `/api/account/resource-usage/history?${new URLSearchParams(query).toString()}`,
     ),
+  );
+}
+
+export async function getAccountLiveTraffic(
+  input: AccountLiveTrafficQuery = {},
+  signal?: AbortSignal,
+) {
+  const query = accountLiveTrafficQuerySchema.parse(input);
+  const suffix = new URLSearchParams(query).toString();
+  return accountLiveTrafficSchema.parse(
+    await request(`/api/account/live-traffic${suffix ? `?${suffix}` : ""}`, {
+      signal,
+    }),
   );
 }
 
