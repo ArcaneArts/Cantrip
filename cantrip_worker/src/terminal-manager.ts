@@ -15,6 +15,10 @@ import * as pty from "node-pty";
 import { codexProviderConfiguration } from "./codex/provider-config.js";
 import { workerLogError, workerLogger } from "./logger.js";
 import type { RuntimeProvider } from "./protected-secrets.js";
+import {
+  TerminalCanonicalState,
+  type TerminalCanonicalSnapshot,
+} from "./terminal-canonical-state.js";
 
 const MAX_SCROLLBACK_CHARS = 2_000_000;
 let spawnHelperChecked = false;
@@ -49,6 +53,8 @@ export type TerminalRuntimeEvent =
 interface TerminalSession {
   buffer: string;
   bufferTruncated: boolean;
+  canonicalAvailable: boolean;
+  canonicalState: TerminalCanonicalState;
   cols: number;
   cwd: string;
   exited: Extract<TerminalOpenResult, { status: "exited" }> | null;
@@ -60,6 +66,7 @@ interface TerminalSession {
   restartTimer: ReturnType<typeof setTimeout> | null;
   rows: number;
   startedAtMs: number | null;
+  stateQueue: Promise<void>;
   subscribers: Map<string, (event: TerminalRuntimeEvent) => void>;
   waiters: Map<string, (result: TerminalOpenResult) => void>;
 }
@@ -273,7 +280,11 @@ export class TerminalManager {
       clearTimeout(session.restartTimer);
       session.restartTimer = null;
     }
-    this.#appendOutput(session, "\r\n\x1b[90m[Restarting service]\x1b[0m\r\n");
+    this.#appendOutput(
+      terminalId,
+      session,
+      "\r\n\x1b[90m[Restarting service]\x1b[0m\r\n",
+    );
     if (session.process) {
       session.restartDelayOverride = 0;
       session.process.kill();
@@ -310,6 +321,10 @@ export class TerminalManager {
     let session = this.#sessions.get(terminalId);
     if (session?.exited) {
       this.#sessions.delete(terminalId);
+      const exitedSession = session;
+      void exitedSession.stateQueue.finally(() =>
+        exitedSession.canonicalState.dispose(),
+      );
       session = undefined;
     }
     if (!session) {
@@ -317,6 +332,8 @@ export class TerminalManager {
       session = {
         buffer: "",
         bufferTruncated: false,
+        canonicalAvailable: true,
+        canonicalState: new TerminalCanonicalState(cols, rows),
         cols,
         cwd,
         exited: null,
@@ -328,6 +345,7 @@ export class TerminalManager {
         restartTimer: null,
         rows,
         startedAtMs: null,
+        stateQueue: Promise.resolve(),
         subscribers: new Map(),
         waiters: new Map(),
       };
@@ -386,6 +404,9 @@ export class TerminalManager {
     session.cols = cols;
     session.rows = rows;
     if (session.process) session.process.resize(cols, rows);
+    this.#queueCanonicalMutation(terminalId, session, "resize", () =>
+      session.canonicalState.resize(cols, rows),
+    );
     if (previousCols !== cols || previousRows !== rows) {
       workerLogger.event("debug", "Terminal session resized", {
         event: "terminal.session.resized",
@@ -424,6 +445,21 @@ export class TerminalManager {
       truncated: session.buffer.length > boundedMaxChars,
       exitCode: session.exited?.exitCode ?? null,
     });
+  }
+
+  async canonicalSnapshot(
+    terminalId: string,
+  ): Promise<TerminalCanonicalSnapshot | null> {
+    const session = this.#sessions.get(terminalId);
+    if (!session) return null;
+    await session.stateQueue;
+    if (!session.canonicalAvailable) return null;
+    try {
+      return session.canonicalState.snapshot();
+    } catch (error) {
+      this.#recordCanonicalFailure(terminalId, session, "serialize", error);
+      return null;
+    }
   }
 
   close(terminalId: string): void {
@@ -497,6 +533,7 @@ export class TerminalManager {
       dimensions: { cols: session.cols, rows: session.rows },
       replay: {
         characters: session.buffer.length,
+        format: "legacy-raw-v1",
         truncated: session.bufferTruncated,
       },
       counts: { clients: session.subscribers.size },
@@ -508,12 +545,19 @@ export class TerminalManager {
     return new Promise((resolve) => session.waiters.set(attachmentId, resolve));
   }
 
-  #appendOutput(session: TerminalSession, data: string): void {
+  #appendOutput(
+    terminalId: string,
+    session: TerminalSession,
+    data: string,
+  ): void {
     const nextBuffer = `${session.buffer}${data}`;
     if (nextBuffer.length > MAX_SCROLLBACK_CHARS) {
       session.bufferTruncated = true;
     }
     session.buffer = nextBuffer.slice(-MAX_SCROLLBACK_CHARS);
+    this.#queueCanonicalMutation(terminalId, session, "write", () =>
+      session.canonicalState.write(data),
+    );
     for (const subscriber of session.subscribers.values()) {
       subscriber({ type: "terminal.output", data });
     }
@@ -573,6 +617,8 @@ export class TerminalManager {
     const session = existing ?? {
       buffer: "",
       bufferTruncated: false,
+      canonicalAvailable: true,
+      canonicalState: new TerminalCanonicalState(80, 24),
       cols: 80,
       cwd: service.cwd,
       exited: null,
@@ -584,15 +630,18 @@ export class TerminalManager {
       restartTimer: null,
       rows: 24,
       startedAtMs: null,
+      stateQueue: Promise.resolve(),
       subscribers: new Map(),
       waiters: new Map(),
     };
+    if (existing) this.#resetReplayState(service.terminalId, session);
     session.cwd = service.cwd;
     session.exited = null;
     session.launch = { type: "command", command: service.command };
     session.restartTimer = null;
     this.#sessions.set(service.terminalId, session);
     this.#appendOutput(
+      service.terminalId,
       session,
       "\r\n\x1b[90m[Starting terminal service]\x1b[0m\r\n",
     );
@@ -615,6 +664,7 @@ export class TerminalManager {
         },
       );
       this.#appendOutput(
+        service.terminalId,
         session,
         "\r\n\x1b[31m[Service failed to start]\x1b[0m\r\n",
       );
@@ -678,7 +728,7 @@ export class TerminalManager {
     });
     child.onData((data) => {
       if (session.process !== child) return;
-      this.#appendOutput(session, data);
+      this.#appendOutput(terminalId, session, data);
     });
     child.onExit(({ exitCode, signal }) => {
       if (session.process !== child) return;
@@ -715,6 +765,7 @@ export class TerminalManager {
           },
         );
         this.#appendOutput(
+          terminalId,
           session,
           `\r\n\x1b[90m[Service exited ${exitCode}; restarting ${delay === 0 ? "now" : `in ${Math.ceil(delay / 1_000)} seconds`}]\x1b[0m\r\n`,
         );
@@ -766,7 +817,10 @@ export class TerminalManager {
     for (const resolve of session.waiters.values()) resolve(result);
     session.subscribers.clear();
     session.waiters.clear();
-    if (session.removeAfterExit) this.#sessions.delete(terminalId);
+    if (session.removeAfterExit) {
+      this.#sessions.delete(terminalId);
+      void session.stateQueue.finally(() => session.canonicalState.dispose());
+    }
     this.#observeLifecycle({
       terminalId,
       status: "exited",
@@ -781,5 +835,54 @@ export class TerminalManager {
       exitCode: 0,
       signal: null,
     }) as Extract<TerminalOpenResult, { status: "exited" }>;
+  }
+
+  #queueCanonicalMutation(
+    terminalId: string,
+    session: TerminalSession,
+    operation: "reset" | "resize" | "write",
+    mutation: () => Promise<void> | void,
+  ): void {
+    session.stateQueue = session.stateQueue
+      .then(async () => {
+        if (!session.canonicalAvailable && operation !== "reset") return;
+        await mutation();
+        if (operation === "reset") session.canonicalAvailable = true;
+      })
+      .catch((error: unknown) =>
+        this.#recordCanonicalFailure(terminalId, session, operation, error),
+      );
+  }
+
+  #recordCanonicalFailure(
+    terminalId: string,
+    session: TerminalSession,
+    operation: string,
+    error: unknown,
+  ): void {
+    session.canonicalAvailable = false;
+    workerLogger.rateLimited(
+      `terminal-canonical-state:${terminalId}`,
+      "warn",
+      "Terminal canonical state update failed",
+      {
+        ...workerLogError(error),
+        event: "terminal.canonical-state.failed",
+        subsystem: "terminal",
+        operation,
+        reasonCode: "emulator-update-failed",
+        status: "degraded",
+        terminalId,
+      },
+      { summaryEvery: 20, windowMs: 30_000 },
+    );
+  }
+
+  #resetReplayState(terminalId: string, session: TerminalSession): void {
+    session.buffer = "";
+    session.bufferTruncated = false;
+    this.#queueCanonicalMutation(terminalId, session, "reset", () =>
+      session.canonicalState.reset(session.cols, session.rows),
+    );
   }
 }

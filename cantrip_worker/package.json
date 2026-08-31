@@ -20,6 +20,8 @@
     "@cantrip/version": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@mozilla/readability": "0.6.0",
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/headless": "6.0.0",
     "@zavora-ai/computer-use-mcp": "7.0.0",
     "dotenv": "^17.4.2",
     "jsonc-parser": "3.3.1",
