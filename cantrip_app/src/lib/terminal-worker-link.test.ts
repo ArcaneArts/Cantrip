@@ -1,5 +1,7 @@
 import type {
+  SurfaceStreamOpaque,
   TerminalClientMessage,
+  TerminalHydrationMetadata,
   WorkerLinkChannelCloseCode,
   WorkerLinkResourceGrant,
   WorkerLinkRoute,
@@ -23,6 +25,27 @@ import type {
 
 const now = Date.parse("2026-08-26T12:00:00.000Z");
 const operationId = "11111111-1111-4111-8111-111111111111";
+const opaque: SurfaceStreamOpaque = {
+  formatVersion: 1,
+  keyRevision: 1,
+  envelope: {
+    version: 1,
+    algorithm: "AES-256-GCM",
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
+const hydration: TerminalHydrationMetadata = {
+  cols: 80,
+  format: "legacy-raw",
+  generation: 1,
+  rows: 24,
+  snapshotCharacters: 20,
+  snapshotChunks: 1,
+  truncated: false,
+  version: 1,
+};
 
 function session(preferredRoute: WorkerLinkRoute = "local"): WorkerLinkSession {
   return {
@@ -199,14 +222,35 @@ describe("Terminal WorkerLink client", () => {
       },
       fixture.dependencies,
     );
-    const payload = fixture.stream.receive({ type: "ready" });
+    const outputPayload = fixture.stream.receive({
+      type: "output",
+      operationId,
+      sequence: 0,
+      protectedData: opaque,
+      hydration,
+    });
+    const readyPayload = fixture.stream.receive({ type: "ready" });
     await Promise.resolve();
     expect(messages).toHaveLength(0);
     expect(fixture.stream.acknowledgements).toHaveLength(0);
 
     connection.activate();
-    await vi.waitFor(() => expect(messages).toEqual([{ type: "ready" }]));
-    expect(fixture.stream.acknowledgements).toEqual([payload.byteLength]);
+    await vi.waitFor(() =>
+      expect(messages).toEqual([
+        {
+          type: "output",
+          operationId,
+          sequence: 0,
+          protectedData: opaque,
+          hydration,
+        },
+        { type: "ready" },
+      ]),
+    );
+    expect(fixture.stream.acknowledgements).toEqual([
+      outputPayload.byteLength,
+      readyPayload.byteLength,
+    ]);
     expect(connection.route).toBe("local");
     connection.close();
     expect(fixture.dependencies.revokeGrant).toHaveBeenCalledWith(

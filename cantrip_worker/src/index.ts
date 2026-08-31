@@ -1235,7 +1235,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       protectOutput: (context, event) =>
         protectWorkerSurfaceStreamContent({
           context,
-          content: event,
+          content: { type: "terminal.output", data: event.data },
           schema: terminalOutputContentSchema,
           service: workerEncryption,
         }),
@@ -4143,7 +4143,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   direction: "output",
                   sequence,
                 },
-                content: event,
+                content: { type: "terminal.output", data: event.data },
                 schema: terminalOutputContentSchema,
                 service: workerEncryption,
               }),

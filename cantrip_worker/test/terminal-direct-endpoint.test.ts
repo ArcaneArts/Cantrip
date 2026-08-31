@@ -7,6 +7,7 @@ import {
   terminalInputContentSchema,
   terminalOutputContentSchema,
 } from "@cantrip/protocol/surface-stream";
+import type { TerminalHydrationMetadata } from "@cantrip/protocol";
 
 import { TerminalDirectEndpointManager } from "../src/terminal-direct-endpoint.js";
 import type { TerminalManager } from "../src/terminal-manager.js";
@@ -18,6 +19,30 @@ import {
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const managers: TerminalDirectEndpointManager[] = [];
+const hydration: TerminalHydrationMetadata = {
+  activeBuffer: "alternate",
+  cols: 80,
+  cursor: { x: 4, y: 2 },
+  format: "canonical-xterm",
+  generation: 3,
+  modes: {
+    applicationCursorKeysMode: true,
+    applicationKeypadMode: false,
+    bracketedPasteMode: true,
+    insertMode: false,
+    mouseTrackingMode: "none",
+    originMode: false,
+    reverseWraparoundMode: false,
+    sendFocusMode: false,
+    synchronizedOutputMode: false,
+    wraparoundMode: true,
+  },
+  rows: 24,
+  scrollbackRows: 0,
+  snapshotCharacters: 5,
+  snapshotChunks: 1,
+  version: 1,
+};
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.close();
@@ -42,7 +67,7 @@ describe("TerminalDirectEndpointManager", () => {
     const detach = vi.fn(() => ({ status: "detached" as const }));
     const terminal = {
       attachExisting: vi.fn((_terminalId, _attachmentId, emit) => {
-        emit({ type: "terminal.output", data: "hello" });
+        emit({ type: "terminal.output", data: "hello", hydration });
         emit({ type: "terminal.ready" });
         return new Promise(() => undefined);
       }),
@@ -87,7 +112,12 @@ describe("TerminalDirectEndpointManager", () => {
       sequence: number;
       type: "output";
     };
-    expect(output).toMatchObject({ type: "output", operationId, sequence: 0 });
+    expect(output).toMatchObject({
+      type: "output",
+      operationId,
+      sequence: 0,
+      hydration,
+    });
     expect(messages[1]).toEqual({ type: "ready" });
     await expect(
       openWorkerSurfaceStreamContent({

@@ -9,6 +9,7 @@ const { SerializeAddon } =
   require("@xterm/addon-serialize") as typeof import("@xterm/addon-serialize");
 
 export const TERMINAL_CANONICAL_SCROLLBACK_ROWS = 10_000;
+export const TERMINAL_CANONICAL_SNAPSHOT_MAX_CHARACTERS = 2_000_000;
 
 export interface TerminalCanonicalSnapshot {
   activeBuffer: "alternate" | "normal";
@@ -21,7 +22,7 @@ export interface TerminalCanonicalSnapshot {
     applicationKeypadMode: boolean;
     bracketedPasteMode: boolean;
     insertMode: boolean;
-    mouseTrackingMode: string;
+    mouseTrackingMode: "any" | "drag" | "none" | "vt200" | "x10";
     originMode: boolean;
     reverseWraparoundMode: boolean;
     sendFocusMode: boolean;
@@ -80,19 +81,38 @@ export class TerminalCanonicalState {
     }
     const active = this.#terminal.buffer.active;
     const modes = this.#terminal.modes;
+    let serializedScrollbackRows = Math.min(
+      TERMINAL_CANONICAL_SCROLLBACK_ROWS,
+      this.#terminal.buffer.normal.baseY,
+    );
+    let data = this.#serializeAddon.serialize({
+      excludeAltBuffer: false,
+      excludeModes: false,
+      scrollback: serializedScrollbackRows,
+    });
+    while (
+      data.length > TERMINAL_CANONICAL_SNAPSHOT_MAX_CHARACTERS &&
+      serializedScrollbackRows > 0
+    ) {
+      serializedScrollbackRows = Math.floor(serializedScrollbackRows / 2);
+      data = this.#serializeAddon.serialize({
+        excludeAltBuffer: false,
+        excludeModes: false,
+        scrollback: serializedScrollbackRows,
+      });
+    }
+    if (data.length > TERMINAL_CANONICAL_SNAPSHOT_MAX_CHARACTERS) {
+      throw new Error("Terminal canonical snapshot exceeds its bounded size.");
+    }
     return {
       activeBuffer: active.type,
       cols: this.#terminal.cols,
       cursor: { x: active.cursorX, y: active.cursorY },
-      data: this.#serializeAddon.serialize({
-        excludeAltBuffer: false,
-        excludeModes: false,
-        scrollback: TERMINAL_CANONICAL_SCROLLBACK_ROWS,
-      }),
+      data,
       generation: this.#generation,
       modes: { ...modes },
       rows: this.#terminal.rows,
-      scrollbackRows: this.#terminal.buffer.normal.baseY,
+      scrollbackRows: serializedScrollbackRows,
     };
   }
 

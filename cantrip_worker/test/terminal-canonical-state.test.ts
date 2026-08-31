@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { TerminalCanonicalState } from "../src/terminal-canonical-state.js";
+import {
+  TerminalCanonicalState,
+  TERMINAL_CANONICAL_SNAPSHOT_MAX_CHARACTERS,
+} from "../src/terminal-canonical-state.js";
 
 async function writeInChunks(
   terminal: TerminalCanonicalState,
@@ -115,6 +118,26 @@ describe("TerminalCanonicalState", () => {
       });
       expect(snapshot.data).toContain("NEW GENERATION");
       expect(snapshot.data).not.toContain("OLD GENERATION");
+    } finally {
+      terminal.dispose();
+    }
+  });
+
+  it("bounds serialized normal-buffer scrollback", async () => {
+    const terminal = new TerminalCanonicalState(400, 24);
+    try {
+      const lines = Array.from(
+        { length: 6_000 },
+        (_, index) => `${String(index).padStart(6, "0")}:${"x".repeat(390)}`,
+      ).join("\r\n");
+      await writeInChunks(terminal, lines);
+
+      const snapshot = terminal.snapshot();
+      expect(snapshot.data.length).toBeLessThanOrEqual(
+        TERMINAL_CANONICAL_SNAPSHOT_MAX_CHARACTERS,
+      );
+      expect(snapshot.scrollbackRows).toBeLessThan(6_000);
+      expect(snapshot.data).toContain("005999:");
     } finally {
       terminal.dispose();
     }

@@ -237,6 +237,47 @@ export const terminalClientMessageSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const terminalHydrationDimensionsSchema = z.object({
+  cols: z.number().int().min(1).max(1_000),
+  rows: z.number().int().min(1).max(1_000),
+});
+
+export const terminalHydrationMetadataSchema = z.discriminatedUnion("format", [
+  terminalHydrationDimensionsSchema.extend({
+    format: z.literal("canonical-xterm"),
+    version: z.literal(1),
+    generation: z.number().int().nonnegative().safe(),
+    activeBuffer: z.enum(["normal", "alternate"]),
+    cursor: z.object({
+      x: z.number().int().nonnegative().safe(),
+      y: z.number().int().nonnegative().safe(),
+    }),
+    modes: z.object({
+      applicationCursorKeysMode: z.boolean(),
+      applicationKeypadMode: z.boolean(),
+      bracketedPasteMode: z.boolean(),
+      insertMode: z.boolean(),
+      mouseTrackingMode: z.enum(["none", "x10", "vt200", "drag", "any"]),
+      originMode: z.boolean(),
+      reverseWraparoundMode: z.boolean(),
+      sendFocusMode: z.boolean(),
+      synchronizedOutputMode: z.boolean(),
+      wraparoundMode: z.boolean(),
+    }),
+    scrollbackRows: z.number().int().nonnegative().safe(),
+    snapshotCharacters: z.number().int().nonnegative().safe(),
+    snapshotChunks: z.number().int().positive().safe(),
+  }),
+  terminalHydrationDimensionsSchema.extend({
+    format: z.literal("legacy-raw"),
+    version: z.literal(1),
+    generation: z.number().int().nonnegative().safe(),
+    truncated: z.boolean(),
+    snapshotCharacters: z.number().int().nonnegative().safe(),
+    snapshotChunks: z.number().int().positive().safe(),
+  }),
+]);
+
 export const terminalServerMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready") }),
   z.object({
@@ -244,6 +285,7 @@ export const terminalServerMessageSchema = z.discriminatedUnion("type", [
     operationId: surfaceStreamWireRequestSchema.shape.operationId,
     sequence: surfaceStreamWireRequestSchema.shape.sequence,
     protectedData: surfaceStreamOpaqueSchema,
+    hydration: terminalHydrationMetadataSchema.optional(),
   }),
   z.object({
     type: z.literal("exit"),
@@ -294,6 +336,9 @@ export type ScriptCommandKind = z.infer<typeof scriptCommandKindSchema>;
 export type ScriptCommand = z.infer<typeof scriptCommandSchema>;
 export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;
 export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;
+export type TerminalHydrationMetadata = z.infer<
+  typeof terminalHydrationMetadataSchema
+>;
 export type TerminalOpenResult = z.infer<typeof terminalOpenResultSchema>;
 export type TerminalSnapshotResult = z.infer<
   typeof terminalSnapshotResultSchema

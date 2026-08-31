@@ -201,6 +201,7 @@ import {
   systemHealthSchema,
   terminalClientMessageSchema,
   terminalCreateSchema,
+  terminalHydrationMetadataSchema,
   terminalServiceConfigurationSchema,
   terminalSnapshotResultSchema,
   terminalSummarySchema,
@@ -6414,6 +6415,39 @@ describe("Cantrip protocol", () => {
         protectedData: terminalStateFixture().protectedState,
       }).type,
     ).toBe("output");
+    const hydration = terminalHydrationMetadataSchema.parse({
+      activeBuffer: "alternate",
+      cols: 120,
+      cursor: { x: 7, y: 3 },
+      format: "canonical-xterm",
+      generation: 4,
+      modes: {
+        applicationCursorKeysMode: true,
+        applicationKeypadMode: false,
+        bracketedPasteMode: true,
+        insertMode: false,
+        mouseTrackingMode: "drag",
+        originMode: false,
+        reverseWraparoundMode: false,
+        sendFocusMode: true,
+        synchronizedOutputMode: false,
+        wraparoundMode: true,
+      },
+      rows: 40,
+      scrollbackRows: 250,
+      snapshotCharacters: 12_000,
+      snapshotChunks: 2,
+      version: 1,
+    });
+    expect(
+      terminalServerMessageSchema.parse({
+        type: "output",
+        operationId: "terminal-operation",
+        sequence: 0,
+        protectedData: terminalStateFixture().protectedState,
+        hydration,
+      }),
+    ).toMatchObject({ hydration });
     expect(
       workerEventEnvelopeSchema.parse({
         kind: "event",

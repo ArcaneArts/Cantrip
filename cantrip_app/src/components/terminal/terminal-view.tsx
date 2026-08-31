@@ -27,6 +27,7 @@ import {
 } from "@/lib/terminal-worker-link";
 
 import { terminalCommandInput } from "./terminal-command-palette";
+import { TerminalHydrationController } from "./terminal-hydration";
 import {
   createTerminalContentGlitchRenderer,
   type TerminalContentGlitchRenderer,
@@ -208,6 +209,7 @@ export function TerminalView({
     let inputQueue = Promise.resolve();
     let outputSequence = 0;
     let outputQueue = Promise.resolve();
+    const hydration = new TerminalHydrationController();
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleReconnect = () => {
       if (disposed || reconnectTimer) return;
@@ -365,6 +367,13 @@ export function TerminalView({
     const input = xterm.onData(sendInput);
     const handleMessage = (message: TerminalServerMessage): Promise<void> => {
       if (message.type === "ready") {
+        try {
+          hydration.assertReady();
+        } catch {
+          setError("The terminal snapshot was incomplete.");
+          connection?.close("protocol-error");
+          return Promise.resolve();
+        }
         // xterm can answer capability queries while parsing scrollback. Keep
         // input closed until every replay write ahead of ready has finished.
         outputQueue = outputQueue.then(() => {
@@ -406,6 +415,9 @@ export function TerminalView({
         outputSequence += 1;
         outputQueue = outputQueue
           .then(async () => {
+            if (message.hydration) {
+              hydration.begin(message.hydration, xterm);
+            }
             const content = await openSurfaceStreamContent({
               context: {
                 surfaceKind: "terminal",
@@ -432,6 +444,7 @@ export function TerminalView({
                 terminalContentGlitchRenderer.afterWrite();
               }
             }
+            hydration.consumedOutput();
           })
           .catch(() => {
             if (!disposed) {
