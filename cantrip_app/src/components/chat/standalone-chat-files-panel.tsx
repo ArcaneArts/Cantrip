@@ -19,8 +19,9 @@ import {
   RefreshCw,
   Save,
   Trash2,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
 import {
@@ -51,6 +52,12 @@ import {
   revealChatScratchInNativeFileManager,
 } from "@/lib/desktop-chat-files";
 import { standaloneChatFileDownloadsVisible } from "@/lib/standalone-chat-file-locality";
+import {
+  desktopPopoutTitlebarLeftInset,
+  isMacosDesktopRuntime,
+  openDesktopStandaloneChatFile,
+  updateDesktopWindowTitle,
+} from "@/lib/desktop-popout";
 import { listDesktopWorkers } from "@/lib/desktop-worker";
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { cn } from "@/lib/utils";
@@ -580,6 +587,61 @@ function ChatFilePreview({
   );
 }
 
+function chatFileEntry(path: string): ExplorerEntry {
+  const parts = path.split("/");
+  return {
+    kind: "file",
+    markdown: /\.(?:md|markdown|mdx)$/iu.test(path),
+    modifiedAt: new Date(0).toISOString(),
+    name: parts.at(-1) ?? path,
+    path,
+    size: null,
+    symbolicLink: false,
+    viewable: true,
+  };
+}
+
+export function StandaloneChatFileWindow({
+  chatId,
+  path,
+}: {
+  chatId: string;
+  path: string;
+}) {
+  const entry = useMemo(() => chatFileEntry(path), [path]);
+  useEffect(() => {
+    void updateDesktopWindowTitle(`${entry.name} — Cantrip`);
+  }, [entry.name]);
+  return (
+    <main className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <header
+        className="relative flex h-9 shrink-0 items-center border-b border-border/70 bg-background pr-2"
+        data-tauri-drag-region=""
+        style={{
+          paddingLeft:
+            desktopPopoutTitlebarLeftInset(true, isMacosDesktopRuntime()) ??
+            "0.5rem",
+        }}
+      >
+        <span
+          className="min-w-0 flex-1 truncate px-2 text-xs text-muted-foreground"
+          data-tauri-drag-region=""
+          title={path}
+        >
+          {path}
+        </span>
+      </header>
+      <div className="min-h-0 flex-1">
+        <ChatFilePreview
+          chatId={chatId}
+          entry={entry}
+          onSaved={() => undefined}
+        />
+      </div>
+    </main>
+  );
+}
+
 export function StandaloneChatFilesPanel({
   chat,
   desktopRuntime,
@@ -602,6 +664,7 @@ export function StandaloneChatFilesPanel({
   const [selectedEntry, setSelectedEntry] = useState<ExplorerEntry | null>(
     null,
   );
+  const [openError, setOpenError] = useState<unknown>(null);
   const worker = workers.data?.find(
     (candidate) => candidate.workerId === chat.activeWorkerId,
   );
@@ -619,6 +682,18 @@ export function StandaloneChatFilesPanel({
     desktopRuntime,
     navigator.userAgent,
   );
+  const openFile = useCallback(
+    (entry: ExplorerEntry) => {
+      setSelectedEntry(entry);
+      if (!desktopRuntime) return;
+      setOpenError(null);
+      void openDesktopStandaloneChatFile(
+        { chatId: chat.id, path: entry.path },
+        entry.name,
+      ).catch(setOpenError);
+    },
+    [chat.id, desktopRuntime],
+  );
   useEffect(() => {
     if (!requestedPath) return;
     const parts = requestedPath.split("/");
@@ -629,17 +704,8 @@ export function StandaloneChatFilesPanel({
           .map((_, index) => parts.slice(0, index + 1).join("/")),
       ),
     );
-    setSelectedEntry({
-      kind: "file",
-      markdown: /\.(?:md|markdown|mdx)$/iu.test(requestedPath),
-      modifiedAt: new Date(0).toISOString(),
-      name: parts.at(-1) ?? requestedPath,
-      path: requestedPath,
-      size: null,
-      symbolicLink: false,
-      viewable: true,
-    });
-  }, [requestedPath]);
+    openFile(chatFileEntry(requestedPath));
+  }, [openFile, requestedPath]);
   const invalidate = () =>
     queryClient.invalidateQueries({
       queryKey: ["standalone-chat-files", chat.id],
@@ -680,7 +746,8 @@ export function StandaloneChatFilesPanel({
         input.entry.path,
       ),
   });
-  const actionError = remove.error ?? download.error ?? reveal.error;
+  const actionError =
+    remove.error ?? download.error ?? reveal.error ?? openError;
   const ready = Boolean(
     worker?.online &&
     capabilities?.list &&
@@ -734,12 +801,8 @@ export function StandaloneChatFilesPanel({
           </div>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-rows-[minmax(9rem,38%)_minmax(0,1fr)]">
-          <div
-            className="overflow-auto border-b"
-            role="tree"
-            aria-label="Chat files"
-          >
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div role="tree" aria-label="Chat files">
             <ChatFileDirectory
               chatId={chat.id}
               depth={0}
@@ -755,7 +818,7 @@ export function StandaloneChatFilesPanel({
                   path: entry.path,
                 })
               }
-              onOpen={setSelectedEntry}
+              onOpen={openFile}
               onReveal={(entry, shift) =>
                 reveal.mutate({
                   entry,
@@ -779,13 +842,36 @@ export function StandaloneChatFilesPanel({
               selectedPath={selectedEntry?.path ?? null}
             />
           </div>
-          <ChatFilePreview
-            chatId={chat.id}
-            entry={selectedEntry}
-            onSaved={() => void invalidate()}
-          />
         </div>
       )}
+      {!desktopRuntime && selectedEntry ? (
+        <div className="fixed inset-0 z-[100] flex min-h-0 flex-col bg-background text-foreground">
+          <header className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
+            <span
+              className="min-w-0 flex-1 truncate text-xs font-medium"
+              title={selectedEntry.path}
+            >
+              {selectedEntry.path}
+            </span>
+            <Button
+              aria-label="Close Chat file"
+              onClick={() => setSelectedEntry(null)}
+              size="icon"
+              title="Close file"
+              variant="ghost"
+            >
+              <X className="size-4" />
+            </Button>
+          </header>
+          <div className="min-h-0 flex-1">
+            <ChatFilePreview
+              chatId={chat.id}
+              entry={selectedEntry}
+              onSaved={() => void invalidate()}
+            />
+          </div>
+        </div>
+      ) : null}
       {actionError ? (
         <p className="shrink-0 border-t border-destructive/30 bg-destructive/5 px-3 py-2 text-[10px] text-destructive">
           {actionError instanceof Error

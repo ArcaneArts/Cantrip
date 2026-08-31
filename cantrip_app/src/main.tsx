@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { DesktopExplorerWindowLoadingShell } from "@/components/explorer/desktop-explorer-window-shell";
@@ -15,6 +15,7 @@ import {
   isMacosDesktopRuntime,
   isSyntheticBuildProgressWindow,
   parseDesktopExplorerFileTarget,
+  parseDesktopStandaloneChatFileTarget,
   updateDesktopWindowTheme,
 } from "@/lib/desktop-popout";
 import { installNativeTooltipSuppression } from "@/lib/native-tooltip-suppression";
@@ -85,6 +86,9 @@ async function start(): Promise<void> {
     );
     return;
   }
+  const standaloneChatFileTarget = parseDesktopStandaloneChatFileTarget(
+    window.location.search,
+  );
   await initializeClientLogPersistence();
   const startedAt = performance.now();
   const tauriRuntime = "__TAURI_INTERNALS__" in window;
@@ -127,10 +131,21 @@ async function start(): Promise<void> {
   });
   const { ApplicationSession } =
     await import("@/components/auth/application-session");
+  let authenticatedContent: ReactNode;
+  if (standaloneChatFileTarget) {
+    const { StandaloneChatFileWindow } =
+      await import("@/components/chat/standalone-chat-files-panel");
+    authenticatedContent = (
+      <StandaloneChatFileWindow
+        chatId={standaloneChatFileTarget.chatId}
+        path={standaloneChatFileTarget.path}
+      />
+    );
+  }
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <TooltipProvider>
-        <ApplicationSession />
+        <ApplicationSession authenticatedContent={authenticatedContent} />
       </TooltipProvider>
     </StrictMode>,
   );

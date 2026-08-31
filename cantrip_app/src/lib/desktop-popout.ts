@@ -36,6 +36,11 @@ export type DesktopExplorerFileRouteTarget = DesktopExplorerFileTarget & {
   launchId: string | null;
 };
 
+export type DesktopStandaloneChatFileTarget = {
+  chatId: string;
+  path: string;
+};
+
 export type DesktopExplorerFileLaunchContext = {
   appearance: CodeAppearance;
   explorer: ExplorerSummary;
@@ -45,6 +50,8 @@ export type DesktopExplorerFileLaunchContext = {
 const groupParameter = "cantrip-popout-group";
 const projectOverviewParameter = "cantrip-project-overview";
 const explorerFileParameter = "cantrip-explorer-file";
+const standaloneChatFileParameter = "cantrip-chat-file";
+const standaloneChatIdParameter = "cantrip-chat-id";
 const syntheticBuildProgressParameter = "cantrip-synthetic-build";
 const noDesktopListener = () => undefined;
 type ExplorerWindowBrokerRegistration = {
@@ -194,6 +201,25 @@ export function desktopExplorerFileSearch(
   return `?${parameters.toString()}`;
 }
 
+export function parseDesktopStandaloneChatFileTarget(
+  search: string,
+): DesktopStandaloneChatFileTarget | null {
+  const parameters = new URLSearchParams(search);
+  const chatId = parameters.get(standaloneChatIdParameter);
+  const path = parameters.get(standaloneChatFileParameter);
+  return chatId && path ? { chatId, path } : null;
+}
+
+export function desktopStandaloneChatFileSearch(
+  target: DesktopStandaloneChatFileTarget,
+): string {
+  const parameters = new URLSearchParams({
+    [standaloneChatFileParameter]: target.path,
+    [standaloneChatIdParameter]: target.chatId,
+  });
+  return `?${parameters.toString()}`;
+}
+
 export function desktopPopoutGroupWindowLabel(groupId: string): string {
   return `cantrip-group-${groupId.replace(/[^A-Za-z0-9-/:_]/g, "_")}`;
 }
@@ -233,6 +259,12 @@ export function desktopExplorerFileWindowLabel(
         ? `${worktreeId ?? ""}\0${workerId ?? ""}`
         : path;
   return `cantrip-editor-${safeExplorerId}-${stableLabelHash(binding)}`;
+}
+
+export function desktopStandaloneChatFileWindowLabel(
+  target: DesktopStandaloneChatFileTarget,
+): string {
+  return `cantrip-chat-file-${stableLabelHash(`${target.chatId}\0${target.path}`)}`;
 }
 
 function desktopExplorerFileTargetKey(
@@ -602,6 +634,19 @@ export async function openDesktopProjectOverviewPopout(
     desktopProjectOverviewSearch(target),
     title,
     position,
+  );
+}
+
+export async function openDesktopStandaloneChatFile(
+  target: DesktopStandaloneChatFileTarget,
+  title: string,
+): Promise<"created" | "focused"> {
+  return openDesktopWindow(
+    desktopStandaloneChatFileWindowLabel(target),
+    desktopStandaloneChatFileSearch(target),
+    title,
+    undefined,
+    { height: 760, minHeight: 440, minWidth: 640, width: 1100 },
   );
 }
 
