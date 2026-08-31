@@ -187,6 +187,8 @@ export const workerWorktreeCodeCommandSchemas = [
     cwd: z.string().min(1).max(8_192).nullable(),
     providerId: z.string().min(1).max(200),
     providerKind: modelProviderKindSchema,
+    model: workerRuntimeModelSchema.optional(),
+    provider: workerRuntimeProviderSchema.optional(),
   }),
   z.object({
     type: z.literal("skills.settings.read"),
@@ -208,6 +210,15 @@ export const workerWorktreeCodeCommandSchemas = [
     cwd: z.string().min(1).max(8_192).nullable(),
     providerId: z.string().min(1).max(200),
     providerKind: modelProviderKindSchema,
+  }),
+  z.object({
+    type: z.literal("skills.settings.configure"),
+    ...protectedCustomizationWorkerRequestFields,
+    cwd: z.string().min(1).max(8_192).nullable(),
+    providerId: z.string().min(1).max(200),
+    providerKind: modelProviderKindSchema,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("customization.inventory.read"),

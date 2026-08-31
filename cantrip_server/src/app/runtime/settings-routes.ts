@@ -61,7 +61,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { authenticatedPrincipal } from "../../auth/principal.js";
 import { scopedCodeProfileId } from "../../chats/execution-helpers.js";
 import type { CodeTunnelBroker } from "../../code/tunnel.js";
-import type { ServerRepository } from "../../db/repository.js";
+import type { ModelRuntime, ServerRepository } from "../../db/repository.js";
 import { TaskSchedulingConflictError } from "../../db/task-scheduling.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import { sendWorkerRequestFailure } from "../../http/worker-request-failures.js";
@@ -102,6 +102,8 @@ type ProviderAccountAuthRuntime = ReturnType<
 
 interface SkillSettingsTarget {
   cwd: string | null;
+  model: ModelRuntime["model"] | null;
+  provider: ModelRuntime["provider"] | null;
   providerId: string;
   providerKind: ModelProviderKind;
   workerId: string;
@@ -495,6 +497,9 @@ export function installSettingsRouteRuntime(
           cwd: target.cwd,
           providerId: target.providerId,
           providerKind: target.providerKind,
+          ...(target.model && target.provider
+            ? { model: target.model, provider: target.provider }
+            : {}),
         }),
         operationId: operationId.data,
         operation: "skills.settings.list",
@@ -659,6 +664,60 @@ export function installSettingsRouteRuntime(
           cwd: target.cwd,
           providerId: target.providerId,
           providerKind: target.providerKind,
+        }),
+        operationId: input.operationId,
+        operation: input.operation,
+        scope,
+      });
+      if (result.result === "succeeded") {
+        publishLiveInvalidation("customization", {
+          projectId: input.scope.projectId,
+        });
+      }
+      return reply.send(result);
+    } catch (error) {
+      const status =
+        error instanceof SkillSettingsRequestError
+          ? error.statusCode
+          : error instanceof WorkerUnavailableError
+            ? 503
+            : 409;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.patch("/api/skills/configuration", async (request, reply) => {
+    try {
+      const input = checkedCustomizationRequest({
+        raw: request.body,
+        operation: "skills.settings.configure",
+      });
+      const settingsContext = settingsContextFromCustomizationScope(
+        input.scope,
+      );
+      const target = await skillSettingsTarget(settingsContext);
+      const scope = settingsCustomizationScope(settingsContext);
+      if (!customizationScopesMatch(input.scope, scope)) {
+        return reply.code(409).send({ error: "Customization scope changed." });
+      }
+      if (!target.model || !target.provider) {
+        throw new SkillSettingsRequestError(
+          409,
+          "The selected provider needs at least one model route before skills can be configured.",
+        );
+      }
+      const result = checkedCustomizationResponse({
+        raw: await bridge.request(target.workerId, {
+          type: "skills.settings.configure",
+          operationId: input.operationId,
+          serverId,
+          scope,
+          protectedRequest: input.protectedRequest,
+          cwd: target.cwd,
+          providerId: target.providerId,
+          providerKind: target.providerKind,
+          model: target.model,
+          provider: target.provider,
         }),
         operationId: input.operationId,
         operation: input.operation,

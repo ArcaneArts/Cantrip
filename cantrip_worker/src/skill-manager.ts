@@ -20,6 +20,7 @@ import {
   skillSettingsInventorySchema,
   skillSettingsMutationResultSchema,
   type ModelProviderKind,
+  type CodexCustomizationInventory,
   type SkillSettingsDocument,
   type SkillSettingsInventory,
   type SkillSettingsItem,
@@ -207,7 +208,13 @@ export class SkillManager {
     this.#workerCodexSkillsDirectory = path.resolve(workerCodexSkillsDirectory);
   }
 
-  async list(context: SkillContext): Promise<SkillSettingsInventory> {
+  async list(
+    context: SkillContext,
+    codexSkills: CodexCustomizationInventory["skills"] = {
+      items: [],
+      errors: [],
+    },
+  ): Promise<SkillSettingsInventory> {
     const roots = await this.#roots(context);
     const inventory: SkillSettingsInventory = {
       project: [],
@@ -226,6 +233,18 @@ export class SkillManager {
         });
       }
     }
+    const enabledByPath = new Map<string, boolean>();
+    for (const skill of codexSkills.items) {
+      const canonical =
+        (await optionalRealpath(skill.path)) ?? path.resolve(skill.path);
+      enabledByPath.set(canonical, skill.enabled);
+    }
+    for (const item of [...inventory.project, ...inventory.global]) {
+      const canonical =
+        (await optionalRealpath(item.path)) ?? path.resolve(item.path);
+      item.enabled = enabledByPath.get(canonical) ?? true;
+    }
+    inventory.errors.push(...codexSkills.errors);
     const compare = (left: SkillSettingsItem, right: SkillSettingsItem) =>
       (left.displayName ?? left.name).localeCompare(
         right.displayName ?? right.name,
@@ -388,6 +407,13 @@ export class SkillManager {
     });
   }
 
+  async configurationPath(
+    context: SkillContext,
+    skillId: string,
+  ): Promise<string> {
+    return (await this.#resolveSkill(context, skillId)).item.path;
+  }
+
   async #roots(context: SkillContext): Promise<SkillRoot[]> {
     const accountHome =
       context.providerKind === "chatgpt" || context.providerKind === "grok"
@@ -487,6 +513,7 @@ export class SkillManager {
             description: frontmatter.description ?? "No description provided.",
             displayName: await displayNameForSkill(current.directory),
             path: path.join(current.directory, "SKILL.md"),
+            enabled: true,
             scope: root.scope,
             location: root.location,
             editable,

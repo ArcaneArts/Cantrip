@@ -22,6 +22,7 @@
     "codex:verify": "node scripts/cantrip-codex/verify-upstream.mjs",
     "codex:build": "node scripts/cantrip-codex/build.mjs",
     "codex:clean": "node scripts/cantrip-codex/clean.mjs",
+    "skill-templates:verify": "node scripts/verify-skill-templates.mjs",
     "cli:build": "node scripts/cantrip-cli/build.mjs",
     "cli:build:release": "node scripts/cantrip-cli/build.mjs --release",
     "cli:test": "cargo test --locked --manifest-path cantrip_cli/Cargo.toml",
@@ -63,7 +64,7 @@
     "build": "pnpm cli:build && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "node --test scripts/*.test.mjs scripts/managed-runtimes/*.test.mjs scripts/cantrip-code/*.test.mjs scripts/cantrip-cli/*.test.mjs && pnpm cli:test && pnpm code:extension:test && pnpm -r --if-present test",
-    "check": "pnpm check:large-files && pnpm check:app-decomposition && pnpm check:server-repository-decomposition && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm network:acceptance:check && pnpm code:source:verify && pnpm codex:verify && pnpm cli:check && pnpm typecheck && pnpm test && pnpm format:check",
+    "check": "pnpm check:large-files && pnpm check:app-decomposition && pnpm check:server-repository-decomposition && pnpm audit:run-configurations && pnpm audit:server-boundaries && pnpm verify:network-tranche-one && pnpm verify:network-tranche-two && pnpm network:acceptance:check && pnpm code:source:verify && pnpm codex:verify && pnpm skill-templates:verify && pnpm cli:check && pnpm typecheck && pnpm test && pnpm format:check",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

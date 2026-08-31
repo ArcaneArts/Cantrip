@@ -146,6 +146,15 @@ repository skills from `.agents/skills` shown before a separately labeled
 Global Skills inventory. This keeps project-owned workflows visibly distinct
 from Cantrip-account, worker-user, bundled, and administrator skills.
 
+The repository-root `skill_templates/` directory is Cantrip's source of truth
+for additional bundled system skills. Each child directory is a complete skill
+package with a required `SKILL.md` and optional `agents/`, `scripts/`,
+`references/`, and `assets/` content. The Codex build validates package names,
+frontmatter, file counts, sizes, file types, symlinks, and upstream-name
+collisions before copying the packages into the prepared Codex source. A
+deterministic catalog digest participates in the bundled runtime cache key and
+manifest, so changing a template cannot silently reuse an older executable.
+
 Worker-user discovery includes both the current `~/.agents/skills` location
 and the backward-compatible `$CODEX_HOME/skills` location (normally
 `~/.codex/skills`). Cantrip registers the latter as a native runtime skill root
@@ -158,9 +167,13 @@ The app talks only to the server. `GET /api/skills` resolves the requested
 provider and optional project source, verifies the project's owning worker, and
 asks that worker for a bounded inventory. Supporting files can be browsed and
 regular files in project, Cantrip-account, or worker-user skills can be edited.
-Bundled and administrator skills are read-only. Deleting an editable skill
-moves its complete directory beneath the worker's private `skill-recovery`
-directory instead of permanently erasing it.
+Bundled and administrator skill contents are read-only. The inventory merges
+those files with Codex's authoritative effective enabled state. Users can
+enable or disable any discovered skill for the selected provider; the worker
+re-resolves the skill id, requires an exact native `skills/list` path match,
+and applies the change through `skills/config/write`. Deleting an editable
+skill moves its complete directory beneath the worker's private
+`skill-recovery` directory instead of permanently erasing it.
 
 Skill ids encode only a discovered root and relative skill directory. Every
 read, write, and delete resolves the id against a fresh worker-side inventory;

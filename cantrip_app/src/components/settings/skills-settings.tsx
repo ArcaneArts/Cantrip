@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   deleteSettingsSkill,
+  configureSettingsSkill,
   getSettings,
   getSettingsSkills,
   getWorkers,
@@ -152,6 +153,9 @@ function SkillRows({
               </span>
               <span className="flex flex-wrap items-center gap-1.5">
                 <Badge variant="secondary">{locationLabel(item)}</Badge>
+                <Badge variant="outline">
+                  {item.enabled ? "Enabled" : "Disabled"}
+                </Badge>
                 {!item.editable ? (
                   <Badge variant="outline">Read only</Badge>
                 ) : null}
@@ -314,11 +318,28 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
       await refreshInventory();
     },
   });
+  const configuration = useMutation({
+    mutationFn: (enabled: boolean) =>
+      configureSettingsSkill({
+        ...context!,
+        skillId: selectedSkill!.id,
+        enabled,
+      }),
+    onSuccess: async (result) => {
+      setSelectedSkill((current) =>
+        current?.id === result.skillId
+          ? { ...current, enabled: result.effectiveEnabled }
+          : current,
+      );
+      await refreshInventory();
+    },
+  });
 
   const openSkill = (skill: SkillSettingsItem) => {
     save.reset();
     remove.reset();
     audience.reset();
+    configuration.reset();
     setSelectedFile("SKILL.md");
     setDraft("");
     setSelectedSkill(skill);
@@ -359,8 +380,9 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Browse skill instructions and supporting files. Editable skills can
-            be updated here; deleted skills are moved into Cantrip recovery
-            storage.
+            be updated here, and every discovered skill can be enabled or
+            disabled for the selected Codex account. Deleted skills are moved
+            into Cantrip recovery storage.
           </p>
         </div>
         <Button
@@ -565,6 +587,23 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="font-mono">{selectedFile}</span>
                   <div className="flex items-center gap-2">
+                    <Button
+                      aria-checked={selectedSkill?.enabled ?? false}
+                      aria-label={`Enable ${selectedSkill?.displayName ?? selectedSkill?.name ?? "skill"}`}
+                      disabled={configuration.isPending}
+                      onClick={() =>
+                        configuration.mutate(!selectedSkill?.enabled)
+                      }
+                      role="switch"
+                      size="sm"
+                      type="button"
+                      variant={selectedSkill?.enabled ? "default" : "outline"}
+                    >
+                      {configuration.isPending ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : null}
+                      {selectedSkill?.enabled ? "Enabled" : "Disabled"}
+                    </Button>
                     {audienceEditable ? (
                       <NativeSelect
                         aria-label="Skill audience"
@@ -608,6 +647,11 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
               {errorText(audience.error)}
             </p>
           ) : null}
+          {configuration.isError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {errorText(configuration.error)}
+            </p>
+          ) : null}
           {save.isError || remove.isError ? (
             <p className="text-sm text-destructive">
               {errorText(save.error ?? remove.error)}
@@ -626,7 +670,7 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
               </Button>
             ) : (
               <span className="text-xs text-muted-foreground sm:mr-auto">
-                Bundled and administrator skills are managed outside Cantrip.
+                This skill’s packaged contents are read only.
               </span>
             )}
             <Button

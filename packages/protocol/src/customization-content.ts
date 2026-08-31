@@ -8,6 +8,7 @@ export const customizationContentOperationSchema = z.enum([
   "skills.settings.read",
   "skills.settings.write",
   "skills.settings.delete",
+  "skills.settings.configure",
   "customization.inventory.read",
   "customization.external.preview",
   "customization.external.apply",

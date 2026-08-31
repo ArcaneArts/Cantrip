@@ -36,6 +36,8 @@ import {
   scriptCommandListSchema,
   skillListSchema,
   skillSettingsDeleteRequestSchema,
+  skillSettingsConfigResultSchema,
+  skillSettingsConfigUpdateSchema,
   skillSettingsDocumentSchema,
   skillSettingsFileRequestSchema,
   skillSettingsFileUpdateSchema,
@@ -3604,7 +3606,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           operation: command.type,
           schema: skillSettingsInventorySchema,
           service: workerEncryption,
-          execute: () => skillManager.list(command),
+          execute: async () => {
+            if (!command.model || !command.provider) {
+              return skillManager.list(command);
+            }
+            const runtime = runtimeFor({
+              model: command.model,
+              provider: provider(),
+            });
+            const codexSkills = await runtime.listSkillInventory(
+              {
+                cwd: command.cwd ?? config.dataDirectory,
+                model: command.model,
+                provider: provider(),
+              },
+              true,
+            );
+            return skillManager.list(command, codexSkills);
+          },
         });
       case "skills.settings.read": {
         const input = await openWorkerCustomizationRequest({
@@ -3695,6 +3714,56 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           schema: skillSettingsMutationResultSchema,
           service: workerEncryption,
           execute: () => skillManager.delete(command, input.skillId),
+        });
+      }
+      case "skills.settings.configure": {
+        customizationContentReplay.reserve({
+          serverId: command.serverId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+        });
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: skillSettingsConfigUpdateSchema.pick({
+            skillId: true,
+            enabled: true,
+          }),
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: skillSettingsConfigResultSchema,
+          service: workerEncryption,
+          execute: async () => {
+            const skillPath = await skillManager.configurationPath(
+              command,
+              input.skillId,
+            );
+            const result = await runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).configureSkill({
+              cwd: command.cwd ?? config.dataDirectory,
+              model: command.model,
+              provider: provider(),
+              path: skillPath,
+              enabled: input.enabled,
+            });
+            return skillSettingsConfigResultSchema.parse({
+              skillId: input.skillId,
+              effectiveEnabled: result.effectiveEnabled,
+            });
+          },
         });
       }
       case "customization.inventory.read":

@@ -25,6 +25,11 @@ import {
   sha256File,
   upstreamDirectory,
 } from "./lib.mjs";
+import {
+  installSkillTemplates,
+  readSkillTemplates,
+  skillTemplatesSha256 as fingerprintSkillTemplates,
+} from "../cantrip-skills.mjs";
 
 const verify = spawnSync(
   process.execPath,
@@ -48,9 +53,11 @@ const expectedCompiledArtifacts = [
 ].sort();
 const metadata = await readUpstreamMetadata();
 const patches = await readCodexPatches();
+const skillTemplates = await readSkillTemplates();
 const sourceManifestSha256 = await sha256File(filesManifestPath);
 const patchesSha256 = patchSetSha256(patches);
-const buildRecipeVersion = 4;
+const skillTemplatesSha256 = fingerprintSkillTemplates(skillTemplates);
+const buildRecipeVersion = 5;
 
 async function fetchRequired(url) {
   const response = await fetch(url, { redirect: "follow" });
@@ -200,7 +207,8 @@ async function reusableBundle() {
   if (
     manifest.buildRecipeVersion !== buildRecipeVersion ||
     manifest.sourceManifestSha256 !== sourceManifestSha256 ||
-    manifest.patchesSha256 !== patchesSha256
+    manifest.patchesSha256 !== patchesSha256 ||
+    manifest.skillTemplatesSha256 !== skillTemplatesSha256
   ) {
     return null;
   }
@@ -244,6 +252,7 @@ function runtimeManifest(artifacts) {
     },
     sourceManifestSha256,
     patchesSha256,
+    skillTemplatesSha256,
     buildRecipeVersion,
     entrypoint: executableName(),
     artifacts,
@@ -315,6 +324,13 @@ for (const patch of patches) {
 }
 console.log(
   `Applied ${patches.length} reviewed Cantrip Codex patch${patches.length === 1 ? "" : "es"}.`,
+);
+await installSkillTemplates(
+  skillTemplates,
+  path.join(preparedRoot, "codex-rs", "skills", "src", "assets", "samples"),
+);
+console.log(
+  `Installed ${skillTemplates.length} validated Cantrip skill template${skillTemplates.length === 1 ? "" : "s"}.`,
 );
 const cargoDirectory = path.join(preparedRoot, "codex-rs");
 const cargoTargetDirectory = path.join(outputDirectory, "target");
