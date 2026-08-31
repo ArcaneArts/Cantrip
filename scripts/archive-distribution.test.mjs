@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { gunzipSync } from "node:zlib";
 
 import { archiveDistribution } from "./archive-distribution.mjs";
 import { bundleNativeArtifacts } from "./bundle.mjs";
@@ -27,7 +35,16 @@ test("archives standalone services and native client bundles", async () => {
     await mkdir(path.join(client, "macos", "Cantrip.app"), {
       recursive: true,
     });
-    await writeFile(path.join(server, "start.sh"), "run\n");
+    const serverLauncher = path.join(server, "start.sh");
+    await writeFile(serverLauncher, "run\n");
+    if (process.platform === "darwin") {
+      execFileSync("xattr", [
+        "-w",
+        "com.cantrip.archive-test",
+        "release-metadata",
+        serverLauncher,
+      ]);
+    }
     await writeFile(path.join(client, "macos", "Cantrip.app", "binary"), "app");
     await writeFile(
       path.join(client, "macos", "Cantrip.app.tar.gz"),
@@ -58,6 +75,12 @@ test("archives standalone services and native client bundles", async () => {
     assert.match(
       serverEntries,
       new RegExp(`cantrip-server-${target.id}/start\\.sh`, "u"),
+    );
+    assert.equal(
+      gunzipSync(await readFile(serverResult.archive)).includes(
+        Buffer.from("._start.sh"),
+      ),
+      false,
     );
     assert.match(
       clientEntries,
