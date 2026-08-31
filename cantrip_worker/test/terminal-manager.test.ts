@@ -6,6 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { TerminalManager } from "../src/terminal-manager.js";
 import { readWorkerLogs } from "../src/logger.js";
+import { TerminalCanonicalState } from "../src/terminal-canonical-state.js";
+
+class SnapshotFailingTerminalState extends TerminalCanonicalState {
+  override snapshot(): never {
+    throw new Error("forced snapshot failure");
+  }
+}
 
 const directories: string[] = [];
 
@@ -65,6 +72,12 @@ describe("TerminalManager", () => {
       "attachment-replay",
       (event) => replayEvents.push(event),
     );
+    const secondReplayEvents: typeof replayEvents = [];
+    const secondReattached = manager.attachExisting(
+      "terminal-replay",
+      "attachment-second-replay",
+      (event) => secondReplayEvents.push(event),
+    );
     manager.input(
       "terminal-replay",
       process.platform === "win32"
@@ -78,10 +91,28 @@ describe("TerminalManager", () => {
         { timeout: 5_000 },
       )
       .toBe(true);
+    await expect
+      .poll(
+        () =>
+          secondReplayEvents.some((event) => event.type === "terminal.ready"),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
     expect(replayEvents[0]).toMatchObject({
       type: "terminal.output",
       data: expect.stringContaining("CANTRIP_REPLAY_MARKER"),
-      hydration: { format: "canonical-xterm", version: 1 },
+      hydration: {
+        format: "canonical-xterm",
+        processGeneration: 1,
+        version: 1,
+      },
+    });
+    expect(secondReplayEvents[0]).toMatchObject({
+      hydration: {
+        format: "canonical-xterm",
+        processGeneration: 1,
+        version: 1,
+      },
     });
     expect(
       replayEvents.findIndex((event) => event.type === "terminal.ready"),
@@ -97,10 +128,171 @@ describe("TerminalManager", () => {
         .join("")
         .match(/CANTRIP_ATOMIC_DELTA/gu),
     ).toHaveLength(1);
+    await expect
+      .poll(
+        () => secondReplayEvents.map((event) => event.data ?? "").join(""),
+        {
+          timeout: 5_000,
+        },
+      )
+      .toContain("CANTRIP_ATOMIC_DELTA");
+    expect(
+      secondReplayEvents
+        .map((event) => event.data ?? "")
+        .join("")
+        .match(/CANTRIP_ATOMIC_DELTA/gu),
+    ).toHaveLength(1);
     manager.detach("terminal-replay", "attachment-replay");
+    manager.detach("terminal-replay", "attachment-second-replay");
     await expect(reattached).resolves.toEqual({ status: "detached" });
+    await expect(secondReattached).resolves.toEqual({ status: "detached" });
     manager.close("terminal-replay");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "requests one bounded PTY redraw when only a truncated legacy replay remains",
+    async () => {
+      const afterCursor = readWorkerLogs({
+        afterCursor: 0,
+        limit: 200,
+        minimumLevel: "trace",
+      }).latestCursor;
+      const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
+      directories.push(directory);
+      const manager = new TerminalManager({
+        canonicalStateFactory: (cols, rows) =>
+          new SnapshotFailingTerminalState(cols, rows),
+        maxScrollbackCharacters: 128,
+      });
+      const initialEvents: Array<{ type: string; data?: string }> = [];
+      const initial = manager.open(
+        "terminal-recovery",
+        "attachment-initial",
+        directory,
+        80,
+        24,
+        { type: "shell" },
+        (event) => initialEvents.push(event),
+      );
+      await expect
+        .poll(
+          () => initialEvents.some((event) => event.type === "terminal.ready"),
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+      manager.input(
+        "terminal-recovery",
+        "trap 'echo CANTRIP_RECOVERY_REDRAW' WINCH; echo CANTRIP_TRAP_READY\r",
+      );
+      await expect
+        .poll(() => initialEvents.map((event) => event.data ?? "").join(""), {
+          timeout: 5_000,
+        })
+        .toContain("CANTRIP_TRAP_READY");
+      manager.input("terminal-recovery", "printf '%0200d\\n' 0\r");
+      await expect
+        .poll(
+          () => initialEvents.map((event) => event.data ?? "").join("").length,
+          {
+            timeout: 5_000,
+          },
+        )
+        .toBeGreaterThan(300);
+      manager.detach("terminal-recovery", "attachment-initial");
+      await expect(initial).resolves.toEqual({ status: "detached" });
+
+      const replayEvents: Array<{
+        type: string;
+        data?: string;
+        hydration?: {
+          format: string;
+          processGeneration?: number;
+          recovery?: string;
+          truncated?: boolean;
+        };
+      }> = [];
+      const reattached = manager.attachExisting(
+        "terminal-recovery",
+        "attachment-recovery",
+        (event) => replayEvents.push(event),
+      );
+      await expect
+        .poll(
+          () => replayEvents.some((event) => event.type === "terminal.ready"),
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+      expect(replayEvents[0]).toMatchObject({
+        hydration: {
+          format: "legacy-raw",
+          processGeneration: 1,
+          recovery: "redraw-requested",
+          truncated: true,
+        },
+      });
+      await expect
+        .poll(
+          () =>
+            replayEvents
+              .map((event) => event.data ?? "")
+              .join("")
+              .match(/CANTRIP_RECOVERY_REDRAW/gu)?.length ?? 0,
+          { timeout: 5_000 },
+        )
+        .toBeGreaterThanOrEqual(1);
+      await expect
+        .poll(
+          () =>
+            readWorkerLogs({
+              afterCursor,
+              limit: 500,
+              minimumLevel: "trace",
+            }).records.some(
+              (entry) =>
+                entry.context?.event === "terminal.recovery-redraw.restored",
+            ),
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+      manager.input(
+        "terminal-recovery",
+        "printf 'CANTRIP_RECOVERY_SIZE:'; stty size\r",
+      );
+      await expect
+        .poll(() => replayEvents.map((event) => event.data ?? "").join(""), {
+          timeout: 5_000,
+        })
+        .toMatch(/CANTRIP_RECOVERY_SIZE:\s*24 80/);
+
+      const secondEvents: Array<{ type: string }> = [];
+      const second = manager.attachExisting(
+        "terminal-recovery",
+        "attachment-second",
+        (event) => secondEvents.push(event),
+      );
+      await expect
+        .poll(
+          () => secondEvents.some((event) => event.type === "terminal.ready"),
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+      const logs = readWorkerLogs({
+        afterCursor,
+        limit: 500,
+        minimumLevel: "trace",
+      }).records.filter(
+        (entry) =>
+          entry.context?.event === "terminal.recovery-redraw.requested",
+      );
+      expect(logs).toHaveLength(1);
+
+      manager.detach("terminal-recovery", "attachment-recovery");
+      manager.detach("terminal-recovery", "attachment-second");
+      await expect(reattached).resolves.toEqual({ status: "detached" });
+      await expect(second).resolves.toEqual({ status: "detached" });
+      manager.close("terminal-recovery");
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "preserves the live PTY dimensions while a terminal view reattaches",

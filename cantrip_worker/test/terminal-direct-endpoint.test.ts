@@ -37,6 +37,8 @@ const hydration: TerminalHydrationMetadata = {
     synchronizedOutputMode: false,
     wraparoundMode: true,
   },
+  outputBoundary: 44,
+  processGeneration: 3,
   rows: 24,
   scrollbackRows: 0,
   snapshotCharacters: 5,
