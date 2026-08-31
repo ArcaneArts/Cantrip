@@ -31,7 +31,6 @@ import {
   type CodeWorkbenchStage,
 } from "@/lib/code-workbench-frame";
 import { errorMessage } from "@/lib/error-message";
-import { retireAttachmentBestEffort } from "@/lib/serialized-attachment-lifecycle";
 
 type PreparedEditorAttachment = PreferredCodeAttachment;
 
@@ -97,15 +96,6 @@ async function waitForAbortableTimeout<T>(
   }
 }
 
-async function releasePreparedEditor(
-  owned: BoundExplorerCodeSessionAttachment,
-): Promise<void> {
-  await retireAttachmentBestEffort(
-    () => stopSharedProtectedCodeAttachment(owned),
-    () => releaseProtectedExplorerCodeSessionAttachment(owned),
-  );
-}
-
 export function createDesktopExplorerWindowBroker(
   input: Omit<DesktopExplorerWindowContext, "requestedAtMs">,
   options: DesktopExplorerWindowBrokerOptions = {},
@@ -130,8 +120,6 @@ export function createDesktopExplorerWindowBroker(
   let renewalCursor: BoundExplorerCodeSessionAttachment | null = null;
   let renewalTimer: ReturnType<typeof setTimeout> | null = null;
   let renewalGeneration = 0;
-  let recoverEditorAttachment: (reason: unknown) => Promise<void> = () =>
-    Promise.resolve();
   let recoverSharedTransport: (reason: unknown) => Promise<void> = () =>
     Promise.resolve();
   let preparedAtMs: number | null = null;
@@ -148,8 +136,8 @@ export function createDesktopExplorerWindowBroker(
   let hasFileTarget = configureInitialFile && initialFileSupportsEditor;
   let navigationRevision = 0;
   let navigationController: AbortController | null = null;
-  let recoveryPromise: Promise<void> | null = null;
   let transportRecoveryPromise: Promise<void> | null = null;
+  let transportUnavailableReason: unknown | null = null;
   let unsubscribePreparedTerminal: (() => void) | null = null;
   const workbenchWaiters = new Set<{
     reject(error: Error): void;
@@ -169,9 +157,16 @@ export function createDesktopExplorerWindowBroker(
       candidate,
       () => {
         if (!disposed && prepared === candidate) {
-          void recoverSharedTransport(
-            new Error("The shared Cantrip Code transport closed."),
-          );
+          const reason = new Error("The shared Cantrip Code transport closed.");
+          transportUnavailableReason = reason;
+          void recoverSharedTransport(reason)
+            .then(() =>
+              scheduleConfiguration(
+                hasFileTarget ? context.path : null,
+                context.requestedAtMs,
+              ),
+            )
+            .catch(() => undefined);
         }
       },
     );
@@ -248,7 +243,10 @@ export function createDesktopExplorerWindowBroker(
       const expiresInMs =
         Date.parse(current.attachment.session.expiresAt) - Date.now();
       if (authoritative || expiresInMs <= sharedSessionRenewalMinDelayMs) {
-        await recoverEditorAttachment(error).catch(() => undefined);
+        reportEditorError(
+          codeWorkbenchStageError("endpoint", error),
+          "endpoint",
+        );
         return;
       }
       scheduleSessionRenewal(
@@ -264,10 +262,8 @@ export function createDesktopExplorerWindowBroker(
     renewalCursor = owned;
     scheduleSessionRenewal(renewalGeneration);
   };
-  let endpointGeneration = 0;
   let editorPromise: Promise<PreparedEditorAttachment>;
   const prepareEditor = (): Promise<PreparedEditorAttachment> => {
-    const generation = ++endpointGeneration;
     const raw = (async (): Promise<PreparedEditorAttachment> => {
       preparationController.signal.throwIfAborted();
       const owned = await createProtectedExplorerCodeSessionAttachment(
@@ -277,13 +273,6 @@ export function createDesktopExplorerWindowBroker(
         context.explorer.worktreeId,
         context.appearance,
       );
-      if (generation !== endpointGeneration) {
-        await releasePreparedEditor(owned);
-        throw new DOMException(
-          "Explorer Code endpoint was superseded.",
-          "AbortError",
-        );
-      }
       ownedAttachment = owned;
       preparationController.signal.throwIfAborted();
       const preferred = await preferSharedProtectedCodeAttachment(owned, {
@@ -299,12 +288,6 @@ export function createDesktopExplorerWindowBroker(
     return waitForAbortable(raw, preparationController.signal)
       .then((result) => {
         preparationController.signal.throwIfAborted();
-        if (generation !== endpointGeneration) {
-          throw new DOMException(
-            "Explorer Code endpoint was superseded.",
-            "AbortError",
-          );
-        }
         prepared = result;
         bindPreparedTerminal(result);
         preparedAtMs = Date.now();
@@ -438,44 +421,12 @@ export function createDesktopExplorerWindowBroker(
       navigationController = null;
       return Promise.resolve();
     }
-    return scheduleConfiguration(path, requestedAtMs);
-  };
-  recoverEditorAttachment = (reason: unknown): Promise<void> => {
-    if (disposed || preparationController.signal.aborted) {
-      return Promise.resolve();
+    if (transportUnavailableReason !== null) {
+      return recoverSharedTransport(transportUnavailableReason).then(() =>
+        scheduleConfiguration(path, requestedAtMs),
+      );
     }
-    if (recoveryPromise) return recoveryPromise;
-    reportEditorError(codeWorkbenchStageError("endpoint", reason), "endpoint");
-    navigationController?.abort(
-      new DOMException("Explorer Code attachment is recovering.", "AbortError"),
-    );
-    activeWorkbenchNonce = null;
-    expectedWorkbenchNonce = null;
-    presentationNonce = null;
-    configuredAtMs = null;
-    configuredWorkbenchNonce = null;
-    unbindPreparedTerminal();
-    prepared = null;
-    const staleAttachment = ownedAttachment;
-    const replacement = (async () => {
-      await releaseOwnedEditor();
-      preparationController.signal.throwIfAborted();
-      if (ownedAttachment === staleAttachment) ownedAttachment = null;
-      releasePromise = null;
-      return prepareEditor();
-    })();
-    editorPromise = replacement;
-    recoveryPromise = replacement
-      .then(() =>
-        scheduleConfiguration(
-          hasFileTarget ? context.path : null,
-          context.requestedAtMs,
-        ),
-      )
-      .finally(() => {
-        recoveryPromise = null;
-      });
-    return recoveryPromise;
+    return scheduleConfiguration(path, requestedAtMs);
   };
   recoverSharedTransport = (reason: unknown): Promise<void> => {
     if (disposed || preparationController.signal.aborted) {
@@ -484,8 +435,12 @@ export function createDesktopExplorerWindowBroker(
     if (transportRecoveryPromise) return transportRecoveryPromise;
     const owned = ownedAttachment;
     const stale = prepared;
-    if (!owned || !stale) return recoverEditorAttachment(reason);
-    reportEditorError(codeWorkbenchStageError("endpoint", reason), "endpoint");
+    if (!owned || !stale) {
+      const error = codeWorkbenchStageError("endpoint", reason);
+      reportEditorError(error, "endpoint");
+      return Promise.reject(error);
+    }
+    transportUnavailableReason = reason;
     navigationController?.abort(
       new DOMException("Explorer Code transport is recovering.", "AbortError"),
     );
@@ -513,6 +468,8 @@ export function createDesktopExplorerWindowBroker(
         );
       }
       prepared = replacement;
+      editorPromise = Promise.resolve(replacement);
+      transportUnavailableReason = null;
       preparedAtMs = Date.now();
       activeWorkbenchNonce = null;
       expectedWorkbenchNonce = null;
@@ -526,16 +483,17 @@ export function createDesktopExplorerWindowBroker(
         preparedAtMs,
         type: "editor.endpoint-ready",
       });
-      await scheduleConfiguration(
-        hasFileTarget ? context.path : null,
-        context.requestedAtMs,
-      );
     })();
     transportRecoveryPromise = recovery
-      .catch(async (error) => {
+      .catch((error: unknown) => {
         if (!disposed && !preparationController.signal.aborted) {
-          await recoverEditorAttachment(error);
+          transportUnavailableReason = error;
+          reportEditorError(
+            codeWorkbenchStageError("endpoint", error),
+            "endpoint",
+          );
         }
+        throw error;
       })
       .finally(() => {
         transportRecoveryPromise = null;
