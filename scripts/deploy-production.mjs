@@ -89,6 +89,7 @@ function command(commandName, arguments_, options = {}) {
   const result = spawnSync(commandName, arguments_, {
     cwd: options.cwd ?? scriptRoot,
     encoding: "utf8",
+    env: options.env,
     input: options.input,
     maxBuffer: 16 * 1024 * 1024,
     stdio: options.inherit ? "inherit" : ["pipe", "pipe", "pipe"],
@@ -471,8 +472,18 @@ function buildServerBundle(config, temporaryDirectory, versionPatch) {
     productionServerBuildArguments(config, outputDirectory, versionPatch),
     { inherit: true },
   );
-  command("tar", ["-czf", artifactPath, "-C", outputDirectory, "."]);
+  createProductionServerArchive(outputDirectory, artifactPath);
   return artifactPath;
+}
+
+export function createProductionServerArchive(outputDirectory, artifactPath) {
+  command(
+    "tar",
+    ["--no-xattrs", "-czf", artifactPath, "-C", outputDirectory, "."],
+    {
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
+    },
+  );
 }
 
 function uploadAndInstall(config, keyPath, commit, artifactPath) {

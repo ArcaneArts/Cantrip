@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { gunzipSync } from "node:zlib";
 
 import {
   buildProductionEnvironment,
+  createProductionServerArchive,
   parseInfisicalSecrets,
   productionServerBuildArguments,
   quoteSystemdEnvironmentValue,
@@ -134,6 +139,47 @@ test("passes the release commit count into the production Docker build", () => {
     () => productionServerBuildArguments(config, "/tmp/output", "release"),
     /must be a Git commit count/u,
   );
+});
+
+test("strips macOS metadata from the uploaded production server archive", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-production-archive-test-"),
+  );
+  try {
+    const outputDirectory = path.join(root, "server");
+    const policyDirectory = path.join(outputDirectory, "policy_templates");
+    const policyPath = path.join(policyDirectory, "manual-change-protocol.md");
+    const artifactPath = path.join(root, "cantrip-server.tar.gz");
+    await mkdir(policyDirectory, { recursive: true });
+    await writeFile(policyPath, "# Manual change protocol\n");
+    if (process.platform === "darwin") {
+      execFileSync("xattr", [
+        "-w",
+        "com.cantrip.deploy-test",
+        "metadata",
+        policyPath,
+      ]);
+    }
+
+    createProductionServerArchive(outputDirectory, artifactPath);
+
+    const entries = execFileSync("tar", ["-tzf", artifactPath], {
+      encoding: "utf8",
+    });
+    const contents = gunzipSync(await readFile(artifactPath));
+    assert.match(
+      entries,
+      /^\.\/policy_templates\/manual-change-protocol\.md$/mu,
+    );
+    assert.doesNotMatch(entries, /(?:^|\/)\._/mu);
+    assert.equal(contents.includes(Buffer.from("LIBARCHIVE.xattr")), false);
+    assert.equal(
+      contents.includes(Buffer.from("._manual-change-protocol.md")),
+      false,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
 });
 
 test("copies every server workspace dependency into the Docker build", async () => {
