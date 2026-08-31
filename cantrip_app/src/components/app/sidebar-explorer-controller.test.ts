@@ -155,7 +155,7 @@ describe("sidebar file pin completion", () => {
   });
 });
 
-describe("sidebar preview workbench readiness", () => {
+describe("sidebar preview successor provisioning", () => {
   it("waits event-driven for the already-provisioned successor", async () => {
     const source = {
       id: "explorer-source",
@@ -181,8 +181,7 @@ describe("sidebar preview workbench readiness", () => {
       );
     });
     act(() => {
-      observed.current?.updateSidebarExplorerPool([source, successor]);
-      observed.current?.updateSidebarFileWorkbenchReadiness(source.id, true);
+      observed.current?.updateSidebarExplorerPool([source]);
     });
 
     let settled = false;
@@ -196,7 +195,7 @@ describe("sidebar preview workbench readiness", () => {
     expect(settled).toBe(false);
 
     act(() => {
-      observed.current?.updateSidebarFileWorkbenchReadiness(successor.id, true);
+      observed.current?.updateSidebarExplorerPool([source, successor]);
     });
     await expect(waiting).resolves.toBe(successor);
     await act(async () => renderer.unmount());

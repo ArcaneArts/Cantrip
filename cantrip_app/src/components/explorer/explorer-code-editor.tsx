@@ -2,7 +2,6 @@ import type {
   CodeAppearance,
   CodeProtectedAttachmentWire,
 } from "@cantrip/protocol";
-import { isTauri } from "@tauri-apps/api/core";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import {
   useCallback,
@@ -52,6 +51,7 @@ import {
   stopDirectCodeAttachment,
   stopSharedProtectedCodeAttachment,
   subscribePreferredCodeAttachmentUnavailable,
+  shouldUseLegacyProtectedCodeAttachmentFallback,
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
@@ -69,10 +69,6 @@ const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
 const SHARED_SESSION_RENEWAL_MIN_DELAY_MS = 30_000;
 const SHARED_TRANSPORT_RECOVERY_FAILED_MESSAGE =
   "Cantrip Code transport could not reconnect. Retry to reconnect this editor session.";
-const SHARED_TRANSPORT_FALLBACK_CODES = new Set([
-  "shared-code-transport-requires-single-server",
-  "shared-code-transport-unsupported",
-]);
 export const EXPLORER_CODE_RETRY_BASE_DELAY_MS = 500;
 export const EXPLORER_CODE_RETRY_MAX_DELAY_MS = 15_000;
 export const EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT = 6;
@@ -108,15 +104,6 @@ export function isRetryableExplorerCodeConnectionError(
     candidate = candidate.cause;
   }
   return false;
-}
-
-export function allowsLegacyExplorerCodeFallback(error: unknown): boolean {
-  return (
-    error instanceof CantripApiError &&
-    error.status === 409 &&
-    error.code !== null &&
-    SHARED_TRANSPORT_FALLBACK_CODES.has(error.code)
-  );
 }
 
 export class ExplorerCodePresentationCache {
@@ -217,7 +204,6 @@ export function ExplorerCodeEditor({
   explorerId,
   onLifecycleChange,
   onReady,
-  onWorkbenchReadinessChange,
   path,
   worktreeId,
   workerId,
@@ -228,7 +214,6 @@ export function ExplorerCodeEditor({
   explorerId: string;
   onLifecycleChange?(actions: ExplorerCodeEditorLifecycleActions | null): void;
   onReady?: () => void;
-  onWorkbenchReadinessChange?(ready: boolean): void;
   path: string | null;
   worktreeId: string;
   workerId: string;
@@ -246,9 +231,6 @@ export function ExplorerCodeEditor({
   const [frameReadyNonce, setFrameReadyNonce] = useState<string | null>(null);
   const [frameDocumentVersion, setFrameDocumentVersion] = useState(0);
   const [readyKey, setReadyKey] = useState<string | null>(null);
-  const [workbenchReadyKey, setWorkbenchReadyKey] = useState<string | null>(
-    null,
-  );
   const [reloadVersion, setReloadVersion] = useState(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [closing, setClosing] = useState(false);
@@ -301,7 +283,6 @@ export function ExplorerCodeEditor({
   const previousActiveRef = useRef(active);
   const previousPathRef = useRef(path);
   const onReadyRef = useRef(onReady);
-  const onWorkbenchReadinessChangeRef = useRef(onWorkbenchReadinessChange);
   const workerOnlineRef = useRef(workerOnline);
   const attachmentLifecycleRef =
     useRef<SerializedAttachmentLifecycle<ExplorerCodeAttachmentOwnership> | null>(
@@ -395,7 +376,6 @@ export function ExplorerCodeEditor({
     bindingKeyRef.current = bindingKey;
     frameMountRef.current = frameMount;
     onReadyRef.current = onReady;
-    onWorkbenchReadinessChangeRef.current = onWorkbenchReadinessChange;
     pathRef.current = path;
     preferredAttachmentRef.current = preferredAttachment;
     workerOnlineRef.current = workerOnline;
@@ -405,7 +385,6 @@ export function ExplorerCodeEditor({
     bindingKey,
     frameMount,
     onReady,
-    onWorkbenchReadinessChange,
     path,
     preferredAttachment,
     workerOnline,
@@ -430,12 +409,6 @@ export function ExplorerCodeEditor({
           frameMount.nonce,
         ].join("\0")
       : null;
-  const workbenchReady = Boolean(
-    !closing &&
-    frameReady &&
-    workbenchGenerationKey !== null &&
-    workbenchReadyKey === workbenchGenerationKey,
-  );
   const ready = Boolean(
     !closing &&
     path !== null &&
@@ -547,10 +520,6 @@ export function ExplorerCodeEditor({
     workerId,
     worktreeId,
   ]);
-
-  useEffect(() => {
-    onWorkbenchReadinessChangeRef.current?.(workbenchReady);
-  }, [workbenchReady]);
 
   useEffect(() => {
     onLifecycleChange?.({ cancelClose, prepareClose });
@@ -790,7 +759,7 @@ export function ExplorerCodeEditor({
               return shared;
             } catch (sharedError) {
               const fallbackToLegacy =
-                !isTauri() && allowsLegacyExplorerCodeFallback(sharedError);
+                shouldUseLegacyProtectedCodeAttachmentFallback(sharedError);
               if (fallbackToLegacy) {
                 sharedTiming?.cancel("legacy-fallback");
               } else {
@@ -1407,7 +1376,6 @@ export function ExplorerCodeEditor({
     const presentationController = new AbortController();
     let cancelled = false;
     let applied = false;
-    setWorkbenchReadyKey(workbenchGenerationKey);
     const presentationTiming =
       launchTimingRef.current?.beginPhase("presentation-ready");
     void presentationRef.current

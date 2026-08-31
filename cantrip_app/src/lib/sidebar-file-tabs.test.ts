@@ -196,14 +196,6 @@ describe("sidebar file tabs", () => {
     ).toBe(false);
     expect(
       sidebarExplorerCanOwnPreview({
-        explorerId: "preview",
-        layout: layout(),
-        pinInProgress: false,
-        workbenchReady: false,
-      }),
-    ).toBe(false);
-    expect(
-      sidebarExplorerCanOwnPreview({
         explorerId: "pinned",
         layout: layout("pinned"),
         pinInProgress: false,

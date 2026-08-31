@@ -164,18 +164,12 @@ export function sidebarExplorerCanOwnPreview({
   explorerId,
   layout,
   pinInProgress,
-  workbenchReady = true,
 }: {
   explorerId: string;
   layout: ProjectTabLayoutSummary | null | undefined;
   pinInProgress: boolean;
-  workbenchReady?: boolean;
 }): boolean {
-  return (
-    workbenchReady &&
-    !pinInProgress &&
-    !tabbedExplorerIds(layout).has(explorerId)
-  );
+  return !pinInProgress && !tabbedExplorerIds(layout).has(explorerId);
 }
 
 export function dedicatedSidebarExplorers({

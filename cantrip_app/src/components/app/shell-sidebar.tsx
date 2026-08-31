@@ -176,7 +176,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     sidebarExplorer,
     sidebarFilePinHandoff,
     sidebarFilePreview,
-    sidebarFileWorkbenchReady,
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
     sidebarRef,
@@ -432,7 +431,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     selectedTabKey={selectedTabKey}
                     tabLayout={tabLayout.data ?? null}
                     fileExplorer={sidebarExplorer}
-                    filePreviewReady={sidebarFileWorkbenchReady}
                     fileGraphAvailable={explorerRepositoryGraphAvailable(
                       selectedProject?.capabilities,
                     )}

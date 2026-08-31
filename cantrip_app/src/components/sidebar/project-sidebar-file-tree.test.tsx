@@ -279,35 +279,20 @@ describe("project sidebar file tree encryption gate", () => {
     expect(markup).toContain("animate-spin");
   });
 
-  it("keeps files visible but inert until the retained editor is ready", async () => {
+  it("opens visible files without waiting for an editor readiness gate", async () => {
     const onPin = vi.fn();
     const onPreview = vi.fn();
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      renderer = TestRenderer.create(
-        tree({ filePreviewReady: false, onPin, onPreview }),
-      );
+      renderer = TestRenderer.create(tree({ onPin, onPreview }));
     });
 
-    expect(
-      renderer.root.findAllByProps({
-        "data-slot": "sidebar-file-editor-preparing",
-      }),
-    ).toHaveLength(1);
-    const unavailable = renderer.root.findByProps({ role: "treeitem" });
-    expect(unavailable.props["aria-disabled"]).toBe(true);
-    act(() => unavailable.findAllByType("span")[0]?.props.onClick());
-    act(() => unavailable.props.onDoubleClick({ preventDefault: vi.fn() }));
-    expect(onPreview).not.toHaveBeenCalled();
-    expect(onPin).not.toHaveBeenCalled();
-
-    await act(async () => {
-      renderer.update(tree({ filePreviewReady: true, onPin, onPreview }));
-    });
     const available = renderer.root.findByProps({ role: "treeitem" });
     expect(available.props["aria-disabled"]).toBe(false);
     act(() => available.findAllByType("span")[0]?.props.onClick());
     expect(onPreview).toHaveBeenCalledTimes(1);
+    act(() => available.props.onDoubleClick({ preventDefault: vi.fn() }));
+    expect(onPin).toHaveBeenCalledTimes(1);
     await act(async () => renderer.unmount());
   });
 

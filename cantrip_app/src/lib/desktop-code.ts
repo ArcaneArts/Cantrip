@@ -45,6 +45,23 @@ import {
   type BoundExplorerCodeSessionAttachment,
 } from "@/lib/api";
 
+const SHARED_TRANSPORT_FALLBACK_CODES = new Set([
+  "shared-code-transport-requires-single-server",
+  "shared-code-transport-unsupported",
+]);
+
+export function shouldUseLegacyProtectedCodeAttachmentFallback(
+  error: unknown,
+): boolean {
+  if (isTauri() || !(error instanceof Error)) return false;
+  const candidate = error as Error & { code?: unknown; status?: unknown };
+  return (
+    candidate.status === 409 &&
+    typeof candidate.code === "string" &&
+    SHARED_TRANSPORT_FALLBACK_CODES.has(candidate.code)
+  );
+}
+
 export interface PreferredCodeAttachment {
   attachment: CodeAttachment;
   desktopRouteIdentity: DesktopTunnelForwardIdentity | null;

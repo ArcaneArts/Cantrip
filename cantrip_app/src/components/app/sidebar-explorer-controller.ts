@@ -87,43 +87,17 @@ export function useSidebarFileState() {
     useState<SidebarFilePinHandoffState | null>(null);
   const sidebarFilePinHandoffRef = useRef(sidebarFilePinHandoff);
   sidebarFilePinHandoffRef.current = sidebarFilePinHandoff;
-  const [sidebarFileWorkbenchReadyIds, setSidebarFileWorkbenchReadyIds] =
-    useState<ReadonlySet<string>>(() => new Set());
-  const sidebarFileWorkbenchReadyIdsRef = useRef(sidebarFileWorkbenchReadyIds);
-  sidebarFileWorkbenchReadyIdsRef.current = sidebarFileWorkbenchReadyIds;
   const sidebarExplorerPoolRef = useRef<readonly ExplorerSummary[]>([]);
   const sidebarSuccessorWaitersRef = useRef(new Set<() => void>());
   const notifySidebarSuccessorWaiters = useCallback(() => {
     for (const waiter of sidebarSuccessorWaitersRef.current) waiter();
   }, []);
-  const updateSidebarFileWorkbenchReadiness = useCallback(
-    (explorerId: string, ready: boolean) => {
-      const current = sidebarFileWorkbenchReadyIdsRef.current;
-      if (current.has(explorerId) === ready) return;
-      const next = new Set(current);
-      if (ready) next.add(explorerId);
-      else next.delete(explorerId);
-      sidebarFileWorkbenchReadyIdsRef.current = next;
-      setSidebarFileWorkbenchReadyIds(next);
-      notifySidebarSuccessorWaiters();
-    },
-    [notifySidebarSuccessorWaiters],
-  );
   const updateSidebarExplorerPool = useCallback(
     (pool: readonly ExplorerSummary[]) => {
       sidebarExplorerPoolRef.current = pool.slice(
         0,
         SIDEBAR_EXPLORER_POOL_SIZE,
       );
-      const poolIds = new Set(
-        sidebarExplorerPoolRef.current.map(({ id }) => id),
-      );
-      const current = sidebarFileWorkbenchReadyIdsRef.current;
-      const next = new Set([...current].filter((id) => poolIds.has(id)));
-      if (next.size !== current.size) {
-        sidebarFileWorkbenchReadyIdsRef.current = next;
-        setSidebarFileWorkbenchReadyIds(next);
-      }
       notifySidebarSuccessorWaiters();
     },
     [notifySidebarSuccessorWaiters],
@@ -133,16 +107,11 @@ export function useSidebarFileState() {
       sourceExplorerId: string,
       timeoutMs = SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS,
     ): Promise<ExplorerSummary | null> => {
-      const readySuccessor = () => {
-        const successor = sidebarExplorerPoolRef.current.find(
+      const availableSuccessor = () =>
+        sidebarExplorerPoolRef.current.find(
           ({ id }) => id !== sourceExplorerId,
-        );
-        return successor &&
-          sidebarFileWorkbenchReadyIdsRef.current.has(successor.id)
-          ? successor
-          : null;
-      };
-      const immediate = readySuccessor();
+        ) ?? null;
+      const immediate = availableSuccessor();
       if (immediate) return Promise.resolve(immediate);
       return new Promise((resolve) => {
         let settled = false;
@@ -156,7 +125,7 @@ export function useSidebarFileState() {
           resolve(successor);
         };
         check = () => {
-          const successor = readySuccessor();
+          const successor = availableSuccessor();
           if (successor) finish(successor);
         };
         timeout = setTimeout(() => finish(null), timeoutMs);
@@ -173,13 +142,10 @@ export function useSidebarFileState() {
     setExplorerGraphRequest,
     setSidebarFilePinHandoff,
     setSidebarFilePreview,
-    sidebarFileWorkbenchReadyIds,
-    sidebarFileWorkbenchReadyIdsRef,
     sidebarFilePinHandoff,
     sidebarFilePinHandoffRef,
     sidebarFilePreview,
     updateSidebarExplorerPool,
-    updateSidebarFileWorkbenchReadiness,
     waitForSidebarFileSuccessor,
   } as const;
 }
@@ -948,10 +914,7 @@ export function useSidebarExplorerProvisioning({
   explorersIsSuccess: boolean;
   fileState: Pick<
     SidebarFileState,
-    | "setSidebarFilePreview"
-    | "sidebarFilePreview"
-    | "sidebarFileWorkbenchReadyIds"
-    | "updateSidebarExplorerPool"
+    "setSidebarFilePreview" | "sidebarFilePreview" | "updateSidebarExplorerPool"
   >;
   isPopout: boolean;
   lifecycle: Pick<
@@ -976,7 +939,6 @@ export function useSidebarExplorerProvisioning({
   const {
     setSidebarFilePreview,
     sidebarFilePreview,
-    sidebarFileWorkbenchReadyIds,
     updateSidebarExplorerPool,
   } = fileState;
   const { sidebarExplorerCreationKeyRef, sidebarFilePreviewLifecycleRef } =
@@ -1063,8 +1025,5 @@ export function useSidebarExplorerProvisioning({
     sidebarExplorerCreationKey,
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
-    sidebarFileWorkbenchReady: Boolean(
-      sidebarExplorer && sidebarFileWorkbenchReadyIds.has(sidebarExplorer.id),
-    ),
   } as const;
 }

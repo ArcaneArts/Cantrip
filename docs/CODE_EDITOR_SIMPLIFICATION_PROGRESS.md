@@ -115,7 +115,7 @@ Focused verification:
 
 ### Pass 4: dormant retained editors
 
-Status: in progress on `codex/code-editor-dormant-retention`.
+Status: merged in [PR #1517](https://github.com/ArcaneArts/Cantrip/pull/1517).
 
 Implemented locally:
 
@@ -142,6 +142,36 @@ Focused verification:
 - TypeScript project build passed.
 - Vite production build passed.
 
+### Pass 5: shared cross-platform entry
+
+Status: implemented in [PR #1519](https://github.com/ArcaneArts/Cantrip/pull/1519).
+
+Implemented locally:
+
+- removed the circular sidebar prerequisite that required an invisible Code
+  workbench to become ready before a visible file click could open it;
+- sidebar preview clicks now create the visible editor directly, while pinning
+  waits only for the replacement Explorer surface metadata already maintained
+  by the sidebar pool;
+- deleted the workbench-readiness state and callback chain from the sidebar,
+  shell, persistent Explorer layer, retained editor, and editor surface;
+- file rows no longer expose a separate `openEnabled` guard or a misleading
+  `Preparing editor…` state after the protected file tree is authorized;
+- retained one platform-neutral file-navigation command through
+  `openDirectCodeAttachmentFile`;
+- moved the browser-only legacy attachment compatibility decision into the
+  Code transport adapter, leaving the React editor free of Tauri runtime
+  checks and preserving the existing native transport path.
+
+Focused verification:
+
+- immediate sidebar preview and double-click pin behavior;
+- successor provisioning without an editor-readiness dependency;
+- shared editor lifecycle, retention, Tauri transport, and browser fallback;
+- 138 tests passed locally.
+- TypeScript project build passed.
+- Vite production build passed.
+
 ## Measurements
 
 | Path                 |                                                   Before | Current evidence                  |
@@ -151,28 +181,25 @@ Focused verification:
 
 ## Platform verification
 
-| Platform         | Status                                                                  |
-| ---------------- | ----------------------------------------------------------------------- |
-| Tauri inline     | Direct navigation and transport recovery coverage pass; runtime pending |
-| Tauri popout     | Focused broker coverage passes; runtime pending                         |
-| Browser          | Shares the inline navigation API; runtime pending                       |
-| Capacitor/mobile | Shares the non-Tauri navigation API; service-worker runtime pending     |
+| Platform         | Status                                                                      |
+| ---------------- | --------------------------------------------------------------------------- |
+| Tauri inline     | Direct navigation and transport recovery coverage pass; runtime pending     |
+| Tauri popout     | Focused broker coverage passes; runtime pending                             |
+| Browser          | Immediate sidebar entry and browser fallback coverage pass; runtime pending |
+| Capacitor/mobile | Uses the same non-Tauri sidebar and transport entry; runtime pending        |
 
 ## Server deployment
 
-No server or protocol changes are present in Passes 1-4. Deployment
+No server or protocol changes are present in Passes 1-5. Deployment
 requirement: none so far.
 
 ## Remaining work
 
-- Merge Pass 4.
-- Unify the remaining Tauri and non-Tauri editor entry semantics without
-  changing their transport implementations.
 - Capture real warm/cold traces and verify Tauri, browser, and
   Capacitor/mobile runtime behavior.
 
 ## Next pass
 
-Pass 5 will remove the remaining platform-entry differences so Tauri, browser,
-and Capacitor/mobile all enter the same minimal editor lifecycle while retaining
-their existing native or protected-browser transport adapters.
+Pass 6 will run the acceptance matrix against real Tauri, browser, and mobile
+runtimes, capture cold and warm timings, and fix only failures proven by those
+traces.
