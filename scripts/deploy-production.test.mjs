@@ -146,6 +146,7 @@ test("copies every server workspace dependency into the Docker build", async () 
     "packages/logging",
     "packages/protocol",
     "packages/version",
+    "policy_templates",
     "cantrip_server",
   ]) {
     assert.match(dockerfile, new RegExp(`^COPY ${source}`, "mu"));

@@ -11,6 +11,7 @@ COPY version.json ./
 COPY packages/logging ./packages/logging
 COPY packages/protocol ./packages/protocol
 COPY packages/version ./packages/version
+COPY policy_templates ./policy_templates
 COPY cantrip_server ./cantrip_server
 COPY deploy ./deploy
 COPY patches ./patches
