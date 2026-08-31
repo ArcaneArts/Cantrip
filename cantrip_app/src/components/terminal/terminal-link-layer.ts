@@ -30,6 +30,10 @@ interface TerminalLinkElement {
   width: number;
 }
 
+export interface TerminalLinkLayer extends IDisposable {
+  refresh(): void;
+}
+
 export interface VisibleLinkSegment {
   endColumn: number;
   key: string;
@@ -360,10 +364,10 @@ function updateLinkElementLayout(
 
 export function installTerminalLinkLayer(
   options: TerminalLinkLayerOptions,
-): IDisposable {
+): TerminalLinkLayer {
   const { terminal } = options;
   const screen = terminal.element?.querySelector<HTMLElement>(".xterm-screen");
-  if (!screen) return { dispose() {} };
+  if (!screen) return { dispose() {}, refresh() {} };
   const overlay = document.createElement("div");
   overlay.className = "cantrip-terminal-link-layer";
   screen.appendChild(overlay);
@@ -474,6 +478,12 @@ export function installTerminalLinkLayer(
       for (const element of elements.values()) element.dispose();
       elements.clear();
       overlay.remove();
+    },
+    refresh: () => {
+      geometryDirty = true;
+      dirtyRows = null;
+      scanCache.clear();
+      scheduleRefresh();
     },
   };
 }

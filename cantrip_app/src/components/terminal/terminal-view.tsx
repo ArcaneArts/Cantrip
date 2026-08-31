@@ -36,7 +36,10 @@ import {
   mobileTerminalKeyInput,
   type MobileTerminalKey,
 } from "./mobile-terminal-command-bar";
-import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
+import {
+  rowsWithoutPartiallyVisibleLastLine,
+  terminalViewportCanFit,
+} from "./terminal-fit";
 import { isTerminalClearShortcut } from "./terminal-keyboard";
 import { installTerminalLinkLayer } from "./terminal-link-layer";
 import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
@@ -46,7 +49,6 @@ import { useMobileTerminalKeyboard } from "./use-mobile-terminal-keyboard";
 
 import "@xterm/xterm/css/xterm.css";
 
-const loadedTerminalIds = new Set<string>();
 const DEFAULT_SERVICE_PANEL_WIDTH = 360;
 const MIN_SERVICE_PANEL_WIDTH = 280;
 const MAX_SERVICE_PANEL_WIDTH = 640;
@@ -75,6 +77,7 @@ export function TerminalView({
   pendingInput = null,
   servicePanelOpen = false,
   terminal,
+  visible = true,
   onExit,
   onOpenExternalLink,
   onOpenLink,
@@ -88,6 +91,7 @@ export function TerminalView({
   pendingInput?: { data: string; id: string } | null;
   servicePanelOpen?: boolean;
   terminal: TerminalSummary;
+  visible?: boolean;
   onExit?(): void;
   onOpenExternalLink?(url: string): void;
   onOpenLink?(url: string): void;
@@ -101,6 +105,8 @@ export function TerminalView({
   const terminalContentGlitchRendererRef =
     useRef<TerminalContentGlitchRenderer | null>(null);
   const terminalIdRef = useRef(terminal.id);
+  const visibleRef = useRef(visible);
+  const restoreVisibleSurfaceRef = useRef<(() => void) | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const onExitRef = useRef(onExit);
   const onOpenExternalLinkRef = useRef(onOpenExternalLink);
@@ -112,14 +118,12 @@ export function TerminalView({
     "connecting",
   );
   const [error, setError] = useState<string | null>(null);
-  const [loadedTerminalId, setLoadedTerminalId] = useState<string | null>(() =>
-    loadedTerminalIds.has(terminal.id) ? terminal.id : null,
-  );
+  const [loadedTerminalId, setLoadedTerminalId] = useState<string | null>(null);
   const [terminalFocused, setTerminalFocused] = useState(false);
   const mobileKeyboard = useMobileTerminalKeyboard(terminalSurfaceRef);
-  const hasLoaded =
-    loadedTerminalId === terminal.id || loadedTerminalIds.has(terminal.id);
-  const mobileCommandBarVisible = mobileKeyboard.open && terminalFocused;
+  const hasLoaded = loadedTerminalId === terminal.id;
+  const mobileCommandBarVisible =
+    visible && mobileKeyboard.open && terminalFocused;
   eliteContentGlitchEnabledRef.current = eliteContentGlitchEnabled;
   eliteRevealConfigRef.current = eliteRevealConfig;
   onExitRef.current = onExit;
@@ -127,6 +131,7 @@ export function TerminalView({
   onOpenLinkRef.current = onOpenLink;
   onPendingInputSentRef.current = onPendingInputSent;
   pendingInputRef.current = pendingInput;
+  visibleRef.current = visible;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -254,6 +259,15 @@ export function TerminalView({
       return true;
     };
     const resize = () => {
+      if (
+        !terminalViewportCanFit(
+          visibleRef.current,
+          container.clientWidth,
+          container.clientHeight,
+        )
+      ) {
+        return;
+      }
       try {
         fit.fit();
         const element = xterm.element;
@@ -290,6 +304,14 @@ export function TerminalView({
         );
       }
     };
+    const restoreVisibleSurface = () => {
+      if (!visibleRef.current) return;
+      resize();
+      if (xterm.rows > 0) xterm.refresh(0, xterm.rows - 1);
+      terminalLinks.refresh();
+      if (ready) xterm.focus();
+    };
+    restoreVisibleSurfaceRef.current = restoreVisibleSurface;
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(container);
     const themeObserver = new MutationObserver(() => {
@@ -349,7 +371,6 @@ export function TerminalView({
           if (disposed || !connection) return;
           ready = true;
           reconnectAttemptRef.current = 0;
-          loadedTerminalIds.add(terminal.id);
           setLoadedTerminalId(terminal.id);
           setState("ready");
           const queuedInput = pendingInputRef.current;
@@ -369,7 +390,7 @@ export function TerminalView({
           });
           requestAnimationFrame(() => {
             resize();
-            xterm.focus();
+            if (visibleRef.current) xterm.focus();
           });
         });
       } else if (message.type === "output") {
@@ -398,7 +419,9 @@ export function TerminalView({
             });
             if (!disposed) {
               const animateContent =
-                ready && eliteContentGlitchEnabledRef.current;
+                ready &&
+                visibleRef.current &&
+                eliteContentGlitchEnabledRef.current;
               if (animateContent) {
                 terminalContentGlitchRenderer.beforeWrite();
               }
@@ -551,6 +574,9 @@ export function TerminalView({
       container.removeEventListener("focusout", handleTerminalFocusOut);
       if (inputSenderRef.current === sendInput) inputSenderRef.current = null;
       if (xtermRef.current === xterm) xtermRef.current = null;
+      if (restoreVisibleSurfaceRef.current === restoreVisibleSurface) {
+        restoreVisibleSurfaceRef.current = null;
+      }
       if (
         terminalContentGlitchRendererRef.current ===
         terminalContentGlitchRenderer
@@ -572,6 +598,42 @@ export function TerminalView({
       xterm.dispose();
     };
   }, [connectionKey, terminal.activeWorkerId, terminal.id]);
+
+  useEffect(() => {
+    const xterm = xtermRef.current;
+    if (!visible) {
+      setTerminalFocused(false);
+      terminalContentGlitchRendererRef.current?.clear();
+      clientLogger.info("Terminal surface parked", {
+        dimensions: xterm ? { cols: xterm.cols, rows: xterm.rows } : undefined,
+        event: "surface.terminal.parked",
+        operation: "park-surface",
+        reasonCode: "surface-hidden",
+        status: "parked",
+        subsystem: "terminal",
+        surfaceId: terminal.id,
+      });
+      return;
+    }
+    let restoreFrame = requestAnimationFrame(() => {
+      restoreFrame = requestAnimationFrame(() => {
+        restoreVisibleSurfaceRef.current?.();
+        const restoredXterm = xtermRef.current;
+        clientLogger.info("Terminal surface restored", {
+          dimensions: restoredXterm
+            ? { cols: restoredXterm.cols, rows: restoredXterm.rows }
+            : undefined,
+          event: "surface.terminal.restored",
+          operation: "restore-surface",
+          reasonCode: "surface-selected",
+          status: "restored",
+          subsystem: "terminal",
+          surfaceId: terminal.id,
+        });
+      });
+    });
+    return () => cancelAnimationFrame(restoreFrame);
+  }, [terminal.id, visible]);
 
   useEffect(() => {
     if (!eliteContentGlitchEnabled) {

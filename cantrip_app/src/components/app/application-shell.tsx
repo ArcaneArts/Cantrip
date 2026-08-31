@@ -1,4 +1,8 @@
-import type { ChatSummary, ScriptCommand } from "@cantrip/protocol";
+import type {
+  ChatSummary,
+  ScriptCommand,
+  TerminalSummary,
+} from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -944,6 +948,26 @@ export function App() {
       : undefined;
   const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
   const linkedConsoleChat = linkedConsoleTerminal ? activeChat : undefined;
+  const ownedTerminals = useMemo(() => {
+    const owned = new Map<string, TerminalSummary>();
+    for (const surface of projectSurfaces) {
+      if (
+        surface.kind === "terminal" &&
+        surface.entity.kind !== "run-configuration"
+      ) {
+        owned.set(surface.entity.id, surface.entity);
+      }
+    }
+    for (const terminal of terminals.data ?? []) {
+      if (
+        terminal.linkedChatId &&
+        chatConsoleOpenChats.has(terminal.linkedChatId)
+      ) {
+        owned.set(terminal.id, terminal);
+      }
+    }
+    return [...owned.values()];
+  }, [chatConsoleOpenChats, projectSurfaces, terminals.data]);
   const selectedRunRuntime: RunConfigurationRuntime | null = selectedTerminal
     ? runtimeForRunTerminal(
         selectedTerminal,
@@ -1085,6 +1109,7 @@ export function App() {
         selectedProjectWorkerId,
         selectedTerminal?.activeWorkerId,
         selectedCodeTab?.activeWorkerId,
+        ...ownedTerminals.map((terminal) => terminal.activeWorkerId),
         ...(worktrees.data ?? [])
           .filter((worktree) => visibleWorktreeIds.has(worktree.id))
           .map((worktree) => worktree.workerId),
@@ -1106,6 +1131,7 @@ export function App() {
     appActionView,
     appMode,
     projectOverviewSelected,
+    ownedTerminals,
     resolvedProjectOverviewWorktreeId,
     selectedCodeTab?.activeWorkerId,
     selectedCodeTab?.worktreeId,
@@ -1660,7 +1686,7 @@ export function App() {
     newProjectView, newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
     openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
-    openExplorerFileWindow, openExplorers, openProjectCreateSource, openProjectExplorerFile,
+    openExplorerFileWindow, openExplorers, openProjectCreateSource, openProjectExplorerFile, ownedTerminals,
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,

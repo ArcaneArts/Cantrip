@@ -6,6 +6,12 @@ export const TerminalView = lazy(() =>
   })),
 );
 
+export const PersistentTerminalViews = lazy(() =>
+  import("@/components/terminal/persistent-terminal-views").then((module) => ({
+    default: module.PersistentTerminalViews,
+  })),
+);
+
 export const RunTerminalView = lazy(() =>
   import("@/components/terminal/run-terminal-view").then((module) => ({
     default: module.RunTerminalView,
