@@ -38,7 +38,7 @@ The intended ownership is:
 
 ### Pass 1: direct warm navigation
 
-Status: in progress on `codex/code-editor-direct-navigation-pass1`.
+Status: merged in [PR #1511](https://github.com/ArcaneArts/Cantrip/pull/1511).
 
 Implemented locally:
 
@@ -60,6 +60,30 @@ Focused verification:
 - TypeScript project build passed.
 - Vite production build passed.
 
+### Pass 2: transport-owned reconnect
+
+Status: in progress on `codex/code-editor-transport-recovery-pass2`.
+
+Implemented locally:
+
+- a terminal shared transport retries transport acquisition against the same
+  protected editor session;
+- transport recovery no longer falls through to attachment/session replacement;
+- the existing iframe remains mounted while recovery is pending;
+- recovery waits while the worker is offline and resumes when it returns;
+- explicit Retry restarts transport recovery without recreating the editor;
+- a failed reconnect stops and reports the transport error instead of starting
+  another editor lifecycle.
+
+Focused verification:
+
+- the Pass 1 editor and popout suites remain green;
+- a terminal transport that fails once and then reconnects retains the original
+  session and iframe;
+- 54 tests passed locally.
+- TypeScript project build passed.
+- Vite production build passed.
+
 Merged PR: pending.
 
 ## Measurements
@@ -71,27 +95,26 @@ Merged PR: pending.
 
 ## Platform verification
 
-| Platform         | Status                                                              |
-| ---------------- | ------------------------------------------------------------------- |
-| Tauri inline     | Focused lifecycle coverage passes; runtime pending                  |
-| Tauri popout     | Focused broker coverage passes; runtime pending                     |
-| Browser          | Shares the inline navigation API; runtime pending                   |
-| Capacitor/mobile | Shares the non-Tauri navigation API; service-worker runtime pending |
+| Platform         | Status                                                                  |
+| ---------------- | ----------------------------------------------------------------------- |
+| Tauri inline     | Direct navigation and transport recovery coverage pass; runtime pending |
+| Tauri popout     | Focused broker coverage passes; runtime pending                         |
+| Browser          | Shares the inline navigation API; runtime pending                       |
+| Capacitor/mobile | Shares the non-Tauri navigation API; service-worker runtime pending     |
 
 ## Server deployment
 
-No server or protocol changes are present in Pass 1. Deployment requirement:
-none so far.
+No server or protocol changes are present in Passes 1-2. Deployment
+requirement: none so far.
 
 ## Remaining work
 
-- Merge Pass 1 and capture a real warm LOCAL trace.
-- Move genuine transport-terminal recovery fully beneath editor navigation.
+- Merge Pass 2 and capture a real warm LOCAL trace.
 - Delete remaining automatic attachment replacement and navigation-era telemetry.
 - Make inactive retained editors dormant.
 - Verify Tauri, browser, and Capacitor/mobile runtime behavior.
 
 ## Next pass
 
-Pass 2 will separate genuine transport-terminal recovery from editor recovery,
-keeping the editor session and iframe mounted while the transport reconnects.
+Pass 3 will remove the remaining legacy automatic attachment-replacement state,
+tests, and telemetry that no longer belong in editor navigation.

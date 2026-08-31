@@ -69,6 +69,8 @@ const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
 const SHARED_SESSION_RENEWAL_MIN_DELAY_MS = 30_000;
 const AUTOMATIC_REPLACEMENT_EXHAUSTED_MESSAGE =
   "Cantrip Code could not restore this editor automatically. Retry to reconnect.";
+const SHARED_TRANSPORT_RECOVERY_FAILED_MESSAGE =
+  "Cantrip Code transport could not reconnect. Retry to reconnect this editor session.";
 const SHARED_TRANSPORT_FALLBACK_CODES = new Set([
   "shared-code-transport-requires-single-server",
   "shared-code-transport-unsupported",
@@ -287,6 +289,7 @@ export function ExplorerCodeEditor({
   const closePromiseRef = useRef<Promise<void> | null>(null);
   const navigationQueueRef = useRef(new SerialTaskQueue());
   const lastSharedRecoveryAttemptRef = useRef(0);
+  const sharedTransportUnavailableRef = useRef(false);
   const pendingConnectionWakeRef = useRef(false);
   const pendingThemeRef = useRef<{
     appearance: CodeAppearance;
@@ -566,6 +569,14 @@ export function ExplorerCodeEditor({
     if (closingRef.current) return;
     startLaunchTiming(pathRef.current, "manual-retry");
     if (
+      sharedTransportUnavailableRef.current &&
+      preferredAttachmentRef.current?.sharedOwnedAttachment
+    ) {
+      setError(null);
+      setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
+      return;
+    }
+    if (
       preferredAttachmentRef.current &&
       frameReadyRef.current &&
       pathRef.current !== null
@@ -720,6 +731,7 @@ export function ExplorerCodeEditor({
     pendingConnectionWakeRef.current = false;
     frameRetryCountRef.current = 0;
     frameRetryPendingRef.current = false;
+    sharedTransportUnavailableRef.current = false;
     for (const timerRef of [connectionRetryTimerRef, frameRetryTimerRef]) {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = null;
@@ -977,6 +989,13 @@ export function ExplorerCodeEditor({
       setThemeRecoveryAttempt((attempt) => attempt + 1);
     }
     if (wasOnline || !workerOnline) return;
+    if (
+      sharedTransportUnavailableRef.current &&
+      preferredAttachment?.sharedOwnedAttachment
+    ) {
+      setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
+      return;
+    }
     if (preferredAttachment) {
       requestFrameRetry(bindingKey, frameMount?.nonce ?? null);
       return;
@@ -1103,6 +1122,9 @@ export function ExplorerCodeEditor({
       preferredAttachment,
       () => {
         if (preferredAttachment.sharedOwnedAttachment) {
+          sharedTransportUnavailableRef.current = true;
+          setReadyKey(null);
+          setError(null);
           setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
           return;
         }
@@ -1114,6 +1136,7 @@ export function ExplorerCodeEditor({
   useEffect(() => {
     if (
       closing ||
+      !workerOnline ||
       sharedTransportRecoveryAttempt === 0 ||
       sharedTransportRecoveryAttempt <= lastSharedRecoveryAttemptRef.current
     ) {
@@ -1137,7 +1160,7 @@ export function ExplorerCodeEditor({
         }
         if (!recovered.sharedTransportLeaseId) {
           throw new Error(
-            "Shared Cantrip Code recovery omitted its exact native lease.",
+            "Shared Cantrip Code recovery omitted its exact transport lease.",
           );
         }
         await retainSharedProtectedCodeAttachmentLease(
@@ -1150,11 +1173,15 @@ export function ExplorerCodeEditor({
             recovered.sharedTransportLeaseId,
           );
         }
+        sharedTransportUnavailableRef.current = false;
         setPreferredAttachment(recovered);
         setError(null);
       })
-      .catch(() => {
-        if (!cancelled) requestAutomaticReplacement(expectedBindingKey);
+      .catch((recoveryError: unknown) => {
+        if (cancelled || bindingKeyRef.current !== expectedBindingKey) return;
+        setError(
+          errorMessage(recoveryError, SHARED_TRANSPORT_RECOVERY_FAILED_MESSAGE),
+        );
       });
     return () => {
       cancelled = true;
@@ -1169,8 +1196,8 @@ export function ExplorerCodeEditor({
     bindingKey,
     closing,
     preferredAttachment,
-    requestAutomaticReplacement,
     sharedTransportRecoveryAttempt,
+    workerOnline,
   ]);
 
   useEffect(() => {
