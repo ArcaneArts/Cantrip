@@ -1,4 +1,7 @@
-import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
+import type {
+  ProjectSummary,
+  ProjectTabLayoutSummary,
+} from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
@@ -208,6 +211,72 @@ describe("created tab selection", () => {
       },
     ],
   } as ProjectTabLayoutSummary;
+
+  it("opens a newly cloned project on its overview", () => {
+    type ProjectCommandOptions = Parameters<
+      typeof createShellProjectNavigationCommands
+    >[0];
+    const setDesktopSidebarDrawerOpen = vi.fn();
+    const setWorkspaceSelection = vi.fn();
+    const setCreatedRepositoryOnboarding = vi.fn();
+    const persistAppDestination = vi.fn().mockResolvedValue(undefined);
+    const navigation = {
+      setAppMode: vi.fn(),
+      setProjectOverviewSection: vi.fn(),
+      setProjectSettingsSection: vi.fn(),
+      setSelectedProjectId: vi.fn(),
+      setSelectedWorkflowIntentId: vi.fn(),
+      setShowImporter: vi.fn(),
+      setShowProjectSettings: vi.fn(),
+      setShowServerAdmin: vi.fn(),
+      setShowSettings: vi.fn(),
+    } as unknown as ProjectCommandOptions["navigation"];
+    const options = {
+      compactShell: false,
+      getActiveProjectWorkspaceId: () => "workspace-1",
+      navigation,
+      persistAppDestination,
+      queryClient: new QueryClient(),
+      setCreatedRepositoryOnboarding,
+      setDesktopSidebarDrawerOpen,
+      setFolderProjectDialogMode: vi.fn(),
+      setFolderProjectDialogOpen: vi.fn(),
+      setPendingSurfaceSelection: vi.fn(),
+      setProjectTaskChatIds: vi.fn(),
+      setSidebarFilePreview: vi.fn(),
+      setWorkspaceSelection,
+    } as unknown as ProjectCommandOptions;
+    const project = {
+      id: "project-cloning",
+      originKind: "github",
+    } as ProjectSummary;
+
+    createShellProjectNavigationCommands(options).openCreatedProject(project);
+
+    expect(navigation.setAppMode).toHaveBeenCalledWith("ide");
+    expect(setDesktopSidebarDrawerOpen).toHaveBeenCalledWith(false);
+    expect(navigation.setSelectedProjectId).toHaveBeenCalledWith(
+      "project-cloning",
+    );
+    expect(navigation.setProjectOverviewSection).toHaveBeenCalledWith(
+      "overview",
+    );
+    expect(setWorkspaceSelection).toHaveBeenCalledWith({
+      activeTabByGroup: {},
+      destination: "overview",
+      projectId: "project-cloning",
+      selectedGroupId: null,
+    });
+    expect(setCreatedRepositoryOnboarding).toHaveBeenCalledWith({
+      openInitialChat: true,
+      projectId: "project-cloning",
+    });
+    expect(persistAppDestination).toHaveBeenCalledWith({
+      lastAppMode: "ide",
+      lastIdeProjectId: "project-cloning",
+      lastIdeWorkspaceId: "workspace-1",
+    });
+  });
 
   it("uses an already-cached pinned tab without refreshing the layout", () => {
     expect(

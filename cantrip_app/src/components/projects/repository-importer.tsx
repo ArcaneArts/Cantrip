@@ -213,7 +213,9 @@ export function RepositoryImporter({
     }
   };
   const queueImport = (repository: GithubRepository) => {
-    void importRepository(repository).catch(() => undefined);
+    void importRepository(repository)
+      .then(onCreatedProject)
+      .catch(() => undefined);
   };
   const rememberRepository = (repository: GithubRepository) => {
     const addRepository = (queryKey: readonly unknown[]) =>

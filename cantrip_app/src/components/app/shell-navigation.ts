@@ -953,8 +953,10 @@ export function createShellProjectNavigationCommands({
   };
   const openCreatedProject = (project: ProjectSummary) => {
     setAppMode("ide");
+    setDesktopSidebarDrawerOpen(false);
     setSidebarFilePreview(null);
     setSelectedProjectId(project.id);
+    setProjectOverviewSection("overview");
     setWorkspaceSelection(emptyWorkspaceSelection(project.id));
     setPendingSurfaceSelection(null);
     setShowImporter(false);
