@@ -1475,6 +1475,39 @@ describe("WorkerLinkManager", () => {
     await manager.close();
   });
 
+  it("reopens LOCAL on the same session when the active carrier disconnects", async () => {
+    vi.useFakeTimers();
+    const initialLocal = new FakeCarrier("local", 4);
+    const replacementLocal = new FakeCarrier("local", 5);
+    const local = vi
+      .fn<() => Promise<WorkerLinkCarrier>>()
+      .mockResolvedValueOnce(initialLocal)
+      .mockResolvedValueOnce(replacementLocal);
+    const setup = dependencies({ local });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+    const sessionId = reference.link.session.sessionId;
+    const routeGeneration = reference.link.session.routeGeneration;
+
+    initialLocal.close();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(local).toHaveBeenCalledTimes(2));
+
+    expect(reference.link.session.sessionId).toBe(sessionId);
+    expect(reference.link.session.routeGeneration).toBe(routeGeneration);
+    expect(reference.link.preferredRoute).toBe("local");
+    expect(setup.dependency.createSession).toHaveBeenCalledOnce();
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({
+        effectiveRoutes: ["local"],
+        state: "active",
+      }),
+    );
+
+    reference.release();
+    await manager.close();
+  });
+
   it("moves cellular to Wi-Fi to cellular through LAN, WAN, then RELAY", async () => {
     vi.useFakeTimers();
     type NetworkPhase = "cellular" | "wifi" | "blocked";

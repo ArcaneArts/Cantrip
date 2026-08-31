@@ -64,13 +64,24 @@ class FakeSocket {
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
   onopen: ((event: Event) => void) | null = null;
   readonly binaryWrites: Uint8Array[] = [];
+  readonly closes: Array<{
+    code: number | undefined;
+    reason: string | undefined;
+  }> = [];
 
   constructor() {
     queueMicrotask(() => this.onopen?.({} as Event));
   }
 
-  close(): void {
+  close(code?: number, reason?: string): void {
     if (this.readyState === 3) return;
+    if (code !== undefined && code !== 1000 && (code < 3000 || code > 4999)) {
+      throw new DOMException(
+        "Reserved WebSocket close code",
+        "InvalidAccessError",
+      );
+    }
+    this.closes.push({ code, reason });
     this.readyState = 3;
     queueMicrotask(() => this.onclose?.({} as CloseEvent));
   }
@@ -248,6 +259,9 @@ describe("desktop tunnel WorkerLink bridge", () => {
       ),
     ).toHaveLength(1);
     expect(fixture.sockets).toHaveLength(2);
+    expect(fixture.sockets[0]!.closes).toEqual([
+      { code: 4000, reason: "WorkerLink disconnected" },
+    ]);
     expect(fixture.connections[1]!.activate).toHaveBeenCalledOnce();
   });
 
