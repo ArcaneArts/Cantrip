@@ -1790,14 +1790,17 @@ export function SettingsPage({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-3">
-                      <div className="min-w-0 pl-7">
-                        <h3 className="text-xs font-medium">
-                          Standalone Chat permissions
-                        </h3>
-                        <p className="text-[11px] text-muted-foreground">
-                          Applied only to each Chat&apos;s worker scratch
-                          folder.
-                        </p>
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Lock className="size-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <h3 className="text-xs font-medium">
+                            Standalone Chat permissions
+                          </h3>
+                          <p className="text-[11px] text-muted-foreground">
+                            Applied only to each Chat&apos;s worker scratch
+                            folder.
+                          </p>
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
                         {BUILTIN_PERMISSION_PROFILES.map((profile) => (
