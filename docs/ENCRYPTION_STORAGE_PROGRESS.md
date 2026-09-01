@@ -1096,7 +1096,7 @@ goal work.
 
 - Branch: `codex/disable-dev-keychain-recovery`
 - Pull request: [#1564](https://github.com/ArcaneArts/Cantrip/pull/1564)
-- Merge: pending
+- Merge: squash-merged as `b08dc77d1970128d23b1b97106cde9cda4ca49cf`
 - Behavior implemented:
   - Removed all Apple Keychain access from the macOS `devtop` custody path.
     Packaged macOS builds continue using Keychain.
@@ -1126,10 +1126,15 @@ goal work.
 - Migration status: legacy readers remain available outside `devtop`. Existing
   inaccessible development state is repaired only by the explicit backed-up
   command; no startup path performs a destructive reset.
-- Remaining work: pull-request merge and one backed-up repair of the affected
-  local development profile.
+- Remaining work: none for this correction. The affected default development
+  profile was repaired after merge; its installation ID remains
+  `360742b0-1b15-44e8-83d3-bc8c3ba58208`, its three unrecoverable registry
+  tables are empty, and the default workspace no longer references the lost
+  key. The pre-repair state is retained under
+  `.cantrip/dev/recovery-backups/encryption-2026-09-01T07-21-28-841Z`.
 - Known risks or blockers: the development file vault is intentionally weaker
   than Keychain and remains restricted to explicit debug launches.
-- Manual verification: intentionally deferred until after merge; the user
-  force-killed the prompting build and no further application launch occurs
-  during implementation.
+- Manual verification: the repair result was verified directly through the
+  native catalog and server database without launching the application. The
+  next user-started `pnpm devtop` remains the UI smoke check; implementation did
+  not relaunch the prompt-spamming build.
