@@ -634,7 +634,9 @@ Suggested local defaults:
 - Vite app: `http://127.0.0.1:5173` (`localhost:5173` is also accepted);
 - server/API: `http://localhost:4310`;
 - browser `pnpm dev` PGlite and worker state: `.cantrip/browser-dev/`, gitignored;
-- Tauri `pnpm devtop` PGlite and worker state: `.cantrip/dev/`, gitignored and paired with that worktree's persisted development app identity;
+- Tauri `pnpm devtop` PGlite and worker state: `.cantrip/dev/`, gitignored;
+  the named default app identity lives in shared Git metadata and is projected
+  into each worktree without changing its Tauri application-data namespace;
 - server mode: local deployment, `pnpm-dev` bootstrap, no authentication, one anonymous local user;
 - worker connects to the local server and retries until it is ready;
 - app learns deployment and capability details from `/api/bootstrap` and contains no worker address; and

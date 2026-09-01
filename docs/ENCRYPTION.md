@@ -304,6 +304,32 @@ records. If any of those compatibility contracts changes later, release gates
 must require a tested origin/data-location migration rather than relying on a
 new blank origin.
 
+#### Stable development profiles
+
+`pnpm devtop` uses the named `default` development profile. The canonical
+profile-to-Tauri-identifier mapping is stored in the repository's shared Git
+metadata, outside every worktree and outside Cargo/Vite build output. The first
+run adopts the primary checkout's previous `.cantrip/dev/tauri-dev.conf.json`
+identifier when present; it does not rotate the WebView/native storage
+namespace merely because the shared registry is new. Each launch writes only a
+disposable projection of that canonical config into the active worktree.
+
+The identifier selects Tauri's application-local data directory. The SQLite
+installation catalog and OS key alias remain there and in the platform secure
+store, respectively, so rebuilding, changing branches, removing a worktree, or
+deleting `.cantrip/dev/tauri/target` cannot change the installation ID or key.
+The worktree-local server/worker state is separate from installation identity;
+the same installation may acquire independent bindings for server identities
+encountered in different worktrees.
+
+`pnpm dev:profile inspect [name]` is the non-secret diagnostic boundary. It
+reports the application identifier, installation ID, provider, key aliases,
+catalog and data paths, binding count, and migration states, but never reads or
+prints a private key. `pnpm dev:profile create <name>` creates an explicit clean
+test profile, launched with `pnpm devtop -- --profile <name>`. It refuses to
+replace an existing name. Normal build, clean, and development commands do not
+destroy profiles; choosing a new name is the supported clean-test workflow.
+
 #### Browser custody and current runtime behavior
 
 The browser client custody boundary is implemented by

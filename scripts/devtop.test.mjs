@@ -36,25 +36,26 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
     /forceKillDevelopmentPortListeners\(undefined, undefined, repositoryRoot\)/u,
   );
   assert.match(launcher, /forceKillSpawnedProcessGroup\(activeChild\.pid\)/u);
+  assert.match(launcher, /parseDevtopProfileArguments\(\)/u);
   assert.match(
     launcher,
-    /await ensureDevtopTauriConfig\(\{\s*repositoryRoot,\s*\}\)/u,
+    /await ensureDevtopTauriConfig\(\{\s*profileName: developmentProfile,\s*repositoryCommonDirectory,\s*repositoryRoot,/u,
   );
+  assert.match(launcher, /tauri dev --config \$\{tauriConfigPath\}/u);
+  assert.match(launcher, /CARGO_TARGET_DIR=\$\{tauriTargetDirectory\}/u);
+  assert.match(launcher, /CANTRIP_DATA_DIR=\$\{packageStateDirectory\}/u);
   assert.match(
     launcher,
-    /exec tauri dev --config \.\.\/\.cantrip\/dev\/tauri-dev\.conf\.json/u,
-  );
-  assert.match(
-    launcher,
-    /CARGO_TARGET_DIR=\.\.\/\.\.\/\.cantrip\/dev\/tauri\/target/u,
+    /CANTRIP_WORKER_DATA_DIR=\$\{packageStateDirectory\}\/worker/u,
   );
   assert.match(
     launcher,
     /CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true/u,
   );
   assert.ok(
-    launcher.indexOf("await ensureDevtopTauriConfig") <
-      launcher.indexOf("await forceKillRecordedDevtop"),
+    launcher.indexOf(
+      "const developmentIdentity = await ensureDevtopTauriConfig",
+    ) < launcher.indexOf("await forceKillRecordedDevtop"),
     "validate the worktree identity before stopping the active devtop",
   );
   const processLifecycle = await readFile(

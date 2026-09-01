@@ -429,7 +429,8 @@ development stacks and artifacts in more detail.
 | Command             | Purpose                                                                          |
 | ------------------- | -------------------------------------------------------------------------------- |
 | `pnpm dev`          | Run the protocol watcher, server, worker, and browser app.                       |
-| `pnpm devtop`       | Run the same local stack with the Tauri desktop app.                             |
+| `pnpm devtop`       | Run the same local stack with the stable default Tauri development profile.      |
+| `pnpm dev:profile`  | Inspect a development installation or create an isolated clean test profile.     |
 | `pnpm site`         | Run only the public marketing site at <http://127.0.0.1:5174>.                   |
 | `pnpm dev:server`   | Run a separate account-mode server with disposable PostgreSQL.                   |
 | `pnpm dev:postgres` | Run the browser stack against disposable PostgreSQL in Docker instead of PGlite. |
@@ -595,10 +596,26 @@ pnpm devtop
 
 `devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
 
+The default Tauri development identity is a named profile stored in shared Git
+metadata, not in a build directory or individual worktree. Its application
+identifier, native installation catalog, and OS-backed key therefore survive
+branch changes, worktree replacement, rebuilds, and deletion of transient
+`.cantrip/dev/tauri/target` output. On its first launch after this migration,
+the default profile adopts the primary checkout's existing
+`.cantrip/dev/tauri-dev.conf.json` identifier rather than generating a new one.
+
+Use `pnpm dev:profile inspect` to print the active profile name, installation
+ID, custody provider, catalog/migration state, and relevant non-secret paths.
+For a deliberately clean lane, run
+`pnpm dev:profile create update-test`, then
+`pnpm devtop -- --profile update-test`. Existing profile names are never reset
+or replaced implicitly; choose a new name for another clean lane.
+
 In development builds, webview `console.*` output, failed HTTP requests, uncaught errors, unhandled promise rejections, failed resource loads, and Content Security Policy violations are forwarded to the `desktop` lane in the `devtop` terminal. Entries use a `[client:<window>:<level>]` prefix and include source context when the webview provides it, so failures in the main window and pop-outs can be distinguished without opening Web Inspector. Request query strings and embedded URL credentials are removed before logging.
 
-The server and worker lanes also write their normalized records to
+The default server and worker lanes also write their normalized records to
 `.cantrip/dev/logs/`, and the desktop lane persists client/native records there.
+Named clean profiles use `.cantrip/dev-profiles/<name>/logs/`.
 Open **Settings → Logs** to compare those same component events, inspect a
 remote worker from another client, or export a filtered diagnostic. The server
 source appears only for the matching embedded local server; Cantrip never

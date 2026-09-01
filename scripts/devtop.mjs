@@ -14,16 +14,31 @@ import {
   setDevtopStateChild,
   writeDevtopState,
 } from "./devtop-processes.mjs";
-import { ensureDevtopTauriConfig } from "./devtop-tauri-config.mjs";
+import {
+  developmentProfileStateDirectory,
+  ensureDevtopTauriConfig,
+  parseDevtopProfileArguments,
+} from "./devtop-tauri-config.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const stateDirectory = path.join(repositoryRoot, ".cantrip", "dev");
 const repositoryCommonDirectory =
   resolveRepositoryCommonDirectory(repositoryRoot);
+const developmentProfile = parseDevtopProfileArguments();
+const stateDirectory = developmentProfileStateDirectory(
+  repositoryRoot,
+  developmentProfile,
+);
+const relativeStateDirectory =
+  developmentProfile === "default"
+    ? ".cantrip/dev"
+    : `.cantrip/dev-profiles/${developmentProfile}`;
+const packageStateDirectory = `../${relativeStateDirectory}`;
+const tauriTargetDirectory = `../../${relativeStateDirectory}/tauri/target`;
+const tauriConfigPath = `../${relativeStateDirectory}/tauri-dev.conf.json`;
 // All Cantrip worktrees contend for the same development ports and local
 // worker identity. Keep the owner record in shared Git metadata so a launch
 // from one worktree can stop the complete process tree started by another.
@@ -97,13 +112,17 @@ await Promise.all([
   mkdir(path.dirname(stateFile), { recursive: true }),
 ]);
 
-// Tauri keys its encrypted client state by the application identifier. Give
-// every development worktree a persisted identity paired with that worktree's
-// server and worker state. Recreating .cantrip/dev intentionally creates a
-// fresh pair without touching the release client's art.cantrip profile.
-await ensureDevtopTauriConfig({
+// The canonical named identity lives in shared Git metadata. The local config
+// is only a launch projection, so branch/build/worktree replacement cannot
+// rotate native storage or strand the installation key.
+const developmentIdentity = await ensureDevtopTauriConfig({
+  profileName: developmentProfile,
+  repositoryCommonDirectory,
   repositoryRoot,
 });
+console.log(
+  `Using Cantrip development profile ${developmentProfile} (${developmentIdentity.config.identifier}).`,
+);
 
 // A new devtop owns the fixed development ports. Remove the previous tree
 // immediately instead of requesting graceful shutdown and waiting for it.
@@ -121,6 +140,7 @@ try {
   } else {
     exitCode = await runStage(process.execPath, [
       path.join(repositoryRoot, "scripts", "prepare-dev-logs.mjs"),
+      stateDirectory,
     ]);
     if (exitCode !== 0 || shuttingDown) {
       process.exitCode = exitCode;
@@ -128,10 +148,11 @@ try {
       // Preparation can take a while, so clear anything that claimed a devtop
       // port during the build before starting the actual services.
       forceKillDevelopmentPortListeners(undefined, undefined, repositoryRoot);
-      // Keep the Tauri development binary beside this worktree's persisted
-      // client identity. A normal Tauri build uses src-tauri/target and may be
-      // compiled for tauri://localhost; reusing that binary here changes the
-      // webview origin and makes its nonextractable IndexedDB key disappear.
+      // Keep the Tauri development binary in disposable profile-scoped output.
+      // The canonical app identifier remains in shared Git metadata. A normal
+      // Tauri build uses src-tauri/target and may be compiled for
+      // tauri://localhost, so reusing that binary would still change the
+      // WebView origin used by the legacy migration reader.
       process.exitCode = await runPnpm([
         "exec",
         "concurrently",
@@ -144,9 +165,9 @@ try {
         "cyan,gray,blue,magenta,green",
         "pnpm --filter @cantrip/glitch dev",
         "pnpm --filter @cantrip/protocol dev",
-        "cross-env FORCE_COLOR=1 CANTRIP_SERVICE_LOG_DIR=../.cantrip/dev/logs/server pnpm --filter @cantrip/server dev",
-        "node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_SERVICE_LOG_DIR=../.cantrip/dev/logs/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev",
-        "node scripts/wait-for-server.mjs && cross-env CARGO_TARGET_DIR=../../.cantrip/dev/tauri/target CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true pnpm --filter @cantrip/app exec tauri dev --config ../.cantrip/dev/tauri-dev.conf.json",
+        `cross-env FORCE_COLOR=1 CANTRIP_DATA_DIR=${packageStateDirectory} CANTRIP_SERVICE_LOG_DIR=${packageStateDirectory}/logs/server pnpm --filter @cantrip/server dev`,
+        `node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_WORKER_DATA_DIR=${packageStateDirectory}/worker CANTRIP_SERVICE_LOG_DIR=${packageStateDirectory}/logs/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev`,
+        `node scripts/wait-for-server.mjs && cross-env CARGO_TARGET_DIR=${tauriTargetDirectory} CANTRIP_LOCAL_ONLY=true VITE_CANTRIP_LOCAL_ONLY=true pnpm --filter @cantrip/app exec tauri dev --config ${tauriConfigPath}`,
       ]);
     }
   }

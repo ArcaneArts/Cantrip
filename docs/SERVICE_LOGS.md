@@ -419,13 +419,18 @@ to add those payloads to service logs.
 ## Development behavior
 
 `pnpm devtop` prepares these ignored files before starting the normal colored
-development lanes:
+development lanes for the `default` profile:
 
 ```text
 .cantrip/dev/logs/client/
 .cantrip/dev/logs/server/
 .cantrip/dev/logs/worker/
 ```
+
+An explicitly named profile uses
+`.cantrip/dev-profiles/<name>/logs/{client,server,worker}/` instead. Inspect the
+selected state path with `pnpm dev:profile inspect [name]` rather than guessing
+which worktree-local lane is active.
 
 The server and worker tee structured records to those archives without
 suppressing their development terminal output. The Tauri webview relay
