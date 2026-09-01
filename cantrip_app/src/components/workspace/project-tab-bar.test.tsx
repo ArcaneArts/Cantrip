@@ -60,7 +60,22 @@ vi.mock("@radix-ui/react-dropdown-menu", async () => {
   };
 });
 vi.mock("@/components/ui/confirm-dialog", () => ({
-  ConfirmDialog: () => null,
+  ConfirmDialog: ({
+    confirmLabel,
+    confirmVariant,
+    title,
+  }: {
+    confirmLabel: string;
+    confirmVariant?: string;
+    title: string;
+  }) => (
+    <div
+      data-confirm-label={confirmLabel}
+      data-confirm-variant={confirmVariant}
+    >
+      {title}
+    </div>
+  ),
 }));
 vi.mock("./project-surface-create-menu", () => ({
   ProjectSurfaceCreateMenu: () => null,
@@ -286,5 +301,17 @@ describe("project tab bar", () => {
     expect(markup).toContain("lucide-file-code-corner");
     expect(markup).toContain("index.ts");
     expect(markup).toContain('aria-label="Project file tabs"');
+  });
+
+  it("presents pinned file removal as a neutral Close action", () => {
+    const markup = renderTabs(fileSurface());
+
+    expect(markup.match(/Close/gu)?.length).toBeGreaterThanOrEqual(4);
+    expect(markup.match(/lucide-x/gu)).toHaveLength(2);
+    expect(markup).not.toContain("lucide-trash-2");
+    expect(markup).not.toContain("text-destructive");
+    expect(markup).toContain('data-confirm-label="Close"');
+    expect(markup).toContain('data-confirm-variant="default"');
+    expect(markup).toContain("Close file tab?");
   });
 });
