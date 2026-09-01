@@ -254,6 +254,15 @@ normal sign-in or authorization from an existing endpoint. Account
 initialization and the workspace-name adapter consume this custody boundary as
 described below.
 
+The durable native replacement is tracked in
+[ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md). Its storage
+contract separates one immutable installation profile and stable native key
+alias from server/account authorization bindings. Native SQLite catalogs will
+hold only non-secret identity, public-key, binding, and migration metadata;
+platform secure storage will own private keys. Until the native providers and
+transactional migration are connected, the IndexedDB implementation above
+remains the active runtime behavior.
+
 ### Account initialization and unlock
 
 The client orchestration in
