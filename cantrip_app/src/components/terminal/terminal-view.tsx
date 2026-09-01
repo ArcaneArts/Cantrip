@@ -710,12 +710,12 @@ export function TerminalView({
   };
   return (
     <div
-      className="relative flex min-h-0 flex-1 bg-background"
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
       data-slot="terminal-view"
       ref={terminalSurfaceRef}
     >
       <div
-        className="relative flex min-h-0 min-w-0 flex-1"
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
         data-elite-global={hasLoaded ? "" : undefined}
         style={{
           paddingBottom: mobileCommandBarVisible
@@ -725,7 +725,7 @@ export function TerminalView({
       >
         <div
           ref={containerRef}
-          className="min-h-0 min-w-0 flex-1 p-3"
+          className="min-h-0 min-w-0 flex-1 overflow-hidden p-3"
           data-selectable-text="true"
         />
         <SurfaceLoadingVeil

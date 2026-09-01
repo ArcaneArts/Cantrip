@@ -123,6 +123,18 @@ describe("Persistent terminal views", () => {
     ).toBe(false);
     expect(
       renderer.root.findByProps({
+        "data-slot": "persistent-terminal-surface",
+        "data-terminal-id": first.id,
+      }).props.className,
+    ).toContain("min-w-0");
+    expect(
+      renderer.root.findByProps({
+        "data-slot": "persistent-terminal-surface",
+        "data-terminal-id": first.id,
+      }).props.className,
+    ).toContain("overflow-hidden");
+    expect(
+      renderer.root.findByProps({
         "data-mock-terminal-view": true,
         "data-terminal-id": second.id,
       }).props["data-visible"],
