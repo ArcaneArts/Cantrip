@@ -171,7 +171,7 @@ flowchart TD
 ### Cycle 4 — transactional Tauri migration and account recovery
 
 - Branch: `codex/encryption-storage-cycle4-tauri-migration`
-- Pull request: pending creation
+- Pull request: [#1545](https://github.com/ArcaneArts/Cantrip/pull/1545)
 - Merge: pending
 - Behavior implemented:
   - Selected the native Tauri catalog and OS key provider during normal Tauri
