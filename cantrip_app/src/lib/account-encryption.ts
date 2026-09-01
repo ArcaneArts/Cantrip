@@ -32,6 +32,15 @@ import {
   reauthenticateForEncryption,
 } from "./encryption-api";
 import { CantripApiError } from "./api-client";
+import {
+  prepareDurableClientEncryption,
+  type DurableClientEncryptionStorage,
+} from "./durable-account-encryption";
+import { detectClientRuntimePlatform } from "./runtime-platform";
+import {
+  TauriClientDeviceKeyProvider,
+  TauriInstallationCatalog,
+} from "./tauri-installation-storage";
 
 export type ClientEncryptionCredential = "password";
 
@@ -41,6 +50,15 @@ export type ClientEncryptionAccess =
       credential: ClientEncryptionCredential;
       reason: "authorize-device" | "initialize";
       status: "credential-required";
+    }
+  | {
+      message: string;
+      reason:
+        | "anonymous-binding-missing"
+        | "anonymous-device-missing"
+        | "legacy-device-corrupt"
+        | "legacy-device-unsupported";
+      status: "recovery-required";
     };
 
 export interface AccountEncryptionApi {
@@ -84,9 +102,14 @@ const defaultApi: AccountEncryptionApi = {
 type PrepareClientEncryptionInput = {
   api?: AccountEncryptionApi;
   authMode: AuthMode;
+  durableStorage?: DurableClientEncryptionStorage;
   identity: ClientEncryptionIdentity;
+  onStartupState?: Parameters<
+    typeof prepareDurableClientEncryption
+  >[0]["onStartupState"];
   password?: string;
   passwordKdf?: PasswordKdfParameters;
+  runtimePlatform?: ReturnType<typeof detectClientRuntimePlatform>;
   service?: ClientEncryptionService;
 };
 
@@ -112,6 +135,19 @@ function prepareClientEncryptionRuntime(
 const preparationFlights = prepareClientEncryptionRuntime(
   import.meta.hot?.data as AccountEncryptionHotState | undefined,
 );
+
+let tauriStorageFlight: Promise<DurableClientEncryptionStorage> | null = null;
+
+function openTauriStorage(): Promise<DurableClientEncryptionStorage> {
+  tauriStorageFlight ??= TauriClientDeviceKeyProvider.open().then(
+    (provider) => ({ catalog: new TauriInstallationCatalog(), provider }),
+    (error) => {
+      tauriStorageFlight = null;
+      throw error;
+    },
+  );
+  return tauriStorageFlight;
+}
 
 type AuthorizeDeviceInput = {
   api: AccountEncryptionApi;
@@ -401,6 +437,20 @@ async function prepareClientEncryptionOnce(
 ): Promise<ClientEncryptionAccess> {
   const api = input.api ?? defaultApi;
   const service = input.service ?? clientEncryption;
+  const runtimePlatform =
+    input.runtimePlatform ?? detectClientRuntimePlatform();
+  if (input.durableStorage || runtimePlatform === "tauri") {
+    return prepareDurableClientEncryption({
+      api,
+      authMode: input.authMode,
+      identity: input.identity,
+      onStartupState: input.onStartupState,
+      password: input.password,
+      passwordKdf: input.passwordKdf,
+      service,
+      storage: input.durableStorage ?? (await openTauriStorage()),
+    });
+  }
   let device: ClientDeviceDescriptor;
   try {
     device = await service.ensureDevice(input.identity);

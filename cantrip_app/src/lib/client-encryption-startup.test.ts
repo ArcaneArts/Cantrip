@@ -12,7 +12,7 @@ import {
 
 const identity = { ownerId: "owner-a", serverId: "server-a" } as const;
 const installationId = "8d982003-a042-4b6e-94ca-0cf987264e75";
-const keyAlias = `cantrip.installation.v1.${installationId}`;
+const keyAlias = `cantrip.installation.${installationId}.hpke.v1`;
 const binding: ClientEncryptionStartupBinding = {
   grantRevision: 3,
   keyAlias,
