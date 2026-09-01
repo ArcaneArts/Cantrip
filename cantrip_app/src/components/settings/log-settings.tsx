@@ -33,6 +33,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
+import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import {
   getServerBootstrap,
   getWorkerServiceLogs,
@@ -63,7 +64,6 @@ import {
 } from "@/lib/server-connections";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
-import { useCompactLayout } from "@/lib/use-compact-layout";
 import { cn } from "@/lib/utils";
 import {
   parseWorkerLogStreamMessage,
@@ -271,10 +271,28 @@ function sourceIcon(kind: LogSource["kind"]) {
   return Cpu;
 }
 
-function sourceAccent(source: LogSource): string {
-  if (source.kind === "client") return "text-emerald-500";
-  if (source.kind === "server") return "text-sky-500";
-  return "text-fuchsia-500";
+export function LogSourceTabs({
+  onSelect,
+  selectedSourceId,
+  sources,
+}: {
+  onSelect: (sourceId: string) => void;
+  selectedSourceId: string;
+  sources: readonly LogSource[];
+}) {
+  return (
+    <NavigationTabBar
+      activeTab={selectedSourceId}
+      ariaLabel="Log sources"
+      className="w-full border-b border-border/60"
+      tabs={sources.map((source) => ({
+        icon: sourceIcon(source.kind),
+        id: source.id,
+        label: source.label,
+      }))}
+      onTabChange={onSelect}
+    />
+  );
 }
 
 function lineAccent(record: ViewerLogRecord): string {
@@ -439,7 +457,6 @@ export function VirtualLogConsole({
 }
 
 export function LogSettings() {
-  const compact = useCompactLayout();
   const tauriRuntime = isTauri();
   const mobileRuntime = isMobileNativeRuntime();
   const workerResourcesLive = useAppLiveStatus() === "live";
@@ -922,21 +939,13 @@ export function LogSettings() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3">
+      <LogSourceTabs
+        selectedSourceId={selectedSource.id}
+        sources={sources}
+        onSelect={setSelectedSourceId}
+      />
+
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {compact ? (
-          <NativeSelect
-            aria-label="Log source"
-            className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
-            value={selectedSource.id}
-            onChange={(event) => setSelectedSourceId(event.target.value)}
-          >
-            {sources.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.label}
-              </option>
-            ))}
-          </NativeSelect>
-        ) : null}
         <div className="relative min-w-40 flex-1 sm:max-w-sm">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -1122,43 +1131,7 @@ export function LogSettings() {
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border">
-        {!compact ? (
-          <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60 p-1.5">
-            {sources.map((source) => {
-              const Icon = sourceIcon(source.kind);
-              const active = source.id === selectedSource.id;
-              return (
-                <button
-                  key={source.id}
-                  type="button"
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                    active
-                      ? "bg-white/10 text-white"
-                      : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100",
-                  )}
-                  onClick={() => setSelectedSourceId(source.id)}
-                >
-                  <Icon
-                    className={cn(
-                      "mt-0.5 size-3.5 shrink-0",
-                      sourceAccent(source),
-                    )}
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate text-xs font-medium">
-                      {source.label}
-                    </span>
-                    <span className="block truncate text-[10px] text-zinc-500">
-                      {source.subtitle}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-h-9 items-center gap-2 border-b border-white/10 px-3 text-[11px] text-zinc-400">
             <StatusIcon

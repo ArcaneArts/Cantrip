@@ -2,7 +2,41 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { appendServiceLogRecords } from "./log-viewer-model";
-import { VirtualLogConsole } from "./log-settings";
+import { LogSourceTabs, VirtualLogConsole } from "./log-settings";
+
+describe("LogSourceTabs", () => {
+  it("renders sources as horizontal tabs with the active source selected", () => {
+    const markup = renderToStaticMarkup(
+      <LogSourceTabs
+        selectedSourceId="worker:local"
+        sources={[
+          {
+            id: "client",
+            kind: "client",
+            label: "Client · This device",
+            online: true,
+            subtitle: "Desktop shell and webview",
+          },
+          {
+            id: "worker:local",
+            kind: "worker",
+            label: "Worker · This machine",
+            online: true,
+            subtitle: "darwin · arm64",
+          },
+        ]}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain('role="tablist"');
+    expect(markup).toContain('aria-label="Log sources"');
+    expect(markup).toContain('role="tab"');
+    expect(markup).toContain('aria-selected="true"');
+    expect(markup).toContain("Client · This device");
+    expect(markup).toContain("Worker · This machine");
+  });
+});
 
 describe("VirtualLogConsole", () => {
   it("renders full log rows without native hover tooltips", () => {
