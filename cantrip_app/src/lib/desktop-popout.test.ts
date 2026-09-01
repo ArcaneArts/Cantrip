@@ -69,6 +69,7 @@ const webviews = vi.hoisted(() => {
       this.destroyed?.();
     });
     private destroyed: (() => void) | undefined;
+    readonly hide = vi.fn(async () => undefined);
     readonly setFocus = vi.fn(async () => undefined);
     readonly show = vi.fn(async () => undefined);
     readonly unminimize = vi.fn(async () => undefined);
@@ -130,6 +131,7 @@ import {
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
   observeDesktopWindowFocus,
+  openSyntheticBuildProgressWindow,
   openDesktopPopoutGroup,
   openDesktopExplorerFile,
   openDesktopStandaloneChatFile,
@@ -138,6 +140,7 @@ import {
   parseDesktopProjectOverviewTarget,
   parseDesktopStandaloneChatFileTarget,
   prewarmDesktopExplorerFile,
+  restoreMainWindowAfterSyntheticBuild,
   shouldUseOverlayTitlebar,
   type DesktopExplorerFileTarget,
   type DesktopPopoutGroupTarget,
@@ -286,6 +289,33 @@ describe("desktop pop-out groups", () => {
 
     expect(onClosed).toHaveBeenCalledOnce();
     expect(unlisten).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("synthetic build progress window", () => {
+  it("hides the main window after opening and can restore it", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("navigator", { userAgent: "Macintosh" });
+    const mainWindow = new webviews.MockWebviewWindow("main");
+
+    try {
+      await expect(openSyntheticBuildProgressWindow()).resolves.toBe("created");
+      expect(mainWindow.hide).toHaveBeenCalledOnce();
+      expect(
+        webviews.windows.get("synthetic-build-progress")?.options,
+      ).toMatchObject({ hiddenTitle: true, titleBarStyle: "overlay" });
+
+      await restoreMainWindowAfterSyntheticBuild();
+
+      expect(mainWindow.show).toHaveBeenCalledOnce();
+      expect(mainWindow.unminimize).toHaveBeenCalledOnce();
+      expect(mainWindow.setFocus).toHaveBeenCalledOnce();
+    } finally {
+      webviews.windows.clear();
+      tauri.isTauri.mockReturnValue(false);
+      vi.unstubAllGlobals();
+    }
   });
 });
 
