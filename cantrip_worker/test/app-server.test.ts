@@ -657,6 +657,25 @@ describe("Codex rich event normalization", () => {
       query: "worker timeout",
       resultText: "Found two matching issues.",
     });
+
+    expect(
+      normalizeCodexThreadItem(
+        {
+          type: "subAgentActivity",
+          id: "subagent-completed-1",
+          kind: "completed",
+          agentThreadId: "thread-2",
+          agentPath: "/root/reviewer",
+        },
+        "/workspace",
+        "completed",
+        { ...correlation, itemId: "subagent-completed-1" },
+      ),
+    ).toMatchObject({
+      type: "subAgent",
+      kind: "completed",
+      status: "completed",
+    });
     expect(
       normalizeCodexThreadItem(
         {
