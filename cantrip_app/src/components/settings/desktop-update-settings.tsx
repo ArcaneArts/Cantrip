@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Download,
+  History,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -36,27 +37,17 @@ import {
 } from "@/lib/desktop-update";
 import { openExternalUrl } from "@/lib/external-url";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
-import { DesktopUpdateHistory } from "./desktop-update-history";
+import { DesktopUpdateVersionList } from "./desktop-update-history";
 import {
   SyntheticBuildCache,
   SyntheticBuildSettings,
 } from "./synthetic-build-settings";
 
 const AUTOMATIC_UPDATE_REFRESH_MS = 30_000;
-const automaticCheckTimes = new WeakMap<DesktopUpdateClient, number>();
 const historyCache = new WeakMap<
   DesktopUpdateClient,
   { fetchedAt: number; promise: Promise<DesktopUpdateRelease[]> }
 >();
-
-export function desktopUpdateAutoRefreshDue(
-  lastCheckAt: number | null,
-  now = Date.now(),
-): boolean {
-  return (
-    lastCheckAt === null || now - lastCheckAt >= AUTOMATIC_UPDATE_REFRESH_MS
-  );
-}
 
 function loadDesktopUpdateHistory(
   client: DesktopUpdateClient,
@@ -461,9 +452,12 @@ export function DesktopUpdateSettings({
   );
   const [history, setHistory] = useState<DesktopUpdateRelease[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [releaseDialogRequested, setReleaseDialogRequested] = useState(false);
+  const [selectedHistoryRelease, setSelectedHistoryRelease] =
+    useState<DesktopUpdateRelease | null>(null);
   const [selectedFromHistory, setSelectedFromHistory] = useState(false);
+  const [versionPickerOpen, setVersionPickerOpen] = useState(false);
   const operation = useRef(0);
   const actionInFlight = useRef(false);
   const cancellationInFlight = useRef(false);
@@ -560,7 +554,15 @@ export function DesktopUpdateSettings({
       setHistoryLoading(true);
       setHistoryError(null);
       try {
-        setHistory(await loadDesktopUpdateHistory(client, force));
+        const releases = await loadDesktopUpdateHistory(client, force);
+        setHistory(releases);
+        setSelectedHistoryRelease(
+          (selected) =>
+            releases.find((release) => release.version === selected?.version) ??
+            releases[0] ??
+            null,
+        );
+        return releases;
       } catch (error) {
         setHistoryError(
           normalizeDesktopUpdateError(
@@ -568,22 +570,13 @@ export function DesktopUpdateSettings({
             "Could not load Cantrip version history.",
           ).message,
         );
+        return [];
       } finally {
         setHistoryLoading(false);
       }
     },
     [client],
   );
-
-  useEffect(() => {
-    void refreshHistory();
-    const now = Date.now();
-    const lastCheck = automaticCheckTimes.get(client) ?? null;
-    if (desktopUpdateAutoRefreshDue(lastCheck, now)) {
-      automaticCheckTimes.set(client, now);
-      void checkForUpdate(false);
-    }
-  }, [checkForUpdate, client, refreshHistory]);
 
   const install = async (
     activeWork: DesktopUpdateActiveWorkSummary,
@@ -647,13 +640,15 @@ export function DesktopUpdateSettings({
     void prepareActiveWork(currentOperation);
   };
 
-  const prepareSelectedVersion = async () => {
-    if (!state.release || actionInFlight.current) return;
+  const prepareSelectedVersion = async (
+    targetRelease: DesktopUpdateRelease | null = state.release,
+  ) => {
+    if (!targetRelease || actionInFlight.current) return;
     actionInFlight.current = true;
     const currentOperation = ++operation.current;
     dispatch({ type: "active-work-started" });
     try {
-      const release = await client.select(state.release.version);
+      const release = await client.select(targetRelease.version);
       if (operation.current !== currentOperation) return;
       dispatch({ type: "check-available", release });
       await prepareActiveWork(currentOperation);
@@ -676,6 +671,29 @@ export function DesktopUpdateSettings({
     actionInFlight.current = true;
     const currentOperation = operation.current;
     void install(state.activeWork, true, currentOperation);
+  };
+
+  const openVersionPicker = () => {
+    if (busy || dialogOpen) return;
+    setSelectedFromHistory(false);
+    setVersionPickerOpen(true);
+    void refreshHistory();
+  };
+
+  const useSelectedVersion = () => {
+    if (
+      !selectedHistoryRelease ||
+      selectedHistoryRelease.version === state.installedVersion ||
+      busy ||
+      dialogOpen
+    ) {
+      return;
+    }
+    setVersionPickerOpen(false);
+    setSelectedFromHistory(true);
+    setReleaseDialogRequested(true);
+    dispatch({ type: "check-available", release: selectedHistoryRelease });
+    void prepareSelectedVersion(selectedHistoryRelease);
   };
 
   const dismiss = async () => {
@@ -730,20 +748,91 @@ export function DesktopUpdateSettings({
         </Button>
       </div>
 
-      <DesktopUpdateHistory
-        headerAction={<SyntheticBuildSettings />}
-        error={historyError}
-        installedVersion={state.installedVersion}
-        loading={historyLoading}
-        releases={history}
-        onOpenRelease={(release) => {
-          if (busy || dialogOpen) return;
-          dispatch({ type: "check-available", release });
-          setSelectedFromHistory(true);
-          setReleaseDialogRequested(true);
-        }}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <History className="size-4 shrink-0 text-muted-foreground" />
+          <div>
+            <h3 className="text-sm font-semibold">Version history</h3>
+            <p className="text-xs text-muted-foreground">
+              Review a signed release or build an update from source.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy || dialogOpen}
+            onClick={openVersionPicker}
+          >
+            <History className="size-3.5" /> Change Version
+          </Button>
+          <SyntheticBuildSettings />
+        </div>
+      </div>
       <SyntheticBuildCache />
+
+      <Dialog open={versionPickerOpen} onOpenChange={setVersionPickerOpen}>
+        <DialogContent className="flex h-[min(42rem,85vh)] max-w-4xl flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Change Cantrip version</DialogTitle>
+            <DialogDescription>
+              Select a signed desktop release and review its changelog before
+              installing it.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid min-h-0 flex-1 grid-rows-[minmax(8rem,12rem)_minmax(0,1fr)] overflow-hidden rounded-lg border sm:grid-cols-[15rem_minmax(0,1fr)] sm:grid-rows-1">
+            <DesktopUpdateVersionList
+              error={historyError}
+              installedVersion={state.installedVersion}
+              loading={historyLoading}
+              releases={history}
+              selectedVersion={selectedHistoryRelease?.version ?? null}
+              onSelectRelease={setSelectedHistoryRelease}
+            />
+            <div className="min-h-0 overflow-y-auto p-4">
+              {selectedHistoryRelease ? (
+                <ReleaseDetails
+                  release={selectedHistoryRelease}
+                  targetLabel="Selected"
+                />
+              ) : historyLoading ? (
+                <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Loading release
+                  history…
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  Select a version to view its changelog.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setVersionPickerOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                !selectedHistoryRelease ||
+                selectedHistoryRelease.version === state.installedVersion ||
+                historyLoading
+              }
+              onClick={useSelectedVersion}
+            >
+              <RotateCcw className="size-4" /> Use This Version
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={dialogOpen}
