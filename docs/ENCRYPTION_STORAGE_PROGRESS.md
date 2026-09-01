@@ -62,7 +62,7 @@ flowchart TD
 ### Cycle 2 — runtime, provider, and startup contracts
 
 - Branch: `codex/encryption-storage-cycle2-startup`
-- Pull request: pending
+- Pull request: [#1536](https://github.com/ArcaneArts/Cantrip/pull/1536)
 - Merge: pending
 - Behavior implemented:
   - Added the single runtime classifier for browser, Tauri, Capacitor iOS,
