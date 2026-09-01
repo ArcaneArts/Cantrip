@@ -103,6 +103,13 @@ type InstallationCatalogState = {
   migrations: Map<string, InstallationMigration>;
 };
 
+export type InstallationCatalogRecords = {
+  accountBindings: InstallationAccountBinding[];
+  deviceKeys: InstallationDeviceKey[];
+  installation: InstallationProfile | null;
+  migrations: InstallationMigration[];
+};
+
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -208,6 +215,60 @@ function validateMigration(migration: InstallationMigration): void {
       "migration-invalid",
       "A verified migration requires start, completion, and verification records.",
     );
+  }
+}
+
+export function validateInstallationCatalogRecords(
+  records: InstallationCatalogRecords,
+): void {
+  const state: InstallationCatalogState = {
+    accountBindings: new Map(),
+    deviceKeys: new Map(),
+    installation: records.installation ? { ...records.installation } : null,
+    migrations: new Map(),
+  };
+  if (
+    !state.installation &&
+    (records.deviceKeys.length > 0 ||
+      records.accountBindings.length > 0 ||
+      records.migrations.length > 0)
+  ) {
+    throw new InstallationCatalogError(
+      "catalog-corrupt",
+      "Installation metadata cannot exist without an installation profile.",
+    );
+  }
+  if (state.installation) validateInstallation(state.installation);
+  for (const deviceKey of records.deviceKeys) {
+    if (state.deviceKeys.has(deviceKey.keyAlias)) {
+      throw new InstallationCatalogError(
+        "catalog-corrupt",
+        "The installation catalog contains duplicate device keys.",
+      );
+    }
+    validateDeviceKey(state, deviceKey);
+    state.deviceKeys.set(deviceKey.keyAlias, cloneDeviceKey(deviceKey));
+  }
+  for (const binding of records.accountBindings) {
+    const key = accountBindingKey(binding.serverId, binding.ownerId);
+    if (state.accountBindings.has(key)) {
+      throw new InstallationCatalogError(
+        "catalog-corrupt",
+        "The installation catalog contains duplicate account bindings.",
+      );
+    }
+    validateAccountBinding(state, binding);
+    state.accountBindings.set(key, { ...binding });
+  }
+  for (const migration of records.migrations) {
+    if (state.migrations.has(migration.migrationId)) {
+      throw new InstallationCatalogError(
+        "catalog-corrupt",
+        "The installation catalog contains duplicate migrations.",
+      );
+    }
+    validateMigration(migration);
+    state.migrations.set(migration.migrationId, { ...migration });
   }
 }
 

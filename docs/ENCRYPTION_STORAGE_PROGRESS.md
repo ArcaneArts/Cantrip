@@ -373,7 +373,7 @@ flowchart TD
 - Branch: `codex/encryption-storage-cycle7-capacitor-migration`
 - Pull request: [#1548](https://github.com/ArcaneArts/Cantrip/pull/1548)
 - Commit: `8babae555ea630b03cff6354962fa46c0b97891d`
-- Merge: pending
+- Merge: squash-merged as `68e54d86302502eed80de0dc34748f59bb607323`
 - Behavior implemented:
   - Added one native-storage selector for Tauri, Capacitor iOS, and Capacitor
     Android. Native runtimes fail closed when their provider is unavailable;
@@ -430,10 +430,72 @@ flowchart TD
   verify that the same installation, alias, principal, and encrypted account
   data remain usable.
 
+### Cycle 8 — Browser persistence and replacement-device recovery
+
+- Branch: `codex/encryption-storage-cycle8-browser-recovery`
+- Pull request: [#1549](https://github.com/ArcaneArts/Cantrip/pull/1549)
+- Commit: `5c6f19916dbd9a451767c4cedeaffc8be96feb1f`
+- Merge: pending
+- Behavior implemented:
+  - Added the versioned `cantrip-browser-installation` IndexedDB catalog and
+    WebCrypto key provider. One immutable browser installation UUID owns one
+    nonextractable P-256 key and independent bindings for multiple servers and
+    owners; the key is no longer selected by `[serverId, ownerId]`.
+  - Applied full catalog validation and compare-and-swap transactions to
+    browser storage. Concurrent tabs retry against the winning catalog and are
+    prohibited from replacing its installation identity.
+  - Requested persistent browser storage where supported and distinguished
+    `persistent`, `best-effort`, and `unsupported` outcomes without treating a
+    persistence denial as success.
+  - Routed normal browser startup through the same durable coordinator as
+    native clients. The released per-account IndexedDB record remains a legacy
+    reader and is migrated transactionally: unwrap the existing Account Master
+    Key, provision the stable browser key/principal/grant, verify the new unwrap
+    and encrypted marker, then commit the binding and migration checkpoint.
+    The legacy record, principal, and grant remain intact.
+  - Replaced the generic missing-key path for initialized accounts with an
+    in-session `recover-device` state and recovery screen. Password
+    reauthentication reprovisions the existing server profile to a new browser
+    installation and never creates a blank profile or empty workspace.
+  - Kept anonymous browser storage loss in the precise recovery-required state
+    pending the Cycle 9 recovery artifact.
+- Validation:
+  - Focused browser storage, account migration/recovery, startup-state, and
+    recovery-screen tests — 40 tests passed.
+  - `pnpm --filter @cantrip/app test` — 1,862 tests passed and 3 skipped
+    across 354 test files.
+  - `pnpm --filter @cantrip/app typecheck` and
+    `pnpm --filter @cantrip/app build` — passed.
+  - `node --test scripts/*.test.mjs` — 116 tests passed and the two known
+    clean-`main` baseline assertions failed for the App Platform build-command
+    fixture and tranche-two sidebar lifecycle fixture. This cycle changes
+    neither surface.
+  - `pnpm check:large-files` and `git diff --check` — passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle introduced no newly reported overage.
+- Supported platforms:
+  - Browser: stable installation catalog, nonextractable WebCrypto custody,
+    legacy migration, persistence request, and account replacement-device
+    recovery are implemented and covered by deterministic IndexedDB tests.
+  - Tauri and Capacitor: continue using their native SQLite and secure-key
+    providers through the same coordinator; existing runtime-selection tests
+    guard this boundary.
+- Migration status: implemented and verified deterministically for an actual
+  released-format IndexedDB record, including stable restart unlock and legacy
+  record retention.
+- Remaining work: Cycles 9–12 below.
+- Known risks or blockers: browser persistence remains browser-controlled.
+  Account mode is recoverable after eviction; anonymous mode still requires the
+  Cycle 9 artifact. No external blocker prevents the next cycle.
+- Manual verification: in a supported browser, approve persistent storage,
+  migrate an existing account, clear site data, sign back in, and confirm the
+  recovery screen restores the original encrypted account without profile
+  initialization. Verify the denial path in a private/incognito context.
+
 ## Remaining cycles
 
-1. Harden browser persistence, replacement-device recovery, and recovery UI.
-2. Implement anonymous recovery export/import.
-3. Add update/install compatibility harnesses and release gates.
-4. Retire obsolete defaults while retaining required legacy readers.
-5. Complete the cross-platform audit, full validation, and documentation.
+1. Implement anonymous recovery export/import.
+2. Add update/install compatibility harnesses and release gates.
+3. Retire obsolete defaults while retaining required legacy readers.
+4. Complete the cross-platform audit, full validation, and documentation.
