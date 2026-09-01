@@ -5785,6 +5785,7 @@ describe("Cantrip protocol", () => {
       desktopFrameRate: 30,
       eliteMode: true,
       eliteRevealConfig: DEFAULT_ELITE_REVEAL_CONFIG,
+      showChatPromptOverlay: true,
       defaultPermissionProfileId: ":workspace",
       defaultWorkerId: null,
       automaticReplicaProvisioning: false,
@@ -5849,6 +5850,9 @@ describe("Cantrip protocol", () => {
     expect(userSettingsUpdateSchema.parse({ theme: "dark" })).toEqual({
       theme: "dark",
     });
+    expect(
+      userSettingsUpdateSchema.parse({ showChatPromptOverlay: false }),
+    ).toEqual({ showChatPromptOverlay: false });
     expect(
       userSettingsUpdateSchema.safeParse({
         eliteRevealConfig: {

@@ -40,6 +40,7 @@ import {
   LogOut,
   Network,
   Palette,
+  PanelTop,
   Plus,
   RefreshCw,
   Route,
@@ -1520,6 +1521,12 @@ export function SettingsPage({
       generalSearch,
       "agent chat names random generated title new agent",
     );
+  const chatDisplayMatches =
+    !generalSearch ||
+    matchesSearch(
+      generalSearch,
+      "chat display current prompt header overlay scrolling context show hide",
+    );
   const desktopUpdateMatches =
     desktopUpdatesAvailable &&
     (!generalSearch ||
@@ -1579,6 +1586,7 @@ export function SettingsPage({
       : appearanceMatches ||
         permissionDefaultsMatch ||
         agentNamingMatches ||
+        chatDisplayMatches ||
         desktopStreamingMatches ||
         encryptionRecoveryMatches ||
         desktopUpdateMatches;
@@ -1701,6 +1709,43 @@ export function SettingsPage({
 
                 {section === "general" && encryptionRecoveryMatches ? (
                   <EncryptionRecoverySettings />
+                ) : null}
+
+                {section === "general" && chatDisplayMatches ? (
+                  <section>
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <PanelTop className="size-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">
+                            Chat display
+                          </h2>
+                          <p className="text-xs text-muted-foreground">
+                            Control the context shown while scrolling through a
+                            chat.
+                          </p>
+                        </div>
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                        <input
+                          type="checkbox"
+                          aria-label="Show current prompt header"
+                          className="size-3.5 accent-primary"
+                          checked={
+                            settings.data?.preferences.showChatPromptOverlay ??
+                            true
+                          }
+                          disabled={preferences.isPending}
+                          onChange={(event) =>
+                            preferences.mutate({
+                              showChatPromptOverlay: event.target.checked,
+                            })
+                          }
+                        />
+                        Show current prompt
+                      </label>
+                    </div>
+                  </section>
                 ) : null}
 
                 {section === "general" && permissionDefaultsMatch ? (

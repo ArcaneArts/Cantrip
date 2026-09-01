@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeChatTurnPrompt,
   CHAT_TURN_PROMPT_GLITCH_CONFIG,
+  chatTurnPromptOverlayPreferenceEnabled,
   chatTurnPromptSummary,
   ChatTurnPromptOverlay,
 } from "./chat-turn-prompt-overlay";
@@ -75,6 +76,12 @@ describe("active chat turn prompt", () => {
 });
 
 describe("chat turn prompt overlay", () => {
+  it("remains enabled unless the saved preference explicitly disables it", () => {
+    expect(chatTurnPromptOverlayPreferenceEnabled(undefined)).toBe(true);
+    expect(chatTurnPromptOverlayPreferenceEnabled(true)).toBe(true);
+    expect(chatTurnPromptOverlayPreferenceEnabled(false)).toBe(false);
+  });
+
   it("compacts multiline prompts for the floating header", () => {
     expect(
       chatTurnPromptSummary(message("Inspect the project\n\nthen fix it")),

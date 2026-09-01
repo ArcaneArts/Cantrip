@@ -57,7 +57,10 @@ import {
   scheduleChatComposerNoticeDismiss,
   type ChatComposerNoticeTone,
 } from "@/components/chat/chat-composer-notice";
-import { useChatTurnPromptOverlay } from "@/components/chat/chat-turn-prompt-overlay";
+import {
+  chatTurnPromptOverlayPreferenceEnabled,
+  useChatTurnPromptOverlay,
+} from "@/components/chat/chat-turn-prompt-overlay";
 import {
   editableMessageAttachments,
   editableMessageText,
@@ -554,6 +557,9 @@ export function useChatTranscriptController({
   const turnPromptOverlay = useChatTurnPromptOverlay({
     chatId: chat.id,
     contentRef: transcriptContentRef,
+    enabled: chatTurnPromptOverlayPreferenceEnabled(
+      settings?.preferences.showChatPromptOverlay,
+    ),
     messages: messages.data ?? [],
     viewportRef: transcriptViewportRef,
   });

@@ -129,6 +129,7 @@ describe("standalone Chat contracts", () => {
       defaultModelId: null,
     });
     expect(settings).toMatchObject({
+      showChatPromptOverlay: true,
       defaultChatModelId: null,
       defaultChatReasoningEffort: null,
       defaultChatPermissionProfileId: ":workspace",

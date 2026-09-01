@@ -203,6 +203,37 @@ describe("account settings", () => {
     );
   });
 
+  it("keeps the current prompt header enabled by default and exposes its toggle", () => {
+    const defaultMarkup = renderSettings("general");
+    const disabledMarkup = renderSettings(
+      "general",
+      settingsBundleSchema.parse({
+        preferences: {
+          theme: "system",
+          highContrast: false,
+          proMode: false,
+          proModeOpacity: 80,
+          sidebarWidth: 288,
+          showChatPromptOverlay: false,
+          desktopFrameRate: 30,
+          desktopStreamQuality: "adaptive",
+          defaultModelId: null,
+        },
+        providers: [],
+        models: [],
+      }),
+    );
+
+    expect(defaultMarkup).toContain("Chat display");
+    expect(defaultMarkup).toContain("Show current prompt");
+    expect(defaultMarkup).toMatch(
+      /aria-label="Show current prompt header"[^>]*checked=""/u,
+    );
+    expect(disabledMarkup).not.toMatch(
+      /aria-label="Show current prompt header"[^>]*checked=""/u,
+    );
+  });
+
   it("exposes the visual reveal laboratory as its own section", () => {
     const markup = renderSettings("elite");
     expect(markup).toContain("Elite reveal laboratory");

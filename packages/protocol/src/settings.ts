@@ -49,6 +49,7 @@ export const userSettingsSchema = z.object({
     DEFAULT_ELITE_REVEAL_CONFIG,
   ),
   sidebarWidth: sidebarWidthPreferenceSchema,
+  showChatPromptOverlay: z.boolean().default(true),
   randomAgentNames: z.boolean().default(false),
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
@@ -105,6 +106,7 @@ export const userSettingsUpdateSchema = userSettingsSchema
     defaultChatPermissionProfileId:
       configurablePermissionProfileIdSchema.optional(),
     defaultWorkerId: z.string().min(1).nullable().optional(),
+    showChatPromptOverlay: z.boolean().optional(),
     randomAgentNames: z.boolean().optional(),
     automaticReplicaProvisioning: z.boolean().optional(),
     automaticReplicaSynchronization: z

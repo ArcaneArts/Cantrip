@@ -1046,6 +1046,9 @@ export const userSettings = pgTable(
         },
       }),
     sidebarWidth: integer("sidebar_width").notNull().default(288),
+    showChatPromptOverlay: boolean("show_chat_prompt_overlay")
+      .notNull()
+      .default(true),
     randomAgentNames: boolean("random_agent_names").notNull().default(false),
     desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
     desktopStreamQuality: text("desktop_stream_quality")
