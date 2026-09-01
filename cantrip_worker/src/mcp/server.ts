@@ -67,7 +67,6 @@ import {
   cantripMcpTerminalRestartResultSchema,
   cantripMcpTerminalSendInputSchema,
   cantripMcpTerminalSendResultSchema,
-  cantripMcpToolHelpInputSchema,
   cantripMcpToolHelpResultSchema,
   cantripMcpWebReadInputSchema,
   cantripMcpWebReadResultSchema,
@@ -110,6 +109,37 @@ export const CANTRIP_MCP_STANDALONE_INSTRUCTIONS =
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
 ) => Promise<CantripAgentOperationResult>;
+
+function compatibleToolHelpInputSchema<
+  const Names extends readonly [string, ...string[]],
+>(names: Names) {
+  const toolName = z.enum(names);
+  return z
+    .object({
+      tool: toolName.optional(),
+      // Older model profiles sometimes emit the conventional MCP field name
+      // even though Cantrip has always documented `tool`.
+      toolName: toolName.optional(),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (!value.tool && !value.toolName) {
+        context.addIssue({
+          code: "custom",
+          message:
+            'Provide either "tool" or its compatibility alias "toolName".',
+          path: ["tool"],
+        });
+      }
+      if (value.tool && value.toolName && value.tool !== value.toolName) {
+        context.addIssue({
+          code: "custom",
+          message: 'The "tool" and "toolName" values must match.',
+          path: ["toolName"],
+        });
+      }
+    });
+}
 
 export function operationResult(
   result: CantripAgentOperationResult,
@@ -190,10 +220,11 @@ export function createCantripMcpServer(
       ? CANTRIP_MCP_STANDALONE_TOOL_NAMES
       : CANTRIP_MCP_TOOL_NAMES,
   );
-  const toolHelpInputSchema =
+  const toolHelpInputSchema = compatibleToolHelpInputSchema(
     profile === "standalone-web"
-      ? z.object({ tool: z.enum(CANTRIP_MCP_STANDALONE_TOOL_NAMES) }).strict()
-      : cantripMcpToolHelpInputSchema;
+      ? CANTRIP_MCP_STANDALONE_TOOL_NAMES
+      : CANTRIP_MCP_TOOL_NAMES,
+  );
   const server = new McpServer(
     {
       name: "cantrip",
@@ -234,14 +265,15 @@ export function createCantripMcpServer(
     {
       title: "Get exact Cantrip tool arguments",
       description:
-        'Return the exact generated input JSON Schema, examples, and notes for one Cantrip MCP tool. Arguments: {"tool":"worktree_create"}. Use this before guessing a field name.',
+        'Return the exact generated input JSON Schema, examples, and notes for one Cantrip MCP tool. Arguments: {"tool":"worktree_create"}. The legacy alias "toolName" is also accepted. Use this before guessing a field name.',
       inputSchema: toolHelpInputSchema,
       outputSchema: cantripMcpToolHelpResultSchema,
       annotations: readAnnotations,
     },
     async (arguments_) => {
       try {
-        const { tool } = toolHelpInputSchema.parse(arguments_);
+        const input = toolHelpInputSchema.parse(arguments_);
+        const tool = input.tool ?? input.toolName!;
         if (!availableToolNames.has(tool)) {
           throw new Error(
             "That tool is unavailable in this Cantrip MCP profile.",

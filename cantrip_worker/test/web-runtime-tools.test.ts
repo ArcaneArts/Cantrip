@@ -13,6 +13,10 @@ import {
 } from "../src/web/safe-fetch.js";
 import { WorkerWebService } from "../src/web/service.js";
 import { CANTRIP_MCP_STANDALONE_OPERATIONS } from "../src/mcp/profile.js";
+import {
+  CANTRIP_WEB_SEARCH_ENGINE_TIMEOUT_MS,
+  CANTRIP_WEB_SEARCH_RUNTIME_TIMEOUT_MS,
+} from "../src/mcp/timeouts.js";
 
 const binding: CantripMcpBinding = {
   bindingId: "00000000-0000-4000-8000-000000000001",
@@ -180,6 +184,13 @@ describe("robots and bound web tools", () => {
       query: "fixture query",
       includeDomains: ["example.com"],
     });
+    const searchParameters = request.mock.calls[0]?.[1] as URLSearchParams;
+    expect(searchParameters.get("timeout_limit")).toBe(
+      String(CANTRIP_WEB_SEARCH_ENGINE_TIMEOUT_MS / 1_000),
+    );
+    expect(request.mock.calls[0]?.[2]).toBe(
+      CANTRIP_WEB_SEARCH_RUNTIME_TIMEOUT_MS,
+    );
     const searchData = search.data as {
       diagnostics: unknown[];
       results: Array<{ id: string }>;

@@ -13,6 +13,7 @@ import {
   CANTRIP_MCP_MAX_RESPONSE_BYTES,
   readBoundedJsonResponse,
 } from "./http.js";
+import { CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS } from "./timeouts.js";
 
 function localBrokerUrl(endpoint: string): URL {
   const url = new URL(endpoint);
@@ -84,7 +85,7 @@ async function brokerRequest(
       authorization: `Bearer ${document.credential}`,
       ...(init.body ? { "content-type": "application/json" } : {}),
     },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS),
   });
   const payload = await readBoundedJsonResponse(
     response,

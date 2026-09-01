@@ -12,6 +12,7 @@ import {
   SearxngRuntimeManager,
   validateSearxngInventory,
 } from "../src/managed-runtimes/searxng.js";
+import { readWorkerLogs } from "../src/logger.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -187,6 +188,60 @@ describe("SearXNG managed runtime", () => {
     await manager.prepare();
     expect(manager.capabilities().search.state).toBe("failed");
     await expect(manager.endpoint()).rejects.toThrow(/runtime is failed/u);
+    await manager.close();
+  });
+
+  it("reports a bounded search timeout and restarts an unresponsive runtime", async () => {
+    const runtime = await fixtureRuntime();
+    const dataDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "cantrip-searxng-timeout-"),
+    );
+    temporaryDirectories.push(dataDirectory);
+    const children = [fakeChild(), fakeChild()];
+    const spawn = vi.fn(() => children.shift() as never);
+    const fetchImplementation = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith("/healthz")) {
+          return Response.json({ status: "ok" });
+        }
+        return await new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal as AbortSignal;
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      },
+    ) as unknown as typeof fetch;
+    const manager = new SearxngRuntimeManager({
+      dataDirectory,
+      fetch: fetchImplementation,
+      installer: {
+        prepare: vi.fn(async () => status()),
+        rollback: vi.fn(async () => status()),
+        runtimeDirectory: () => runtime,
+        status: () => status(),
+      },
+      spawn: spawn as never,
+      updateIntervalMs: 60_000,
+    });
+    const logCursor = readWorkerLogs({}).nextCursor;
+
+    await manager.prepare();
+    await expect(
+      manager.request("/search", new URLSearchParams({ q: "fixture" }), 5),
+    ).rejects.toThrow(
+      "Managed web search timed out after 5 ms; the search runtime is restarting.",
+    );
+    await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(2));
+    await expect(manager.endpoint()).resolves.toMatchObject({
+      version: "2026.08.22.1",
+    });
+    const events = readWorkerLogs({ afterCursor: logCursor }).records.map(
+      ({ context }) => context.event,
+    );
+    expect(events).toContain("worker.search-runtime.request-timed-out");
+    expect(events).toContain("worker.search-runtime.recovery-completed");
+
     await manager.close();
   });
 });

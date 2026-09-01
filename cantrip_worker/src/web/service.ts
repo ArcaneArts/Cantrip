@@ -22,6 +22,10 @@ import {
 
 import type { SearxngRuntimeManager } from "../managed-runtimes/searxng.js";
 import type { PlaywrightRuntimeManager } from "../managed-runtimes/playwright.js";
+import {
+  CANTRIP_WEB_SEARCH_ENGINE_TIMEOUT_MS,
+  CANTRIP_WEB_SEARCH_RUNTIME_TIMEOUT_MS,
+} from "../mcp/timeouts.js";
 import { RobotsPolicy } from "./robots.js";
 import {
   normalizedPublicHttpUrl,
@@ -338,12 +342,16 @@ export class WorkerWebService {
       pageno: String(input.page),
       q: query,
       safesearch: String({ off: 0, moderate: 1, strict: 2 }[input.safeSearch]),
+      // Bound SearXNG's own engine fan-out before the worker's local request
+      // deadline so slow DNS, proxies, firewalls, or individual engines can be
+      // returned as partial diagnostics instead of stalling the whole tool.
+      timeout_limit: String(CANTRIP_WEB_SEARCH_ENGINE_TIMEOUT_MS / 1_000),
     });
     if (input.freshness) parameters.set("time_range", input.freshness);
     const payload = (await this.#searchRuntime.request(
       "/search",
       parameters,
-      30_000,
+      CANTRIP_WEB_SEARCH_RUNTIME_TIMEOUT_MS,
     )) as SearxngPayload;
     const rawResults = Array.isArray(payload.results)
       ? (payload.results as SearxngResult[])
