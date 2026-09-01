@@ -990,13 +990,52 @@ async function openDesktopExplorerFileOperation(
 export async function openSyntheticBuildProgressWindow(): Promise<
   "created" | "focused"
 > {
-  return openDesktopWindow(
+  const result = await openDesktopWindow(
     "synthetic-build-progress",
     `?${syntheticBuildProgressParameter}=progress`,
     "Building Cantrip",
     undefined,
     { height: 720, minHeight: 520, minWidth: 760, width: 1040 },
   );
+  await hideMainWindowForSyntheticBuild();
+  return result;
+}
+
+export async function hideMainWindowForSyntheticBuild(): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  try {
+    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    await (await WebviewWindow.getByLabel("main"))?.hide();
+  } catch {
+    clientLogger.warn("Main window could not be hidden for synthetic build", {
+      event: "desktop.synthetic-build.main-window.hide-failed",
+      operation: "hide-main-window",
+      status: "failed",
+      subsystem: "desktop-window",
+    });
+  }
+}
+
+export async function restoreMainWindowAfterSyntheticBuild(): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  try {
+    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    const mainWindow = await WebviewWindow.getByLabel("main");
+    if (!mainWindow) return;
+    await mainWindow.show();
+    await mainWindow.unminimize();
+    await mainWindow.setFocus();
+  } catch {
+    clientLogger.warn(
+      "Main window could not be restored after synthetic build",
+      {
+        event: "desktop.synthetic-build.main-window.restore-failed",
+        operation: "restore-main-window",
+        status: "failed",
+        subsystem: "desktop-window",
+      },
+    );
+  }
 }
 
 async function openDesktopWindow(

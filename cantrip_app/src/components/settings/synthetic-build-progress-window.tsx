@@ -14,6 +14,12 @@ import {
   desktopUpdateActiveWorkTotal,
   desktopUpdateClient,
 } from "@/lib/desktop-update";
+import {
+  desktopPopoutTitlebarLeftInset,
+  hideMainWindowForSyntheticBuild,
+  isMacosDesktopRuntime,
+  restoreMainWindowAfterSyntheticBuild,
+} from "@/lib/desktop-popout";
 import type { DesktopUpdateActiveWorkSummary } from "@cantrip/protocol";
 import {
   normalizeSyntheticBuildError,
@@ -47,6 +53,15 @@ function elapsed(startedAt: string, now: number): string {
   return minutes > 0 ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
 }
 
+export function syntheticBuildMainWindowDisposition(
+  state: SyntheticBuildJob["state"] | null,
+  error: string | null,
+): "keep-hidden" | "restore" | "restore-and-close" {
+  if (state === "cancelled") return "restore-and-close";
+  if (state === "failed" || error) return "restore";
+  return "keep-hidden";
+}
+
 export function SyntheticBuildProgressWindow() {
   const [job, setJob] = useState<SyntheticBuildJob | null>(null);
   const [logs, setLogs] = useState<SyntheticBuildLogEntry[]>([]);
@@ -61,6 +76,7 @@ export function SyntheticBuildProgressWindow() {
   const [now, setNow] = useState(Date.now());
   const consoleRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
+  const overlayTitlebar = useMemo(() => isMacosDesktopRuntime(), []);
 
   const appendLogs = (entries: SyntheticBuildLogEntry[]) => {
     if (entries.length === 0) return;
@@ -129,19 +145,17 @@ export function SyntheticBuildProgressWindow() {
     if (consoleElement) consoleElement.scrollTop = consoleElement.scrollHeight;
   }, [logs]);
 
+  const buildState = job?.state ?? null;
   useEffect(() => {
-    if (
-      !cancelling ||
-      !job ||
-      job.state === "queued" ||
-      job.state === "running"
-    ) {
-      return;
-    }
-    void import("@tauri-apps/api/webviewWindow").then(
-      ({ getCurrentWebviewWindow }) => getCurrentWebviewWindow().close(),
-    );
-  }, [cancelling, job]);
+    const disposition = syntheticBuildMainWindowDisposition(buildState, error);
+    if (disposition === "keep-hidden") return;
+    void restoreMainWindowAfterSyntheticBuild().then(() => {
+      if (disposition !== "restore-and-close") return;
+      return import("@tauri-apps/api/webviewWindow").then(
+        ({ getCurrentWebviewWindow }) => getCurrentWebviewWindow().close(),
+      );
+    });
+  }, [buildState, error]);
 
   const currentStep = useMemo(
     () => job?.steps.find((step) => step.id === job.stepId) ?? null,
@@ -188,6 +202,7 @@ export function SyntheticBuildProgressWindow() {
     setError(null);
     try {
       await syntheticBuildClient.start(job.targetSha);
+      await hideMainWindowForSyntheticBuild();
     } catch (reason) {
       setError(normalizeSyntheticBuildError(reason).message);
     }
@@ -195,23 +210,38 @@ export function SyntheticBuildProgressWindow() {
 
   return (
     <main className="flex h-screen min-h-0 flex-col bg-background text-foreground">
-      <header className="flex items-center justify-between gap-4 border-b px-5 py-3">
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">
+      <header
+        className="flex items-center justify-between gap-4 border-b px-5 py-3"
+        data-tauri-drag-region=""
+        style={{
+          paddingLeft: desktopPopoutTitlebarLeftInset(true, overlayTitlebar),
+        }}
+      >
+        <div className="min-w-0" data-tauri-drag-region="">
+          <h1
+            className="truncate text-sm font-semibold"
+            data-tauri-drag-region=""
+          >
             {job
               ? `Building Cantrip ${job.version}`
               : "Synthetic Cantrip build"}
           </h1>
-          <p className="truncate font-mono text-xs text-muted-foreground">
+          <p
+            className="truncate font-mono text-xs text-muted-foreground"
+            data-tauri-drag-region=""
+          >
             {job
               ? `${job.targetSha.slice(0, 12)} · ${job.platform}`
               : "Loading build state…"}
           </p>
         </div>
         {job ? (
-          <div className="shrink-0 text-right text-xs text-muted-foreground">
-            <div>{elapsed(job.startedAt, now)}</div>
-            <div>{job.progress}% complete</div>
+          <div
+            className="shrink-0 text-right text-xs text-muted-foreground"
+            data-tauri-drag-region=""
+          >
+            <div data-tauri-drag-region="">{elapsed(job.startedAt, now)}</div>
+            <div data-tauri-drag-region="">{job.progress}% complete</div>
           </div>
         ) : null}
       </header>

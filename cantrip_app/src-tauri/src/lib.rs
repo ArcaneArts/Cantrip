@@ -1232,6 +1232,8 @@ pub fn run() {
             {
                 api.prevent_close();
                 let _ = handle.emit_to(label, "cantrip-synthetic-build-close-requested", ());
+            } else if label == "synthetic-build-progress" {
+                show_main_window(handle);
             }
         }
         if matches!(event, RunEvent::Exit) {
