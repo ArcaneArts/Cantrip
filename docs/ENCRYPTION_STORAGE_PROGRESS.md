@@ -33,13 +33,12 @@ flowchart TD
 
 ## Completion status
 
-Status: **in progress**. Cycle 13 is merged and makes missing-installation
-discovery read-only until an authoritative initialization or recovery event.
-The follow-up audit found that the release gate described shared JavaScript
-contract simulations as native version-to-version readers. Cycle 14 adds frozen
-version-one fixtures consumed by the current Rust, Swift, and Android storage
-implementations and corrects the evidence language. Completion remains open
-until that cycle merges and the final release-readiness pass is recorded.
+Status: **final closeout pending**. Cycles 13 and 14 are merged. Missing-state
+discovery is read-only until an authoritative initialization or recovery event,
+and current Rust, Swift, and Android readers consume frozen version-one native
+state in release-blocking gates. Cycle 15 found no unresolved required
+implementation gap and added a bound on warm-start server calls. Completion
+will be closed after that audit PR merges and its merge is recorded here.
 
 | Required capability                                           | Completed implementation                                                                                                                               |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -53,6 +52,23 @@ until that cycle merges and the final release-readiness pass is recorded.
 | Stable development identity                                   | Named profiles persist outside worktrees and build output; inspection and deliberate clean-profile tooling expose no secrets.                          |
 | Update safety                                                 | Immutable contract gate plus frozen v1 catalog/custody/HPKE fixtures consumed by current Rust, Swift, and Android readers in native release lanes.     |
 | No silent replacement                                         | Cycle 13 merged: lookup misses, invalid credentials, and migration outages leave installation and key storage untouched.                               |
+
+### Final acceptance evidence
+
+| Goal criterion                                   | Evidence                                                                                                                                                |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tauri does not use IndexedDB as primary custody  | Runtime selection uses the native SQLite/keyring bridge; IndexedDB remains only behind the explicit legacy reader.                                      |
+| Capacitor uses native metadata and custody       | iOS uses SQLite plus Keychain; Android uses SQLite plus an Android-Keystore-wrapped private-key record.                                                 |
+| Browser recovery survives local storage loss     | IndexedDB persistence outcomes, password reprovisioning, anonymous import, and no-blank-profile behavior are covered by browser and account tests.      |
+| One installation supports multiple bindings      | Catalog, native provider, and account coordinator tests map multiple server/account bindings to one immutable installation-derived key alias.           |
+| Legacy migration is transactional and resumable  | Tests cover success, interrupted grants, server outages, corrupt records, idempotent resume, verification checkpoints, and retained legacy principals.  |
+| Missing account custody is recoverable           | Password recovery rewraps the existing Account Master Key and registers a replacement principal without initializing a new server profile.              |
+| Anonymous recovery is explicit                   | Versioned export, acknowledgement, later export, strict import, wrong-server rejection, and unrecoverable messaging are implemented and tested.         |
+| Development identity is stable                   | Named profile tests cover rebuilds, replaced worktrees, concurrent winners, legacy adoption, inspection, and deliberate clean-profile creation.         |
+| Update contracts block incompatible releases     | The immutable manifest and release tests reject unapproved identifier, origin, path, schema, provider, alias, server-identity, or encryption revisions. |
+| Existing native data opens under current readers | Frozen v1 catalog, custody, binding, migration, and HPKE marker fixtures open under current Rust, Swift, and Android storage implementations.           |
+| Startup cannot silently replace state            | State-machine and account tests prove missing, corrupt, invalid-credential, and outage paths do not create a catalog, key, grant, or blank profile.     |
+| Existing product flows still build and pass      | The full app suite covers authentication, editor, terminal, tunnels, networking, and encrypted domain surfaces; typecheck and production build pass.    |
 
 ## Cycle ledger
 
@@ -872,7 +888,7 @@ corrects that ordering and adds mutation-negative regression coverage.
 - Branch: `codex/encryption-storage-update-evidence`
 - Pull request: [#1556](https://github.com/ArcaneArts/Cantrip/pull/1556)
 - Implementation commit: `1bfa801a65f568accc5d7eb2950b1dab265617ee`
-- Merge: pending
+- Merge: squash-merged as `170aaca2c4b2ea5da7fad71811d4177ce3a82863`
 - Behavior implemented:
   - Added one immutable version-one SQLite catalog and custody fixture whose
     key opens a fixed HPKE-wrapped Account Master Key marker. Current readers
@@ -922,9 +938,8 @@ corrects that ordering and adds mutation-negative regression coverage.
 - Migration status: no compatibility contract changed. The frozen fixture is
   read-only historical input and does not alter user state or revoke legacy
   custody.
-- Remaining work: merge this cycle, run the final full regression and
-  release-readiness audit, and close this ledger only if no required gap
-  remains.
+- Remaining work: the final full regression and release-readiness audit in
+  Cycle 15.
 - Known risks or blockers: deterministic native tests cannot prove store
   installer behavior, mobile entitlements, Android hardware-backed Keystore,
   or a desktop user's unlocked credential-store session. Those remain explicit
@@ -934,8 +949,60 @@ corrects that ordering and adds mutation-negative regression coverage.
   packaged Linux session with Secret Service; and repeat browser ordinary
   upgrade plus storage-loss recovery in production engines.
 
+### Cycle 15 — final release-readiness audit and warm-path bound
+
+- Branch: `codex/encryption-storage-final-readiness`
+- Pull request: [#1557](https://github.com/ArcaneArts/Cantrip/pull/1557)
+- Implementation commit: `4cca1260629cee51d89c4e215ada63cef8b24ad9`
+- Merge: pending
+- Behavior implemented:
+  - Audited every completion criterion against merged runtime code, native
+    readers, recovery and migration tests, development tooling, compatibility
+    contracts, release gates, and documentation.
+  - Added a regression assertion for the normal unlocked startup path. It
+    performs exactly the authoritative profile, principal, and grant reads and
+    performs no reauthentication, initialization, key registration, grant
+    creation, or other mutating server request.
+  - Ran the repository release-readiness gate. Required checks passed; the gate
+    reports `GO-WARN` only because signed installers, physical mobile devices,
+    Linux Secret Service sessions, and production browser eviction behavior
+    remain operational manual smokes rather than deterministic local evidence.
+- Validation:
+  - App typecheck and production build passed; the full Vitest suite passed 356
+    files with 1,878 tests passed and 3 skipped.
+  - Focused account-encryption warm-path suite — 26 tests passed.
+  - Server encryption registry and worker refresh — 5 tests passed.
+  - Tauri installation storage — 22 tests passed; `cargo fmt --check` and
+    `cargo check` passed.
+  - iOS native storage — 2 tests passed, including isolated Keychain custody
+    and frozen-marker decryption.
+  - Android native frozen-update fixture — passed after a normal Capacitor
+    sync; the debug unit-test task built successfully.
+  - Compatibility, stable development profile, native release workflow, and
+    release refusal/promote suites — 31 tests passed; seven contract/recovery
+    simulations passed with no active compatibility migration.
+  - Cycle 14's repository-wide script run remains 123 passed with the same two
+    unrelated baseline acceptance failures documented there. The unchanged
+    decomposition baseline remains the same two over-budget server files.
+- Supported platforms: browser, Tauri macOS/Windows/Linux contracts, Capacitor
+  iOS, and Capacitor Android are covered by the merged implementation and their
+  appropriate deterministic gates. Native release lanes run the frozen reader
+  for macOS, Windows, iOS, and Android before publishing.
+- Migration status: complete for accessible legacy custody. Compatibility
+  readers and old principals remain retained; there is no destructive cleanup
+  or automatic replacement path.
+- Remaining work: merge this final audit and record its merge in a ledger-only
+  closeout PR. No required implementation work remains.
+- Known risks or blockers: no implementation blocker. OS/store behavior that
+  cannot be proven deterministically remains disclosed as manual release
+  verification and does not weaken or bypass the release-blocking contracts.
+- Manual verification: perform signed in-place update smokes on macOS and
+  Windows, store/TestFlight update smokes on Android and iOS, one packaged
+  Linux Secret Service session, and ordinary-upgrade plus storage-loss recovery
+  in production browser engines.
+
 ## Goal completion
 
-Completion remains open. Cycle 14 and the final release-readiness audit must be
-merged and verified before this section may state that no required
-implementation work remains.
+All required implementation and automated verification work is complete. The
+goal remains open only until Cycle 15 merges and a ledger-only closeout records
+its immutable merge commit; no product behavior or test gap remains.

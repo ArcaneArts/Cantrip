@@ -82,6 +82,7 @@ class MemoryDeviceKeyStore implements LegacyClientDeviceKeyStore {
 }
 
 class MemoryAccountEncryptionApi implements AccountEncryptionApi {
+  readonly calls: (keyof AccountEncryptionApi)[] = [];
   profile: AccountEncryptionProfile | null = null;
   readonly principals = new Map<string, EncryptionPrincipal>();
   readonly grants = new Map<string, EncryptionKeyGrant[]>();
@@ -94,6 +95,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
     principalId: string,
     expectedRevision: number,
   ): Promise<EncryptionPrincipal> {
+    this.calls.push("approvePrincipal");
     const principal = this.principals.get(principalId);
     if (
       !principal ||
@@ -116,6 +118,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
   async changePassword(
     input: AccountPasswordEncryptionChange,
   ): Promise<AccountEncryptionProfile> {
+    this.calls.push("changePassword");
     if (input.currentPassword !== this.password) {
       throw new CantripApiError("Current password is incorrect.", 403);
     }
@@ -142,6 +145,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
     principalId: string,
     input: EncryptionKeyGrantCreate,
   ): Promise<EncryptionKeyGrant> {
+    this.calls.push("createGrant");
     const existing = this.grants.get(principalId) ?? [];
     if (
       existing.some(
@@ -174,6 +178,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
   async createPrincipal(
     input: EncryptionPrincipalCreate,
   ): Promise<EncryptionPrincipal> {
+    this.calls.push("createPrincipal");
     if (this.principals.has(input.id)) {
       throw new CantripApiError("Principal exists.", 409);
     }
@@ -198,6 +203,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
   }
 
   getProfile() {
+    this.calls.push("getProfile");
     return Promise.resolve(
       this.profile
         ? ({ status: "initialized", profile: this.profile } as const)
@@ -208,6 +214,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
   async initializeProfile(
     input: AccountEncryptionProfileInitialize,
   ): Promise<AccountEncryptionProfileInitializeResult> {
+    this.calls.push("initializeProfile");
     this.initializationAttempts += 1;
     if (this.profile) return { created: false, profile: this.profile };
     this.profile = {
@@ -253,6 +260,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
   }
 
   listGrants(principalId: string): Promise<EncryptionKeyGrant[]> {
+    this.calls.push("listGrants");
     return Promise.resolve(
       (this.grants.get(principalId) ?? []).filter(
         (grant) => grant.state === "active",
@@ -261,10 +269,12 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
   }
 
   listPrincipals(): Promise<EncryptionPrincipal[]> {
+    this.calls.push("listPrincipals");
     return Promise.resolve([...this.principals.values()]);
   }
 
   async reauthenticate(candidate: string): Promise<void> {
+    this.calls.push("reauthenticate");
     this.reauthenticationAttempts += 1;
     if (candidate !== this.password) {
       throw new CantripApiError("Password is incorrect.", 403);
@@ -305,6 +315,7 @@ describe("account encryption initialization", () => {
     expect(api.profile?.passwordWrappedMasterKey).not.toBeNull();
     expect(api.reauthenticationAttempts).toBe(1);
 
+    api.calls.length = 0;
     await expect(
       prepareClientEncryption({
         api,
@@ -313,6 +324,7 @@ describe("account encryption initialization", () => {
         service: firstRun,
       }),
     ).resolves.toEqual({ status: "ready" });
+    expect(api.calls).toEqual(["getProfile", "listPrincipals", "listGrants"]);
 
     firstRun.lock();
     const restarted = new ClientEncryptionService(store);
