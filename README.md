@@ -598,11 +598,18 @@ pnpm devtop
 
 The default Tauri development identity is a named profile stored in shared Git
 metadata, not in a build directory or individual worktree. Its application
-identifier, native installation catalog, and OS-backed key therefore survive
+identifier, native installation catalog, and profile key therefore survive
 branch changes, worktree replacement, rebuilds, and deletion of transient
 `.cantrip/dev/tauri/target` output. On its first launch after this migration,
 the default profile adopts the primary checkout's existing
 `.cantrip/dev/tauri-dev.conf.json` identifier rather than generating a new one.
+
+On macOS, `devtop` keeps its development-only native key in the stable
+application-local profile rather than Apple Keychain. This avoids repeated
+system-password prompts when ad-hoc debug binaries are rebuilt. The vault is
+owner-readable only and is not used by packaged builds; production macOS
+custody remains in Keychain. A previously cataloged development Keychain key is
+migrated on its first successful access.
 
 Use `pnpm dev:profile inspect` to print the active profile name, installation
 ID, custody provider, catalog/migration state, and relevant non-secret paths.

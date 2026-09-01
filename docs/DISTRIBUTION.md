@@ -522,7 +522,7 @@ worktree-local config, so removing build output or a worktree cannot rotate the
 native installation.
 
 `pnpm dev:profile inspect [name]` reports the profile identifier, installation
-ID, native provider, application-local data path, SQLite catalog path,
+ID, active provider, application-local data path, SQLite catalog path,
 repository state/target paths, binding count, and migration states without
 opening or printing private-key material. Create a genuinely separate clean
 lane with `pnpm dev:profile create <name>` and launch it with
@@ -530,7 +530,13 @@ lane with `pnpm dev:profile create <name>` and launch it with
 keep server/worker state under `.cantrip/dev-profiles/<name>`. Existing names
 are never reset automatically, and no build/clean command removes the shared
 profile or OS-backed installation key. Use another explicit name instead of
-deleting a profile whose encrypted data may still be needed.
+deleting a profile whose encrypted data may still be needed. On macOS this
+development command uses the profile-local
+`installation/v1/development-key-vault` with owner-only filesystem permissions,
+so rebuilding an ad-hoc-signed binary does not trigger Apple Keychain password
+prompts. Packaged macOS builds continue using Keychain. A cataloged older
+development key is copied out of Keychain on its first successful access; a
+profile with no native-key metadata never queries Keychain.
 
 The browser and Tauri clients have separate custody providers, so sharing one
 anonymous encryption registry would lock whichever client did not initialize

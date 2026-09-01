@@ -237,9 +237,9 @@ flowchart TB
     B --> P2[Server principal and wrapped grant]
 ```
 
-The installation's P-256 private key is never stored in SQLite. The native
-provider uses macOS Keychain, Windows Credential Manager, or Linux Secret
-Service through the maintained Rust `keyring` provider. Linux has no plaintext
+The installation's P-256 private key is never stored in SQLite. Packaged native
+clients use macOS Keychain, Windows Credential Manager, or Linux Secret Service
+through the maintained Rust `keyring` provider. Linux has no plaintext
 fallback: an unavailable Secret Service produces a recoverable storage error.
 The provider contract is versioned as follows:
 
@@ -357,6 +357,12 @@ records. If any of those compatibility contracts changes later, release gates
 must require a tested origin/data-location migration rather than relying on a
 new blank origin.
 
+Legacy migration holds the successfully validated IndexedDB record in memory
+for the immediate unwrap operation. It does not reopen the origin-scoped store
+between discovery and unwrap. The cached record is cleared with the service's
+other key material after unlock or lock. This keeps migration transactional and
+avoids turning a transient second IndexedDB read into a false missing-key state.
+
 #### Stable development profiles
 
 `pnpm devtop` uses the named `default` development profile. The canonical
@@ -368,9 +374,20 @@ namespace merely because the shared registry is new. Each launch writes only a
 disposable projection of that canonical config into the active worktree.
 
 The identifier selects Tauri's application-local data directory. The SQLite
-installation catalog and OS key alias remain there and in the platform secure
-store, respectively, so rebuilding, changing branches, removing a worktree, or
-deleting `.cantrip/dev/tauri/target` cannot change the installation ID or key.
+installation catalog remains there, so rebuilding, changing branches, removing
+a worktree, or deleting `.cantrip/dev/tauri/target` cannot change the
+installation ID or key.
+
+On macOS, `pnpm devtop` deliberately uses the profile-local
+`installation/v1/development-key-vault` instead of Apple Keychain. Ad-hoc debug
+binaries change signing identity frequently enough that Keychain access-control
+prompts are unsuitable for the edit/rebuild loop. The development vault is
+enabled only in debug builds launched with the explicit development flag,
+stores alias-addressed records with directory mode `0700` and file mode `0600`,
+and is never selected by a packaged build. A cataloged preexisting development
+Keychain record is copied into the vault on first access and then read only from
+the vault. Profiles without native key metadata do not query Keychain. Windows
+and Linux development continue using their platform providers.
 The worktree-local server/worker state is separate from installation identity;
 the same installation may acquire independent bindings for server identities
 encountered in different worktrees.
@@ -430,12 +447,12 @@ recoverable IndexedDB/WebCrypto installation provider. All three runtimes use
 the same startup transition owner, migration invariants, account-binding model,
 and explicit recovery boundary.
 
-| Runtime           | Installation metadata       | Private-key custody                                           | Recovery after custody loss                                                                                  |
-| ----------------- | --------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Tauri             | Native SQLite catalog       | Keychain, Windows Credential Manager, or Linux Secret Service | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
-| Capacitor iOS     | Native SQLite catalog       | iOS Keychain                                                  | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
-| Capacitor Android | Native SQLite catalog       | Android Keystore-backed encrypted key record                  | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
-| Browser           | Versioned IndexedDB catalog | Nonextractable WebCrypto key                                  | Account password provisions a replacement browser installation; anonymous mode imports its recovery artifact |
+| Runtime           | Installation metadata       | Private-key custody                                                            | Recovery after custody loss                                                                                  |
+| ----------------- | --------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Tauri             | Native SQLite catalog       | Packaged: OS credential store; macOS `devtop`: profile-local development vault | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
+| Capacitor iOS     | Native SQLite catalog       | iOS Keychain                                                                   | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
+| Capacitor Android | Native SQLite catalog       | Android Keystore-backed encrypted key record                                   | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
+| Browser           | Versioned IndexedDB catalog | Nonextractable WebCrypto key                                                   | Account password provisions a replacement browser installation; anonymous mode imports its recovery artifact |
 
 The compatibility gate verifies seven platform-contract or storage-loss
 simulations and is release-blocking. Separate native frozen-fixture readers

@@ -34,7 +34,12 @@ export type NativeInstallationStorageStatus = {
 
 const tauriCustodyBackends = new Set<
   NativeInstallationStorageStatus["provider"]
->(["apple-keychain", "linux-secret-service", "windows-protected-storage"]);
+>([
+  "apple-keychain",
+  "development-file-vault",
+  "linux-secret-service",
+  "windows-protected-storage",
+]);
 
 export type NativeInstallationCatalogSnapshot = {
   accountBindings: InstallationAccountBinding[];

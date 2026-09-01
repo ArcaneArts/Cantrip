@@ -99,6 +99,28 @@ test("profile inspection reports catalog state without private key material", as
     assert.equal(report.catalog.accountBindingCount, 1);
     assert.equal(report.catalog.migration[0].state, "verified");
     assert.equal(report.provider, "linux-secret-service");
+    assert.equal(report.developmentKeyVaultPath, undefined);
+
+    const macReport = await inspectDevelopmentProfile({
+      environment: {},
+      homeDirectory,
+      platform: "darwin",
+      repositoryCommonDirectory: commonDirectory,
+      repositoryRoot,
+    });
+    assert.equal(macReport.provider, "development-file-vault");
+    assert.equal(
+      macReport.developmentKeyVaultPath,
+      path.join(
+        homeDirectory,
+        "Library",
+        "Application Support",
+        ensured.config.identifier,
+        "installation",
+        "v1",
+        "development-key-vault",
+      ),
+    );
     assert.doesNotMatch(JSON.stringify(report), /private.?key|secret-value/iu);
   } finally {
     await rm(root, { recursive: true, force: true });

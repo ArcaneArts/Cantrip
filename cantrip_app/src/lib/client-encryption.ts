@@ -372,6 +372,7 @@ export class ClientEncryptionService {
   private accountMasterKey: Uint8Array | null = null;
   private readonly componentKeys = new Map<string, Uint8Array>();
   private readonly listeners = new Set<() => void>();
+  private pendingLegacyDevice: StoredClientDeviceRecord | null = null;
   private snapshot = initialSnapshot();
 
   constructor(
@@ -425,6 +426,7 @@ export class ClientEncryptionService {
     } catch (error) {
       throw this.storageFailure(error, identity);
     }
+    this.pendingLegacyDevice = record;
     this.publish({
       clientId: record.clientId,
       identity: { ...identity },
@@ -497,6 +499,7 @@ export class ClientEncryptionService {
       return descriptor(record);
     }
     this.clearKeyMaterial();
+    this.pendingLegacyDevice = record;
     this.publish({
       clientId: record.clientId,
       identity: { ...identity },
@@ -941,6 +944,12 @@ export class ClientEncryptionService {
   private async loadRawLegacyDevice(
     identity: ClientEncryptionIdentity,
   ): Promise<StoredClientDeviceRecord> {
+    if (
+      this.pendingLegacyDevice &&
+      sameIdentity(this.pendingLegacyDevice, identity)
+    ) {
+      return this.pendingLegacyDevice;
+    }
     if (!this.legacyDeviceStore) {
       throw this.fail(
         "locked",
@@ -973,7 +982,9 @@ export class ClientEncryptionService {
       );
     }
     try {
-      return parseDeviceRecord(raw, identity);
+      const record = parseDeviceRecord(raw, identity);
+      this.pendingLegacyDevice = record;
+      return record;
     } catch (error) {
       logDeviceRecordRejection(raw, identity, "load-device-key", error);
       if (
@@ -1072,6 +1083,7 @@ export class ClientEncryptionService {
     this.accountMasterKey = null;
     for (const key of this.componentKeys.values()) clearSensitiveBytes(key);
     this.componentKeys.clear();
+    this.pendingLegacyDevice = null;
   }
 
   private publish(snapshot: ClientEncryptionSnapshot): void {

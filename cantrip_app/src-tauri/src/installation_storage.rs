@@ -1,5 +1,7 @@
 use std::{
     fs,
+    fs::OpenOptions,
+    io::Write,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -13,6 +15,7 @@ use hpke::{
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{Manager, State};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
@@ -21,12 +24,19 @@ const CATALOG_SCHEMA_VERSION: i64 = 1;
 const DEVICE_KEY_VERSION: i64 = 1;
 const HPKE_INFO: &[u8] = b"cantrip:e2ee:hpke-key-wrap:v1";
 const KEYRING_SERVICE: &str = "art.cantrip.installation.hpke.v1";
+const DEVELOPMENT_KEY_VAULT_ENV: &str = "CANTRIP_DEVELOPMENT_KEY_VAULT";
+const DEVELOPMENT_KEY_VAULT_PROVIDER: &str = "development-file-vault";
+const MAX_DEVICE_SECRET_BYTES: u64 = 16 * 1024;
 
 type NativeKem = DhP256HkdfSha256;
 
 trait DeviceSecretStore: Send + Sync {
     fn get(&self, key_alias: &str) -> Result<Option<Vec<u8>>, String>;
     fn put(&self, key_alias: &str, secret: &[u8]) -> Result<(), String>;
+
+    fn migrate_legacy(&self, _key_alias: &str) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 struct KeyringDeviceSecretStore;
@@ -48,6 +58,112 @@ impl DeviceSecretStore for KeyringDeviceSecretStore {
         entry
             .set_secret(secret)
             .map_err(|_| "native-key-store-unavailable".to_owned())
+    }
+}
+
+struct DevelopmentFileDeviceSecretStore {
+    legacy: Option<Arc<dyn DeviceSecretStore>>,
+    root: PathBuf,
+}
+
+impl DevelopmentFileDeviceSecretStore {
+    fn new(root: PathBuf, legacy: Option<Arc<dyn DeviceSecretStore>>) -> Self {
+        Self { legacy, root }
+    }
+
+    fn prepare_root(&self) -> Result<(), String> {
+        fs::create_dir_all(&self.root).map_err(|_| "native-key-store-unavailable".to_owned())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&self.root, fs::Permissions::from_mode(0o700))
+                .map_err(|_| "native-key-store-unavailable".to_owned())?;
+        }
+        Ok(())
+    }
+
+    fn secret_path(&self, key_alias: &str) -> PathBuf {
+        let digest = Sha256::digest(key_alias.as_bytes());
+        self.root
+            .join(format!("{}.key", URL_SAFE_NO_PAD.encode(digest)))
+    }
+
+    fn read_file(&self, key_alias: &str) -> Result<Option<Vec<u8>>, String> {
+        self.prepare_root()?;
+        let path = self.secret_path(key_alias);
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err("native-key-store-unavailable".to_owned()),
+        };
+        if !metadata.file_type().is_file() || metadata.len() > MAX_DEVICE_SECRET_BYTES {
+            return Err("native-device-key-invalid".to_owned());
+        }
+        fs::read(path)
+            .map(Some)
+            .map_err(|_| "native-key-store-unavailable".to_owned())
+    }
+
+    fn write_file(&self, key_alias: &str, secret: &[u8]) -> Result<(), String> {
+        if secret.is_empty() || secret.len() as u64 > MAX_DEVICE_SECRET_BYTES {
+            return Err("native-device-key-invalid".to_owned());
+        }
+        self.prepare_root()?;
+        let destination = self.secret_path(key_alias);
+        let temporary = self
+            .root
+            .join(format!(".{}.{}.tmp", std::process::id(), Uuid::new_v4()));
+        let result = (|| {
+            let mut options = OpenOptions::new();
+            options.create_new(true).write(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options
+                .open(&temporary)
+                .map_err(|_| "native-key-store-unavailable".to_owned())?;
+            file.write_all(secret)
+                .and_then(|_| file.sync_all())
+                .map_err(|_| "native-key-store-unavailable".to_owned())?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                file.set_permissions(fs::Permissions::from_mode(0o600))
+                    .map_err(|_| "native-key-store-unavailable".to_owned())?;
+            }
+            drop(file);
+            fs::rename(&temporary, destination)
+                .map_err(|_| "native-key-store-unavailable".to_owned())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result
+    }
+}
+
+impl DeviceSecretStore for DevelopmentFileDeviceSecretStore {
+    fn get(&self, key_alias: &str) -> Result<Option<Vec<u8>>, String> {
+        self.read_file(key_alias)
+    }
+
+    fn put(&self, key_alias: &str, secret: &[u8]) -> Result<(), String> {
+        self.write_file(key_alias, secret)
+    }
+
+    fn migrate_legacy(&self, key_alias: &str) -> Result<(), String> {
+        if self.read_file(key_alias)?.is_some() {
+            return Ok(());
+        }
+        let Some(legacy) = self.legacy.as_ref() else {
+            return Ok(());
+        };
+        let Some(secret) = legacy.get(key_alias)? else {
+            return Ok(());
+        };
+        self.write_file(key_alias, &secret)
     }
 }
 
@@ -351,6 +467,7 @@ impl NativeInstallationStorage {
             )
             .map_err(|_| "installation-catalog-corrupt".to_owned())?;
         initialize_schema(&mut connection)?;
+        migrate_development_key_provider(&mut connection, self.secrets.as_ref())?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -691,15 +808,25 @@ impl NativeInstallationStorage {
 }
 
 pub fn build(app: &tauri::App) -> NativeInstallationStorage {
-    let secrets: Arc<dyn DeviceSecretStore> = Arc::new(KeyringDeviceSecretStore);
     match app.path().app_local_data_dir() {
-        Ok(root) => NativeInstallationStorage::deferred(
-            root.join("installation").join("v1").join("catalog.sqlite3"),
-            secrets,
-        ),
+        Ok(root) => {
+            let installation_root = root.join("installation").join("v1");
+            let secrets: Arc<dyn DeviceSecretStore> = if development_file_vault_enabled() {
+                Arc::new(DevelopmentFileDeviceSecretStore::new(
+                    installation_root.join("development-key-vault"),
+                    Some(Arc::new(KeyringDeviceSecretStore)),
+                ))
+            } else {
+                Arc::new(KeyringDeviceSecretStore)
+            };
+            NativeInstallationStorage::deferred(
+                root.join("installation").join("v1").join("catalog.sqlite3"),
+                secrets,
+            )
+        }
         Err(_) => NativeInstallationStorage::unavailable(
             "installation-catalog-path-unavailable".to_owned(),
-            secrets,
+            Arc::new(KeyringDeviceSecretStore),
         ),
     }
 }
@@ -1342,7 +1469,12 @@ fn current_timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-fn native_key_provider() -> &'static str {
+fn development_file_vault_enabled() -> bool {
+    cfg!(all(debug_assertions, target_os = "macos"))
+        && std::env::var(DEVELOPMENT_KEY_VAULT_ENV).as_deref() == Ok("1")
+}
+
+fn platform_native_key_provider() -> &'static str {
     #[cfg(target_os = "macos")]
     {
         "apple-keychain"
@@ -1359,6 +1491,72 @@ fn native_key_provider() -> &'static str {
     {
         "unsupported-native"
     }
+}
+
+fn native_key_provider() -> &'static str {
+    if development_file_vault_enabled() {
+        DEVELOPMENT_KEY_VAULT_PROVIDER
+    } else {
+        platform_native_key_provider()
+    }
+}
+
+fn migrate_development_key_provider(
+    connection: &mut Connection,
+    secrets: &dyn DeviceSecretStore,
+) -> Result<(), String> {
+    if !development_file_vault_enabled() {
+        return Ok(());
+    }
+    let requires_migration = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM device_key WHERE provider = ?1)",
+            params![platform_native_key_provider()],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+    if !requires_migration {
+        return Ok(());
+    }
+    let key_aliases = {
+        let mut statement = connection
+            .prepare("SELECT key_alias FROM device_key WHERE provider = ?1 ORDER BY key_alias")
+            .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        let aliases = statement
+            .query_map(params![platform_native_key_provider()], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|_| "installation-catalog-unavailable".to_owned())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        aliases
+    };
+    for key_alias in key_aliases {
+        secrets.migrate_legacy(&key_alias)?;
+    }
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+    let changed = transaction
+        .execute(
+            "UPDATE device_key SET provider = ?1 WHERE provider = ?2",
+            params![
+                DEVELOPMENT_KEY_VAULT_PROVIDER,
+                platform_native_key_provider()
+            ],
+        )
+        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+    if changed > 0 {
+        transaction
+            .execute(
+                "UPDATE catalog_meta SET revision = revision + 1 WHERE singleton_id = 1",
+                [],
+            )
+            .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+    }
+    transaction
+        .commit()
+        .map_err(|_| "installation-catalog-unavailable".to_owned())
 }
 
 fn prepare_catalog_parent(catalog_path: &Path) -> Result<(), String> {
@@ -1451,6 +1649,49 @@ mod tests {
         )
         .expect("storage");
         (directory, storage, secrets)
+    }
+
+    #[test]
+    fn development_file_vault_migrates_once_and_reopens_without_legacy_custody() {
+        let directory = tempdir().expect("temp directory");
+        let root = directory.path().join("development-key-vault");
+        let key_alias = "cantrip.installation.5f83bb42-5671-4b11-a87f-32842af21af2.hpke.v1";
+        let legacy = Arc::new(MemorySecretStore::default());
+        legacy
+            .put(key_alias, b"stable-development-secret")
+            .expect("seed legacy secret");
+
+        let migrating = DevelopmentFileDeviceSecretStore::new(root.clone(), Some(legacy.clone()));
+        assert_eq!(
+            migrating
+                .get(key_alias)
+                .expect("normal lookup remains file-only"),
+            None,
+        );
+        migrating
+            .migrate_legacy(key_alias)
+            .expect("migrate legacy secret");
+        assert_eq!(
+            migrating.get(key_alias).expect("read migrated secret"),
+            Some(b"stable-development-secret".to_vec()),
+        );
+        legacy.remove(key_alias);
+
+        let reopened = DevelopmentFileDeviceSecretStore::new(root, None);
+        assert_eq!(
+            reopened.get(key_alias).expect("reopen file secret"),
+            Some(b"stable-development-secret".to_vec()),
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(reopened.secret_path(key_alias))
+                .expect("secret metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600);
+        }
     }
 
     fn profile() -> NativeInstallationProfile {
