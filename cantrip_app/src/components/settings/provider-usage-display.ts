@@ -6,6 +6,7 @@ import type {
 
 export interface ProviderWeeklyAvailability {
   availablePercent: number;
+  bankedResetCount: number;
   reportedAccountCount: number;
   signedInAccountCount: number;
 }
@@ -53,23 +54,32 @@ export function providerRateLimitResetImpact(
 
 export function providerWeeklyAvailability(
   accounts: ModelProviderAccountSummary[],
+  availableResetCredits?: ReadonlyMap<string, number>,
 ): ProviderWeeklyAvailability | null {
   const signedIn = accounts.filter(
     (account) => account.enabled && account.credentialState === "signed-in",
   );
-  const reported = signedIn.flatMap((account) =>
-    account.weeklyUsageUsedPercent === null
-      ? []
-      : [account.weeklyUsageUsedPercent],
-  );
-  if (!reported.length) return null;
+  let availablePercent = 0;
+  let bankedResetCount = 0;
+  let reportedAccountCount = 0;
+  for (const account of signedIn) {
+    if (account.weeklyUsageUsedPercent !== null) {
+      availablePercent += providerWeeklyRemainingPercent(
+        account.weeklyUsageUsedPercent,
+      );
+      reportedAccountCount += 1;
+    }
+    const resetCount = availableResetCredits?.get(account.id) ?? 0;
+    if (resetCount > 0) {
+      bankedResetCount += resetCount;
+      availablePercent += resetCount * 100;
+    }
+  }
+  if (!reportedAccountCount && !bankedResetCount) return null;
   return {
-    availablePercent: reported.reduce(
-      (total, usedPercent) =>
-        total + providerWeeklyRemainingPercent(usedPercent),
-      0,
-    ),
-    reportedAccountCount: reported.length,
+    availablePercent,
+    bankedResetCount,
+    reportedAccountCount,
     signedInAccountCount: signedIn.length,
   };
 }
