@@ -33,24 +33,26 @@ flowchart TD
 
 ## Completion status
 
-Status: **complete** after Cycle 12. The implementation now satisfies the
-durable-storage goal across Tauri, Capacitor, and browser runtimes. The
-remaining manual checks below validate signed packages and physical operating
-system facilities; they do not represent missing application behavior or a
-known implementation blocker.
+Status: **in progress**. A requirement-by-requirement audit after Cycle 12
+found that a missing local installation was still provisioned before the
+authoritative server profile or recovery credential had authorized that
+change. Cycle 13 reopens completion and moves all installation/key creation
+behind first-time initialization, legacy-key unwrap, password recovery, or
+anonymous recovery import. Completion remains open until that fix is merged
+and the remaining update-safety evidence has been re-audited.
 
-| Required capability                                           | Completed implementation                                                                                                                               |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| One stable installation with multiple account/server bindings | One immutable installation record owns one installation-derived key alias; account bindings are separate catalog rows.                                 |
-| Tauri native custody                                          | SQLite public metadata plus macOS Keychain, Windows Credential Manager, or Linux Secret Service custody; legacy IndexedDB is migration-only.           |
-| Capacitor native custody                                      | SQLite public metadata plus iOS Keychain or Android Keystore-backed custody.                                                                           |
-| Browser custody and recovery                                  | Versioned IndexedDB/WebCrypto installation storage, persistence requests, password recovery, and anonymous recovery import.                            |
-| Existing installation migration                               | Retained legacy IndexedDB keys unwrap and rewrap the existing Account Master Key through an idempotent, verified migration checkpoint.                 |
-| Missing-key recovery                                          | Password or anonymous recovery authorizes explicit key replacement without changing the native installation ID or initializing a blank server profile. |
-| Anonymous recovery                                            | Versioned recovery export, acknowledgement, later export, strict import, and unrecoverable-state messaging.                                            |
-| Stable development identity                                   | Named profiles persist outside worktrees and build output; inspection and deliberate clean-profile tooling expose no secrets.                          |
-| Update safety                                                 | Immutable compatibility manifest, seven version N to N+1 or recovery harnesses, and release-blocking desktop/mobile/browser gates.                     |
-| No silent replacement                                         | One startup transition owner fails into precise recovery states; ordinary startup cannot reset keys, profiles, or encrypted data.                      |
+| Required capability                                           | Completed implementation                                                                                                                                 |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One stable installation with multiple account/server bindings | One immutable installation record owns one installation-derived key alias; account bindings are separate catalog rows.                                   |
+| Tauri native custody                                          | SQLite public metadata plus macOS Keychain, Windows Credential Manager, or Linux Secret Service custody; legacy IndexedDB is migration-only.             |
+| Capacitor native custody                                      | SQLite public metadata plus iOS Keychain or Android Keystore-backed custody.                                                                             |
+| Browser custody and recovery                                  | Versioned IndexedDB/WebCrypto installation storage, persistence requests, password recovery, and anonymous recovery import.                              |
+| Existing installation migration                               | Retained legacy IndexedDB keys unwrap and rewrap the existing Account Master Key through an idempotent, verified migration checkpoint.                   |
+| Missing-key recovery                                          | Password or anonymous recovery authorizes explicit key replacement without changing the native installation ID or initializing a blank server profile.   |
+| Anonymous recovery                                            | Versioned recovery export, acknowledgement, later export, strict import, and unrecoverable-state messaging.                                              |
+| Stable development identity                                   | Named profiles persist outside worktrees and build output; inspection and deliberate clean-profile tooling expose no secrets.                            |
+| Update safety                                                 | Immutable compatibility manifest, seven version N to N+1 or recovery harnesses, and release-blocking desktop/mobile/browser gates.                       |
+| No silent replacement                                         | Cycle 13 pending: startup discovery is read-only and tests assert that lookup misses, invalid credentials, and migration outages do not provision state. |
 
 ## Cycle ledger
 
@@ -799,8 +801,67 @@ known implementation blocker.
   session; and exercise browser persistence denial plus account and anonymous
   storage-loss recovery in production browser engines.
 
+Post-merge correction: the Cycle 12 statement that no ordinary startup path
+could provision replacement custody was too strong. The durable startup path
+created an installation record and key before loading the server profile, so a
+storage-loss recovery prompt had already mutated local identity state. Cycle 13
+corrects that ordering and adds mutation-negative regression coverage.
+
+### Cycle 13 — authorization-before-provisioning audit correction
+
+- Branch: `codex/encryption-storage-completion-audit`
+- Pull request: pending
+- Commit and merge: pending
+- Behavior implemented:
+  - Made installation discovery read-only. A missing catalog now advances the
+    explicit startup state machine to authoritative server-profile discovery
+    without generating an installation UUID or key.
+  - Moved installation and key provisioning behind one of four authorizing
+    events: verified first-time account initialization, successful legacy key
+    unwrap, successful password recovery, or successful anonymous recovery
+    import. Anonymous first-time initialization remains an explicit authorized
+    creation path.
+  - Split account recovery authorization from device provisioning so an
+    incorrect password cannot create local identity state. Existing native
+    installation keys are inspected without replacement; missing custody is
+    replaced only after recovery has unlocked the existing Account Master Key.
+  - Preserved interrupted replacement checkpoints and verified binding
+    migration when a legacy key authorizes replacement of an existing native
+    installation key.
+  - Added startup-state coverage for an absent installation and regression
+    assertions that browser storage loss, Tauri/Capacitor recovery prompts,
+    incorrect passwords, invalid anonymous recovery material, and a server
+    outage during legacy migration leave the catalog and key provider
+    untouched.
+- Validation:
+  - `pnpm --filter @cantrip/app typecheck` — passed.
+  - `pnpm --dir cantrip_app exec vitest run src/lib/client-encryption-startup.test.ts src/lib/account-encryption.test.ts`
+    — 42 tests passed.
+  - `pnpm --filter @cantrip/app test` — 1,878 tests passed and 3 skipped
+    across 356 files.
+  - `pnpm --filter @cantrip/app build` — passed.
+  - `pnpm verify:installation-compatibility` — all seven update/recovery
+    harnesses passed with no active contract migration.
+  - Focused installation-compatibility, native-release, and release tests —
+    20 tests passed.
+  - `git diff --check` and changed-file Prettier validation — passed.
+- Supported platforms: the corrected orchestration is shared by browser,
+  Tauri, Capacitor iOS, and Capacitor Android. Platform-specific custody
+  providers are unchanged.
+- Migration status: accessible legacy custody is now unwrapped before the new
+  installation catalog/key is created. Failed discovery or migration leaves no
+  new installation/key behind; verified migration retains legacy custody.
+- Remaining work: merge this cycle and complete the reopened update-safety
+  evidence audit.
+- Known risks or blockers: no external blocker. Signed package and physical
+  secure-store verification remains manual as recorded above.
+- Manual verification: after merge, clear browser installation storage and
+  confirm the recovery prompt does not create an installation until a valid
+  password or recovery file is submitted. Repeat with a packaged native build
+  after removing only the cataloged secure key.
+
 ## Goal completion
 
-No required implementation work remains. Future changes to any compatibility
-contract must add an explicit migration and deterministic fixture before the
-release gate will permit publication.
+Completion is reopened. Cycle 13 and the remaining update-safety audit must be
+merged and verified before this section may state that no required
+implementation work remains.

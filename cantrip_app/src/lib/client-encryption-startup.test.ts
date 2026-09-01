@@ -70,6 +70,38 @@ function completion() {
 }
 
 describe("client encryption startup state machine", () => {
+  it("can load authoritative profile state before provisioning a missing installation", () => {
+    let state = begin();
+    state = apply(state, { type: "installation-missing" });
+    expect(state).toMatchObject({
+      installationId: null,
+      keyAlias: null,
+      phase: "loading-server-profile",
+    });
+
+    state = apply(state, {
+      masterKeyRevision: binding.masterKeyRevision,
+      status: "initialized",
+      type: "profile-loaded",
+    });
+    state = apply(state, { status: "missing", type: "device-key-loaded" });
+    state = apply(state, { status: "missing", type: "legacy-device-loaded" });
+    state = apply(state, { type: "credential-submitted" });
+    state = apply(state, {
+      installationId,
+      keyAlias,
+      type: "installation-ready",
+    });
+
+    expect(state).toMatchObject({
+      installationId,
+      keyAlias,
+      phase: "recovering-account",
+    });
+    state = apply(state, { ...completion(), type: "account-recovered" });
+    expect(canMountProtectedApplication(state)).toBe(true);
+  });
+
   it("locates the installation key before looking up an account binding", () => {
     let state = reachDeviceKeyLookup();
     expect(state.phase).toBe("locating-device-key");

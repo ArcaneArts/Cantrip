@@ -105,6 +105,9 @@ export type ClientEncryptionStartupEvent =
       type: "installation-ready";
     })
   | (StartupEventWithGeneration & {
+      type: "installation-missing";
+    })
+  | (StartupEventWithGeneration & {
       credentialAvailable: boolean;
       type: "initialization-requested";
     })
@@ -275,6 +278,9 @@ export function transitionClientEncryptionStartup(
   }
   switch (state.phase) {
     case "locating-installation":
+      if (event.type === "installation-missing") {
+        return advance(state, "loading-server-profile");
+      }
       if (
         event.type === "installation-ready" &&
         event.installationId.length > 0 &&
@@ -312,6 +318,17 @@ export function transitionClientEncryptionStartup(
       }
       break;
     case "initializing-profile":
+      if (
+        event.type === "installation-ready" &&
+        event.installationId.length > 0 &&
+        event.keyAlias.length > 0
+      ) {
+        return {
+          ...state,
+          installationId: event.installationId,
+          keyAlias: event.keyAlias,
+        };
+      }
       if (event.type === "profile-initialized") {
         return finishWithBinding(state, event, event);
       }
@@ -375,6 +392,17 @@ export function transitionClientEncryptionStartup(
       }
       break;
     case "migrating-legacy-device":
+      if (
+        event.type === "installation-ready" &&
+        event.installationId.length > 0 &&
+        event.keyAlias.length > 0
+      ) {
+        return {
+          ...state,
+          installationId: event.installationId,
+          keyAlias: event.keyAlias,
+        };
+      }
       if (event.type === "migration-completed") {
         return finishWithBinding(state, event, event);
       }
@@ -390,6 +418,17 @@ export function transitionClientEncryptionStartup(
       }
       break;
     case "recovering-account":
+      if (
+        event.type === "installation-ready" &&
+        event.installationId.length > 0 &&
+        event.keyAlias.length > 0
+      ) {
+        return {
+          ...state,
+          installationId: event.installationId,
+          keyAlias: event.keyAlias,
+        };
+      }
       if (event.type === "account-recovered") {
         return finishWithBinding(state, event, event);
       }

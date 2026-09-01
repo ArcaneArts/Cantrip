@@ -27,6 +27,7 @@ import {
 } from "./account-encryption";
 import { serializeAnonymousRecoveryArtifact } from "./anonymous-recovery-artifact";
 import {
+  ClientEncryptionError,
   ClientEncryptionService,
   LegacyIndexedDbClientDeviceKeyStore,
   type LegacyClientDeviceKeyStore,
@@ -555,9 +556,13 @@ describe("account encryption initialization", () => {
         service: second,
       }),
     ).resolves.toMatchObject({
-      reason: "anonymous-binding-missing",
+      reason: "anonymous-device-missing",
       status: "recovery-required",
     });
+    const storageAfterLoss = await openBrowserInstallationStorage();
+    await expect(
+      storageAfterLoss.catalog.getInstallation(),
+    ).resolves.toBeNull();
   });
 
   it("rewraps the same Account Master Key while changing the account password", async () => {
@@ -657,6 +662,104 @@ describe("durable native account encryption", () => {
     }
   }
 
+  it("does not provision a first-time account installation before credential verification", async () => {
+    const api = new MemoryAccountEncryptionApi(password);
+    const storage = durableStorage();
+    const create = vi.spyOn(storage.provider, "create");
+    const service = new ClientEncryptionService(new MemoryDeviceKeyStore());
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service,
+      }),
+    ).resolves.toEqual({
+      credential: "password",
+      reason: "initialize",
+      status: "credential-required",
+    });
+    await expect(storage.catalog.getInstallation()).resolves.toBeNull();
+    expect(create).not.toHaveBeenCalled();
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        password: "incorrect password",
+        runtimePlatform: "tauri",
+        service,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(storage.catalog.getInstallation()).resolves.toBeNull();
+    expect(create).not.toHaveBeenCalled();
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        password,
+        passwordKdf: testKdf(),
+        runtimePlatform: "tauri",
+        service,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    await expect(storage.catalog.getInstallation()).resolves.not.toBeNull();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves installation custody untouched when the server fails during legacy migration discovery", async () => {
+    class MigrationUnavailableApi extends MemoryAccountEncryptionApi {
+      migrationUnavailable = false;
+
+      override listPrincipals(): Promise<EncryptionPrincipal[]> {
+        return this.migrationUnavailable
+          ? Promise.reject(new CantripApiError("Server unavailable.", 503))
+          : super.listPrincipals();
+      }
+    }
+
+    const api = new MigrationUnavailableApi(password);
+    const legacyStore = new MemoryDeviceKeyStore();
+    await initializeLegacyAccount({ api, store: legacyStore });
+    const storage = durableStorage();
+    const create = vi.spyOn(storage.provider, "create");
+    api.migrationUnavailable = true;
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(legacyStore),
+      }),
+    ).rejects.toMatchObject({ status: 503 });
+    await expect(storage.catalog.getInstallation()).resolves.toBeNull();
+    expect(create).not.toHaveBeenCalled();
+
+    api.migrationUnavailable = false;
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(legacyStore),
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
   it("migrates the released per-account browser key into one stable browser installation", async () => {
     const api = new MemoryAccountEncryptionApi(password);
     const legacyStore = new LegacyIndexedDbClientDeviceKeyStore();
@@ -740,6 +843,10 @@ describe("durable native account encryption", () => {
       reason: "recover-device",
       status: "credential-required",
     });
+    const storageAfterLoss = await openBrowserInstallationStorage();
+    await expect(
+      storageAfterLoss.catalog.getInstallation(),
+    ).resolves.toBeNull();
     await expect(
       prepareClientEncryption({
         api,
@@ -834,6 +941,7 @@ describe("durable native account encryption", () => {
       });
       const initializationAttempts = api.initializationAttempts;
       const storage = durableStorage();
+      const create = vi.spyOn(storage.provider, "create");
       const service = new ClientEncryptionService(new MemoryDeviceKeyStore());
 
       await expect(
@@ -850,7 +958,23 @@ describe("durable native account encryption", () => {
         reason: "recover-device",
         status: "credential-required",
       });
+      await expect(storage.catalog.getInstallation()).resolves.toBeNull();
+      expect(create).not.toHaveBeenCalled();
       expect(api.initializationAttempts).toBe(initializationAttempts);
+
+      await expect(
+        prepareClientEncryption({
+          api,
+          authMode: "accounts",
+          durableStorage: storage,
+          identity,
+          password: "incorrect password",
+          runtimePlatform,
+          service,
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(storage.catalog.getInstallation()).resolves.toBeNull();
+      expect(create).not.toHaveBeenCalled();
 
       await expect(
         prepareClientEncryption({
@@ -863,6 +987,7 @@ describe("durable native account encryption", () => {
           service,
         }),
       ).resolves.toEqual({ status: "ready" });
+      expect(create).toHaveBeenCalledTimes(1);
       expect(api.initializationAttempts).toBe(initializationAttempts);
       expect(
         await storage.catalog.getAccountBinding(
@@ -950,21 +1075,23 @@ describe("durable native account encryption", () => {
       store: new MemoryDeviceKeyStore(),
     });
     const initializationAttempts = api.initializationAttempts;
+    const storage = durableStorage();
 
     await expect(
       prepareClientEncryption({
         api,
         authMode: "none",
-        durableStorage: durableStorage(),
+        durableStorage: storage,
         identity,
         onStartupState: (state) => startupPhases.push(state.phase),
         runtimePlatform: "tauri",
         service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
       }),
     ).resolves.toMatchObject({
-      reason: "anonymous-binding-missing",
+      reason: "anonymous-device-missing",
       status: "recovery-required",
     });
+    await expect(storage.catalog.getInstallation()).resolves.toBeNull();
     expect(api.initializationAttempts).toBe(initializationAttempts);
     expect(startupPhases.at(-1)).toBe("recovery-required");
   });
@@ -989,6 +1116,26 @@ describe("durable native account encryption", () => {
     }
     const artifactText = serializeAnonymousRecoveryArtifact(initial.artifact);
     const initializationAttempts = api.initializationAttempts;
+
+    const rejectedStorage = durableStorage();
+    const rejectedCreate = vi.spyOn(rejectedStorage.provider, "create");
+    const recoverySecret = initial.artifact.recoverySecret;
+    const tamperedArtifactText = serializeAnonymousRecoveryArtifact({
+      ...initial.artifact,
+      recoverySecret: `${recoverySecret[0] === "A" ? "B" : "A"}${recoverySecret.slice(1)}`,
+    });
+    await expect(
+      recoverAnonymousClientEncryption({
+        api,
+        artifactText: tamperedArtifactText,
+        durableStorage: rejectedStorage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).rejects.toBeInstanceOf(ClientEncryptionError);
+    await expect(rejectedStorage.catalog.getInstallation()).resolves.toBeNull();
+    expect(rejectedCreate).not.toHaveBeenCalled();
 
     const replacementStorage = durableStorage();
     const replacementService = new ClientEncryptionService(
