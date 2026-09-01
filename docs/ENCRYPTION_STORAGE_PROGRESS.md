@@ -574,8 +574,9 @@ flowchart TD
 ### Cycle 10 — update compatibility harnesses and release gates
 
 - Branch: `codex/encryption-storage-cycle10-update-safety`
-- Pull request: pending
-- Commit and merge: pending
+- Pull request: [#1551](https://github.com/ArcaneArts/Cantrip/pull/1551)
+- Commit: `bbc6401e6a51fce85046ee8e546e9a3ee53c0edd`
+- Merge: pending
 - Behavior implemented:
   - Added an immutable version-one compatibility manifest for bundle IDs,
     WebView origins, native data ownership, catalog schemas and paths, secure
