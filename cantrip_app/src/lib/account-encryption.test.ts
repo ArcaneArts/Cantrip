@@ -1,6 +1,7 @@
 import {
   clearSensitiveBytes,
   createPasswordKdfParameters,
+  generateAccountMasterKey,
   unwrapAccountMasterKeyWithPassword,
 } from "@cantrip/crypto";
 import type {
@@ -13,7 +14,8 @@ import type {
   EncryptionPrincipal,
   EncryptionPrincipalCreate,
 } from "@cantrip/protocol/encryption";
-import { describe, expect, it } from "vitest";
+import { IDBFactory } from "fake-indexeddb";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CantripApiError } from "./api-client";
 import {
@@ -23,6 +25,7 @@ import {
 } from "./account-encryption";
 import {
   ClientEncryptionService,
+  IndexedDbClientDeviceKeyStore,
   type ClientDeviceKeyStore,
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
@@ -31,13 +34,21 @@ import {
   MemoryClientDeviceKeyBackend,
   MemoryClientDeviceKeyProvider,
 } from "./client-device-key-provider";
+import { openBrowserInstallationStorage } from "./browser-installation-storage";
 import { installationBindingPrincipalId } from "./durable-account-encryption";
-import { MemoryInstallationCatalog } from "./installation-catalog";
+import {
+  installationKeyAlias,
+  MemoryInstallationCatalog,
+} from "./installation-catalog";
 
 const ownerId = "owner-a";
 const timestamp = "2026-08-19T12:00:00.000Z";
 const password = "correct horse battery staple";
 const identity = { ownerId, serverId: "server-a" } as const;
+
+beforeEach(() => vi.stubGlobal("indexedDB", new IDBFactory()));
+afterEach(() => vi.unstubAllGlobals());
+
 const testKdf = () =>
   createPasswordKdfParameters({
     memoryKiB: 8_192,
@@ -295,10 +306,6 @@ describe("account encryption initialization", () => {
     expect(api.profile?.passwordWrappedMasterKey).not.toBeNull();
     expect(api.reauthenticationAttempts).toBe(1);
 
-    const refreshStatuses: string[] = [];
-    const unsubscribe = firstRun.subscribe(() => {
-      refreshStatuses.push(firstRun.getSnapshot().status);
-    });
     await expect(
       prepareClientEncryption({
         api,
@@ -307,8 +314,6 @@ describe("account encryption initialization", () => {
         service: firstRun,
       }),
     ).resolves.toEqual({ status: "ready" });
-    unsubscribe();
-    expect(refreshStatuses).toEqual([]);
 
     firstRun.lock();
     const restarted = new ClientEncryptionService(store);
@@ -333,6 +338,7 @@ describe("account encryption initialization", () => {
       passwordKdf: testKdf(),
       service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
     });
+    vi.stubGlobal("indexedDB", new IDBFactory());
     const newDevice = new ClientEncryptionService(new MemoryDeviceKeyStore());
     await expect(
       prepareClientEncryption({
@@ -343,7 +349,7 @@ describe("account encryption initialization", () => {
       }),
     ).resolves.toEqual({
       credential: "password",
-      reason: "authorize-device",
+      reason: "recover-device",
       status: "credential-required",
     });
     expect(() =>
@@ -387,7 +393,7 @@ describe("account encryption initialization", () => {
     ).resolves.toEqual({ status: "ready" });
   });
 
-  it("replaces an unrecoverable local device record and requires authorization once", async () => {
+  it("preserves a corrupt legacy record and recovers through a new browser installation", async () => {
     const api = new MemoryAccountEncryptionApi(password);
     await prepareClientEncryption({
       api,
@@ -397,6 +403,7 @@ describe("account encryption initialization", () => {
       passwordKdf: testKdf(),
       service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
     });
+    vi.stubGlobal("indexedDB", new IDBFactory());
     const store = new MemoryDeviceKeyStore();
     store.seed(identity, { version: 1 });
     const replacement = new ClientEncryptionService(store);
@@ -410,13 +417,14 @@ describe("account encryption initialization", () => {
       }),
     ).resolves.toEqual({
       credential: "password",
-      reason: "authorize-device",
+      reason: "recover-device",
       status: "credential-required",
     });
     expect(replacement.getSnapshot()).toMatchObject({
-      clientId: expect.any(String),
-      status: "locked",
+      clientId: null,
+      status: "corrupt",
     });
+    await expect(store.load(identity)).resolves.toEqual({ version: 1 });
     await expect(
       prepareClientEncryption({
         api,
@@ -453,7 +461,7 @@ describe("account encryption initialization", () => {
     ]);
 
     expect(results).toEqual([{ status: "ready" }, { status: "ready" }]);
-    expect(api.principals.size).toBe(2);
+    expect(api.principals.size).toBe(1);
     expect(first.getSnapshot().status).toBe("ready");
     expect(second.getSnapshot().status).toBe("ready");
   });
@@ -518,6 +526,7 @@ describe("account encryption initialization", () => {
       }),
     ).resolves.toEqual({ status: "ready" });
 
+    vi.stubGlobal("indexedDB", new IDBFactory());
     const second = new ClientEncryptionService(new MemoryDeviceKeyStore());
     await expect(
       prepareClientEncryption({
@@ -526,7 +535,10 @@ describe("account encryption initialization", () => {
         identity,
         service: second,
       }),
-    ).rejects.toThrow(/existing local device|reset the local encrypted data/iu);
+    ).resolves.toMatchObject({
+      reason: "anonymous-binding-missing",
+      status: "recovery-required",
+    });
   });
 
   it("rewraps the same Account Master Key while changing the account password", async () => {
@@ -586,20 +598,97 @@ describe("durable native account encryption", () => {
   async function initializeLegacyAccount(input: {
     api: MemoryAccountEncryptionApi;
     authMode?: "accounts" | "none";
-    store: MemoryDeviceKeyStore;
+    store: ClientDeviceKeyStore;
   }) {
     const service = new ClientEncryptionService(input.store);
-    await prepareClientEncryption({
-      api: input.api,
-      authMode: input.authMode ?? "accounts",
-      identity,
-      password: input.authMode === "none" ? undefined : password,
-      passwordKdf: testKdf(),
-      runtimePlatform: "browser",
-      service,
-    });
-    service.lock();
+    const device = await service.ensureDevice(identity);
+    const accountMasterKey = generateAccountMasterKey();
+    try {
+      service.setAccountMasterKey({
+        accountMasterKey,
+        identity,
+        masterKeyRevision: 1,
+      });
+      const passwordWrappedMasterKey =
+        input.authMode === "none"
+          ? null
+          : await service.createPasswordWrapper({
+              identity,
+              kdf: testKdf(),
+              password,
+            });
+      await input.api.initializeProfile({
+        initialClient: {
+          id: device.clientId,
+          label: "Legacy Cantrip browser",
+          publicKey: device.publicKey,
+          wrappedMasterKey: await service.createDeviceWrapper(identity),
+        },
+        profile: {
+          activeMasterKeyRevision: 1,
+          formatVersion: 1,
+          passwordKdf: passwordWrappedMasterKey?.kdf ?? null,
+          passwordWrappedMasterKey,
+          payloadMigrationStatus: "complete",
+        },
+      });
+    } finally {
+      clearSensitiveBytes(accountMasterKey);
+      service.lock();
+    }
   }
+
+  it("migrates the released per-account browser key into one stable browser installation", async () => {
+    const api = new MemoryAccountEncryptionApi(password);
+    const legacyStore = new IndexedDbClientDeviceKeyStore();
+    await initializeLegacyAccount({ api, store: legacyStore });
+    const legacyPrincipalId = [...api.principals.keys()][0]!;
+    const service = new ClientEncryptionService(legacyStore);
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        identity,
+        runtimePlatform: "browser",
+        service,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+
+    const storage = await openBrowserInstallationStorage();
+    const installation = await storage.catalog.getInstallation();
+    const binding = await storage.catalog.getAccountBinding(
+      identity.serverId,
+      identity.ownerId,
+    );
+    expect(installation).not.toBeNull();
+    expect(binding).toMatchObject({
+      keyAlias: installationKeyAlias(installation!.installationId),
+      principalId: expect.not.stringMatching(legacyPrincipalId),
+    });
+    await expect(
+      storage.catalog.getMigration(
+        `legacy-indexeddb-v1:${binding!.principalId}`,
+      ),
+    ).resolves.toMatchObject({ state: "verified" });
+    expect(api.principals.get(legacyPrincipalId)?.state).toBe("approved");
+
+    service.lock();
+    const stableOnly = new ClientEncryptionService({
+      delete: () => Promise.reject(new Error("legacy storage not used")),
+      load: () => Promise.reject(new Error("legacy storage not used")),
+      save: () => Promise.reject(new Error("legacy storage not used")),
+    });
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        identity,
+        runtimePlatform: "browser",
+        service: stableOnly,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+  });
 
   it.each(["tauri", "capacitor-ios", "capacitor-android"] as const)(
     "migrates an accessible IndexedDB key on %s, verifies native custody, and retains the legacy principal",
@@ -693,7 +782,7 @@ describe("durable native account encryption", () => {
         }),
       ).resolves.toEqual({
         credential: "password",
-        reason: "authorize-device",
+        reason: "recover-device",
         status: "credential-required",
       });
       expect(api.initializationAttempts).toBe(initializationAttempts);

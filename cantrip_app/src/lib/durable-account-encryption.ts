@@ -1061,7 +1061,10 @@ export async function prepareDurableClientEncryption(
     if (!input.password) {
       return {
         credential: "password",
-        reason: "authorize-device",
+        reason:
+          startup.state().credentialReason === "recover-device"
+            ? "recover-device"
+            : "authorize-device",
         status: "credential-required",
       };
     }

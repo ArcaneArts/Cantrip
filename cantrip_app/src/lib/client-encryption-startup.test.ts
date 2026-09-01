@@ -92,7 +92,7 @@ describe("client encryption startup state machine", () => {
 
     state = apply(state, { status: "missing", type: "legacy-device-loaded" });
     expect(state).toMatchObject({
-      credentialReason: "authorize-device",
+      credentialReason: "recover-device",
       phase: "credential-required",
     });
 
@@ -172,7 +172,7 @@ describe("client encryption startup state machine", () => {
       state = apply(state, { status, type: "legacy-device-loaded" });
 
       expect(state).toMatchObject({
-        credentialReason: "authorize-device",
+        credentialReason: "recover-device",
         phase: "credential-required",
       });
     },

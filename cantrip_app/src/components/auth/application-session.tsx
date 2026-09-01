@@ -6,13 +6,7 @@ import type {
 import { CANTRIP_VERSION } from "@cantrip/version";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
-import {
-  AlertCircle,
-  Loader2,
-  LockKeyhole,
-  Server,
-  WandSparkles,
-} from "lucide-react";
+import { AlertCircle, Loader2, LockKeyhole, Server } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -24,8 +18,9 @@ import {
 
 import { ApplicationLoadingSplash } from "@/components/auth/application-loading-splash";
 import { DesktopWorkerRecoverySession } from "@/components/auth/desktop-worker-recovery-session";
+import { EncryptionDeviceRecoveryScreen } from "@/components/auth/encryption-device-recovery-screen";
 import { MobileSignInScanner } from "@/components/auth/mobile-sign-in-scanner";
-import { SessionWindowDragRegion } from "@/components/auth/session-window-drag-region";
+import { SessionFrame } from "@/components/auth/session-frame";
 import { WorkerObservationSession } from "@/components/auth/worker-observation-session";
 import { AddServerForm } from "@/components/servers/add-server-form";
 import {
@@ -59,7 +54,7 @@ import {
 import { errorMessage } from "@/lib/error-message";
 import { prepareClientEncryption } from "@/lib/account-encryption";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
-import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
+import { detectClientRuntimePlatform } from "@/lib/runtime-platform";
 import {
   getActiveServerConnection,
   rememberActiveServerAccount,
@@ -103,6 +98,11 @@ type ApplicationSessionState =
       notice: string | null;
     }
   | ({ kind: "authenticated" } & AuthenticatedSessionContext)
+  | ({
+      kind: "encryption-device-recovery-required";
+      deviceLabel: "browser" | "installation";
+      error: string | null;
+    } & AuthenticatedSessionContext)
   | ({
       kind: "encryption-recovery-required";
       message: string;
@@ -302,6 +302,17 @@ async function encryptionSessionState(
       ...context,
     };
   }
+  if (access.reason === "recover-device") {
+    return {
+      kind: "encryption-device-recovery-required",
+      deviceLabel:
+        detectClientRuntimePlatform() === "browser"
+          ? "browser"
+          : "installation",
+      error: null,
+      ...context,
+    };
+  }
   clearClientSession();
   return {
     kind: "signed-out",
@@ -311,33 +322,6 @@ async function encryptionSessionState(
         ? "Sign in again once to finish setting up private data encryption."
         : "Sign in again once to authorize this device for private data.",
   };
-}
-
-function SessionFrame({ children }: { children: React.ReactNode }) {
-  const active = getActiveServerConnection();
-  return (
-    <>
-      <SessionWindowDragRegion enabled={isMacosDesktopRuntime()} />
-      <main className="grid min-h-dvh place-items-center bg-background px-4 py-10 text-foreground">
-        <section className="w-full max-w-md space-y-6">
-          <header className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-xl border bg-card">
-              <WandSparkles className="size-5" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-base font-semibold">Cantrip</span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {active
-                  ? `${active.name} · ${active.url || "Local development server"}`
-                  : "Remote server required"}
-              </span>
-            </span>
-          </header>
-          {children}
-        </section>
-      </main>
-    </>
-  );
 }
 
 function ServerSetupScreen({ onConnected }: { onConnected(): void }) {
@@ -926,6 +910,7 @@ export function ApplicationSession({
         setState((current) => {
           if (
             (current.kind === "authenticated" ||
+              current.kind === "encryption-device-recovery-required" ||
               current.kind === "encryption-recovery-required" ||
               current.kind === "encryption-error") &&
             current.bootstrap.auth.mode !== "none"
@@ -985,6 +970,23 @@ export function ApplicationSession({
               message: errorMessage(retryError),
             }),
           );
+        }}
+      />
+    );
+  }
+  if (state.kind === "encryption-device-recovery-required") {
+    return (
+      <EncryptionDeviceRecoveryScreen
+        {...state}
+        onRecover={async (password) => {
+          try {
+            setState(await encryptionSessionState(state, password));
+          } catch (recoveryError) {
+            setState({
+              ...state,
+              error: errorMessage(recoveryError),
+            });
+          }
         }}
       />
     );

@@ -439,12 +439,14 @@ step is required. The server installs the matching session and grants on the
 worker before returning the client capability.
 
 The client's durable installation identity is separate from both this peer
-session and the server/account authorization binding. A native installation
-keeps one installation-derived key alias while storing independent bindings
-for each server and owner. Switching servers, accounts, routes, or WebView
-origins must not replace that installation profile or its private key. Network
-capabilities remain short-lived and server-authorized; possession of the local
-installation key alone does not grant access to a worker or resource.
+session and the server/account authorization binding. Native and browser
+installations keep one installation-derived key alias while storing independent
+bindings for each server and owner. Switching servers, accounts, routes, or
+WebView origins must not replace that installation profile or its private key.
+Browser storage is still origin-scoped, so cleared storage uses account
+recovery instead of creating a blank encryption profile. Network capabilities
+remain short-lived and server-authorized; possession of the local installation
+key alone does not grant access to a worker or resource.
 
 On Tauri, each server/account authorization uses a deterministic binding
 principal derived from the installation ID plus the server and owner IDs. The

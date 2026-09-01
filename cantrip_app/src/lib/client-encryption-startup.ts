@@ -28,7 +28,7 @@ export type ClientEncryptionRecoveryReason =
   | "legacy-device-unsupported";
 
 export type ClientEncryptionCredentialReason =
-  "authorize-device" | "initialize";
+  "authorize-device" | "initialize" | "recover-device";
 
 export type ClientEncryptionStartupBinding = {
   grantRevision: number;
@@ -248,7 +248,7 @@ function accountRecoveryPhase(
 ): ClientEncryptionStartupState {
   if (state.authMode !== "none") {
     return advance(state, "credential-required", {
-      credentialReason: "authorize-device",
+      credentialReason: "recover-device",
     });
   }
   return advance(state, "recovery-required", { recoveryReason: reason });

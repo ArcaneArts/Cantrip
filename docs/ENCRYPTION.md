@@ -210,11 +210,11 @@ dependency boundary.
 
 #### Durable native installation storage
 
-Tauri and Capacitor select the durable native installation catalog during
-normal startup. Both use the same transactional migration and account-recovery
-coordinator; only the catalog and secure-key bridge differ by platform.
-Browsers continue to use IndexedDB. Rollout and verification status for each
-runtime is recorded in
+Tauri, Capacitor, and browser clients select a durable installation catalog
+during normal startup. They use the same transactional migration and
+account-recovery coordinator; only the catalog and secure-key bridge differ by
+platform. Browsers retain IndexedDB and WebCrypto as their platform-appropriate
+storage boundary. Rollout and verification status for each runtime is recorded in
 [ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md).
 
 The Tauri catalog lives under the operating system's non-roaming local
@@ -351,63 +351,65 @@ test profile, launched with `pnpm devtop -- --profile <name>`. It refuses to
 replace an existing name. Normal build, clean, and development commands do not
 destroy profiles; choosing a new name is the supported clean-test workflow.
 
-#### Browser custody and current runtime behavior
+#### Browser custody and recovery
 
-The browser client custody boundary is implemented by
-[client-encryption.ts](../cantrip_app/src/lib/client-encryption.ts). Each
-browser installation generates its own nonextractable WebCrypto P-256 private
-key and stores it as a structured-cloned `CryptoKey` in IndexedDB. Its
-versioned local record and storage key bind the device to one server ID and one
-owner ID. The storage interface is deliberately replaceable so native clients
-can later use an operating-system key store without changing the encryption
-service contract.
+Browser startup uses the versioned `cantrip-browser-installation` IndexedDB
+database. It contains one immutable installation UUID, public device-key
+metadata, independent server/account bindings, migration checkpoints, and a
+single nonextractable WebCrypto P-256 private key stored as a structured-cloned
+`CryptoKey`. The stable key alias derives only from the installation UUID; a
+server or owner selects a binding and never selects or replaces the underlying
+browser key.
 
-The service can create and open password and client Account Master Key
-wrappers, derive component keys, and expose stable locked, unavailable,
-revoked, corrupt, and unsupported-version states. Plaintext Account Master
-Keys and derived component keys exist only in memory; service-owned copies are
-cleared on lockout, sign-out, account replacement, and server switching.
-Passwords, password-derived keys, raw Account Master Keys, component keys, and
-extractable private keys are never written to IndexedDB or local storage.
+The browser catalog applies compare-and-swap transactions and validates the
+same installation, key, binding, and migration invariants as native catalogs.
+It requests persistent browser storage where the Storage API supports it and
+records whether the browser granted persistence. A denial or unsupported API
+is an explicit best-effort condition rather than a durability guarantee.
+Browser storage remains origin-scoped and may still be cleared or evicted.
 
-The focused [client custody test](../cantrip_app/src/lib/client-encryption.test.ts)
-proves nonextractability, device-wrapper unlock after a simulated restart,
-password-wrapper unlock, server/account isolation, sign-out clearing, and
-fail-closed handling for corrupt, revoked, and unsupported state. It also
-accepts the WebIDL `FrozenArray` representation that WebKit may return for a
-structured-cloned `CryptoKey.usages`, so that valid desktop representation is
-not misclassified as a corrupt device key during encrypted workspace creation.
-The
+Released per-account records in the `cantrip-client-encryption` IndexedDB
+database remain as a compatibility reader. When such a record is accessible,
+the shared durable coordinator uses its nonextractable private key to unwrap
+the existing Account Master Key, creates the stable browser installation key,
+registers or reconciles its installation-derived principal and grant, verifies
+both the new unwrap and a known encrypted marker, and only then commits the
+binding and verified migration checkpoint. The legacy record, principal, and
+grant are not deleted. Migration is idempotent and resumes after an interrupted
+network or storage operation.
+
+If browser storage was cleared but the server already has an account encryption
+profile, startup enters `recover-device` and keeps the authenticated session on
+a precise recovery screen. Password reauthentication unwraps the existing
+password-wrapped Account Master Key, provisions a new browser installation and
+grant, verifies decryption, and continues. It never initializes a replacement
+server profile or presents an empty workspace. Anonymous storage loss enters
+the separate recovery-required state; recovery-artifact export and import is
+implemented in its dedicated rollout cycle.
+
+Plaintext Account Master Keys and derived component keys exist only in memory;
+service-owned copies are cleared on lockout, sign-out, account replacement, and
+server switching. Passwords, password-derived keys, raw Account Master Keys,
+component keys, and extractable private keys are never written to IndexedDB or
+local storage. Nonextractable browser keys are still usable by JavaScript
+running in the same origin, so they do not protect against a malicious server
+that changes the served application.
+
+The focused
+[browser installation tests](../cantrip_app/src/lib/browser-installation-storage.test.ts)
+cover stable key reuse, multi-account bindings, nonextractability, persistence
+outcomes, and concurrent catalog writers. The
+[account encryption tests](../cantrip_app/src/lib/account-encryption.test.ts)
+cover released-record migration, restart unlock, cleared-storage recovery,
+corrupt legacy state, and the prohibition on blank-profile fallback. The
 [server connection test](../cantrip_app/src/lib/server-connections.test.ts)
-also verifies that switching servers locks in-memory encryption keys.
+also verifies that switching servers clears in-memory encryption keys without
+changing installation custody.
 
-An irreparably malformed local browser device record is different from an
-unknown future format. The remaining browser path retains its compatibility
-behavior until the browser recovery cycle replaces it. Tauri does not delete or
-replace a malformed legacy record: account mode uses the password recovery
-path, anonymous mode enters explicit recovery, and unknown versions remain
-untouched so a compatible client can still recover them.
-
-Nonextractable browser keys are still usable by JavaScript running in the same
-origin, so they do not protect against a malicious server that changes the
-served application. Clearing site data also deletes the device key and requires
-normal sign-in or authorization from an existing endpoint. Account
-initialization and the workspace-name adapter consume this custody boundary as
-described below.
-
-The durable native rollout is tracked in
-[ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md). Its storage
-contract separates one immutable installation profile and stable native key
-alias from server/account authorization bindings. Native SQLite catalogs hold
-only non-secret identity, public-key, binding, and migration metadata;
-platform secure storage owns private keys. Tauri now uses this path in normal
-startup, while browser and Capacitor rollout status remains explicit in the
-ledger.
-
-The replacement startup contract resolves state in this order: installation,
-authoritative server profile, native device key, account binding, legacy
-device, and finally an explicit account or anonymous recovery path. A missing
-binding or key is not permission to create one. Device-key providers own the
+The common startup contract resolves state in this order: installation,
+authoritative server profile, device key, account binding, legacy device, and
+finally an explicit account or anonymous recovery path. A missing binding or
+key is not permission to create a server profile. Device-key providers own the
 private-key unwrap operation; the renderer receives only the already-unwrapped
 Account Master Key required by the existing in-memory component-key service.
 

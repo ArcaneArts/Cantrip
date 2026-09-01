@@ -11,6 +11,7 @@ import {
 import {
   InstallationCatalogError,
   installationKeyAlias,
+  validateInstallationCatalogRecords,
   type ClientDeviceKeyCustodyBackend,
   type InstallationAccountBinding,
   type InstallationCatalog,
@@ -53,7 +54,7 @@ export type NativeCatalogOperation =
   | { deviceKey: InstallationDeviceKey; type: "put-device-key" }
   | { migration: InstallationMigration; type: "put-migration" };
 
-type NativeCatalogTransactionRequest = {
+export type InstallationCatalogTransactionRequest = {
   expectedRevision: number;
   operations: NativeCatalogOperation[];
 };
@@ -64,19 +65,22 @@ export type NativeInstallationStorageError = {
   retryable: boolean;
 };
 
-export interface NativeInstallationStorageBridge {
+export interface InstallationCatalogPersistenceBridge {
   readonly runtimeLabel: string;
   applyCatalogTransaction(
-    request: NativeCatalogTransactionRequest,
+    request: InstallationCatalogTransactionRequest,
   ): Promise<NativeInstallationCatalogSnapshot>;
+  isAvailable(): boolean;
+  readCatalog(): Promise<NativeInstallationCatalogSnapshot>;
+}
+
+export interface NativeInstallationStorageBridge extends InstallationCatalogPersistenceBridge {
   createKey(input: {
     createdAt?: string;
     installationId: string;
     keyAlias: string;
   }): Promise<ClientDeviceKeyDescriptor>;
   inspectKey(keyAlias: string): Promise<ClientDeviceKeyDescriptor | null>;
-  isAvailable(): boolean;
-  readCatalog(): Promise<NativeInstallationCatalogSnapshot>;
   status(): Promise<NativeInstallationStorageStatus>;
   unwrapAccountMasterKey(input: {
     keyAlias: string;
@@ -136,6 +140,7 @@ function cloneSnapshot(
       "The native installation catalog returned an invalid snapshot.",
     );
   }
+  validateInstallationCatalogRecords(snapshot);
   return {
     accountBindings: snapshot.accountBindings.map((binding) => ({
       ...binding,
@@ -427,22 +432,29 @@ class NativeInstallationCatalogDraft implements InstallationCatalogTransaction {
   }
 }
 
-export class NativeInstallationCatalog implements InstallationCatalog {
+type CatalogErrorMapper = (error: unknown) => never;
+
+export class PersistentInstallationCatalog implements InstallationCatalog {
   private transactionTail: Promise<void> = Promise.resolve();
 
-  constructor(private readonly bridge: NativeInstallationStorageBridge) {}
+  constructor(
+    private readonly bridge: InstallationCatalogPersistenceBridge,
+    private readonly mapError: CatalogErrorMapper = (error) => {
+      throw error;
+    },
+  ) {}
 
   private async readSnapshot(): Promise<NativeInstallationCatalogSnapshot> {
     if (!this.bridge.isAvailable()) {
       throw new InstallationCatalogError(
         "catalog-unavailable",
-        `Native installation storage requires the ${this.bridge.runtimeLabel} runtime.`,
+        `Installation storage requires the ${this.bridge.runtimeLabel} runtime.`,
       );
     }
     try {
       return cloneSnapshot(await this.bridge.readCatalog());
     } catch (error) {
-      return mapCatalogError(error);
+      return this.mapError(error);
     }
   }
 
@@ -493,23 +505,47 @@ export class NativeInstallationCatalog implements InstallationCatalog {
     });
     await predecessor;
     try {
-      const snapshot = await this.readSnapshot();
-      const transaction = new NativeInstallationCatalogDraft(snapshot);
-      const result = await operation(transaction);
-      if (transaction.operations.length > 0) {
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const snapshot = await this.readSnapshot();
+        const transaction = new NativeInstallationCatalogDraft(snapshot);
+        const result = await operation(transaction);
+        if (transaction.operations.length === 0) return result;
         try {
           await this.bridge.applyCatalogTransaction({
             expectedRevision: snapshot.revision,
             operations: transaction.operations,
           });
+          return result;
         } catch (error) {
-          mapCatalogError(error);
+          let mapped: unknown;
+          try {
+            this.mapError(error);
+          } catch (mappedError) {
+            mapped = mappedError;
+          }
+          if (
+            mapped instanceof InstallationCatalogError &&
+            mapped.code === "transaction-conflict" &&
+            attempt < 3
+          ) {
+            continue;
+          }
+          throw mapped;
         }
       }
-      return result;
+      throw new InstallationCatalogError(
+        "transaction-conflict",
+        "The installation catalog kept changing during the transaction.",
+      );
     } finally {
       release();
     }
+  }
+}
+
+export class NativeInstallationCatalog extends PersistentInstallationCatalog {
+  constructor(bridge: NativeInstallationStorageBridge) {
+    super(bridge, mapCatalogError);
   }
 }
 
