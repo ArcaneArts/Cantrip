@@ -140,6 +140,19 @@ function clonePublicKey(
   return { ...deviceKey, publicKey: { ...deviceKey.publicKey } };
 }
 
+function cloneMigration(
+  migration: InstallationMigration,
+): InstallationMigration {
+  // Native JSON encoders may omit nil optionals instead of emitting null.
+  // Normalize that wire representation before validating the shared catalog.
+  return {
+    ...migration,
+    completedAt: migration.completedAt ?? null,
+    startedAt: migration.startedAt ?? null,
+    verificationState: migration.verificationState ?? null,
+  };
+}
+
 function cloneSnapshot(
   snapshot: NativeInstallationCatalogSnapshot,
 ): NativeInstallationCatalogSnapshot {
@@ -156,17 +169,18 @@ function cloneSnapshot(
       "The native installation catalog returned an invalid snapshot.",
     );
   }
-  validateInstallationCatalogRecords(snapshot);
-  return {
+  const normalized = {
     accountBindings: snapshot.accountBindings.map((binding) => ({
       ...binding,
     })),
     deviceKeys: snapshot.deviceKeys.map(clonePublicKey),
     installation: snapshot.installation ? { ...snapshot.installation } : null,
-    migrations: snapshot.migrations.map((migration) => ({ ...migration })),
+    migrations: snapshot.migrations.map(cloneMigration),
     revision: snapshot.revision,
     schemaVersion: snapshot.schemaVersion,
   };
+  validateInstallationCatalogRecords(normalized);
+  return normalized;
 }
 
 function parseNativeStatus(
