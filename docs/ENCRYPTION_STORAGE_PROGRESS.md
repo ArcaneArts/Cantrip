@@ -1095,7 +1095,7 @@ goal work.
 ### Post-completion correction — prompt-free macOS development recovery
 
 - Branch: `codex/disable-dev-keychain-recovery`
-- Pull request: pending
+- Pull request: [#1564](https://github.com/ArcaneArts/Cantrip/pull/1564)
 - Merge: pending
 - Behavior implemented:
   - Removed all Apple Keychain access from the macOS `devtop` custody path.
