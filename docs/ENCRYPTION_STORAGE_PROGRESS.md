@@ -1179,3 +1179,47 @@ goal work.
   the private-data lock screen or any Keychain prompt. The agent did not launch
   the application because the user explicitly stopped authorizing the
   prompt-spamming build.
+
+### Post-completion correction — native authorization comparison and resume
+
+- Branch: `codex/fix-encryption-authorization-resume`
+- Pull request: [#1568](https://github.com/ArcaneArts/Cantrip/pull/1568)
+- Implementation commit: `8fc5aa64`
+- Merge: squash-merged as `8b492fb303990948192677c0476f8cc6bdd60bfe`
+- Behavior implemented:
+  - Replaced property-order-sensitive JSON serialization checks with an exact
+    field comparison for versioned HPKE public keys. Rust/native and
+    protocol-parsed objects with identical key material can no longer be
+    rejected merely because their properties were inserted in a different
+    order; a changed field still fails closed.
+  - Preserved an in-progress key-replacement checkpoint after the replacement
+    descriptor is cataloged. Startup no longer forgets that the matching
+    principal and grant may already have been committed by the server.
+  - Added a narrow transaction-resume path for the interruption window between
+    server authorization and local binding commit. It reconstructs only the
+    deterministic installation principal candidate, then requires the exact
+    public key and active Account Master Key grant before unwrapping, committing
+    the binding, and marking replacement verified.
+  - Preserved the existing installation ID, native key, server profile,
+    principal, grant, and encrypted data. The correction neither initializes a
+    second profile nor resets local state.
+- Validation:
+  - Focused client and account encryption suites — 39 tests passed.
+  - Full app Vitest suite — 356 files passed; 1,882 tests passed and 3 skipped.
+  - App typecheck and production build passed.
+  - Diff whitespace validation passed.
+- Supported platforms: public-key comparison and interrupted-binding recovery
+  live in the shared client coordinator. The reproduced state and immediate
+  recovery target are macOS Tauri `devtop`; native providers on Windows and
+  Linux use the same path. Browser and Capacitor behavior is not weakened.
+- Migration status: the default development profile's existing in-progress
+  `device-key-replacement-v1` checkpoint is now resumable. No key, binding,
+  principal, grant, recovery artifact, or encrypted payload is deleted.
+- Remaining work: none for implementation.
+- Known risks or blockers: no known code blocker. Resume deliberately refuses
+  a principal whose ID, public key, owner, grant state, component, or key
+  revision does not match the installation candidate.
+- Manual verification: restart `pnpm devtop` once. The existing default profile
+  should commit its already-created binding, mark replacement verified, and
+  open without the private-data lock screen or a Keychain prompt. The agent did
+  not launch the application or mutate the live profile manually.
