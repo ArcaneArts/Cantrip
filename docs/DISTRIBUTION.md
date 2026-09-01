@@ -188,20 +188,26 @@ the update-compatibility gate.
 Run `pnpm verify:installation-compatibility` before packaging. The gate checks
 the immutable version-one manifest at
 `scripts/installation-compatibility.v1.json` against the desktop, iOS, Android,
-browser, server, and encryption implementations, then opens representative
-version N state with each version N+1 platform harness. `pnpm release` executes
-it before advancing `release`; the native workflow repeats it in the desktop,
-Android, and iOS lanes, and the desktop lane additionally reopens a populated
-native Rust catalog on both macOS and Windows. A contract change without a
-named migration and test fixture blocks release.
+browser, server, and encryption implementations, then runs platform-path and
+browser-recovery contract simulations. `pnpm release` executes it before
+advancing `release`. A contract change without a named migration and test
+fixture blocks release.
 
-The deterministic harness proves stable identifiers, computed data paths,
-catalog/key aliases, server identity, representative project/settings/chat
-records, and an encrypted marker. It is not evidence that a signed installer,
-Keychain, Credential Manager, Secret Service, iOS Keychain, or Android
-Keystore worked on a physical target. Before changing a compatibility
-contract, test an actual in-place update on every affected platform and record
-the migration result in `docs/ENCRYPTION_STORAGE_PROGRESS.md`.
+The native workflow adds a different gate in each artifact lane. Current Rust,
+Swift, and Android Java storage readers consume the checked-in version-one
+catalog, custody record, and HPKE marker under
+`scripts/fixtures/installation-update`; they do not generate the historical
+state through the current writer. Desktop runs the Rust reader on macOS and
+Windows, iOS uses an isolated Keychain service, and Android uses its native
+SQLite/encrypted-record code with a deterministic test wrapping key.
+
+Together these gates prove stable contracts, native reader compatibility,
+catalog/key aliases, bindings, and marker decryption. They are not evidence
+that a signed installer, Credential Manager, Secret Service, mobile entitlement,
+or hardware-backed Android Keystore worked on a physical target. Before
+changing a compatibility contract, test an actual signed in-place update on
+every affected platform and record the migration result in
+`docs/ENCRYPTION_STORAGE_PROGRESS.md`.
 
 ### macOS distribution
 

@@ -396,22 +396,30 @@ migration and a deterministic test fixture. Editing both an implementation and
 the manifest cannot silently erase the original version-one baseline.
 
 `pnpm verify:installation-compatibility` compares every current implementation
-against that contract and runs version N to N+1 state harnesses for macOS and
-Windows Tauri, the stable development profile, ordinary browser upgrade,
-Capacitor iOS, and Capacitor Android. Each harness recomputes the version N+1
-paths, reopens the existing installation catalog and secure-key alias, retains
-the server identity, project, settings, and conversation marker, and decrypts
-an existing encrypted marker. A separate browser-storage-loss harness confirms
-that password or anonymous recovery creates a replacement browser installation
-while preserving the authoritative server identity and encrypted domain data.
+against that contract. Its platform simulations recompute the stable data
+locations for macOS and Windows Tauri, the named development profile, ordinary
+browser upgrade, Capacitor iOS, and Capacitor Android; they verify that server
+identity and representative domain data remain at those locations. A separate
+browser-storage-loss simulation and the browser IndexedDB tests cover
+replacement-device recovery without blank-profile initialization.
 
-The Rust storage suite also closes and reopens a populated native catalog and
-key provider. The native release workflow runs that test on both macOS and
-Windows and runs the cross-platform gate before desktop, Android, or iOS
-artifacts can publish. `pnpm release` runs the same gate before advancing the
-release branch or deploying the browser/server. These deterministic harnesses
-do not replace signed-package, physical-device, or browser-engine update smoke
-tests; those remain separately disclosed in the progress ledger.
+Native reader compatibility is proven independently of that JavaScript
+simulation. A frozen version-one SQLite catalog, custody record, and HPKE-wrapped
+Account Master Key marker are checked in under
+`scripts/fixtures/installation-update`. The current Rust Tauri reader consumes
+that fixture on macOS and Windows release runners. The current Swift reader
+consumes it through an isolated Keychain service on the iOS release runner. The
+current Android Java reader consumes it through its SQLite and encrypted-record
+formats with an injected deterministic wrapping key, then decrypts the same
+HPKE marker. None of those tests calls the current catalog or key writer to
+construct version-one state.
+
+The native release workflow runs the corresponding platform fixture before an
+artifact can publish. `pnpm release` runs the immutable contract gate before
+advancing the release branch or deploying the browser/server. These gates do
+not claim to simulate an App Store, Play Store, or signed desktop installer:
+signed-package, physical-device, hardware-backed credential-store, and
+production-browser update smokes remain operational release checks.
 
 #### Durable-storage completion audit
 
@@ -429,9 +437,10 @@ and explicit recovery boundary.
 | Capacitor Android | Native SQLite catalog       | Android Keystore-backed encrypted key record                  | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
 | Browser           | Versioned IndexedDB catalog | Nonextractable WebCrypto key                                  | Account password provisions a replacement browser installation; anonymous mode imports its recovery artifact |
 
-The compatibility gate verifies seven ordinary-update or storage-loss
-harnesses and is release-blocking. Native catalog reopen tests exercise the
-same installation, alias, bindings, and encrypted marker across an update.
+The compatibility gate verifies seven platform-contract or storage-loss
+simulations and is release-blocking. Separate native frozen-fixture readers
+exercise the same installation, alias, bindings, custody record, and encrypted
+marker without regenerating version-one state through current code.
 Signed-package, physical-device, Linux desktop-session, and production-browser
 smokes remain operational release checks because shared test environments
 cannot prove OS entitlements or storage eviction policy. The definitive cycle

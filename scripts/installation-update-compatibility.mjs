@@ -27,7 +27,7 @@ const markerAssociatedData = Buffer.from(
   "utf8",
 );
 
-export const updateCompatibilityPlatforms = [
+export const installationContractSimulationPlatforms = [
   "tauri-macos",
   "tauri-windows",
   "development-rebuild",
@@ -713,12 +713,12 @@ export async function runBrowserStorageLossRecoveryHarness({ contract } = {}) {
   }
 }
 
-export async function runUpdateCompatibilityHarness({
+export async function runInstallationContractSimulation({
   contract,
   platform,
   root,
 } = {}) {
-  assert.ok(updateCompatibilityPlatforms.includes(platform));
+  assert.ok(installationContractSimulationPlatforms.includes(platform));
   const temporaryRoot =
     root ??
     (await mkdtemp(path.join(os.tmpdir(), `cantrip-update-${platform}-`)));
@@ -747,8 +747,9 @@ export async function runUpdateCompatibilityHarness({
     createCatalog(catalogPath, contract, installationId, keyAlias);
     const serverId = createServerState(serverDatabasePath, contract, markerKey);
 
-    // Version N+1 recomputes every location from the compatibility contract and
-    // opens the data in place. No path or identifier is carried from version N.
+    // A second contract consumer recomputes every location and opens the data
+    // in place. Native version-N reader compatibility is proven separately by
+    // the frozen Rust, Swift, and Android fixtures in the release lanes.
     const updatedAppData = applicationDataDirectory(
       temporaryRoot,
       platform,
@@ -787,8 +788,10 @@ export async function verifyInstallationUpdateCompatibility({
     root,
   });
   const platforms = [];
-  for (const platform of updateCompatibilityPlatforms) {
-    platforms.push(await runUpdateCompatibilityHarness({ contract, platform }));
+  for (const platform of installationContractSimulationPlatforms) {
+    platforms.push(
+      await runInstallationContractSimulation({ contract, platform }),
+    );
   }
   platforms.push(await runBrowserStorageLossRecoveryHarness({ contract }));
   return { changes, platforms };
@@ -801,7 +804,7 @@ if (isMain) {
   verifyInstallationUpdateCompatibility()
     .then(({ changes, platforms }) => {
       console.log(
-        `Installation compatibility verified: ${platforms.length} update harnesses passed; ${changes.length} approved contract migrations active.`,
+        `Installation compatibility verified: ${platforms.length} contract/recovery simulations passed; ${changes.length} approved contract migrations active. Native frozen-fixture readers run in their platform release lanes.`,
       );
     })
     .catch((error) => {

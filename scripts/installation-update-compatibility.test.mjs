@@ -5,9 +5,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  installationContractSimulationPlatforms,
   runBrowserStorageLossRecoveryHarness,
-  runUpdateCompatibilityHarness,
-  updateCompatibilityPlatforms,
+  runInstallationContractSimulation,
   validateCompatibilityManifest,
   verifyRepositoryCompatibilityContracts,
 } from "./installation-update-compatibility.mjs";
@@ -58,17 +58,19 @@ test("the version-one baseline cannot be rewritten", async () => {
   );
 });
 
-test("version N state opens in place after every supported version N+1 harness", async () => {
+test("every supported platform path preserves state in the contract simulation", async () => {
   const { contract } = validateCompatibilityManifest(await manifest(), {
     root,
   });
   const results = [];
-  for (const platform of updateCompatibilityPlatforms) {
-    results.push(await runUpdateCompatibilityHarness({ contract, platform }));
+  for (const platform of installationContractSimulationPlatforms) {
+    results.push(
+      await runInstallationContractSimulation({ contract, platform }),
+    );
   }
   assert.deepEqual(
     results,
-    updateCompatibilityPlatforms.map((platform) => ({
+    installationContractSimulationPlatforms.map((platform) => ({
       platform,
       status: "passed",
     })),

@@ -160,18 +160,24 @@ final class CantripInstallationStorage {
     private let catalogURL: URL
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private let keychainServiceName: String
     private let lock = NSLock()
 
-    init() throws {
+    convenience init() throws {
         let root = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
         )
-        let directory = root.appendingPathComponent("installation/v1", isDirectory: true)
+        try self.init(rootURL: root, keychainService: keychainService)
+    }
+
+    init(rootURL: URL, keychainService: String) throws {
+        let directory = rootURL.appendingPathComponent("installation/v1", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         catalogURL = directory.appendingPathComponent("catalog.sqlite3", isDirectory: false)
+        keychainServiceName = keychainService
     }
 
     func status() -> [String: Any] {
@@ -264,7 +270,7 @@ final class CantripInstallationStorage {
             defer { serialized.resetBytes(in: 0..<serialized.count) }
             let status = SecItemAdd([
                 kSecClass: kSecClassGenericPassword,
-                kSecAttrService: keychainService,
+                kSecAttrService: keychainServiceName,
                 kSecAttrAccount: input.keyAlias,
                 kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
                 kSecValueData: serialized
@@ -597,7 +603,7 @@ final class CantripInstallationStorage {
         var result: CFTypeRef?
         let status = SecItemCopyMatching([
             kSecClass: kSecClassGenericPassword,
-            kSecAttrService: keychainService,
+            kSecAttrService: keychainServiceName,
             kSecAttrAccount: keyAlias,
             kSecReturnData: true,
             kSecMatchLimit: kSecMatchLimitOne

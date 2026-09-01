@@ -39,6 +39,41 @@ import org.json.JSONObject;
 
 final class CantripInstallationStorage {
 
+    interface WrappingKeyStore {
+        SecretKey get(String keyAlias) throws Exception;
+
+        SecretKey getOrCreate(String keyAlias) throws Exception;
+    }
+
+    private static final class AndroidKeystoreWrappingKeyStore implements WrappingKeyStore {
+
+        @Override
+        public SecretKey get(String keyAlias) throws Exception {
+            KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+            keyStore.load(null);
+            java.security.Key key = keyStore.getKey(wrappingKeyAlias(keyAlias), null);
+            return key instanceof SecretKey ? (SecretKey) key : null;
+        }
+
+        @Override
+        public SecretKey getOrCreate(String keyAlias) throws Exception {
+            SecretKey existing = get(keyAlias);
+            if (existing != null) return existing;
+            KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+            generator.init(
+                new KeyGenParameterSpec.Builder(
+                    wrappingKeyAlias(keyAlias),
+                    KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setRandomizedEncryptionRequired(true)
+                    .build()
+            );
+            return generator.generateKey();
+        }
+    }
+
     static final class StorageException extends Exception {
 
         final String code;
@@ -74,11 +109,20 @@ final class CantripInstallationStorage {
     private final File catalogFile;
     private final Object lock = new Object();
     private final SharedPreferences preferences;
+    private final WrappingKeyStore wrappingKeys;
 
     CantripInstallationStorage(Context context) {
-        File directory = new File(context.getFilesDir(), "installation/v1");
-        catalogFile = new File(directory, "catalog.sqlite3");
-        preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+        this(
+            new File(new File(context.getFilesDir(), "installation/v1"), "catalog.sqlite3"),
+            context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE),
+            new AndroidKeystoreWrappingKeyStore()
+        );
+    }
+
+    CantripInstallationStorage(File catalogFile, SharedPreferences preferences, WrappingKeyStore wrappingKeys) {
+        this.catalogFile = catalogFile;
+        this.preferences = preferences;
+        this.wrappingKeys = wrappingKeys;
     }
 
     JSObject status() {
@@ -176,7 +220,7 @@ final class CantripInstallationStorage {
                 publicKey = CantripHpke.publicKeyBytes((ECPublicKey) pair.getPublic());
                 new SecureRandom().nextBytes(iv);
                 Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-                cipher.init(Cipher.ENCRYPT_MODE, getOrCreateWrappingKey(keyAlias), new GCMParameterSpec(128, iv));
+                cipher.init(Cipher.ENCRYPT_MODE, wrappingKeys.getOrCreate(keyAlias), new GCMParameterSpec(128, iv));
                 cipher.updateAAD(keyAlias.getBytes(StandardCharsets.UTF_8));
                 encrypted = cipher.doFinal(privateKey);
                 String createdAt = requestedCreatedAt == null ? Instant.now().toString() : requestedCreatedAt;
@@ -310,7 +354,7 @@ final class CantripInstallationStorage {
     private Set<String> userTables(SQLiteDatabase database) {
         Set<String> result = new HashSet<>();
         try (Cursor cursor = database.rawQuery(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata'",
             null
         )) {
             while (cursor.moveToNext()) result.add(cursor.getString(0));
@@ -720,7 +764,7 @@ final class CantripInstallationStorage {
         try {
             encrypted = decodeVariableBase64Url(record.optString("encryptedPrivateKey"));
             iv = CantripHpke.decodeBase64Url(record.optString("iv"), 12);
-            SecretKey wrappingKey = getWrappingKey(record.optString("keyAlias"));
+            SecretKey wrappingKey = wrappingKeys.get(record.optString("keyAlias"));
             if (wrappingKey == null) throw new StorageException("native-device-key-missing");
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, wrappingKey, new GCMParameterSpec(128, iv));
@@ -735,31 +779,7 @@ final class CantripInstallationStorage {
         }
     }
 
-    private SecretKey getOrCreateWrappingKey(String keyAlias) throws Exception {
-        SecretKey existing = getWrappingKey(keyAlias);
-        if (existing != null) return existing;
-        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-        generator.init(
-            new KeyGenParameterSpec.Builder(
-                wrappingKeyAlias(keyAlias),
-                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        );
-        return generator.generateKey();
-    }
-
-    private SecretKey getWrappingKey(String keyAlias) throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
-        keyStore.load(null);
-        java.security.Key key = keyStore.getKey(wrappingKeyAlias(keyAlias), null);
-        return key instanceof SecretKey ? (SecretKey) key : null;
-    }
-
-    private String wrappingKeyAlias(String keyAlias) throws Exception {
+    private static String wrappingKeyAlias(String keyAlias) throws Exception {
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(keyAlias.getBytes(StandardCharsets.UTF_8));
         try {
             return "cantrip.installation.wrap.v1." + CantripHpke.encodeBase64Url(digest);
@@ -770,10 +790,12 @@ final class CantripInstallationStorage {
 
     private long catalogRevision(SQLiteDatabase database) throws StorageException {
         try (Cursor cursor = database.rawQuery("SELECT revision FROM catalog_meta WHERE singleton_id = 1", null)) {
-            if (!cursor.moveToFirst() || cursor.getLong(0) < 0 || cursor.moveToNext()) {
+            if (!cursor.moveToFirst()) {
                 throw new StorageException("installation-catalog-corrupt");
             }
-            return cursor.getLong(0);
+            long revision = cursor.getLong(0);
+            if (revision < 0 || cursor.moveToNext()) throw new StorageException("installation-catalog-corrupt");
+            return revision;
         }
     }
 

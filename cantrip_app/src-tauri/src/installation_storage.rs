@@ -1579,56 +1579,73 @@ mod tests {
     }
 
     #[test]
-    fn update_reopens_existing_installation_state() {
-        let (directory, storage, secrets) = test_storage_with_secrets();
-        create_profile(&storage);
-        let descriptor = create_key_and_metadata(&storage);
-        storage
-            .apply_transaction(NativeCatalogTransactionRequest {
-                expected_revision: 2,
-                operations: vec![
-                    NativeCatalogOperation::PutAccountBinding {
-                        binding: NativeInstallationAccountBinding {
-                            grant_revision: 4,
-                            key_alias: descriptor.key_alias.clone(),
-                            master_key_revision: 2,
-                            owner_id: "owner-update".to_owned(),
-                            principal_id: "principal-update".to_owned(),
-                            server_id: "server-update".to_owned(),
-                            updated_at: "2026-08-31T20:00:02.000Z".to_owned(),
-                        },
-                    },
-                    NativeCatalogOperation::PutMigration {
-                        migration: NativeInstallationMigration {
-                            completed_at: Some("2026-08-31T20:00:03.000Z".to_owned()),
-                            migration_id: "update-fixture-v1".to_owned(),
-                            started_at: Some("2026-08-31T20:00:02.000Z".to_owned()),
-                            state: "verified".to_owned(),
-                            verification_state: Some("encrypted-marker-opened-v1".to_owned()),
-                        },
-                    },
-                ],
-            })
-            .expect("store version N state");
-        drop(storage);
+    fn frozen_version_one_fixture_opens_and_decrypts_with_current_runtime() {
+        let directory = tempdir().expect("temp directory");
+        let catalog_path = directory.path().join("installation/v1/catalog.sqlite3");
+        prepare_catalog_parent(&catalog_path).expect("catalog parent");
 
-        let reopened = NativeInstallationStorage::open(
-            directory.path().join("installation/v1/catalog.sqlite3"),
-            secrets,
-        )
-        .expect("open version N state with version N+1 runtime");
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../scripts/fixtures/installation-update/v1-custody.json"
+        ))
+        .expect("frozen custody fixture");
+        assert_eq!(fixture["fixtureVersion"], 1);
+        let key_alias = fixture["keyAlias"]
+            .as_str()
+            .expect("frozen key alias")
+            .to_owned();
+        let secrets = Arc::new(MemorySecretStore::default());
+        secrets
+            .put(
+                &key_alias,
+                &serde_json::to_vec(&fixture["tauriSecretRecord"]).expect("frozen secret record"),
+            )
+            .expect("seed version-one secret custody");
+
+        let version_one_sql =
+            include_str!("../../../scripts/fixtures/installation-update/v1-catalog.sql")
+                .replace("__CANTRIP_NATIVE_PROVIDER__", native_key_provider());
+        Connection::open(&catalog_path)
+            .expect("version-one catalog")
+            .execute_batch(&version_one_sql)
+            .expect("seed frozen version-one catalog");
+
+        let reopened = NativeInstallationStorage::open(catalog_path, secrets)
+            .expect("open version-one state with current runtime");
         let snapshot = reopened.snapshot().expect("update snapshot");
         assert_eq!(snapshot.installation, Some(profile()));
         assert_eq!(snapshot.device_keys.len(), 1);
-        assert_eq!(snapshot.device_keys[0].key_alias, descriptor.key_alias);
+        assert_eq!(snapshot.device_keys[0].key_alias, key_alias);
+        assert_eq!(snapshot.device_keys[0].provider, native_key_provider());
         assert_eq!(snapshot.account_bindings.len(), 1);
-        assert_eq!(snapshot.account_bindings[0].server_id, "server-update");
-        assert_eq!(snapshot.migrations.len(), 1);
         assert_eq!(
-            reopened
-                .inspect_key(&descriptor.key_alias)
-                .expect("inspect key after update"),
-            Some(descriptor)
+            snapshot.account_bindings[0].server_id,
+            "server-update-fixture"
+        );
+        assert_eq!(snapshot.migrations.len(), 1);
+        let descriptor = reopened
+            .inspect_key(&key_alias)
+            .expect("inspect key after update")
+            .expect("version-one key remains available");
+        assert_eq!(descriptor.key_alias, key_alias);
+        assert_eq!(
+            descriptor.public_key.value,
+            fixture["publicKey"].as_str().expect("frozen public key")
+        );
+
+        let unwrap_input: NativeMasterKeyUnwrapInput = serde_json::from_value(serde_json::json!({
+            "keyAlias": key_alias,
+            "ownerId": fixture["ownerId"],
+            "wrapper": fixture["accountMasterKeyWrapper"],
+        }))
+        .expect("frozen master-key wrapper");
+        let opened = reopened
+            .unwrap_account_master_key(unwrap_input)
+            .expect("decrypt version-one marker");
+        assert_eq!(
+            URL_SAFE_NO_PAD.encode(opened.0.as_slice()),
+            fixture["expectedAccountMasterKey"]
+                .as_str()
+                .expect("expected account master key")
         );
     }
 

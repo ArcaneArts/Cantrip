@@ -1,0 +1,53 @@
+{
+  "fixtureVersion": 1,
+  "installationId": "5f83bb42-5671-4b11-a87f-32842af21af2",
+  "keyAlias": "cantrip.installation.5f83bb42-5671-4b11-a87f-32842af21af2.hpke.v1",
+  "createdAt": "2026-08-31T20:00:01.000Z",
+  "publicKey": "BFm_YxDfIRPBuAS45UTQYjE8vzxylVItLMAVyHFU6lIiPo7gCNlzos45NP7Dn2vfhj1cxO-yYGwrBdlAmOzin1M",
+  "privateKeyRaw": "GWNtSM7CrLBobff0RFc_ShU9pQNYlyleLZ9PF-4oz24",
+  "tauriSecretRecord": {
+    "createdAt": "2026-08-31T20:00:01.000Z",
+    "installationId": "5f83bb42-5671-4b11-a87f-32842af21af2",
+    "keyAlias": "cantrip.installation.5f83bb42-5671-4b11-a87f-32842af21af2.hpke.v1",
+    "privateKey": "GWNtSM7CrLBobff0RFc_ShU9pQNYlyleLZ9PF-4oz24",
+    "version": 1
+  },
+  "iosKeychainRecord": {
+    "createdAt": "2026-08-31T20:00:01.000Z",
+    "installationId": "5f83bb42-5671-4b11-a87f-32842af21af2",
+    "keyAlias": "cantrip.installation.5f83bb42-5671-4b11-a87f-32842af21af2.hpke.v1",
+    "privateKey": "GWNtSM7CrLBobff0RFc_ShU9pQNYlyleLZ9PF-4oz24",
+    "publicKey": "BFm_YxDfIRPBuAS45UTQYjE8vzxylVItLMAVyHFU6lIiPo7gCNlzos45NP7Dn2vfhj1cxO-yYGwrBdlAmOzin1M",
+    "version": 1
+  },
+  "androidWrappingKey": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI",
+  "androidKeyRecord": {
+    "createdAt": "2026-08-31T20:00:01.000Z",
+    "encryptedPrivateKey": "JRBDQ-jG9i0g7wgs9fyupG39O1ow455Qs6XLXjv1jBEDClWlZCfHVBuEHAc6w1Vm_O44GoXAOCngoD0nHdiugKZQ92ULcfbqIOs2w7KXIXY0rEujhGb_bFhvYClpLYafz1EO3_7YWUCWjl1S8YfsZKCzsnIjxjSepbe6y0FKjn5xOZyaaJ3s_ZZOdtZc0rHWahh7cKu9bFqKVg",
+    "installationId": "5f83bb42-5671-4b11-a87f-32842af21af2",
+    "iv": "JCQkJCQkJCQkJCQk",
+    "keyAlias": "cantrip.installation.5f83bb42-5671-4b11-a87f-32842af21af2.hpke.v1",
+    "publicKey": "BFm_YxDfIRPBuAS45UTQYjE8vzxylVItLMAVyHFU6lIiPo7gCNlzos45NP7Dn2vfhj1cxO-yYGwrBdlAmOzin1M",
+    "version": 1
+  },
+  "accountMasterKeyWrapper": {
+    "clientId": "principal-typescript-fixture",
+    "envelope": {
+      "algorithm": "HPKE-RFC9180",
+      "ciphertext": "98u_jm9tt8G_c3OwxvFx7fZOicyrsoK3La8XB1RRGsDneXd6gMaFpkb77z5BN98v",
+      "encapsulatedKey": "BGkT85BaSxTdeamdxr3Q7440QJ112z-MkNB2QpGOgju-WoxFFPNqLg5UJPeKwd1vBbR1KRDY0pIukEgUYVXbSCE",
+      "suite": {
+        "aead": "AES-256-GCM",
+        "kdf": "HKDF-SHA256",
+        "kem": "DHKEM(P-256,HKDF-SHA256)",
+        "mode": "base"
+      },
+      "version": 1
+    },
+    "masterKeyRevision": 7,
+    "purpose": "client-account-master-key",
+    "version": 1
+  },
+  "ownerId": "owner-typescript-fixture",
+  "expectedAccountMasterKey": "Ly8vLy8vLy8vLy8vLy8vLy8vLy8vLy8vLy8vLy8vLy8"
+}
