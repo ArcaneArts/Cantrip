@@ -616,6 +616,13 @@ describe("Cantrip MCP worker broker", () => {
             },
           },
         });
+        const compatibilityHelp = await client.callTool({
+          name: "tool_help",
+          arguments: { toolName: "web_search" },
+        });
+        expect(compatibilityHelp).toMatchObject({
+          structuredContent: { data: { tool: "web_search" } },
+        });
         expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toContain("web_session_open");
       } finally {
         await client.close();
@@ -666,6 +673,7 @@ describe("Cantrip MCP worker broker", () => {
         ).toMatchObject({
           properties: {
             tool: { enum: [...CANTRIP_MCP_STANDALONE_TOOL_NAMES] },
+            toolName: { enum: [...CANTRIP_MCP_STANDALONE_TOOL_NAMES] },
           },
         });
         await expect(
@@ -687,7 +695,7 @@ describe("Cantrip MCP worker broker", () => {
         await expect(
           client.callTool({
             name: "tool_help",
-            arguments: { tool: "web_search" },
+            arguments: { toolName: "web_search" },
           }),
         ).resolves.toMatchObject({
           structuredContent: { data: { tool: "web_search" } },

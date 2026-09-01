@@ -22,6 +22,7 @@ import {
 } from "@cantrip/protocol";
 
 import { spawnGuardedProcess } from "../code/process-guard.js";
+import { workerLogErrorIdentity, workerLogger } from "../logger.js";
 import {
   ManagedRuntimeInstaller,
   publicManagedWebRuntimeStatus,
@@ -288,6 +289,13 @@ function boundedDiagnostic(current: string, chunk: unknown): string {
     : combined.slice(-MAX_DIAGNOSTIC_CHARACTERS);
 }
 
+function isTimeoutError(error: unknown): boolean {
+  return (
+    (error instanceof Error && error.name === "TimeoutError") ||
+    (error instanceof Error && /\btime(?:d)?\s*out\b/iu.test(error.message))
+  );
+}
+
 function isolatedEnvironment(
   home: string,
   temporary: string,
@@ -324,6 +332,7 @@ export class SearxngRuntimeManager {
   #failureCount = 0;
   #operation: Promise<void> | null = null;
   #restartTimer: ReturnType<typeof setTimeout> | null = null;
+  #restartAfterRequestTimeout = false;
   #rollbackAttempted = false;
   #runtimeFailure: ManagedWebRuntimeStatus["failure"] = null;
   #spawnError: Error | null = null;
@@ -436,6 +445,7 @@ export class SearxngRuntimeManager {
     const endpoint = await this.endpoint();
     const url = new URL(pathname, endpoint.origin);
     url.search = search.toString();
+    const startedAt = Date.now();
     this.#activeRequests += 1;
     try {
       const response = await this.#fetch(url, {
@@ -444,10 +454,104 @@ export class SearxngRuntimeManager {
       });
       if (!response.ok)
         throw new Error(`Search runtime returned HTTP ${response.status}.`);
-      return await response.json();
+      const payload = await response.json();
+      workerLogger.event("debug", "Managed search request completed", {
+        event: "worker.search-runtime.request-completed",
+        subsystem: "managed-web-runtime",
+        operation: "search",
+        status: "completed",
+        component: "searxng",
+        version: endpoint.version,
+        durationMs: Date.now() - startedAt,
+      });
+      return payload;
+    } catch (error) {
+      const timedOut = isTimeoutError(error);
+      if (timedOut) this.#restartAfterRequestTimeout = true;
+      workerLogger.event(
+        "warn",
+        timedOut
+          ? "Managed search request timed out"
+          : "Managed search request failed",
+        {
+          event: timedOut
+            ? "worker.search-runtime.request-timed-out"
+            : "worker.search-runtime.request-failed",
+          subsystem: "managed-web-runtime",
+          operation: "search",
+          reasonCode: timedOut ? "request-timeout" : "request-failed",
+          status: timedOut ? "retrying" : "failed",
+          component: "searxng",
+          version: endpoint.version,
+          durationMs: Date.now() - startedAt,
+          ...workerLogErrorIdentity(error),
+        },
+      );
+      if (timedOut) {
+        throw new Error(
+          `Managed web search timed out after ${timeoutMs} ms; the search runtime is restarting.`,
+          { cause: error },
+        );
+      }
+      throw error;
     } finally {
       this.#activeRequests -= 1;
+      if (this.#activeRequests === 0 && this.#restartAfterRequestTimeout) {
+        this.#restartAfterRequestTimeout = false;
+        this.#queueRequestTimeoutRecovery();
+      }
     }
+  }
+
+  #queueRequestTimeoutRecovery(): void {
+    if (this.#closed) return;
+    if (this.#operation) {
+      this.#restartAfterRequestTimeout = true;
+      return;
+    }
+    const startedAt = Date.now();
+    workerLogger.event("info", "Managed search runtime recovery started", {
+      event: "worker.search-runtime.recovery-started",
+      subsystem: "managed-web-runtime",
+      operation: "recover-searxng",
+      reasonCode: "request-timeout",
+      status: "started",
+      component: "searxng",
+    });
+    this.#operation = (async () => {
+      await this.#stopChild();
+      if (!this.#closed) await this.#reconcile();
+    })()
+      .then(() => {
+        workerLogger.event("info", "Managed search runtime recovered", {
+          event: "worker.search-runtime.recovery-completed",
+          subsystem: "managed-web-runtime",
+          operation: "recover-searxng",
+          status: "completed",
+          component: "searxng",
+          durationMs: Date.now() - startedAt,
+        });
+      })
+      .catch((error) => {
+        if (!this.#runtimeFailure) this.#recordFailure(error);
+        workerLogger.event("warn", "Managed search runtime recovery failed", {
+          event: "worker.search-runtime.recovery-failed",
+          subsystem: "managed-web-runtime",
+          operation: "recover-searxng",
+          reasonCode: "runtime-unavailable",
+          status: "failed",
+          component: "searxng",
+          durationMs: Date.now() - startedAt,
+          ...workerLogErrorIdentity(error),
+        });
+      })
+      .finally(() => {
+        this.#operation = null;
+        if (this.#activeRequests === 0 && this.#restartAfterRequestTimeout) {
+          this.#restartAfterRequestTimeout = false;
+          this.#queueRequestTimeoutRecovery();
+        }
+      });
   }
 
   async close(): Promise<void> {

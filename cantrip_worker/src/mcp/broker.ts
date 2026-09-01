@@ -417,6 +417,7 @@ export class CantripMcpBroker {
         return;
       }
       void (async () => {
+        const startedAt = Date.now();
         let requestId = randomUUID();
         let bindingId: string | null = null;
         let operation: string = "execute";
@@ -541,12 +542,18 @@ export class CantripMcpBroker {
           workerLogger.event("warn", "Cantrip MCP broker request failed", {
             event: "mcp.request.failed",
             subsystem: "mcp-broker",
-            operation: "execute",
-            reasonCode: "request-failed",
+            operation,
+            reasonCode:
+              operation === "web.search" &&
+              error instanceof Error &&
+              /\btime(?:d)?\s*out\b/iu.test(error.message)
+                ? "operation-timeout"
+                : "request-failed",
             status: "failed",
             requestId,
+            durationMs: Date.now() - startedAt,
             error: {
-              message: "Cantrip MCP operation validation failed.",
+              message: "Cantrip MCP operation failed.",
               name: error instanceof Error ? error.name : "UnknownError",
             },
           });
