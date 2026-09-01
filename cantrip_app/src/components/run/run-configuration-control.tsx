@@ -303,11 +303,14 @@ export function RunConfigurationControl({
   const deleteItem =
     model.configurations.find(({ id }) => id === deleteConfigurationId) ?? null;
 
+  const refreshConfigurations = () =>
+    queryClient.invalidateQueries({
+      exact: true,
+      queryKey: ["run-configurations", projectId],
+    });
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ["run-configurations", projectId],
-      }),
+      refreshConfigurations(),
       queryClient.invalidateQueries({
         queryKey: ["run-configuration-runtimes", projectId],
       }),
@@ -392,22 +395,16 @@ export function RunConfigurationControl({
     model.invalidConfigurations.length === 0 &&
     !error;
 
-  const selectorContent = emptyRepository ? (
-    loading ? (
-      <Loader2 className="size-3.5 animate-spin" />
-    ) : (
-      <ListVideo className="size-4" />
-    )
-  ) : (
+  const selectorContent = (
     <>
       {loading ? (
         <Loader2 className="size-3.5 animate-spin" />
+      ) : selected ? (
+        <ProviderIcon provider={selected.provider} />
       ) : (
-        <ProviderIcon provider={selected?.provider} />
+        <ListVideo className="size-4" />
       )}
-      <span className="truncate">
-        {selected?.name ?? "Add Run Configuration"}
-      </span>
+      <span className="truncate">{selected?.name ?? "Run Configurations"}</span>
       <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
     </>
   );
@@ -417,30 +414,28 @@ export function RunConfigurationControl({
       className="flex min-w-0 items-center gap-0.5"
       data-run-configuration-control="true"
     >
-      {selected ? (
-        <LifecycleButtons
-          compact
-          disabled={!selected.primary?.available}
-          disabledReason={
-            selected.primary?.reason ?? "Primary worktree unavailable."
-          }
-          pending={pendingFor(selected, selected.primary)}
-          runtime={selected.primary?.runtime}
-          stopDisabled={!selected.primary?.stopAvailable}
-          stopDisabledReason={selected.primary?.stopReason}
-          onOperate={(operation) =>
-            operate(selected, selected.primary, operation)
-          }
-        />
-      ) : null}
+      <LifecycleButtons
+        compact
+        disabled={!selected?.primary?.available}
+        disabledReason={
+          selected?.primary?.reason ??
+          (loading
+            ? "Run configurations are loading."
+            : "Choose a Run configuration to run.")
+        }
+        pending={selected ? pendingFor(selected, selected.primary) : false}
+        runtime={selected?.primary?.runtime}
+        stopDisabled={!selected?.primary?.stopAvailable}
+        stopDisabledReason={selected?.primary?.stopReason}
+        onOperate={(operation) => {
+          if (selected) operate(selected, selected.primary, operation);
+        }}
+      />
       <Popover
-        open={emptyRepository ? false : menuOpen}
+        open={menuOpen}
         onOpenChange={(open) => {
-          if (open && emptyRepository) {
-            if (!loading) onEditorConfigurationChange("new");
-            return;
-          }
           setMenuOpen(open);
+          if (open) void refreshConfigurations();
           if (!open) setSearch("");
         }}
       >
@@ -449,17 +444,11 @@ export function RunConfigurationControl({
             <span className="inline-flex min-w-0 shrink-0">
               <PopoverTrigger asChild>
                 <Button
-                  aria-label={
-                    emptyRepository ? "Add Run Configuration" : undefined
-                  }
                   className={cn(
-                    emptyRepository
-                      ? "size-8 text-muted-foreground hover:text-foreground"
-                      : "min-w-0 justify-between px-2",
-                    !emptyRepository && (compact ? "max-w-36" : "max-w-64"),
+                    "min-w-0 justify-between px-2",
+                    compact ? "max-w-36" : "max-w-64",
                   )}
-                  disabled={emptyRepository && loading}
-                  size={emptyRepository ? "icon" : "sm"}
+                  size="sm"
                   variant="ghost"
                 >
                   {selectorContent}
@@ -470,7 +459,7 @@ export function RunConfigurationControl({
           <TooltipContent side="bottom">
             {selected
               ? `${selected.name} · ${selected.targetLabel}`
-              : "Add Run Configuration"}
+              : "Run Configurations"}
           </TooltipContent>
         </Tooltip>
         <PopoverContent
@@ -500,7 +489,13 @@ export function RunConfigurationControl({
               </TooltipButton>
             </div>
             <CommandList className="max-h-[28rem]">
-              <CommandEmpty>No matching Run configurations.</CommandEmpty>
+              <CommandEmpty>
+                {loading
+                  ? "Loading Run configurations…"
+                  : emptyRepository
+                    ? "No Run configurations yet."
+                    : "No matching Run configurations."}
+              </CommandEmpty>
               <CommandGroup heading="Run configurations">
                 {model.configurations.map((item) => (
                   <div className="py-0.5" key={item.id}>

@@ -621,6 +621,17 @@ describe("application live query bridge", () => {
       appLiveEventQueryKeys(
         event({
           resource: "chat",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([
+      ["chats", "project-one"],
+      ["run-configurations", "project-one"],
+    ]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          resource: "chat",
           scope: { kind: "chat", chatId: "chat-one" },
         }),
       ),

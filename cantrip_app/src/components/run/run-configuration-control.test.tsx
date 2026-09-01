@@ -236,13 +236,17 @@ describe("Run configuration control", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("opens the editor directly from an empty project control", async () => {
+  it("keeps the empty project dropdown and refreshes it when opened", async () => {
     const onEditorConfigurationChange = vi.fn();
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = TestRenderer.create(
         <TooltipProvider delayDuration={0}>
-          <QueryClientProvider client={new QueryClient()}>
+          <QueryClientProvider client={queryClient}>
             <RunConfigurationControl
               editorConfigurationId={null}
               inventory={emptyInventory}
@@ -260,26 +264,39 @@ describe("Run configuration control", () => {
       );
     });
 
-    const add = renderer.root.find(
-      (node) =>
-        node.type === "button" &&
-        node.props["aria-label"] === "Add Run Configuration",
+    const run = renderer.root.find(
+      (node) => node.type === "button" && node.props["aria-label"] === "Run",
     );
-    await act(async () => add.props.onClick());
-    expect(onEditorConfigurationChange).toHaveBeenCalledExactlyOnceWith("new");
-    expect(add.props["aria-expanded"]).toBe(false);
+    expect(run.props.disabled).toBe(true);
+
+    const selector = renderer.root.find(
+      (node) =>
+        node.type === "button" && node.props["aria-haspopup"] === "dialog",
+    );
+    await act(async () => selector.props.onClick());
+
+    expect(invalidate).toHaveBeenCalledWith({
+      exact: true,
+      queryKey: ["run-configurations", "project"],
+    });
+    expect(onEditorConfigurationChange).not.toHaveBeenCalled();
+    expect(
+      renderer.root.find(
+        (node) =>
+          node.type === "button" && node.props["aria-haspopup"] === "dialog",
+      ).props["aria-expanded"],
+    ).toBe(true);
 
     await act(async () => renderer.unmount());
   });
 
-  it("renders the empty project action as a neutral configuration button", () => {
+  it("renders the empty project as a labeled dropdown with an inactive Run action", () => {
     const html = markup([], emptyInventory);
 
-    expect(html).toContain('aria-label="Add Run Configuration"');
+    expect(html).toMatch(/aria-label="Run"[^>]*disabled=""/u);
     expect(html).toContain("lucide-list-video");
-    expect(html).toContain("text-muted-foreground");
-    expect(html).not.toContain("text-emerald");
-    expect(html).not.toContain(">Add Run Configuration<");
+    expect(html).toContain("Run Configurations");
+    expect(html).toContain("lucide-chevron-down");
   });
 
   it("keeps Stop available when provider validation blocks restart", () => {
