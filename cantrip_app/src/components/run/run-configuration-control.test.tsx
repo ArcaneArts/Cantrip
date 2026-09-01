@@ -18,15 +18,33 @@ vi.mock("@/components/ui/tooltip", async () => {
     Tooltip: ({ children }: { children?: ReactNode }) => children,
     TooltipButton: ({
       tooltip: _tooltip,
+      tooltipDisabled,
       tooltipSide: _tooltipSide,
       ...props
     }: ComponentProps<typeof Button> & {
       tooltip: ReactNode;
+      tooltipDisabled?: boolean;
       tooltipSide?: "top" | "right" | "bottom" | "left";
-    }) => <Button {...props} />,
+    }) => (
+      <Button
+        {...props}
+        data-tooltip-disabled={tooltipDisabled ? "true" : undefined}
+      />
+    ),
     TooltipContent: () => null,
     TooltipProvider: ({ children }: { children?: ReactNode }) => children,
     TooltipTrigger: ({ children }: { children?: ReactNode }) => children,
+  };
+});
+
+vi.mock("@/lib/run-configuration-api", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/lib/run-configuration-api")>();
+  return {
+    ...original,
+    operateRunConfigurationRuntime: vi.fn(
+      () => new Promise<never>(() => undefined),
+    ),
   };
 });
 
@@ -155,6 +173,67 @@ describe("Run configuration control", () => {
     expect(html).toContain('aria-label="Restart"');
     expect(html).toContain('aria-label="Stop"');
     expect(html).not.toContain('aria-label="Run"');
+  });
+
+  it("keeps replacement lifecycle tooltips closed until the pointer leaves", async () => {
+    const queryClient = new QueryClient();
+    const renderControl = (runtimes: RunConfigurationRuntime[]) => (
+      <TooltipProvider delayDuration={0}>
+        <QueryClientProvider client={queryClient}>
+          <RunConfigurationControl
+            editorConfigurationId={null}
+            inventory={inventory}
+            loading={false}
+            projectId="project"
+            renderEditor={false}
+            runtimes={runtimes}
+            workers={[worker]}
+            worktrees={[worktree]}
+            onEditorConfigurationChange={vi.fn()}
+            onFocusTerminal={vi.fn()}
+          />
+        </QueryClientProvider>
+      </TooltipProvider>
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(renderControl([]));
+    });
+
+    const run = renderer.root.find(
+      (node) => node.type === "button" && node.props["aria-label"] === "Run",
+    );
+    await act(async () => run.props.onClick({ stopPropagation: vi.fn() }));
+    expect(run.props["data-tooltip-disabled"]).toBe("true");
+
+    await act(async () => {
+      renderer.update(
+        renderControl([
+          {
+            configurationId,
+            worktreeId: worktree.id,
+            state: "running",
+          } as RunConfigurationRuntime,
+        ]),
+      );
+    });
+    const stop = renderer.root.find(
+      (node) => node.type === "button" && node.props["aria-label"] === "Stop",
+    );
+    expect(stop.props["data-tooltip-disabled"]).toBe("true");
+
+    const lifecycleGroup = renderer.root.find(
+      (node) =>
+        node.type === "span" && typeof node.props.onPointerLeave === "function",
+    );
+    await act(async () => lifecycleGroup.props.onPointerLeave());
+    expect(
+      renderer.root.find(
+        (node) => node.type === "button" && node.props["aria-label"] === "Stop",
+      ).props["data-tooltip-disabled"],
+    ).toBeUndefined();
+
+    await act(async () => renderer.unmount());
   });
 
   it("opens the editor directly from an empty project control", async () => {

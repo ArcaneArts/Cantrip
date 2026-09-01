@@ -1,5 +1,5 @@
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import type * as React from "react";
+import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -55,14 +55,37 @@ export function TooltipContent({
   );
 }
 
+function SuppressibleTooltip({
+  children,
+  disabled,
+}: {
+  children: React.ReactNode;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+  return (
+    <Tooltip
+      open={disabled ? false : open}
+      onOpenChange={(nextOpen) => setOpen(disabled ? false : nextOpen)}
+    >
+      {children}
+    </Tooltip>
+  );
+}
+
 export function TooltipButton({
   disabled,
   pending,
   tooltip,
+  tooltipDisabled,
   tooltipSide = "bottom",
   ...props
 }: React.ComponentProps<typeof Button> & {
   tooltip: React.ReactNode;
+  tooltipDisabled?: boolean;
   tooltipSide?: React.ComponentProps<typeof TooltipContent>["side"];
 }) {
   const ariaLabel =
@@ -76,9 +99,8 @@ export function TooltipButton({
       title={undefined}
     />
   );
-
-  return (
-    <Tooltip>
+  const contents = (
+    <>
       <TooltipTrigger asChild>
         {disabled || pending ? (
           <span className="inline-flex shrink-0">{button}</span>
@@ -87,6 +109,14 @@ export function TooltipButton({
         )}
       </TooltipTrigger>
       <TooltipContent side={tooltipSide}>{tooltip}</TooltipContent>
-    </Tooltip>
+    </>
+  );
+
+  return tooltipDisabled === undefined ? (
+    <Tooltip>{contents}</Tooltip>
+  ) : (
+    <SuppressibleTooltip disabled={tooltipDisabled}>
+      {contents}
+    </SuppressibleTooltip>
   );
 }

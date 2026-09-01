@@ -34,4 +34,18 @@ describe("TooltipButton", () => {
     expect(markup).toContain("disabled");
     expect(markup).not.toContain(" title=");
   });
+
+  it("does not forward tooltip suppression state to the button", () => {
+    const markup = renderToStaticMarkup(
+      <TooltipProvider delayDuration={0}>
+        <TooltipButton size="icon" tooltip="Stop" tooltipDisabled>
+          <RefreshCw className="size-4" />
+        </TooltipButton>
+      </TooltipProvider>,
+    );
+
+    expect(markup).toContain('aria-label="Stop"');
+    expect(markup).not.toContain("tooltipDisabled");
+    expect(markup).not.toContain("tooltip-disabled");
+  });
 });
