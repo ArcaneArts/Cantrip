@@ -100,6 +100,18 @@ export class ClientEncryptionError extends Error {
   }
 }
 
+function publicKeysMatch(
+  left: EncryptionPublicKey,
+  right: EncryptionPublicKey,
+): boolean {
+  return (
+    left.version === right.version &&
+    left.algorithm === right.algorithm &&
+    left.format === right.format &&
+    left.value === right.value
+  );
+}
+
 /**
  * Compatibility access to the origin-scoped device records created before the
  * installation catalog existed. Durable startup may read this store only to
@@ -612,7 +624,7 @@ export class ClientEncryptionService {
     const raw = await this.loadRawLegacyDevice(input.identity);
     if (
       raw.clientId !== principal.id ||
-      JSON.stringify(raw.publicKey) !== JSON.stringify(principal.publicKey)
+      !publicKeysMatch(raw.publicKey, principal.publicKey)
     ) {
       clientLogger.warn(
         "Stored device key does not match its server authorization",
@@ -795,8 +807,7 @@ export class ClientEncryptionService {
       grant.state !== "active" ||
       grant.component !== "account-master-key" ||
       grant.keyRevision !== wrapper.masterKeyRevision ||
-      JSON.stringify(principal.publicKey) !==
-        JSON.stringify(input.device.publicKey) ||
+      !publicKeysMatch(principal.publicKey, input.device.publicKey) ||
       input.device.keyAlias.length === 0
     ) {
       const error = new ClientEncryptionError(

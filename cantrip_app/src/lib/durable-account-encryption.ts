@@ -377,14 +377,12 @@ async function locateNativeDevice(
     metadata &&
     (metadata.createdAt !== device.createdAt ||
       !publicKeysMatch(metadata.publicKey, device.publicKey));
-  const replacementPending = Boolean(
-    descriptorMismatch &&
+  const replacementPending =
     (
       await storage.catalog.getMigration(
         deviceKeyReplacementMigrationId(keyAlias),
       )
-    )?.state === "in-progress",
-  );
+    )?.state === "in-progress";
   if (descriptorMismatch && !replacementPending) {
     throw new ClientEncryptionError(
       "identity-mismatch",
@@ -1498,16 +1496,39 @@ export async function prepareDurableClientEncryption(
           input.identity.ownerId,
         )
       : null;
+    // Repair only the narrow crash window where the server committed the
+    // deterministic principal and grant before the catalog committed binding.
+    // findNativeAuthorization still requires an exact key and active grant.
+    const resumableBinding =
+      native?.device && coordinates
+        ? {
+            grantRevision: 1,
+            keyAlias: coordinates.keyAlias,
+            masterKeyRevision: activeRevision,
+            ownerId: input.identity.ownerId,
+            principalId: native.replacementPending
+              ? await installationReplacementPrincipalId({
+                  device: native.device,
+                  identity: input.identity,
+                })
+              : coordinates.principalId,
+            serverId: input.identity.serverId,
+            updatedAt: new Date().toISOString(),
+          }
+        : null;
+    const authorizationBinding = native?.replacementPending
+      ? resumableBinding
+      : (localBinding ?? resumableBinding);
     const nativeAuthorization =
-      native?.device && localBinding
+      native?.device && authorizationBinding
         ? await findNativeAuthorization({
             api: input.api,
-            binding: localBinding,
+            binding: authorizationBinding,
             device: native.device,
             masterKeyRevision: activeRevision,
           })
         : null;
-    if (native?.device && localBinding && nativeAuthorization) {
+    if (native?.device && authorizationBinding && nativeAuthorization) {
       const currentBinding = startupBinding({
         ...nativeAuthorization,
         keyAlias: coordinates!.keyAlias,
@@ -1531,6 +1552,13 @@ export async function prepareDurableClientEncryption(
           identity: input.identity,
           keyAlias: coordinates!.keyAlias,
         }),
+        native.replacementPending
+          ? await completedDeviceKeyReplacement({
+              catalog: input.storage.catalog,
+              keyAlias: native.keyAlias,
+            })
+          : undefined,
+        native.replacementPending,
       );
       startup.emit({
         binding: currentBinding,
