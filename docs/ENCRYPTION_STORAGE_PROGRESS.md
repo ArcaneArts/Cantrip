@@ -810,8 +810,9 @@ corrects that ordering and adds mutation-negative regression coverage.
 ### Cycle 13 — authorization-before-provisioning audit correction
 
 - Branch: `codex/encryption-storage-completion-audit`
-- Pull request: pending
-- Commit and merge: pending
+- Pull request: [#1555](https://github.com/ArcaneArts/Cantrip/pull/1555)
+- Commit: `74c24a9345568b94da0d937dc51a9911043e5abe`
+- Merge: pending
 - Behavior implemented:
   - Made installation discovery read-only. A missing catalog now advances the
     explicit startup state machine to authoritative server-profile discovery
