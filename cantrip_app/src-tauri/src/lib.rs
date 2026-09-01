@@ -32,6 +32,7 @@ mod desktop_update;
 mod desktop_window_placement;
 mod desktop_worker;
 mod direct_probe;
+mod installation_storage;
 mod local_logs;
 mod process_environment;
 mod project_share;
@@ -1019,6 +1020,12 @@ pub fn run() {
             desktop_worker::disconnect_desktop_worker,
             desktop_worker::forget_desktop_worker,
             direct_probe::probe_direct_worker,
+            installation_storage::native_installation_storage_status,
+            installation_storage::read_native_installation_catalog,
+            installation_storage::apply_native_installation_catalog_transaction,
+            installation_storage::create_native_installation_key,
+            installation_storage::inspect_native_installation_key,
+            installation_storage::unwrap_native_account_master_key,
             local_logs::open_local_logs_directory,
             local_logs::read_local_service_logs,
             local_server_url,
@@ -1054,6 +1061,7 @@ pub fn run() {
             tunnel_forward::list_tunnel_forwards,
         ])
         .setup(|app| {
+            app.manage(std::sync::Arc::new(installation_storage::build(app)));
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_autostart::init(
                 MacosLauncher::LaunchAgent,

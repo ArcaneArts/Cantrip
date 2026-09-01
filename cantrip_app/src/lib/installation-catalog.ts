@@ -51,11 +51,14 @@ export type InstallationMigration = {
 
 export type InstallationCatalogErrorCode =
   | "account-binding-invalid"
+  | "catalog-corrupt"
+  | "catalog-unavailable"
   | "device-key-invalid"
   | "installation-conflict"
   | "installation-invalid"
   | "installation-missing"
-  | "migration-invalid";
+  | "migration-invalid"
+  | "transaction-conflict";
 
 export class InstallationCatalogError extends Error {
   constructor(

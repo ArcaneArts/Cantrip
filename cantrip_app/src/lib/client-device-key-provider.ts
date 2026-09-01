@@ -25,7 +25,7 @@ export type ClientDeviceKeyDescriptor = {
 };
 
 export type ClientDeviceKeyProviderErrorCode =
-  "key-conflict" | "key-missing" | "key-store-unavailable";
+  "key-conflict" | "key-missing" | "key-store-unavailable" | "key-unusable";
 
 export class ClientDeviceKeyProviderError extends Error {
   constructor(
