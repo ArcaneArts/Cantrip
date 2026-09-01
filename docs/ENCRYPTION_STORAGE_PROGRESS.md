@@ -371,7 +371,8 @@ flowchart TD
 ### Cycle 7 — Capacitor migration and account recovery
 
 - Branch: `codex/encryption-storage-cycle7-capacitor-migration`
-- Pull request: pending
+- Pull request: [#1548](https://github.com/ArcaneArts/Cantrip/pull/1548)
+- Commit: `8babae555ea630b03cff6354962fa46c0b97891d`
 - Merge: pending
 - Behavior implemented:
   - Added one native-storage selector for Tauri, Capacitor iOS, and Capacitor
