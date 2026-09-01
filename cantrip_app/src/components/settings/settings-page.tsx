@@ -44,7 +44,6 @@ import {
   Plus,
   RefreshCw,
   Route,
-  ScanLine,
   Server,
   ShieldCheck,
   ScrollText,
@@ -55,6 +54,7 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
@@ -565,26 +565,160 @@ export function changedAccountLabel(
   return label && label !== savedLabel ? label : null;
 }
 
-export function EliteModeButton({ onOpen }: { onOpen(): void }) {
-  return (
-    <Button
-      aria-label="Configure Elite Mode"
-      className="h-7 px-2.5 text-xs"
-      onClick={onOpen}
-      size="sm"
-      type="button"
-      variant="ghost"
-    >
-      <ScanLine className="size-4" />
-      Elite Mode
-    </Button>
-  );
-}
+const CONFIGURATION_LONG_PRESS_MS = 600;
+const LONG_PRESS_CONTEXT_MENU_GRACE_MS = 1_000;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
-function preventProModeContextToggle(event: ReactMouseEvent<HTMLLabelElement>) {
+function preventPreferenceContextToggle(
+  event: ReactMouseEvent<HTMLLabelElement>,
+) {
   if (event.button === 0 && !event.ctrlKey) return;
   event.preventDefault();
   event.stopPropagation();
+}
+
+function ConfigurablePreferenceControl({
+  checked,
+  disabled,
+  label,
+  onCheckedChange,
+  onConfigure,
+  title,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onCheckedChange(checked: boolean): void;
+  onConfigure(): void;
+  title: string;
+}) {
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressConfiguredAtRef = useRef(0);
+  const longPressPointerRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const lastTouchPointerAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const suppressNextClickRef = useRef(false);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current === null) return;
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  };
+
+  const finishLongPress = () => {
+    clearLongPressTimer();
+    longPressPointerRef.current = null;
+  };
+
+  useEffect(
+    () => () => {
+      clearLongPressTimer();
+    },
+    [],
+  );
+
+  return (
+    <label
+      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
+      title={title}
+      onAuxClickCapture={preventPreferenceContextToggle}
+      onClickCapture={(event) => {
+        if (suppressNextClickRef.current) {
+          suppressNextClickRef.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        preventPreferenceContextToggle(event);
+      }}
+      onContextMenuCapture={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        clearLongPressTimer();
+        if (
+          Date.now() - lastTouchPointerAtRef.current <
+          LONG_PRESS_CONTEXT_MENU_GRACE_MS
+        ) {
+          suppressNextClickRef.current = true;
+        }
+        if (disabled) return;
+        if (
+          Date.now() - longPressConfiguredAtRef.current <
+          LONG_PRESS_CONTEXT_MENU_GRACE_MS
+        ) {
+          return;
+        }
+        onConfigure();
+      }}
+      onMouseDownCapture={preventPreferenceContextToggle}
+      onPointerCancelCapture={finishLongPress}
+      onPointerDownCapture={(event) => {
+        if (disabled || event.pointerType !== "touch") return;
+        finishLongPress();
+        lastTouchPointerAtRef.current = Date.now();
+        longPressPointerRef.current = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+        };
+        suppressNextClickRef.current = false;
+        longPressTimerRef.current = setTimeout(() => {
+          longPressTimerRef.current = null;
+          longPressConfiguredAtRef.current = Date.now();
+          suppressNextClickRef.current = true;
+          onConfigure();
+        }, CONFIGURATION_LONG_PRESS_MS);
+      }}
+      onPointerLeave={finishLongPress}
+      onPointerMoveCapture={(event) => {
+        const pointer = longPressPointerRef.current;
+        if (!pointer || pointer.pointerId !== event.pointerId) return;
+        if (
+          Math.abs(event.clientX - pointer.x) > LONG_PRESS_MOVE_TOLERANCE_PX ||
+          Math.abs(event.clientY - pointer.y) > LONG_PRESS_MOVE_TOLERANCE_PX
+        ) {
+          finishLongPress();
+        }
+      }}
+      onPointerUpCapture={finishLongPress}
+    >
+      <input
+        aria-label={label}
+        type="checkbox"
+        className="size-3.5 accent-primary"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onCheckedChange(event.target.checked)}
+      />
+      {label}
+    </label>
+  );
+}
+
+export function EliteModePreferenceControl({
+  checked,
+  disabled,
+  onCheckedChange,
+  onConfigure,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange(checked: boolean): void;
+  onConfigure(): void;
+}) {
+  return (
+    <ConfigurablePreferenceControl
+      checked={checked}
+      disabled={disabled}
+      label="Elite Mode"
+      onCheckedChange={onCheckedChange}
+      onConfigure={onConfigure}
+      title="Enable Elite visual effects. Right-click or press and hold to configure."
+    />
+  );
 }
 
 export function ProModePreferenceControl({
@@ -599,27 +733,14 @@ export function ProModePreferenceControl({
   onConfigure(): void;
 }) {
   return (
-    <label
-      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
-      title="Use a translucent native macOS material. Right-click to adjust opacity."
-      onAuxClickCapture={preventProModeContextToggle}
-      onClickCapture={preventProModeContextToggle}
-      onContextMenuCapture={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onConfigure();
-      }}
-      onMouseDownCapture={preventProModeContextToggle}
-    >
-      <input
-        type="checkbox"
-        className="size-3.5 accent-primary"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onCheckedChange(event.target.checked)}
-      />
-      &quot;Pro&quot; Mode
-    </label>
+    <ConfigurablePreferenceControl
+      checked={checked}
+      disabled={disabled}
+      label={'"Pro" Mode'}
+      onCheckedChange={onCheckedChange}
+      onConfigure={onConfigure}
+      title="Use a translucent native macOS material. Right-click or press and hold to adjust opacity."
+    />
   );
 }
 
@@ -1710,8 +1831,15 @@ export function SettingsPage({
                           />
                           Gutters
                         </label>
-                        <EliteModeButton
-                          onOpen={() => {
+                        <EliteModePreferenceControl
+                          checked={
+                            settings.data?.preferences.eliteMode ?? false
+                          }
+                          disabled={preferences.isPending}
+                          onCheckedChange={(checked) =>
+                            preferences.mutate({ eliteMode: checked })
+                          }
+                          onConfigure={() => {
                             setSection("elite");
                             onEliteOpen?.();
                           }}

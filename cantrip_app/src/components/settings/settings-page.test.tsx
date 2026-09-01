@@ -5,6 +5,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  EliteModePreferenceControl,
   ProModePreferenceControl,
   SettingsPage,
   changedAccountLabel,
@@ -112,6 +113,76 @@ describe("account settings", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("toggles Elite Mode normally and configures it with a touch long press", async () => {
+    vi.useFakeTimers();
+    const configured: boolean[] = [];
+    const checkedChanges: boolean[] = [];
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    try {
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <EliteModePreferenceControl
+            checked
+            disabled={false}
+            onCheckedChange={(checked) => checkedChanges.push(checked)}
+            onConfigure={() => configured.push(true)}
+          />,
+        );
+      });
+      const label = renderer.root.findByType("label");
+
+      label.props.onPointerDownCapture({ pointerType: "touch" });
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(configured).toEqual([true]);
+
+      const contextMenuAfterLongPress = {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      label.props.onContextMenuCapture(contextMenuAfterLongPress);
+
+      expect(contextMenuAfterLongPress.preventDefault).toHaveBeenCalledOnce();
+      expect(contextMenuAfterLongPress.stopPropagation).toHaveBeenCalledOnce();
+      expect(configured).toEqual([true]);
+
+      const clickAfterLongPress = {
+        button: 0,
+        ctrlKey: false,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      label.props.onClickCapture(clickAfterLongPress);
+
+      expect(clickAfterLongPress.preventDefault).toHaveBeenCalledOnce();
+      expect(clickAfterLongPress.stopPropagation).toHaveBeenCalledOnce();
+      expect(checkedChanges).toEqual([]);
+
+      label.props.onPointerDownCapture({ pointerType: "touch" });
+      label.props.onPointerUpCapture();
+      const regularTap = {
+        button: 0,
+        ctrlKey: false,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      label.props.onClickCapture(regularTap);
+      renderer.root.findByType("input").props.onChange({
+        target: { checked: false },
+      });
+
+      expect(regularTap.preventDefault).not.toHaveBeenCalled();
+      expect(regularTap.stopPropagation).not.toHaveBeenCalled();
+      expect(checkedChanges).toEqual([false]);
+    } finally {
+      if (renderer) await act(async () => renderer.unmount());
+      vi.useRealTimers();
+    }
+  });
+
   it("defaults new Ollama providers to the Ollama name", () => {
     expect(initialProviderName(null)).toBe("Ollama");
     expect(initialProviderName({ name: "Local models" })).toBe("Local models");
@@ -197,7 +268,8 @@ describe("account settings", () => {
     expect(eliteMode).toBeLessThan(nextSettingsRow);
     expect(markup).toContain("Elite Mode");
     expect(markup).not.toContain("elite-secret-entry");
-    expect(markup).toContain('aria-label="Configure Elite Mode"');
+    expect(markup).toContain('aria-label="Elite Mode"');
+    expect(markup).not.toContain('aria-label="Configure Elite Mode"');
   });
 
   it("uses a compact brightness dropdown in Appearance", () => {
