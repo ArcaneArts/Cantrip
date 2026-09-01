@@ -55,6 +55,9 @@ export function SurfaceActionsMenu({
   align = "end",
   contentClassName,
   deleteDisabled = false,
+  deleteIcon,
+  deleteLabel = "Delete",
+  deleteTone = "destructive",
   onDelete,
   onDuplicate,
   onRename,
@@ -65,6 +68,9 @@ export function SurfaceActionsMenu({
   align?: "start" | "center" | "end";
   contentClassName?: string;
   deleteDisabled?: boolean;
+  deleteIcon?: ReactNode;
+  deleteLabel?: ReactNode;
+  deleteTone?: "default" | "destructive";
   onDelete(): void;
   onDuplicate?: () => void;
   onRename?: () => void;
@@ -107,12 +113,15 @@ export function SurfaceActionsMenu({
           ) : null}
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
           <StyledDropdownMenuItem
-            className="text-destructive focus:bg-destructive/10"
+            className={cn(
+              deleteTone === "destructive" &&
+                "text-destructive focus:bg-destructive/10",
+            )}
             disabled={deleteDisabled}
             onSelect={onDelete}
           >
-            <Trash2 className="size-4" />
-            {deleteDisabled ? "Stop agent before deleting" : "Delete"}
+            {deleteIcon ?? <Trash2 className="size-4" />}
+            {deleteDisabled ? "Stop agent before deleting" : deleteLabel}
           </StyledDropdownMenuItem>
         </StyledDropdownMenuContent>
       </DropdownMenu.Portal>

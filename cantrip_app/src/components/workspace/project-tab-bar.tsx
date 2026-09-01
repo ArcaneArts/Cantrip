@@ -6,14 +6,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  FileCode2,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react";
+import { FileCode2, MoreHorizontal, Pencil, Plus, X } from "lucide-react";
 import type { ExecutionTarget } from "@cantrip/protocol";
 import { useState, type ReactNode } from "react";
 
@@ -186,6 +179,9 @@ export function ProjectTabBar({
                         )}
                         {!editing ? (
                           <SurfaceActionsMenu
+                            deleteIcon={<X className="size-4" />}
+                            deleteLabel="Close"
+                            deleteTone="default"
                             title={surface.title}
                             onDelete={() => setDeleteTarget(surface)}
                             onRename={() => beginRename(surface)}
@@ -218,10 +214,9 @@ export function ProjectTabBar({
                         </StyledContextMenuItem>
                         <ContextMenu.Separator className="my-1 h-px bg-border" />
                         <StyledContextMenuItem
-                          className="text-destructive focus:bg-destructive/10"
                           onSelect={() => setDeleteTarget(surface)}
                         >
-                          <Trash2 className="size-4" /> Delete
+                          <X className="size-4" /> Close
                         </StyledContextMenuItem>
                       </StyledContextMenuContent>
                     </ContextMenu.Portal>
@@ -299,7 +294,8 @@ export function ProjectTabBar({
       </div>
 
       <ConfirmDialog
-        confirmLabel="Delete"
+        confirmLabel="Close"
+        confirmVariant="default"
         description="This closes the pinned file tab and removes its Cantrip-owned view state. The project file is not deleted."
         onConfirm={() => {
           if (deleteTarget) {
@@ -314,7 +310,7 @@ export function ProjectTabBar({
         }}
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`Delete ${deleteTarget?.title ?? "file tab"}?`}
+        title={`Close ${deleteTarget?.title ?? "file tab"}?`}
       />
     </>
   );
