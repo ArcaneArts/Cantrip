@@ -37,6 +37,7 @@
     "managed-runtime:playwright:test": "node --test scripts/managed-runtimes/*.test.mjs",
     "managed-runtime:web:release": "node scripts/managed-runtimes/release-web-runtimes.mjs",
     "version:show": "node scripts/version.mjs",
+    "verify:installation-compatibility": "node scripts/installation-update-compatibility.mjs",
     "dev:prepare": "pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/glitch build && pnpm --filter @cantrip/crypto build && pnpm cli:build && pnpm codex:build && pnpm code:build",
     "dev": "pnpm run dev:prepare && concurrently --kill-others --names glitch,protocol,server,worker,app --prefix-colors cyan,gray,blue,magenta,green \"pnpm --filter @cantrip/glitch dev\" \"pnpm --filter @cantrip/protocol dev\" \"cross-env FORCE_COLOR=1 CANTRIP_DATA_DIR=../.cantrip/browser-dev pnpm --filter @cantrip/server dev\" \"node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_WORKER_DATA_DIR=../.cantrip/browser-dev/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev\" \"node scripts/wait-for-server.mjs && cross-env VITE_CANTRIP_LOCAL_ONLY=true pnpm --filter @cantrip/app dev\"",
     "devtop": "node scripts/devtop.mjs",

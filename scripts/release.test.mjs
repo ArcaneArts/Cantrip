@@ -34,14 +34,20 @@ async function repositoryFixture() {
 test("promotes release only through fast-forward updates from synchronized main", async () => {
   const fixture = await repositoryFixture();
   try {
-    const first = promoteReleaseBranch({ root: fixture.repository });
+    const first = promoteReleaseBranch({
+      root: fixture.repository,
+      verifyCompatibility: () => undefined,
+    });
     assert.equal(first.changed, true);
     assert.equal(
       git(fixture.remote, "rev-parse", "refs/heads/release"),
       git(fixture.repository, "rev-parse", "refs/heads/main"),
     );
     assert.equal(
-      promoteReleaseBranch({ root: fixture.repository }).changed,
+      promoteReleaseBranch({
+        root: fixture.repository,
+        verifyCompatibility: () => undefined,
+      }).changed,
       false,
     );
 
@@ -49,12 +55,19 @@ test("promotes release only through fast-forward updates from synchronized main"
     git(fixture.repository, "add", "state.txt");
     git(fixture.repository, "commit", "-m", "next");
     assert.throws(
-      () => promoteReleaseBranch({ root: fixture.repository }),
+      () =>
+        promoteReleaseBranch({
+          root: fixture.repository,
+          verifyCompatibility: () => undefined,
+        }),
       /Push main before releasing/u,
     );
     git(fixture.repository, "push", "origin", "main");
     assert.equal(
-      promoteReleaseBranch({ root: fixture.repository }).changed,
+      promoteReleaseBranch({
+        root: fixture.repository,
+        verifyCompatibility: () => undefined,
+      }).changed,
       true,
     );
   } finally {
@@ -67,8 +80,34 @@ test("refuses to promote from a non-main branch", async () => {
   try {
     git(fixture.repository, "switch", "-c", "topic");
     assert.throws(
-      () => promoteReleaseBranch({ root: fixture.repository }),
+      () =>
+        promoteReleaseBranch({
+          root: fixture.repository,
+          verifyCompatibility: () => undefined,
+        }),
       /must run from main/u,
+    );
+  } finally {
+    await rm(fixture.root, { force: true, recursive: true });
+  }
+});
+
+test("refuses to promote when installation compatibility verification fails", async () => {
+  const fixture = await repositoryFixture();
+  try {
+    assert.throws(
+      () =>
+        promoteReleaseBranch({
+          root: fixture.repository,
+          verifyCompatibility: () => {
+            throw new Error("compatibility contract changed");
+          },
+        }),
+      /compatibility contract changed/u,
+    );
+    assert.throws(
+      () => git(fixture.remote, "rev-parse", "refs/heads/release"),
+      /unknown revision|ambiguous argument/iu,
     );
   } finally {
     await rm(fixture.root, { force: true, recursive: true });
@@ -93,6 +132,7 @@ test("deploys the exact commit promoted to release", async () => {
         webDeployed = options;
         return { commit: options.commit };
       },
+      verifyCompatibility: () => undefined,
     });
     assert.deepEqual(calls, ["web", "server"]);
     assert.equal(deployed.root, fixture.repository);

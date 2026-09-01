@@ -714,6 +714,54 @@ describe("durable native account encryption", () => {
     ).resolves.toEqual({ status: "ready" });
   });
 
+  it("recovers the existing account after browser installation storage is cleared", async () => {
+    const api = new MemoryAccountEncryptionApi(password);
+    const first = new ClientEncryptionService(new MemoryDeviceKeyStore());
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        identity,
+        password,
+        passwordKdf: testKdf(),
+        runtimePlatform: "browser",
+        service: first,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    const profileBeforeStorageLoss = JSON.stringify(api.profile);
+    const initializationAttempts = api.initializationAttempts;
+
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    const recovered = new ClientEncryptionService(new MemoryDeviceKeyStore());
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        identity,
+        runtimePlatform: "browser",
+        service: recovered,
+      }),
+    ).resolves.toEqual({
+      credential: "password",
+      reason: "recover-device",
+      status: "credential-required",
+    });
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        identity,
+        password,
+        runtimePlatform: "browser",
+        service: recovered,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+
+    expect(api.initializationAttempts).toBe(initializationAttempts);
+    expect(JSON.stringify(api.profile)).toBe(profileBeforeStorageLoss);
+    expect(recovered.getSnapshot()).toMatchObject({ status: "ready" });
+  });
+
   it.each(["tauri", "capacitor-ios", "capacitor-android"] as const)(
     "migrates an accessible IndexedDB key on %s, verifies native custody, and retains the legacy principal",
     async (runtimePlatform) => {

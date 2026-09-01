@@ -1,0 +1,90 @@
+{
+  "manifestVersion": 1,
+  "baseline": {
+    "application": {
+      "bundleIdentifier": "art.cantrip",
+      "capacitorAndroidOrigin": "https://localhost",
+      "capacitorIosOrigin": "capacitor://localhost",
+      "tauriOrigins": [
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost"
+      ]
+    },
+    "browser": {
+      "installationDatabaseName": "cantrip-browser-installation",
+      "installationDatabaseVersion": 1,
+      "legacyDatabaseName": "cantrip-client-encryption",
+      "legacyDatabaseVersion": 1
+    },
+    "encryption": {
+      "envelopeVersion": 1,
+      "profileFormatVersion": 1
+    },
+    "installationCatalog": {
+      "deviceKeyVersion": 1,
+      "keyAliasFormat": "cantrip.installation.<installation-uuid>.hpke.v1",
+      "relativePath": "installation/v1/catalog.sqlite3",
+      "schemaVersion": 1
+    },
+    "nativeKeyCustody": {
+      "androidPreferences": "cantrip-installation-key-v1",
+      "androidProvider": "android-keystore",
+      "iosProvider": "apple-keychain",
+      "linuxProvider": "linux-secret-service",
+      "service": "art.cantrip.installation.hpke.v1",
+      "windowsProvider": "windows-protected-storage"
+    },
+    "server": {
+      "dataDirectoryEnvironment": "CANTRIP_DATA_DIR",
+      "defaultDataDirectory": "../.cantrip/dev",
+      "databaseRelativePath": "server-db",
+      "identityStateKey": "server-id",
+      "identityTable": "system_state"
+    }
+  },
+  "current": {
+    "application": {
+      "bundleIdentifier": "art.cantrip",
+      "capacitorAndroidOrigin": "https://localhost",
+      "capacitorIosOrigin": "capacitor://localhost",
+      "tauriOrigins": [
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost"
+      ]
+    },
+    "browser": {
+      "installationDatabaseName": "cantrip-browser-installation",
+      "installationDatabaseVersion": 1,
+      "legacyDatabaseName": "cantrip-client-encryption",
+      "legacyDatabaseVersion": 1
+    },
+    "encryption": {
+      "envelopeVersion": 1,
+      "profileFormatVersion": 1
+    },
+    "installationCatalog": {
+      "deviceKeyVersion": 1,
+      "keyAliasFormat": "cantrip.installation.<installation-uuid>.hpke.v1",
+      "relativePath": "installation/v1/catalog.sqlite3",
+      "schemaVersion": 1
+    },
+    "nativeKeyCustody": {
+      "androidPreferences": "cantrip-installation-key-v1",
+      "androidProvider": "android-keystore",
+      "iosProvider": "apple-keychain",
+      "linuxProvider": "linux-secret-service",
+      "service": "art.cantrip.installation.hpke.v1",
+      "windowsProvider": "windows-protected-storage"
+    },
+    "server": {
+      "dataDirectoryEnvironment": "CANTRIP_DATA_DIR",
+      "defaultDataDirectory": "../.cantrip/dev",
+      "databaseRelativePath": "server-db",
+      "identityStateKey": "server-id",
+      "identityTable": "system_state"
+    }
+  },
+  "migrations": []
+}

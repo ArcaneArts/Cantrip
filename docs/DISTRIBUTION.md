@@ -183,7 +183,25 @@ record in app-private preferences and protects it with a nonexportable Android
 Keystore key. Capacitor sync, rebuilds, and in-place App Store or Play updates
 must preserve these locations and aliases. A future identifier, container,
 catalog, or secure-store change requires an explicit verified migration and
-the update-compatibility gate described in the later storage rollout cycle.
+the update-compatibility gate.
+
+Run `pnpm verify:installation-compatibility` before packaging. The gate checks
+the immutable version-one manifest at
+`scripts/installation-compatibility.v1.json` against the desktop, iOS, Android,
+browser, server, and encryption implementations, then opens representative
+version N state with each version N+1 platform harness. `pnpm release` executes
+it before advancing `release`; the native workflow repeats it in the desktop,
+Android, and iOS lanes, and the desktop lane additionally reopens a populated
+native Rust catalog on both macOS and Windows. A contract change without a
+named migration and test fixture blocks release.
+
+The deterministic harness proves stable identifiers, computed data paths,
+catalog/key aliases, server identity, representative project/settings/chat
+records, and an encrypted marker. It is not evidence that a signed installer,
+Keychain, Credential Manager, Secret Service, iOS Keychain, or Android
+Keystore worked on a physical target. Before changing a compatibility
+contract, test an actual in-place update on every affected platform and record
+the migration result in `docs/ENCRYPTION_STORAGE_PROGRESS.md`.
 
 ### macOS distribution
 

@@ -91,10 +91,15 @@ test("builds mobile releases in parallel and gates publication on them", async (
   const androidJob =
     workflow.match(/^ {2}android:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
   const iosJob = workflow.match(/^ {2}ios:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
+  const clientJob =
+    workflow.match(/^ {2}client:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
   assert.match(androidJob, /pnpm --filter @cantrip\/version build/u);
   assert.match(iosJob, /pnpm --filter @cantrip\/version build/u);
   assert.match(androidJob, /pnpm --filter @cantrip\/crypto build/u);
   assert.match(iosJob, /pnpm --filter @cantrip\/crypto build/u);
+  assert.match(androidJob, /pnpm verify:installation-compatibility/u);
+  assert.match(iosJob, /pnpm verify:installation-compatibility/u);
+  assert.match(clientJob, /pnpm verify:installation-compatibility/u);
   assert.doesNotMatch(androidJob, /^ {4}needs:/mu);
   assert.doesNotMatch(iosJob, /^ {4}needs:/mu);
   assert.match(workflow, /needs: \[server, worker, client, android, ios\]/u);

@@ -498,7 +498,7 @@ flowchart TD
 - Branch: `codex/encryption-storage-cycle9-anonymous-recovery`
 - Pull request: [#1550](https://github.com/ArcaneArts/Cantrip/pull/1550)
 - Commit: `7acc5b84186b832e5fc6b2693fc4861613762ba8`
-- Merge: pending
+- Merge: squash-merged as `7d7f4abbf0247e9ebf7a8f85302ccda41b7be13f`
 - Behavior implemented:
   - Added a strict, versioned anonymous recovery artifact containing a fresh
     256-bit recovery secret and an AES-256-GCM Account Master Key envelope
@@ -559,18 +559,89 @@ flowchart TD
 - Migration status: anonymous recovery, missing-key replacement, and
   interruption resumption are implemented. Existing principals and legacy
   records remain retained until verified cutover.
-- Remaining work: Cycles 10–12 below.
+- Remaining work: Cycles 10–12 below at the time of merge.
 - Known risks or blockers: the recovery file is deliberately a bearer secret;
   losing it together with all usable anonymous device keys is unrecoverable.
   OS secure-store behavior still needs signed physical-device/package smoke
   tests before claiming runtime verification on every platform.
 - Manual verification: complete first-run export and recovery after deleting
   only the installation key on packaged macOS, Windows, Linux, iOS, and Android
-  builds; clear browser storage and import the artifact; confirm the original
-  encrypted data opens and the installation ID does not change.
+  builds; confirm the original encrypted data opens and the installation ID
+  does not change. Separately clear browser storage and import the artifact;
+  the replacement browser installation ID should differ while server data
+  remains unchanged.
+
+### Cycle 10 — update compatibility harnesses and release gates
+
+- Branch: `codex/encryption-storage-cycle10-update-safety`
+- Pull request: pending
+- Commit and merge: pending
+- Behavior implemented:
+  - Added an immutable version-one compatibility manifest for bundle IDs,
+    WebView origins, native data ownership, catalog schemas and paths, secure
+    providers and aliases, browser database names, server data/identity
+    persistence, and encryption format revisions.
+  - Added a gate that compares each Tauri, Capacitor, browser, server, and
+    protocol implementation with that manifest. A current contract may differ
+    from the immutable baseline only when an explicit migration names its old
+    value, new value, and existing deterministic fixture.
+  - Added version N to N+1 harnesses for macOS Tauri, Windows Tauri, development
+    rebuilds, ordinary browser upgrades, Capacitor iOS, and Capacitor Android.
+    They reopen the existing installation ID, key alias, binding, server
+    identity, project, settings, conversation, and encrypted marker in place.
+  - Added a separate browser-storage-loss harness and an actual IndexedDB
+    coordinator regression. Storage loss creates a replacement browser
+    installation only after password recovery while preserving the existing
+    server profile and encrypted data.
+  - Added a native Rust update test that closes and reopens a populated catalog
+    against the same secure-key provider. The native workflow runs it on both
+    macOS and Windows.
+  - Made the compatibility gate release-blocking before `pnpm release` advances
+    the release branch and in the desktop, Android, and iOS artifact lanes.
+- Validation:
+  - Focused compatibility, release, and workflow scripts — 19 tests passed.
+  - Compatibility contract/harness suite — 5 tests passed, including all six
+    update targets and browser storage loss.
+  - Focused account/browser storage tests — 28 tests passed.
+  - `cargo test --manifest-path cantrip_app/src-tauri/Cargo.toml installation_storage --lib`
+    — 22 tests passed, including the native update reopen test.
+  - `cargo fmt --manifest-path cantrip_app/src-tauri/Cargo.toml -- --check` —
+    passed.
+  - `pnpm --filter @cantrip/app test` — 1,873 tests passed and 3 skipped across
+    356 files.
+  - `pnpm --filter @cantrip/app typecheck` and
+    `pnpm --filter @cantrip/app build` — passed.
+  - `node --test scripts/*.test.mjs` — 122 tests passed and the two known
+    clean-`main` baseline assertions failed for the App Platform build-command
+    fixture and tranche-two sidebar lifecycle fixture. This cycle changes
+    neither surface.
+  - `pnpm verify:installation-compatibility`, `pnpm check:large-files`,
+    changed-file Prettier validation, and `git diff --check` — passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle introduced no newly reported overage.
+- Supported platforms:
+  - macOS and Windows Tauri: deterministic state harness plus a native Rust
+    catalog/key-provider reopen test run in both release lanes.
+  - Capacitor iOS and Android: deterministic update harnesses run in their
+    release lanes; signed physical-device update verification remains manual.
+  - Browser: ordinary upgrade and storage-loss recovery are covered by the
+    deterministic gate plus actual IndexedDB coordinator tests.
+  - Development: stable named-profile rebuild uses the same path and state
+    assertions.
+- Migration status: no compatibility contract has changed, so the migration
+  registry is empty. Future changes fail the gate until an explicit migration
+  and fixture are added.
+- Remaining work: Cycles 11–12 below.
+- Known risks or blockers: deterministic CI cannot prove OS credential-store
+  entitlements or store-distributed installer behavior. Those claims remain
+  manual and are not presented as verified by shared JavaScript tests.
+- Manual verification: install a signed version N on macOS, Windows, iOS, and
+  Android, create representative encrypted data, update in place to N+1, and
+  confirm the installation ID, alias, server identity, and data survive. Repeat
+  ordinary upgrade and storage-clearing recovery in a production browser.
 
 ## Remaining cycles
 
-1. Add update/install compatibility harnesses and release gates.
-2. Retire obsolete defaults while retaining required legacy readers.
-3. Complete the cross-platform audit, full validation, and documentation.
+1. Retire obsolete defaults while retaining required legacy readers.
+2. Complete the cross-platform audit, full validation, and documentation.

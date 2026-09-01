@@ -31,7 +31,10 @@ function git(root, arguments_, options = {}) {
   };
 }
 
-export function promoteReleaseBranch({ root = scriptRoot } = {}) {
+export function promoteReleaseBranch({
+  root = scriptRoot,
+  verifyCompatibility = verifyInstallationCompatibility,
+} = {}) {
   const topLevel = realpathSync(
     git(root, ["rev-parse", "--show-toplevel"]).stdout,
   );
@@ -61,6 +64,8 @@ export function promoteReleaseBranch({ root = scriptRoot } = {}) {
       "Local main has commits that are not on origin/main. Push main before releasing.",
     );
   }
+
+  verifyCompatibility({ root });
 
   const remoteRelease = git(
     root,
@@ -102,12 +107,27 @@ export function promoteReleaseBranch({ root = scriptRoot } = {}) {
   return { changed: true, commit: mainCommit };
 }
 
+export function verifyInstallationCompatibility({ root = scriptRoot } = {}) {
+  const result = spawnSync(
+    process.execPath,
+    ["scripts/installation-update-compatibility.mjs"],
+    { cwd: root, encoding: "utf8", stdio: "inherit" },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      "Installation compatibility verification failed; release was not promoted.",
+    );
+  }
+}
+
 export async function releaseCantrip({
   root = scriptRoot,
   deploy = deployProduction,
   deployWeb = deployAppPlatform,
+  verifyCompatibility = verifyInstallationCompatibility,
 } = {}) {
-  const promotion = promoteReleaseBranch({ root });
+  const promotion = promoteReleaseBranch({ root, verifyCompatibility });
   const appPlatformDeployment = await deployWeb({
     root,
     commit: promotion.commit,

@@ -377,6 +377,36 @@ test profile, launched with `pnpm devtop -- --profile <name>`. It refuses to
 replace an existing name. Normal build, clean, and development commands do not
 destroy profiles; choosing a new name is the supported clean-test workflow.
 
+#### Update compatibility gates
+
+The immutable version-one contract is recorded in
+[`scripts/installation-compatibility.v1.json`](../scripts/installation-compatibility.v1.json).
+It covers the desktop and mobile bundle identifier, WebView origins, native
+application-data ownership, catalog location and schema, key alias and secure
+store providers, browser and legacy IndexedDB names, server data directory and
+identity row, and encryption profile/envelope revisions. The current value of
+each contract must match the baseline unless the manifest names an explicit
+migration and a deterministic test fixture. Editing both an implementation and
+the manifest cannot silently erase the original version-one baseline.
+
+`pnpm verify:installation-compatibility` compares every current implementation
+against that contract and runs version N to N+1 state harnesses for macOS and
+Windows Tauri, the stable development profile, ordinary browser upgrade,
+Capacitor iOS, and Capacitor Android. Each harness recomputes the version N+1
+paths, reopens the existing installation catalog and secure-key alias, retains
+the server identity, project, settings, and conversation marker, and decrypts
+an existing encrypted marker. A separate browser-storage-loss harness confirms
+that password or anonymous recovery creates a replacement browser installation
+while preserving the authoritative server identity and encrypted domain data.
+
+The Rust storage suite also closes and reopens a populated native catalog and
+key provider. The native release workflow runs that test on both macOS and
+Windows and runs the cross-platform gate before desktop, Android, or iOS
+artifacts can publish. `pnpm release` runs the same gate before advancing the
+release branch or deploying the browser/server. These deterministic harnesses
+do not replace signed-package, physical-device, or browser-engine update smoke
+tests; those remain separately disclosed in the progress ledger.
+
 #### Browser custody and recovery
 
 Browser startup uses the versioned `cantrip-browser-installation` IndexedDB
