@@ -723,8 +723,9 @@ known implementation blocker.
 ### Cycle 12 — final cross-platform audit and closure
 
 - Branch: `codex/encryption-storage-cycle12-final-audit`
-- Pull request: pending
-- Commit and merge: pending
+- Pull request: [#1553](https://github.com/ArcaneArts/Cantrip/pull/1553)
+- Commit: `3a6dfaa3c06064ba3376027e139e4c3d2d2e7078`
+- Merge: auto-merge pending
 - Behavior implemented:
   - Audited the final implementation against every goal completion criterion
     and reconciled the architecture, platform, migration, recovery,
