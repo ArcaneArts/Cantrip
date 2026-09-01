@@ -1440,7 +1440,7 @@ interface SubAgentActivityItem {
   agentPath: string;
   agentThreadId: string;
   id: string;
-  kind: "started" | "interacted" | "interrupted";
+  kind: "started" | "interacted" | "completed" | "interrupted";
   type: "subAgentActivity";
 }
 

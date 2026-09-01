@@ -241,7 +241,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("subAgent"),
-    kind: z.enum(["started", "interacted", "interrupted"]),
+    kind: z.enum(["started", "interacted", "completed", "interrupted"]),
     agentThreadId: z.string().min(1),
     agentPath: z.string().min(1),
   }),
