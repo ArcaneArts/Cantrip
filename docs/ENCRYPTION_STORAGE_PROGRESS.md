@@ -433,8 +433,8 @@ flowchart TD
 ### Cycle 8 — Browser persistence and replacement-device recovery
 
 - Branch: `codex/encryption-storage-cycle8-browser-recovery`
-- Pull request: pending
-- Commit: pending
+- Pull request: [#1549](https://github.com/ArcaneArts/Cantrip/pull/1549)
+- Commit: `5c6f19916dbd9a451767c4cedeaffc8be96feb1f`
 - Merge: pending
 - Behavior implemented:
   - Added the versioned `cantrip-browser-installation` IndexedDB catalog and
