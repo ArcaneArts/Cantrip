@@ -1220,6 +1220,7 @@ function anonymousRecoveryId(principalId: string): string {
 async function prepareAnonymousRecoveryArtifact(input: {
   authMode: AuthMode;
   catalog: InstallationCatalog;
+  custodyBackend: ClientDeviceKeyProvider["backend"];
   identity: ClientEncryptionIdentity;
   principalId: string;
   service: ClientEncryptionService;
@@ -1228,6 +1229,21 @@ async function prepareAnonymousRecoveryArtifact(input: {
   const confirmationId = anonymousRecoveryId(input.principalId);
   const existing = await input.catalog.getMigration(confirmationId);
   if (existing?.state === "verified") return { status: "ready" };
+  if (input.custodyBackend === "development-file-vault") {
+    await input.catalog.transaction(async (transaction) => {
+      const current = await transaction.getMigration(confirmationId);
+      if (current?.state === "verified") return;
+      const now = new Date().toISOString();
+      await transaction.putMigration({
+        completedAt: now,
+        migrationId: confirmationId,
+        startedAt: current?.startedAt ?? now,
+        state: "verified",
+        verificationState: "development-file-vault-custody-v1",
+      });
+    });
+    return { status: "ready" };
+  }
   if (!existing) {
     await input.catalog.transaction(async (transaction) => {
       const concurrent = await transaction.getMigration(confirmationId);
@@ -1450,6 +1466,7 @@ export async function prepareDurableClientEncryption(
       return prepareAnonymousRecoveryArtifact({
         authMode: input.authMode,
         catalog: input.storage.catalog,
+        custodyBackend: input.storage.provider.backend,
         identity: input.identity,
         principalId: provisioned.principalId,
         service: input.service,
@@ -1523,6 +1540,7 @@ export async function prepareDurableClientEncryption(
       return prepareAnonymousRecoveryArtifact({
         authMode: input.authMode,
         catalog: input.storage.catalog,
+        custodyBackend: input.storage.provider.backend,
         identity: input.identity,
         principalId: currentBinding.principalId,
         service: input.service,
@@ -1592,6 +1610,7 @@ export async function prepareDurableClientEncryption(
       return prepareAnonymousRecoveryArtifact({
         authMode: input.authMode,
         catalog: input.storage.catalog,
+        custodyBackend: input.storage.provider.backend,
         identity: input.identity,
         principalId: provisioned.principalId,
         service: input.service,

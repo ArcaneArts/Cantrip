@@ -1091,3 +1091,45 @@ goal work.
 - Manual verification: launch the stable default profile twice on macOS;
   confirm the first launch migrates legacy custody and the second neither shows
   the lock screen nor prompts for a system password.
+
+### Post-completion correction — prompt-free macOS development recovery
+
+- Branch: `codex/disable-dev-keychain-recovery`
+- Pull request: [#1564](https://github.com/ArcaneArts/Cantrip/pull/1564)
+- Merge: pending
+- Behavior implemented:
+  - Removed all Apple Keychain access from the macOS `devtop` custody path.
+    Packaged macOS builds continue using Keychain.
+  - Disabled the legacy IndexedDB/WebCrypto migration reader only for the
+    explicit `devtop` launch, preventing WebKit from requesting Keychain access
+    for an obsolete nonextractable key. Browser and packaged migration remain
+    available.
+  - Made the stable owner-only development vault the anonymous development
+    recovery root, avoiding a blocking recovery acknowledgement screen while
+    leaving production/browser recovery behavior unchanged.
+  - Added `pnpm dev:profile repair-encryption [name]`. It backs up both durable
+    stores, refuses account profiles and recoverable protected payloads,
+    preserves the installation ID, and clears only an unrecoverable local
+    anonymous encryption registry plus stale key metadata.
+- Validation:
+  - Full app Vitest suite — 356 files passed; 1,880 tests passed and 3
+    skipped. Focused encryption/native bridge coverage — 48 tests passed.
+  - Development launcher/profile/repair suites — 14 tests passed, including
+    backup-preserving repair and refusal when recoverable protected payloads
+    exist.
+  - Tauri installation-storage suite — 23 tests passed. App typecheck,
+    production build, Cargo formatting, and diff whitespace checks passed.
+  - Installation compatibility gate — seven contract/recovery simulations
+    passed with zero active compatibility migrations.
+- Supported platforms: behavior change is scoped to macOS Tauri development;
+  packaged Tauri, Windows, Linux, Capacitor, and browser behavior is unchanged.
+- Migration status: legacy readers remain available outside `devtop`. Existing
+  inaccessible development state is repaired only by the explicit backed-up
+  command; no startup path performs a destructive reset.
+- Remaining work: pull-request merge and one backed-up repair of the affected
+  local development profile.
+- Known risks or blockers: the development file vault is intentionally weaker
+  than Keychain and remains restricted to explicit debug launches.
+- Manual verification: intentionally deferred until after merge; the user
+  force-killed the prompting build and no further application launch occurs
+  during implementation.

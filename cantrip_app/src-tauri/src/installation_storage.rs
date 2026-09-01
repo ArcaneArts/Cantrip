@@ -33,10 +33,6 @@ type NativeKem = DhP256HkdfSha256;
 trait DeviceSecretStore: Send + Sync {
     fn get(&self, key_alias: &str) -> Result<Option<Vec<u8>>, String>;
     fn put(&self, key_alias: &str, secret: &[u8]) -> Result<(), String>;
-
-    fn migrate_legacy(&self, _key_alias: &str) -> Result<(), String> {
-        Ok(())
-    }
 }
 
 struct KeyringDeviceSecretStore;
@@ -62,13 +58,12 @@ impl DeviceSecretStore for KeyringDeviceSecretStore {
 }
 
 struct DevelopmentFileDeviceSecretStore {
-    legacy: Option<Arc<dyn DeviceSecretStore>>,
     root: PathBuf,
 }
 
 impl DevelopmentFileDeviceSecretStore {
-    fn new(root: PathBuf, legacy: Option<Arc<dyn DeviceSecretStore>>) -> Self {
-        Self { legacy, root }
+    fn new(root: PathBuf) -> Self {
+        Self { root }
     }
 
     fn prepare_root(&self) -> Result<(), String> {
@@ -151,19 +146,6 @@ impl DeviceSecretStore for DevelopmentFileDeviceSecretStore {
 
     fn put(&self, key_alias: &str, secret: &[u8]) -> Result<(), String> {
         self.write_file(key_alias, secret)
-    }
-
-    fn migrate_legacy(&self, key_alias: &str) -> Result<(), String> {
-        if self.read_file(key_alias)?.is_some() {
-            return Ok(());
-        }
-        let Some(legacy) = self.legacy.as_ref() else {
-            return Ok(());
-        };
-        let Some(secret) = legacy.get(key_alias)? else {
-            return Ok(());
-        };
-        self.write_file(key_alias, &secret)
     }
 }
 
@@ -467,7 +449,7 @@ impl NativeInstallationStorage {
             )
             .map_err(|_| "installation-catalog-corrupt".to_owned())?;
         initialize_schema(&mut connection)?;
-        migrate_development_key_provider(&mut connection, self.secrets.as_ref())?;
+        reject_incompatible_development_key_provider(&connection)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -814,7 +796,6 @@ pub fn build(app: &tauri::App) -> NativeInstallationStorage {
             let secrets: Arc<dyn DeviceSecretStore> = if development_file_vault_enabled() {
                 Arc::new(DevelopmentFileDeviceSecretStore::new(
                     installation_root.join("development-key-vault"),
-                    Some(Arc::new(KeyringDeviceSecretStore)),
                 ))
             } else {
                 Arc::new(KeyringDeviceSecretStore)
@@ -1501,10 +1482,7 @@ fn native_key_provider() -> &'static str {
     }
 }
 
-fn migrate_development_key_provider(
-    connection: &mut Connection,
-    secrets: &dyn DeviceSecretStore,
-) -> Result<(), String> {
+fn reject_incompatible_development_key_provider(connection: &Connection) -> Result<(), String> {
     if !development_file_vault_enabled() {
         return Ok(());
     }
@@ -1515,48 +1493,10 @@ fn migrate_development_key_provider(
             |row| row.get::<_, bool>(0),
         )
         .map_err(|_| "installation-catalog-unavailable".to_owned())?;
-    if !requires_migration {
-        return Ok(());
+    if requires_migration {
+        return Err("native-device-key-missing".to_owned());
     }
-    let key_aliases = {
-        let mut statement = connection
-            .prepare("SELECT key_alias FROM device_key WHERE provider = ?1 ORDER BY key_alias")
-            .map_err(|_| "installation-catalog-unavailable".to_owned())?;
-        let aliases = statement
-            .query_map(params![platform_native_key_provider()], |row| {
-                row.get::<_, String>(0)
-            })
-            .map_err(|_| "installation-catalog-unavailable".to_owned())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| "installation-catalog-unavailable".to_owned())?;
-        aliases
-    };
-    for key_alias in key_aliases {
-        secrets.migrate_legacy(&key_alias)?;
-    }
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
-    let changed = transaction
-        .execute(
-            "UPDATE device_key SET provider = ?1 WHERE provider = ?2",
-            params![
-                DEVELOPMENT_KEY_VAULT_PROVIDER,
-                platform_native_key_provider()
-            ],
-        )
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
-    if changed > 0 {
-        transaction
-            .execute(
-                "UPDATE catalog_meta SET revision = revision + 1 WHERE singleton_id = 1",
-                [],
-            )
-            .map_err(|_| "installation-catalog-unavailable".to_owned())?;
-    }
-    transaction
-        .commit()
-        .map_err(|_| "installation-catalog-unavailable".to_owned())
+    Ok(())
 }
 
 fn prepare_catalog_parent(catalog_path: &Path) -> Result<(), String> {
@@ -1652,16 +1592,11 @@ mod tests {
     }
 
     #[test]
-    fn development_file_vault_migrates_once_and_reopens_without_legacy_custody() {
+    fn development_file_vault_reopens_without_platform_custody() {
         let directory = tempdir().expect("temp directory");
         let root = directory.path().join("development-key-vault");
         let key_alias = "cantrip.installation.5f83bb42-5671-4b11-a87f-32842af21af2.hpke.v1";
-        let legacy = Arc::new(MemorySecretStore::default());
-        legacy
-            .put(key_alias, b"stable-development-secret")
-            .expect("seed legacy secret");
-
-        let migrating = DevelopmentFileDeviceSecretStore::new(root.clone(), Some(legacy.clone()));
+        let migrating = DevelopmentFileDeviceSecretStore::new(root.clone());
         assert_eq!(
             migrating
                 .get(key_alias)
@@ -1669,15 +1604,13 @@ mod tests {
             None,
         );
         migrating
-            .migrate_legacy(key_alias)
-            .expect("migrate legacy secret");
+            .put(key_alias, b"stable-development-secret")
+            .expect("write development secret");
         assert_eq!(
             migrating.get(key_alias).expect("read migrated secret"),
             Some(b"stable-development-secret".to_vec()),
         );
-        legacy.remove(key_alias);
-
-        let reopened = DevelopmentFileDeviceSecretStore::new(root, None);
+        let reopened = DevelopmentFileDeviceSecretStore::new(root);
         assert_eq!(
             reopened.get(key_alias).expect("reopen file secret"),
             Some(b"stable-development-secret".to_vec()),

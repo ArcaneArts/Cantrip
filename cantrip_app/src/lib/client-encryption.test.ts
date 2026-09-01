@@ -15,6 +15,7 @@ import {
   LegacyIndexedDbClientDeviceKeyStore,
   clientEncryption,
   clientEncryptionForRuntime,
+  legacyWebCryptoMigrationEnabled,
   type LegacyClientDeviceKeyStore,
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
@@ -141,6 +142,22 @@ afterEach(() => {
   clearClientLogs();
   clearClientSession();
   vi.unstubAllGlobals();
+});
+
+describe("legacy WebCrypto migration selection", () => {
+  it("is disabled only when the development launcher opts out explicitly", () => {
+    expect(
+      legacyWebCryptoMigrationEnabled({
+        VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO: "true",
+      }),
+    ).toBe(false);
+    expect(legacyWebCryptoMigrationEnabled({})).toBe(true);
+    expect(
+      legacyWebCryptoMigrationEnabled({
+        VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO: "false",
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("client encryption key custody", () => {

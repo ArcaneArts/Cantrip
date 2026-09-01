@@ -37,6 +37,8 @@ import {
 import {
   MemoryClientDeviceKeyBackend,
   MemoryClientDeviceKeyProvider,
+  type ClientDeviceKeyDescriptor,
+  type ClientDeviceKeyProvider,
 } from "./client-device-key-provider";
 import { openBrowserInstallationStorage } from "./browser-installation-storage";
 import { installationBindingPrincipalId } from "./durable-account-encryption";
@@ -78,6 +80,42 @@ class MemoryDeviceKeyStore implements LegacyClientDeviceKeyStore {
 
   private key(target: ClientEncryptionIdentity): string {
     return `${target.serverId}:${target.ownerId}`;
+  }
+}
+
+class DevelopmentFileVaultTestProvider implements ClientDeviceKeyProvider {
+  readonly backend = "development-file-vault" as const;
+  readonly kind = "tauri-native" as const;
+
+  constructor(
+    private readonly delegate = new MemoryClientDeviceKeyProvider(),
+  ) {}
+
+  async create(
+    input: Parameters<ClientDeviceKeyProvider["create"]>[0],
+  ): Promise<ClientDeviceKeyDescriptor> {
+    return this.adapt(await this.delegate.create(input));
+  }
+
+  async inspect(keyAlias: string): Promise<ClientDeviceKeyDescriptor | null> {
+    const device = await this.delegate.inspect(keyAlias);
+    return device ? this.adapt(device) : null;
+  }
+
+  async replaceMissing(
+    input: Parameters<ClientDeviceKeyProvider["replaceMissing"]>[0],
+  ): Promise<ClientDeviceKeyDescriptor> {
+    return this.adapt(await this.delegate.replaceMissing(input));
+  }
+
+  unwrapAccountMasterKey(
+    input: Parameters<ClientDeviceKeyProvider["unwrapAccountMasterKey"]>[0],
+  ): Promise<Uint8Array> {
+    return this.delegate.unwrapAccountMasterKey(input);
+  }
+
+  private adapt(device: ClientDeviceKeyDescriptor): ClientDeviceKeyDescriptor {
+    return { ...device, provider: this.backend };
   }
 }
 
@@ -630,6 +668,38 @@ describe("durable native account encryption", () => {
       provider: new MemoryClientDeviceKeyProvider(backend),
     };
   }
+
+  it("uses the stable development vault without blocking on recovery acknowledgement", async () => {
+    const api = new MemoryAccountEncryptionApi("unused");
+    const catalog = new MemoryInstallationCatalog();
+    const storage = {
+      catalog,
+      provider: new DevelopmentFileVaultTestProvider(),
+    };
+    const service = new ClientEncryptionService(null);
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+
+    const binding = await catalog.getAccountBinding(
+      identity.serverId,
+      identity.ownerId,
+    );
+    await expect(
+      catalog.getMigration(`anonymous-recovery-v1:${binding!.principalId}`),
+    ).resolves.toMatchObject({
+      state: "verified",
+      verificationState: "development-file-vault-custody-v1",
+    });
+  });
 
   async function initializeLegacyAccount(input: {
     api: MemoryAccountEncryptionApi;
