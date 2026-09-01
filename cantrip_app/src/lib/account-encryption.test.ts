@@ -574,7 +574,7 @@ describe("account encryption initialization", () => {
   });
 });
 
-describe("durable Tauri account encryption", () => {
+describe("durable native account encryption", () => {
   function durableStorage() {
     const backend = new MemoryClientDeviceKeyBackend();
     return {
@@ -601,117 +601,123 @@ describe("durable Tauri account encryption", () => {
     service.lock();
   }
 
-  it("migrates an accessible IndexedDB key, verifies native custody, and retains the legacy principal", async () => {
-    const api = new MemoryAccountEncryptionApi(password);
-    const legacyStore = new MemoryDeviceKeyStore();
-    await initializeLegacyAccount({ api, store: legacyStore });
-    const legacyPrincipalId = [...api.principals.keys()][0]!;
-    const legacyGrant = api.grants.get(legacyPrincipalId)![0]!;
-    const storage = durableStorage();
-    const states: string[] = [];
+  it.each(["tauri", "capacitor-ios", "capacitor-android"] as const)(
+    "migrates an accessible IndexedDB key on %s, verifies native custody, and retains the legacy principal",
+    async (runtimePlatform) => {
+      const api = new MemoryAccountEncryptionApi(password);
+      const legacyStore = new MemoryDeviceKeyStore();
+      await initializeLegacyAccount({ api, store: legacyStore });
+      const legacyPrincipalId = [...api.principals.keys()][0]!;
+      const legacyGrant = api.grants.get(legacyPrincipalId)![0]!;
+      const storage = durableStorage();
+      const states: string[] = [];
 
-    await expect(
-      prepareClientEncryption({
-        api,
-        authMode: "accounts",
-        durableStorage: storage,
-        identity,
-        onStartupState: (state) => states.push(state.phase),
-        runtimePlatform: "tauri",
-        service: new ClientEncryptionService(legacyStore),
-      }),
-    ).resolves.toEqual({ status: "ready" });
+      await expect(
+        prepareClientEncryption({
+          api,
+          authMode: "accounts",
+          durableStorage: storage,
+          identity,
+          onStartupState: (state) => states.push(state.phase),
+          runtimePlatform,
+          service: new ClientEncryptionService(legacyStore),
+        }),
+      ).resolves.toEqual({ status: "ready" });
 
-    const installation = await storage.catalog.getInstallation();
-    const binding = await storage.catalog.getAccountBinding(
-      identity.serverId,
-      identity.ownerId,
-    );
-    expect(installation).not.toBeNull();
-    expect(binding).toMatchObject({
-      keyAlias: expect.stringContaining(installation!.installationId),
-      masterKeyRevision: 1,
-      principalId: expect.not.stringMatching(legacyPrincipalId),
-    });
-    await expect(
-      storage.catalog.getMigration(
-        `legacy-indexeddb-v1:${binding!.principalId}`,
-      ),
-    ).resolves.toMatchObject({
-      state: "verified",
-      verificationState: "native-grant-unwrapped-and-marker-decrypted-v1",
-    });
-    expect(api.principals.get(legacyPrincipalId)?.state).toBe("approved");
-    expect(api.grants.get(legacyPrincipalId)?.[0]).toEqual(legacyGrant);
-    expect(states).toContain("migrating-legacy-device");
-    expect(states.at(-1)).toBe("ready");
-
-    const nativeOnly = new ClientEncryptionService({
-      delete: () => Promise.reject(new Error("legacy storage not used")),
-      load: () => Promise.reject(new Error("legacy storage not used")),
-      save: () => Promise.reject(new Error("legacy storage not used")),
-    });
-    await expect(
-      prepareClientEncryption({
-        api,
-        authMode: "accounts",
-        durableStorage: storage,
-        identity,
-        runtimePlatform: "tauri",
-        service: nativeOnly,
-      }),
-    ).resolves.toEqual({ status: "ready" });
-    expect(nativeOnly.getSnapshot()).toMatchObject({
-      clientId: binding!.principalId,
-      status: "ready",
-    });
-  });
-
-  it("recovers an existing account with its password without initializing a blank profile", async () => {
-    const api = new MemoryAccountEncryptionApi(password);
-    await initializeLegacyAccount({
-      api,
-      store: new MemoryDeviceKeyStore(),
-    });
-    const initializationAttempts = api.initializationAttempts;
-    const storage = durableStorage();
-    const service = new ClientEncryptionService(new MemoryDeviceKeyStore());
-
-    await expect(
-      prepareClientEncryption({
-        api,
-        authMode: "accounts",
-        durableStorage: storage,
-        identity,
-        runtimePlatform: "tauri",
-        service,
-      }),
-    ).resolves.toEqual({
-      credential: "password",
-      reason: "authorize-device",
-      status: "credential-required",
-    });
-    expect(api.initializationAttempts).toBe(initializationAttempts);
-
-    await expect(
-      prepareClientEncryption({
-        api,
-        authMode: "accounts",
-        durableStorage: storage,
-        identity,
-        password,
-        runtimePlatform: "tauri",
-        service,
-      }),
-    ).resolves.toEqual({ status: "ready" });
-    expect(api.initializationAttempts).toBe(initializationAttempts);
-    expect(
-      await storage.catalog.getAccountBinding(
+      const installation = await storage.catalog.getInstallation();
+      const binding = await storage.catalog.getAccountBinding(
         identity.serverId,
         identity.ownerId,
-      ),
-    ).toMatchObject({ principalId: service.getSnapshot().clientId });
-  });
+      );
+      expect(installation).not.toBeNull();
+      expect(binding).toMatchObject({
+        keyAlias: expect.stringContaining(installation!.installationId),
+        masterKeyRevision: 1,
+        principalId: expect.not.stringMatching(legacyPrincipalId),
+      });
+      await expect(
+        storage.catalog.getMigration(
+          `legacy-indexeddb-v1:${binding!.principalId}`,
+        ),
+      ).resolves.toMatchObject({
+        state: "verified",
+        verificationState: "native-grant-unwrapped-and-marker-decrypted-v1",
+      });
+      expect(api.principals.get(legacyPrincipalId)?.state).toBe("approved");
+      expect(api.grants.get(legacyPrincipalId)?.[0]).toEqual(legacyGrant);
+      expect(states).toContain("migrating-legacy-device");
+      expect(states.at(-1)).toBe("ready");
+
+      const nativeOnly = new ClientEncryptionService({
+        delete: () => Promise.reject(new Error("legacy storage not used")),
+        load: () => Promise.reject(new Error("legacy storage not used")),
+        save: () => Promise.reject(new Error("legacy storage not used")),
+      });
+      await expect(
+        prepareClientEncryption({
+          api,
+          authMode: "accounts",
+          durableStorage: storage,
+          identity,
+          runtimePlatform,
+          service: nativeOnly,
+        }),
+      ).resolves.toEqual({ status: "ready" });
+      expect(nativeOnly.getSnapshot()).toMatchObject({
+        clientId: binding!.principalId,
+        status: "ready",
+      });
+    },
+  );
+
+  it.each(["tauri", "capacitor-ios", "capacitor-android"] as const)(
+    "recovers an existing account on %s with its password without initializing a blank profile",
+    async (runtimePlatform) => {
+      const api = new MemoryAccountEncryptionApi(password);
+      await initializeLegacyAccount({
+        api,
+        store: new MemoryDeviceKeyStore(),
+      });
+      const initializationAttempts = api.initializationAttempts;
+      const storage = durableStorage();
+      const service = new ClientEncryptionService(new MemoryDeviceKeyStore());
+
+      await expect(
+        prepareClientEncryption({
+          api,
+          authMode: "accounts",
+          durableStorage: storage,
+          identity,
+          runtimePlatform,
+          service,
+        }),
+      ).resolves.toEqual({
+        credential: "password",
+        reason: "authorize-device",
+        status: "credential-required",
+      });
+      expect(api.initializationAttempts).toBe(initializationAttempts);
+
+      await expect(
+        prepareClientEncryption({
+          api,
+          authMode: "accounts",
+          durableStorage: storage,
+          identity,
+          password,
+          runtimePlatform,
+          service,
+        }),
+      ).resolves.toEqual({ status: "ready" });
+      expect(api.initializationAttempts).toBe(initializationAttempts);
+      expect(
+        await storage.catalog.getAccountBinding(
+          identity.serverId,
+          identity.ownerId,
+        ),
+      ).toMatchObject({ principalId: service.getSnapshot().clientId });
+    },
+  );
 
   it("resumes after an ambiguous grant response without creating another principal", async () => {
     class InterruptedGrantApi extends MemoryAccountEncryptionApi {

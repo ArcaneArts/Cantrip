@@ -210,11 +210,11 @@ dependency boundary.
 
 #### Durable native installation storage
 
-Tauri selects the durable native installation catalog during normal startup.
-Capacitor now ships matching native SQLite and secure-key providers, but its
-normal startup selection remains unchanged until the transactional mobile
-migration and recovery cycle. Browsers continue to use IndexedDB. Rollout and
-verification status for each runtime is recorded in
+Tauri and Capacitor select the durable native installation catalog during
+normal startup. Both use the same transactional migration and account-recovery
+coordinator; only the catalog and secure-key bridge differ by platform.
+Browsers continue to use IndexedDB. Rollout and verification status for each
+runtime is recorded in
 [ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md).
 
 The Tauri catalog lives under the operating system's non-roaming local
@@ -277,10 +277,11 @@ unwrapped 32-byte Account Master Key only; temporary byte buffers are cleared
 on best effort. Missing or invalid secure-store material is a recovery state,
 never permission to replace the installation key.
 
-Tauri startup fetches the authoritative server encryption profile before
+Native startup fetches the authoritative server encryption profile before
 deciding whether profile initialization is allowed. For an initialized profile
-it first tries the cataloged native binding. If no verified binding exists, it
-reads the retained legacy IndexedDB record without deleting or replacing it.
+it first tries the cataloged native binding. If no verified binding exists,
+Tauri and Capacitor read the retained legacy IndexedDB record without deleting
+or replacing it.
 An accessible legacy private key unwraps the existing Account Master Key; the
 client then creates or reconciles a stable per-server/account native principal,
 wraps that same master key to the installation public key, and verifies a
@@ -307,11 +308,12 @@ principal is revoked as part of migration.
 
 For account mode, a missing legacy registration returns to normal password
 reauthentication, unwraps the existing password-wrapped Account Master Key, and
-provisions the native binding without calling profile initialization. For
-anonymous mode, missing or corrupt custody enters a specific recovery-required
-state and preserves the server profile; it never mounts an empty workspace or
-creates a blank encryption profile. Anonymous recovery artifact import is a
-separate rollout cycle.
+provisions the native binding without calling profile initialization. This is
+the replacement-device path for Tauri, Capacitor iOS, and Capacitor Android.
+For anonymous mode, missing or corrupt custody enters a specific
+recovery-required state and preserves the server profile; it never mounts an
+empty workspace or creates a blank encryption profile. Anonymous recovery
+artifact import is a separate rollout cycle.
 
 The legacy reader uses the existing `cantrip-client-encryption` IndexedDB
 database and remains retained after cutover. The bundle identifier
