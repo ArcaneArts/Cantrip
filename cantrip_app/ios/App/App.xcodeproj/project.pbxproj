@@ -17,6 +17,10 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		C01100052FEA000100000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C01100042FEA000100000001 /* PrivacyInfo.xcprivacy */; };
+		C01100112FEA000100000001 /* CantripBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100212FEA000100000001 /* CantripBridgeViewController.swift */; };
+		C01100122FEA000100000001 /* CantripHPKE.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100222FEA000100000001 /* CantripHPKE.swift */; };
+		C01100132FEA000100000001 /* CantripInstallationStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100232FEA000100000001 /* CantripInstallationStorage.swift */; };
+		C01100142FEA000100000001 /* CantripInstallationStoragePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100242FEA000100000001 /* CantripInstallationStoragePlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +39,10 @@
 		C01100012FEA000100000001 /* cantrip-version.debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = cantrip-version.debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		C01100022FEA000100000001 /* cantrip-version.release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = cantrip-version.release.xcconfig; sourceTree = SOURCE_ROOT; };
 		C01100032FEA000100000001 /* cantrip-version.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = cantrip-version.xcconfig; sourceTree = SOURCE_ROOT; };
+		C01100212FEA000100000001 /* CantripBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CantripBridgeViewController.swift; sourceTree = "<group>"; };
+		C01100222FEA000100000001 /* CantripHPKE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CantripHPKE.swift; sourceTree = "<group>"; };
+		C01100232FEA000100000001 /* CantripInstallationStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CantripInstallationStorage.swift; sourceTree = "<group>"; };
+		C01100242FEA000100000001 /* CantripInstallationStoragePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CantripInstallationStoragePlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +80,10 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
+				C01100212FEA000100000001 /* CantripBridgeViewController.swift */,
+				C01100222FEA000100000001 /* CantripHPKE.swift */,
+				C01100232FEA000100000001 /* CantripInstallationStorage.swift */,
+				C01100242FEA000100000001 /* CantripInstallationStoragePlugin.swift */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -169,6 +181,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				C01100112FEA000100000001 /* CantripBridgeViewController.swift in Sources */,
+				C01100122FEA000100000001 /* CantripHPKE.swift in Sources */,
+				C01100132FEA000100000001 /* CantripInstallationStorage.swift in Sources */,
+				C01100142FEA000100000001 /* CantripInstallationStoragePlugin.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
