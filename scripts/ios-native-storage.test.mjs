@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -8,6 +8,22 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("iOS registers local storage through the Capacitor instance path", () => {
+  const bridgeController = readFileSync(
+    path.join(
+      root,
+      "cantrip_app/ios/App/App/CantripBridgeViewController.swift",
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    bridgeController,
+    /registerPluginInstance\(CantripInstallationStoragePlugin\(\)\)/u,
+  );
+  assert.doesNotMatch(bridgeController, /registerPluginType/u);
+});
 
 test("iOS native HPKE opens the TypeScript wire fixture", (context) => {
   if (process.platform !== "darwin") {
