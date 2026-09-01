@@ -269,15 +269,16 @@ export class ProjectFolderSetupJobRepository {
         id: sourceId,
         projectId: job.projectId,
         workerId: job.workerId,
-        sourceKind: "folder",
+        sourceKind: result.repositoryFingerprint ? "git" : "folder",
         absolutePath: result.path,
         displayPath: result.displayPath,
+        repositoryFingerprint: result.repositoryFingerprint,
       });
       await transaction.insert(schema.projectWorktrees).values({
         id: randomUUID(),
         projectSourceId: sourceId,
         workerId: job.workerId,
-        rootKind: "folder-root",
+        rootKind: result.repositoryFingerprint ? "git-worktree" : "folder-root",
         name: "Primary",
         absolutePath: result.path,
         displayPath: result.displayPath,
@@ -288,7 +289,17 @@ export class ProjectFolderSetupJobRepository {
       });
       await transaction
         .update(schema.projects)
-        .set({ setupStatus: "ready", setupError: null, updatedAt: now })
+        .set({
+          setupStatus: "ready",
+          setupError: null,
+          gitCapability: result.repositoryFingerprint !== null,
+          githubCapability: result.github !== null,
+          githubRepositoryBlindIndex: result.github?.repositoryId ?? null,
+          githubRepositoryId: result.github?.repositoryId ?? null,
+          githubRepositoryFullName: result.github?.nameWithOwner ?? null,
+          githubRepositoryUrl: result.github?.url ?? null,
+          updatedAt: now,
+        })
         .where(eq(schema.projects.id, job.projectId));
       const completed = await transaction
         .update(schema.projectFolderSetupJobs)

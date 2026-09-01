@@ -18,6 +18,17 @@ function project(originKind: ProjectOriginKind) {
   };
 }
 
+function attachedGitFolder(github: boolean) {
+  return {
+    ...project("managed-folder"),
+    capabilities: {
+      ...projectCapabilitiesForOriginKind("managed-folder"),
+      git: true,
+      github,
+    },
+  };
+}
+
 describe("project capability guards", () => {
   it("preserves every GitHub project capability", () => {
     const github = project("github");
@@ -48,6 +59,20 @@ describe("project capability guards", () => {
           "This managed-folder project does not support the replicas capability.",
       });
     }
+  });
+
+  it("allows detected repository capabilities without enabling folder mobility", () => {
+    const git = attachedGitFolder(false);
+    const github = attachedGitFolder(true);
+
+    expect(() => requireProjectCapability(git, "git")).not.toThrow();
+    expect(() => requireProjectCapability(git, "github")).toThrowError(
+      ProjectCapabilityUnavailableError,
+    );
+    expect(() => requireProjectCapability(github, "github")).not.toThrow();
+    expect(() => requireProjectCapability(github, "worktrees")).toThrowError(
+      ProjectCapabilityUnavailableError,
+    );
   });
 
   it("classifies project routes through one central capability map", () => {
@@ -81,6 +106,12 @@ describe("project capability guards", () => {
     expect(
       projectCapabilityForRoute("GET", "/api/projects/:projectId/worktrees"),
     ).toBeNull();
+    expect(
+      projectCapabilityForRoute(
+        "POST",
+        "/api/projects/:projectId/worktrees/:worktreeId/repository-operation",
+      ),
+    ).toBe("git");
     expect(
       projectCapabilityForRoute("GET", "/api/projects/:projectId/chats"),
     ).toBeNull();

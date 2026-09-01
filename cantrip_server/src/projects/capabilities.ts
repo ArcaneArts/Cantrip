@@ -53,6 +53,7 @@ export function projectCapabilityForRoute(
   if (method === "GET" && route === "/api/projects/:projectId/worktrees") {
     return null;
   }
+  if (route.endsWith("/repository-operation")) return "git";
   if (route.includes("/github/")) return "github";
   if (route.includes("/git/") || route.endsWith("/git/status")) return "git";
   if (route.includes("/worktrees") || route.endsWith("/worktree-policy")) {

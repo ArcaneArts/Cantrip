@@ -1595,6 +1595,8 @@ export const projects = pgTable(
     setupStatus: text("setup_status").notNull().default("ready"),
     setupError: text("setup_error"),
     worktreePolicy: text("worktree_policy").notNull().default("agent-managed"),
+    gitCapability: boolean("git_capability").notNull().default(true),
+    githubCapability: boolean("github_capability").notNull().default(true),
     preferredWorkerId: text("preferred_worker_id").references(
       () => workers.id,
       { onDelete: "set null" },
@@ -1632,7 +1634,7 @@ export const projects = pgTable(
     ),
     check(
       "projects_managed_folder_identity_check",
-      sql`(${table.originKind} = 'managed-folder' AND ${table.folderManagement} IN ('managed', 'external') AND ${table.githubRepositoryBlindIndex} IS NULL AND ${table.githubRepositoryId} IS NULL AND ${table.githubRepositoryFullName} IS NULL AND ${table.githubRepositoryUrl} IS NULL AND ${table.worktreePolicy} = 'direct') OR (${table.originKind} <> 'managed-folder' AND ${table.folderManagement} IS NULL AND ${table.githubRepositoryBlindIndex} IS NOT NULL)`,
+      sql`(${table.originKind} = 'managed-folder' AND ${table.folderManagement} IN ('managed', 'external') AND ${table.worktreePolicy} = 'direct' AND ((${table.githubRepositoryBlindIndex} IS NULL AND ${table.githubRepositoryId} IS NULL AND ${table.githubRepositoryFullName} IS NULL AND ${table.githubRepositoryUrl} IS NULL) OR (${table.githubRepositoryBlindIndex} IS NOT NULL AND ${table.githubRepositoryId} IS NOT NULL AND ${table.githubRepositoryFullName} IS NOT NULL AND ${table.githubRepositoryUrl} IS NOT NULL))) OR (${table.originKind} <> 'managed-folder' AND ${table.folderManagement} IS NULL AND ${table.githubRepositoryBlindIndex} IS NOT NULL)`,
     ),
     check(
       "projects_setup_error_minimized_check",

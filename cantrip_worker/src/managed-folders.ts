@@ -6,6 +6,7 @@ import {
   managedFolderMaterializeReadySchema,
   type ManagedFolderDeleteResult,
   type ManagedFolderMaterializeReady,
+  type ProjectGithubConversionRepository,
 } from "@cantrip/protocol";
 
 import { canonicalProjectSourcePath } from "./project-source-path.js";
@@ -46,7 +47,13 @@ async function directoryEntry(target: string) {
 }
 
 export class ManagedFolderManager {
-  constructor(private readonly dataDirectory: string) {}
+  constructor(
+    private readonly dataDirectory: string,
+    private readonly inspectRepository: (cwd: string) => Promise<{
+      github: ProjectGithubConversionRepository | null;
+      repositoryFingerprint: string | null;
+    }> = async () => ({ github: null, repositoryFingerprint: null }),
+  ) {}
 
   private foldersRoot(): string {
     return path.resolve(this.dataDirectory, "folders");
@@ -106,6 +113,7 @@ export class ManagedFolderManager {
       if (!targetEntry.isDirectory()) {
         throw new Error("The existing folder path is not a directory.");
       }
+      const repository = await this.inspectRepository(canonicalTarget);
       return managedFolderMaterializeReadySchema.parse({
         status: "ready",
         jobId: input.jobId,
@@ -113,6 +121,7 @@ export class ManagedFolderManager {
         path: canonicalTarget,
         displayPath: input.existingPath,
         reused: true,
+        ...repository,
       });
     }
     const { canonicalRoot, displayPath, target } = await this.verifiedTarget(

@@ -51,6 +51,9 @@ export function toProjectWireSummary(
   project: ProjectRow,
   replicas: ProjectReplicaSummary[] = [],
 ): ProjectWireSummary {
+  const originCapabilities = projectCapabilitiesForOriginKind(
+    project.originKind,
+  );
   const github =
     project.githubRepositoryId &&
     project.githubRepositoryFullName &&
@@ -68,7 +71,11 @@ export function toProjectWireSummary(
     position: project.position,
     originKind: project.originKind,
     folderManagement: project.folderManagement,
-    capabilities: projectCapabilitiesForOriginKind(project.originKind),
+    capabilities: {
+      ...originCapabilities,
+      git: originCapabilities.git || project.gitCapability,
+      github: originCapabilities.github || project.githubCapability,
+    },
     setupStatus: project.setupStatus as ProjectWireSummary["setupStatus"],
     setupError: project.setupError,
     worktreePolicy:

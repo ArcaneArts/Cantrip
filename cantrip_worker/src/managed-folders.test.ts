@@ -51,6 +51,38 @@ describe("ManagedFolderManager", () => {
     await expect(access(existingPath)).resolves.toBeUndefined();
   });
 
+  it("preserves detected Git and authenticated GitHub metadata", async () => {
+    const root = await temporaryDirectory("cantrip-folder-manager-");
+    const existingPath = path.join(root, "existing-repository");
+    await mkdir(existingPath);
+    const manager = new ManagedFolderManager(
+      path.join(root, "worker-data"),
+      async (cwd) => {
+        expect(cwd).toBe(await realpath(existingPath));
+        return {
+          repositoryFingerprint: "a".repeat(64),
+          github: {
+            repositoryId: "12345",
+            nameWithOwner: "ArcaneArts/Cantrip",
+            url: "https://github.com/ArcaneArts/Cantrip",
+          },
+        };
+      },
+    );
+
+    await expect(
+      manager.materialize({
+        attempt: 1,
+        existingPath,
+        jobId: "019fdcf5-c116-77d0-9588-7c65fc3bc7c2",
+        projectId: "019fdcf5-a6e7-75fb-bdf7-22b697df3a57",
+      }),
+    ).resolves.toMatchObject({
+      repositoryFingerprint: "a".repeat(64),
+      github: { nameWithOwner: "ArcaneArts/Cantrip" },
+    });
+  });
+
   it("rejects an existing path that is not a directory", async () => {
     const root = await temporaryDirectory("cantrip-folder-manager-");
     const manager = new ManagedFolderManager(path.join(root, "worker-data"));

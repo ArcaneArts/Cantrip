@@ -1366,6 +1366,28 @@ describe("Cantrip protocol", () => {
         ...folder,
         capabilities: { ...folder.capabilities, git: true },
       }).success,
+    ).toBe(true);
+    expect(
+      projectSummarySchema.safeParse({
+        ...folder,
+        capabilities: {
+          ...folder.capabilities,
+          git: true,
+          github: true,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      projectSummarySchema.safeParse({
+        ...folder,
+        capabilities: { ...folder.capabilities, github: true },
+      }).success,
+    ).toBe(false);
+    expect(
+      projectSummarySchema.safeParse({
+        ...folder,
+        capabilities: { ...folder.capabilities, worktrees: true },
+      }).success,
     ).toBe(false);
   });
 

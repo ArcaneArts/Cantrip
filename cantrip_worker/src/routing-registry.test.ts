@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { managedFolderMaterializeReadySchema } from "@cantrip/protocol";
 
 import { WorkerRoutingRegistry } from "./routing-registry.js";
 
@@ -102,6 +103,23 @@ describe("WorkerRoutingRegistry", () => {
       repositoryId: expect.stringMatching(/^ctrr_/u),
       url: expect.stringMatching(/^ctrr_/u),
     });
+    const protectedFolder = managedFolderMaterializeReadySchema.parse(
+      await registry.protectResult("project.folder.materialize", {
+        status: "ready",
+        jobId: "019fdcf5-c116-77d0-9588-7c65fc3bc7c2",
+        attempt: 1,
+        path: "/Users/example/private-repository",
+        displayPath: "/Users/example/private-repository",
+        reused: true,
+        repositoryFingerprint: "a".repeat(64),
+        github: {
+          repositoryId: "private-repository-id",
+          nameWithOwner: "ArcaneArts/Private",
+          url: "https://github.com/ArcaneArts/Private",
+        },
+      }),
+    );
+    expect(protectedFolder.github).toEqual(protectedIdentity);
 
     const restarted = new WorkerRoutingRegistry(dataDirectory);
     const command = await restarted.resolveCommand({

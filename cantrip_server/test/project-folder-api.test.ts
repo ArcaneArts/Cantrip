@@ -141,6 +141,7 @@ function opaqueTaskDraft(): TaskOpaqueContent {
 
 const connectedWorkers = new Set(["folder-worker"]);
 const commands: Array<{ command: WorkerCommand; workerId: string }> = [];
+const authenticatedAttachedPath = `ctrr_${"A".repeat(43)}`;
 let releaseHeldConversion: (() => void) | null = null;
 const bridge: WorkerCommandBus = {
   attach() {},
@@ -163,6 +164,7 @@ const bridge: WorkerCommandBus = {
       const target =
         command.existingPath ??
         path.join(dataDirectory, "folders", command.projectId);
+      const repositoryDetected = target === authenticatedAttachedPath;
       return {
         status: "ready",
         jobId: command.jobId,
@@ -170,6 +172,14 @@ const bridge: WorkerCommandBus = {
         path: target,
         displayPath: command.existingPath ?? `folders/${command.projectId}`,
         reused: Boolean(command.existingPath),
+        repositoryFingerprint: repositoryDetected ? "d".repeat(64) : null,
+        github: repositoryDetected
+          ? {
+              repositoryId: "detected-repository",
+              nameWithOwner: "ArcaneArts/Detected",
+              url: "https://github.com/ArcaneArts/Detected",
+            }
+          : null,
       };
     }
     if (command.type === "project.folder.delete") return { deleted: true };
@@ -356,6 +366,41 @@ async function waitUntilReady(projectId: string) {
 }
 
 describe("managed folder project lifecycle", () => {
+  it("enables Git and GitHub surfaces for an authenticated attached checkout", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/projects/from-folder",
+      payload: {
+        existingPath: authenticatedAttachedPath,
+        ...protectedProjectFields(),
+        workerId: "folder-worker",
+      },
+    });
+    expect(response.statusCode).toBe(202);
+    const ready = await waitUntilReady(
+      projectWireSummarySchema.parse(response.json()).id,
+    );
+
+    expect(ready.capabilities).toEqual({
+      git: true,
+      github: true,
+      worktrees: false,
+      replicas: false,
+      relocation: false,
+    });
+    expect(ready.source?.sourceKind).toBe("git");
+    expect(ready.github).toMatchObject({
+      repositoryId: "detected-repository",
+      nameWithOwner: "ArcaneArts/Detected",
+    });
+    expect(ready.replicas[0]?.repositoryFingerprint).toBe("d".repeat(64));
+    expect(
+      (
+        await database.repository.listProjectWorktrees(LOCAL_USER_ID, ready.id)
+      )[0]?.rootKind,
+    ).toBe("git-worktree");
+  });
+
   it("attaches an existing worker folder without taking deletion ownership", async () => {
     const existingPath = path.join(dataDirectory, "outside-managed-root");
     const response = await app.inject({

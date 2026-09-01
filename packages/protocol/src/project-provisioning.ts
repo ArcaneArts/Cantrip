@@ -36,6 +36,12 @@ export const managedFolderMaterializeReadySchema = z.object({
   path: z.string().min(1),
   displayPath: z.string().min(1),
   reused: z.boolean(),
+  repositoryFingerprint: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/u)
+    .nullable()
+    .default(null),
+  github: projectGithubWireRepositorySchema.nullable().default(null),
 });
 
 export const managedFolderDeleteResultSchema = z.object({

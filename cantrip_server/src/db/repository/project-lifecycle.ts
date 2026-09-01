@@ -311,6 +311,8 @@ export class ProjectLifecycleRepository {
           setupStatus: "preparing",
           setupError: null,
           worktreePolicy: "direct",
+          gitCapability: false,
+          githubCapability: false,
           preferredWorkerId: input.workerId,
           githubRepositoryBlindIndex: null,
           githubRepositoryId: null,
