@@ -48,7 +48,7 @@ flowchart TD
   - Preserved existing runtime behavior while documenting the legacy
     `[version, serverId, ownerId]` IndexedDB characterization.
 - Validation:
-  - `pnpm --filter @cantrip/app exec vitest run src/lib/installation-catalog.test.ts src/lib/client-encryption.test.ts src/lib/account-encryption.test.ts` — 17 tests passed.
+  - `pnpm --filter @cantrip/app exec vitest run src/lib/installation-catalog.test.ts src/lib/client-encryption.test.ts src/lib/account-encryption.test.ts` — 18 tests passed.
   - `pnpm --filter @cantrip/app typecheck` — passed.
   - `git diff --check` — passed.
 - Supported platforms: shared contract and test provider only; no runtime

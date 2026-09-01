@@ -24,16 +24,30 @@ import { clearClientSession, setClientSession } from "./client-session";
 const timestamp = "2026-08-19T12:00:00.000Z";
 const identity = { ownerId: "owner-a", serverId: "server-a" } as const;
 
-function missingRecordIndexedDbFactory(): IDBFactory {
+type IndexedDbContractObservation = {
+  databaseName?: string;
+  databaseVersion?: number;
+  lookupKey?: IDBValidKey | IDBKeyRange;
+  objectStoreName?: string;
+  transactionMode?: IDBTransactionMode;
+};
+
+function missingRecordIndexedDbFactory(
+  observation: IndexedDbContractObservation = {},
+): IDBFactory {
   const request = { result: undefined } as unknown as IDBRequest<unknown>;
   let transaction: IDBTransaction;
   const database = {
     close() {},
-    transaction() {
+    transaction(storeName: string | string[], mode?: IDBTransactionMode) {
+      observation.objectStoreName = String(storeName);
+      observation.transactionMode = mode;
       transaction = {
-        objectStore() {
+        objectStore(name: string) {
+          observation.objectStoreName = name;
           return {
-            get() {
+            get(key: IDBValidKey | IDBKeyRange) {
+              observation.lookupKey = key;
               queueMicrotask(() => {
                 request.onsuccess?.(new Event("success"));
                 transaction.oncomplete?.(new Event("complete"));
@@ -48,7 +62,9 @@ function missingRecordIndexedDbFactory(): IDBFactory {
   } as unknown as IDBDatabase;
   const openRequest = { result: database } as unknown as IDBOpenDBRequest;
   return {
-    open() {
+    open(name: string, version?: number) {
+      observation.databaseName = name;
+      observation.databaseVersion = version;
       queueMicrotask(() => openRequest.onsuccess?.(new Event("success")));
       return openRequest;
     },
@@ -135,6 +151,22 @@ describe("client encryption key custody", () => {
     );
 
     await expect(store.load(identity)).resolves.toBeNull();
+  });
+
+  it("preserves the exact legacy IndexedDB address for migration readers", async () => {
+    const observation: IndexedDbContractObservation = {};
+    const store = new IndexedDbClientDeviceKeyStore(
+      missingRecordIndexedDbFactory(observation),
+    );
+
+    await expect(store.load(identity)).resolves.toBeNull();
+    expect(observation).toEqual({
+      databaseName: "cantrip-client-encryption",
+      databaseVersion: 1,
+      lookupKey: JSON.stringify([1, identity.serverId, identity.ownerId]),
+      objectStoreName: "device-keys",
+      transactionMode: "readonly",
+    });
   });
 
   it("preserves an unlocked singleton across development hot reloads", () => {
