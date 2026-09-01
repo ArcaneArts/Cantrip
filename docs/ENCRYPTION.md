@@ -413,6 +413,31 @@ release branch or deploying the browser/server. These deterministic harnesses
 do not replace signed-package, physical-device, or browser-engine update smoke
 tests; those remain separately disclosed in the progress ledger.
 
+#### Durable-storage completion audit
+
+The cross-platform storage migration is complete. Tauri no longer selects an
+origin-scoped IndexedDB record as its primary device-key store; Capacitor uses
+its native SQLite catalog and secure-key plugin; and browser builds use the
+recoverable IndexedDB/WebCrypto installation provider. All three runtimes use
+the same startup transition owner, migration invariants, account-binding model,
+and explicit recovery boundary.
+
+| Runtime           | Installation metadata       | Private-key custody                                           | Recovery after custody loss                                                                                  |
+| ----------------- | --------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Tauri             | Native SQLite catalog       | Keychain, Windows Credential Manager, or Linux Secret Service | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
+| Capacitor iOS     | Native SQLite catalog       | iOS Keychain                                                  | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
+| Capacitor Android | Native SQLite catalog       | Android Keystore-backed encrypted key record                  | Password wrapper or anonymous recovery artifact replaces custody under the same installation ID              |
+| Browser           | Versioned IndexedDB catalog | Nonextractable WebCrypto key                                  | Account password provisions a replacement browser installation; anonymous mode imports its recovery artifact |
+
+The compatibility gate verifies seven ordinary-update or storage-loss
+harnesses and is release-blocking. Native catalog reopen tests exercise the
+same installation, alias, bindings, and encrypted marker across an update.
+Signed-package, physical-device, Linux desktop-session, and production-browser
+smokes remain operational release checks because shared test environments
+cannot prove OS entitlements or storage eviction policy. The definitive cycle
+ledger and manual verification list are in
+[ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md).
+
 #### Browser custody and recovery
 
 Browser startup uses the versioned `cantrip-browser-installation` IndexedDB

@@ -31,6 +31,27 @@ flowchart TD
 - Missing local state never authorizes blank profile initialization or a
   destructive reset.
 
+## Completion status
+
+Status: **complete** after Cycle 12. The implementation now satisfies the
+durable-storage goal across Tauri, Capacitor, and browser runtimes. The
+remaining manual checks below validate signed packages and physical operating
+system facilities; they do not represent missing application behavior or a
+known implementation blocker.
+
+| Required capability                                           | Completed implementation                                                                                                                               |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| One stable installation with multiple account/server bindings | One immutable installation record owns one installation-derived key alias; account bindings are separate catalog rows.                                 |
+| Tauri native custody                                          | SQLite public metadata plus macOS Keychain, Windows Credential Manager, or Linux Secret Service custody; legacy IndexedDB is migration-only.           |
+| Capacitor native custody                                      | SQLite public metadata plus iOS Keychain or Android Keystore-backed custody.                                                                           |
+| Browser custody and recovery                                  | Versioned IndexedDB/WebCrypto installation storage, persistence requests, password recovery, and anonymous recovery import.                            |
+| Existing installation migration                               | Retained legacy IndexedDB keys unwrap and rewrap the existing Account Master Key through an idempotent, verified migration checkpoint.                 |
+| Missing-key recovery                                          | Password or anonymous recovery authorizes explicit key replacement without changing the native installation ID or initializing a blank server profile. |
+| Anonymous recovery                                            | Versioned recovery export, acknowledgement, later export, strict import, and unrecoverable-state messaging.                                            |
+| Stable development identity                                   | Named profiles persist outside worktrees and build output; inspection and deliberate clean-profile tooling expose no secrets.                          |
+| Update safety                                                 | Immutable compatibility manifest, seven version N to N+1 or recovery harnesses, and release-blocking desktop/mobile/browser gates.                     |
+| No silent replacement                                         | One startup transition owner fails into precise recovery states; ordinary startup cannot reset keys, profiles, or encrypted data.                      |
+
 ## Cycle ledger
 
 ### Cycle 1 — installation catalog contract and characterization
@@ -647,7 +668,7 @@ flowchart TD
 - Branch: `codex/encryption-storage-cycle11-retire-defaults`
 - Pull request: [#1552](https://github.com/ArcaneArts/Cantrip/pull/1552)
 - Commit: `6d6141a824c5b63d8849e6bab011021e2634094b`
-- Merge: pending
+- Merge: squash-merged as `8b0cd99993e5f47a4d09e81226da412b973df0c5`
 - Behavior implemented:
   - Removed the origin-scoped legacy IndexedDB store from
     `ClientEncryptionService`'s constructor default. Ordinary service instances
@@ -699,6 +720,86 @@ flowchart TD
   complete password recovery and confirm only the current browser installation
   database is created.
 
-## Remaining cycles
+### Cycle 12 — final cross-platform audit and closure
 
-1. Complete the cross-platform audit, full validation, and documentation.
+- Branch: `codex/encryption-storage-cycle12-final-audit`
+- Pull request: pending
+- Commit and merge: pending
+- Behavior implemented:
+  - Audited the final implementation against every goal completion criterion
+    and reconciled the architecture, platform, migration, recovery,
+    development, update, and release documentation with the shipped behavior.
+  - Confirmed that normal Tauri startup has no origin-scoped IndexedDB device
+    store default, Capacitor selects native catalog and custody providers, and
+    browser startup retains its explicit recoverable IndexedDB provider.
+  - Confirmed that server and owner identifiers select authorization bindings
+    rather than installation keys, and that no ordinary startup path can
+    replace custody, initialize an existing server profile, or mount blank
+    protected state after a storage failure.
+  - Closed this ledger with a single completion matrix while preserving each
+    earlier cycle's at-the-time limitations and validation history.
+- Validation:
+  - `pnpm --filter @cantrip/protocol test` — passed.
+  - `pnpm --filter @cantrip/crypto test` — passed.
+  - `pnpm --filter @cantrip/app test` — 1,875 tests passed and 3 skipped across
+    356 files.
+  - `pnpm typecheck` and `pnpm --filter @cantrip/app build` — passed.
+  - `pnpm verify:installation-compatibility` and the focused compatibility,
+    native-release, and release suites — all seven update/recovery harnesses
+    and 20 script tests passed.
+  - `cargo fmt --manifest-path cantrip_app/src-tauri/Cargo.toml -- --check` and
+    `cargo check --manifest-path cantrip_app/src-tauri/Cargo.toml` — passed.
+  - `cargo test --manifest-path cantrip_app/src-tauri/Cargo.toml installation_storage --lib`
+    — 22 tests passed.
+  - `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:compileDebugJavaWithJavac :app:testDebugUnitTest`
+    — passed after the normal Capacitor sync generated its ignored plugin
+    inputs.
+  - `xcodebuild -project cantrip_app/ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build`
+    — passed for arm64 and x86_64 simulators after the normal Capacitor sync.
+  - `node --test scripts/ios-native-storage.test.mjs` — passed.
+  - Focused server encryption-registry API suite — 3 tests passed.
+  - `pnpm --filter @cantrip/worker test` — 969 tests passed and 2 skipped
+    across 151 files.
+  - `node --test scripts/*.test.mjs` — 122 tests passed and the two known
+    clean-`main` baseline assertions failed for the App Platform build-command
+    fixture and tranche-two sidebar lifecycle fixture. This cycle changes
+    neither surface.
+  - The broad server suite was also sampled from unchanged source: 762 tests
+    passed, 103 skipped, and 48 failed across 33 files because current database
+    fixtures conflict with schema constraints or time out. The focused
+    encryption-registry suite passes, and this documentation-only cycle changes
+    no server source or test fixture.
+  - `pnpm check:large-files`, changed-file Prettier validation, and
+    `git diff --check` — passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle introduced no newly reported overage.
+- Supported platforms:
+  - Tauri macOS, Windows, and Linux have explicit native providers and shared
+    contract/update coverage. macOS compiled locally; Windows and macOS native
+    release lanes run the storage reopen test. Signed credential-store smoke
+    tests remain manual on each desktop OS.
+  - Capacitor iOS and Android have native catalog, custody, migration,
+    recovery, and deterministic update coverage. Simulator/emulator builds are
+    automated; signed physical-device secure-store checks remain manual.
+  - Browser has IndexedDB/WebCrypto persistence, upgrade, storage-loss,
+    password, and anonymous recovery coverage. Browser persistence remains an
+    engine-controlled best effort.
+- Migration status: complete. Accessible released-format legacy records remain
+  readable and retained after verified migration; no normal path creates,
+  deletes, or replaces a legacy record.
+- Remaining work: none for this goal.
+- Known risks or blockers: no implementation blocker. Losing every usable
+  anonymous device key and its recovery artifact is intentionally
+  cryptographically unrecoverable. Deterministic tests cannot prove signed
+  package entitlements or physical credential-store behavior.
+- Manual verification: perform signed version N to N+1 update smokes on macOS,
+  Windows, iOS, and Android; exercise Linux Secret Service in a packaged desktop
+  session; and exercise browser persistence denial plus account and anonymous
+  storage-loss recovery in production browser engines.
+
+## Goal completion
+
+No required implementation work remains. Future changes to any compatibility
+contract must add an explicit migration and deterministic fixture before the
+release gate will permit publication.
