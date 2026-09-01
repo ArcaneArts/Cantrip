@@ -1011,18 +1011,6 @@ async function validateJavaTarget(
     }
   }
   if (
-    document.target.kind === "gradleTask" &&
-    !module.gradleTasks.includes(document.target.task)
-  ) {
-    return [
-      runConfigurationProviderDiagnostic(
-        "gradle-task-missing",
-        `The Gradle application task ${document.target.task} was not found in the selected project.`,
-        "target.task",
-      ),
-    ];
-  }
-  if (
     document.target.kind === "mavenGoal" &&
     !module.gradleTasks.includes(document.target.goal) &&
     document.target.goal.split(":").length < 4
