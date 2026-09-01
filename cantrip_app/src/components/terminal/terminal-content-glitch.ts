@@ -34,6 +34,13 @@ export interface TerminalContentGlitchRenderer {
   dispose(): void;
 }
 
+export function terminalContentGlitchCanAnimate(
+  enabled: boolean,
+  terminalFocused: boolean,
+): boolean {
+  return enabled && !terminalFocused;
+}
+
 const TERMINAL_GLITCH_LAYER_CLASS = "terminal-content-glitch-layer";
 const TERMINAL_GLITCH_FRAGMENT_CLASS = "terminal-content-glitch-fragment";
 const MAX_TERMINAL_GLITCH_FRAGMENTS = 256;

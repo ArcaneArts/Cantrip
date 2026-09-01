@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   terminalChangedSpans,
+  terminalContentGlitchCanAnimate,
   terminalRowAlignmentOffset,
   type TerminalViewportSnapshot,
 } from "./terminal-content-glitch";
@@ -22,6 +23,12 @@ function snapshot(
 }
 
 describe("terminal content glitch diffing", () => {
+  it("keeps focused terminal output free of cosmetic animation work", () => {
+    expect(terminalContentGlitchCanAnimate(true, true)).toBe(false);
+    expect(terminalContentGlitchCanAnimate(true, false)).toBe(true);
+    expect(terminalContentGlitchCanAnimate(false, false)).toBe(false);
+  });
+
   it("isolates a partial edit on an existing row", () => {
     const before = snapshot(["build 40%", "ready    "]);
     const after = snapshot(["build 41%", "ready    "]);

@@ -762,7 +762,8 @@ function EliteConfigurator({
             <h3 className="text-sm font-semibold">Terminal</h3>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               The normal terminal renderer stays intact. This adds a temporary
-              overlay only over character cells changed by live output.
+              overlay over character cells changed by live output while the
+              terminal is not focused.
             </p>
           </div>
           <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/60">
