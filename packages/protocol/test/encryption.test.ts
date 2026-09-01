@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  anonymousRecoveryArtifactSchema,
   encryptedPayloadEnvelopeSchema,
   passwordKdfParametersSchema,
   workerComponentKeyGrantSchema,
@@ -34,6 +35,41 @@ describe("encryption protocol", () => {
         salt: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       }),
     ).toBeTruthy();
+  });
+
+  it("binds anonymous recovery artifacts to one server, owner, and key revision", () => {
+    const artifact = {
+      artifactId: "11111111-1111-4111-8111-111111111111",
+      createdAt: "2026-08-31T12:00:00.000Z",
+      envelope: {
+        algorithm: "AES-256-GCM" as const,
+        ciphertext:
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        keyRevision: 3,
+        nonce: "AAAAAAAAAAAAAAAA",
+        version: 1 as const,
+      },
+      masterKeyRevision: 3,
+      ownerId: "owner-1",
+      purpose: "anonymous-account-recovery" as const,
+      recoverySecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      serverId: "server-1",
+      version: 1 as const,
+    };
+
+    expect(anonymousRecoveryArtifactSchema.parse(artifact)).toEqual(artifact);
+    expect(
+      anonymousRecoveryArtifactSchema.safeParse({
+        ...artifact,
+        masterKeyRevision: 4,
+      }).success,
+    ).toBe(false);
+    expect(
+      anonymousRecoveryArtifactSchema.safeParse({
+        ...artifact,
+        recoverySecret: "not-a-32-byte-secret",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects unknown versions and Account Master Key worker grants", () => {

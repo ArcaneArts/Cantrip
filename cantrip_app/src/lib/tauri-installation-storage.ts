@@ -52,6 +52,7 @@ export type NativeCatalogOperation =
       type: "put-account-binding";
     }
   | { deviceKey: InstallationDeviceKey; type: "put-device-key" }
+  | { deviceKey: InstallationDeviceKey; type: "replace-device-key" }
   | { migration: InstallationMigration; type: "put-migration" };
 
 export type InstallationCatalogTransactionRequest = {
@@ -81,6 +82,11 @@ export interface NativeInstallationStorageBridge extends InstallationCatalogPers
     keyAlias: string;
   }): Promise<ClientDeviceKeyDescriptor>;
   inspectKey(keyAlias: string): Promise<ClientDeviceKeyDescriptor | null>;
+  replaceMissingKey(input: {
+    createdAt?: string;
+    installationId: string;
+    keyAlias: string;
+  }): Promise<ClientDeviceKeyDescriptor>;
   status(): Promise<NativeInstallationStorageStatus>;
   unwrapAccountMasterKey(input: {
     keyAlias: string;
@@ -104,6 +110,11 @@ const tauriBridge: NativeInstallationStorageBridge = {
     invoke<ClientDeviceKeyDescriptor | null>(
       "inspect_native_installation_key",
       { keyAlias },
+    ),
+  replaceMissingKey: (input) =>
+    invoke<ClientDeviceKeyDescriptor>(
+      "replace_missing_native_installation_key",
+      { input },
     ),
   isAvailable: isTauri,
   readCatalog: () =>
@@ -425,6 +436,24 @@ class NativeInstallationCatalogDraft implements InstallationCatalogTransaction {
     this.operations.push({ deviceKey: stored, type: "put-device-key" });
   }
 
+  async replaceDeviceKey(deviceKey: InstallationDeviceKey): Promise<void> {
+    const existing = this.deviceKeys.get(deviceKey.keyAlias);
+    if (
+      !existing ||
+      existing.installationId !== deviceKey.installationId ||
+      existing.provider !== deviceKey.provider ||
+      existing.version !== deviceKey.version
+    ) {
+      throw new InstallationCatalogError(
+        "device-key-invalid",
+        "Only matching cataloged installation key metadata can be replaced.",
+      );
+    }
+    const stored = clonePublicKey(deviceKey);
+    this.deviceKeys.set(deviceKey.keyAlias, stored);
+    this.operations.push({ deviceKey: stored, type: "replace-device-key" });
+  }
+
   async putMigration(migration: InstallationMigration): Promise<void> {
     const stored = { ...migration };
     this.migrations.set(migration.migrationId, stored);
@@ -605,6 +634,29 @@ export class NativeClientDeviceKeyProvider implements ClientDeviceKeyProvider {
             keyAlias,
             provider: this.backend,
           });
+    } catch (error) {
+      if (error instanceof ClientDeviceKeyProviderError) throw error;
+      return mapProviderError(error);
+    }
+  }
+
+  async replaceMissing(input: {
+    createdAt?: string;
+    installationId: string;
+    keyAlias: string;
+  }): Promise<ClientDeviceKeyDescriptor> {
+    try {
+      if (installationKeyAlias(input.installationId) !== input.keyAlias) {
+        throw new ClientDeviceKeyProviderError(
+          "key-conflict",
+          "The native installation key alias does not match the installation.",
+        );
+      }
+      return parseNativeDescriptor(await this.bridge.replaceMissingKey(input), {
+        installationId: input.installationId,
+        keyAlias: input.keyAlias,
+        provider: this.backend,
+      });
     } catch (error) {
       if (error instanceof ClientDeviceKeyProviderError) throw error;
       return mapProviderError(error);

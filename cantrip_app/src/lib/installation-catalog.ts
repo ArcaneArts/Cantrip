@@ -87,6 +87,7 @@ export interface InstallationCatalogTransaction extends InstallationCatalogReade
   ): Promise<InstallationProfile>;
   putAccountBinding(binding: InstallationAccountBinding): Promise<void>;
   putDeviceKey(deviceKey: InstallationDeviceKey): Promise<void>;
+  replaceDeviceKey(deviceKey: InstallationDeviceKey): Promise<void>;
   putMigration(migration: InstallationMigration): Promise<void>;
 }
 
@@ -359,6 +360,23 @@ class MemoryInstallationCatalogTransaction implements InstallationCatalogTransac
 
   async putDeviceKey(deviceKey: InstallationDeviceKey): Promise<void> {
     validateDeviceKey(this.state, deviceKey);
+    this.state.deviceKeys.set(deviceKey.keyAlias, cloneDeviceKey(deviceKey));
+  }
+
+  async replaceDeviceKey(deviceKey: InstallationDeviceKey): Promise<void> {
+    validateDeviceKey(this.state, deviceKey);
+    const existing = this.state.deviceKeys.get(deviceKey.keyAlias);
+    if (
+      !existing ||
+      existing.installationId !== deviceKey.installationId ||
+      existing.provider !== deviceKey.provider ||
+      existing.version !== deviceKey.version
+    ) {
+      throw new InstallationCatalogError(
+        "device-key-invalid",
+        "Only matching cataloged installation key metadata can be replaced.",
+      );
+    }
     this.state.deviceKeys.set(deviceKey.keyAlias, cloneDeviceKey(deviceKey));
   }
 

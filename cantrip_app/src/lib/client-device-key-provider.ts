@@ -46,6 +46,16 @@ export interface ClientDeviceKeyProvider {
     installationId: string;
     keyAlias: string;
   }): Promise<ClientDeviceKeyDescriptor>;
+  /**
+   * Replaces a cataloged key only after an external recovery method has
+   * unlocked the existing account master key. Normal startup must never call
+   * this operation for a lookup miss.
+   */
+  replaceMissing(input: {
+    createdAt?: string;
+    installationId: string;
+    keyAlias: string;
+  }): Promise<ClientDeviceKeyDescriptor>;
   inspect(keyAlias: string): Promise<ClientDeviceKeyDescriptor | null>;
   unwrapAccountMasterKey(input: {
     keyAlias: string;
@@ -115,6 +125,10 @@ export class MemoryClientDeviceKeyBackend {
     return Promise.resolve(record ? cloneDescriptor(record.descriptor) : null);
   }
 
+  removeForTests(keyAlias: string): void {
+    this.records.delete(keyAlias);
+  }
+
   async unwrapAccountMasterKey(input: {
     keyAlias: string;
     ownerId: string;
@@ -171,6 +185,14 @@ export class MemoryClientDeviceKeyProvider implements ClientDeviceKeyProvider {
 
   inspect(keyAlias: string): Promise<ClientDeviceKeyDescriptor | null> {
     return this.storage.inspect(keyAlias);
+  }
+
+  replaceMissing(input: {
+    createdAt?: string;
+    installationId: string;
+    keyAlias: string;
+  }): Promise<ClientDeviceKeyDescriptor> {
+    return this.storage.create(input);
   }
 
   unwrapAccountMasterKey(input: {

@@ -115,6 +115,7 @@ private enum CatalogOperation: Decodable {
     case createInstallation(InstallationProfile)
     case putAccountBinding(InstallationAccountBinding)
     case putDeviceKey(InstallationDeviceKey)
+    case replaceDeviceKey(InstallationDeviceKey)
     case putMigration(InstallationMigration)
 
     private enum CodingKeys: String, CodingKey {
@@ -134,6 +135,8 @@ private enum CatalogOperation: Decodable {
             self = .putAccountBinding(try values.decode(InstallationAccountBinding.self, forKey: .binding))
         case "put-device-key":
             self = .putDeviceKey(try values.decode(InstallationDeviceKey.self, forKey: .deviceKey))
+        case "replace-device-key":
+            self = .replaceDeviceKey(try values.decode(InstallationDeviceKey.self, forKey: .deviceKey))
         case "put-migration":
             self = .putMigration(try values.decode(InstallationMigration.self, forKey: .migration))
         default:
@@ -213,6 +216,14 @@ final class CantripInstallationStorage {
     }
 
     func createKey(_ source: [String: Any]) throws -> [String: Any] {
+        try createKey(source, replaceMissing: false)
+    }
+
+    func replaceMissingKey(_ source: [String: Any]) throws -> [String: Any] {
+        try createKey(source, replaceMissing: true)
+    }
+
+    private func createKey(_ source: [String: Any], replaceMissing: Bool) throws -> [String: Any] {
         let input = try decode(DeviceKeyCreateInput.self, source)
         return try locked {
             try validateInstallationId(input.installationId)
@@ -231,7 +242,11 @@ final class CantripInstallationStorage {
                 }
                 return try jsonObject(existing)
             }
-            if try rowExists(database, "SELECT 1 FROM device_key WHERE key_alias = ?", [.text(input.keyAlias)]) {
+            let catalogKeyExists = try rowExists(database, "SELECT 1 FROM device_key WHERE key_alias = ?", [.text(input.keyAlias)])
+            if catalogKeyExists && !replaceMissing {
+                throw CantripNativeStorageError("native-device-key-missing")
+            }
+            if !catalogKeyExists && replaceMissing {
                 throw CantripNativeStorageError("native-device-key-missing")
             }
             let privateKey = P256.KeyAgreement.PrivateKey()
@@ -412,26 +427,9 @@ final class CantripInstallationStorage {
                 .text(profile.installationId), .text(profile.createdAt), .int(profile.schemaVersion)
             ])
         case let .putDeviceKey(deviceKey):
-            try validate(database, deviceKey)
-            guard let nativeDescriptor = try inspectKeyUnlocked(deviceKey.keyAlias) else {
-                throw CantripNativeStorageError("native-device-key-missing")
-            }
-            guard nativeDescriptor == descriptor(deviceKey) else {
-                throw CantripNativeStorageError("native-device-key-metadata-mismatch")
-            }
-            if let catalogKey = try readDeviceKey(database, deviceKey.keyAlias),
-               catalogKey.createdAt != deviceKey.createdAt ||
-               catalogKey.installationId != deviceKey.installationId ||
-               catalogKey.keyAlias != deviceKey.keyAlias ||
-               catalogKey.provider != deviceKey.provider ||
-               catalogKey.publicKey != deviceKey.publicKey ||
-               catalogKey.version != deviceKey.version {
-                throw CantripNativeStorageError("native-device-key-metadata-mismatch")
-            }
-            let publicKey = String(data: try encoder.encode(deviceKey.publicKey), encoding: .utf8)!
-            try execute(database, "INSERT INTO device_key (key_alias, installation_id, public_key_json, provider, created_at, status, version) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(key_alias) DO UPDATE SET status = excluded.status", [
-                .text(deviceKey.keyAlias), .text(deviceKey.installationId), .text(publicKey), .text(deviceKey.provider), .text(deviceKey.createdAt), .text(deviceKey.status), .int(deviceKey.version)
-            ])
+            try putDeviceKey(database, deviceKey, replacing: false)
+        case let .replaceDeviceKey(deviceKey):
+            try putDeviceKey(database, deviceKey, replacing: true)
         case let .putAccountBinding(binding):
             try validate(database, binding)
             try execute(database, "INSERT INTO account_binding (server_id, owner_id, principal_id, key_alias, grant_revision, master_key_revision, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(server_id, owner_id) DO UPDATE SET principal_id = excluded.principal_id, key_alias = excluded.key_alias, grant_revision = excluded.grant_revision, master_key_revision = excluded.master_key_revision, updated_at = excluded.updated_at", [
@@ -443,6 +441,31 @@ final class CantripInstallationStorage {
                 .text(migration.migrationId), sqliteValue(migration.startedAt), sqliteValue(migration.completedAt), .text(migration.state), sqliteValue(migration.verificationState)
             ])
         }
+    }
+
+    private func putDeviceKey(_ database: OpaquePointer, _ deviceKey: InstallationDeviceKey, replacing: Bool) throws {
+        try validate(database, deviceKey)
+        guard let nativeDescriptor = try inspectKeyUnlocked(deviceKey.keyAlias) else {
+            throw CantripNativeStorageError("native-device-key-missing")
+        }
+        guard nativeDescriptor == descriptor(deviceKey) else {
+            throw CantripNativeStorageError("native-device-key-metadata-mismatch")
+        }
+        if let catalogKey = try readDeviceKey(database, deviceKey.keyAlias),
+           catalogKey.installationId != deviceKey.installationId ||
+           catalogKey.keyAlias != deviceKey.keyAlias ||
+           catalogKey.provider != deviceKey.provider ||
+           catalogKey.version != deviceKey.version ||
+           (!replacing && (catalogKey.createdAt != deviceKey.createdAt || catalogKey.publicKey != deviceKey.publicKey)) {
+            throw CantripNativeStorageError("native-device-key-metadata-mismatch")
+        }
+        let publicKey = String(data: try encoder.encode(deviceKey.publicKey), encoding: .utf8)!
+        let conflictUpdate = replacing
+            ? "public_key_json = excluded.public_key_json, created_at = excluded.created_at, status = excluded.status"
+            : "status = excluded.status"
+        try execute(database, "INSERT INTO device_key (key_alias, installation_id, public_key_json, provider, created_at, status, version) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(key_alias) DO UPDATE SET \(conflictUpdate)", [
+            .text(deviceKey.keyAlias), .text(deviceKey.installationId), .text(publicKey), .text(deviceKey.provider), .text(deviceKey.createdAt), .text(deviceKey.status), .int(deviceKey.version)
+        ])
     }
 
     private func validateSnapshot(_ snapshot: InstallationCatalogSnapshot) throws {

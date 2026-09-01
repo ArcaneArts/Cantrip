@@ -30,6 +30,13 @@ interface CapacitorInstallationStoragePlugin {
   inspectKey(options: {
     keyAlias: string;
   }): Promise<ClientDeviceKeyDescriptor | null | undefined>;
+  replaceMissingKey(options: {
+    input: {
+      createdAt?: string;
+      installationId: string;
+      keyAlias: string;
+    };
+  }): Promise<ClientDeviceKeyDescriptor>;
   readCatalog(): Promise<NativeInstallationCatalogSnapshot>;
   status(): Promise<NativeInstallationStorageStatus>;
   unwrapAccountMasterKey(options: {
@@ -64,6 +71,7 @@ export const capacitorInstallationStorageBridge: NativeInstallationStorageBridge
     createKey: (input) => plugin.createKey({ input }),
     inspectKey: async (keyAlias) =>
       (await plugin.inspectKey({ keyAlias })) ?? null,
+    replaceMissingKey: (input) => plugin.replaceMissingKey({ input }),
     isAvailable: capacitorRuntimeAvailable,
     readCatalog: () => plugin.readCatalog(),
     status: () => plugin.status(),

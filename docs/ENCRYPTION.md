@@ -225,6 +225,18 @@ compare-and-swap revision. Projects, chats, settings, server identity, and
 other domain data remain in their existing authoritative stores; this catalog
 is not a second application database or synchronization engine.
 
+```mermaid
+flowchart TB
+    I[Stable installation profile]
+    I --> K[Native secure key or browser WebCrypto key]
+    I --> M[SQLite or IndexedDB public metadata]
+    I --> A[Server/account binding A]
+    I --> B[Server/account binding B]
+    I --> R[Password or anonymous recovery mechanism]
+    A --> P1[Server principal and wrapped grant]
+    B --> P2[Server principal and wrapped grant]
+```
+
 The installation's P-256 private key is never stored in SQLite. The native
 provider uses macOS Keychain, Windows Credential Manager, or Linux Secret
 Service through the maintained Rust `keyring` provider. Linux has no plaintext
@@ -248,7 +260,9 @@ operations. Temporary serialized private-key buffers and unwrapped Account
 Master Key buffers are best-effort zeroized. The renderer receives only public
 metadata and the 32-byte Account Master Key needed by the existing in-memory
 component-key service. A missing, malformed, conflicting, or unavailable
-native key fails closed and is never silently regenerated.
+native key fails closed and is never silently regenerated. Replacement is a
+separate recovery operation and is unavailable until a password wrapper or
+anonymous recovery artifact has unlocked the existing Account Master Key.
 
 The catalog rejects a newer, damaged, incomplete, or lookalike schema without
 changing the file. Catalog writes use an immediate SQLite transaction and an
@@ -275,7 +289,7 @@ associated data as `@cantrip/crypto`. TypeScript, Android, and Swift fixtures
 verify wire compatibility. The native bridge returns public metadata and the
 unwrapped 32-byte Account Master Key only; temporary byte buffers are cleared
 on best effort. Missing or invalid secure-store material is a recovery state,
-never permission to replace the installation key.
+never permission to replace the installation key during ordinary startup.
 
 Native startup fetches the authoritative server encryption profile before
 deciding whether profile initialization is allowed. For an initialized profile
@@ -291,13 +305,16 @@ after the native cutover. Only after both checks does one SQLite transaction
 store the account binding and mark the migration verified. The legacy key,
 principal, and grant remain active as a compatibility fallback.
 
-The native principal UUID is deterministically namespaced by installation,
-server, and owner. It is an authorization-binding identifier, not the device
-key alias. This prevents interrupted requests from leaking a new principal on
-every retry and avoids reusing the globally unique server principal ID across
-different accounts. Create, approval, and grant conflicts are reconciled by
+The initial native principal UUID is deterministically namespaced by
+installation, server, and owner. It is an authorization-binding identifier,
+not the device key alias. If verified recovery must replace a missing secure
+key, the replacement principal is deterministically namespaced by that same
+binding plus the new public key. The installation ID and stable key alias do
+not change. This prevents interrupted requests from leaking a new principal on
+every retry without pretending that two different public keys are the same
+server principal. Create, approval, and grant conflicts are reconciled by
 reading the exact principal and active grant; a mismatched public key or a
-grant that the native key cannot unwrap fails closed.
+grant that the active key cannot unwrap fails closed.
 
 Migration checkpoints are idempotent and resumable. A crash or network failure
 before the final catalog transaction leaves the migration `in-progress`, the
@@ -308,12 +325,21 @@ principal is revoked as part of migration.
 
 For account mode, a missing legacy registration returns to normal password
 reauthentication, unwraps the existing password-wrapped Account Master Key, and
-provisions the native binding without calling profile initialization. This is
-the replacement-device path for Tauri, Capacitor iOS, and Capacitor Android.
+provisions the native binding without calling profile initialization. If the
+cataloged secure key itself is missing, that verified recovery operation may
+replace only the key material under the same installation and alias, register
+a new deterministic principal, rewrap the existing Account Master Key, and
+verify the grant before committing the binding. A dedicated migration
+checkpoint makes a crash between secure-store replacement and catalog commit
+resumable. This is the replacement-device path for Tauri, Capacitor iOS, and
+Capacitor Android.
+
 For anonymous mode, missing or corrupt custody enters a specific
 recovery-required state and preserves the server profile; it never mounts an
-empty workspace or creates a blank encryption profile. Anonymous recovery
-artifact import is a separate rollout cycle.
+empty workspace or creates a blank encryption profile. Importing the matching
+recovery artifact unlocks the existing Account Master Key and uses the same
+explicit, resumable replacement operation. It never revokes the old principal
+or deletes a legacy key before the new grant has been verified.
 
 The legacy reader uses the existing `cantrip-client-encryption` IndexedDB
 database and remains retained after cutover. The bundle identifier
@@ -384,8 +410,8 @@ a precise recovery screen. Password reauthentication unwraps the existing
 password-wrapped Account Master Key, provisions a new browser installation and
 grant, verifies decryption, and continues. It never initializes a replacement
 server profile or presents an empty workspace. Anonymous storage loss enters
-the separate recovery-required state; recovery-artifact export and import is
-implemented in its dedicated rollout cycle.
+the separate recovery-required state and can be restored only with the matching
+recovery artifact described below.
 
 Plaintext Account Master Keys and derived component keys exist only in memory;
 service-owned copies are cleared on lockout, sign-out, account replacement, and
@@ -413,6 +439,36 @@ key is not permission to create a server profile. Device-key providers own the
 private-key unwrap operation; the renderer receives only the already-unwrapped
 Account Master Key required by the existing in-memory component-key service.
 
+#### Anonymous recovery files
+
+Creating an anonymous encryption profile generates a separate random 256-bit
+recovery secret and requires the user to save a versioned
+`.cantrip-recovery.json` file before the application opens. The same artifact
+can be exported again from General settings while the profile is unlocked.
+Browsers and Tauri use the platform download flow; Capacitor writes a temporary
+cache file for the native share sheet and removes it afterward.
+
+The file is a bearer recovery credential. It contains identity and revision
+metadata plus an AES-256-GCM envelope for the Account Master Key, bound to the
+server, owner, purpose, and profile revision as authenticated data. It does not
+contain a plaintext Account Master Key or device private key and is never
+uploaded to the server. Anyone who obtains the artifact and access to the
+matching account/server context can recover the encrypted profile, so it must
+be stored like a password or recovery code.
+
+Import is strict: the artifact must match the active server, owner, profile
+revision, and purpose. After opening it, the coordinator creates or explicitly
+replaces custody under the same installation and stable alias, registers the
+deterministic recovery principal and grant, verifies native/browser unwrap,
+then commits the account binding and recovery checkpoint. Repeated or
+interrupted imports resume instead of producing competing installation
+profiles. Ordinary startup still cannot replace a missing key.
+
+If both the anonymous installation key and recovery artifact are lost, the
+encrypted data is cryptographically unrecoverable. Cantrip reports that state
+and never silently resets the profile. Account mode instead uses password
+reauthentication and the password-wrapped Account Master Key.
+
 ### Account initialization and unlock
 
 The client orchestration in
@@ -437,12 +493,12 @@ authorizes its device against that existing key. Missing, conflicting,
 revoked, malformed, or unknown-version state never opens the application or
 permits protected-data mutations.
 
-Anonymous local mode never invents a user-managed credential. Its random
-Account Master Key is wrapped only to the local client's nonextractable device
-key, with separately scoped grants for workers. A later local client must be
-authorized by an existing endpoint or the local encrypted data must be reset.
-Losing every authorized endpoint makes the data unrecoverable, while a server
-database copy alone still cannot decrypt it.
+Anonymous local mode never invents a password. Its random Account Master Key is
+wrapped to the local client's nonextractable device key, to separately scoped
+worker grants, and to the user-held anonymous recovery artifact. A later local
+client must be authorized by an existing endpoint or import that artifact.
+Losing every authorized endpoint and the recovery artifact makes the data
+unrecoverable, while a server database copy alone still cannot decrypt it.
 
 Password rewraps are locally opened and compared with the in-memory Account
 Master Key before submission. For account password changes,

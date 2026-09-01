@@ -108,6 +108,7 @@ function applyCatalogOperations(
         next.installation ??= { ...operation.profile };
         break;
       case "put-device-key":
+      case "replace-device-key":
         next.deviceKeys = [
           ...next.deviceKeys.filter(
             (entry) => entry.keyAlias !== operation.deviceKey.keyAlias,
@@ -565,6 +566,14 @@ export class BrowserClientDeviceKeyProvider implements ClientDeviceKeyProvider {
 
   inspect(keyAlias: string): Promise<ClientDeviceKeyDescriptor | null> {
     return this.database.inspectKey(keyAlias);
+  }
+
+  replaceMissing(input: {
+    createdAt?: string;
+    installationId: string;
+    keyAlias: string;
+  }): Promise<ClientDeviceKeyDescriptor> {
+    return this.database.createKey(input);
   }
 
   unwrapAccountMasterKey(input: {

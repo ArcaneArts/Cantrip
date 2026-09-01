@@ -126,6 +126,14 @@ final class CantripInstallationStorage {
     }
 
     JSObject createKey(JSObject input) throws StorageException {
+        return createKey(input, false);
+    }
+
+    JSObject replaceMissingKey(JSObject input) throws StorageException {
+        return createKey(input, true);
+    }
+
+    private JSObject createKey(JSObject input, boolean replaceMissing) throws StorageException {
         synchronized (lock) {
             String installationId = requiredString(input, "installationId", "installation-profile-invalid");
             String keyAlias = requiredString(input, "keyAlias", "native-device-key-alias-invalid");
@@ -149,9 +157,11 @@ final class CantripInstallationStorage {
                     }
                     return existing;
                 }
-                if (rowExists(database, "SELECT 1 FROM device_key WHERE key_alias = ?", new String[] { keyAlias })) {
+                boolean catalogKeyExists = rowExists(database, "SELECT 1 FROM device_key WHERE key_alias = ?", new String[] { keyAlias });
+                if (catalogKeyExists && !replaceMissing) {
                     throw new StorageException("native-device-key-missing");
                 }
+                if (!catalogKeyExists && replaceMissing) throw new StorageException("native-device-key-missing");
             }
 
             byte[] privateKey = null;
@@ -431,7 +441,10 @@ final class CantripInstallationStorage {
                 putInstallation(database, requiredObject(operation, "profile", "installation-profile-invalid"));
                 break;
             case "put-device-key":
-                putDeviceKey(database, requiredObject(operation, "deviceKey", "installation-device-key-invalid"));
+                putDeviceKey(database, requiredObject(operation, "deviceKey", "installation-device-key-invalid"), false);
+                break;
+            case "replace-device-key":
+                putDeviceKey(database, requiredObject(operation, "deviceKey", "installation-device-key-invalid"), true);
                 break;
             case "put-account-binding":
                 putAccountBinding(database, requiredObject(operation, "binding", "installation-account-binding-invalid"));
@@ -460,7 +473,7 @@ final class CantripInstallationStorage {
         database.insertOrThrow("installation", null, values);
     }
 
-    private void putDeviceKey(SQLiteDatabase database, JSObject deviceKey) throws StorageException {
+    private void putDeviceKey(SQLiteDatabase database, JSObject deviceKey, boolean replacing) throws StorageException {
         validateDeviceKey(database, deviceKey);
         String keyAlias = deviceKey.optString("keyAlias");
         JSObject descriptor = inspectKeyUnlocked(keyAlias);
@@ -473,7 +486,9 @@ final class CantripInstallationStorage {
             catalogKey != null &&
             (
                 catalogKey.optInt("version", -1) != deviceKey.optInt("version", -1) ||
-                !descriptorMetadataMatches(deviceKey, catalogKey)
+                !catalogKey.optString("installationId").equals(deviceKey.optString("installationId")) ||
+                !catalogKey.optString("provider").equals(deviceKey.optString("provider")) ||
+                (!replacing && !descriptorMetadataMatches(deviceKey, catalogKey))
             )
         ) {
             throw new StorageException("native-device-key-metadata-mismatch");
@@ -486,9 +501,12 @@ final class CantripInstallationStorage {
         values.put("created_at", deviceKey.optString("createdAt"));
         values.put("status", deviceKey.optString("status"));
         values.put("version", deviceKey.optInt("version"));
+        String conflictUpdate = replacing
+            ? "public_key_json = excluded.public_key_json, created_at = excluded.created_at, status = excluded.status"
+            : "status = excluded.status";
         database.execSQL(
             "INSERT INTO device_key (key_alias, installation_id, public_key_json, provider, created_at, status, version) VALUES (?, ?, ?, ?, ?, ?, ?) " +
-            "ON CONFLICT(key_alias) DO UPDATE SET status = excluded.status",
+            "ON CONFLICT(key_alias) DO UPDATE SET " + conflictUpdate,
             new Object[] {
                 values.getAsString("key_alias"),
                 values.getAsString("installation_id"),

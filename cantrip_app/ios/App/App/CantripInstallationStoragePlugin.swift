@@ -10,6 +10,7 @@ public final class CantripInstallationStoragePlugin: CAPPlugin, CAPBridgedPlugin
         CAPPluginMethod(name: "readCatalog", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "applyCatalogTransaction", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "createKey", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "replaceMissingKey", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "inspectKey", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "unwrapAccountMasterKey", returnType: CAPPluginReturnPromise)
     ]
@@ -48,6 +49,15 @@ public final class CantripInstallationStoragePlugin: CAPPlugin, CAPBridgedPlugin
                 throw CantripNativeStorageError("native-device-key-invalid")
             }
             return try storage.createKey(request)
+        }
+    }
+
+    @objc func replaceMissingKey(_ call: CAPPluginCall) {
+        perform(call) { storage in
+            guard let request = call.getObject("input") else {
+                throw CantripNativeStorageError("native-device-key-invalid")
+            }
+            return try storage.replaceMissingKey(request)
         }
     }
 

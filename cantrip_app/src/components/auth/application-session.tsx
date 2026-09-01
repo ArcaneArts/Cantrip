@@ -17,6 +17,8 @@ import {
 } from "react";
 
 import { ApplicationLoadingSplash } from "@/components/auth/application-loading-splash";
+import { AnonymousRecoveryRequiredScreen } from "@/components/auth/anonymous-recovery-required-screen";
+import { AnonymousRecoverySetupScreen } from "@/components/auth/anonymous-recovery-setup-screen";
 import { DesktopWorkerRecoverySession } from "@/components/auth/desktop-worker-recovery-session";
 import { EncryptionDeviceRecoveryScreen } from "@/components/auth/encryption-device-recovery-screen";
 import { MobileSignInScanner } from "@/components/auth/mobile-sign-in-scanner";
@@ -52,7 +54,15 @@ import {
   setClientSession,
 } from "@/lib/client-session";
 import { errorMessage } from "@/lib/error-message";
-import { prepareClientEncryption } from "@/lib/account-encryption";
+import {
+  confirmAnonymousRecoveryArtifactSaved,
+  prepareClientEncryption,
+  recoverAnonymousClientEncryption,
+} from "@/lib/account-encryption";
+import {
+  saveAnonymousRecoveryArtifact,
+  serializeAnonymousRecoveryArtifact,
+} from "@/lib/anonymous-recovery-artifact";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { detectClientRuntimePlatform } from "@/lib/runtime-platform";
 import {
@@ -98,6 +108,11 @@ type ApplicationSessionState =
       notice: string | null;
     }
   | ({ kind: "authenticated" } & AuthenticatedSessionContext)
+  | ({
+      artifactText: string;
+      confirmationId: string;
+      kind: "anonymous-recovery-setup-required";
+    } & AuthenticatedSessionContext)
   | ({
       kind: "encryption-device-recovery-required";
       deviceLabel: "browser" | "installation";
@@ -293,6 +308,14 @@ async function encryptionSessionState(
   });
   if (access.status === "ready") {
     return { kind: "authenticated", ...context };
+  }
+  if (access.status === "recovery-artifact-required") {
+    return {
+      artifactText: serializeAnonymousRecoveryArtifact(access.artifact),
+      confirmationId: access.confirmationId,
+      kind: "anonymous-recovery-setup-required",
+      ...context,
+    };
   }
   if (access.status === "recovery-required") {
     return {
@@ -660,52 +683,6 @@ function EncryptionErrorScreen({
   );
 }
 
-function EncryptionRecoveryScreen({
-  message,
-  onRetry,
-  reason,
-}: Extract<
-  ApplicationSessionState,
-  { kind: "encryption-recovery-required" }
-> & {
-  onRetry(): void;
-}) {
-  const title =
-    reason === "legacy-device-unsupported"
-      ? "Legacy device migration required"
-      : reason === "legacy-device-corrupt"
-        ? "Legacy device recovery required"
-        : "Anonymous recovery required";
-  return (
-    <SessionFrame>
-      <div className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <LockKeyhole className="mt-0.5 size-5 shrink-0 text-destructive" />
-          <div>
-            <h1 className="font-semibold">{title}</h1>
-            <p className="mt-1 text-sm leading-5 text-muted-foreground">
-              {message}
-            </p>
-          </div>
-        </div>
-        <p className="text-xs leading-5 text-muted-foreground">
-          Cantrip preserved the existing encryption profile and did not create
-          blank replacement data.
-        </p>
-        <div className="flex items-center gap-2">
-          <Button onClick={onRetry}>Check again</Button>
-          <div className="min-w-0 flex-1">
-            <ServerSwitcher
-              currentUserName="Switch server"
-              workerName="Recovery required"
-            />
-          </div>
-        </div>
-      </div>
-    </SessionFrame>
-  );
-}
-
 function AuthenticatedApplication({
   authenticatedContent,
   bootstrap,
@@ -910,6 +887,7 @@ export function ApplicationSession({
         setState((current) => {
           if (
             (current.kind === "authenticated" ||
+              current.kind === "anonymous-recovery-setup-required" ||
               current.kind === "encryption-device-recovery-required" ||
               current.kind === "encryption-recovery-required" ||
               current.kind === "encryption-error") &&
@@ -991,10 +969,45 @@ export function ApplicationSession({
       />
     );
   }
+  if (state.kind === "anonymous-recovery-setup-required") {
+    return (
+      <AnonymousRecoverySetupScreen
+        onSave={() => saveAnonymousRecoveryArtifact(state.artifactText)}
+        onConfirm={async () => {
+          await confirmAnonymousRecoveryArtifactSaved({
+            confirmationId: state.confirmationId,
+          });
+          setState({
+            bootstrap: state.bootstrap,
+            csrfToken: state.csrfToken,
+            expiresAt: state.expiresAt,
+            kind: "authenticated",
+            user: state.user,
+          });
+        }}
+      />
+    );
+  }
   if (state.kind === "encryption-recovery-required") {
     return (
-      <EncryptionRecoveryScreen
+      <AnonymousRecoveryRequiredScreen
         {...state}
+        onImport={async (artifactText) => {
+          await recoverAnonymousClientEncryption({
+            artifactText,
+            identity: {
+              ownerId: state.user.id,
+              serverId: state.bootstrap.server.id,
+            },
+          });
+          setState({
+            bootstrap: state.bootstrap,
+            csrfToken: state.csrfToken,
+            expiresAt: state.expiresAt,
+            kind: "authenticated",
+            user: state.user,
+          });
+        }}
         onRetry={() => {
           void encryptionSessionState(state).then(setState, (retryError) =>
             setState({

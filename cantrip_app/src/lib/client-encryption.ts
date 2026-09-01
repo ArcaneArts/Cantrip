@@ -1,22 +1,26 @@
 import {
   bytesEqual,
   clearSensitiveBytes,
+  createAnonymousRecoveryArtifact as createCryptoAnonymousRecoveryArtifact,
   deriveComponentKey as deriveCryptoComponentKey,
   exportHpkePublicKey,
   generateHpkeKeyPair,
   importHpkePublicKey,
+  openAnonymousRecoveryArtifact,
   unwrapAccountMasterKeyForClient,
   unwrapAccountMasterKeyWithPassword,
   wrapAccountMasterKeyForClient,
   wrapAccountMasterKeyWithPassword,
 } from "@cantrip/crypto";
 import {
+  anonymousRecoveryArtifactSchema,
   clientMasterKeyWrapperSchema,
   encryptionKeyGrantSchema,
   encryptionPrincipalSchema,
   encryptionPublicKeySchema,
   passwordWrappedMasterKeySchema,
   type ClientMasterKeyWrapper,
+  type AnonymousRecoveryArtifact,
   type EncryptionComponentScope,
   type EncryptionKeyGrant,
   type EncryptionPrincipal,
@@ -83,6 +87,7 @@ export type ClientEncryptionErrorCode =
   | "identity-mismatch"
   | "locked"
   | "principal-unavailable"
+  | "recovery-artifact-invalid"
   | "storage-unavailable"
   | "unsupported-version";
 
@@ -828,6 +833,71 @@ export class ClientEncryptionService {
         });
       }
       throw error;
+    } finally {
+      if (accountMasterKey) clearSensitiveBytes(accountMasterKey);
+    }
+  }
+
+  async createAnonymousRecoveryArtifact(
+    identity: ClientEncryptionIdentity,
+  ): Promise<AnonymousRecoveryArtifact> {
+    const accountMasterKey = this.requireUnlocked(identity);
+    return createCryptoAnonymousRecoveryArtifact({
+      accountMasterKey,
+      masterKeyRevision: this.snapshot.masterKeyRevision!,
+      ownerId: identity.ownerId,
+      serverId: identity.serverId,
+    });
+  }
+
+  async unlockWithAnonymousRecoveryArtifact(input: {
+    artifact: unknown;
+    identity: ClientEncryptionIdentity;
+  }): Promise<AnonymousRecoveryArtifact> {
+    this.requireCrypto();
+    validateIdentity(input.identity);
+    let artifact: AnonymousRecoveryArtifact;
+    try {
+      artifact = anonymousRecoveryArtifactSchema.parse(input.artifact);
+    } catch {
+      throw this.fail(
+        "locked",
+        input.identity,
+        null,
+        "recovery-artifact-invalid",
+        "The anonymous recovery file is invalid or unsupported.",
+      );
+    }
+    if (
+      artifact.serverId !== input.identity.serverId ||
+      artifact.ownerId !== input.identity.ownerId
+    ) {
+      throw this.fail(
+        "locked",
+        input.identity,
+        null,
+        "identity-mismatch",
+        "The anonymous recovery file belongs to another server or account.",
+      );
+    }
+    let accountMasterKey: Uint8Array | null = null;
+    try {
+      accountMasterKey = await openAnonymousRecoveryArtifact(artifact);
+      this.setAccountMasterKey({
+        accountMasterKey,
+        identity: input.identity,
+        masterKeyRevision: artifact.masterKeyRevision,
+      });
+      return artifact;
+    } catch (error) {
+      if (error instanceof ClientEncryptionError) throw error;
+      throw this.fail(
+        "locked",
+        input.identity,
+        null,
+        "decryption-failed",
+        "The anonymous recovery file could not unlock private data.",
+      );
     } finally {
       if (accountMasterKey) clearSensitiveBytes(accountMasterKey);
     }

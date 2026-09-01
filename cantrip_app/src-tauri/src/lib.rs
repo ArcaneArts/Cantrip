@@ -1024,6 +1024,7 @@ pub fn run() {
             installation_storage::read_native_installation_catalog,
             installation_storage::apply_native_installation_catalog_transaction,
             installation_storage::create_native_installation_key,
+            installation_storage::replace_missing_native_installation_key,
             installation_storage::inspect_native_installation_key,
             installation_storage::unwrap_native_account_master_key,
             local_logs::open_local_logs_directory,

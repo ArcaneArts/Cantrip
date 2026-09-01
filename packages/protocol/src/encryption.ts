@@ -195,6 +195,36 @@ export const encryptionGrantStateSchema = z.enum(["active", "revoked"]);
 const encryptionTimestampSchema = z.string().datetime({ offset: true });
 const encryptionPrincipalIdSchema = z.string().uuid();
 
+export const anonymousRecoveryArtifactSchema = z
+  .object({
+    artifactId: z.string().uuid(),
+    createdAt: encryptionTimestampSchema,
+    envelope: encryptedPayloadEnvelopeSchema,
+    masterKeyRevision: encryptionKeyRevisionSchema,
+    ownerId: z.string().min(1).max(255),
+    purpose: z.literal("anonymous-account-recovery"),
+    recoverySecret: encryptionKeyBytesSchema,
+    serverId: z.string().min(1).max(255),
+    version: encryptionEnvelopeVersionSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.envelope.keyRevision !== value.masterKeyRevision) {
+      context.addIssue({
+        code: "custom",
+        message: "Recovery and envelope revisions must match.",
+        path: ["envelope", "keyRevision"],
+      });
+    }
+    if (value.envelope.ciphertext.length !== 64) {
+      context.addIssue({
+        code: "custom",
+        message: "Recovery artifact must contain exactly 48 wrapped bytes.",
+        path: ["envelope", "ciphertext"],
+      });
+    }
+  });
+
 function samePasswordKdf(
   left: PasswordKdfParameters,
   right: PasswordKdfParameters,
@@ -668,6 +698,9 @@ export type EncryptedPayloadEnvelope = z.infer<
 export type PasswordKdfParameters = z.infer<typeof passwordKdfParametersSchema>;
 export type PasswordWrappedMasterKey = z.infer<
   typeof passwordWrappedMasterKeySchema
+>;
+export type AnonymousRecoveryArtifact = z.infer<
+  typeof anonymousRecoveryArtifactSchema
 >;
 export type EncryptionPublicKey = z.infer<typeof encryptionPublicKeySchema>;
 export type HpkeCipherSuite = z.infer<typeof hpkeCipherSuiteSchema>;

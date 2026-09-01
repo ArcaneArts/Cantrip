@@ -46,6 +46,15 @@ public final class CantripInstallationStoragePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void replaceMissingKey(PluginCall call) {
+        resolve(call, () -> {
+            JSObject input = call.getObject("input");
+            if (input == null) throw new CantripInstallationStorage.StorageException("native-device-key-invalid");
+            return storage.replaceMissingKey(input);
+        });
+    }
+
+    @PluginMethod
     public void inspectKey(PluginCall call) {
         try {
             String keyAlias = call.getString("keyAlias");
