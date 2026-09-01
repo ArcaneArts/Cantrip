@@ -1016,8 +1016,9 @@ goal work.
 ### Post-completion correction — Windows native fixture test manifest
 
 - Branch: `codex/fix-windows-installation-fixture-loader`
-- Pull request: pending
-- Commit and merge: pending
+- Pull request: [#1560](https://github.com/ArcaneArts/Cantrip/pull/1560)
+- Implementation commit: `79fbdca9afab9471206988b8a0a8c4843af3bba8`
+- Merge: pending
 - Behavior implemented:
   - Embedded the Common Controls v6 application manifest into every Windows
     MSVC artifact, including Cargo's native unit-test executable. The Tauri
