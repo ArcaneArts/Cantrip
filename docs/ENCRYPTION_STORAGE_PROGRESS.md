@@ -870,8 +870,8 @@ corrects that ordering and adds mutation-negative regression coverage.
 ### Cycle 14 — frozen native update fixtures and Android catalog correction
 
 - Branch: `codex/encryption-storage-update-evidence`
-- Pull request: pending
-- Commit: pending
+- Pull request: [#1556](https://github.com/ArcaneArts/Cantrip/pull/1556)
+- Implementation commit: `1bfa801a65f568accc5d7eb2950b1dab265617ee`
 - Merge: pending
 - Behavior implemented:
   - Added one immutable version-one SQLite catalog and custody fixture whose
