@@ -245,7 +245,7 @@ flowchart TD
 - Branch: `codex/encryption-storage-cycle5-dev-profile`
 - Pull request: [#1546](https://github.com/ArcaneArts/Cantrip/pull/1546)
 - Commit: `3f93fb040718fbea34613e7e195ee22f16aace0d`
-- Merge: pending auto-merge
+- Merge: squash-merged as `35defd3c396bb581bc5be88cd0309a25b8783b54`
 - Behavior implemented:
   - Moved the canonical development profile identity out of worktree-local
     `.cantrip` and build output into versioned shared Git metadata. The
@@ -282,8 +282,8 @@ flowchart TD
 - Supported platforms: deterministic app-local data/provider diagnostics cover
   macOS, Windows, and Linux; `devtop` remains the Tauri desktop development
   lane. Browser and Capacitor runtime behavior is unchanged.
-- Migration status: legacy worktree identity adoption is implemented and
-  preserves the primary development namespace; PR merge is pending.
+- Migration status: legacy worktree identity adoption is merged and preserves
+  the primary development namespace.
 - Remaining work: Cycles 6–12 below.
 - Known risks or blockers: a first post-migration launch should be smoke-tested
   on macOS to confirm Tauri resolves the reported application-local data path
@@ -294,14 +294,88 @@ flowchart TD
   verify the previous encrypted workspace opens, then inspect again and confirm
   the installation ID remains unchanged after deleting only Cargo target output.
 
+### Cycle 6 — Capacitor native catalogs and key custody
+
+- Branch: `codex/encryption-storage-cycle6-capacitor-native`
+- Pull request: [#1547](https://github.com/ArcaneArts/Cantrip/pull/1547)
+- Commit: `f62c37897a4c60b4752a4063560124953bdf1bea`
+- Merge: pending auto-merge
+- Behavior implemented:
+  - Generalized the already-tested native catalog and device-key TypeScript
+    bridge so Tauri and Capacitor share one validation, transaction, and
+    Account Master Key byte-boundary implementation without changing Tauri's
+    command names or active startup behavior.
+  - Added app-private SQLite installation catalogs at
+    `installation/v1/catalog.sqlite3` for Capacitor iOS and Android. Both use
+    schema version one, foreign keys, integrity checks, compare-and-swap
+    revisions, and the same installation, public-key, binding, and migration
+    responsibilities as the desktop catalog. Neither schema contains private
+    key material.
+  - Added an iOS Capacitor plugin whose P-256 private key is held in Keychain
+    under service `art.cantrip.installation.hpke.v1` with
+    `AfterFirstUnlockThisDeviceOnly` accessibility. The stable account alias is
+    derived only from the installation UUID.
+  - Added an Android Capacitor plugin whose P-256 private-key encoding is
+    encrypted with an installation-specific, nonexportable AES-GCM key in
+    Android Keystore. Only the authenticated encrypted record is held in the
+    app-private preferences file; plaintext private material is never written
+    to SQLite or preferences.
+  - Implemented RFC 9180 P-256/HKDF-SHA256/AES-256-GCM unwrap natively on both
+    mobile platforms. Temporary private-key and unwrapped-master-key byte
+    buffers are cleared on best effort, and a missing or malformed secure-store
+    record fails closed instead of generating a replacement.
+  - Registered the custom plugin in both native shells and added the
+    `apple-keychain` and `android-keystore` Capacitor provider adapter. Normal
+    Capacitor encryption startup remains on its prior path until Cycle 7 adds
+    transactional migration and recovery.
+- Validation:
+  - `pnpm --filter @cantrip/app exec vitest run src/lib/capacitor-installation-storage.test.ts src/lib/tauri-installation-storage.test.ts src/lib/installation-catalog.test.ts src/lib/client-device-key-provider.test.ts` — 23 tests passed.
+  - `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:compileDebugJavaWithJavac :app:testDebugUnitTest` — passed; two Android HPKE compatibility tests opened the TypeScript fixture and verified canonical associated data.
+  - `node --test scripts/ios-native-storage.test.mjs` — passed; the Swift
+    CryptoKit provider opened the same TypeScript fixture and matched canonical
+    associated data.
+  - `xcodebuild -project cantrip_app/ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build` — passed for arm64 and x86_64 simulators.
+  - `pnpm --filter @cantrip/app typecheck` and
+    `pnpm --filter @cantrip/app build` — passed.
+  - `pnpm --filter @cantrip/app test` — 1,846 tests passed and 3 skipped across
+    351 test files.
+  - `node --test scripts/*.test.mjs` — 116 tests passed, including the new
+    Swift fixture; two unrelated baseline assertions failed for the App
+    Platform build-command fixture and tranche-two sidebar acceptance fixture.
+    Both failures were already reproduced on clean `main` in Cycle 5, and this
+    cycle changes neither surface.
+  - `pnpm check:large-files` and `git diff --check` — passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle introduced no newly reported overage.
+- Supported platforms:
+  - Capacitor iOS: native plugin and Keychain provider compile for the iOS
+    simulator; deterministic CryptoKit wire compatibility passed on macOS. A
+    signed physical-device Keychain smoke test remains manual.
+  - Capacitor Android: native plugin compiles against the checked-in mobile
+    project; JVM wire compatibility tests passed. A physical-device Android
+    Keystore smoke test remains manual.
+  - Tauri and browser runtime selection remain unchanged by this cycle.
+- Migration status: the mobile storage destinations and native unwrap
+  primitives exist, but no legacy Capacitor record is migrated or selected by
+  normal startup until Cycle 7.
+- Remaining work: Cycles 7–12 below.
+- Known risks or blockers: Android backup may restore encrypted catalog or
+  preference data to a fresh install without its nonexportable Keystore key;
+  that condition fails closed and must enter Cycle 7 account/anonymous recovery
+  rather than regenerate. No external blocker prevents Cycle 7.
+- Manual verification: on signed iOS and Android development builds, create a
+  native key, restart the app, inspect the same alias, unwrap a registered
+  Account Master Key, and confirm no private material appears in the SQLite
+  catalog or diagnostic output.
+
 ## Remaining cycles
 
 4. Manually smoke-test the merged transactional Tauri migration above.
 5. Merge and manually smoke-test the stable development profile above.
-6. Implement Capacitor SQLite and iOS/Android secure-key providers.
-7. Connect Capacitor migration and recovery.
-8. Harden browser persistence, replacement-device recovery, and recovery UI.
-9. Implement anonymous recovery export/import.
-10. Add update/install compatibility harnesses and release gates.
-11. Retire obsolete defaults while retaining required legacy readers.
-12. Complete the cross-platform audit, full validation, and documentation.
+6. Connect Capacitor migration and recovery.
+7. Harden browser persistence, replacement-device recovery, and recovery UI.
+8. Implement anonymous recovery export/import.
+9. Add update/install compatibility harnesses and release gates.
+10. Retire obsolete defaults while retaining required legacy readers.
+11. Complete the cross-platform audit, full validation, and documentation.

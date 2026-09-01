@@ -174,6 +174,17 @@ or upload fails. The final GitHub release waits for the successful TestFlight
 upload and Android artifact, so a published release cannot silently omit either
 mobile track.
 
+The mobile application identifier and private data directory are encryption
+compatibility contracts, not disposable build settings. Both mobile shells
+keep the version-one installation catalog at
+`installation/v1/catalog.sqlite3`. iOS keeps the installation private key in a
+this-device-only Keychain item; Android keeps only an encrypted private-key
+record in app-private preferences and protects it with a nonexportable Android
+Keystore key. Capacitor sync, rebuilds, and in-place App Store or Play updates
+must preserve these locations and aliases. A future identifier, container,
+catalog, or secure-store change requires an explicit verified migration and
+the update-compatibility gate described in the later storage rollout cycle.
+
 ### macOS distribution
 
 The macOS client job fails closed unless the repository has these Actions

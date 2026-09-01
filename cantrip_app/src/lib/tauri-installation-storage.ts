@@ -6,6 +6,7 @@ import {
   ClientDeviceKeyProviderError,
   type ClientDeviceKeyDescriptor,
   type ClientDeviceKeyProvider,
+  type ClientDeviceKeyProviderKind,
 } from "./client-device-key-provider";
 import {
   InstallationCatalogError,
@@ -30,11 +31,11 @@ export type NativeInstallationStorageStatus = {
   schemaVersion: number;
 };
 
-const nativeCustodyBackends = new Set<
+const tauriCustodyBackends = new Set<
   NativeInstallationStorageStatus["provider"]
 >(["apple-keychain", "linux-secret-service", "windows-protected-storage"]);
 
-type NativeInstallationCatalogSnapshot = {
+export type NativeInstallationCatalogSnapshot = {
   accountBindings: InstallationAccountBinding[];
   deviceKeys: InstallationDeviceKey[];
   installation: InstallationProfile | null;
@@ -43,7 +44,7 @@ type NativeInstallationCatalogSnapshot = {
   schemaVersion: number;
 };
 
-type NativeCatalogOperation =
+export type NativeCatalogOperation =
   | { profile: InstallationProfile; type: "create-installation" }
   | {
       binding: InstallationAccountBinding;
@@ -52,10 +53,65 @@ type NativeCatalogOperation =
   | { deviceKey: InstallationDeviceKey; type: "put-device-key" }
   | { migration: InstallationMigration; type: "put-migration" };
 
-type NativeInstallationStorageError = {
+type NativeCatalogTransactionRequest = {
+  expectedRevision: number;
+  operations: NativeCatalogOperation[];
+};
+
+export type NativeInstallationStorageError = {
   code: string;
   message: string;
   retryable: boolean;
+};
+
+export interface NativeInstallationStorageBridge {
+  readonly runtimeLabel: string;
+  applyCatalogTransaction(
+    request: NativeCatalogTransactionRequest,
+  ): Promise<NativeInstallationCatalogSnapshot>;
+  createKey(input: {
+    createdAt?: string;
+    installationId: string;
+    keyAlias: string;
+  }): Promise<ClientDeviceKeyDescriptor>;
+  inspectKey(keyAlias: string): Promise<ClientDeviceKeyDescriptor | null>;
+  isAvailable(): boolean;
+  readCatalog(): Promise<NativeInstallationCatalogSnapshot>;
+  status(): Promise<NativeInstallationStorageStatus>;
+  unwrapAccountMasterKey(input: {
+    keyAlias: string;
+    ownerId: string;
+    wrapper: ClientMasterKeyWrapper;
+  }): Promise<unknown>;
+}
+
+const tauriBridge: NativeInstallationStorageBridge = {
+  runtimeLabel: "Tauri",
+  applyCatalogTransaction: (request) =>
+    invoke<NativeInstallationCatalogSnapshot>(
+      "apply_native_installation_catalog_transaction",
+      { request },
+    ),
+  createKey: (input) =>
+    invoke<ClientDeviceKeyDescriptor>("create_native_installation_key", {
+      input,
+    }),
+  inspectKey: (keyAlias) =>
+    invoke<ClientDeviceKeyDescriptor | null>(
+      "inspect_native_installation_key",
+      { keyAlias },
+    ),
+  isAvailable: isTauri,
+  readCatalog: () =>
+    invoke<NativeInstallationCatalogSnapshot>(
+      "read_native_installation_catalog",
+    ),
+  status: () =>
+    invoke<NativeInstallationStorageStatus>(
+      "native_installation_storage_status",
+    ),
+  unwrapAccountMasterKey: (input) =>
+    invoke<number[]>("unwrap_native_account_master_key", { input }),
 };
 
 function clonePublicKey(
@@ -92,14 +148,17 @@ function cloneSnapshot(
   };
 }
 
-function parseNativeStatus(value: NativeInstallationStorageStatus) {
+function parseNativeStatus(
+  value: NativeInstallationStorageStatus,
+  allowedBackends: ReadonlySet<NativeInstallationStorageStatus["provider"]>,
+) {
   if (
     value.schemaVersion !== 1 ||
     typeof value.catalogPath !== "string" ||
     value.catalogPath.length === 0 ||
     value.keyAliasFormat !==
       "cantrip.installation.<installation-uuid>.hpke.v1" ||
-    !nativeCustodyBackends.has(value.provider)
+    !allowedBackends.has(value.provider)
   ) {
     throw new ClientDeviceKeyProviderError(
       "key-store-unavailable",
@@ -265,7 +324,7 @@ function mapProviderError(error: unknown): never {
   throw error;
 }
 
-class TauriInstallationCatalogDraft implements InstallationCatalogTransaction {
+class NativeInstallationCatalogDraft implements InstallationCatalogTransaction {
   readonly operations: NativeCatalogOperation[] = [];
 
   private readonly accountBindings = new Map<
@@ -368,22 +427,20 @@ class TauriInstallationCatalogDraft implements InstallationCatalogTransaction {
   }
 }
 
-export class TauriInstallationCatalog implements InstallationCatalog {
+export class NativeInstallationCatalog implements InstallationCatalog {
   private transactionTail: Promise<void> = Promise.resolve();
 
+  constructor(private readonly bridge: NativeInstallationStorageBridge) {}
+
   private async readSnapshot(): Promise<NativeInstallationCatalogSnapshot> {
-    if (!isTauri()) {
+    if (!this.bridge.isAvailable()) {
       throw new InstallationCatalogError(
         "catalog-unavailable",
-        "Native installation storage requires the Tauri runtime.",
+        `Native installation storage requires the ${this.bridge.runtimeLabel} runtime.`,
       );
     }
     try {
-      return cloneSnapshot(
-        await invoke<NativeInstallationCatalogSnapshot>(
-          "read_native_installation_catalog",
-        ),
-      );
+      return cloneSnapshot(await this.bridge.readCatalog());
     } catch (error) {
       return mapCatalogError(error);
     }
@@ -437,19 +494,14 @@ export class TauriInstallationCatalog implements InstallationCatalog {
     await predecessor;
     try {
       const snapshot = await this.readSnapshot();
-      const transaction = new TauriInstallationCatalogDraft(snapshot);
+      const transaction = new NativeInstallationCatalogDraft(snapshot);
       const result = await operation(transaction);
       if (transaction.operations.length > 0) {
         try {
-          await invoke<NativeInstallationCatalogSnapshot>(
-            "apply_native_installation_catalog_transaction",
-            {
-              request: {
-                expectedRevision: snapshot.revision,
-                operations: transaction.operations,
-              },
-            },
-          );
+          await this.bridge.applyCatalogTransaction({
+            expectedRevision: snapshot.revision,
+            operations: transaction.operations,
+          });
         } catch (error) {
           mapCatalogError(error);
         }
@@ -461,27 +513,25 @@ export class TauriInstallationCatalog implements InstallationCatalog {
   }
 }
 
-export class TauriClientDeviceKeyProvider implements ClientDeviceKeyProvider {
-  readonly kind = "tauri-native" as const;
-
-  private constructor(
+export class NativeClientDeviceKeyProvider implements ClientDeviceKeyProvider {
+  protected constructor(
+    private readonly bridge: NativeInstallationStorageBridge,
     readonly backend: NativeInstallationStorageStatus["provider"],
+    readonly kind: ClientDeviceKeyProviderKind,
   ) {}
 
-  static async open(): Promise<TauriClientDeviceKeyProvider> {
-    if (!isTauri()) {
+  protected static async openBackend(
+    bridge: NativeInstallationStorageBridge,
+    allowedBackends: ReadonlySet<NativeInstallationStorageStatus["provider"]>,
+  ): Promise<NativeInstallationStorageStatus["provider"]> {
+    if (!bridge.isAvailable()) {
       throw new ClientDeviceKeyProviderError(
         "key-store-unavailable",
-        "Native key custody requires the Tauri runtime.",
+        `Native key custody requires the ${bridge.runtimeLabel} runtime.`,
       );
     }
     try {
-      const status = parseNativeStatus(
-        await invoke<NativeInstallationStorageStatus>(
-          "native_installation_storage_status",
-        ),
-      );
-      return new TauriClientDeviceKeyProvider(status.provider);
+      return parseNativeStatus(await bridge.status(), allowedBackends).provider;
     } catch (error) {
       return mapProviderError(error);
     }
@@ -499,17 +549,11 @@ export class TauriClientDeviceKeyProvider implements ClientDeviceKeyProvider {
           "The native installation key alias does not match the installation.",
         );
       }
-      return parseNativeDescriptor(
-        await invoke<ClientDeviceKeyDescriptor>(
-          "create_native_installation_key",
-          { input },
-        ),
-        {
-          installationId: input.installationId,
-          keyAlias: input.keyAlias,
-          provider: this.backend,
-        },
-      );
+      return parseNativeDescriptor(await this.bridge.createKey(input), {
+        installationId: input.installationId,
+        keyAlias: input.keyAlias,
+        provider: this.backend,
+      });
     } catch (error) {
       if (error instanceof ClientDeviceKeyProviderError) throw error;
       return mapProviderError(error);
@@ -518,10 +562,7 @@ export class TauriClientDeviceKeyProvider implements ClientDeviceKeyProvider {
 
   async inspect(keyAlias: string): Promise<ClientDeviceKeyDescriptor | null> {
     try {
-      const value = await invoke<ClientDeviceKeyDescriptor | null>(
-        "inspect_native_installation_key",
-        { keyAlias },
-      );
+      const value = await this.bridge.inspectKey(keyAlias);
       return value === null
         ? null
         : parseNativeDescriptor(value, {
@@ -541,9 +582,7 @@ export class TauriClientDeviceKeyProvider implements ClientDeviceKeyProvider {
   }): Promise<Uint8Array> {
     let source: unknown = null;
     try {
-      source = await invoke<number[]>("unwrap_native_account_master_key", {
-        input,
-      });
+      source = await this.bridge.unwrapAccountMasterKey(input);
       if (
         !Array.isArray(source) ||
         !source.every(
@@ -575,6 +614,24 @@ export class TauriClientDeviceKeyProvider implements ClientDeviceKeyProvider {
   }
 }
 
+export class TauriInstallationCatalog extends NativeInstallationCatalog {
+  constructor() {
+    super(tauriBridge);
+  }
+}
+
+export class TauriClientDeviceKeyProvider extends NativeClientDeviceKeyProvider {
+  private constructor(backend: NativeInstallationStorageStatus["provider"]) {
+    super(tauriBridge, backend, "tauri-native");
+  }
+
+  static async open(): Promise<TauriClientDeviceKeyProvider> {
+    return new TauriClientDeviceKeyProvider(
+      await this.openBackend(tauriBridge, tauriCustodyBackends),
+    );
+  }
+}
+
 export async function inspectNativeInstallationStorage(): Promise<NativeInstallationStorageStatus> {
   if (!isTauri()) {
     throw new InstallationCatalogError(
@@ -582,11 +639,7 @@ export async function inspectNativeInstallationStorage(): Promise<NativeInstalla
       "Native installation storage requires the Tauri runtime.",
     );
   }
-  return parseNativeStatus(
-    await invoke<NativeInstallationStorageStatus>(
-      "native_installation_storage_status",
-    ),
-  );
+  return parseNativeStatus(await tauriBridge.status(), tauriCustodyBackends);
 }
 
-export type { InstallationCatalogReader, NativeInstallationStorageError };
+export type { InstallationCatalogReader };

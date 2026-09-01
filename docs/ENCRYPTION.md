@@ -211,9 +211,10 @@ dependency boundary.
 #### Durable native installation storage
 
 Tauri selects the durable native installation catalog during normal startup.
-The browser and Capacitor paths remain separate: browsers continue to use
-IndexedDB, while Capacitor native custody is delivered in the later mobile
-cycles recorded in
+Capacitor now ships matching native SQLite and secure-key providers, but its
+normal startup selection remains unchanged until the transactional mobile
+migration and recovery cycle. Browsers continue to use IndexedDB. Rollout and
+verification status for each runtime is recorded in
 [ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md).
 
 The Tauri catalog lives under the operating system's non-roaming local
@@ -257,6 +258,24 @@ migration checkpoints can be committed as a single reviewable unit. Platform
 runtime smoke testing is recorded separately in the progress ledger; shared
 tests alone are not treated as proof that every operating-system credential
 service works.
+
+Capacitor uses the same schema and key alias contract under each application's
+private data root at `installation/v1/catalog.sqlite3`. On iOS, the P-256
+private key is a Keychain generic-password item under service
+`art.cantrip.installation.hpke.v1`, protected with
+`AfterFirstUnlockThisDeviceOnly`. On Android, the private-key encoding is
+authenticated and encrypted with an installation-specific nonexportable
+AES-GCM key generated in Android Keystore; only the encrypted record is stored
+in the app-private preferences file. Neither implementation writes an
+unprotected private key to SQLite, preferences, browser storage, or logs.
+
+Both mobile plugins implement the existing RFC 9180
+P-256/HKDF-SHA256/AES-256-GCM wrapper directly and use the same canonical
+associated data as `@cantrip/crypto`. TypeScript, Android, and Swift fixtures
+verify wire compatibility. The native bridge returns public metadata and the
+unwrapped 32-byte Account Master Key only; temporary byte buffers are cleared
+on best effort. Missing or invalid secure-store material is a recovery state,
+never permission to replace the installation key.
 
 Tauri startup fetches the authoritative server encryption profile before
 deciding whether profile initialization is allowed. For an initialized profile
