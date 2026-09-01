@@ -220,18 +220,28 @@ function terminalActivityStatus(
   return terminalMessage(followingMessage) ? "completed" : null;
 }
 
+function visibleWorkActivity(activity: AgentActivity): boolean {
+  if (
+    activity.type === "usage" ||
+    activity.type === "rateLimit" ||
+    activity.type === "instructionContext" ||
+    activity.type === "turnSummary"
+  ) {
+    return false;
+  }
+  return (
+    activity.type !== "reasoning" ||
+    activity.summary.some((part) => part.trim().length > 0)
+  );
+}
+
 function visibleWorkMessage(
   message: ChatMessage,
   terminalStatus: "completed" | "failed" | null,
 ): ChatMessage | null {
   const content = message.content
     .filter(
-      (item) =>
-        item.type !== "activity" ||
-        (item.activity.type !== "usage" &&
-          item.activity.type !== "rateLimit" &&
-          item.activity.type !== "instructionContext" &&
-          item.activity.type !== "turnSummary"),
+      (item) => item.type !== "activity" || visibleWorkActivity(item.activity),
     )
     .map((item) =>
       item.type === "activity" && terminalStatus

@@ -562,6 +562,61 @@ describe("chat activity timeline", () => {
     });
   });
 
+  it("does not reserve transcript rows for empty reasoning boundaries", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect this project" },
+      ]),
+      message("command-1", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-1",
+            command: "rg --files",
+            cwd: ".",
+            status: "completed",
+            exitCode: 0,
+            output: null,
+          },
+        },
+      ]),
+      message("reasoning", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "reasoning",
+            id: "reasoning-1",
+            status: "running",
+            summary: [],
+          },
+        },
+      ]),
+      message("command-2", "assistant", "2026-08-07T12:00:03.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-2",
+            command: "pnpm test",
+            cwd: ".",
+            status: "running",
+            exitCode: null,
+            output: null,
+          },
+        },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(2);
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      kind: "tool",
+      messages: [{ id: "command-1" }, { id: "command-2" }],
+      endedAt: null,
+    });
+  });
+
   it("keeps notices visible instead of burying them in a tool summary", () => {
     const timeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [
