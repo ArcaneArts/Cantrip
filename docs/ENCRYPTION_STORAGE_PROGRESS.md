@@ -106,7 +106,7 @@ flowchart TD
 
 - Branch: `codex/encryption-storage-cycle3-tauri-native`
 - Pull request: [#1541](https://github.com/ArcaneArts/Cantrip/pull/1541)
-- Merge: pending
+- Merge: squash-merged as `f3e105c1be752b80fb8765043ff8e1ed90b23366`
 - Behavior implemented:
   - Added a versioned SQLite installation catalog beneath Tauri's current
     bundle-scoped local application-data root at
@@ -168,10 +168,82 @@ flowchart TD
 - Manual verification: create/inspect/unwrap through a packaged Tauri build on
   each desktop OS before claiming OS-store integration verified.
 
+### Cycle 4 — transactional Tauri migration and account recovery
+
+- Branch: `codex/encryption-storage-cycle4-tauri-migration`
+- Pull request: [#1545](https://github.com/ArcaneArts/Cantrip/pull/1545)
+- Merge: pending
+- Behavior implemented:
+  - Selected the native Tauri catalog and OS key provider during normal Tauri
+    startup while leaving browser and Capacitor runtime selection unchanged.
+  - Connected the explicit startup transition owner to installation, server
+    profile, native key, binding, legacy discovery, migration, account
+    recovery, and precise anonymous recovery states.
+  - Added a stable UUIDv5 binding principal derived from installation, server,
+    and owner identity. The underlying installation key remains independent of
+    every server and account binding.
+  - Added client-service operations that wrap the already-unlocked Account
+    Master Key for an explicit native principal/public key and unwrap through a
+    platform key provider. Migration requires the native result to match the
+    legacy-unlocked key and decrypt a marker sealed by the legacy-derived key
+    before changing the active client snapshot.
+  - Implemented an idempotent legacy IndexedDB migration journal. The native
+    principal and grant are reconciled across interrupted requests; the
+    account binding and verified migration checkpoint commit together only
+    after local native unwrap verification.
+  - Retained the legacy IndexedDB record, principal, and grant. Migration never
+    calls a revocation or delete endpoint and never replaces a corrupt legacy
+    record.
+  - Connected password-based recovery for initialized account profiles with a
+    missing local legacy registration. The path reauthenticates, unwraps the
+    existing password wrapper, provisions and verifies the native binding, and
+    never calls server profile initialization.
+  - Added a specific anonymous recovery-required application state. Missing or
+    corrupt anonymous custody preserves the existing server profile and cannot
+    mount an empty application as a fallback.
+  - Confirmed from repository history that `art.cantrip`, the production
+    WebView origin, and the local application-data root have not changed since
+    IndexedDB client custody shipped. The desktop development port changed to
+    1420 before that feature, so the retained current-origin reader covers all
+    released Tauri legacy records currently known to the repository.
+- Validation:
+  - `pnpm --filter @cantrip/app exec vitest run src/lib/account-encryption.test.ts src/lib/client-encryption-startup.test.ts src/lib/client-encryption.test.ts src/lib/installation-storage.test.ts src/lib/browser-installation-storage.test.ts src/lib/tauri-installation-storage.test.ts` — 47 focused tests passed (four matching test files).
+  - `pnpm --filter @cantrip/app test` — 1,842 tests passed and 3 skipped across
+    350 test files after building the workspace-local `@cantrip/glitch` package.
+  - `pnpm --filter @cantrip/app typecheck` — passed.
+  - `pnpm --filter @cantrip/app build` — passed.
+  - `cargo fmt --manifest-path cantrip_app/src-tauri/Cargo.toml -- --check` —
+    passed.
+  - `cargo check --manifest-path cantrip_app/src-tauri/Cargo.toml` — passed.
+  - `cargo test --manifest-path cantrip_app/src-tauri/Cargo.toml installation_storage`
+    — 20 tests passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle did not modify either file and introduced
+    no newly reported decomposition overage.
+- Supported platforms:
+  - Tauri: native runtime selection, legacy migration, native restart unlock,
+    password reprovisioning, and anonymous recovery state are connected and
+    covered by deterministic shared/provider tests.
+  - Browser: existing IndexedDB runtime remains active and behavior is
+    unchanged in this cycle.
+  - Capacitor: runtime behavior remains unchanged pending Cycles 6–7.
+- Migration status: implemented for accessible legacy records in the current
+  Tauri WebView origin; final PR validation and merge are pending. Legacy
+  custody is deliberately retained after verification.
+- Remaining work: Cycles 5–12 below, including native-key-loss rotation,
+  anonymous recovery artifacts, browser recovery, mobile providers, and
+  platform update harnesses.
+- Known risks or blockers: signed macOS/Windows/Linux secure-store smoke tests
+  remain manual. A cataloged native key missing from the OS store still fails
+  closed instead of rotating; password-authorized native key rotation remains
+  required before final completion.
+- Manual verification: migrate a real pre-cycle Tauri profile on macOS and
+  confirm the second launch unlocks from Keychain without reading IndexedDB.
+
 ## Remaining cycles
 
-4. Migrate Tauri legacy IndexedDB keys transactionally and connect account
-   recovery.
+4. Merge and manually smoke-test the transactional Tauri migration above.
 5. Stabilize named development profiles and add non-secret diagnostics.
 6. Implement Capacitor SQLite and iOS/Android secure-key providers.
 7. Connect Capacitor migration and recovery.

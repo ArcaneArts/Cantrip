@@ -210,10 +210,10 @@ dependency boundary.
 
 #### Durable native installation storage
 
-Tauri now has a native storage destination for the durable installation
-architecture. It is intentionally not selected by normal startup until the
-transactional legacy migration can preserve every accessible IndexedDB key.
-That cutover is tracked in
+Tauri selects the durable native installation catalog during normal startup.
+The browser and Capacitor paths remain separate: browsers continue to use
+IndexedDB, while Capacitor native custody is delivered in the later mobile
+cycles recorded in
 [ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md).
 
 The Tauri catalog lives under the operating system's non-roaming local
@@ -254,9 +254,55 @@ changing the file. Catalog writes use an immediate SQLite transaction and an
 expected revision, and validate full-schema, P-256 public-key, and cross-row
 binding invariants before commit, so installation, key metadata, bindings, and
 migration checkpoints can be committed as a single reviewable unit. Platform
-runtime smoke testing and legacy migration are
-recorded separately in the progress ledger; shared tests alone are not treated
-as proof that every operating-system credential service works.
+runtime smoke testing is recorded separately in the progress ledger; shared
+tests alone are not treated as proof that every operating-system credential
+service works.
+
+Tauri startup fetches the authoritative server encryption profile before
+deciding whether profile initialization is allowed. For an initialized profile
+it first tries the cataloged native binding. If no verified binding exists, it
+reads the retained legacy IndexedDB record without deleting or replacing it.
+An accessible legacy private key unwraps the existing Account Master Key; the
+client then creates or reconciles a stable per-server/account native principal,
+wraps that same master key to the installation public key, and verifies a
+native unwrap against the already-unlocked key. It also encrypts a bounded
+migration marker under a legacy-derived component key and decrypts it again
+after the native cutover. Only after both checks does one SQLite transaction
+store the account binding and mark the migration verified. The legacy key,
+principal, and grant remain active as a compatibility fallback.
+
+The native principal UUID is deterministically namespaced by installation,
+server, and owner. It is an authorization-binding identifier, not the device
+key alias. This prevents interrupted requests from leaking a new principal on
+every retry and avoids reusing the globally unique server principal ID across
+different accounts. Create, approval, and grant conflicts are reconciled by
+reading the exact principal and active grant; a mismatched public key or a
+grant that the native key cannot unwrap fails closed.
+
+Migration checkpoints are idempotent and resumable. A crash or network failure
+before the final catalog transaction leaves the migration `in-progress`, the
+legacy record untouched, and no native binding committed. The next launch
+reuses the installation ID, key alias, binding principal ID, and any exact
+server-side principal or grant before repeating local verification. No client
+principal is revoked as part of migration.
+
+For account mode, a missing legacy registration returns to normal password
+reauthentication, unwraps the existing password-wrapped Account Master Key, and
+provisions the native binding without calling profile initialization. For
+anonymous mode, missing or corrupt custody enters a specific recovery-required
+state and preserves the server profile; it never mounts an empty workspace or
+creates a blank encryption profile. Anonymous recovery artifact import is a
+separate rollout cycle.
+
+The legacy reader uses the existing `cantrip-client-encryption` IndexedDB
+database and remains retained after cutover. The bundle identifier
+`art.cantrip`, production WebView origin, and local application-data root have
+not changed since client key custody shipped. Development moved from port 5173
+to the stable desktop port 1420 before client key custody was introduced, so
+there is no previously released alternate development origin containing these
+records. If any of those compatibility contracts changes later, release gates
+must require a tested origin/data-location migration rather than relying on a
+new blank origin.
 
 #### Browser custody and current runtime behavior
 
@@ -288,16 +334,12 @@ The
 [server connection test](../cantrip_app/src/lib/server-connections.test.ts)
 also verifies that switching servers locks in-memory encryption keys.
 
-An irreparably malformed local device record is different from an unknown
-future format. The client deletes and replaces only a malformed local
-nonextractable key, then requires the normal login password once to authorize
-the replacement key in account mode, or an existing authorized endpoint in
-anonymous local mode. Unknown versions remain untouched and fail
-closed so a newer client may still recover them. If this condition is found
-while the application is already mounted (for example after a development hot
-reload), a protected workspace mutation returns the application to sign-in
-instead of leaving an unusable modal open. No server-held principal or grant
-can authorize the replacement without that credential step.
+An irreparably malformed local browser device record is different from an
+unknown future format. The remaining browser path retains its compatibility
+behavior until the browser recovery cycle replaces it. Tauri does not delete or
+replace a malformed legacy record: account mode uses the password recovery
+path, anonymous mode enters explicit recovery, and unknown versions remain
+untouched so a compatible client can still recover them.
 
 Nonextractable browser keys are still usable by JavaScript running in the same
 origin, so they do not protect against a malicious server that changes the
@@ -309,12 +351,11 @@ described below.
 The durable native rollout is tracked in
 [ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md). Its storage
 contract separates one immutable installation profile and stable native key
-alias from server/account authorization bindings. Native SQLite catalogs will
-hold only non-secret identity, public-key, binding, and migration metadata;
-platform secure storage owns private keys. The Tauri destination and provider
-now exist, but until transactional migration and runtime selection are
-connected, the IndexedDB implementation above remains the active runtime
-behavior.
+alias from server/account authorization bindings. Native SQLite catalogs hold
+only non-secret identity, public-key, binding, and migration metadata;
+platform secure storage owns private keys. Tauri now uses this path in normal
+startup, while browser and Capacitor rollout status remains explicit in the
+ledger.
 
 The replacement startup contract resolves state in this order: installation,
 authoritative server profile, native device key, account binding, legacy

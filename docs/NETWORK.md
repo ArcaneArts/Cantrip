@@ -446,6 +446,14 @@ origins must not replace that installation profile or its private key. Network
 capabilities remain short-lived and server-authorized; possession of the local
 installation key alone does not grant access to a worker or resource.
 
+On Tauri, each server/account authorization uses a deterministic binding
+principal derived from the installation ID plus the server and owner IDs. The
+principal is distinct from the installation key alias and from transient
+WorkerLink client/session IDs. Migration adds that native principal and grant
+without revoking the legacy browser-origin principal. Route changes and relay
+reconnects therefore cannot rotate installation custody or select a different
+encryption profile.
+
 Every channel-open operation includes a grant. The worker validates:
 
 - owner and account session;

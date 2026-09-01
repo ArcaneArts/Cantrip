@@ -104,6 +104,15 @@ type ApplicationSessionState =
     }
   | ({ kind: "authenticated" } & AuthenticatedSessionContext)
   | ({
+      kind: "encryption-recovery-required";
+      message: string;
+      reason:
+        | "anonymous-binding-missing"
+        | "anonymous-device-missing"
+        | "legacy-device-corrupt"
+        | "legacy-device-unsupported";
+    } & AuthenticatedSessionContext)
+  | ({
       kind: "encryption-error";
       message: string;
     } & AuthenticatedSessionContext);
@@ -284,6 +293,14 @@ async function encryptionSessionState(
   });
   if (access.status === "ready") {
     return { kind: "authenticated", ...context };
+  }
+  if (access.status === "recovery-required") {
+    return {
+      kind: "encryption-recovery-required",
+      message: access.message,
+      reason: access.reason,
+      ...context,
+    };
   }
   clearClientSession();
   return {
@@ -659,6 +676,52 @@ function EncryptionErrorScreen({
   );
 }
 
+function EncryptionRecoveryScreen({
+  message,
+  onRetry,
+  reason,
+}: Extract<
+  ApplicationSessionState,
+  { kind: "encryption-recovery-required" }
+> & {
+  onRetry(): void;
+}) {
+  const title =
+    reason === "legacy-device-unsupported"
+      ? "Legacy device migration required"
+      : reason === "legacy-device-corrupt"
+        ? "Legacy device recovery required"
+        : "Anonymous recovery required";
+  return (
+    <SessionFrame>
+      <div className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="flex items-start gap-3">
+          <LockKeyhole className="mt-0.5 size-5 shrink-0 text-destructive" />
+          <div>
+            <h1 className="font-semibold">{title}</h1>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              {message}
+            </p>
+          </div>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Cantrip preserved the existing encryption profile and did not create
+          blank replacement data.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button onClick={onRetry}>Check again</Button>
+          <div className="min-w-0 flex-1">
+            <ServerSwitcher
+              currentUserName="Switch server"
+              workerName="Recovery required"
+            />
+          </div>
+        </div>
+      </div>
+    </SessionFrame>
+  );
+}
+
 function AuthenticatedApplication({
   authenticatedContent,
   bootstrap,
@@ -863,6 +926,7 @@ export function ApplicationSession({
         setState((current) => {
           if (
             (current.kind === "authenticated" ||
+              current.kind === "encryption-recovery-required" ||
               current.kind === "encryption-error") &&
             current.bootstrap.auth.mode !== "none"
           ) {
@@ -918,6 +982,22 @@ export function ApplicationSession({
           void encryptionSessionState(state).then(setState, (retryError) =>
             setState({
               ...state,
+              message: errorMessage(retryError),
+            }),
+          );
+        }}
+      />
+    );
+  }
+  if (state.kind === "encryption-recovery-required") {
+    return (
+      <EncryptionRecoveryScreen
+        {...state}
+        onRetry={() => {
+          void encryptionSessionState(state).then(setState, (retryError) =>
+            setState({
+              ...state,
+              kind: "encryption-error",
               message: errorMessage(retryError),
             }),
           );

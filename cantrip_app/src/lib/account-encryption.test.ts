@@ -27,6 +27,12 @@ import {
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
 } from "./client-encryption";
+import {
+  MemoryClientDeviceKeyBackend,
+  MemoryClientDeviceKeyProvider,
+} from "./client-device-key-provider";
+import { installationBindingPrincipalId } from "./durable-account-encryption";
+import { MemoryInstallationCatalog } from "./installation-catalog";
 
 const ownerId = "owner-a";
 const timestamp = "2026-08-19T12:00:00.000Z";
@@ -69,6 +75,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
   profile: AccountEncryptionProfile | null = null;
   readonly principals = new Map<string, EncryptionPrincipal>();
   readonly grants = new Map<string, EncryptionKeyGrant[]>();
+  initializationAttempts = 0;
   reauthenticationAttempts = 0;
 
   constructor(private password: string) {}
@@ -191,6 +198,7 @@ class MemoryAccountEncryptionApi implements AccountEncryptionApi {
   async initializeProfile(
     input: AccountEncryptionProfileInitialize,
   ): Promise<AccountEncryptionProfileInitializeResult> {
+    this.initializationAttempts += 1;
     if (this.profile) return { created: false, profile: this.profile };
     this.profile = {
       ownerId,
@@ -563,5 +571,351 @@ describe("account encryption initialization", () => {
     expect(changed.revision).toBe(previousProfile.revision + 1);
     clearSensitiveBytes(previousMasterKey);
     clearSensitiveBytes(nextMasterKey);
+  });
+});
+
+describe("durable Tauri account encryption", () => {
+  function durableStorage() {
+    const backend = new MemoryClientDeviceKeyBackend();
+    return {
+      catalog: new MemoryInstallationCatalog(),
+      provider: new MemoryClientDeviceKeyProvider(backend),
+    };
+  }
+
+  async function initializeLegacyAccount(input: {
+    api: MemoryAccountEncryptionApi;
+    authMode?: "accounts" | "none";
+    store: MemoryDeviceKeyStore;
+  }) {
+    const service = new ClientEncryptionService(input.store);
+    await prepareClientEncryption({
+      api: input.api,
+      authMode: input.authMode ?? "accounts",
+      identity,
+      password: input.authMode === "none" ? undefined : password,
+      passwordKdf: testKdf(),
+      runtimePlatform: "browser",
+      service,
+    });
+    service.lock();
+  }
+
+  it("migrates an accessible IndexedDB key, verifies native custody, and retains the legacy principal", async () => {
+    const api = new MemoryAccountEncryptionApi(password);
+    const legacyStore = new MemoryDeviceKeyStore();
+    await initializeLegacyAccount({ api, store: legacyStore });
+    const legacyPrincipalId = [...api.principals.keys()][0]!;
+    const legacyGrant = api.grants.get(legacyPrincipalId)![0]!;
+    const storage = durableStorage();
+    const states: string[] = [];
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        onStartupState: (state) => states.push(state.phase),
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(legacyStore),
+      }),
+    ).resolves.toEqual({ status: "ready" });
+
+    const installation = await storage.catalog.getInstallation();
+    const binding = await storage.catalog.getAccountBinding(
+      identity.serverId,
+      identity.ownerId,
+    );
+    expect(installation).not.toBeNull();
+    expect(binding).toMatchObject({
+      keyAlias: expect.stringContaining(installation!.installationId),
+      masterKeyRevision: 1,
+      principalId: expect.not.stringMatching(legacyPrincipalId),
+    });
+    await expect(
+      storage.catalog.getMigration(
+        `legacy-indexeddb-v1:${binding!.principalId}`,
+      ),
+    ).resolves.toMatchObject({
+      state: "verified",
+      verificationState: "native-grant-unwrapped-and-marker-decrypted-v1",
+    });
+    expect(api.principals.get(legacyPrincipalId)?.state).toBe("approved");
+    expect(api.grants.get(legacyPrincipalId)?.[0]).toEqual(legacyGrant);
+    expect(states).toContain("migrating-legacy-device");
+    expect(states.at(-1)).toBe("ready");
+
+    const nativeOnly = new ClientEncryptionService({
+      delete: () => Promise.reject(new Error("legacy storage not used")),
+      load: () => Promise.reject(new Error("legacy storage not used")),
+      save: () => Promise.reject(new Error("legacy storage not used")),
+    });
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: nativeOnly,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    expect(nativeOnly.getSnapshot()).toMatchObject({
+      clientId: binding!.principalId,
+      status: "ready",
+    });
+  });
+
+  it("recovers an existing account with its password without initializing a blank profile", async () => {
+    const api = new MemoryAccountEncryptionApi(password);
+    await initializeLegacyAccount({
+      api,
+      store: new MemoryDeviceKeyStore(),
+    });
+    const initializationAttempts = api.initializationAttempts;
+    const storage = durableStorage();
+    const service = new ClientEncryptionService(new MemoryDeviceKeyStore());
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service,
+      }),
+    ).resolves.toEqual({
+      credential: "password",
+      reason: "authorize-device",
+      status: "credential-required",
+    });
+    expect(api.initializationAttempts).toBe(initializationAttempts);
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        password,
+        runtimePlatform: "tauri",
+        service,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    expect(api.initializationAttempts).toBe(initializationAttempts);
+    expect(
+      await storage.catalog.getAccountBinding(
+        identity.serverId,
+        identity.ownerId,
+      ),
+    ).toMatchObject({ principalId: service.getSnapshot().clientId });
+  });
+
+  it("resumes after an ambiguous grant response without creating another principal", async () => {
+    class InterruptedGrantApi extends MemoryAccountEncryptionApi {
+      interrupt = true;
+
+      override async createGrant(
+        principalId: string,
+        input: EncryptionKeyGrantCreate,
+      ): Promise<EncryptionKeyGrant> {
+        const grant = await super.createGrant(principalId, input);
+        if (this.interrupt) {
+          this.interrupt = false;
+          throw new Error("connection lost after grant commit");
+        }
+        return grant;
+      }
+    }
+
+    const api = new InterruptedGrantApi(password);
+    const legacyStore = new MemoryDeviceKeyStore();
+    await initializeLegacyAccount({ api, store: legacyStore });
+    const legacyPrincipalCount = api.principals.size;
+    const storage = durableStorage();
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(legacyStore),
+      }),
+    ).rejects.toThrow(/connection lost/iu);
+    await expect(
+      storage.catalog.getAccountBinding(identity.serverId, identity.ownerId),
+    ).resolves.toBeNull();
+    const interruptedInstallation = await storage.catalog.getInstallation();
+    const interruptedPrincipalId = await installationBindingPrincipalId({
+      identity,
+      installationId: interruptedInstallation!.installationId,
+    });
+    await expect(
+      storage.catalog.getMigration(
+        `legacy-indexeddb-v1:${interruptedPrincipalId}`,
+      ),
+    ).resolves.toMatchObject({
+      completedAt: null,
+      state: "in-progress",
+    });
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(legacyStore),
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    expect(api.principals.size).toBe(legacyPrincipalCount + 1);
+    const binding = await storage.catalog.getAccountBinding(
+      identity.serverId,
+      identity.ownerId,
+    );
+    expect(api.grants.get(binding!.principalId)).toHaveLength(1);
+  });
+
+  it("preserves an anonymous profile and enters a precise recovery state when custody is missing", async () => {
+    const api = new MemoryAccountEncryptionApi("unused");
+    const startupPhases: string[] = [];
+    await initializeLegacyAccount({
+      api,
+      authMode: "none",
+      store: new MemoryDeviceKeyStore(),
+    });
+    const initializationAttempts = api.initializationAttempts;
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        durableStorage: durableStorage(),
+        identity,
+        onStartupState: (state) => startupPhases.push(state.phase),
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).resolves.toMatchObject({
+      reason: "anonymous-binding-missing",
+      status: "recovery-required",
+    });
+    expect(api.initializationAttempts).toBe(initializationAttempts);
+    expect(startupPhases.at(-1)).toBe("recovery-required");
+  });
+
+  it("derives distinct stable binding principals without changing the installation key", async () => {
+    const installationId = "70da22b4-0474-4680-8cdd-e22715783621";
+    const first = await installationBindingPrincipalId({
+      identity,
+      installationId,
+    });
+    const repeated = await installationBindingPrincipalId({
+      identity,
+      installationId,
+    });
+    const otherServer = await installationBindingPrincipalId({
+      identity: { ...identity, serverId: "server-b" },
+      installationId,
+    });
+
+    expect(repeated).toBe(first);
+    expect(otherServer).not.toBe(first);
+    expect(first).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    );
+  });
+
+  it("uses one installation key for independent server bindings", async () => {
+    const storage = durableStorage();
+    const firstApi = new MemoryAccountEncryptionApi(password);
+    const secondApi = new MemoryAccountEncryptionApi(password);
+    const secondIdentity = { ...identity, serverId: "server-b" };
+
+    await prepareClientEncryption({
+      api: firstApi,
+      authMode: "accounts",
+      durableStorage: storage,
+      identity,
+      password,
+      passwordKdf: testKdf(),
+      runtimePlatform: "tauri",
+      service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+    });
+    await prepareClientEncryption({
+      api: secondApi,
+      authMode: "accounts",
+      durableStorage: storage,
+      identity: secondIdentity,
+      password,
+      passwordKdf: testKdf(),
+      runtimePlatform: "tauri",
+      service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+    });
+
+    const bindings = await storage.catalog.listAccountBindings();
+    expect(bindings).toHaveLength(2);
+    expect(bindings[0]!.keyAlias).toBe(bindings[1]!.keyAlias);
+    expect(bindings[0]!.principalId).not.toBe(bindings[1]!.principalId);
+    expect((await storage.catalog.getInstallation())?.installationId).toBe(
+      bindings[0]!.keyAlias.split(".")[2],
+    );
+  });
+
+  it("does not regenerate a cataloged native key that disappears from secure storage", async () => {
+    class LossSimulatingProvider extends MemoryClientDeviceKeyProvider {
+      createCalls = 0;
+      lost = false;
+
+      override create(
+        input: Parameters<MemoryClientDeviceKeyProvider["create"]>[0],
+      ) {
+        this.createCalls += 1;
+        return super.create(input);
+      }
+
+      override inspect(keyAlias: string) {
+        return this.lost ? Promise.resolve(null) : super.inspect(keyAlias);
+      }
+    }
+
+    const api = new MemoryAccountEncryptionApi(password);
+    const provider = new LossSimulatingProvider(
+      new MemoryClientDeviceKeyBackend(),
+    );
+    const storage = {
+      catalog: new MemoryInstallationCatalog(),
+      provider,
+    };
+    await prepareClientEncryption({
+      api,
+      authMode: "accounts",
+      durableStorage: storage,
+      identity,
+      password,
+      passwordKdf: testKdf(),
+      runtimePlatform: "tauri",
+      service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+    });
+    provider.lost = true;
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        password,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).rejects.toMatchObject({ code: "device-not-found" });
+    expect(provider.createCalls).toBe(1);
+    expect(api.initializationAttempts).toBe(1);
   });
 });

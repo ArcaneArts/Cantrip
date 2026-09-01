@@ -25,6 +25,10 @@ import {
   type PasswordWrappedMasterKey,
 } from "@cantrip/protocol/encryption";
 
+import type {
+  ClientDeviceKeyDescriptor,
+  ClientDeviceKeyProvider,
+} from "./client-device-key-provider";
 import { clientLogger, operationalErrorMetadata } from "./client-log-relay";
 
 const deviceDatabaseName = "cantrip-client-encryption";
@@ -727,15 +731,106 @@ export class ClientEncryptionService {
   async createDeviceWrapper(
     identity: ClientEncryptionIdentity,
   ): Promise<ClientMasterKeyWrapper> {
-    const accountMasterKey = this.requireUnlocked(identity);
     const device = await this.loadRawDevice(identity);
-    return wrapAccountMasterKeyForClient({
-      ownerId: identity.ownerId,
+    return this.createDeviceWrapperFor({
       clientId: device.clientId,
+      identity,
+      publicKey: device.publicKey,
+    });
+  }
+
+  async createDeviceWrapperFor(input: {
+    clientId: string;
+    identity: ClientEncryptionIdentity;
+    publicKey: EncryptionPublicKey;
+  }): Promise<ClientMasterKeyWrapper> {
+    const accountMasterKey = this.requireUnlocked(input.identity);
+    return wrapAccountMasterKeyForClient({
+      ownerId: input.identity.ownerId,
+      clientId: input.clientId,
       accountMasterKey,
       masterKeyRevision: this.snapshot.masterKeyRevision!,
-      clientPublicKey: device.publicKey,
+      clientPublicKey: encryptionPublicKeySchema.parse(input.publicKey),
     });
+  }
+
+  async unlockWithKeyProvider(input: {
+    device: ClientDeviceKeyDescriptor;
+    grant: EncryptionKeyGrant;
+    identity: ClientEncryptionIdentity;
+    principal: EncryptionPrincipal;
+    provider: ClientDeviceKeyProvider;
+    verifyCurrentMasterKey?: boolean;
+  }): Promise<void> {
+    this.requireCrypto();
+    validateIdentity(input.identity);
+    const principal = encryptionPrincipalSchema.parse(input.principal);
+    const grant = encryptionKeyGrantSchema.parse(input.grant);
+    const wrapper = clientMasterKeyWrapperSchema.parse(grant.wrappedKey);
+    if (
+      principal.id !== wrapper.clientId ||
+      principal.id !== grant.principalId ||
+      principal.ownerId !== input.identity.ownerId ||
+      principal.kind !== "client" ||
+      principal.state !== "approved" ||
+      grant.ownerId !== input.identity.ownerId ||
+      grant.state !== "active" ||
+      grant.component !== "account-master-key" ||
+      grant.keyRevision !== wrapper.masterKeyRevision ||
+      JSON.stringify(principal.publicKey) !==
+        JSON.stringify(input.device.publicKey) ||
+      input.device.keyAlias.length === 0
+    ) {
+      const error = new ClientEncryptionError(
+        "principal-unavailable",
+        "The native installation key does not match its server authorization.",
+      );
+      if (input.verifyCurrentMasterKey) throw error;
+      throw this.fail(
+        "locked",
+        input.identity,
+        principal.id,
+        error.code,
+        error.message,
+      );
+    }
+
+    const currentMasterKey = input.verifyCurrentMasterKey
+      ? this.requireUnlocked(input.identity)
+      : null;
+    let accountMasterKey: Uint8Array | null = null;
+    try {
+      accountMasterKey = await input.provider.unwrapAccountMasterKey({
+        keyAlias: input.device.keyAlias,
+        ownerId: input.identity.ownerId,
+        wrapper,
+      });
+      if (currentMasterKey && !bytesEqual(currentMasterKey, accountMasterKey)) {
+        throw new ClientEncryptionError(
+          "decryption-failed",
+          "The native installation key did not recover the active Account Master Key.",
+        );
+      }
+      this.setAccountMasterKey({
+        accountMasterKey,
+        identity: input.identity,
+        masterKeyRevision: grant.keyRevision,
+      });
+      this.publish({ ...this.snapshot, clientId: principal.id });
+    } catch (error) {
+      if (!input.verifyCurrentMasterKey && accountMasterKey === null) {
+        this.clearKeyMaterial();
+        this.publish({
+          clientId: principal.id,
+          identity: { ...input.identity },
+          masterKeyRevision: null,
+          status: "locked",
+        });
+      }
+      throw error;
+    } finally {
+      if (accountMasterKey) clearSensitiveBytes(accountMasterKey);
+    }
   }
 
   componentKey(input: {
