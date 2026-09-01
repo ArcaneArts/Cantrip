@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 import { ChatTitleEncryptionAdapter } from "./chat-title-encryption";
 import {
   ClientEncryptionService,
-  type ClientDeviceKeyStore,
+  type LegacyClientDeviceKeyStore,
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
 } from "./client-encryption";
@@ -44,13 +44,8 @@ const identity = {
 const timestamp = "2026-08-20T12:00:00.000Z";
 const sentinel = "PROTECTED-APP-LIFECYCLE-SENTINEL";
 
-class MemoryDeviceKeyStore implements ClientDeviceKeyStore {
+class MemoryDeviceKeyStore implements LegacyClientDeviceKeyStore {
   private readonly records = new Map<string, unknown>();
-
-  delete(target: ClientEncryptionIdentity): Promise<void> {
-    this.records.delete(this.key(target));
-    return Promise.resolve();
-  }
 
   load(target: ClientEncryptionIdentity): Promise<unknown | null> {
     return Promise.resolve(this.records.get(this.key(target)) ?? null);
@@ -239,14 +234,14 @@ describe("protected app-facing label and surface-state lifecycle", () => {
   it("reopens every app-facing record through the same authorized device after restart", async () => {
     const store = new MemoryDeviceKeyStore();
     const first = new ClientEncryptionService(store);
-    const device = await first.ensureDevice(identity);
+    const device = await first.ensureLegacyDevice(identity);
     const accountMasterKey = generateAccountMasterKey();
     first.setAccountMasterKey({
       accountMasterKey,
       identity,
       masterKeyRevision: 1,
     });
-    const wrapper = await first.createDeviceWrapper(identity);
+    const wrapper = await first.createLegacyDeviceWrapper(identity);
     const projectApi = new MemoryProjectApi();
     const projects = new ProjectEncryptionAdapter({
       api: projectApi,
@@ -475,8 +470,8 @@ describe("protected app-facing label and surface-state lifecycle", () => {
 
     first.lock();
     const restarted = new ClientEncryptionService(store);
-    await restarted.loadDevice(identity);
-    await restarted.unlockWithDevice({
+    await restarted.loadLegacyDevice(identity);
+    await restarted.unlockWithLegacyDevice({
       identity,
       ...authorization(device, wrapper),
     });

@@ -342,7 +342,13 @@ explicit, resumable replacement operation. It never revokes the old principal
 or deletes a legacy key before the new grant has been verified.
 
 The legacy reader uses the existing `cantrip-client-encryption` IndexedDB
-database and remains retained after cutover. The bundle identifier
+database and remains retained after cutover. It is now injected explicitly
+only into the migration-capable application singleton. A plain
+`ClientEncryptionService` has no origin-scoped store, current code uses only
+the installation catalog and platform key provider, and merely probing a fresh
+origin does not create the obsolete legacy database. The compatibility API is
+named `loadLegacyDevice`/`unlockWithLegacyDevice`; there is no runtime path that
+deletes or automatically replaces a legacy record. The bundle identifier
 `art.cantrip`, production WebView origin, and local application-data root have
 not changed since client key custody shipped. Development moved from port 5173
 to the stable desktop port 1420 before client key custody was introduced, so

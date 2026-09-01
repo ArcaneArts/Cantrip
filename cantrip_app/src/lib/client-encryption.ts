@@ -35,9 +35,9 @@ import type {
 } from "./client-device-key-provider";
 import { clientLogger, operationalErrorMetadata } from "./client-log-relay";
 
-const deviceDatabaseName = "cantrip-client-encryption";
-const deviceDatabaseVersion = 1;
-const deviceObjectStoreName = "device-keys";
+const legacyDeviceDatabaseName = "cantrip-client-encryption";
+const legacyDeviceDatabaseVersion = 1;
+const legacyDeviceObjectStoreName = "device-keys";
 
 export type ClientEncryptionIdentity = {
   ownerId: string;
@@ -59,8 +59,7 @@ export type ClientDeviceDescriptor = Omit<
   "privateKey"
 >;
 
-export interface ClientDeviceKeyStore {
-  delete(identity: ClientEncryptionIdentity): Promise<void>;
+export interface LegacyClientDeviceKeyStore {
   load(identity: ClientEncryptionIdentity): Promise<unknown | null>;
   save(record: StoredClientDeviceRecord): Promise<void>;
 }
@@ -101,24 +100,19 @@ export class ClientEncryptionError extends Error {
   }
 }
 
-export class IndexedDbClientDeviceKeyStore implements ClientDeviceKeyStore {
+/**
+ * Compatibility access to the origin-scoped device records created before the
+ * installation catalog existed. Durable startup may read this store only to
+ * migrate an existing Account Master Key; it is never primary key custody.
+ */
+export class LegacyIndexedDbClientDeviceKeyStore implements LegacyClientDeviceKeyStore {
   constructor(
     private readonly factory: IDBFactory | undefined = globalThis.indexedDB,
   ) {}
 
-  async delete(identity: ClientEncryptionIdentity): Promise<void> {
-    const database = await this.open();
-    try {
-      await completeRequest(database, "readwrite", (store) =>
-        store.delete(deviceStorageKey(identity)),
-      );
-    } finally {
-      database.close();
-    }
-  }
-
   async load(identity: ClientEncryptionIdentity): Promise<unknown | null> {
-    const database = await this.open();
+    const database = await this.open(false);
+    if (!database) return null;
     try {
       return (
         (await completeRequest(database, "readonly", (store) =>
@@ -131,7 +125,13 @@ export class IndexedDbClientDeviceKeyStore implements ClientDeviceKeyStore {
   }
 
   async save(record: StoredClientDeviceRecord): Promise<void> {
-    const database = await this.open();
+    const database = await this.open(true);
+    if (!database) {
+      throw new ClientEncryptionError(
+        "storage-unavailable",
+        "Legacy browser device storage could not be created.",
+      );
+    }
     try {
       await completeRequest(database, "readwrite", (store) =>
         store.put(record, deviceStorageKey(record)),
@@ -141,7 +141,7 @@ export class IndexedDbClientDeviceKeyStore implements ClientDeviceKeyStore {
     }
   }
 
-  private open(): Promise<IDBDatabase> {
+  private open(createIfMissing: boolean): Promise<IDBDatabase | null> {
     return new Promise((resolve, reject) => {
       if (!this.factory) {
         reject(
@@ -153,16 +153,22 @@ export class IndexedDbClientDeviceKeyStore implements ClientDeviceKeyStore {
         return;
       }
       const request = this.factory.open(
-        deviceDatabaseName,
-        deviceDatabaseVersion,
+        legacyDeviceDatabaseName,
+        legacyDeviceDatabaseVersion,
       );
-      request.onerror = () =>
+      let missing = false;
+      request.onerror = () => {
+        if (missing) {
+          resolve(null);
+          return;
+        }
         reject(
           new ClientEncryptionError(
             "storage-unavailable",
             "Secure browser device storage could not be opened.",
           ),
         );
+      };
       request.onblocked = () =>
         reject(
           new ClientEncryptionError(
@@ -170,9 +176,16 @@ export class IndexedDbClientDeviceKeyStore implements ClientDeviceKeyStore {
             "Secure browser device storage is blocked by another session.",
           ),
         );
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains(deviceObjectStoreName)) {
-          request.result.createObjectStore(deviceObjectStoreName);
+      request.onupgradeneeded = (event) => {
+        if (!createIfMissing && event.oldVersion === 0) {
+          missing = true;
+          request.transaction?.abort();
+          return;
+        }
+        if (
+          !request.result.objectStoreNames.contains(legacyDeviceObjectStoreName)
+        ) {
+          request.result.createObjectStore(legacyDeviceObjectStoreName);
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -186,9 +199,9 @@ function completeRequest<T>(
   createRequest: (store: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction(deviceObjectStoreName, mode);
+    const transaction = database.transaction(legacyDeviceObjectStoreName, mode);
     const request = createRequest(
-      transaction.objectStore(deviceObjectStoreName),
+      transaction.objectStore(legacyDeviceObjectStoreName),
     );
     let result: T;
     request.onerror = () => reject(request.error);
@@ -362,7 +375,7 @@ export class ClientEncryptionService {
   private snapshot = initialSnapshot();
 
   constructor(
-    private readonly deviceStore: ClientDeviceKeyStore = new IndexedDbClientDeviceKeyStore(),
+    private readonly legacyDeviceStore: LegacyClientDeviceKeyStore | null = null,
   ) {}
 
   getSnapshot = (): ClientEncryptionSnapshot => this.snapshot;
@@ -372,12 +385,22 @@ export class ClientEncryptionService {
     return () => this.listeners.delete(listener);
   };
 
-  async ensureDevice(
+  /** Creates a pre-installation-catalog record for compatibility fixtures. */
+  async ensureLegacyDevice(
     identity: ClientEncryptionIdentity,
   ): Promise<ClientDeviceDescriptor> {
     this.requireCrypto();
-    const existing = await this.loadDevice(identity);
+    const existing = await this.loadLegacyDevice(identity);
     if (existing) return existing;
+    if (!this.legacyDeviceStore) {
+      throw this.storageFailure(
+        new ClientEncryptionError(
+          "storage-unavailable",
+          "Legacy device storage was not configured.",
+        ),
+        identity,
+      );
+    }
     const keyPair = await generateHpkeKeyPair(false);
     if (keyPair.privateKey.extractable) {
       throw this.fail(
@@ -398,7 +421,7 @@ export class ClientEncryptionService {
       version: 1,
     };
     try {
-      await this.deviceStore.save(record);
+      await this.legacyDeviceStore.save(record);
     } catch (error) {
       throw this.storageFailure(error, identity);
     }
@@ -411,14 +434,15 @@ export class ClientEncryptionService {
     return descriptor(record);
   }
 
-  async loadDevice(
+  async loadLegacyDevice(
     identity: ClientEncryptionIdentity,
   ): Promise<ClientDeviceDescriptor | null> {
     this.requireCrypto();
     validateIdentity(identity);
+    if (!this.legacyDeviceStore) return null;
     let raw: unknown | null;
     try {
-      raw = await this.deviceStore.load(identity);
+      raw = await this.legacyDeviceStore.load(identity);
     } catch (error) {
       throw this.storageFailure(error, identity);
     }
@@ -482,20 +506,6 @@ export class ClientEncryptionService {
     return descriptor(record);
   }
 
-  async replaceDevice(
-    identity: ClientEncryptionIdentity,
-  ): Promise<ClientDeviceDescriptor> {
-    this.requireCrypto();
-    validateIdentity(identity);
-    this.lock();
-    try {
-      await this.deviceStore.delete(identity);
-    } catch (error) {
-      throw this.storageFailure(error, identity);
-    }
-    return this.ensureDevice(identity);
-  }
-
   setAccountMasterKey(input: {
     accountMasterKey: Uint8Array;
     identity: ClientEncryptionIdentity;
@@ -530,7 +540,7 @@ export class ClientEncryptionService {
     });
   }
 
-  async unlockWithDevice(input: {
+  async unlockWithLegacyDevice(input: {
     grant: EncryptionKeyGrant;
     identity: ClientEncryptionIdentity;
     principal: EncryptionPrincipal;
@@ -596,7 +606,7 @@ export class ClientEncryptionService {
         "This device does not have an active Account Master Key grant.",
       );
     }
-    const raw = await this.loadRawDevice(input.identity);
+    const raw = await this.loadRawLegacyDevice(input.identity);
     if (
       raw.clientId !== principal.id ||
       JSON.stringify(raw.publicKey) !== JSON.stringify(principal.publicKey)
@@ -733,10 +743,10 @@ export class ClientEncryptionService {
     }
   }
 
-  async createDeviceWrapper(
+  async createLegacyDeviceWrapper(
     identity: ClientEncryptionIdentity,
   ): Promise<ClientMasterKeyWrapper> {
-    const device = await this.loadRawDevice(identity);
+    const device = await this.loadRawLegacyDevice(identity);
     return this.createDeviceWrapperFor({
       clientId: device.clientId,
       identity,
@@ -928,12 +938,21 @@ export class ClientEncryptionService {
     this.publish(initialSnapshot());
   }
 
-  private async loadRawDevice(
+  private async loadRawLegacyDevice(
     identity: ClientEncryptionIdentity,
   ): Promise<StoredClientDeviceRecord> {
+    if (!this.legacyDeviceStore) {
+      throw this.fail(
+        "locked",
+        identity,
+        null,
+        "device-not-found",
+        "No legacy browser device reader is configured.",
+      );
+    }
     let raw: unknown | null;
     try {
-      raw = await this.deviceStore.load(identity);
+      raw = await this.legacyDeviceStore.load(identity);
     } catch (error) {
       throw this.storageFailure(error, identity);
     }
@@ -1067,9 +1086,10 @@ type ClientEncryptionHotState = {
 
 export function clientEncryptionForRuntime(
   hotState?: ClientEncryptionHotState,
+  legacyDeviceStore: LegacyClientDeviceKeyStore | null = null,
 ): ClientEncryptionService {
-  if (!hotState) return new ClientEncryptionService();
-  hotState.clientEncryption ??= new ClientEncryptionService();
+  if (!hotState) return new ClientEncryptionService(legacyDeviceStore);
+  hotState.clientEncryption ??= new ClientEncryptionService(legacyDeviceStore);
   return hotState.clientEncryption;
 }
 
@@ -1079,6 +1099,7 @@ export function clientEncryptionForRuntime(
 // singleton. Explicit session/server lifecycle calls still lock this instance.
 export const clientEncryption = clientEncryptionForRuntime(
   import.meta.hot?.data as ClientEncryptionHotState | undefined,
+  new LegacyIndexedDbClientDeviceKeyStore(),
 );
 
 export function clearClientEncryptionMemory(): void {
