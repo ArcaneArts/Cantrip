@@ -950,7 +950,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
       sharedAttachment,
       "src/reconnect.ts",
-      { signal: expect.any(AbortSignal), timeoutMs: 3_000 },
+      { signal: expect.any(AbortSignal) },
     );
 
     await act(async () => renderer.unmount());
@@ -1054,7 +1054,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
       sharedAttachment,
       "src/two.ts",
-      { signal: expect.any(AbortSignal), timeoutMs: 3_000 },
+      { signal: expect.any(AbortSignal) },
     );
     expect(desktopCode.setDirectCodeAttachmentTheme).toHaveBeenCalledOnce();
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
@@ -1728,7 +1728,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenLastCalledWith(
       attachment,
       "src/stale.ts",
-      { signal: expect.any(AbortSignal), timeoutMs: 3_000 },
+      { signal: expect.any(AbortSignal) },
     );
     expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
