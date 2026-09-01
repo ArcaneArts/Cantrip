@@ -1,9 +1,18 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import readline from "node:readline";
+import { stripVTControlCharacters } from "node:util";
 
 import { spawnGuardedProcess } from "../code/process-guard.js";
+import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+const STDERR_TAIL_CHARACTERS = 16_384;
+const STDERR_DIAGNOSTIC_CHARACTERS = 2_000;
+const SENSITIVE_ASSIGNMENT =
+  /((?:[\w.-]*(?:access[_ -]?token|api[_ -]?key|authorization|credential|id[_ -]?token|password|refresh[_ -]?token|secret|token)[\w.-]*|"(?:access[_ -]?token|api[_ -]?key|authorization|credential|id[_ -]?token|password|refresh[_ -]?token|secret|token)")\s*(?::|=)\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]]+)/giu;
+const SENSITIVE_ARGUMENT =
+  /((?:--|\/)(?:access[_ -]?token|api[_ -]?key|authorization|credential|id[_ -]?token|password|refresh[_ -]?token|secret|token)(?:\s+|=))(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]]+)/giu;
+const URL_USER_INFO = /([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/giu;
 
 export interface CodexRpcError {
   code: number;
@@ -40,6 +49,36 @@ function objectValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function boundedStderrTail(current: string, chunk: unknown): string {
+  const text = String(chunk);
+  const suffix =
+    text.length > STDERR_TAIL_CHARACTERS
+      ? text.slice(-STDERR_TAIL_CHARACTERS)
+      : text;
+  return `${current}${suffix}`.slice(-STDERR_TAIL_CHARACTERS);
+}
+
+export function codexRpcExitMessage(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  stderrTail: string,
+): string {
+  const status = signal ?? `code ${String(code)}`;
+  const diagnostic = stderrTail
+    .split(/\r?\n/gu)
+    .map((line) => stripVTControlCharacters(line).trim())
+    .filter(Boolean)
+    .at(-1);
+  const sanitized = diagnostic
+    ? String(redactCodexDiagnosticPayload(diagnostic))
+        .replace(SENSITIVE_ASSIGNMENT, "$1[REDACTED]")
+        .replace(SENSITIVE_ARGUMENT, "$1[REDACTED]")
+        .replace(URL_USER_INFO, "$1[REDACTED]@")
+        .slice(0, STDERR_DIAGNOSTIC_CHARACTERS)
+    : null;
+  return `Codex app-server exited (${status})${sanitized ? `: ${sanitized}` : "."}`;
+}
+
 export class CodexRpcClient {
   readonly #notifications: CodexRpcNotification[] = [];
   readonly #notificationWaiters = new Set<PendingNotification>();
@@ -50,16 +89,15 @@ export class CodexRpcClient {
     private readonly child: ChildProcessWithoutNullStreams,
     private readonly requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   ) {
+    let stderrTail = "";
     const lines = readline.createInterface({ input: child.stdout });
     lines.on("line", (line) => this.handleLine(line));
-    child.stderr.resume();
+    child.stderr.on("data", (chunk) => {
+      stderrTail = boundedStderrTail(stderrTail, chunk);
+    });
     child.once("error", (error) => this.rejectAll(error));
-    child.once("exit", (code, signal) =>
-      this.rejectAll(
-        new Error(
-          `Codex app-server exited (${signal ?? `code ${String(code)}`}).`,
-        ),
-      ),
+    child.once("close", (code, signal) =>
+      this.rejectAll(new Error(codexRpcExitMessage(code, signal, stderrTail))),
     );
   }
 
