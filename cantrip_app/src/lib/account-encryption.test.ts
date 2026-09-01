@@ -1565,4 +1565,93 @@ describe("durable native account encryption", () => {
     ).resolves.toMatchObject({ state: "verified" });
     expect(api.initializationAttempts).toBe(1);
   });
+
+  it("resumes after server authorization succeeds before the local binding is committed", async () => {
+    class InterruptingUnwrapProvider extends MemoryClientDeviceKeyProvider {
+      interrupt = true;
+
+      override async unwrapAccountMasterKey(
+        input: Parameters<
+          MemoryClientDeviceKeyProvider["unwrapAccountMasterKey"]
+        >[0],
+      ): Promise<Uint8Array> {
+        if (this.interrupt) {
+          this.interrupt = false;
+          throw new Error("interrupted after server authorization");
+        }
+        return super.unwrapAccountMasterKey(input);
+      }
+    }
+
+    const api = new MemoryAccountEncryptionApi("unused");
+    const catalog = new MemoryInstallationCatalog();
+    const installationId = "360742b0-1b15-44e8-83d3-bc8c3ba58208";
+    await catalog.transaction((transaction) =>
+      transaction.createInstallation({
+        createdAt: timestamp,
+        installationId,
+        schemaVersion: 1,
+      }),
+    );
+    const storage = {
+      catalog,
+      provider: new InterruptingUnwrapProvider(),
+    };
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).rejects.toThrow(/interrupted after server authorization/iu);
+    expect(api.initializationAttempts).toBe(1);
+    await expect(
+      catalog.getAccountBinding(identity.serverId, identity.ownerId),
+    ).resolves.toBeNull();
+    await expect(
+      catalog.getMigration(
+        `device-key-replacement-v1:${installationKeyAlias(installationId)}`,
+      ),
+    ).resolves.toMatchObject({
+      state: "in-progress",
+      verificationState: "replacement-key-cataloged-awaiting-grant-v1",
+    });
+
+    const resumedService = new ClientEncryptionService(
+      new MemoryDeviceKeyStore(),
+    );
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: resumedService,
+      }),
+    ).resolves.toMatchObject({ status: "recovery-artifact-required" });
+    expect(resumedService.getSnapshot()).toMatchObject({
+      masterKeyRevision: 1,
+      status: "ready",
+    });
+    expect(api.initializationAttempts).toBe(1);
+    await expect(
+      catalog.getAccountBinding(identity.serverId, identity.ownerId),
+    ).resolves.toMatchObject({
+      keyAlias: installationKeyAlias(installationId),
+      masterKeyRevision: 1,
+    });
+    await expect(
+      catalog.getMigration(
+        `device-key-replacement-v1:${installationKeyAlias(installationId)}`,
+      ),
+    ).resolves.toMatchObject({
+      state: "verified",
+      verificationState: "replacement-grant-unwrapped-and-verified-v1",
+    });
+  });
 });

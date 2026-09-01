@@ -20,6 +20,7 @@ import {
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
 } from "./client-encryption";
+import { MemoryClientDeviceKeyProvider } from "./client-device-key-provider";
 import { clearClientLogs, readClientLogs } from "./client-log-relay";
 import { clearClientSession, setClientSession } from "./client-session";
 
@@ -310,6 +311,69 @@ describe("client encryption key custody", () => {
     clearSensitiveBytes(expectedComponentKey);
     clearSensitiveBytes(expectedSurfaceStateKey);
     restarted.lock();
+  });
+
+  it("accepts a native public key whose fields arrive in platform order", async () => {
+    const provider = new MemoryClientDeviceKeyProvider();
+    const service = new ClientEncryptionService(new MemoryDeviceKeyStore());
+    const device = await provider.create({
+      installationId: "360742b0-1b15-44e8-83d3-bc8c3ba58208",
+      keyAlias:
+        "cantrip.installation.360742b0-1b15-44e8-83d3-bc8c3ba58208.hpke.v1",
+    });
+    const accountMasterKey = new Uint8Array(32).fill(37);
+    service.setAccountMasterKey({
+      accountMasterKey,
+      identity,
+      masterKeyRevision: 1,
+    });
+    const clientId = "f28ace6f-b579-5066-923f-f151bda30cbc";
+    const wrapper = await service.createDeviceWrapperFor({
+      clientId,
+      identity,
+      publicKey: device.publicKey,
+    });
+    service.lock();
+
+    await expect(
+      service.unlockWithKeyProvider({
+        ...authorization(clientId, device.publicKey, wrapper),
+        device: {
+          ...device,
+          publicKey: {
+            algorithm: device.publicKey.algorithm,
+            format: device.publicKey.format,
+            value: device.publicKey.value,
+            version: device.publicKey.version,
+          },
+        },
+        identity,
+        provider,
+      }),
+    ).resolves.toBeUndefined();
+    expect(service.getSnapshot()).toMatchObject({
+      clientId,
+      masterKeyRevision: 1,
+      status: "ready",
+    });
+    service.lock();
+    const differentValue = `${device.publicKey.value.slice(0, -1)}${
+      device.publicKey.value.endsWith("A") ? "B" : "A"
+    }`;
+    await expect(
+      service.unlockWithKeyProvider({
+        ...authorization(clientId, device.publicKey, wrapper),
+        device,
+        identity,
+        principal: {
+          ...authorization(clientId, device.publicKey, wrapper).principal,
+          publicKey: { ...device.publicKey, value: differentValue },
+        },
+        provider,
+      }),
+    ).rejects.toMatchObject({ code: "principal-unavailable" });
+    clearSensitiveBytes(accountMasterKey);
+    service.lock();
   });
 
   it("treats a structured-cloned WebKit device key as an opaque native handle", async () => {
