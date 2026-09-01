@@ -1012,3 +1012,38 @@ replacement profile; and the relevant tests, typechecks, native builds, and
 release checks pass. The manual smokes above remain normal release procedure
 for OS behavior that deterministic runners cannot prove and are not unresolved
 goal work.
+
+### Post-completion correction — Windows native fixture test manifest
+
+- Branch: `codex/fix-windows-installation-fixture-loader`
+- Pull request: [#1560](https://github.com/ArcaneArts/Cantrip/pull/1560)
+- Implementation commit: `79fbdca9acd94e47f6d537da3eae8e933627ebbe`
+- Merge: pending
+- Behavior implemented:
+  - Embedded the Common Controls v6 application manifest into every Windows
+    MSVC artifact, including Cargo's native unit-test executable. The Tauri
+    application binary continues to receive the same manifest without a
+    duplicate resource.
+  - Preserved Tauri's default resource behavior for non-MSVC targets.
+  - Kept the frozen version-one storage fixture and release-blocking Windows
+    test intact; the correction only makes the test process loadable on
+    Windows before the Rust harness starts.
+  - Added a path-scoped Windows pull-request gate for the frozen native
+    installation fixture so Windows loader regressions are caught before the
+    release branch.
+- Validation:
+  - Local frozen Tauri fixture — 1 passed.
+  - Local `cargo check` and `cargo fmt --check` — passed.
+  - Native release workflow and app bundle configuration suites — 16 tests
+    passed.
+  - Windows native pull-request fixture — pending PR validation.
+- Supported platforms: Windows MSVC behavior is corrected. macOS, Linux, iOS,
+  Android, and browser behavior is unchanged.
+- Migration status: unchanged; this correction performs no storage migration
+  and mutates no installation state.
+- Remaining work: complete validation, merge the PR, and record the immutable
+  commit and merge references here.
+- Known risks or blockers: no product-data risk. The Windows linker behavior
+  requires the native CI lane for platform verification.
+- Manual verification: none beyond the existing signed Windows update smoke;
+  the frozen native reader remains release-blocking.

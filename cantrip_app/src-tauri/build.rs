@@ -1,3 +1,27 @@
 fn main() {
-    tauri_build::build()
+    let windows_attributes = if is_windows_msvc_target() {
+        tauri_build::WindowsAttributes::new_without_app_manifest()
+    } else {
+        tauri_build::WindowsAttributes::new()
+    };
+    tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows_attributes))
+        .expect("failed to run tauri build script");
+
+    if is_windows_msvc_target() {
+        embed_windows_manifest();
+    }
+}
+
+fn is_windows_msvc_target() -> bool {
+    std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+}
+
+fn embed_windows_manifest() {
+    let manifest =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-app-manifest.xml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+    println!("cargo:rustc-link-arg=/WX");
 }
