@@ -9,6 +9,7 @@ import {
   desktopProjectRevealLabel,
   nativeLocalProjectFolderRequest,
   nativeProjectShareRequest,
+  resolveDesktopProjectRevealTarget,
 } from "./desktop-project-share";
 
 const project = {
@@ -40,6 +41,7 @@ const worktree = {
   id: "worktree-1",
   isPrimary: false,
   path: "/worker/worktrees/project-1/feature",
+  projectSourceId: "source-1",
   workerId: "desktop-worker-1",
 };
 
@@ -201,6 +203,50 @@ describe("desktop project reveal", () => {
       worktreeId: "worktree-1",
       worktreeIsPrimary: false,
     });
+  });
+
+  it("refreshes a stale Windows worktree path before revealing it", async () => {
+    const refresh = vi.fn().mockResolvedValue({
+      worktree: { path: "D:\\Cantrip\\worktrees\\project-1\\feature" },
+    });
+
+    await expect(
+      resolveDesktopProjectRevealTarget(
+        project,
+        { ...worktree, path: "Protected path unavailable" },
+        refresh,
+      ),
+    ).resolves.toMatchObject({
+      id: worktree.id,
+      path: "D:\\Cantrip\\worktrees\\project-1\\feature",
+    });
+    expect(refresh).toHaveBeenCalledWith(project.id, worktree.id);
+  });
+
+  it("falls back to the resolved source when a stale primary path cannot refresh", async () => {
+    const refresh = vi.fn().mockRejectedValue(new Error("worker starting"));
+
+    await expect(
+      resolveDesktopProjectRevealTarget(
+        project,
+        {
+          ...worktree,
+          isPrimary: true,
+          path: "Protected path unavailable",
+        },
+        refresh,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not send an unavailable non-primary worktree path to the worker", async () => {
+    await expect(
+      resolveDesktopProjectRevealTarget(
+        project,
+        { ...worktree, path: "Protected path unavailable" },
+        vi.fn().mockRejectedValue(new Error("worker starting")),
+      ),
+    ).rejects.toThrow("project worktree path is unavailable");
   });
 
   it("marks added folders for direct local path resolution", () => {

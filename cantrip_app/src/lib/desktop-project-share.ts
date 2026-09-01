@@ -7,6 +7,7 @@ import type {
 import {
   createProjectNetworkShare,
   deleteProjectNetworkShare,
+  getProjectWorktreeStatus,
 } from "@/lib/api";
 import { startDesktopTunnel, stopDesktopTunnel } from "@/lib/desktop-tunnel";
 import { getActiveServerUrl } from "@/lib/server-connections";
@@ -25,8 +26,10 @@ export type LocalProjectRevealResult =
   | "explorer-launch-failed";
 export type DesktopProjectRevealTarget = Pick<
   ProjectWorktreeSummary,
-  "id" | "isPrimary" | "path" | "workerId"
+  "id" | "isPrimary" | "path" | "projectSourceId" | "workerId"
 >;
+
+const PROTECTED_PATH_UNAVAILABLE = "Protected path unavailable";
 
 const localProjectRevealErrors: Record<
   Exclude<LocalProjectRevealResult, "opened">,
@@ -60,6 +63,52 @@ export interface DesktopProjectRevealOperations {
     project: ProjectSummary,
   ): Promise<void>;
   revokeAttachment(attachmentId: string): Promise<void>;
+}
+
+type ProjectWorktreePathRefresh = (
+  projectId: string,
+  worktreeId: string,
+) => Promise<{ worktree: { path: string } }>;
+
+function projectPathUnavailable(path: string): boolean {
+  return !path.trim() || path === PROTECTED_PATH_UNAVAILABLE;
+}
+
+/**
+ * Worktree lists are allowed to retain a protected-path placeholder after a
+ * transient worker startup failure. Refresh that private path at the moment a
+ * native reveal is requested so the placeholder can never be sent back to the
+ * worker as a filesystem path.
+ */
+export async function resolveDesktopProjectRevealTarget(
+  project: ProjectSummary,
+  target: DesktopProjectRevealTarget | undefined,
+  refresh: ProjectWorktreePathRefresh = async (projectId, worktreeId) =>
+    getProjectWorktreeStatus(projectId, worktreeId),
+): Promise<DesktopProjectRevealTarget | undefined> {
+  if (!target || !projectPathUnavailable(target.path)) return target;
+
+  try {
+    const refreshed = await refresh(project.id, target.id);
+    if (!projectPathUnavailable(refreshed.worktree.path)) {
+      return { ...target, path: refreshed.worktree.path };
+    }
+  } catch {
+    // The primary source path below remains a safe worker-resolved fallback.
+  }
+
+  const source = project.source;
+  if (
+    target.isPrimary &&
+    source &&
+    source.id === target.projectSourceId &&
+    source.workerId === target.workerId &&
+    !projectPathUnavailable(source.path)
+  ) {
+    return undefined;
+  }
+
+  throw new Error("The project worktree path is unavailable. Try again.");
 }
 
 export function desktopProjectRevealLabel(
@@ -216,13 +265,17 @@ export async function revealProjectInNativeFileManager(
   relativePath = "",
   target?: DesktopProjectRevealTarget,
 ): Promise<void> {
+  const resolvedTarget = await resolveDesktopProjectRevealTarget(
+    project,
+    target,
+  );
   return coordinateDesktopProjectRevealPreference(localFolder, {
     revealLocalFolder: async () => {
       const request = nativeLocalProjectFolderRequest(
         project,
         getActiveServerUrl(),
         relativePath,
-        target,
+        resolvedTarget,
       );
       if (!request) return "source-path-missing";
       const { invoke } = await import("@tauri-apps/api/core");
@@ -231,6 +284,6 @@ export async function revealProjectInNativeFileManager(
       });
     },
     revealNetworkShare: () =>
-      revealProjectNetworkShare(project, relativePath, target),
+      revealProjectNetworkShare(project, relativePath, resolvedTarget),
   });
 }
