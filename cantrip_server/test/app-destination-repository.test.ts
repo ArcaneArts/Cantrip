@@ -12,6 +12,40 @@ import { SecretVault } from "../src/security/secret-vault.js";
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 describe("account-synchronized app destination", () => {
+  it("persists the chat prompt overlay preference", async () => {
+    const client = new PGlite();
+    const database = drizzle(client, { schema });
+    await migrate(database, { migrationsFolder });
+    const repository = new ServerRepository(
+      database,
+      new SecretVault({
+        activeKeyId: "test",
+        keys: [{ id: "test", key: Buffer.alloc(32, 53) }],
+      }),
+    );
+    try {
+      await repository.ensureLocalIdentity();
+      await repository.ensureAccountConfiguration(LOCAL_USER_ID);
+
+      await expect(
+        repository.getUserSettings(LOCAL_USER_ID),
+      ).resolves.toMatchObject({ showChatPromptOverlay: true });
+
+      await expect(
+        repository.updateSettings(LOCAL_USER_ID, {
+          showChatPromptOverlay: false,
+        }),
+      ).resolves.toMatchObject({
+        preferences: { showChatPromptOverlay: false },
+      });
+      await expect(
+        repository.getUserSettings(LOCAL_USER_ID),
+      ).resolves.toMatchObject({ showChatPromptOverlay: false });
+    } finally {
+      await client.close();
+    }
+  });
+
   it("uses owner-scoped optimistic revisions", async () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });

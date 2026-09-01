@@ -85,6 +85,7 @@ export class SettingsRepository {
         proMode: false,
         proModeOpacity: 80,
         sidebarWidth: 288,
+        showChatPromptOverlay: true,
         randomAgentNames: false,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
@@ -114,6 +115,7 @@ export class SettingsRepository {
         proMode: false,
         proModeOpacity: 80,
         sidebarWidth: 288,
+        showChatPromptOverlay: true,
         randomAgentNames: false,
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
@@ -291,6 +293,7 @@ export class SettingsRepository {
       eliteMode: settings.eliteMode,
       eliteRevealConfig: settings.eliteRevealConfig,
       sidebarWidth: settings.sidebarWidth,
+      showChatPromptOverlay: settings.showChatPromptOverlay,
       randomAgentNames: settings.randomAgentNames,
       desktopFrameRate:
         settings.desktopFrameRate as UserSettings["desktopFrameRate"],

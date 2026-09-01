@@ -65,20 +65,29 @@ export function chatTurnPromptSummary(message: ChatMessage): string {
   return `${summary.slice(0, CHAT_TURN_PROMPT_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
+export function chatTurnPromptOverlayPreferenceEnabled(
+  preference: boolean | undefined,
+): boolean {
+  return preference ?? true;
+}
+
 export function useChatTurnPromptOverlay({
   chatId,
   contentRef,
+  enabled,
   messages,
   viewportRef,
 }: {
   chatId: string;
   contentRef: RefObject<HTMLDivElement | null>;
+  enabled: boolean;
   messages: readonly ChatMessage[];
   viewportRef: RefObject<HTMLDivElement | null>;
 }): { message: ChatMessage | null; visible: boolean } {
   const userMessages = useMemo(
-    () => messages.filter((message) => message.role === "user"),
-    [messages],
+    () =>
+      enabled ? messages.filter((message) => message.role === "user") : [],
+    [enabled, messages],
   );
   const userMessageIdsKey = useMemo(
     () => userMessages.map((message) => message.id).join("\u0000"),
@@ -171,10 +180,11 @@ export function useChatTurnPromptOverlay({
   }, [chatId, contentRef, userMessageIdsKey, viewportRef]);
 
   return {
-    message: position.messageId
-      ? (messageById.get(position.messageId) ?? null)
-      : null,
-    visible: position.visible,
+    message:
+      enabled && position.messageId
+        ? (messageById.get(position.messageId) ?? null)
+        : null,
+    visible: enabled && position.visible,
   };
 }
 
