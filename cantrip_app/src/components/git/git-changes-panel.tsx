@@ -1,10 +1,4 @@
-import type {
-  GitAction,
-  GitAgentDraftResult,
-  GitAgentDraftTask,
-  GitFileChange,
-  GitStatus,
-} from "@cantrip/protocol";
+import type { GitAction, GitFileChange, GitStatus } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
@@ -43,7 +37,6 @@ import { errorMessage } from "@/lib/error-message";
 
 import { buildGitChangeTree, type GitChangeTreeNode } from "./git-change-tree";
 import { GitFileDiffView } from "./git-file-diff-view";
-import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
 import {
   GitForcePushDialog,
   gitPushRequiresLease,
@@ -277,12 +270,6 @@ export function GitChangesPanel({
 }) {
   const queryClient = useQueryClient();
   const [commitMessage, setCommitMessage] = useState("");
-  const [agentDraft, setAgentDraft] = useState<GitAgentDraftResult | null>(
-    null,
-  );
-  const [agentDraftOpen, setAgentDraftOpen] = useState(false);
-  const [agentDraftTask, setAgentDraftTask] =
-    useState<GitAgentDraftTask>("summarize-changes");
   const [discardTarget, setDiscardTarget] = useState<
     GitFileChange | "all" | null
   >(null);
@@ -326,15 +313,21 @@ export function GitChangesPanel({
     },
   });
   const draft = useMutation({
-    mutationFn: (task: GitAgentDraftTask) =>
+    mutationFn: () =>
       generateProjectWorktreeGitDraft(projectId, worktreeId, {
-        task,
+        task: "draft-commit-message",
         instructions: null,
         baseRevision: null,
         headRevision: null,
         pullRequestNumber: null,
       }),
-    onSuccess: setAgentDraft,
+    onMutate: () => {
+      setNotice(null);
+    },
+    onSuccess: (result) => {
+      setCommitMessage(result.text.trim());
+      setNotice("Commit summary generated.");
+    },
   });
   const unstaged = status.files.filter((file) => file.unstaged);
   const staged = status.files.filter((file) => file.staged);
@@ -410,14 +403,6 @@ export function GitChangesPanel({
     }
     action.mutate({ type: "push" });
   };
-  const requestAgentDraft = (task: GitAgentDraftTask) => {
-    setAgentDraftTask(task);
-    setAgentDraft(null);
-    setAgentDraftOpen(true);
-    draft.reset();
-    draft.mutate(task);
-  };
-
   return (
     <aside
       className={cn(
@@ -634,31 +619,31 @@ export function GitChangesPanel({
                 variant="ghost"
                 className="h-7 px-2 text-xs"
                 disabled={draft.isPending || status.files.length === 0}
-                onClick={() => requestAgentDraft("summarize-changes")}
+                onClick={() => draft.mutate()}
               >
-                <Sparkles className="size-3.5" />
-                Summarize
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs"
-                disabled={draft.isPending || status.files.length === 0}
-                onClick={() => requestAgentDraft("draft-commit-message")}
-              >
-                <Sparkles className="size-3.5" />
-                Draft message
+                {draft.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="size-3.5" />
+                )}
+                {draft.isPending ? "Summarizing…" : "Summarize"}
               </Button>
             </div>
             <textarea
               aria-label="Commit message"
               className="min-h-20 min-w-0 resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-              placeholder="Commit message"
+              placeholder={"Commit subject\n\nDescription (optional)"}
               value={commitMessage}
               onChange={(event) => setCommitMessage(event.target.value)}
             />
-            {action.error ? (
+            {draft.error ? (
+              <p className="text-xs text-destructive">
+                {errorMessage(
+                  draft.error,
+                  "Could not generate a commit summary.",
+                )}
+              </p>
+            ) : action.error ? (
               <p className="text-xs text-destructive">
                 {errorText(action.error)}
               </p>
@@ -790,24 +775,6 @@ export function GitChangesPanel({
         onApplied={(result) => {
           setNotice(result.output || "Force push complete.");
         }}
-      />
-      <GitAgentDraftDialog
-        open={agentDraftOpen}
-        onOpenChange={setAgentDraftOpen}
-        task={agentDraftTask}
-        draft={agentDraft}
-        loading={draft.isPending}
-        error={draft.error ? errorText(draft.error) : null}
-        onRegenerate={() => {
-          setAgentDraft(null);
-          draft.reset();
-          draft.mutate(agentDraftTask);
-        }}
-        onApply={
-          agentDraftTask === "draft-commit-message"
-            ? setCommitMessage
-            : undefined
-        }
       />
     </aside>
   );
