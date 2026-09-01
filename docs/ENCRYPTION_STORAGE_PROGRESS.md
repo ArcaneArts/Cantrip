@@ -645,8 +645,9 @@ flowchart TD
 ### Cycle 11 — retire obsolete device-key defaults
 
 - Branch: `codex/encryption-storage-cycle11-retire-defaults`
-- Pull request: pending
-- Commit and merge: pending
+- Pull request: [#1552](https://github.com/ArcaneArts/Cantrip/pull/1552)
+- Commit: `6d6141a824c5b63d8849e6bab011021e2634094b`
+- Merge: pending
 - Behavior implemented:
   - Removed the origin-scoped legacy IndexedDB store from
     `ClientEncryptionService`'s constructor default. Ordinary service instances
