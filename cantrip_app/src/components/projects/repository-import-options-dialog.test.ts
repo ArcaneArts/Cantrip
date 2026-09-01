@@ -1,7 +1,10 @@
 import { workerSummarySchema } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { repositoryPlacementAvailability } from "./repository-import-options-dialog";
+import {
+  canBrowseRepositoryPath,
+  repositoryPlacementAvailability,
+} from "./repository-import-options-dialog";
 
 const now = "2026-08-22T12:00:00.000Z";
 
@@ -46,5 +49,20 @@ describe("repository import placement options", () => {
         }),
       ),
     ).toEqual({ managed: true, managedLink: true, direct: true });
+  });
+
+  it("offers the native picker only for direct placement on this desktop worker", () => {
+    const localWorkerIds = new Set(["worker-one"]);
+
+    expect(
+      canBrowseRepositoryPath("direct", "worker-one", localWorkerIds),
+    ).toBe(true);
+    expect(
+      canBrowseRepositoryPath("managed-link", "worker-one", localWorkerIds),
+    ).toBe(false);
+    expect(
+      canBrowseRepositoryPath("direct", "worker-two", localWorkerIds),
+    ).toBe(false);
+    expect(canBrowseRepositoryPath("direct", null, localWorkerIds)).toBe(false);
   });
 });
