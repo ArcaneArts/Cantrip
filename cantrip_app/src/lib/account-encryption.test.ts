@@ -678,6 +678,7 @@ describe("durable native account encryption", () => {
     const api = new MemoryAccountEncryptionApi(password);
     const storage = durableStorage();
     const create = vi.spyOn(storage.provider, "create");
+    const inspect = vi.spyOn(storage.provider, "inspect");
     const service = new ClientEncryptionService(new MemoryDeviceKeyStore());
 
     await expect(
@@ -725,6 +726,7 @@ describe("durable native account encryption", () => {
     ).resolves.toEqual({ status: "ready" });
     await expect(storage.catalog.getInstallation()).resolves.not.toBeNull();
     expect(create).toHaveBeenCalledTimes(1);
+    expect(inspect).not.toHaveBeenCalled();
   });
 
   it("leaves installation custody untouched when the server fails during legacy migration discovery", async () => {

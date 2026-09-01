@@ -330,7 +330,10 @@ async function locateNativeDevice(
 ): Promise<NativeInstallation> {
   const keyAlias = installationKeyAlias(profile.installationId);
   const metadata = await storage.catalog.getDeviceKey(keyAlias);
-  let device = await storage.provider.inspect(keyAlias);
+  // The catalog is authoritative for whether this installation owns a native
+  // key. Querying a platform provider without metadata can trigger an OS
+  // credential prompt for a stale alias and cannot recover a valid binding.
+  let device = metadata ? await storage.provider.inspect(keyAlias) : null;
   if (metadata && !device) {
     return {
       device: null,

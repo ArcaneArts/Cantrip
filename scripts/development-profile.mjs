@@ -10,10 +10,8 @@ import {
   validateDevelopmentProfileName,
 } from "./devtop-tauri-config.mjs";
 
-const SECURE_KEY_SERVICE = "art.cantrip.installation.hpke.v1";
-
 function nativeKeyProvider(platform) {
-  if (platform === "darwin") return "apple-keychain";
+  if (platform === "darwin") return "development-file-vault";
   if (platform === "win32") return "windows-protected-storage";
   if (platform === "linux") return "linux-secret-service";
   return "unsupported-native";
@@ -150,6 +148,7 @@ export async function inspectDevelopmentProfile({
     "v1",
     "catalog.sqlite3",
   );
+  const installationRoot = path.join(appLocalDataPath, "installation", "v1");
   return {
     appIdentifier: profile.config.identifier,
     appLocalDataPath,
@@ -158,9 +157,16 @@ export async function inspectDevelopmentProfile({
     configured: true,
     configPath: profile.configPath,
     profileName: profile.profileName,
+    ...(platform === "darwin"
+      ? {
+          developmentKeyVaultPath: path.join(
+            installationRoot,
+            "development-key-vault",
+          ),
+        }
+      : {}),
     provider: nativeKeyProvider(platform),
     repositoryStatePath: stateDirectory,
-    secureKeyService: SECURE_KEY_SERVICE,
     tauriTargetPath: path.join(stateDirectory, "tauri", "target"),
     webviewOrigin: "http://127.0.0.1:1420",
   };

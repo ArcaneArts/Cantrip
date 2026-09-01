@@ -1047,3 +1047,45 @@ goal work.
   is now verified on the same runner family used by native releases.
 - Manual verification: none beyond the existing signed Windows update smoke;
   the frozen native reader remains release-blocking.
+
+### Post-completion correction — macOS development custody and legacy migration reuse
+
+- Branch: `codex/fix-dev-key-custody`
+- Pull request: pending
+- Implementation commit: pending
+- Merge: pending
+- Behavior implemented:
+  - `pnpm devtop` on macOS selects a stable profile-local development vault
+    instead of repeatedly prompting for Apple Keychain access from rebuilt,
+    ad-hoc-signed debug binaries. Packaged builds still use Keychain.
+  - A cataloged native development key can migrate once from Keychain; a
+    profile without native-key metadata does not probe Keychain.
+  - Legacy IndexedDB migration reuses the record already loaded and validated
+    during discovery instead of performing a second origin-store read before
+    unwrapping the Account Master Key.
+- Validation:
+  - Full app Vitest suite — 356 files passed; 1,878 tests passed and 3
+    skipped. Focused encryption/catalog coverage — 46 tests passed.
+  - Tauri installation-storage suite — 23 tests passed, including the new
+    one-time development-vault migration and reopen check. `cargo check` and
+    `cargo fmt --check` passed.
+  - App typecheck and production build passed. Development profile/lifecycle
+    and update-compatibility suites — 17 tests passed.
+  - The release compatibility gate passed seven contract/recovery simulations
+    with zero active contract migrations. Large-file and diff whitespace checks
+    passed.
+  - The complete native library run passed 142 tests and exposed two unrelated
+    tunnel-harness timeouts. The same failing tunnel test was reproduced on the
+    untouched default branch, while all 23 installation-storage tests pass.
+- Supported platforms: behavior change is scoped to macOS Tauri development.
+  Packaged Tauri, Windows, Linux, Capacitor, and browser custody are unchanged.
+- Migration status: compatible and non-destructive. Existing cataloged macOS
+  development Keychain records are retained after their first successful copy.
+- Remaining work: PR review gates and merge observation.
+- Known risks or blockers: owner-only application-local development custody is
+  intentionally weaker than Keychain and is restricted to explicit debug
+  launches. A profile with an already-cataloged Keychain key may receive one
+  final OS prompt while copying it.
+- Manual verification: launch the stable default profile twice on macOS;
+  confirm the first launch migrates legacy custody and the second neither shows
+  the lock screen nor prompts for a system password.

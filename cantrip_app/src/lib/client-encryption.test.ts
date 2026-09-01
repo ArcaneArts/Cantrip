@@ -74,8 +74,10 @@ function missingRecordIndexedDbFactory(
 
 class MemoryDeviceKeyStore implements LegacyClientDeviceKeyStore {
   private readonly records = new Map<string, unknown>();
+  loadCount = 0;
 
   load(target: ClientEncryptionIdentity): Promise<unknown | null> {
+    this.loadCount += 1;
     return Promise.resolve(this.records.get(this.key(target)) ?? null);
   }
 
@@ -252,11 +254,13 @@ describe("client encryption key custody", () => {
     firstRun.lock();
 
     const restarted = new ClientEncryptionService(store);
+    const loadCountBeforeRestart = store.loadCount;
     await expect(restarted.loadLegacyDevice(identity)).resolves.toEqual(device);
     await restarted.unlockWithLegacyDevice({
       identity,
       ...authorization(device.clientId, device.publicKey, deviceWrapper),
     });
+    expect(store.loadCount).toBe(loadCountBeforeRestart + 1);
     expect(restarted.getSnapshot()).toMatchObject({
       clientId: device.clientId,
       masterKeyRevision: 1,

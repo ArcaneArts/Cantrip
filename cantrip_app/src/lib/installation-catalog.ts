@@ -7,6 +7,7 @@ export type ClientDeviceKeyCustodyBackend =
   | "android-keystore"
   | "apple-keychain"
   | "browser-webcrypto"
+  | "development-file-vault"
   | "linux-secret-service"
   | "memory"
   | "stronghold"
