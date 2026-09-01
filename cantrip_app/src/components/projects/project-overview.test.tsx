@@ -213,6 +213,8 @@ describe("project overview", () => {
       />,
     );
 
+    expect(markup).toContain('data-content-gutter="standard"');
+
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).toContain("12,345");
     expect(markup).toContain("321");

@@ -908,7 +908,11 @@ export function GitHistoryView({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-slot="git-history">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      data-content-gutter="wide"
+      data-slot="git-history"
+    >
       <div className="relative flex h-10 shrink-0 items-center gap-2 px-3">
         {showSectionTabs ? (
           <ProjectOverviewNavigation

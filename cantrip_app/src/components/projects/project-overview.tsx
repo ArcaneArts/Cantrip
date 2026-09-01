@@ -262,7 +262,10 @@ export function ProjectOverview({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <main className="w-full space-y-5 p-4 sm:p-6 lg:p-8">
+      <main
+        className="w-full space-y-5 p-4 sm:p-6 lg:p-8"
+        data-content-gutter="standard"
+      >
         <section
           data-elite-global={`${eliteKeyPrefix}:hero`}
           className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-sm sm:p-7"

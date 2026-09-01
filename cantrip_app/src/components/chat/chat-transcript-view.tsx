@@ -274,7 +274,11 @@ export function ChatTranscriptView({
         )}
         onScroll={handleChatTranscriptScroll}
       >
-        <div ref={transcriptContentRef} className="flex w-full flex-col gap-5">
+        <div
+          ref={transcriptContentRef}
+          className="flex w-full flex-col gap-5"
+          data-content-gutter="chat"
+        >
           {messages.hasOlder ? (
             <div className="flex justify-center">
               <Button
@@ -370,7 +374,10 @@ export function ChatTranscriptView({
         )}
         style={{ right: sidePanelWidth }}
       >
-        <div className="pointer-events-auto relative w-full">
+        <div
+          className="pointer-events-auto relative w-full"
+          data-content-gutter="chat"
+        >
           {composerNotice ? <ChatComposerNotice {...composerNotice} /> : null}
           {showScrollToBottom ? (
             <Button

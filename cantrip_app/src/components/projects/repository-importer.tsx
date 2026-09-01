@@ -275,6 +275,7 @@ export function RepositoryImporter({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
+        data-content-gutter="roomy"
         className={cn(
           "flex w-full flex-1 flex-col overflow-hidden",
           !repositoryPickerReady && "p-5 sm:p-8",

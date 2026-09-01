@@ -338,7 +338,9 @@ export function ApplicationShellRender({
 
   return (
     <WorkspaceDndProvider
-      className="flex h-svh overflow-hidden bg-background text-foreground"
+      className={`flex h-svh overflow-hidden bg-background text-foreground${
+        settings.data?.preferences.contentGutters ? " content-gutters" : ""
+      }`}
       layout={tabLayout.data}
       projects={visibleProjects}
       onOperation={handleWorkspaceDrop}
