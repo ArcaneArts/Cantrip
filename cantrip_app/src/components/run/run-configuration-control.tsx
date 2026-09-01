@@ -124,36 +124,49 @@ function LifecycleButtons({
   stopDisabledReason?: string | null;
   onOperate(operation: "start" | "restart" | "stop"): void;
 }) {
+  const [tooltipsSuppressed, setTooltipsSuppressed] = useState(false);
   const active = runConfigurationRuntimeIsActive(runtime);
   const stopping = runtime?.state === "stopping";
+  const operate = (operation: "start" | "restart" | "stop") => {
+    setTooltipsSuppressed(true);
+    onOperate(operation);
+  };
+  const lifecycleGroupProps = {
+    className: "flex shrink-0 items-center",
+    onFocusCapture: () => setTooltipsSuppressed(false),
+    onPointerLeave: () => setTooltipsSuppressed(false),
+  };
   if (!active) {
     return (
-      <TooltipButton
-        aria-label="Run"
-        className={cn(
-          "grid shrink-0 place-items-center rounded text-emerald-600 hover:bg-emerald-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-400",
-          compact ? "size-7" : "size-8",
-        )}
-        disabled={disabled || pending}
-        onClick={(event) => {
-          event.stopPropagation();
-          onOperate("start");
-        }}
-        size="icon"
-        tooltip={disabledReason ?? "Run"}
-        type="button"
-        variant="ghost"
-      >
-        {pending ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <Play className="size-4 fill-current" />
-        )}
-      </TooltipButton>
+      <span {...lifecycleGroupProps}>
+        <TooltipButton
+          aria-label="Run"
+          className={cn(
+            "grid shrink-0 place-items-center rounded text-emerald-600 hover:bg-emerald-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-400",
+            compact ? "size-7" : "size-8",
+          )}
+          disabled={disabled || pending}
+          onClick={(event) => {
+            event.stopPropagation();
+            operate("start");
+          }}
+          size="icon"
+          tooltip={disabledReason ?? "Run"}
+          tooltipDisabled={tooltipsSuppressed}
+          type="button"
+          variant="ghost"
+        >
+          {pending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Play className="size-4 fill-current" />
+          )}
+        </TooltipButton>
+      </span>
     );
   }
   return (
-    <span className="flex shrink-0 items-center">
+    <span {...lifecycleGroupProps}>
       <TooltipButton
         aria-label="Restart"
         className={cn(
@@ -163,10 +176,11 @@ function LifecycleButtons({
         disabled={disabled || pending || stopping}
         onClick={(event) => {
           event.stopPropagation();
-          onOperate("restart");
+          operate("restart");
         }}
         size="icon"
         tooltip={disabledReason ?? "Restart"}
+        tooltipDisabled={tooltipsSuppressed}
         type="button"
         variant="ghost"
       >
@@ -185,10 +199,11 @@ function LifecycleButtons({
         disabled={stopDisabled || pending || stopping}
         onClick={(event) => {
           event.stopPropagation();
-          onOperate("stop");
+          operate("stop");
         }}
         size="icon"
         tooltip={stopDisabledReason ?? "Stop"}
+        tooltipDisabled={tooltipsSuppressed}
         type="button"
         variant="ghost"
       >
