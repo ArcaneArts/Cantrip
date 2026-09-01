@@ -758,30 +758,6 @@ function EliteConfigurator({
         </section>
 
         <section className="mt-7 grid gap-3 border-t pt-6">
-          <div>
-            <h3 className="text-sm font-semibold">Terminal</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              The normal terminal renderer stays intact. This adds a temporary
-              overlay over character cells changed by live output while the
-              terminal is not focused.
-            </p>
-          </div>
-          <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/60">
-            <input
-              checked={draft.glitchTerminalContents}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  glitchTerminalContents: event.target.checked,
-                }))
-              }
-              type="checkbox"
-            />
-            <span>Glitch Terminal Contents</span>
-          </label>
-        </section>
-
-        <section className="mt-7 grid gap-3 border-t pt-6">
           <div className="grid gap-2 md:flex md:items-start md:justify-between md:gap-3">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold">Variants</h3>

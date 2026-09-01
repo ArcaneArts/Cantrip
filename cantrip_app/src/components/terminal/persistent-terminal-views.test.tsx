@@ -1,4 +1,3 @@
-import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import type { TerminalSummary } from "@cantrip/protocol";
 import { createElement, useEffect, useRef } from "react";
 import TestRenderer, { act } from "react-test-renderer";
@@ -75,8 +74,6 @@ function render(
   return createElement(PersistentTerminalViews, {
     active,
     commandPaletteTerminalId: null,
-    eliteContentGlitchEnabled: false,
-    eliteRevealConfig: DEFAULT_ELITE_REVEAL_CONFIG,
     onCommandPaletteOpenChange: vi.fn(),
     onLinkedConsoleExit: vi.fn(),
     onPendingInputSent: vi.fn(),

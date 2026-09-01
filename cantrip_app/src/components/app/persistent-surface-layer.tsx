@@ -1,4 +1,3 @@
-import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import type { ProjectSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
 import { Suspense } from "react";
@@ -72,7 +71,6 @@ export function PersistentSurfaceLayer({
     setSidebarFilePreviewHeader,
     setTerminalCommandPaletteTerminalId,
     setTerminalServiceTerminalId,
-    settings,
     showArchivedStandaloneChats,
     showImporter,
     showProjectSettings,
@@ -176,16 +174,6 @@ export function PersistentSurfaceLayer({
         <PersistentTerminalViews
           active={terminalSurfaceVisible}
           commandPaletteTerminalId={terminalCommandPaletteTerminalId}
-          eliteContentGlitchEnabled={
-            (settings.data?.preferences.eliteMode ?? false) &&
-            (settings.data?.preferences.eliteRevealConfig
-              ?.glitchTerminalContents ??
-              DEFAULT_ELITE_REVEAL_CONFIG.glitchTerminalContents)
-          }
-          eliteRevealConfig={
-            settings.data?.preferences.eliteRevealConfig ??
-            DEFAULT_ELITE_REVEAL_CONFIG
-          }
           key={selectedProjectId ?? "no-project"}
           onCommandPaletteOpenChange={(terminalId, open) =>
             setTerminalCommandPaletteTerminalId(open ? terminalId : null)

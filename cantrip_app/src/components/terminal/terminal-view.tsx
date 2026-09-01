@@ -1,9 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import {
-  DEFAULT_ELITE_REVEAL_CONFIG,
-  type EliteRevealConfig,
-} from "@cantrip/glitch";
 import type { TerminalServerMessage, TerminalSummary } from "@cantrip/protocol";
 import {
   terminalInputContentSchema,
@@ -31,11 +27,6 @@ import {
   TerminalHydrationController,
   terminalHydrationRecoveryError,
 } from "./terminal-hydration";
-import {
-  createTerminalContentGlitchRenderer,
-  terminalContentGlitchCanAnimate,
-  type TerminalContentGlitchRenderer,
-} from "./terminal-content-glitch";
 import {
   MobileTerminalCommandBar,
   mobileTerminalKeyInput,
@@ -74,8 +65,6 @@ function terminalTheme() {
 
 export function TerminalView({
   commandPaletteOpen = false,
-  eliteContentGlitchEnabled = false,
-  eliteRevealConfig = DEFAULT_ELITE_REVEAL_CONFIG,
   onCommandPaletteOpenChange,
   onPendingInputSent,
   onServicePanelOpenChange,
@@ -88,8 +77,6 @@ export function TerminalView({
   onOpenLink,
 }: {
   commandPaletteOpen?: boolean;
-  eliteContentGlitchEnabled?: boolean;
-  eliteRevealConfig?: EliteRevealConfig;
   onCommandPaletteOpenChange?(open: boolean): void;
   onPendingInputSent?(inputId: string): void;
   onServicePanelOpenChange?(open: boolean): void;
@@ -102,14 +89,9 @@ export function TerminalView({
   onOpenLink?(url: string): void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const eliteContentGlitchEnabledRef = useRef(eliteContentGlitchEnabled);
-  const eliteRevealConfigRef = useRef(eliteRevealConfig);
   const inputSenderRef = useRef<((data: string) => boolean) | null>(null);
   const reconnectAttemptRef = useRef(0);
   const terminalSurfaceRef = useRef<HTMLDivElement>(null);
-  const terminalContentGlitchRendererRef =
-    useRef<TerminalContentGlitchRenderer | null>(null);
-  const terminalFocusedRef = useRef(false);
   const terminalIdRef = useRef(terminal.id);
   const visibleRef = useRef(visible);
   const restoreVisibleSurfaceRef = useRef<(() => void) | null>(null);
@@ -131,8 +113,6 @@ export function TerminalView({
   const hasLoaded = loadedTerminalId === terminal.id;
   const mobileCommandBarVisible =
     visible && mobileKeyboard.open && terminalFocused;
-  eliteContentGlitchEnabledRef.current = eliteContentGlitchEnabled;
-  eliteRevealConfigRef.current = eliteRevealConfig;
   onExitRef.current = onExit;
   onOpenExternalLinkRef.current = onOpenExternalLink;
   onOpenLinkRef.current = onOpenLink;
@@ -182,32 +162,17 @@ export function TerminalView({
       return false;
     });
     xtermRef.current = xterm;
-    const terminalContentGlitchRenderer = createTerminalContentGlitchRenderer(
-      xterm,
-      {
-        config: () => eliteRevealConfigRef.current,
-        enabled: () =>
-          terminalContentGlitchCanAnimate(
-            eliteContentGlitchEnabledRef.current,
-            terminalFocusedRef.current,
-          ),
-      },
-    );
-    terminalContentGlitchRendererRef.current = terminalContentGlitchRenderer;
     const terminalLinks = installTerminalLinkLayer({
       terminal: xterm,
       onOpen: (url) => onOpenLinkRef.current?.(url),
       onOpenExternal: (url) => onOpenExternalLinkRef.current?.(url),
     });
-    terminalFocusedRef.current = false;
     setTerminalFocused(false);
     let terminalFocusFrame: number | null = null;
     const updateTerminalFocus = () => {
       terminalFocusFrame = null;
       const focused = container.contains(document.activeElement);
-      terminalFocusedRef.current = focused;
       setTerminalFocused(focused);
-      if (focused) terminalContentGlitchRenderer.clear();
     };
     const handleTerminalFocusOut = () => {
       if (terminalFocusFrame !== null) cancelAnimationFrame(terminalFocusFrame);
@@ -506,22 +471,9 @@ export function TerminalView({
               schema: terminalOutputContentSchema,
             });
             if (!disposed) {
-              const animateContent =
-                ready &&
-                visibleRef.current &&
-                terminalContentGlitchCanAnimate(
-                  eliteContentGlitchEnabledRef.current,
-                  terminalFocusedRef.current,
-                );
-              if (animateContent) {
-                terminalContentGlitchRenderer.beforeWrite();
-              }
               await new Promise<void>((resolve) => {
                 xterm.write(content.data, resolve);
               });
-              if (animateContent) {
-                terminalContentGlitchRenderer.afterWrite();
-              }
             }
             hydration.consumedOutput();
           })
@@ -678,12 +630,6 @@ export function TerminalView({
       if (restoreVisibleSurfaceRef.current === restoreVisibleSurface) {
         restoreVisibleSurfaceRef.current = null;
       }
-      if (
-        terminalContentGlitchRendererRef.current ===
-        terminalContentGlitchRenderer
-      ) {
-        terminalContentGlitchRendererRef.current = null;
-      }
       resizeObserver.disconnect();
       themeObserver.disconnect();
       connection?.close("normal");
@@ -695,7 +641,6 @@ export function TerminalView({
         surfaceId: terminal.id,
       });
       terminalLinks.dispose();
-      terminalContentGlitchRenderer.dispose();
       xterm.dispose();
     };
   }, [connectionKey, terminal.activeWorkerId, terminal.id]);
@@ -703,9 +648,7 @@ export function TerminalView({
   useEffect(() => {
     const xterm = xtermRef.current;
     if (!visible) {
-      terminalFocusedRef.current = false;
       setTerminalFocused(false);
-      terminalContentGlitchRendererRef.current?.clear();
       clientLogger.info("Terminal surface parked", {
         dimensions: xterm ? { cols: xterm.cols, rows: xterm.rows } : undefined,
         event: "surface.terminal.parked",
@@ -738,12 +681,6 @@ export function TerminalView({
   }, [terminal.id, visible]);
 
   useEffect(() => {
-    if (!eliteContentGlitchEnabled) {
-      terminalContentGlitchRendererRef.current?.clear();
-    }
-  }, [eliteContentGlitchEnabled]);
-
-  useEffect(() => {
     if (!pendingInput) return;
     if (!inputSenderRef.current?.(pendingInput.data)) return;
     pendingInputRef.current = null;
@@ -774,12 +711,12 @@ export function TerminalView({
   return (
     <div
       className="relative flex min-h-0 flex-1 bg-background"
-      data-elite-ignore=""
       data-slot="terminal-view"
       ref={terminalSurfaceRef}
     >
       <div
         className="relative flex min-h-0 min-w-0 flex-1"
+        data-elite-global={hasLoaded ? "" : undefined}
         style={{
           paddingBottom: mobileCommandBarVisible
             ? `${mobileKeyboard.contentInset}px`

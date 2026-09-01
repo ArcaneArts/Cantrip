@@ -1020,7 +1020,6 @@ export const userSettings = pgTable(
       .$type<EliteRevealConfig>()
       .notNull()
       .default({
-        glitchTerminalContents: false,
         glitchCountMax: 8,
         glitchCountMin: 4,
         glitchShowMs: 16,

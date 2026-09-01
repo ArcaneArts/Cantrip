@@ -1,4 +1,3 @@
-import type { EliteRevealConfig } from "@cantrip/glitch";
 import type { TerminalSummary } from "@cantrip/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -49,8 +48,6 @@ export function retainTerminalSurfaceTabs(
 export function PersistentTerminalViews({
   active,
   commandPaletteTerminalId,
-  eliteContentGlitchEnabled,
-  eliteRevealConfig,
   onCommandPaletteOpenChange,
   onLinkedConsoleExit,
   onOpenExternalLink,
@@ -64,8 +61,6 @@ export function PersistentTerminalViews({
 }: {
   active: boolean;
   commandPaletteTerminalId: string | null;
-  eliteContentGlitchEnabled: boolean;
-  eliteRevealConfig: EliteRevealConfig;
   onCommandPaletteOpenChange(terminalId: string, open: boolean): void;
   onLinkedConsoleExit(chatId: string): void;
   onOpenExternalLink?(url: string): void;
@@ -150,8 +145,6 @@ export function PersistentTerminalViews({
           commandPaletteOpen={
             visible && commandPaletteTerminalId === terminal.id
           }
-          eliteContentGlitchEnabled={eliteContentGlitchEnabled}
-          eliteRevealConfig={eliteRevealConfig}
           onCommandPaletteOpenChange={
             linkedChatId
               ? undefined

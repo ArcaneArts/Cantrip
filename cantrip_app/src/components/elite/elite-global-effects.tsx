@@ -172,7 +172,6 @@ export function EliteGlobalEffects({
     [
       config.glitchCountMax,
       config.glitchCountMin,
-      config.glitchTerminalContents,
       config.glitchShowMs,
       config.staggerSpreadMs,
       config.variants,
