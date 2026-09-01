@@ -33,6 +33,7 @@ import {
 } from "./terminal-hydration";
 import {
   createTerminalContentGlitchRenderer,
+  terminalContentGlitchCanAnimate,
   type TerminalContentGlitchRenderer,
 } from "./terminal-content-glitch";
 import {
@@ -108,6 +109,7 @@ export function TerminalView({
   const terminalSurfaceRef = useRef<HTMLDivElement>(null);
   const terminalContentGlitchRendererRef =
     useRef<TerminalContentGlitchRenderer | null>(null);
+  const terminalFocusedRef = useRef(false);
   const terminalIdRef = useRef(terminal.id);
   const visibleRef = useRef(visible);
   const restoreVisibleSurfaceRef = useRef<(() => void) | null>(null);
@@ -184,7 +186,11 @@ export function TerminalView({
       xterm,
       {
         config: () => eliteRevealConfigRef.current,
-        enabled: () => eliteContentGlitchEnabledRef.current,
+        enabled: () =>
+          terminalContentGlitchCanAnimate(
+            eliteContentGlitchEnabledRef.current,
+            terminalFocusedRef.current,
+          ),
       },
     );
     terminalContentGlitchRendererRef.current = terminalContentGlitchRenderer;
@@ -193,11 +199,15 @@ export function TerminalView({
       onOpen: (url) => onOpenLinkRef.current?.(url),
       onOpenExternal: (url) => onOpenExternalLinkRef.current?.(url),
     });
+    terminalFocusedRef.current = false;
     setTerminalFocused(false);
     let terminalFocusFrame: number | null = null;
     const updateTerminalFocus = () => {
       terminalFocusFrame = null;
-      setTerminalFocused(container.contains(document.activeElement));
+      const focused = container.contains(document.activeElement);
+      terminalFocusedRef.current = focused;
+      setTerminalFocused(focused);
+      if (focused) terminalContentGlitchRenderer.clear();
     };
     const handleTerminalFocusOut = () => {
       if (terminalFocusFrame !== null) cancelAnimationFrame(terminalFocusFrame);
@@ -499,7 +509,10 @@ export function TerminalView({
               const animateContent =
                 ready &&
                 visibleRef.current &&
-                eliteContentGlitchEnabledRef.current;
+                terminalContentGlitchCanAnimate(
+                  eliteContentGlitchEnabledRef.current,
+                  terminalFocusedRef.current,
+                );
               if (animateContent) {
                 terminalContentGlitchRenderer.beforeWrite();
               }
@@ -690,6 +703,7 @@ export function TerminalView({
   useEffect(() => {
     const xterm = xtermRef.current;
     if (!visible) {
+      terminalFocusedRef.current = false;
       setTerminalFocused(false);
       terminalContentGlitchRendererRef.current?.clear();
       clientLogger.info("Terminal surface parked", {
@@ -760,12 +774,12 @@ export function TerminalView({
   return (
     <div
       className="relative flex min-h-0 flex-1 bg-background"
+      data-elite-ignore=""
       data-slot="terminal-view"
       ref={terminalSurfaceRef}
     >
       <div
         className="relative flex min-h-0 min-w-0 flex-1"
-        data-elite-global={hasLoaded ? "" : undefined}
         style={{
           paddingBottom: mobileCommandBarVisible
             ? `${mobileKeyboard.contentInset}px`
