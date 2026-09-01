@@ -97,6 +97,7 @@ describe("provider weekly availability", () => {
       ]),
     ).toEqual({
       availablePercent: 300,
+      bankedResetCount: 0,
       reportedAccountCount: 3,
       signedInAccountCount: 3,
     });
@@ -119,8 +120,43 @@ describe("provider weekly availability", () => {
       ]),
     ).toEqual({
       availablePercent: 80,
+      bankedResetCount: 0,
       reportedAccountCount: 1,
       signedInAccountCount: 2,
+    });
+  });
+
+  it("treats each banked reset as another full week of capacity", () => {
+    expect(
+      providerWeeklyAvailability([account("one", 50)], new Map([["one", 2]])),
+    ).toEqual({
+      availablePercent: 250,
+      bankedResetCount: 2,
+      reportedAccountCount: 1,
+      signedInAccountCount: 1,
+    });
+    expect(
+      providerWeeklyAvailability(
+        [account("one", 50), account("two", 25)],
+        new Map([
+          ["one", 2],
+          ["two", 1],
+        ]),
+      )?.availablePercent,
+    ).toBe(425);
+  });
+
+  it("includes known banked resets when weekly usage is not reported", () => {
+    expect(
+      providerWeeklyAvailability(
+        [account("unknown", null)],
+        new Map([["unknown", 1]]),
+      ),
+    ).toEqual({
+      availablePercent: 100,
+      bankedResetCount: 1,
+      reportedAccountCount: 0,
+      signedInAccountCount: 1,
     });
   });
 });

@@ -16,7 +16,12 @@ import {
   PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
   ZAI_CODING_PLAN_BASE_URL,
 } from "@cantrip/protocol";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   Cable,
   BarChart3,
@@ -652,6 +657,7 @@ function editSettingsRowFromKeyboard(
 }
 
 function ProviderRow({
+  availableResetCredits,
   provider,
   workerId,
   removing,
@@ -659,6 +665,7 @@ function ProviderRow({
   onAnalytics,
   onRemove,
 }: {
+  availableResetCredits: ReadonlyMap<string, number>;
   provider: ModelProviderSummary;
   workerId: string | null;
   removing: boolean;
@@ -695,7 +702,10 @@ function ProviderRow({
   const signedInAccounts = enabledAccounts.filter(
     (account) => account.credentialState === "signed-in",
   );
-  const weeklyAvailability = providerWeeklyAvailability(provider.accounts);
+  const weeklyAvailability = providerWeeklyAvailability(
+    provider.accounts,
+    provider.kind === "chatgpt" ? availableResetCredits : undefined,
+  );
   const showingCachedCatalog = catalog.isPlaceholderData;
   const catalogSyncing = catalog.isFetching || refreshCatalog.isPending;
   const statusTone =
@@ -757,7 +767,8 @@ function ProviderRow({
             </span>
             {weeklyAvailability === null ? null : (
               <span>
-                {Math.round(weeklyAvailability.availablePercent)}% total 7-day
+                {Math.round(weeklyAvailability.availablePercent)}%{" "}
+                {provider.kind === "chatgpt" ? "maximum" : "total"} 7-day
                 available
               </span>
             )}
@@ -1000,6 +1011,52 @@ export function SettingsPage({
   const [deviceLinkCopied, setDeviceLinkCopied] = useState(false);
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
   const worker = workers.data?.find((item) => item.online) ?? null;
+  const chatGptResetTargets = (settings.data?.providers ?? []).flatMap(
+    (provider) =>
+      provider.kind === "chatgpt"
+        ? provider.accounts
+            .filter(
+              (account) =>
+                account.enabled && account.credentialState === "signed-in",
+            )
+            .map((account) => ({
+              accountId: account.id,
+              providerId: provider.id,
+            }))
+        : [],
+  );
+  const chatGptResetQueries = useQueries({
+    queries: chatGptResetTargets.map((target) => ({
+      enabled: section === "models" && Boolean(worker),
+      queryFn: () =>
+        getProviderRateLimitResets(
+          target.providerId,
+          target.accountId,
+          worker!.workerId,
+        ),
+      queryKey: [
+        "provider-rate-limit-resets",
+        target.providerId,
+        target.accountId,
+        worker?.workerId ?? null,
+      ],
+      refetchInterval: liveResourceRefreshInterval(
+        providerAuthResourcesLive,
+        30_000,
+      ),
+      retry: false,
+      staleTime: 30_000,
+    })),
+  });
+  const chatGptAvailableResetCredits = new Map(
+    chatGptResetTargets.flatMap((target, index) => {
+      const availableCount =
+        chatGptResetQueries[index]?.data?.rateLimitResetCredits?.availableCount;
+      return availableCount === undefined
+        ? []
+        : ([[target.accountId, availableCount]] as const);
+    }),
+  );
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [analyticsProvider, setAnalyticsProvider] =
     useState<ModelProviderSummary | null>(null);
@@ -1040,7 +1097,12 @@ export function SettingsPage({
       ? editingProvider
       : null;
   const accountWeeklyAvailability = accountProvider
-    ? providerWeeklyAvailability(accountProvider.accounts)
+    ? providerWeeklyAvailability(
+        accountProvider.accounts,
+        accountProvider.kind === "chatgpt"
+          ? chatGptAvailableResetCredits
+          : undefined,
+      )
     : null;
   const selectedAccount =
     accountProvider?.accounts.find(({ id }) => id === selectedAccountId) ??
@@ -1871,6 +1933,7 @@ export function SettingsPage({
                     <div className="divide-y border-t sm:border-t-0">
                       {visibleProviders.map((provider) => (
                         <ProviderRow
+                          availableResetCredits={chatGptAvailableResetCredits}
                           key={provider.id}
                           provider={provider}
                           workerId={worker?.workerId ?? null}
@@ -2531,13 +2594,18 @@ export function SettingsPage({
                   <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2.5">
                     <div>
                       <p className="text-sm font-medium">
-                        Total 7-day available
+                        {accountProvider.kind === "chatgpt"
+                          ? "Total maximum 7-day available"
+                          : "Total 7-day available"}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {accountWeeklyAvailability.reportedAccountCount ===
                         accountWeeklyAvailability.signedInAccountCount
                           ? `Across ${accountWeeklyAvailability.signedInAccountCount} signed-in ${accountWeeklyAvailability.signedInAccountCount === 1 ? "account" : "accounts"}`
                           : `${accountWeeklyAvailability.reportedAccountCount} of ${accountWeeklyAvailability.signedInAccountCount} signed-in accounts reporting`}
+                        {accountWeeklyAvailability.bankedResetCount
+                          ? ` · Includes ${accountWeeklyAvailability.bankedResetCount} banked ${accountWeeklyAvailability.bankedResetCount === 1 ? "reset" : "resets"}`
+                          : ""}
                       </p>
                     </div>
                     <span className="text-xl font-semibold tabular-nums">
