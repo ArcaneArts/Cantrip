@@ -3,7 +3,15 @@ import type {
   ProjectWorkspaceSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { CircleAlert, FolderInput, Link2, Server } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  CircleAlert,
+  FolderInput,
+  FolderOpen,
+  Link2,
+  Loader2,
+  Server,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +25,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
+import { pickLocalFolder } from "@/lib/desktop-folder-picker";
+import { listDesktopWorkers } from "@/lib/desktop-worker";
+import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
 export type RepositoryPlacementMode = ProjectReplicaPlacementRequest["mode"];
@@ -37,6 +48,14 @@ export function repositoryPlacementAvailability(worker: WorkerSummary) {
       worker.projectReplicas.attachExisting &&
       worker.projectReplicas.recursiveParentCreation,
   };
+}
+
+export function canBrowseRepositoryPath(
+  mode: RepositoryPlacementMode,
+  workerId: string | null,
+  localWorkerIds: ReadonlySet<string>,
+): boolean {
+  return mode === "direct" && workerId !== null && localWorkerIds.has(workerId);
 }
 
 const choices: Array<{
@@ -96,11 +115,27 @@ export function RepositoryImportOptionsDialog({
 }) {
   const [mode, setMode] = useState<RepositoryPlacementMode>("managed");
   const [path, setPath] = useState("");
+  const [picking, setPicking] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const [workspaceIds, setWorkspaceIds] = useState<Set<string>>(new Set());
   const wasOpen = useRef(false);
+  const desktopWorkers = useQuery({
+    enabled: open,
+    queryFn: listDesktopWorkers,
+    queryKey: ["desktop-workers"],
+  });
   const availability = useMemo(
     () => (worker ? repositoryPlacementAvailability(worker) : null),
     [worker],
+  );
+  const localWorkerIds = useMemo(
+    () => new Set(desktopWorkers.data?.map(({ workerId }) => workerId) ?? []),
+    [desktopWorkers.data],
+  );
+  const canBrowsePath = canBrowseRepositoryPath(
+    mode,
+    worker?.workerId ?? null,
+    localWorkerIds,
   );
 
   useEffect(() => {
@@ -109,6 +144,8 @@ export function RepositoryImportOptionsDialog({
     if (!opening) return;
     setMode("managed");
     setPath("");
+    setPicking(false);
+    setPickerError(null);
     const selected = new Set(initialWorkspaceIds ?? []);
     if (requiredWorkspaceId) selected.add(requiredWorkspaceId);
     setWorkspaceIds(selected);
@@ -125,9 +162,23 @@ export function RepositoryImportOptionsDialog({
     worker &&
     selectedModeAvailable &&
     !pending &&
+    !picking &&
     (!customMode || path.trim()) &&
     (!requiredWorkspaceId || workspaceIds.has(requiredWorkspaceId)),
   );
+
+  const chooseFolder = async () => {
+    setPicking(true);
+    setPickerError(null);
+    try {
+      const selected = await pickLocalFolder();
+      if (selected) setPath(selected);
+    } catch (pickError) {
+      setPickerError(errorMessage(pickError));
+    } finally {
+      setPicking(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
@@ -192,7 +243,10 @@ export function RepositoryImportOptionsDialog({
                   name="repository-placement"
                   type="radio"
                   value={choice.mode}
-                  onChange={() => setMode(choice.mode)}
+                  onChange={() => {
+                    setMode(choice.mode);
+                    setPickerError(null);
+                  }}
                 />
                 <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
@@ -218,22 +272,44 @@ export function RepositoryImportOptionsDialog({
         {customMode && worker ? (
           <label className="grid gap-2 text-sm font-medium">
             Path on {worker.name}
-            <Input
-              autoFocus
-              disabled={pending}
-              maxLength={8192}
-              placeholder={
-                worker.platform === "win32"
-                  ? "D:\\Projects\\repository"
-                  : "/srv/projects/repository"
-              }
-              value={path}
-              onChange={(event) => setPath(event.target.value)}
-            />
+            <div className="flex gap-2">
+              <Input
+                autoFocus
+                className="min-w-0"
+                disabled={pending || picking}
+                maxLength={8192}
+                placeholder={
+                  worker.platform === "win32"
+                    ? "D:\\Projects\\repository"
+                    : "/srv/projects/repository"
+                }
+                value={path}
+                onChange={(event) => {
+                  setPath(event.target.value);
+                  setPickerError(null);
+                }}
+              />
+              {canBrowsePath ? (
+                <Button
+                  className="shrink-0"
+                  disabled={pending || picking}
+                  type="button"
+                  variant="outline"
+                  onClick={() => void chooseFolder()}
+                >
+                  {picking ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <FolderOpen className="size-4" />
+                  )}
+                  Browse
+                </Button>
+              ) : null}
+            </div>
             <span className="font-normal leading-5 text-muted-foreground">
-              Enter the exact final worker path. Missing parent directories are
-              created. Paths are interpreted on the worker—not this browser or
-              phone—and container workers can use only mounted locations.
+              {canBrowsePath
+                ? "Browse this machine or enter the exact final worker path. Missing parent directories are created."
+                : "Enter the exact final worker path. Missing parent directories are created. Paths are interpreted on the worker—not this browser or phone—and container workers can use only mounted locations."}
             </span>
             {mode === "direct" ? (
               <span className="font-normal leading-5 text-muted-foreground">
@@ -259,13 +335,13 @@ export function RepositoryImportOptionsDialog({
           />
         ) : null}
 
-        {error ? (
+        {error || pickerError ? (
           <p
             className="flex gap-2 rounded-lg border border-destructive/40 p-3 text-sm text-destructive"
             role="alert"
           >
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
-            {error}
+            {error ?? pickerError}
           </p>
         ) : null}
 
