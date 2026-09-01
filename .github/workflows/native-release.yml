@@ -234,6 +234,9 @@ jobs:
         run: pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/glitch build && pnpm --filter @cantrip/crypto build
       - name: Synchronize Android project
         run: pnpm --filter @cantrip/app cap:sync android
+      - name: Verify Android version-one installation update fixture
+        working-directory: cantrip_app/android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests art.cantrip.CantripInstallationStorageUpdateTest
       - name: Restore Android upload keystore
         env:
           ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
@@ -327,6 +330,8 @@ jobs:
         run: pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/glitch build && pnpm --filter @cantrip/crypto build
       - name: Synchronize iOS project
         run: pnpm --filter @cantrip/app cap:sync ios
+      - name: Verify iOS version-one installation update fixture
+        run: node --test scripts/ios-native-storage.test.mjs
       - name: Import iOS signing certificates
         shell: bash
         env:
@@ -560,7 +565,7 @@ jobs:
       - name: Verify installation update compatibility
         run: pnpm verify:installation-compatibility
       - name: Verify desktop installation state survives updates
-        run: cargo test --manifest-path cantrip_app/src-tauri/Cargo.toml update_reopens_existing_installation_state --lib
+        run: cargo test --manifest-path cantrip_app/src-tauri/Cargo.toml frozen_version_one_fixture_opens_and_decrypts_with_current_runtime --lib
       - name: Build desktop workspace dependencies
         run: pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/glitch build && pnpm --filter @cantrip/crypto build
       - name: Require updater signing material

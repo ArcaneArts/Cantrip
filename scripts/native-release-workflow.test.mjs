@@ -100,6 +100,15 @@ test("builds mobile releases in parallel and gates publication on them", async (
   assert.match(androidJob, /pnpm verify:installation-compatibility/u);
   assert.match(iosJob, /pnpm verify:installation-compatibility/u);
   assert.match(clientJob, /pnpm verify:installation-compatibility/u);
+  assert.match(
+    androidJob,
+    /:app:testDebugUnitTest --tests art\.cantrip\.CantripInstallationStorageUpdateTest/u,
+  );
+  assert.match(iosJob, /node --test scripts\/ios-native-storage\.test\.mjs/u);
+  assert.match(
+    clientJob,
+    /frozen_version_one_fixture_opens_and_decrypts_with_current_runtime/u,
+  );
   assert.doesNotMatch(androidJob, /^ {4}needs:/mu);
   assert.doesNotMatch(iosJob, /^ {4}needs:/mu);
   assert.match(workflow, /needs: \[server, worker, client, android, ios\]/u);

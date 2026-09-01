@@ -33,26 +33,26 @@ flowchart TD
 
 ## Completion status
 
-Status: **in progress**. A requirement-by-requirement audit after Cycle 12
-found that a missing local installation was still provisioned before the
-authoritative server profile or recovery credential had authorized that
-change. Cycle 13 reopens completion and moves all installation/key creation
-behind first-time initialization, legacy-key unwrap, password recovery, or
-anonymous recovery import. Completion remains open until that fix is merged
-and the remaining update-safety evidence has been re-audited.
+Status: **in progress**. Cycle 13 is merged and makes missing-installation
+discovery read-only until an authoritative initialization or recovery event.
+The follow-up audit found that the release gate described shared JavaScript
+contract simulations as native version-to-version readers. Cycle 14 adds frozen
+version-one fixtures consumed by the current Rust, Swift, and Android storage
+implementations and corrects the evidence language. Completion remains open
+until that cycle merges and the final release-readiness pass is recorded.
 
-| Required capability                                           | Completed implementation                                                                                                                                 |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| One stable installation with multiple account/server bindings | One immutable installation record owns one installation-derived key alias; account bindings are separate catalog rows.                                   |
-| Tauri native custody                                          | SQLite public metadata plus macOS Keychain, Windows Credential Manager, or Linux Secret Service custody; legacy IndexedDB is migration-only.             |
-| Capacitor native custody                                      | SQLite public metadata plus iOS Keychain or Android Keystore-backed custody.                                                                             |
-| Browser custody and recovery                                  | Versioned IndexedDB/WebCrypto installation storage, persistence requests, password recovery, and anonymous recovery import.                              |
-| Existing installation migration                               | Retained legacy IndexedDB keys unwrap and rewrap the existing Account Master Key through an idempotent, verified migration checkpoint.                   |
-| Missing-key recovery                                          | Password or anonymous recovery authorizes explicit key replacement without changing the native installation ID or initializing a blank server profile.   |
-| Anonymous recovery                                            | Versioned recovery export, acknowledgement, later export, strict import, and unrecoverable-state messaging.                                              |
-| Stable development identity                                   | Named profiles persist outside worktrees and build output; inspection and deliberate clean-profile tooling expose no secrets.                            |
-| Update safety                                                 | Immutable compatibility manifest, seven version N to N+1 or recovery harnesses, and release-blocking desktop/mobile/browser gates.                       |
-| No silent replacement                                         | Cycle 13 pending: startup discovery is read-only and tests assert that lookup misses, invalid credentials, and migration outages do not provision state. |
+| Required capability                                           | Completed implementation                                                                                                                               |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| One stable installation with multiple account/server bindings | One immutable installation record owns one installation-derived key alias; account bindings are separate catalog rows.                                 |
+| Tauri native custody                                          | SQLite public metadata plus macOS Keychain, Windows Credential Manager, or Linux Secret Service custody; legacy IndexedDB is migration-only.           |
+| Capacitor native custody                                      | SQLite public metadata plus iOS Keychain or Android Keystore-backed custody.                                                                           |
+| Browser custody and recovery                                  | Versioned IndexedDB/WebCrypto installation storage, persistence requests, password recovery, and anonymous recovery import.                            |
+| Existing installation migration                               | Retained legacy IndexedDB keys unwrap and rewrap the existing Account Master Key through an idempotent, verified migration checkpoint.                 |
+| Missing-key recovery                                          | Password or anonymous recovery authorizes explicit key replacement without changing the native installation ID or initializing a blank server profile. |
+| Anonymous recovery                                            | Versioned recovery export, acknowledgement, later export, strict import, and unrecoverable-state messaging.                                            |
+| Stable development identity                                   | Named profiles persist outside worktrees and build output; inspection and deliberate clean-profile tooling expose no secrets.                          |
+| Update safety                                                 | Immutable contract gate plus frozen v1 catalog/custody/HPKE fixtures consumed by current Rust, Swift, and Android readers in native release lanes.     |
+| No silent replacement                                         | Cycle 13 merged: lookup misses, invalid credentials, and migration outages leave installation and key storage untouched.                               |
 
 ## Cycle ledger
 
@@ -665,6 +665,13 @@ and the remaining update-safety evidence has been re-audited.
   confirm the installation ID, alias, server identity, and data survive. Repeat
   ordinary upgrade and storage-clearing recovery in a production browser.
 
+Post-merge correction: the six platform-labelled update harnesses added in this
+cycle were JavaScript contract/path simulations backed by a `Map`, not native
+version-N producers or native current-runtime readers. They remain useful for
+immutable path and server-data contracts, but did not by themselves satisfy the
+native update-evidence requirement. Cycle 14 adds independent frozen native
+fixtures and wires each platform reader into its release lane.
+
 ### Cycle 11 — retire obsolete device-key defaults
 
 - Branch: `codex/encryption-storage-cycle11-retire-defaults`
@@ -812,7 +819,7 @@ corrects that ordering and adds mutation-negative regression coverage.
 - Branch: `codex/encryption-storage-completion-audit`
 - Pull request: [#1555](https://github.com/ArcaneArts/Cantrip/pull/1555)
 - Commit: `74c24a9345568b94da0d937dc51a9911043e5abe`
-- Merge: pending
+- Merge: squash-merged as `6975ef4e399720538f5aead34712d0cd89d12825`
 - Behavior implemented:
   - Made installation discovery read-only. A missing catalog now advances the
     explicit startup state machine to authoritative server-profile discovery
@@ -852,8 +859,7 @@ corrects that ordering and adds mutation-negative regression coverage.
 - Migration status: accessible legacy custody is now unwrapped before the new
   installation catalog/key is created. Failed discovery or migration leaves no
   new installation/key behind; verified migration retains legacy custody.
-- Remaining work: merge this cycle and complete the reopened update-safety
-  evidence audit.
+- Remaining work: complete the reopened update-safety evidence audit in Cycle 14.
 - Known risks or blockers: no external blocker. Signed package and physical
   secure-store verification remains manual as recorded above.
 - Manual verification: after merge, clear browser installation storage and
@@ -861,8 +867,75 @@ corrects that ordering and adds mutation-negative regression coverage.
   password or recovery file is submitted. Repeat with a packaged native build
   after removing only the cataloged secure key.
 
+### Cycle 14 — frozen native update fixtures and Android catalog correction
+
+- Branch: `codex/encryption-storage-update-evidence`
+- Pull request: [#1556](https://github.com/ArcaneArts/Cantrip/pull/1556)
+- Implementation commit: `1bfa801a65f568accc5d7eb2950b1dab265617ee`
+- Merge: pending
+- Behavior implemented:
+  - Added one immutable version-one SQLite catalog and custody fixture whose
+    key opens a fixed HPKE-wrapped Account Master Key marker. Current readers
+    consume this state; current catalog/key writers do not produce it.
+  - Replaced the Tauri same-runtime write/reopen test with a frozen-fixture
+    reader. The current Rust implementation verifies the installation, native
+    provider, key alias, account binding, migration checkpoint, public key, and
+    decrypted marker. The macOS and Windows release lanes run it.
+  - Added a Swift fixture that uses an isolated application-support root and
+    Keychain service, then makes the current iOS storage implementation read
+    the frozen catalog/custody record and decrypt the marker. The iOS release
+    lane runs it.
+  - Added an Android/Robolectric native Java fixture using the same frozen
+    catalog and encrypted key record. A test-only wrapping-key seam supplies
+    the fixed AES key while production continues to use Android Keystore. The
+    current Android reader validates metadata, opens the PKCS#8 custody record,
+    and decrypts the HPKE marker; the Android release lane runs it.
+  - Fixed two Android catalog defects exposed by the native fixture: ignore the
+    OS-managed `android_metadata` table during logical schema verification, and
+    retain the catalog revision before advancing the single-row cursor.
+  - Renamed the shared JavaScript checks as contract simulations and corrected
+    documentation that previously presented them as native update readers.
+- Validation:
+  - Tauri installation-storage suite — 22 tests passed locally on macOS,
+    including the frozen fixture; `cargo check` and `cargo fmt --check` passed.
+  - `node --test scripts/ios-native-storage.test.mjs` — 2 tests passed,
+    including isolated Keychain custody and marker decryption.
+  - Android `CantripInstallationStorageUpdateTest` — passed under Robolectric
+    after a normal Capacitor sync.
+  - `pnpm verify:installation-compatibility` — seven contract/recovery
+    simulations passed with no active compatibility migration.
+  - Focused installation-compatibility, iOS-native, release-workflow, and
+    release suites — 22 tests passed.
+  - App typecheck, production build, and full Vitest suite — 356 files passed;
+    1,878 tests passed and 3 skipped.
+  - All script tests — 123 passed and 2 unrelated pre-existing acceptance
+    failures remained: the App Platform build-command fixture and Tranche Two
+    sidebar Explorer lifecycle matrix.
+  - Formatting, diff whitespace, and large-file checks passed. The unchanged
+    decomposition check still reports only `chat-turn-runtime.ts` (2,103/1,999)
+    and `task-routes.ts` (2,147/1,999).
+- Supported platforms: current Tauri Rust storage is covered in macOS/Windows
+  release lanes; current Capacitor Swift and Android Java storage are covered
+  in their respective release lanes. Linux uses the same Rust reader but still
+  requires a packaged Secret Service smoke. Browser update and storage loss use
+  their actual IndexedDB tests plus the contract/recovery simulations.
+- Migration status: no compatibility contract changed. The frozen fixture is
+  read-only historical input and does not alter user state or revoke legacy
+  custody.
+- Remaining work: merge this cycle, run the final full regression and
+  release-readiness audit, and close this ledger only if no required gap
+  remains.
+- Known risks or blockers: deterministic native tests cannot prove store
+  installer behavior, mobile entitlements, Android hardware-backed Keystore,
+  or a desktop user's unlocked credential-store session. Those remain explicit
+  signed-package/manual release checks.
+- Manual verification: perform signed in-place N to N+1 updates on macOS,
+  Windows, iOS, and Android; verify installation ID and encrypted data; run one
+  packaged Linux session with Secret Service; and repeat browser ordinary
+  upgrade plus storage-loss recovery in production engines.
+
 ## Goal completion
 
-Completion is reopened. Cycle 13 and the remaining update-safety audit must be
+Completion remains open. Cycle 14 and the final release-readiness audit must be
 merged and verified before this section may state that no required
 implementation work remains.
