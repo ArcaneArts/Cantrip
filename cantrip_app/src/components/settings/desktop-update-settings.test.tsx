@@ -1,5 +1,6 @@
 import type { DesktopUpdateActiveWorkSummary } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
+import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DesktopUpdateClient } from "@/lib/desktop-update";
@@ -8,11 +9,10 @@ import {
   DesktopUpdateSettings,
   DesktopUpdateStatusMessage,
   desktopUpdateFlowReducer,
-  desktopUpdateAutoRefreshDue,
   initialDesktopUpdateFlowState,
   type DesktopUpdateFlowState,
 } from "./desktop-update-settings";
-import { DesktopUpdateHistory } from "./desktop-update-history";
+import { DesktopUpdateVersionList } from "./desktop-update-history";
 
 const release = {
   currentVersion: "1.2.3",
@@ -63,12 +63,6 @@ function mockClient(): DesktopUpdateClient {
 }
 
 describe("desktop update settings", () => {
-  it("throttles automatic General-tab checks to once every 30 seconds", () => {
-    expect(desktopUpdateAutoRefreshDue(null, 100_000)).toBe(true);
-    expect(desktopUpdateAutoRefreshDue(100_000, 129_999)).toBe(false);
-    expect(desktopUpdateAutoRefreshDue(100_000, 130_000)).toBe(true);
-  });
-
   it("does not check or download while rendering the manual control", () => {
     const client = mockClient();
     const markup = renderToStaticMarkup(
@@ -83,16 +77,42 @@ describe("desktop update settings", () => {
     );
 
     expect(markup).toContain("Check for updates");
+    expect(markup).toContain("Change Version");
+    expect(markup).toContain("Version history");
     expect(markup).toContain("Installed version 1.2.3");
+    expect(markup).not.toContain('data-slot="desktop-update-version-list"');
     expect(client.check).not.toHaveBeenCalled();
     expect(client.history).not.toHaveBeenCalled();
     expect(client.getActiveWork).not.toHaveBeenCalled();
     expect(client.install).not.toHaveBeenCalled();
   });
 
-  it("renders version history as a flat sectioned list", () => {
+  it("does not fetch release data merely by mounting General settings", async () => {
+    const client = mockClient();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DesktopUpdateSettings
+          capability={{
+            available: true,
+            installedVersion: "1.2.3",
+            reason: null,
+          }}
+          client={client}
+        />,
+      );
+    });
+
+    expect(client.listen).toHaveBeenCalledOnce();
+    expect(client.check).not.toHaveBeenCalled();
+    expect(client.history).not.toHaveBeenCalled();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("renders version history as a selectable dialog sidebar", () => {
     const markup = renderToStaticMarkup(
-      <DesktopUpdateHistory
+      <DesktopUpdateVersionList
         error={null}
         installedVersion="1.2.3"
         loading={false}
@@ -104,20 +124,21 @@ describe("desktop update settings", () => {
             publishedAt: "2026-06-01T12:00:00.000Z",
           },
         ]}
-        onOpenRelease={() => undefined}
+        selectedVersion="1.3.0"
+        onSelectRelease={() => undefined}
       />,
     );
 
-    expect(markup).toContain('data-slot="desktop-update-history"');
+    expect(markup).toContain('data-slot="desktop-update-version-list"');
     expect(
-      markup.match(/data-slot="desktop-update-history-row"/gu),
+      markup.match(/data-slot="desktop-update-version-row"/gu),
     ).toHaveLength(2);
-    expect(markup).toContain("Version history");
+    expect(markup).toContain("Versions");
     expect(markup).toContain("1.3.0");
     expect(markup).toContain("1.2.3");
     expect(markup).toContain("Latest");
     expect(markup).toContain("Installed");
-    expect(markup).not.toContain("rounded-xl");
+    expect(markup).toContain('data-selected="true"');
   });
 
   it("shows a concise up-to-date result", () => {
