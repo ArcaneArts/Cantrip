@@ -135,7 +135,10 @@ export function PersistentTerminalViews({
     return (
       <div
         aria-hidden={!visible}
-        className={cn("min-h-0 flex-1", visible ? "flex" : "hidden")}
+        className={cn(
+          "min-h-0 min-w-0 flex-1 overflow-hidden",
+          visible ? "flex" : "hidden",
+        )}
         data-active={visible ? "true" : "false"}
         data-slot="persistent-terminal-surface"
         data-terminal-id={terminal.id}
