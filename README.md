@@ -430,7 +430,7 @@ development stacks and artifacts in more detail.
 | ------------------- | -------------------------------------------------------------------------------- |
 | `pnpm dev`          | Run the protocol watcher, server, worker, and browser app.                       |
 | `pnpm devtop`       | Run the same local stack with the stable default Tauri development profile.      |
-| `pnpm dev:profile`  | Inspect a development installation or create an isolated clean test profile.     |
+| `pnpm dev:profile`  | Inspect, create, or explicitly repair a backed-up development installation.      |
 | `pnpm site`         | Run only the public marketing site at <http://127.0.0.1:5174>.                   |
 | `pnpm dev:server`   | Run a separate account-mode server with disposable PostgreSQL.                   |
 | `pnpm dev:postgres` | Run the browser stack against disposable PostgreSQL in Docker instead of PGlite. |
@@ -608,8 +608,9 @@ On macOS, `devtop` keeps its development-only native key in the stable
 application-local profile rather than Apple Keychain. This avoids repeated
 system-password prompts when ad-hoc debug binaries are rebuilt. The vault is
 owner-readable only and is not used by packaged builds; production macOS
-custody remains in Keychain. A previously cataloged development Keychain key is
-migrated on its first successful access.
+custody remains in Keychain. `devtop` never opens Apple Keychain and never
+probes the legacy origin-scoped WebCrypto record, because WebKit can route that
+record through Keychain too.
 
 Use `pnpm dev:profile inspect` to print the active profile name, installation
 ID, custody provider, catalog/migration state, and relevant non-secret paths.
@@ -617,6 +618,14 @@ For a deliberately clean lane, run
 `pnpm dev:profile create update-test`, then
 `pnpm devtop -- --profile update-test`. Existing profile names are never reset
 or replaced implicitly; choose a new name for another clean lane.
+
+If an older anonymous development profile already lost its only key, stop the
+development stack and run `pnpm dev:profile repair-encryption [name]`. The
+command first backs up the server database and native installation directory,
+refuses account profiles or recoverable protected domain payloads, then removes
+only the unrecoverable encryption registry state. The installation ID remains
+stable and the next launch provisions its key in the development vault without
+a Keychain prompt or recovery-acknowledgement screen.
 
 In development builds, webview `console.*` output, failed HTTP requests, uncaught errors, unhandled promise rejections, failed resource loads, and Content Security Policy violations are forwarded to the `desktop` lane in the `devtop` terminal. Entries use a `[client:<window>:<level>]` prefix and include source context when the webview provides it, so failures in the main window and pop-outs can be distinguished without opening Web Inspector. Request query strings and embedded URL credentials are removed before logging.
 

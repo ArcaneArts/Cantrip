@@ -1105,13 +1105,22 @@ export function clientEncryptionForRuntime(
   return hotState.clientEncryption;
 }
 
+export function legacyWebCryptoMigrationEnabled(
+  environment: { VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO?: string } = import.meta
+    .env as { VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO?: string },
+): boolean {
+  return environment.VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO !== "true";
+}
+
 // Vite can replace this module without remounting the authenticated session.
 // Preserve the unlocked service across that development-only replacement so
 // encrypted workspace and Task actions do not suddenly observe a new, locked
 // singleton. Explicit session/server lifecycle calls still lock this instance.
 export const clientEncryption = clientEncryptionForRuntime(
   import.meta.hot?.data as ClientEncryptionHotState | undefined,
-  new LegacyIndexedDbClientDeviceKeyStore(),
+  legacyWebCryptoMigrationEnabled()
+    ? new LegacyIndexedDbClientDeviceKeyStore()
+    : null,
 );
 
 export function clearClientEncryptionMemory(): void {

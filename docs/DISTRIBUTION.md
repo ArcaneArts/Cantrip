@@ -534,9 +534,12 @@ deleting a profile whose encrypted data may still be needed. On macOS this
 development command uses the profile-local
 `installation/v1/development-key-vault` with owner-only filesystem permissions,
 so rebuilding an ad-hoc-signed binary does not trigger Apple Keychain password
-prompts. Packaged macOS builds continue using Keychain. A cataloged older
-development key is copied out of Keychain on its first successful access; a
-profile with no native-key metadata never queries Keychain.
+prompts. Packaged macOS builds continue using Keychain. The development launcher
+does not query either Apple Keychain or the legacy WebCrypto record. If a
+pre-vault anonymous profile has already lost its key, stop the stack and run
+`pnpm dev:profile repair-encryption [name]`; the command creates an owner-only
+backup, refuses recoverable protected payloads, retains the installation ID,
+and resets only the unrecoverable development encryption registration.
 
 The browser and Tauri clients have separate custody providers, so sharing one
 anonymous encryption registry would lock whichever client did not initialize

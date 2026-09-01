@@ -5,6 +5,7 @@ import {
   createCleanDevelopmentProfile,
   inspectDevelopmentProfile,
 } from "./development-profile.mjs";
+import { repairDevelopmentEncryption } from "./development-encryption-repair.mjs";
 import {
   DEFAULT_DEVELOPMENT_PROFILE,
   validateDevelopmentProfileName,
@@ -47,8 +48,29 @@ if (command === "inspect") {
   });
   console.log(JSON.stringify(result, null, 2));
   console.log(`Launch with: pnpm devtop -- --profile ${result.profileName}`);
+} else if (command === "repair-encryption") {
+  const profileName = validateDevelopmentProfileName(
+    requestedProfile ??
+      process.env.CANTRIP_DEV_PROFILE ??
+      DEFAULT_DEVELOPMENT_PROFILE,
+  );
+  const profile = await inspectDevelopmentProfile({
+    profileName,
+    repositoryCommonDirectory,
+    repositoryRoot,
+  });
+  if (!profile.configured) {
+    throw new Error(
+      `Development profile ${profileName} is not configured. Launch it once before repair.`,
+    );
+  }
+  const result = await repairDevelopmentEncryption({
+    appLocalDataPath: profile.appLocalDataPath,
+    repositoryStatePath: profile.repositoryStatePath,
+  });
+  console.log(JSON.stringify(result, null, 2));
 } else {
   throw new Error(
-    "Usage: pnpm dev:profile [inspect [profile-name] | create <profile-name>]",
+    "Usage: pnpm dev:profile [inspect [profile-name] | create <profile-name> | repair-encryption [profile-name]]",
   );
 }

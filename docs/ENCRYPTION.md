@@ -385,9 +385,11 @@ prompts are unsuitable for the edit/rebuild loop. The development vault is
 enabled only in debug builds launched with the explicit development flag,
 stores alias-addressed records with directory mode `0700` and file mode `0600`,
 and is never selected by a packaged build. A cataloged preexisting development
-Keychain record is copied into the vault on first access and then read only from
-the vault. Profiles without native key metadata do not query Keychain. Windows
-and Linux development continue using their platform providers.
+Keychain record is not queried by `devtop`; neither is the legacy
+IndexedDB/WebCrypto record, because WebKit may persist that nonextractable key
+through Keychain. An incompatible old anonymous development profile requires
+the explicit backed-up repair command described below. Windows and Linux
+development continue using their platform providers.
 The worktree-local server/worker state is separate from installation identity;
 the same installation may acquire independent bindings for server identities
 encountered in different worktrees.
@@ -399,6 +401,14 @@ prints a private key. `pnpm dev:profile create <name>` creates an explicit clean
 test profile, launched with `pnpm devtop -- --profile <name>`. It refuses to
 replace an existing name. Normal build, clean, and development commands do not
 destroy profiles; choosing a new name is the supported clean-test workflow.
+`pnpm dev:profile repair-encryption [name]` is the exceptional local-anonymous
+repair path. It backs up both durable stores, refuses account-mode profiles and
+any protected domain payload other than an empty default-workspace label,
+retains the installation record, and clears only registry/key metadata that no
+surviving key can open. It is never run automatically. The development vault is
+treated as the recovery root during anonymous initialization, so `devtop` does
+not block on a recovery-file acknowledgement; packaged and browser clients
+retain the explicit recovery-artifact flow.
 
 #### Update compatibility gates
 
