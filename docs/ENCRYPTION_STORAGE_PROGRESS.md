@@ -243,8 +243,9 @@ flowchart TD
 ### Cycle 5 — stable named development profiles and diagnostics
 
 - Branch: `codex/encryption-storage-cycle5-dev-profile`
-- Pull request: pending creation
-- Merge: pending
+- Pull request: [#1546](https://github.com/ArcaneArts/Cantrip/pull/1546)
+- Commit: `3f93fb040718fbea34613e7e195ee22f16aace0d`
+- Merge: pending auto-merge
 - Behavior implemented:
   - Moved the canonical development profile identity out of worktree-local
     `.cantrip` and build output into versioned shared Git metadata. The
