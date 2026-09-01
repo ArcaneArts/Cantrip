@@ -228,9 +228,9 @@ describe("rich Codex activity", () => {
       />,
     );
     expect(activityGroupSummary([command, fileChange])).toBe(
-      "Ran a command, edited files",
+      "Changed 1 file · +1 more",
     );
-    expect(completed).toContain("Ran a command, edited files");
+    expect(completed).toContain("Changed 1 file · +1 more");
     expect(completed).toContain('aria-label="View turn trajectory"');
     expect(completed.match(/<button/gu)).toHaveLength(2);
     expect(completed).toContain('data-turn-key="runtime:turn-1"');
@@ -272,10 +272,20 @@ describe("rich Codex activity", () => {
       />,
     );
     expect(activityGroupSummary([completedTool])).toBe(
-      "Used github/search_issues",
+      "Called github/search_issues",
     );
-    expect(completedToolMarkup).toContain("Used github/search_issues");
+    expect(completedToolMarkup).toContain("Called github/search_issues");
     expect(completedToolMarkup).not.toContain("Used a tool");
+
+    expect(
+      activityGroupSummary(
+        Array.from({ length: 6 }, (_, index) => ({
+          ...command,
+          id: `command-${index}`,
+          command: index === 5 ? "pnpm test" : `command ${index}`,
+        })),
+      ),
+    ).toBe("Ran pnpm test · +5 more");
   });
 
   it("shows the latest syntax-highlighted file preview in a collapsed live group", () => {
@@ -335,6 +345,10 @@ describe("rich Codex activity", () => {
     const disclosure = renderer.root.findByProps({ "aria-expanded": false });
     await act(async () => disclosure.props.onClick());
     expect(renderer.root.findByProps({ "aria-expanded": true })).toBeDefined();
+    expect(
+      renderer.root.findByProps({ "data-slot": "completed-turn-work" }).props
+        .className,
+    ).toContain("gap-3");
     expect(JSON.stringify(renderer.toJSON())).toContain("Grouped command");
     await act(async () => renderer.unmount());
   });
