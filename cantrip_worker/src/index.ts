@@ -187,6 +187,7 @@ import {
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
+import { githubOperationRequiresCheckout } from "./github-operation-scope.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
 import { ChatScratchManager } from "./chat-scratch.js";
@@ -2953,12 +2954,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   throw new Error("Git operation not found.");
                 }
               }
+              const requiresGithubCheckout = githubOperationRequiresCheckout(
+                request.type,
+              );
               const repository =
                 command.repository ??
-                (request.type.startsWith("github.")
+                (requiresGithubCheckout
                   ? await github.repositoryForCheckout(command.cwd)
                   : null);
-              if (request.type.startsWith("github.") && !repository) {
+              if (requiresGithubCheckout && !repository) {
                 throw new Error(
                   "This checkout does not have a GitHub origin available to the worker.",
                 );
