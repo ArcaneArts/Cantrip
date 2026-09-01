@@ -33,12 +33,12 @@ flowchart TD
 
 ## Completion status
 
-Status: **final closeout pending**. Cycles 13 and 14 are merged. Missing-state
-discovery is read-only until an authoritative initialization or recovery event,
-and current Rust, Swift, and Android readers consume frozen version-one native
-state in release-blocking gates. Cycle 15 found no unresolved required
-implementation gap and added a bound on warm-start server calls. Completion
-will be closed after that audit PR merges and its merge is recorded here.
+Status: **complete**. Cycles 1–15 are merged. Missing-state discovery is
+read-only until an authoritative initialization or recovery event, current
+Rust, Swift, and Android readers consume frozen version-one native state in
+release-blocking gates, and the normal warm path is bounded to three
+non-mutating authoritative reads. The final release-readiness audit found no
+unresolved required implementation or automated verification work.
 
 | Required capability                                           | Completed implementation                                                                                                                               |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -954,7 +954,7 @@ corrects that ordering and adds mutation-negative regression coverage.
 - Branch: `codex/encryption-storage-final-readiness`
 - Pull request: [#1557](https://github.com/ArcaneArts/Cantrip/pull/1557)
 - Implementation commit: `4cca1260629cee51d89c4e215ada63cef8b24ad9`
-- Merge: pending
+- Merge: squash-merged as `2212f5579ab2254e26cd5f1bf65fff8d4f1c34bf`
 - Behavior implemented:
   - Audited every completion criterion against merged runtime code, native
     readers, recovery and migration tests, development tooling, compatibility
@@ -991,8 +991,8 @@ corrects that ordering and adds mutation-negative regression coverage.
 - Migration status: complete for accessible legacy custody. Compatibility
   readers and old principals remain retained; there is no destructive cleanup
   or automatic replacement path.
-- Remaining work: merge this final audit and record its merge in a ledger-only
-  closeout PR. No required implementation work remains.
+- Remaining work: none. Operational signed-package and physical-device smokes
+  remain release procedure, not unfinished implementation.
 - Known risks or blockers: no implementation blocker. OS/store behavior that
   cannot be proven deterministically remains disclosed as manual release
   verification and does not weaken or bypass the release-blocking contracts.
@@ -1003,6 +1003,12 @@ corrects that ordering and adds mutation-negative regression coverage.
 
 ## Goal completion
 
-All required implementation and automated verification work is complete. The
-goal remains open only until Cycle 15 merges and a ledger-only closeout records
-its immutable merge commit; no product behavior or test gap remains.
+Complete. Tauri and Capacitor use native metadata and secure custody; browsers
+retain recoverable IndexedDB/WebCrypto custody; stable installations support
+multiple bindings; migration and both recovery modes are tested; development
+identity survives rebuilds and worktrees; update contracts and frozen native
+readers block incompatible releases; missing state cannot silently create a
+replacement profile; and the relevant tests, typechecks, native builds, and
+release checks pass. The manual smokes above remain normal release procedure
+for OS behavior that deterministic runners cannot prove and are not unresolved
+goal work.
