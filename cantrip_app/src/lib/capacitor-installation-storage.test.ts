@@ -42,7 +42,10 @@ function fakeBridge(
       for (const operation of request.operations) {
         if (operation.type === "create-installation") {
           snapshot.installation = { ...operation.profile };
-        } else if (operation.type === "put-device-key") {
+        } else if (
+          operation.type === "put-device-key" ||
+          operation.type === "replace-device-key"
+        ) {
           snapshot.deviceKeys = [
             {
               ...operation.deviceKey,
@@ -75,6 +78,13 @@ function fakeBridge(
             publicKey,
           }
         : null,
+    replaceMissingKey: async (input) => ({
+      createdAt: input.createdAt ?? createdAt,
+      installationId: input.installationId,
+      keyAlias: input.keyAlias,
+      provider: "android-keystore",
+      publicKey,
+    }),
     isAvailable: () => true,
     operations,
     readCatalog: () => Promise.resolve(structuredClone(snapshot)),

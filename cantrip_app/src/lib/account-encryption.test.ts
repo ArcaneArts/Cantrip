@@ -20,9 +20,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CantripApiError } from "./api-client";
 import {
   changeAccountEncryptionPassword,
+  confirmAnonymousRecoveryArtifactSaved,
   prepareClientEncryption,
+  recoverAnonymousClientEncryption,
   type AccountEncryptionApi,
 } from "./account-encryption";
+import { serializeAnonymousRecoveryArtifact } from "./anonymous-recovery-artifact";
 import {
   ClientEncryptionService,
   IndexedDbClientDeviceKeyStore,
@@ -490,7 +493,13 @@ describe("account encryption initialization", () => {
 
     expect(results).toHaveLength(2);
     expect(results[0]).toEqual(results[1]);
-    expect(results[0]).toEqual({ status: "ready" });
+    expect(results[0]).toMatchObject({
+      artifact: {
+        ownerId: identity.ownerId,
+        serverId: identity.serverId,
+      },
+      status: "recovery-artifact-required",
+    });
     expect(api.principals.size).toBe(1);
     expect(api.profile?.passwordKdf).toBeNull();
     expect(api.profile?.passwordWrappedMasterKey).toBeNull();
@@ -509,11 +518,26 @@ describe("account encryption initialization", () => {
       service: first,
     });
 
-    expect(result).toEqual({ status: "ready" });
+    expect(result).toMatchObject({
+      artifact: {
+        ownerId: identity.ownerId,
+        serverId: identity.serverId,
+      },
+      confirmationId: expect.stringMatching(/^anonymous-recovery-v1:/u),
+      status: "recovery-artifact-required",
+    });
     expect(api.profile?.passwordKdf).toBeNull();
     expect(api.profile?.passwordWrappedMasterKey).toBeNull();
     expect(api.reauthenticationAttempts).toBe(0);
     expect(first.getSnapshot().status).toBe("ready");
+
+    if (result.status !== "recovery-artifact-required") {
+      throw new Error("Expected anonymous recovery setup.");
+    }
+    await confirmAnonymousRecoveryArtifactSaved({
+      confirmationId: result.confirmationId,
+      runtimePlatform: "browser",
+    });
 
     first.lock();
     const restarted = new ClientEncryptionService(store);
@@ -904,6 +928,173 @@ describe("durable native account encryption", () => {
     expect(startupPhases.at(-1)).toBe("recovery-required");
   });
 
+  it("imports an anonymous recovery file into a new installation without initializing a blank profile", async () => {
+    const api = new MemoryAccountEncryptionApi("unused");
+    const sourceStorage = durableStorage();
+    const sourceService = new ClientEncryptionService(
+      new MemoryDeviceKeyStore(),
+    );
+    const initial = await prepareClientEncryption({
+      api,
+      authMode: "none",
+      durableStorage: sourceStorage,
+      identity,
+      runtimePlatform: "tauri",
+      service: sourceService,
+    });
+    expect(initial.status).toBe("recovery-artifact-required");
+    if (initial.status !== "recovery-artifact-required") {
+      throw new Error("Expected an anonymous recovery artifact.");
+    }
+    const artifactText = serializeAnonymousRecoveryArtifact(initial.artifact);
+    const initializationAttempts = api.initializationAttempts;
+
+    const replacementStorage = durableStorage();
+    const replacementService = new ClientEncryptionService(
+      new MemoryDeviceKeyStore(),
+    );
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        durableStorage: replacementStorage,
+        identity,
+        runtimePlatform: "tauri",
+        service: replacementService,
+      }),
+    ).resolves.toMatchObject({ status: "recovery-required" });
+
+    await recoverAnonymousClientEncryption({
+      api,
+      artifactText,
+      durableStorage: replacementStorage,
+      identity,
+      runtimePlatform: "tauri",
+      service: replacementService,
+    });
+
+    expect(api.initializationAttempts).toBe(initializationAttempts);
+    expect(replacementService.getSnapshot()).toMatchObject({
+      identity,
+      masterKeyRevision: 1,
+      status: "ready",
+    });
+    await expect(
+      replacementStorage.catalog.getAccountBinding(
+        identity.serverId,
+        identity.ownerId,
+      ),
+    ).resolves.toMatchObject({
+      principalId: replacementService.getSnapshot().clientId,
+    });
+  });
+
+  it("uses an anonymous recovery file to replace missing custody without replacing the installation", async () => {
+    const api = new MemoryAccountEncryptionApi("unused");
+    const backend = new MemoryClientDeviceKeyBackend();
+    const provider = new MemoryClientDeviceKeyProvider(backend);
+    const storage = {
+      catalog: new MemoryInstallationCatalog(),
+      provider,
+    };
+    const initial = await prepareClientEncryption({
+      api,
+      authMode: "none",
+      durableStorage: storage,
+      identity,
+      runtimePlatform: "tauri",
+      service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+    });
+    if (initial.status !== "recovery-artifact-required") {
+      throw new Error("Expected an anonymous recovery artifact.");
+    }
+    const artifactText = serializeAnonymousRecoveryArtifact(initial.artifact);
+    const installation = await storage.catalog.getInstallation();
+    const keyAlias = installationKeyAlias(installation!.installationId);
+    const originalBinding = await storage.catalog.getAccountBinding(
+      identity.serverId,
+      identity.ownerId,
+    );
+    backend.removeForTests(keyAlias);
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).resolves.toMatchObject({
+      reason: "anonymous-device-missing",
+      status: "recovery-required",
+    });
+    await recoverAnonymousClientEncryption({
+      api,
+      artifactText,
+      durableStorage: storage,
+      identity,
+      runtimePlatform: "tauri",
+      service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+    });
+
+    const replacementBinding = await storage.catalog.getAccountBinding(
+      identity.serverId,
+      identity.ownerId,
+    );
+    expect((await storage.catalog.getInstallation())?.installationId).toBe(
+      installation?.installationId,
+    );
+    expect(replacementBinding?.keyAlias).toBe(keyAlias);
+    expect(replacementBinding?.principalId).not.toBe(
+      originalBinding?.principalId,
+    );
+    expect(api.initializationAttempts).toBe(1);
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).resolves.toEqual({ status: "ready" });
+  });
+
+  it("rejects anonymous recovery files for another server without changing server state", async () => {
+    const api = new MemoryAccountEncryptionApi("unused");
+    const sourceStorage = durableStorage();
+    const initial = await prepareClientEncryption({
+      api,
+      authMode: "none",
+      durableStorage: sourceStorage,
+      identity,
+      runtimePlatform: "tauri",
+      service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+    });
+    if (initial.status !== "recovery-artifact-required") {
+      throw new Error("Expected an anonymous recovery artifact.");
+    }
+    const principalCount = api.principals.size;
+
+    await expect(
+      recoverAnonymousClientEncryption({
+        api,
+        artifactText: serializeAnonymousRecoveryArtifact({
+          ...initial.artifact,
+          serverId: "server-b",
+        }),
+        durableStorage: durableStorage(),
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).rejects.toMatchObject({ code: "identity-mismatch" });
+    expect(api.principals.size).toBe(principalCount);
+  });
+
   it("derives distinct stable binding principals without changing the installation key", async () => {
     const installationId = "70da22b4-0474-4680-8cdd-e22715783621";
     const first = await installationBindingPrincipalId({
@@ -962,27 +1153,10 @@ describe("durable native account encryption", () => {
     );
   });
 
-  it("does not regenerate a cataloged native key that disappears from secure storage", async () => {
-    class LossSimulatingProvider extends MemoryClientDeviceKeyProvider {
-      createCalls = 0;
-      lost = false;
-
-      override create(
-        input: Parameters<MemoryClientDeviceKeyProvider["create"]>[0],
-      ) {
-        this.createCalls += 1;
-        return super.create(input);
-      }
-
-      override inspect(keyAlias: string) {
-        return this.lost ? Promise.resolve(null) : super.inspect(keyAlias);
-      }
-    }
-
+  it("replaces a missing cataloged key only after password recovery unlocks the existing profile", async () => {
     const api = new MemoryAccountEncryptionApi(password);
-    const provider = new LossSimulatingProvider(
-      new MemoryClientDeviceKeyBackend(),
-    );
+    const backend = new MemoryClientDeviceKeyBackend();
+    const provider = new MemoryClientDeviceKeyProvider(backend);
     const storage = {
       catalog: new MemoryInstallationCatalog(),
       provider,
@@ -997,7 +1171,29 @@ describe("durable native account encryption", () => {
       runtimePlatform: "tauri",
       service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
     });
-    provider.lost = true;
+    const installation = await storage.catalog.getInstallation();
+    const keyAlias = installationKeyAlias(installation!.installationId);
+    const originalDevice = await provider.inspect(keyAlias);
+    const originalBinding = await storage.catalog.getAccountBinding(
+      identity.serverId,
+      identity.ownerId,
+    );
+    backend.removeForTests(keyAlias);
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).resolves.toMatchObject({
+      reason: "recover-device",
+      status: "credential-required",
+    });
+    await expect(provider.inspect(keyAlias)).resolves.toBeNull();
 
     await expect(
       prepareClientEncryption({
@@ -1009,8 +1205,92 @@ describe("durable native account encryption", () => {
         runtimePlatform: "tauri",
         service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
       }),
-    ).rejects.toMatchObject({ code: "device-not-found" });
-    expect(provider.createCalls).toBe(1);
+    ).resolves.toEqual({ status: "ready" });
+    const replacement = await provider.inspect(keyAlias);
+    const replacementBinding = await storage.catalog.getAccountBinding(
+      identity.serverId,
+      identity.ownerId,
+    );
+    expect((await storage.catalog.getInstallation())?.installationId).toBe(
+      installation?.installationId,
+    );
+    expect(replacement?.keyAlias).toBe(keyAlias);
+    expect(replacement?.publicKey).not.toEqual(originalDevice?.publicKey);
+    expect(replacementBinding?.principalId).not.toBe(
+      originalBinding?.principalId,
+    );
+    expect(api.initializationAttempts).toBe(1);
+  });
+
+  it("resumes an interrupted key replacement without creating another installation", async () => {
+    class InterruptedReplacementProvider extends MemoryClientDeviceKeyProvider {
+      interrupt = true;
+
+      override async replaceMissing(
+        input: Parameters<MemoryClientDeviceKeyProvider["replaceMissing"]>[0],
+      ) {
+        const device = await super.replaceMissing(input);
+        if (this.interrupt) {
+          this.interrupt = false;
+          throw new Error("connection lost after secure key replacement");
+        }
+        return device;
+      }
+    }
+
+    const api = new MemoryAccountEncryptionApi(password);
+    const backend = new MemoryClientDeviceKeyBackend();
+    const provider = new InterruptedReplacementProvider(backend);
+    const storage = {
+      catalog: new MemoryInstallationCatalog(),
+      provider,
+    };
+    await prepareClientEncryption({
+      api,
+      authMode: "accounts",
+      durableStorage: storage,
+      identity,
+      password,
+      passwordKdf: testKdf(),
+      runtimePlatform: "tauri",
+      service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+    });
+    const installation = await storage.catalog.getInstallation();
+    const keyAlias = installationKeyAlias(installation!.installationId);
+    backend.removeForTests(keyAlias);
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        password,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).rejects.toThrow(/connection lost after secure key replacement/iu);
+    await expect(
+      storage.catalog.getMigration(`device-key-replacement-v1:${keyAlias}`),
+    ).resolves.toMatchObject({ state: "in-progress" });
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        durableStorage: storage,
+        identity,
+        password,
+        runtimePlatform: "tauri",
+        service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    expect((await storage.catalog.getInstallation())?.installationId).toBe(
+      installation?.installationId,
+    );
+    await expect(
+      storage.catalog.getMigration(`device-key-replacement-v1:${keyAlias}`),
+    ).resolves.toMatchObject({ state: "verified" });
     expect(api.initializationAttempts).toBe(1);
   });
 });

@@ -132,6 +132,7 @@ import { EliteSettings } from "./elite-settings";
 import { PolicySettings } from "./policy-settings";
 import { CodeSettings } from "./code-settings";
 import { AccountUsageSettings } from "./account-usage-settings";
+import { EncryptionRecoverySettings } from "./encryption-recovery-settings";
 import { TaskSettings } from "./task-settings";
 import {
   availableCatalogModelIds,
@@ -210,6 +211,12 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           id: "updates",
           label: "Cantrip updates",
           description: "Desktop releases, downloads, and installation.",
+        },
+        {
+          id: "anonymous-recovery",
+          label: "Anonymous recovery",
+          description: "Export the recovery file for local encrypted data.",
+          keywords: ["encryption key backup restore"],
         },
       ],
     },
@@ -1458,6 +1465,12 @@ export function SettingsPage({
         generalSearch,
         "cantrip desktop update updater version release notes download install restart",
       ));
+  const encryptionRecoveryMatches =
+    !generalSearch ||
+    matchesSearch(
+      generalSearch,
+      "anonymous recovery encryption key backup export restore file",
+    );
   const providerSectionMatches =
     !modelSearch ||
     matchesSearch(
@@ -1505,6 +1518,7 @@ export function SettingsPage({
         permissionDefaultsMatch ||
         agentNamingMatches ||
         desktopStreamingMatches ||
+        encryptionRecoveryMatches ||
         desktopUpdateMatches;
 
   useEffect(() => {
@@ -1621,6 +1635,10 @@ export function SettingsPage({
                       </div>
                     </div>
                   </section>
+                ) : null}
+
+                {section === "general" && encryptionRecoveryMatches ? (
+                  <EncryptionRecoverySettings />
                 ) : null}
 
                 {section === "general" && permissionDefaultsMatch ? (

@@ -1,4 +1,5 @@
 export * from "./associated-data.js";
+export * from "./anonymous-recovery.js";
 export * from "./attachment-content.js";
 export * from "./bytes.js";
 export * from "./communication-content.js";

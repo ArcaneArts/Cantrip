@@ -435,7 +435,7 @@ flowchart TD
 - Branch: `codex/encryption-storage-cycle8-browser-recovery`
 - Pull request: [#1549](https://github.com/ArcaneArts/Cantrip/pull/1549)
 - Commit: `5c6f19916dbd9a451767c4cedeaffc8be96feb1f`
-- Merge: pending
+- Merge: squash-merged as `88786ef14a22563eb31127188e4f681c43f9de7e`
 - Behavior implemented:
   - Added the versioned `cantrip-browser-installation` IndexedDB catalog and
     WebCrypto key provider. One immutable browser installation UUID owns one
@@ -484,7 +484,7 @@ flowchart TD
 - Migration status: implemented and verified deterministically for an actual
   released-format IndexedDB record, including stable restart unlock and legacy
   record retention.
-- Remaining work: Cycles 9–12 below.
+- Remaining work: Cycles 9–12 below at the time of merge.
 - Known risks or blockers: browser persistence remains browser-controlled.
   Account mode is recoverable after eviction; anonymous mode still requires the
   Cycle 9 artifact. No external blocker prevents the next cycle.
@@ -493,9 +493,83 @@ flowchart TD
   recovery screen restores the original encrypted account without profile
   initialization. Verify the denial path in a private/incognito context.
 
+### Cycle 9 — anonymous recovery and verified key replacement
+
+- Branch: `codex/encryption-storage-cycle9-anonymous-recovery`
+- Pull request: pending
+- Commit and merge: pending
+- Behavior implemented:
+  - Added a strict, versioned anonymous recovery artifact containing a fresh
+    256-bit recovery secret and an AES-256-GCM Account Master Key envelope
+    bound to the server, owner, profile revision, and recovery purpose. The
+    artifact contains neither a plaintext Account Master Key nor a device
+    private key.
+  - Required first-time anonymous users to save and acknowledge the recovery
+    artifact before protected application state mounts. Added later export in
+    General settings and browser/Tauri download plus Capacitor native sharing
+    with temporary-file cleanup.
+  - Added a precise anonymous recovery screen and strict import validation.
+    Matching artifacts restore the existing encryption profile; missing or
+    incorrect artifacts never initialize, replace, or reset server data.
+  - Added an explicit key-provider replacement operation that ordinary startup
+    cannot call. Password recovery or a valid anonymous artifact must first
+    unlock the existing Account Master Key before a missing cataloged native or
+    browser key can be replaced under the same installation ID and stable
+    alias.
+  - Added a deterministic recovery principal and verified grant cutover. The
+    old principal and legacy key remain intact; no recovery path revokes them.
+  - Added an idempotent replacement migration checkpoint before secure-store
+    mutation. A launch interrupted after the new secure key is written but
+    before catalog/binding commit resumes the same installation and verifies
+    the new grant instead of creating a competing profile.
+- Validation:
+  - `pnpm --filter @cantrip/protocol test` — 385 tests passed across 50 files.
+  - `pnpm --filter @cantrip/crypto test` — 37 tests passed across 15 files.
+  - `pnpm --filter @cantrip/app test` — 1,872 tests passed and 3 skipped across
+    356 files.
+  - `pnpm --filter @cantrip/app typecheck` and
+    `pnpm --filter @cantrip/app build` — passed.
+  - `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:compileDebugJavaWithJavac :app:testDebugUnitTest`
+    — passed.
+  - `xcodebuild -project cantrip_app/ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build`
+    — passed for arm64 and x86_64 simulators.
+  - `cargo fmt --manifest-path cantrip_app/src-tauri/Cargo.toml -- --check` —
+    passed.
+  - `cargo test --manifest-path cantrip_app/src-tauri/Cargo.toml installation_storage --lib`
+    — 21 tests passed.
+  - `node --test scripts/ios-native-storage.test.mjs` — passed.
+  - `node --test scripts/*.test.mjs` — 116 tests passed and the two known
+    clean-`main` baseline assertions failed for the App Platform build-command
+    fixture and tranche-two sidebar lifecycle fixture. This cycle changes
+    neither surface.
+  - `pnpm check:large-files`, changed-file Prettier validation, and
+    `git diff --check` — passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle introduced no newly reported overage.
+- Supported platforms:
+  - Tauri macOS/Windows/Linux: explicit native-key replacement is implemented
+    behind verified password or anonymous recovery. Rust catalog/provider tests
+    cover the storage contract; signed secure-store smoke tests remain manual.
+  - Capacitor iOS and Android: the native bridges implement the same explicit
+    replacement boundary and compile in their checked-in applications.
+  - Browser: WebCrypto custody supports the same verified recovery operation;
+    the recovery file remains necessary after anonymous origin storage loss.
+- Migration status: anonymous recovery, missing-key replacement, and
+  interruption resumption are implemented. Existing principals and legacy
+  records remain retained until verified cutover.
+- Remaining work: Cycles 10–12 below.
+- Known risks or blockers: the recovery file is deliberately a bearer secret;
+  losing it together with all usable anonymous device keys is unrecoverable.
+  OS secure-store behavior still needs signed physical-device/package smoke
+  tests before claiming runtime verification on every platform.
+- Manual verification: complete first-run export and recovery after deleting
+  only the installation key on packaged macOS, Windows, Linux, iOS, and Android
+  builds; clear browser storage and import the artifact; confirm the original
+  encrypted data opens and the installation ID does not change.
+
 ## Remaining cycles
 
-1. Implement anonymous recovery export/import.
-2. Add update/install compatibility harnesses and release gates.
-3. Retire obsolete defaults while retaining required legacy readers.
-4. Complete the cross-platform audit, full validation, and documentation.
+1. Add update/install compatibility harnesses and release gates.
+2. Retire obsolete defaults while retaining required legacy readers.
+3. Complete the cross-platform audit, full validation, and documentation.

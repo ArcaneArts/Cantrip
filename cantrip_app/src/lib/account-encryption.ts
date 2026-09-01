@@ -4,6 +4,7 @@ import type {
   AccountEncryptionProfileInitialize,
   AccountEncryptionProfileInitializeResult,
   AccountEncryptionProfileState,
+  AnonymousRecoveryArtifact,
   AccountPasswordEncryptionChange,
   EncryptionKeyGrant,
   EncryptionKeyGrantCreate,
@@ -31,9 +32,12 @@ import {
 } from "./encryption-api";
 import { openBrowserInstallationStorage } from "./browser-installation-storage";
 import {
+  confirmDurableAnonymousRecoveryArtifact,
   prepareDurableClientEncryption,
+  recoverDurableAnonymousClientEncryption,
   type DurableClientEncryptionStorage,
 } from "./durable-account-encryption";
+import { parseAnonymousRecoveryArtifactText } from "./anonymous-recovery-artifact";
 import { openNativeInstallationStorage } from "./native-installation-storage";
 import { detectClientRuntimePlatform } from "./runtime-platform";
 
@@ -41,6 +45,11 @@ export type ClientEncryptionCredential = "password";
 
 export type ClientEncryptionAccess =
   | { status: "ready" }
+  | {
+      artifact: AnonymousRecoveryArtifact;
+      confirmationId: string;
+      status: "recovery-artifact-required";
+    }
   | {
       credential: ClientEncryptionCredential;
       reason: "authorize-device" | "initialize" | "recover-device";
@@ -151,6 +160,47 @@ async function prepareClientEncryptionOnce(
       (runtimePlatform === "browser"
         ? await openBrowserInstallationStorage()
         : await openNativeInstallationStorage(runtimePlatform)),
+  });
+}
+
+async function runtimeDurableStorage(input: {
+  durableStorage?: DurableClientEncryptionStorage;
+  runtimePlatform?: ReturnType<typeof detectClientRuntimePlatform>;
+}): Promise<DurableClientEncryptionStorage> {
+  if (input.durableStorage) return input.durableStorage;
+  const runtimePlatform =
+    input.runtimePlatform ?? detectClientRuntimePlatform();
+  return runtimePlatform === "browser"
+    ? openBrowserInstallationStorage()
+    : openNativeInstallationStorage(runtimePlatform);
+}
+
+export async function confirmAnonymousRecoveryArtifactSaved(input: {
+  confirmationId: string;
+  durableStorage?: DurableClientEncryptionStorage;
+  runtimePlatform?: ReturnType<typeof detectClientRuntimePlatform>;
+}): Promise<void> {
+  const storage = await runtimeDurableStorage(input);
+  await confirmDurableAnonymousRecoveryArtifact({
+    catalog: storage.catalog,
+    confirmationId: input.confirmationId,
+  });
+}
+
+export async function recoverAnonymousClientEncryption(input: {
+  api?: AccountEncryptionApi;
+  artifactText: string;
+  durableStorage?: DurableClientEncryptionStorage;
+  identity: ClientEncryptionIdentity;
+  runtimePlatform?: ReturnType<typeof detectClientRuntimePlatform>;
+  service?: ClientEncryptionService;
+}): Promise<void> {
+  await recoverDurableAnonymousClientEncryption({
+    api: input.api ?? defaultApi,
+    artifact: parseAnonymousRecoveryArtifactText(input.artifactText),
+    identity: input.identity,
+    service: input.service ?? clientEncryption,
+    storage: await runtimeDurableStorage(input),
   });
 }
 

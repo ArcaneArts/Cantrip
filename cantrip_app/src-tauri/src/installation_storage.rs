@@ -132,6 +132,9 @@ enum NativeCatalogOperation {
     PutDeviceKey {
         device_key: NativeInstallationDeviceKey,
     },
+    ReplaceDeviceKey {
+        device_key: NativeInstallationDeviceKey,
+    },
     PutMigration {
         migration: NativeInstallationMigration,
     },
@@ -214,7 +217,7 @@ impl Serialize for SensitiveBytes {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeDeviceKeyCreateInput {
     created_at: Option<String>,
@@ -430,7 +433,10 @@ impl NativeInstallationStorage {
                     .map_err(|_| "installation-catalog-unavailable".to_owned())?;
                 Ok(())
             }
-            NativeCatalogOperation::PutDeviceKey { device_key } => {
+            NativeCatalogOperation::PutDeviceKey { device_key }
+            | NativeCatalogOperation::ReplaceDeviceKey { device_key } => {
+                let replacing =
+                    matches!(operation, NativeCatalogOperation::ReplaceDeviceKey { .. });
                 validate_device_key(transaction, device_key)?;
                 let descriptor = self
                     .inspect_key_unlocked(&device_key.key_alias)?
@@ -465,18 +471,24 @@ impl NativeInstallationStorage {
                     let public_key: NativeEncryptionPublicKey =
                         serde_json::from_str(&public_key)
                             .map_err(|_| "installation-catalog-corrupt".to_owned())?;
-                    if created_at != device_key.created_at
-                        || installation_id != device_key.installation_id
+                    if installation_id != device_key.installation_id
                         || provider != device_key.provider
-                        || public_key != device_key.public_key
                         || version != device_key.version
+                        || (!replacing
+                            && (created_at != device_key.created_at
+                                || public_key != device_key.public_key))
                     {
                         return Err("native-device-key-metadata-mismatch".to_owned());
                     }
                 }
+                let statement = if replacing {
+                    "INSERT INTO device_key (key_alias, installation_id, public_key_json, provider, created_at, status, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(key_alias) DO UPDATE SET public_key_json = excluded.public_key_json, created_at = excluded.created_at, status = excluded.status"
+                } else {
+                    "INSERT INTO device_key (key_alias, installation_id, public_key_json, provider, created_at, status, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(key_alias) DO UPDATE SET status = excluded.status"
+                };
                 transaction
                     .execute(
-                        "INSERT INTO device_key (key_alias, installation_id, public_key_json, provider, created_at, status, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(key_alias) DO UPDATE SET status = excluded.status",
+                        statement,
                         params![
                             device_key.key_alias,
                             device_key.installation_id,
@@ -516,6 +528,21 @@ impl NativeInstallationStorage {
     fn create_key(
         &self,
         input: NativeDeviceKeyCreateInput,
+    ) -> Result<NativeDeviceKeyDescriptor, String> {
+        self.create_key_internal(input, false)
+    }
+
+    fn replace_missing_key(
+        &self,
+        input: NativeDeviceKeyCreateInput,
+    ) -> Result<NativeDeviceKeyDescriptor, String> {
+        self.create_key_internal(input, true)
+    }
+
+    fn create_key_internal(
+        &self,
+        input: NativeDeviceKeyCreateInput,
+        replace_missing: bool,
     ) -> Result<NativeDeviceKeyDescriptor, String> {
         validate_installation_id(&input.installation_id)?;
         if input.key_alias != installation_key_alias(&input.installation_id) {
@@ -557,7 +584,10 @@ impl NativeInstallationStorage {
                 |row| row.get(0),
             )
             .map_err(|_| "installation-catalog-corrupt".to_owned())?;
-        if catalog_key_exists {
+        if catalog_key_exists && !replace_missing {
+            return Err("native-device-key-missing".to_owned());
+        }
+        if !catalog_key_exists && replace_missing {
             return Err("native-device-key-missing".to_owned());
         }
 
@@ -713,6 +743,15 @@ pub async fn create_native_installation_key(
 ) -> Result<NativeDeviceKeyDescriptor, NativeInstallationStorageError> {
     let storage = Arc::clone(storage.inner());
     run_blocking(move || storage.create_key(input)).await
+}
+
+#[tauri::command]
+pub async fn replace_missing_native_installation_key(
+    input: NativeDeviceKeyCreateInput,
+    storage: State<'_, Arc<NativeInstallationStorage>>,
+) -> Result<NativeDeviceKeyDescriptor, NativeInstallationStorageError> {
+    let storage = Arc::clone(storage.inner());
+    run_blocking(move || storage.replace_missing_key(input)).await
 }
 
 #[tauri::command]
@@ -1395,13 +1434,23 @@ mod tests {
     }
 
     fn test_storage() -> (tempfile::TempDir, NativeInstallationStorage) {
+        let (directory, storage, _) = test_storage_with_secrets();
+        (directory, storage)
+    }
+
+    fn test_storage_with_secrets() -> (
+        tempfile::TempDir,
+        NativeInstallationStorage,
+        Arc<MemorySecretStore>,
+    ) {
         let directory = tempdir().expect("temp directory");
+        let secrets = Arc::new(MemorySecretStore::default());
         let storage = NativeInstallationStorage::open(
             directory.path().join("installation/v1/catalog.sqlite3"),
-            Arc::new(MemorySecretStore::default()),
+            secrets.clone(),
         )
         .expect("storage");
-        (directory, storage)
+        (directory, storage, secrets)
     }
 
     fn profile() -> NativeInstallationProfile {
@@ -1527,6 +1576,55 @@ mod tests {
             .expect("store metadata");
         assert_eq!(snapshot.device_keys.len(), 1);
         assert_eq!(snapshot.device_keys[0].public_key, first.public_key);
+    }
+
+    #[test]
+    fn cataloged_missing_key_requires_explicit_replacement() {
+        let (_directory, storage, secrets) = test_storage_with_secrets();
+        create_profile(&storage);
+        let original = create_key_and_metadata(&storage);
+        secrets.remove(&original.key_alias);
+
+        let input = NativeDeviceKeyCreateInput {
+            created_at: Some("2026-08-31T20:00:02.000Z".to_owned()),
+            installation_id: original.installation_id.clone(),
+            key_alias: original.key_alias.clone(),
+        };
+        assert_eq!(
+            storage
+                .create_key(input.clone())
+                .expect_err("normal creation must fail closed"),
+            "native-device-key-missing"
+        );
+        let replacement = storage
+            .replace_missing_key(input.clone())
+            .expect("explicit replacement");
+        assert_eq!(replacement.installation_id, original.installation_id);
+        assert_eq!(replacement.key_alias, original.key_alias);
+        assert_ne!(replacement.public_key, original.public_key);
+        let snapshot = storage
+            .apply_transaction(NativeCatalogTransactionRequest {
+                expected_revision: 2,
+                operations: vec![NativeCatalogOperation::ReplaceDeviceKey {
+                    device_key: NativeInstallationDeviceKey {
+                        created_at: replacement.created_at.clone(),
+                        installation_id: replacement.installation_id.clone(),
+                        key_alias: replacement.key_alias.clone(),
+                        provider: replacement.provider.to_owned(),
+                        public_key: replacement.public_key.clone(),
+                        status: "active".to_owned(),
+                        version: 1,
+                    },
+                }],
+            })
+            .expect("replace catalog metadata");
+        assert_eq!(snapshot.device_keys[0].public_key, replacement.public_key);
+        assert_eq!(
+            storage
+                .replace_missing_key(input)
+                .expect("replacement is idempotent"),
+            replacement
+        );
     }
 
     #[test]

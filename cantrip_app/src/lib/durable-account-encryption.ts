@@ -9,6 +9,7 @@ import type { AuthMode } from "@cantrip/protocol";
 import type {
   AccountEncryptionProfile,
   AccountEncryptionProfileInitializeResult,
+  AnonymousRecoveryArtifact,
   EncryptionKeyGrant,
   EncryptionPrincipal,
   EncryptedPayloadEnvelope,
@@ -78,6 +79,7 @@ type NativeInstallation = {
   deviceMetadata: InstallationDeviceKey | null;
   keyAlias: string;
   profile: InstallationProfile;
+  replacementPending: boolean;
 };
 
 type NativeAuthorization = {
@@ -165,20 +167,9 @@ function formatUuid(bytes: Uint8Array): string {
   ].join("-");
 }
 
-/** Stable UUIDv5 for one installation's binding to one server account. */
-export async function installationBindingPrincipalId(input: {
-  identity: ClientEncryptionIdentity;
-  installationId: string;
-}): Promise<string> {
+async function stableBindingPrincipalId(parts: unknown[]): Promise<string> {
   const namespace = uuidBytes(bindingPrincipalNamespace);
-  const name = new TextEncoder().encode(
-    JSON.stringify([
-      "cantrip-installation-binding-v1",
-      input.installationId,
-      input.identity.serverId,
-      input.identity.ownerId,
-    ]),
-  );
+  const name = new TextEncoder().encode(JSON.stringify(parts));
   const source = new Uint8Array(namespace.byteLength + name.byteLength);
   source.set(namespace);
   source.set(name, namespace.byteLength);
@@ -189,6 +180,33 @@ export async function installationBindingPrincipalId(input: {
   source.fill(0);
   digest.fill(0);
   return formatUuid(uuid);
+}
+
+/** Stable UUIDv5 for one installation's initial binding to one server account. */
+export function installationBindingPrincipalId(input: {
+  identity: ClientEncryptionIdentity;
+  installationId: string;
+}): Promise<string> {
+  return stableBindingPrincipalId([
+    "cantrip-installation-binding-v1",
+    input.installationId,
+    input.identity.serverId,
+    input.identity.ownerId,
+  ]);
+}
+
+/** Stable UUIDv5 for an explicitly recovered replacement installation key. */
+function installationReplacementPrincipalId(input: {
+  device: ClientDeviceKeyDescriptor;
+  identity: ClientEncryptionIdentity;
+}): Promise<string> {
+  return stableBindingPrincipalId([
+    "cantrip-installation-binding-replacement-v1",
+    input.device.installationId,
+    input.identity.serverId,
+    input.identity.ownerId,
+    input.device.publicKey.value,
+  ]);
 }
 
 async function createInstallation(
@@ -236,7 +254,13 @@ async function locateNativeDevice(
   const metadata = await storage.catalog.getDeviceKey(keyAlias);
   let device = await storage.provider.inspect(keyAlias);
   if (metadata && !device) {
-    return { device: null, deviceMetadata: metadata, keyAlias, profile };
+    return {
+      device: null,
+      deviceMetadata: metadata,
+      keyAlias,
+      profile,
+      replacementPending: false,
+    };
   }
   if (!device && allowCreate) {
     device = await storage.provider.create({
@@ -245,18 +269,42 @@ async function locateNativeDevice(
     });
   }
   if (!device) {
-    return { device: null, deviceMetadata: metadata, keyAlias, profile };
+    return {
+      device: null,
+      deviceMetadata: metadata,
+      keyAlias,
+      profile,
+      replacementPending: false,
+    };
   }
-  if (
+  const structuralMismatch =
     device.installationId !== profile.installationId ||
     device.keyAlias !== keyAlias ||
     device.provider !== storage.provider.backend ||
     (metadata &&
       (metadata.installationId !== device.installationId ||
         metadata.provider !== device.provider ||
-        !publicKeysMatch(metadata.publicKey, device.publicKey) ||
-        metadata.status !== "active"))
-  ) {
+        metadata.status !== "active" ||
+        metadata.version !== installationDeviceKeyVersion));
+  if (structuralMismatch) {
+    throw new ClientEncryptionError(
+      "identity-mismatch",
+      "The native installation key conflicts with its catalog metadata.",
+    );
+  }
+  const descriptorMismatch =
+    metadata &&
+    (metadata.createdAt !== device.createdAt ||
+      !publicKeysMatch(metadata.publicKey, device.publicKey));
+  const replacementPending = Boolean(
+    descriptorMismatch &&
+    (
+      await storage.catalog.getMigration(
+        deviceKeyReplacementMigrationId(keyAlias),
+      )
+    )?.state === "in-progress",
+  );
+  if (descriptorMismatch && !replacementPending) {
     throw new ClientEncryptionError(
       "identity-mismatch",
       "The native installation key conflicts with its catalog metadata.",
@@ -268,7 +316,108 @@ async function locateNativeDevice(
       transaction.putDeviceKey(stored),
     );
   }
-  return { device, deviceMetadata: stored, keyAlias, profile };
+  return {
+    device,
+    deviceMetadata: stored,
+    keyAlias,
+    profile,
+    replacementPending,
+  };
+}
+
+function deviceKeyReplacementMigrationId(keyAlias: string): string {
+  return `device-key-replacement-v1:${keyAlias}`;
+}
+
+async function markDeviceKeyReplacement(input: {
+  catalog: InstallationCatalog;
+  keyAlias: string;
+  verificationState: string;
+}): Promise<InstallationMigration> {
+  const migrationId = deviceKeyReplacementMigrationId(input.keyAlias);
+  return input.catalog.transaction(async (transaction) => {
+    const existing = await transaction.getMigration(migrationId);
+    const migration: InstallationMigration = {
+      completedAt: null,
+      migrationId,
+      startedAt: existing?.startedAt ?? new Date().toISOString(),
+      state: "in-progress",
+      verificationState: input.verificationState,
+    };
+    await transaction.putMigration(migration);
+    return migration;
+  });
+}
+
+async function catalogReplacementDevice(input: {
+  device: ClientDeviceKeyDescriptor;
+  storage: DurableClientEncryptionStorage;
+}): Promise<void> {
+  const migration = await markDeviceKeyReplacement({
+    catalog: input.storage.catalog,
+    keyAlias: input.device.keyAlias,
+    verificationState: "recovery-authorized-before-catalog-update-v1",
+  });
+  await input.storage.catalog.transaction(async (transaction) => {
+    await transaction.replaceDeviceKey(deviceMetadata(input.device));
+    await transaction.putMigration({
+      ...migration,
+      verificationState: "replacement-key-cataloged-awaiting-grant-v1",
+    });
+  });
+}
+
+async function completedDeviceKeyReplacement(input: {
+  catalog: InstallationCatalog;
+  keyAlias: string;
+}): Promise<InstallationMigration> {
+  const migrationId = deviceKeyReplacementMigrationId(input.keyAlias);
+  const existing = await input.catalog.getMigration(migrationId);
+  if (!existing || existing.state !== "in-progress") {
+    throw new ClientEncryptionError(
+      "identity-mismatch",
+      "The installation key replacement checkpoint is missing.",
+    );
+  }
+  return {
+    ...existing,
+    completedAt: new Date().toISOString(),
+    state: "verified",
+    verificationState: "replacement-grant-unwrapped-and-verified-v1",
+  };
+}
+
+async function replaceMissingInstallationDevice(input: {
+  native: NativeInstallation;
+  storage: DurableClientEncryptionStorage;
+}): Promise<ClientDeviceKeyDescriptor> {
+  if (!input.native.deviceMetadata) {
+    throw new ClientEncryptionError(
+      "device-not-found",
+      "No cataloged installation key is available to recover.",
+    );
+  }
+  await markDeviceKeyReplacement({
+    catalog: input.storage.catalog,
+    keyAlias: input.native.keyAlias,
+    verificationState: "recovery-authorized-before-key-replacement-v1",
+  });
+  const device = await input.storage.provider.replaceMissing({
+    installationId: input.native.profile.installationId,
+    keyAlias: input.native.keyAlias,
+  });
+  if (
+    device.installationId !== input.native.profile.installationId ||
+    device.keyAlias !== input.native.keyAlias ||
+    device.provider !== input.storage.provider.backend
+  ) {
+    throw new ClientEncryptionError(
+      "identity-mismatch",
+      "The replacement installation key conflicts with the stable installation profile.",
+    );
+  }
+  await catalogReplacementDevice({ device, storage: input.storage });
+  return device;
 }
 
 async function reconcilePrincipal(input: {
@@ -432,13 +581,23 @@ async function commitBinding(
   catalog: InstallationCatalog,
   binding: InstallationAccountBinding,
   migration?: InstallationMigration,
+  allowVerifiedPrincipalReplacement = false,
 ): Promise<void> {
   await catalog.transaction(async (transaction) => {
     const existing = await transaction.getAccountBinding(
       binding.serverId,
       binding.ownerId,
     );
-    if (existing && !bindingIdentityMatches(existing, binding)) {
+    if (
+      existing &&
+      !bindingIdentityMatches(existing, binding) &&
+      !(
+        allowVerifiedPrincipalReplacement &&
+        existing.serverId === binding.serverId &&
+        existing.ownerId === binding.ownerId &&
+        existing.keyAlias === binding.keyAlias
+      )
+    ) {
       throw new ClientEncryptionError(
         "identity-mismatch",
         "The installation catalog contains a conflicting account binding.",
@@ -477,10 +636,7 @@ async function findNativeAuthorization(input: {
   );
   if (!principal || principal.state !== "approved") return null;
   if (!publicKeysMatch(principal.publicKey, input.device.publicKey)) {
-    throw new ClientEncryptionError(
-      "identity-mismatch",
-      "The stored installation binding conflicts with its server principal.",
-    );
+    return null;
   }
   const grant = activeMasterKeyGrant(
     await input.api.listGrants(principal.id),
@@ -709,9 +865,10 @@ async function migrateLegacyDevice(input: {
 
 async function recoverAccount(input: {
   api: AccountEncryptionApi;
-  device: ClientDeviceKeyDescriptor;
+  device: ClientDeviceKeyDescriptor | null;
   identity: ClientEncryptionIdentity;
   keyAlias: string;
+  native?: NativeInstallation;
   password: string;
   principalId: string;
   profile: AccountEncryptionProfile;
@@ -730,9 +887,38 @@ async function recoverAccount(input: {
     password: input.password,
     wrapper: input.profile.passwordWrappedMasterKey,
   });
-  const authorization = await provisionNativeAuthorization(input);
+  const device =
+    input.device ??
+    (input.native
+      ? await replaceMissingInstallationDevice({
+          native: input.native,
+          storage: input.storage,
+        })
+      : null);
+  if (!device) {
+    throw new ClientEncryptionError(
+      "device-not-found",
+      "The installation key could not be recovered.",
+    );
+  }
+  const replaced =
+    input.device === null || Boolean(input.native?.replacementPending);
+  if (input.native?.replacementPending) {
+    await catalogReplacementDevice({ device, storage: input.storage });
+  }
+  const principalId = replaced
+    ? await installationReplacementPrincipalId({
+        device,
+        identity: input.identity,
+      })
+    : input.principalId;
+  const authorization = await provisionNativeAuthorization({
+    ...input,
+    device,
+    principalId,
+  });
   await input.service.unlockWithKeyProvider({
-    device: input.device,
+    device,
     grant: authorization.grant,
     identity: input.identity,
     principal: authorization.principal,
@@ -744,7 +930,17 @@ async function recoverAccount(input: {
     identity: input.identity,
     keyAlias: input.keyAlias,
   });
-  await commitBinding(input.storage.catalog, binding);
+  await commitBinding(
+    input.storage.catalog,
+    binding,
+    replaced
+      ? await completedDeviceKeyReplacement({
+          catalog: input.storage.catalog,
+          keyAlias: device.keyAlias,
+        })
+      : undefined,
+    replaced,
+  );
   return binding;
 }
 
@@ -890,6 +1086,182 @@ function recoveryAccess(
   return { message: messages[reason], reason, status: "recovery-required" };
 }
 
+function anonymousRecoveryId(principalId: string): string {
+  return `anonymous-recovery-v1:${principalId}`;
+}
+
+async function prepareAnonymousRecoveryArtifact(input: {
+  authMode: AuthMode;
+  catalog: InstallationCatalog;
+  identity: ClientEncryptionIdentity;
+  principalId: string;
+  service: ClientEncryptionService;
+}): Promise<ClientEncryptionAccess> {
+  if (input.authMode !== "none") return { status: "ready" };
+  const confirmationId = anonymousRecoveryId(input.principalId);
+  const existing = await input.catalog.getMigration(confirmationId);
+  if (existing?.state === "verified") return { status: "ready" };
+  if (!existing) {
+    await input.catalog.transaction(async (transaction) => {
+      const concurrent = await transaction.getMigration(confirmationId);
+      if (concurrent) return;
+      await transaction.putMigration({
+        completedAt: null,
+        migrationId: confirmationId,
+        startedAt: new Date().toISOString(),
+        state: "pending",
+        verificationState: "recovery-artifact-save-required-v1",
+      });
+    });
+  }
+  return {
+    artifact: await input.service.createAnonymousRecoveryArtifact(
+      input.identity,
+    ),
+    confirmationId,
+    status: "recovery-artifact-required",
+  };
+}
+
+export async function confirmDurableAnonymousRecoveryArtifact(input: {
+  catalog: InstallationCatalog;
+  confirmationId: string;
+}): Promise<void> {
+  if (!input.confirmationId.startsWith("anonymous-recovery-v1:")) {
+    throw new ClientEncryptionError(
+      "recovery-artifact-invalid",
+      "The anonymous recovery confirmation is invalid.",
+    );
+  }
+  await input.catalog.transaction(async (transaction) => {
+    const recovery = await transaction.getMigration(input.confirmationId);
+    if (!recovery) {
+      throw new ClientEncryptionError(
+        "recovery-artifact-invalid",
+        "The anonymous recovery setup is not pending.",
+      );
+    }
+    if (recovery.state === "verified") return;
+    await transaction.putMigration({
+      ...recovery,
+      completedAt: new Date().toISOString(),
+      state: "verified",
+      verificationState: "recovery-artifact-save-confirmed-v1",
+    });
+  });
+}
+
+export async function recoverDurableAnonymousClientEncryption(input: {
+  api: AccountEncryptionApi;
+  artifact: AnonymousRecoveryArtifact;
+  identity: ClientEncryptionIdentity;
+  service: ClientEncryptionService;
+  storage: DurableClientEncryptionStorage;
+}): Promise<void> {
+  if (
+    input.artifact.serverId !== input.identity.serverId ||
+    input.artifact.ownerId !== input.identity.ownerId
+  ) {
+    throw new ClientEncryptionError(
+      "identity-mismatch",
+      "The anonymous recovery file belongs to another server or account.",
+    );
+  }
+  const serverProfile = await input.api.getProfile();
+  if (serverProfile.status !== "initialized") {
+    throw new ClientEncryptionError(
+      "recovery-artifact-invalid",
+      "The server does not have an anonymous encryption profile to recover.",
+    );
+  }
+  if (serverProfile.profile.passwordWrappedMasterKey) {
+    throw new ClientEncryptionError(
+      "recovery-artifact-invalid",
+      "Account profiles must use password-based device recovery.",
+    );
+  }
+  if (
+    input.artifact.masterKeyRevision !==
+    serverProfile.profile.activeMasterKeyRevision
+  ) {
+    throw new ClientEncryptionError(
+      "recovery-artifact-invalid",
+      "The anonymous recovery file targets another encryption revision.",
+    );
+  }
+
+  const profile = await createInstallation(input.storage.catalog);
+  const native = await locateNativeDevice(input.storage, profile, true);
+  await input.service.unlockWithAnonymousRecoveryArtifact({
+    artifact: input.artifact,
+    identity: input.identity,
+  });
+  const device =
+    native.device ??
+    (await replaceMissingInstallationDevice({
+      native,
+      storage: input.storage,
+    }));
+  const replaced = native.device === null || native.replacementPending;
+  if (native.replacementPending) {
+    await catalogReplacementDevice({ device, storage: input.storage });
+  }
+  const principalId = replaced
+    ? await installationReplacementPrincipalId({
+        device,
+        identity: input.identity,
+      })
+    : await installationBindingPrincipalId({
+        identity: input.identity,
+        installationId: profile.installationId,
+      });
+  const authorization = await provisionNativeAuthorization({
+    ...input,
+    device,
+    principalId,
+  });
+  await input.service.unlockWithKeyProvider({
+    device,
+    grant: authorization.grant,
+    identity: input.identity,
+    principal: authorization.principal,
+    provider: input.storage.provider,
+    verifyCurrentMasterKey: true,
+  });
+  await commitBinding(
+    input.storage.catalog,
+    bindingRecord({
+      authorization,
+      identity: input.identity,
+      keyAlias: native.keyAlias,
+    }),
+    replaced
+      ? await completedDeviceKeyReplacement({
+          catalog: input.storage.catalog,
+          keyAlias: device.keyAlias,
+        })
+      : {
+          completedAt: new Date().toISOString(),
+          migrationId: anonymousRecoveryId(principalId),
+          startedAt: new Date().toISOString(),
+          state: "verified",
+          verificationState: "recovery-artifact-imported-and-grant-verified-v1",
+        },
+    replaced,
+  );
+  if (replaced) {
+    await input.storage.catalog.transaction((transaction) =>
+      transaction.putMigration({
+        completedAt: new Date().toISOString(),
+        migrationId: anonymousRecoveryId(principalId),
+        startedAt: new Date().toISOString(),
+        state: "verified",
+        verificationState: "recovery-artifact-imported-and-grant-verified-v1",
+      }),
+    );
+  }
+}
+
 export async function prepareDurableClientEncryption(
   input: PrepareDurableClientEncryptionInput,
 ): Promise<ClientEncryptionAccess> {
@@ -939,7 +1311,13 @@ export async function prepareDurableClientEncryption(
         installationId: profile.installationId,
         type: "profile-initialized",
       });
-      return { status: "ready" };
+      return prepareAnonymousRecoveryArtifact({
+        authMode: input.authMode,
+        catalog: input.storage.catalog,
+        identity: input.identity,
+        principalId,
+        service: input.service,
+      });
     }
 
     const activeRevision = serverProfile.profile.activeMasterKeyRevision;
@@ -955,18 +1333,10 @@ export async function prepareDurableClientEncryption(
         : { status: "missing", type: "device-key-loaded" },
     );
 
-    const localBinding = native.device
-      ? await input.storage.catalog.getAccountBinding(
-          input.identity.serverId,
-          input.identity.ownerId,
-        )
-      : null;
-    if (localBinding && localBinding.principalId !== principalId) {
-      throw new ClientEncryptionError(
-        "identity-mismatch",
-        "The installation catalog contains a noncanonical account binding.",
-      );
-    }
+    const localBinding = await input.storage.catalog.getAccountBinding(
+      input.identity.serverId,
+      input.identity.ownerId,
+    );
     const nativeAuthorization =
       native.device && localBinding
         ? await findNativeAuthorization({
@@ -1006,7 +1376,13 @@ export async function prepareDurableClientEncryption(
         installationId: profile.installationId,
         type: "device-unlocked",
       });
-      return { status: "ready" };
+      return prepareAnonymousRecoveryArtifact({
+        authMode: input.authMode,
+        catalog: input.storage.catalog,
+        identity: input.identity,
+        principalId: currentBinding.principalId,
+        service: input.service,
+      });
     }
     if (native.device) {
       startup.emit({ status: "missing", type: "binding-loaded" });
@@ -1044,7 +1420,13 @@ export async function prepareDurableClientEncryption(
         installationId: profile.installationId,
         type: "migration-completed",
       });
-      return { status: "ready" };
+      return prepareAnonymousRecoveryArtifact({
+        authMode: input.authMode,
+        catalog: input.storage.catalog,
+        identity: input.identity,
+        principalId,
+        service: input.service,
+      });
     }
 
     if (input.authMode === "none") {
@@ -1069,16 +1451,11 @@ export async function prepareDurableClientEncryption(
       };
     }
     startup.emit({ type: "credential-submitted" });
-    if (!native.device) {
-      throw new ClientEncryptionError(
-        "device-not-found",
-        "The operating system installation key is missing. Cantrip preserved the catalog and did not replace it.",
-      );
-    }
     const binding = await recoverAccount({
       ...input,
       device: native.device,
       keyAlias,
+      native,
       password: input.password,
       principalId,
       profile: serverProfile.profile,
