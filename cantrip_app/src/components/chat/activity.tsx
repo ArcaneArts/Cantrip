@@ -293,6 +293,16 @@ function summaryKindLabel(kind: ActivitySummaryKind, count: number): string {
 }
 
 export function activityGroupSummary(activities: AgentActivity[]): string {
+  if (activities.length === 1) {
+    const [activity] = activities;
+    if (
+      activity?.type === "mcpToolCall" ||
+      activity?.type === "dynamicToolCall"
+    ) {
+      return `Used ${activityLabel(activity).replace(/^(?:MCP|Tool) · /u, "")}`;
+    }
+  }
+
   const counts = new Map<ActivitySummaryKind, number>();
   for (const activity of activities) {
     const kind = activitySummaryKind(activity);

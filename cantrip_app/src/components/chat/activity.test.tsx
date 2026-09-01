@@ -261,6 +261,21 @@ describe("rich Codex activity", () => {
     expect(running.match(/chat-working-shimmer/gu)).toHaveLength(1);
     expect(running).toContain('data-turn-key="legacy:user-1"');
     expect(running).not.toContain("git status --short");
+
+    const completedTool = { ...runningTool, status: "completed" } as const;
+    const completedToolMarkup = renderToStaticMarkup(
+      <ActivityGroup
+        active={false}
+        activities={[completedTool]}
+        turnId="turn-2"
+        turnKey="runtime:turn-2"
+      />,
+    );
+    expect(activityGroupSummary([completedTool])).toBe(
+      "Used github/search_issues",
+    );
+    expect(completedToolMarkup).toContain("Used github/search_issues");
+    expect(completedToolMarkup).not.toContain("Used a tool");
   });
 
   it("shows the latest syntax-highlighted file preview in a collapsed live group", () => {

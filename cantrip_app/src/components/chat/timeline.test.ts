@@ -121,6 +121,37 @@ describe("chat activity timeline", () => {
     );
   });
 
+  it("keeps the latest completed tool visible while the turn continues", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect the project" },
+      ]),
+      message("tool", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "mcpToolCall",
+            id: "tool-1",
+            status: "completed",
+            server: "cantrip",
+            tool: "context_get",
+            error: null,
+            durationMs: 120,
+          },
+        },
+      ]),
+    ]);
+
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      kind: "tool",
+      endedAt: null,
+    });
+    expect(findLatestLiveActivityGroupKey(timeline)).toBe(
+      timeline[1]?.type === "activityGroup" ? timeline[1].key : null,
+    );
+  });
+
   it("breaks active context compaction out into its own inline row", () => {
     const timeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [

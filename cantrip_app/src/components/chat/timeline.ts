@@ -39,16 +39,16 @@ export function findLatestLiveActivityGroupKey(
 ): string | null {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (
-      entry?.type === "activityGroup" &&
-      entry.endedAt === null &&
-      entry.messages.some((message) =>
-        message.content.some(
-          (item) =>
-            item.type === "activity" && item.activity.status === "running",
-        ),
-      )
-    ) {
+    if (entry?.type !== "activityGroup" || entry.endedAt !== null) continue;
+    const groupActivities = entry.messages.flatMap(messageActivities);
+    const latestActivity = groupActivities.at(-1);
+    const hasRunningActivity = groupActivities.some(
+      (activity) => activity.status === "running",
+    );
+    const latestActivityNamesTool =
+      latestActivity?.type === "mcpToolCall" ||
+      latestActivity?.type === "dynamicToolCall";
+    if (hasRunningActivity || latestActivityNamesTool) {
       return entry.key;
     }
   }
