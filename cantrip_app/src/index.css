@@ -311,6 +311,73 @@
   }
 }
 
+/* Content gutters are opt-in. The marked panes keep their current edge-to-edge
+   layout until the app-shell preference class is present. Padding grows only
+   after a pane exceeds its comfortable reading width, keeping narrow layouts
+   unchanged and the pane's scrollbar at the viewport edge. */
+[data-content-gutter] {
+  --content-gutter-max: 72rem;
+  --content-gutter-min: 1rem;
+}
+
+[data-content-gutter="chat"] {
+  --content-gutter-max: 48rem;
+}
+
+[data-content-gutter="markdown"] {
+  --content-gutter-max: 56rem;
+}
+
+[data-content-gutter="wide"] {
+  --content-gutter-max: 80rem;
+}
+
+[data-content-gutter="roomy"] {
+  --content-gutter-min: 1.25rem;
+}
+
+[data-content-gutter="expansive"] {
+  --content-gutter-max: 96rem;
+}
+
+.content-gutters [data-content-gutter] {
+  padding-inline: max(
+    var(--content-gutter-min),
+    calc((100% - var(--content-gutter-max)) / 2)
+  );
+}
+
+@media (min-width: 640px) {
+  .content-gutters [data-content-gutter] {
+    --content-gutter-min: 1.5rem;
+  }
+
+  .content-gutters [data-content-gutter="markdown"] {
+    --content-gutter-min: 2.5rem;
+  }
+
+  .content-gutters [data-content-gutter="roomy"] {
+    --content-gutter-min: 2rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .content-gutters [data-content-gutter="chat"] {
+    --content-gutter-min: 2.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .content-gutters [data-content-gutter] {
+    --content-gutter-min: 2rem;
+  }
+
+  .content-gutters [data-content-gutter="chat"],
+  .content-gutters [data-content-gutter="markdown"] {
+    --content-gutter-min: 2.5rem;
+  }
+}
+
 /* The native window owns the Pro Mode tint. Structural surfaces and controls
    stay transparent so nested backgrounds never compound the configured
    opacity. Selection, card, and alternating-row tokens remain lightly tinted

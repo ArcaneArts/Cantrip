@@ -1745,6 +1745,7 @@ describe("local server foundation", () => {
       highContrast: false,
       proMode: false,
       proModeOpacity: 80,
+      contentGutters: false,
       eliteMode: true,
       eliteRevealConfig: {
         glitchCountMax: 8,
@@ -1879,6 +1880,7 @@ describe("local server foundation", () => {
             highContrast: true,
             proMode: true,
             proModeOpacity: 64,
+            contentGutters: true,
             eliteMode: true,
             eliteRevealConfig: {
               glitchCountMax: 2,
@@ -1915,6 +1917,7 @@ describe("local server foundation", () => {
       highContrast: true,
       proMode: true,
       proModeOpacity: 64,
+      contentGutters: true,
       eliteMode: true,
       eliteRevealConfig: {
         glitchCountMax: 2,
@@ -6490,6 +6493,7 @@ describe("local server foundation", () => {
       highContrast: true,
       proMode: true,
       proModeOpacity: 64,
+      contentGutters: true,
       eliteMode: true,
       eliteRevealConfig: {
         glitchCountMax: 2,

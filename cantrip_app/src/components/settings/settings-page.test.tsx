@@ -30,6 +30,24 @@ function renderSettings(
   );
 }
 
+function settingsWithContentGutters(contentGutters: boolean): SettingsBundle {
+  return settingsBundleSchema.parse({
+    preferences: {
+      theme: "system",
+      highContrast: false,
+      proMode: false,
+      proModeOpacity: 80,
+      contentGutters,
+      sidebarWidth: 288,
+      desktopFrameRate: 30,
+      desktopStreamQuality: "adaptive",
+      defaultModelId: null,
+    },
+    providers: [],
+    models: [],
+  });
+}
+
 describe("account settings", () => {
   it("opens Pro Mode configuration without letting a secondary click toggle it", async () => {
     const configured: boolean[] = [];
@@ -191,6 +209,23 @@ describe("account settings", () => {
     );
     expect(markup).toContain('<option value="light">Light</option>');
     expect(markup).toContain('<option value="dark">Dark</option>');
+  });
+
+  it("keeps content gutters off by default and exposes them in General", () => {
+    const disabled = renderSettings("general");
+    const enabled = renderSettings("general", settingsWithContentGutters(true));
+
+    expect(disabled).toContain('aria-label="Content gutters"');
+    expect(disabled).not.toContain(
+      'aria-label="Content gutters" type="checkbox" class="size-3.5 accent-primary" checked=""',
+    );
+    expect(enabled).toContain(
+      'aria-label="Content gutters" type="checkbox" class="size-3.5 accent-primary" checked=""',
+    );
+    expect(enabled).toContain('data-content-gutter="standard"');
+    expect(
+      renderSettings("code", settingsWithContentGutters(true)),
+    ).not.toContain('data-content-gutter="standard"');
   });
 
   it("keeps random agent names disabled by default", () => {

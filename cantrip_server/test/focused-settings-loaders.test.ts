@@ -79,9 +79,18 @@ describe("focused settings loaders", () => {
       const preferences = await repository.getUserSettings(LOCAL_USER_ID);
 
       expect(preferences).toEqual(aggregate.preferences);
+      expect(preferences.contentGutters).toBe(false);
       expect(queries).toHaveLength(1);
       expect(queries[0]).not.toContain("token_usage_records");
       expect(aggregateQueryCount).toBe(9);
+
+      await repository.updateSettings(LOCAL_USER_ID, {
+        contentGutters: true,
+      });
+      await repository.updateSettings(LOCAL_USER_ID, { theme: "dark" });
+      await expect(
+        repository.getUserSettings(LOCAL_USER_ID),
+      ).resolves.toMatchObject({ contentGutters: true, theme: "dark" });
 
       const focusedModelId = preferences.defaultModelId;
       const aggregateModelId = aggregate.preferences.defaultModelId;

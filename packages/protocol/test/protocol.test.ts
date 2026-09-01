@@ -597,6 +597,7 @@ describe("model catalog protocol", () => {
       weeklyUsageReservePercent: 3,
       accounts: [],
     });
+    expect(parsed.preferences.contentGutters).toBe(false);
     expect(parsed.models[0]).toMatchObject({
       canonicalModelId: null,
       discoveryManaged: false,
@@ -5849,6 +5850,9 @@ describe("Cantrip protocol", () => {
     ).toBe(false);
     expect(userSettingsUpdateSchema.parse({ theme: "dark" })).toEqual({
       theme: "dark",
+    });
+    expect(userSettingsUpdateSchema.parse({ contentGutters: true })).toEqual({
+      contentGutters: true,
     });
     expect(
       userSettingsUpdateSchema.parse({ showChatPromptOverlay: false }),

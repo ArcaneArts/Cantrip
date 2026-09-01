@@ -193,8 +193,11 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
         {
           id: "appearance",
           label: "Appearance",
-          description: "Theme, contrast, Elite Mode, and macOS Pro Mode.",
-          keywords: ["light dark brightness opacity transparency"],
+          description:
+            "Theme, contrast, content gutters, Elite Mode, and macOS Pro Mode.",
+          keywords: [
+            "light dark brightness opacity transparency gutter width spacing",
+          ],
         },
         {
           id: "agent-permissions",
@@ -1618,6 +1621,15 @@ export function SettingsPage({
         }}
       >
         <div
+          data-content-gutter={
+            section === "code"
+              ? undefined
+              : section === "logs"
+                ? "expansive"
+                : section === "usage" || section === "tunnels"
+                  ? "wide"
+                  : "standard"
+          }
           className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "code" ? "overflow-hidden" : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
         >
           <div
@@ -1680,6 +1692,23 @@ export function SettingsPage({
                             }
                           />
                           High contrast
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                          <input
+                            aria-label="Content gutters"
+                            type="checkbox"
+                            className="size-3.5 accent-primary"
+                            checked={
+                              settings.data?.preferences.contentGutters ?? false
+                            }
+                            disabled={preferences.isPending}
+                            onChange={(event) =>
+                              preferences.mutate({
+                                contentGutters: event.target.checked,
+                              })
+                            }
+                          />
+                          Gutters
                         </label>
                         <EliteModeButton
                           onOpen={() => {

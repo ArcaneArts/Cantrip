@@ -600,7 +600,10 @@ export function ProjectAutomationsSettings({
   );
 
   return (
-    <div className="grid w-full gap-4 px-4 py-6 sm:px-6 lg:px-8">
+    <div
+      className="grid w-full gap-4 px-4 py-6 sm:px-6 lg:px-8"
+      data-content-gutter="standard"
+    >
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <CalendarClock className="mt-0.5 size-5 shrink-0 text-muted-foreground" />

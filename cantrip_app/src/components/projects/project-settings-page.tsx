@@ -714,7 +714,10 @@ export function ProjectSettingsPage({
           />
         ) : null}
         {section === "workflows" ? (
-          <div className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <div
+            className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
+            data-content-gutter="standard"
+          >
             <WorkflowCenter
               chats={chats}
               directFolder={!project.capabilities.git}
@@ -729,7 +732,10 @@ export function ProjectSettingsPage({
           <ProjectReplicaSettings project={project} workers={workers} />
         ) : null}
         {section === "policies" ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
+            data-content-gutter="standard"
+          >
             <PolicyAssignmentControls
               scope={{ kind: "project", id: project.id, name: project.name }}
               onEditPolicy={onOpenPolicySettings}
@@ -738,6 +744,7 @@ export function ProjectSettingsPage({
           </div>
         ) : null}
         <div
+          data-content-gutter="standard"
           className={cn(
             "min-h-0 w-full flex-1 space-y-4 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8",
             section !== "general" && section !== "worktrees" && "hidden",
@@ -1166,17 +1173,26 @@ export function ProjectSettingsPage({
           ) : null}
         </div>
         {section === "skills" ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
+            data-content-gutter="standard"
+          >
             <SkillsSettings project={project} />
           </div>
         ) : null}
         {section === "tunnels" ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
+            data-content-gutter="wide"
+          >
             <TunnelSettings onOpenOwner={onOpenTunnelOwner} project={project} />
           </div>
         ) : null}
         {section === "mcp" ? (
-          <div className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <div
+            className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
+            data-content-gutter="standard"
+          >
             <McpServerSettings
               scope={{ kind: "project", projectId: project.id }}
             />

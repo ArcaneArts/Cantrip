@@ -111,7 +111,10 @@ export function ServerAdminPage({
         onTabChange={setSection}
       />
 
-      <div className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+      <div
+        className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6"
+        data-content-gutter="standard"
+      >
         <div className="grid w-full min-w-0 gap-4">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div>

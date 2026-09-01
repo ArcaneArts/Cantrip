@@ -723,7 +723,10 @@ export function ProjectTasksDashboard({
   const error = workload.error ?? pauseState.error ?? taskWorkers.error;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="w-full px-4 py-5 sm:px-6 sm:py-7">
+      <div
+        className="w-full px-4 py-5 sm:px-6 sm:py-7"
+        data-content-gutter="standard"
+      >
         <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
