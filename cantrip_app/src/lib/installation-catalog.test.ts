@@ -42,6 +42,7 @@ function binding(
   return {
     grantRevision: 1,
     keyAlias: installationKeyAlias(installationId),
+    masterKeyRevision: 1,
     ownerId,
     principalId: `${ownerId}-principal`,
     serverId,
