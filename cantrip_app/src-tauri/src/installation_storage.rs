@@ -219,7 +219,11 @@ pub struct NativeCatalogTransactionRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case", tag = "type")]
+#[serde(
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase",
+    tag = "type"
+)]
 enum NativeCatalogOperation {
     CreateInstallation {
         profile: NativeInstallationProfile,
@@ -1642,6 +1646,49 @@ mod tests {
                 operations: vec![NativeCatalogOperation::CreateInstallation { profile: profile() }],
             })
             .expect("create profile");
+    }
+
+    #[test]
+    fn catalog_device_key_operations_accept_frontend_camel_case_payloads() {
+        let (_directory, storage) = test_storage();
+        create_profile(&storage);
+        let profile = profile();
+        let key_alias = installation_key_alias(&profile.installation_id);
+        let descriptor = storage
+            .create_key(NativeDeviceKeyCreateInput {
+                created_at: Some("2026-09-01T07:24:35.969Z".to_owned()),
+                installation_id: profile.installation_id,
+                key_alias,
+            })
+            .expect("create native key");
+
+        for (index, operation_type) in ["put-device-key", "replace-device-key"]
+            .into_iter()
+            .enumerate()
+        {
+            let request: NativeCatalogTransactionRequest =
+                serde_json::from_value(serde_json::json!({
+                    "expectedRevision": 1 + index,
+                    "operations": [{
+                        "type": operation_type,
+                        "deviceKey": {
+                            "createdAt": descriptor.created_at,
+                            "installationId": descriptor.installation_id,
+                            "keyAlias": descriptor.key_alias,
+                            "provider": descriptor.provider,
+                            "publicKey": descriptor.public_key,
+                            "status": "active",
+                            "version": 1
+                        }
+                    }]
+                }))
+                .expect("deserialize frontend catalog transaction");
+
+            let snapshot = storage
+                .apply_transaction(request)
+                .expect("apply frontend catalog transaction");
+            assert_eq!(snapshot.device_keys.len(), 1);
+        }
     }
 
     fn create_key_and_metadata(storage: &NativeInstallationStorage) -> NativeDeviceKeyDescriptor {
