@@ -1018,7 +1018,7 @@ goal work.
 - Branch: `codex/fix-windows-installation-fixture-loader`
 - Pull request: [#1560](https://github.com/ArcaneArts/Cantrip/pull/1560)
 - Implementation commit: `79fbdca9acd94e47f6d537da3eae8e933627ebbe`
-- Merge: pending
+- Merge: squash-merged as `e0e78e109a99a743fe4e6227ac8b5073a14d45a4`
 - Behavior implemented:
   - Embedded the Common Controls v6 application manifest into every Windows
     MSVC artifact, including Cargo's native unit-test executable. The Tauri
@@ -1036,14 +1036,14 @@ goal work.
   - Local `cargo check` and `cargo fmt --check` — passed.
   - Native release workflow and app bundle configuration suites — 16 tests
     passed.
-  - Windows native pull-request fixture — pending PR validation.
+  - Windows Server 2025 native pull-request fixture — passed in 2m01s on the
+    original release-blocking Cargo command.
 - Supported platforms: Windows MSVC behavior is corrected. macOS, Linux, iOS,
   Android, and browser behavior is unchanged.
 - Migration status: unchanged; this correction performs no storage migration
   and mutates no installation state.
-- Remaining work: complete validation, merge the PR, and record the immutable
-  commit and merge references here.
+- Remaining work: none for this correction.
 - Known risks or blockers: no product-data risk. The Windows linker behavior
-  requires the native CI lane for platform verification.
+  is now verified on the same runner family used by native releases.
 - Manual verification: none beyond the existing signed Windows update smoke;
   the frozen native reader remains release-blocking.
