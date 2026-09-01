@@ -438,6 +438,14 @@ worker enrollment belong to the same account. No additional device-approval
 step is required. The server installs the matching session and grants on the
 worker before returning the client capability.
 
+The client's durable installation identity is separate from both this peer
+session and the server/account authorization binding. A native installation
+keeps one installation-derived key alias while storing independent bindings
+for each server and owner. Switching servers, accounts, routes, or WebView
+origins must not replace that installation profile or its private key. Network
+capabilities remain short-lived and server-authorized; possession of the local
+installation key alone does not grant access to a worker or resource.
+
 Every channel-open operation includes a grant. The worker validates:
 
 - owner and account session;

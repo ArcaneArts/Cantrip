@@ -63,7 +63,7 @@ flowchart TD
 
 - Branch: `codex/encryption-storage-cycle2-startup`
 - Pull request: [#1536](https://github.com/ArcaneArts/Cantrip/pull/1536)
-- Merge: pending
+- Merge: squash-merged as `f199b925a366cf9ecbca26de99f3e13f611b9965`
 - Behavior implemented:
   - Added the single runtime classifier for browser, Tauri, Capacitor iOS,
     Capacitor Android, and unsupported native environments.
@@ -102,9 +102,74 @@ flowchart TD
   the shared P-256 HPKE wrapper format and need OS-specific integration tests.
 - Manual verification: none for this behavior-neutral cycle.
 
+### Cycle 3 — Tauri native installation catalog and key custody
+
+- Branch: `codex/encryption-storage-cycle3-tauri-native`
+- Pull request: [#1541](https://github.com/ArcaneArts/Cantrip/pull/1541)
+- Merge: pending
+- Behavior implemented:
+  - Added a versioned SQLite installation catalog beneath Tauri's current
+    bundle-scoped local application-data root at
+    `installation/v1/catalog.sqlite3`. Cycle 5 must make the development bundle
+    and profile selection stable across worktrees before this is activated.
+  - Added installation, public device-key metadata, account binding, migration,
+    and compare-and-swap catalog revision tables. The catalog schema has no
+    private-key field. Unknown newer schemas, damaged version-one schemas,
+    missing catalog metadata, nonempty version-zero databases, and invalid
+    logical rows are rejected without recreating, adopting, or repairing them.
+    Transactions validate cross-row invariants before commit, and the catalog
+    rejects unexpected views, triggers, schema lookalikes, and invalid P-256
+    public points.
+  - Added OS-backed P-256 private-key custody through macOS Keychain, Windows
+    Credential Manager, and Linux Secret Service. Linux fails closed when a
+    compatible Secret Service is unavailable; there is no plaintext fallback.
+  - Fixed the stable keyring service to
+    `art.cantrip.installation.hpke.v1` and the installation-derived alias to
+    `cantrip.installation.<installation-uuid>.hpke.v1`. Neither contains a server,
+    owner, origin, hostname, MAC address, build path, or worktree.
+  - Kept HPKE private-key use inside the Rust provider. The renderer receives
+    public metadata and, after authenticated unwrap, only the 32-byte Account
+    Master Key required by the existing in-memory encryption service. A static
+    envelope produced by the TypeScript `@hpke/core` path is decrypted by the
+    Rust provider in the native test suite.
+  - Runs SQLite, secure-store, and HPKE operations on Tauri blocking workers,
+    returns typed failures, zeroizes temporary private-key and Account Master
+    Key buffers, and never replaces a missing or malformed secure-store entry.
+    Key creation is serialized across processes by the catalog transaction and
+    fails closed when catalog metadata proves that a native key was lost.
+  - Added a TypeScript catalog/provider bridge without activating it in normal
+    startup. Runtime selection remains on the legacy provider until Cycle 4 can
+    migrate an accessible nonextractable IndexedDB key transactionally.
+- Validation:
+  - `cargo test installation_storage` — 20 native tests passed.
+  - `cargo check` — passed on macOS arm64.
+  - `cargo test` — 139 tests passed; the two existing native loopback/relay
+    integration tests timed out in their HTTP response fixture. The same
+    tunnel tests failed before the audit corrections and do not exercise this
+    cycle's installation storage module.
+  - `pnpm --filter @cantrip/app exec vitest run src/lib/tauri-installation-storage.test.ts src/lib/installation-catalog.test.ts src/lib/client-device-key-provider.test.ts` — 19 tests passed.
+  - `pnpm --filter @cantrip/app typecheck` — passed.
+  - `pnpm --filter @cantrip/app build` — passed.
+- Supported platforms:
+  - macOS: native catalog compiled and native tests passed; Keychain selection
+    compiled. A signed-app Keychain smoke test remains manual.
+  - Windows: Windows Credential Manager provider is selected by target; native
+    cross-target compilation and runtime verification remain pending.
+  - Linux: Secret Service provider is selected by target with no insecure
+    fallback; native cross-target compilation and runtime verification remain
+    pending.
+  - Browser and Capacitor behavior is unchanged by this cycle.
+- Migration status: storage destination and rewrap primitive implemented;
+  legacy discovery, verification, and runtime cutover remain Cycle 4 work.
+- Remaining work: Cycles 4–12 below.
+- Known risks or blockers: platform credential APIs require runtime smoke tests
+  on signed macOS/Windows packages and a Linux desktop session. No external
+  blocker prevents the next cycle.
+- Manual verification: create/inspect/unwrap through a packaged Tauri build on
+  each desktop OS before claiming OS-store integration verified.
+
 ## Remaining cycles
 
-3. Implement the Tauri SQLite catalog and secure-key provider.
 4. Migrate Tauri legacy IndexedDB keys transactionally and connect account
    recovery.
 5. Stabilize named development profiles and add non-secret diagnostics.

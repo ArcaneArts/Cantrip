@@ -208,6 +208,58 @@ dependency boundary.
 
 ### Client key custody
 
+#### Durable native installation storage
+
+Tauri now has a native storage destination for the durable installation
+architecture. It is intentionally not selected by normal startup until the
+transactional legacy migration can preserve every accessible IndexedDB key.
+That cutover is tracked in
+[ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md).
+
+The Tauri catalog lives under the operating system's non-roaming local
+application-data directory at `installation/v1/catalog.sqlite3`. Its SQLite
+schema contains exactly one immutable installation profile plus public
+device-key metadata, server/account bindings, migration checkpoints, and a
+compare-and-swap revision. Projects, chats, settings, server identity, and
+other domain data remain in their existing authoritative stores; this catalog
+is not a second application database or synchronization engine.
+
+The installation's P-256 private key is never stored in SQLite. The native
+provider uses macOS Keychain, Windows Credential Manager, or Linux Secret
+Service through the maintained Rust `keyring` provider. Linux has no plaintext
+fallback: an unavailable Secret Service produces a recoverable storage error.
+The provider contract is versioned as follows:
+
+- keyring service: `art.cantrip.installation.hpke.v1`;
+- key alias: `cantrip.installation.<installation-uuid>.hpke.v1`;
+- catalog location: `<local-app-data>/installation/v1/catalog.sqlite3`; and
+- catalog schema: SQLite `user_version = 1`.
+
+These are persistent compatibility contracts. The key alias is derived only
+from the installation UUID, never from the bundle origin, MAC address,
+hostname, server, owner, build directory, or worktree. One private key can
+therefore back independent authorization bindings for multiple accounts and
+servers without changing installation identity.
+
+SQLite, credential-store, and HPKE work runs outside Tauri's command thread.
+The private scalar remains within the native provider for inspect and unwrap
+operations. Temporary serialized private-key buffers and unwrapped Account
+Master Key buffers are best-effort zeroized. The renderer receives only public
+metadata and the 32-byte Account Master Key needed by the existing in-memory
+component-key service. A missing, malformed, conflicting, or unavailable
+native key fails closed and is never silently regenerated.
+
+The catalog rejects a newer, damaged, incomplete, or lookalike schema without
+changing the file. Catalog writes use an immediate SQLite transaction and an
+expected revision, and validate full-schema, P-256 public-key, and cross-row
+binding invariants before commit, so installation, key metadata, bindings, and
+migration checkpoints can be committed as a single reviewable unit. Platform
+runtime smoke testing and legacy migration are
+recorded separately in the progress ledger; shared tests alone are not treated
+as proof that every operating-system credential service works.
+
+#### Browser custody and current runtime behavior
+
 The browser client custody boundary is implemented by
 [client-encryption.ts](../cantrip_app/src/lib/client-encryption.ts). Each
 browser installation generates its own nonextractable WebCrypto P-256 private
@@ -254,14 +306,15 @@ normal sign-in or authorization from an existing endpoint. Account
 initialization and the workspace-name adapter consume this custody boundary as
 described below.
 
-The durable native replacement is tracked in
+The durable native rollout is tracked in
 [ENCRYPTION_STORAGE_PROGRESS.md](ENCRYPTION_STORAGE_PROGRESS.md). Its storage
 contract separates one immutable installation profile and stable native key
 alias from server/account authorization bindings. Native SQLite catalogs will
 hold only non-secret identity, public-key, binding, and migration metadata;
-platform secure storage will own private keys. Until the native providers and
-transactional migration are connected, the IndexedDB implementation above
-remains the active runtime behavior.
+platform secure storage owns private keys. The Tauri destination and provider
+now exist, but until transactional migration and runtime selection are
+connected, the IndexedDB implementation above remains the active runtime
+behavior.
 
 The replacement startup contract resolves state in this order: installation,
 authoritative server profile, native device key, account binding, legacy

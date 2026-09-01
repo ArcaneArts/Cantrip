@@ -19,10 +19,13 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ctrlc = { version = "3", features = ["termination"] }
 ed25519-dalek = "2"
 futures-util = "0.3"
+hpke = { version = "0.14", default-features = false, features = ["aes", "alloc", "getrandom", "hkdfsha2", "nistp"] }
+keyring = "4.2"
 libc = "0.2"
 flate2 = "1"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "query"] }
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -40,6 +43,9 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "4.6", default-features = false, features = ["deflate"] }
 zeroize = "1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-window-state = "2"

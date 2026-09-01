@@ -51,11 +51,14 @@ export type InstallationMigration = {
 
 export type InstallationCatalogErrorCode =
   | "account-binding-invalid"
+  | "catalog-corrupt"
+  | "catalog-unavailable"
   | "device-key-invalid"
   | "installation-conflict"
   | "installation-invalid"
   | "installation-missing"
-  | "migration-invalid";
+  | "migration-invalid"
+  | "transaction-conflict";
 
 export class InstallationCatalogError extends Error {
   constructor(
@@ -101,7 +104,7 @@ type InstallationCatalogState = {
 };
 
 const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
 function validateIdentifier(
   value: string,
@@ -371,7 +374,7 @@ export function installationKeyAlias(installationId: string): string {
   if (!uuidPattern.test(installationId)) {
     throw new InstallationCatalogError(
       "installation-invalid",
-      "The installation identifier must be a UUID.",
+      "The installation identifier must be a canonical lowercase UUID.",
     );
   }
   return `cantrip.installation.${installationId}.hpke.v1`;
