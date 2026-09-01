@@ -256,6 +256,12 @@ describe("account settings", () => {
     expect(general).toContain("Standalone Chat permissions");
     expect(general).toContain("YOLO mode");
     expect(general).toContain("Search all settings");
+    const standalonePermissions = general.indexOf(
+      ">Standalone Chat permissions<",
+    );
+    expect(
+      general.slice(standalonePermissions - 300, standalonePermissions),
+    ).toContain("lucide-lock");
     expect(general).not.toContain("Cantrip updates");
     expect(general).not.toContain(
       "Logical models with ordered provider failover routes.",
