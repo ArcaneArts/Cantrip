@@ -1017,7 +1017,7 @@ goal work.
 
 - Branch: `codex/fix-windows-installation-fixture-loader`
 - Pull request: [#1560](https://github.com/ArcaneArts/Cantrip/pull/1560)
-- Implementation commit: `79fbdca9afab9471206988b8a0a8c4843af3bba8`
+- Implementation commit: `79fbdca9acd94e47f6d537da3eae8e933627ebbe`
 - Merge: pending
 - Behavior implemented:
   - Embedded the Common Controls v6 application manifest into every Windows
