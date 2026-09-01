@@ -297,8 +297,9 @@ flowchart TD
 ### Cycle 6 — Capacitor native catalogs and key custody
 
 - Branch: `codex/encryption-storage-cycle6-capacitor-native`
-- Pull request: pending
-- Commit and merge: pending
+- Pull request: [#1547](https://github.com/ArcaneArts/Cantrip/pull/1547)
+- Commit: `f62c37897a4c60b4752a4063560124953bdf1bea`
+- Merge: pending auto-merge
 - Behavior implemented:
   - Generalized the already-tested native catalog and device-key TypeScript
     bridge so Tauri and Capacitor share one validation, transaction, and
