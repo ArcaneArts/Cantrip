@@ -36,11 +36,11 @@ import {
   prepareDurableClientEncryption,
   type DurableClientEncryptionStorage,
 } from "./durable-account-encryption";
-import { detectClientRuntimePlatform } from "./runtime-platform";
+import { openNativeInstallationStorage } from "./native-installation-storage";
 import {
-  TauriClientDeviceKeyProvider,
-  TauriInstallationCatalog,
-} from "./tauri-installation-storage";
+  detectClientRuntimePlatform,
+  nativeInstallationStorageRequired,
+} from "./runtime-platform";
 
 export type ClientEncryptionCredential = "password";
 
@@ -135,19 +135,6 @@ function prepareClientEncryptionRuntime(
 const preparationFlights = prepareClientEncryptionRuntime(
   import.meta.hot?.data as AccountEncryptionHotState | undefined,
 );
-
-let tauriStorageFlight: Promise<DurableClientEncryptionStorage> | null = null;
-
-function openTauriStorage(): Promise<DurableClientEncryptionStorage> {
-  tauriStorageFlight ??= TauriClientDeviceKeyProvider.open().then(
-    (provider) => ({ catalog: new TauriInstallationCatalog(), provider }),
-    (error) => {
-      tauriStorageFlight = null;
-      throw error;
-    },
-  );
-  return tauriStorageFlight;
-}
 
 type AuthorizeDeviceInput = {
   api: AccountEncryptionApi;
@@ -439,7 +426,10 @@ async function prepareClientEncryptionOnce(
   const service = input.service ?? clientEncryption;
   const runtimePlatform =
     input.runtimePlatform ?? detectClientRuntimePlatform();
-  if (input.durableStorage || runtimePlatform === "tauri") {
+  if (
+    input.durableStorage ||
+    nativeInstallationStorageRequired(runtimePlatform)
+  ) {
     return prepareDurableClientEncryption({
       api,
       authMode: input.authMode,
@@ -448,7 +438,9 @@ async function prepareClientEncryptionOnce(
       password: input.password,
       passwordKdf: input.passwordKdf,
       service,
-      storage: input.durableStorage ?? (await openTauriStorage()),
+      storage:
+        input.durableStorage ??
+        (await openNativeInstallationStorage(runtimePlatform)),
     });
   }
   let device: ClientDeviceDescriptor;

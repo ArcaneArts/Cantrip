@@ -299,7 +299,7 @@ flowchart TD
 - Branch: `codex/encryption-storage-cycle6-capacitor-native`
 - Pull request: [#1547](https://github.com/ArcaneArts/Cantrip/pull/1547)
 - Commit: `f62c37897a4c60b4752a4063560124953bdf1bea`
-- Merge: pending auto-merge
+- Merge: squash-merged as `e41ae3cc276cc697ec7718e120840ad7371d7365`
 - Behavior implemented:
   - Generalized the already-tested native catalog and device-key TypeScript
     bridge so Tauri and Capacitor share one validation, transaction, and
@@ -326,8 +326,7 @@ flowchart TD
     record fails closed instead of generating a replacement.
   - Registered the custom plugin in both native shells and added the
     `apple-keychain` and `android-keystore` Capacitor provider adapter. Normal
-    Capacitor encryption startup remains on its prior path until Cycle 7 adds
-    transactional migration and recovery.
+    startup selection is connected in Cycle 7 below.
 - Validation:
   - `pnpm --filter @cantrip/app exec vitest run src/lib/capacitor-installation-storage.test.ts src/lib/tauri-installation-storage.test.ts src/lib/installation-catalog.test.ts src/lib/client-device-key-provider.test.ts` — 23 tests passed.
   - `ANDROID_HOME=... JAVA_HOME=... ./gradlew :app:compileDebugJavaWithJavac :app:testDebugUnitTest` — passed; two Android HPKE compatibility tests opened the TypeScript fixture and verified canonical associated data.
@@ -355,10 +354,10 @@ flowchart TD
   - Capacitor Android: native plugin compiles against the checked-in mobile
     project; JVM wire compatibility tests passed. A physical-device Android
     Keystore smoke test remains manual.
-  - Tauri and browser runtime selection remain unchanged by this cycle.
+  - Tauri and browser runtime selection remained unchanged in this cycle.
 - Migration status: the mobile storage destinations and native unwrap
-  primitives exist, but no legacy Capacitor record is migrated or selected by
-  normal startup until Cycle 7.
+  primitives merged; normal Capacitor startup selection and migration are
+  recorded in Cycle 7 below.
 - Remaining work: Cycles 7–12 below.
 - Known risks or blockers: Android backup may restore encrypted catalog or
   preference data to a fresh install without its nonexportable Keystore key;
@@ -369,13 +368,71 @@ flowchart TD
   Account Master Key, and confirm no private material appears in the SQLite
   catalog or diagnostic output.
 
+### Cycle 7 — Capacitor migration and account recovery
+
+- Branch: `codex/encryption-storage-cycle7-capacitor-migration`
+- Pull request: pending
+- Merge: pending
+- Behavior implemented:
+  - Added one native-storage selector for Tauri, Capacitor iOS, and Capacitor
+    Android. Native runtimes fail closed when their provider is unavailable;
+    browser startup cannot accidentally select a native provider.
+  - Connected normal Capacitor startup to the durable installation catalog and
+    platform secure-key provider from Cycle 6. The existing Tauri path now uses
+    the same selector without changing its catalog, command names, or provider.
+  - Reused the single durable startup coordinator for all native runtimes.
+    Capacitor therefore reads the authoritative server profile before allowing
+    initialization, prefers a verified native binding, and otherwise attempts
+    the retained legacy IndexedDB registration.
+  - An accessible legacy key unwraps the existing Account Master Key, creates
+    or reconciles the stable native principal and grant, verifies native unwrap
+    plus a known encrypted marker, then commits the binding and verified
+    migration checkpoint together. The legacy record, principal, and grant are
+    retained.
+  - An initialized account with no usable legacy registration requests password
+    reauthentication and reprovisions the existing Account Master Key to the
+    native installation key. It does not initialize a replacement encryption
+    profile. Anonymous installations continue to enter the precise
+    recovery-required state until Cycle 9 adds recovery artifacts.
+- Validation:
+  - `pnpm --filter @cantrip/app exec vitest run src/lib/native-installation-storage.test.ts src/lib/account-encryption.test.ts src/lib/capacitor-installation-storage.test.ts` — 27 focused tests passed, including migration and password recovery on all three native runtime classifications.
+  - `pnpm --filter @cantrip/app test` — 1,855 tests passed and 3 skipped
+    across 352 test files.
+  - `pnpm --filter @cantrip/app typecheck` and
+    `pnpm --filter @cantrip/app build` — passed.
+  - `node --test scripts/*.test.mjs` — 116 tests passed and the two known
+    clean-`main` baseline assertions failed for the App Platform build-command
+    fixture and tranche-two sidebar lifecycle fixture. This cycle changes
+    neither surface.
+  - `pnpm check:large-files` and `git diff --check` — passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle introduced no newly reported overage.
+- Supported platforms:
+  - Capacitor iOS and Android: normal TypeScript startup selection, legacy
+    migration, native restart unlock, and password reprovisioning are covered
+    by deterministic coordinator/provider tests. Physical-device secure-store
+    verification remains manual.
+  - Tauri: routed through the generalized selector with the existing durable
+    provider and migration behavior retained.
+  - Browser: remains on IndexedDB and is not routed through native storage.
+- Migration status: implemented and under final validation for accessible
+  Capacitor legacy records. The operation is idempotent and resumable through
+  the same verified journal used by Tauri.
+- Remaining work: Cycles 8–12 below.
+- Known risks or blockers: a cataloged native key missing from Keychain or
+  Android Keystore still fails closed. Account-authorized native key rotation,
+  anonymous recovery artifacts, and browser recovery remain required before
+  goal completion.
+- Manual verification: migrate one signed iOS build and one signed Android
+  build containing a real pre-cycle IndexedDB registration, then restart and
+  verify that the same installation, alias, principal, and encrypted account
+  data remain usable.
+
 ## Remaining cycles
 
-4. Manually smoke-test the merged transactional Tauri migration above.
-5. Merge and manually smoke-test the stable development profile above.
-6. Connect Capacitor migration and recovery.
-7. Harden browser persistence, replacement-device recovery, and recovery UI.
-8. Implement anonymous recovery export/import.
-9. Add update/install compatibility harnesses and release gates.
-10. Retire obsolete defaults while retaining required legacy readers.
-11. Complete the cross-platform audit, full validation, and documentation.
+1. Harden browser persistence, replacement-device recovery, and recovery UI.
+2. Implement anonymous recovery export/import.
+3. Add update/install compatibility harnesses and release gates.
+4. Retire obsolete defaults while retaining required legacy readers.
+5. Complete the cross-platform audit, full validation, and documentation.
