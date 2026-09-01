@@ -1121,7 +1121,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     encryptionService: workerEncryption,
   });
   const github = new GithubClient(config.dataDirectory, config.workerId);
-  const managedFolders = new ManagedFolderManager(config.dataDirectory);
+  const managedFolders = new ManagedFolderManager(config.dataDirectory, (cwd) =>
+    github.inspectCheckout(cwd),
+  );
   const chatScratch = new ChatScratchManager(config.dataDirectory);
   const chatScratchFiles = new ChatScratchFileManager(config.dataDirectory);
   const projectGithubConverter = new ProjectGithubConverter(managedFolders);
@@ -2951,13 +2953,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   throw new Error("Git operation not found.");
                 }
               }
+              const repository =
+                command.repository ??
+                (request.type.startsWith("github.")
+                  ? await github.repositoryForCheckout(command.cwd)
+                  : null);
+              if (request.type.startsWith("github.") && !repository) {
+                throw new Error(
+                  "This checkout does not have a GitHub origin available to the worker.",
+                );
+              }
               const trustedCommand = workerCommandSchema.parse({
                 ...request.arguments,
                 type: request.type,
                 cwd: command.cwd,
                 sourcePath: command.sourcePath,
                 worktreePath: command.cwd,
-                repository: command.repository,
+                repository,
                 ...(["git.operation.control", "git.operation.amend"].includes(
                   request.type,
                 )

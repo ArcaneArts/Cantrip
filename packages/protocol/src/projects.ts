@@ -18,6 +18,7 @@ import {
   projectCapabilitiesSchema,
   projectCapabilitySchema,
   projectCapabilitiesForOriginKind,
+  projectCapabilitiesForSource,
 } from "./project-foundation.js";
 
 import { worktreePolicySchema } from "./worktrees.js";
@@ -511,7 +512,11 @@ function refineProjectSummary(
       path: ["folderManagement"],
     });
   }
-  const expected = projectCapabilitiesForOriginKind(project.originKind);
+  const expected = projectCapabilitiesForSource({
+    originKind: project.originKind,
+    git: project.capabilities.git,
+    github: project.capabilities.github,
+  });
   for (const capability of projectCapabilitySchema.options) {
     if (project.capabilities[capability] !== expected[capability]) {
       context.addIssue({
@@ -520,6 +525,13 @@ function refineProjectSummary(
         path: ["capabilities", capability],
       });
     }
+  }
+  if (project.capabilities.github && !project.capabilities.git) {
+    context.addIssue({
+      code: "custom",
+      message: "github capability requires git capability",
+      path: ["capabilities", "github"],
+    });
   }
 }
 

@@ -31,6 +31,7 @@ import {
   githubWorkerRepositorySchema,
   githubWorkerRepositoryListSchema,
   projectCloneResultSchema,
+  projectGithubConversionRepositorySchema,
   projectReplicaProvisionResultSchema,
   projectReplicaLinkRepairResultSchema,
   projectReplicaRemoveResultSchema,
@@ -65,6 +66,7 @@ import {
   type GithubRepositoryOwner,
   type GithubWorkerRepository,
   type ProjectCloneResult,
+  type ProjectGithubConversionRepository,
   type ProjectReplicaJobProgressEvent,
   type ProjectReplicaJobErrorCode,
   type ProjectReplicaLinkRepairResult,
@@ -564,7 +566,7 @@ function repositorySegments(nameWithOwner: string): [string, string] {
   return [parts[0], parts[1]];
 }
 
-function githubRepositoryFromRemoteUrl(value: string): string | null {
+export function githubRepositoryFromRemoteUrl(value: string): string | null {
   const trimmed = value.trim();
   const scp = /^git@github\.com:([^/]+)\/(.+)$/iu.exec(trimmed);
   if (scp) {
@@ -1047,6 +1049,82 @@ export class GithubClient {
 
   private async verifyWorktree(cwd: string): Promise<void> {
     await execFileAsync("git", ["-C", cwd, "rev-parse", "--git-dir"]);
+  }
+
+  async repositoryForCheckout(cwd: string): Promise<string | null> {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["-C", cwd, "config", "--get", "remote.origin.url"],
+        { maxBuffer: 1024 * 1024, timeout: 10_000 },
+      );
+      return githubRepositoryFromRemoteUrl(stdout);
+    } catch {
+      return null;
+    }
+  }
+
+  async inspectCheckout(
+    cwd: string,
+    lookupRepository: (
+      nameWithOwner: string,
+    ) => Promise<ProjectGithubConversionRepository> = async (nameWithOwner) => {
+      const value = (await this.api(
+        this.repositoryApiPath(nameWithOwner),
+      )) as GithubApiRepository;
+      return projectGithubConversionRepositorySchema.parse({
+        repositoryId: String(value.id),
+        nameWithOwner: String(value.full_name),
+        url: String(value.html_url),
+      });
+    },
+  ): Promise<{
+    github: ProjectGithubConversionRepository | null;
+    repositoryFingerprint: string | null;
+  }> {
+    try {
+      const topLevel = await realpath(
+        (
+          await execFileAsync(
+            "git",
+            ["-C", cwd, "rev-parse", "--show-toplevel"],
+            { maxBuffer: 1024 * 1024, timeout: 10_000 },
+          )
+        ).stdout.trim(),
+      );
+      if (!pathsEqual(topLevel, cwd)) {
+        return { github: null, repositoryFingerprint: null };
+      }
+      const commonDirOutput = (
+        await execFileAsync(
+          "git",
+          ["-C", cwd, "rev-parse", "--git-common-dir"],
+          { maxBuffer: 1024 * 1024, timeout: 10_000 },
+        )
+      ).stdout.trim();
+      const commonDir = await realpath(
+        path.isAbsolute(commonDirOutput)
+          ? commonDirOutput
+          : path.resolve(cwd, commonDirOutput),
+      );
+      const repositoryFingerprint = createHash("sha256")
+        .update(commonDir)
+        .digest("hex");
+      const nameWithOwner = await this.repositoryForCheckout(cwd);
+      if (!nameWithOwner) {
+        return { github: null, repositoryFingerprint };
+      }
+      try {
+        const repository = await lookupRepository(nameWithOwner);
+        return repository.nameWithOwner.toLowerCase() === nameWithOwner
+          ? { github: repository, repositoryFingerprint }
+          : { github: null, repositoryFingerprint };
+      } catch {
+        return { github: null, repositoryFingerprint };
+      }
+    } catch {
+      return { github: null, repositoryFingerprint: null };
+    }
   }
 
   async cachedRepositories(login: string): Promise<GithubWorkerRepository[]> {

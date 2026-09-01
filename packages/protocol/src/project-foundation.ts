@@ -38,6 +38,19 @@ export function projectCapabilitiesForOriginKind(
   };
 }
 
+export function projectCapabilitiesForSource(input: {
+  github: boolean;
+  git: boolean;
+  originKind: z.infer<typeof projectOriginKindSchema>;
+}): z.infer<typeof projectCapabilitiesSchema> {
+  const originCapabilities = projectCapabilitiesForOriginKind(input.originKind);
+  return {
+    ...originCapabilities,
+    git: originCapabilities.git || input.git,
+    github: originCapabilities.github || input.github,
+  };
+}
+
 export type ProjectOriginKind = z.infer<typeof projectOriginKindSchema>;
 
 export type ProjectFolderManagement = z.infer<

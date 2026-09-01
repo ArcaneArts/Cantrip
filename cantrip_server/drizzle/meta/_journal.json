@@ -1226,6 +1226,13 @@
       "when": 1788082302787,
       "tag": "0174_optional_random_agent_names",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1788200000000,
+      "tag": "0175_added_folder_repository_capabilities",
+      "breakpoints": true
     }
   ]
 }

@@ -12,9 +12,14 @@ worktree and ready pull request; no omnibus branch was used.
 ## Relationship to GitHub repository placement
 
 Folder attachment and GitHub repository placement are separate authority
-contracts. A folder source uses the worker's `managedFolders` lifecycle and
-never gains Git, replica, or worktree capabilities merely because its path
-contains a repository. A GitHub source uses the `projectReplicas` lifecycle and
+contracts. A newly created folder source uses the worker's `managedFolders`
+lifecycle without Git capabilities. When the user explicitly attaches an
+existing folder whose root is a Git checkout, Cantrip detects that checkout and
+enables its local Git surfaces. If its `origin` is a GitHub repository that the
+worker's existing `gh` CLI session can access, Cantrip also enables GitHub
+Issues, pull requests, releases, and related repository surfaces. This does not
+grant replica, relocation, or secondary-worktree management to the folder
+project. A GitHub source uses the `projectReplicas` lifecycle and
 may choose a managed Primary, a managed Primary with an external link, or a
 direct exact worker path. Its worker validates Git identity and always exposes
 the canonical Primary checkout to runtime surfaces.
@@ -42,8 +47,8 @@ reconnects.
 
 ## Product decisions
 
-- V1 creates only new, empty, Cantrip-managed directories. It does not attach
-  arbitrary existing worker paths.
+- Folder projects may create a new empty Cantrip-managed directory or attach
+  an existing directory selected on the worker.
 - A folder project is permanently bound to its creation worker until it is
   explicitly converted into a GitHub-backed project. V1 does not replicate its
   files or relocate its execution to another worker.
@@ -53,17 +58,21 @@ reconnects.
   workflow graph, configured concurrency, permissions, and approval profile
   remain authoritative; Cantrip does not add serialization merely to imitate
   Git protection.
-- Folder projects have no Git History, changes, branches, worktrees, Issues,
-  pull requests, releases, GitHub issue conditions, Git replicas, or
-  Git-backed chat relocation.
-- Running `git init` inside a folder does not silently change its project type.
-  Conversion is explicit and is valid only when the folder is linked to a
-  GitHub repository.
+- Non-Git folder projects have no repository surfaces. An attached folder
+  rooted at a Git checkout gains local History, changes, graph, branch, stash,
+  tag, remote, and related Git views. An authenticated GitHub `origin` also
+  enables Issues, pull requests, releases, and related GitHub views. Folder
+  projects never gain Git replicas, relocation, or secondary-worktree
+  management from this detection.
+- Running `git init` after a folder is added does not silently change its
+  capabilities. Repository capabilities are detected while attaching an
+  existing folder. Explicit conversion remains the path for moving a
+  Cantrip-managed folder into the GitHub project lifecycle.
 - Removing a folder project defaults to unlinking it from Cantrip while leaving
   its files on the worker. Selecting local-file deletion requires the existing
   checkbox plus a second destructive confirmation dialog.
-- An unlinked folder left on disk cannot be attached as a new folder project in
-  V1. The removal dialog must say this directly before unlinking.
+- An unlinked external folder left on disk may be attached again as a new
+  folder project.
 
 ## Terminology
 
@@ -103,16 +112,13 @@ root, never a worktree.
   profiles;
 - scheduled prompts and worker-side script conditions;
 - project and workflow repository files stored in the folder;
-- read-only and write-capable workflows; and
-- bounded folder statistics for the project overview.
+- read-only and write-capable workflows;
+- bounded folder statistics for the project overview;
+- attaching an existing worker directory; and
+- conditional Git and GitHub repository surfaces for an attached checkout.
 
 ### Not supported
 
-- importing or attaching an existing arbitrary directory;
-- Git History or working-change views;
-- Git branches, tags, stashes, submodules, LFS, commits, remotes, or recovery;
-- GitHub Issues, pull requests, reviews, releases, or issue-count automation
-  conditions;
 - additional worktrees or worktree policy selection;
 - project replicas, cross-worker file synchronization, or chat relocation;
 - automatic project-type changes after `git init`; or
@@ -216,7 +222,7 @@ and every existing root as `git-worktree`. The migration must preserve all
 existing IDs, foreign keys, positions, tab memberships, worktree leases, and
 execution attribution.
 
-The folder project stores:
+An ordinary non-Git folder project stores:
 
 - `githubRepositoryId = null`;
 - `githubRepositoryFullName = null`;
@@ -227,7 +233,11 @@ The folder project stores:
 
 Branch, HEAD, detached revision, repository fingerprint, and Git status remain
 null or empty for a folder root. Database and protocol validation must enforce
-the valid combinations for each kind.
+the valid combinations for each kind. An attached checkout stores its
+repository fingerprint and advertises Git capability. When the worker verifies
+the GitHub origin through its authenticated `gh` CLI, its protected GitHub
+identity is stored as worker routing handles and GitHub capability is also
+advertised.
 
 ### Project capabilities
 
@@ -244,8 +254,10 @@ origin-kind heuristics:
 }
 ```
 
-For V1 folder projects all five values are false. Filesystem and runtime
-capabilities continue to come from the owning worker.
+For a non-Git folder all five values are false. Attached checkouts may set
+`git`, and authenticated GitHub checkouts may additionally set `github`.
+`worktrees`, `replicas`, and `relocation` stay false for every folder project.
+Filesystem and runtime capabilities continue to come from the owning worker.
 
 ### Worker capability
 
@@ -419,10 +431,11 @@ size.
 
 ### Creation
 
-The New Project flow exposes two clear paths:
+The New Project flow exposes three clear paths:
 
 1. **New folder** — requires a name, owning worker, and workspace membership;
-2. **GitHub repository** — retains the existing import/create experience.
+2. **Existing folder** — attaches an exact directory on the selected worker;
+3. **GitHub repository** — retains the existing import/create experience.
 
 New folder remains available when the worker has no GitHub authentication.
 Browser, Tauri, and mobile clients use the same server request; no native
@@ -477,9 +490,11 @@ silently degrades into unlinking.
 
 ## Explicit conversion to GitHub
 
-Manual `git init`, adding a remote, or creating commits does not change the
-project's persisted kind or capabilities. A folder stays in folder mode until
-the user chooses **Convert to GitHub project** in Project Settings.
+Manual `git init`, adding a remote, or creating commits after attachment does
+not change the project's persisted capabilities. A folder stays in the
+worker-bound folder lifecycle even when repository views are enabled. The user
+must choose **Convert to GitHub project** in Project Settings to move it into
+the replica and worktree-management lifecycle.
 
 The conversion must:
 
@@ -687,19 +702,20 @@ also run the focused matrix in
 
 ## Definition of done
 
-A user can create two identically named empty folder projects on one or more
-workers, distinguish them by worker/path context, and use every supported
-non-Git Cantrip surface from local or remote clients. The folder contains no
-`.git` directory unless the user creates one. Direct Agent and workflow writes
-are permitted according to the selected permissions and workflow definition.
+A user can create two identically named empty folder projects or attach an
+existing directory on one or more workers, distinguish them by worker/path
+context, and use every supported Cantrip surface from local or remote clients.
+An attached Git checkout exposes repository history, and an authenticated
+GitHub origin exposes GitHub collaboration views. Direct Agent and workflow
+writes are permitted according to the selected permissions and workflow
+definition.
 
 The project stays bound to its owning worker, becomes unavailable for execution
-when that worker is offline, and resumes on reconnect. Git- and
-replication-dependent actions are absent and fail closed through the server if
-invoked by a stale client. Unlink preserves the folder with an explicit V1
-reattachment limitation; permanent deletion requires a second warning and can
+when that worker is offline, and resumes on reconnect. Unsupported replication
+and relocation actions remain absent and fail closed through the server if
+invoked by a stale client. Permanent deletion requires a second warning and can
 remove only the exact worker-managed folder.
 
-The project can gain Git features only through the explicit GitHub conversion
-flow, which preserves its Cantrip identity and never guesses how to merge or
+The project can gain managed replicas and worktrees only through the explicit
+GitHub conversion flow, which preserves its Cantrip identity and never guesses how to merge or
 overwrite repository history.
