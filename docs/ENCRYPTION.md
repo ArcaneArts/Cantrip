@@ -263,6 +263,13 @@ platform secure storage will own private keys. Until the native providers and
 transactional migration are connected, the IndexedDB implementation above
 remains the active runtime behavior.
 
+The replacement startup contract resolves state in this order: installation,
+authoritative server profile, native device key, account binding, legacy
+device, and finally an explicit account or anonymous recovery path. A missing
+binding or key is not permission to create one. Device-key providers own the
+private-key unwrap operation; the renderer receives only the already-unwrapped
+Account Master Key required by the existing in-memory component-key service.
+
 ### Account initialization and unlock
 
 The client orchestration in

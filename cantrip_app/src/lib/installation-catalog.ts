@@ -3,10 +3,12 @@ import type { EncryptionPublicKey } from "@cantrip/protocol/encryption";
 export const installationCatalogSchemaVersion = 1 as const;
 export const installationDeviceKeyVersion = 1 as const;
 
-export type NativeKeyProvider =
+export type ClientDeviceKeyCustodyBackend =
   | "android-keystore"
   | "apple-keychain"
+  | "browser-webcrypto"
   | "linux-secret-service"
+  | "memory"
   | "stronghold"
   | "windows-protected-storage";
 
@@ -20,7 +22,7 @@ export type InstallationDeviceKey = {
   createdAt: string;
   installationId: string;
   keyAlias: string;
-  provider: NativeKeyProvider;
+  provider: ClientDeviceKeyCustodyBackend;
   publicKey: EncryptionPublicKey;
   status: "active" | "retired";
   version: typeof installationDeviceKeyVersion;
@@ -29,6 +31,7 @@ export type InstallationDeviceKey = {
 export type InstallationAccountBinding = {
   grantRevision: number;
   keyAlias: string;
+  masterKeyRevision: number;
   ownerId: string;
   principalId: string;
   serverId: string;
@@ -176,6 +179,8 @@ function validateAccountBinding(
   if (
     !Number.isInteger(binding.grantRevision) ||
     binding.grantRevision < 1 ||
+    !Number.isInteger(binding.masterKeyRevision) ||
+    binding.masterKeyRevision < 1 ||
     state.deviceKeys.get(binding.keyAlias)?.status !== "active"
   ) {
     throw new InstallationCatalogError(

@@ -37,7 +37,7 @@ flowchart TD
 
 - Branch: `codex/encryption-storage-cycle1-contracts`
 - Pull request: [#1534](https://github.com/ArcaneArts/Cantrip/pull/1534)
-- Merge: auto-merge requested; pending required repository checks
+- Merge: squash-merged as `e14aad942e6124c17d864af4f11e9a238ee00a01`
 - Behavior implemented:
   - Defined the versioned installation, native-key metadata, account-binding,
     and migration records.
@@ -59,20 +59,59 @@ flowchart TD
   require platform-specific implementation and validation.
 - Manual verification: none for this behavior-neutral cycle.
 
+### Cycle 2 — runtime, provider, and startup contracts
+
+- Branch: `codex/encryption-storage-cycle2-startup`
+- Pull request: [#1536](https://github.com/ArcaneArts/Cantrip/pull/1536)
+- Merge: pending
+- Behavior implemented:
+  - Added the single runtime classifier for browser, Tauri, Capacitor iOS,
+    Capacitor Android, and unsupported native environments.
+  - Defined the device-key provider operation boundary. Providers own the
+    private-key unwrap operation and return only the Account Master Key needed
+    by the in-memory encryption service.
+  - Added an idempotent, concurrency-safe in-memory custody backend for shared
+    provider contract tests, including concurrent provider instances.
+  - Added the pure startup transition owner covering authoritative profile
+    discovery, native-key lookup, binding lookup, legacy migration, account
+    recovery, anonymous recovery, and precise terminal states.
+  - Ensured key custody is located independently of account/server bindings and
+    that either missing state reaches legacy discovery before recovery; no
+    transition implicitly creates a replacement key.
+  - Bound successful unlock, migration, initialization, and recovery events to
+    the active installation ID, key alias, principal, grant revision, and
+    Account Master Key revision before protected application state can mount.
+  - Ensured stale asynchronous results from an earlier account/server
+    generation cannot advance the active startup state.
+- Validation:
+  - `pnpm --filter @cantrip/app exec vitest run src/lib/runtime-platform.test.ts src/lib/client-device-key-provider.test.ts src/lib/client-encryption-startup.test.ts src/lib/installation-catalog.test.ts src/lib/client-encryption.test.ts src/lib/account-encryption.test.ts` — 41 tests passed.
+  - `pnpm --filter @cantrip/app typecheck` — passed.
+  - `pnpm --filter @cantrip/app build` — passed.
+  - `git diff --check` — passed.
+  - `pnpm check` — reached `check:app-decomposition` and stopped on the
+    pre-existing line-budget failures in `chat-turn-runtime.ts` and
+    `task-routes.ts`; the same command fails identically on clean `main`, and
+    neither file is changed by this cycle.
+- Supported platforms: shared contracts and deterministic tests for browser,
+  Tauri, Capacitor iOS, and Capacitor Android classification. Runtime provider
+  selection remains unchanged until native providers exist.
+- Migration status: startup transition path defined; no legacy record is
+  modified.
+- Remaining work: Cycles 3–12 below.
+- Known risks or blockers: native secure-store implementations must preserve
+  the shared P-256 HPKE wrapper format and need OS-specific integration tests.
+- Manual verification: none for this behavior-neutral cycle.
+
 ## Remaining cycles
 
-1. Introduce platform-neutral runtime selection and one startup state machine.
-2. Implement the Tauri SQLite catalog and secure-key provider.
-3. Migrate Tauri legacy IndexedDB keys transactionally and connect account
+3. Implement the Tauri SQLite catalog and secure-key provider.
+4. Migrate Tauri legacy IndexedDB keys transactionally and connect account
    recovery.
-4. Stabilize named development profiles and add non-secret diagnostics.
-5. Implement Capacitor SQLite and iOS/Android secure-key providers.
-6. Connect Capacitor migration and recovery.
-7. Harden browser persistence, replacement-device recovery, and recovery UI.
-8. Implement anonymous recovery export/import.
-9. Add update/install compatibility harnesses and release gates.
-10. Retire obsolete defaults while retaining required legacy readers.
-11. Complete the cross-platform audit, full validation, and documentation.
-
-The numbering above describes work remaining after Cycle 1. Later entries in
-this ledger retain their original cycle numbers from the goal prompt.
+5. Stabilize named development profiles and add non-secret diagnostics.
+6. Implement Capacitor SQLite and iOS/Android secure-key providers.
+7. Connect Capacitor migration and recovery.
+8. Harden browser persistence, replacement-device recovery, and recovery UI.
+9. Implement anonymous recovery export/import.
+10. Add update/install compatibility harnesses and release gates.
+11. Retire obsolete defaults while retaining required legacy readers.
+12. Complete the cross-platform audit, full validation, and documentation.
