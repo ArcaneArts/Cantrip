@@ -125,6 +125,38 @@ describe("Capacitor native installation storage bridge", () => {
     ]);
   });
 
+  it("normalizes optional migration fields omitted by native JSON encoders", async () => {
+    const bridge = fakeBridge({
+      readCatalog: () =>
+        Promise.resolve({
+          accountBindings: [],
+          deviceKeys: [],
+          installation: {
+            createdAt,
+            installationId,
+            schemaVersion: 1,
+          },
+          migrations: [
+            {
+              migrationId: "legacy-indexeddb-v1",
+              state: "in-progress",
+            },
+          ],
+          revision: 1,
+          schemaVersion: 1,
+        } as unknown as NativeInstallationCatalogSnapshot),
+    });
+    const catalog = new CapacitorInstallationCatalog(bridge);
+
+    await expect(catalog.getMigration("legacy-indexeddb-v1")).resolves.toEqual({
+      completedAt: null,
+      migrationId: "legacy-indexeddb-v1",
+      startedAt: null,
+      state: "in-progress",
+      verificationState: null,
+    });
+  });
+
   it("selects Android Keystore custody and keeps the master key byte boundary", async () => {
     const provider = await CapacitorClientDeviceKeyProvider.open(fakeBridge());
     expect(provider.kind).toBe("capacitor-native");
