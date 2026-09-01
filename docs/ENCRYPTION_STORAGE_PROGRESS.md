@@ -36,8 +36,8 @@ flowchart TD
 ### Cycle 1 — installation catalog contract and characterization
 
 - Branch: `codex/encryption-storage-cycle1-contracts`
-- Pull request: pending
-- Merge: pending
+- Pull request: [#1534](https://github.com/ArcaneArts/Cantrip/pull/1534)
+- Merge: auto-merge requested; pending required repository checks
 - Behavior implemented:
   - Defined the versioned installation, native-key metadata, account-binding,
     and migration records.
