@@ -1012,7 +1012,7 @@ describe("javaRunConfigurationProvider", () => {
     );
   });
 
-  it("fails closed for missing modules, main classes, wrappers, and JDKs", async () => {
+  it("fails closed for invalid Java structure without rejecting custom Gradle tasks", async () => {
     const root = await createRoot();
     await mkdir(path.join(root, "app"));
     await writeFile(path.join(root, "settings.gradle"), "include ':app'\n");
@@ -1078,21 +1078,28 @@ describe("javaRunConfigurationProvider", () => {
     ).resolves.toEqual([
       expect.objectContaining({ code: "java-main-class-missing" }),
     ]);
+    const customTask = {
+      ...definition,
+      target: {
+        kind: "gradleTask" as const,
+        projectPath: ":app",
+        task: "fabric1201RunClient",
+      },
+    };
     await expect(
-      javaRunConfigurationProvider.validate(
-        {
-          ...definition,
-          target: {
-            kind: "gradleTask",
-            projectPath: ":app",
-            task: "missingRun",
-          },
-        },
-        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
-      ),
-    ).resolves.toEqual([
-      expect.objectContaining({ code: "gradle-task-missing" }),
-    ]);
+      javaRunConfigurationProvider.validate(customTask, {
+        platform: "linux",
+        targetRoot: root,
+        defaultShell: "/bin/sh",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      javaRunConfigurationProvider.materialize(customTask, {
+        platform: "linux",
+        targetRoot: root,
+        defaultShell: "/bin/sh",
+      }),
+    ).resolves.toMatchObject({ arguments: [":app:fabric1201RunClient"] });
   });
 
   it("validates the effective Java runtime without executing Java or the wrapper", async () => {
