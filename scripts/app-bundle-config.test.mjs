@@ -10,6 +10,15 @@ const rootDir = path.resolve(
 );
 const tauriDir = path.join(rootDir, "cantrip_app", "src-tauri");
 
+const readTomlSection = (source, heading) => {
+  const marker = `[${heading}]`;
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `missing Cargo.toml section ${marker}`);
+  const bodyStart = start + marker.length;
+  const nextSection = source.indexOf("\n[", bodyStart);
+  return source.slice(bodyStart, nextSection === -1 ? undefined : nextSection);
+};
+
 test("packaged apps declare the native icon assets", async () => {
   const config = JSON.parse(
     await readFile(path.join(tauriDir, "tauri.conf.json"), "utf8"),
@@ -85,4 +94,23 @@ test("Windows NSIS installers use Cantrip branding", async () => {
 
   await assertBitmap(nsis.headerImage, 150, 57);
   await assertBitmap(nsis.sidebarImage, 164, 314);
+});
+
+test("macOS private API Cargo and Tauri config stay aligned on every target", async () => {
+  const cargoToml = await readFile(path.join(tauriDir, "Cargo.toml"), "utf8");
+  const commonDependencies = readTomlSection(cargoToml, "dependencies");
+  const baseConfig = JSON.parse(
+    await readFile(path.join(tauriDir, "tauri.conf.json"), "utf8"),
+  );
+  const macosConfig = JSON.parse(
+    await readFile(path.join(tauriDir, "tauri.macos.conf.json"), "utf8"),
+  );
+  const windowsConfig = JSON.parse(
+    await readFile(path.join(tauriDir, "tauri.windows.conf.json"), "utf8"),
+  );
+
+  assert.match(commonDependencies, /^tauri = .*"macos-private-api"/mu);
+  assert.equal(baseConfig.app?.macOSPrivateApi, true);
+  assert.equal(macosConfig.app?.macOSPrivateApi, undefined);
+  assert.equal(windowsConfig.app?.macOSPrivateApi, undefined);
 });
