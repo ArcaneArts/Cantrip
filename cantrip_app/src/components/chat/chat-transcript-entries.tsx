@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@cantrip/protocol";
+import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
 import { Bot, Check, Copy, GitFork, Loader2, Pencil, User } from "lucide-react";
 import { memo, type FormEvent, type RefObject } from "react";
 
@@ -22,6 +22,81 @@ export interface EditingSentMessage {
   error: string | null;
   id: string;
   text: string;
+}
+
+type CompletedTurnWorkSegment =
+  | {
+      activities: AgentActivity[];
+      key: string;
+      type: "activities";
+    }
+  | {
+      key: string;
+      message: ChatMessage;
+      type: "thought";
+    };
+
+function completedTurnThought(
+  content: ChatMessage["content"][number],
+): boolean {
+  return (
+    content.type !== "activity" ||
+    content.activity.type === "reasoning" ||
+    content.activity.type === "notice" ||
+    content.activity.type === "contextCompaction"
+  );
+}
+
+function completedTurnSegmentMessage(
+  message: ChatMessage,
+  content: ChatMessage["content"][number],
+  contentIndex: number,
+): ChatMessage {
+  return {
+    ...message,
+    id: `${message.id}:completed-work:${contentIndex}`,
+    content: [content],
+  };
+}
+
+function completedTurnWorkSegments(
+  messages: readonly ChatMessage[],
+): CompletedTurnWorkSegment[] {
+  const segments: CompletedTurnWorkSegment[] = [];
+  let activities: AgentActivity[] = [];
+
+  const flushActivities = () => {
+    const first = activities[0];
+    if (!first) return;
+    segments.push({
+      activities,
+      key: `activities:${first.id}`,
+      type: "activities",
+    });
+    activities = [];
+  };
+
+  for (const message of messages) {
+    message.content.forEach((content, contentIndex) => {
+      if (!completedTurnThought(content) && content.type === "activity") {
+        activities.push(content.activity);
+        return;
+      }
+      flushActivities();
+      const segmented = completedTurnSegmentMessage(
+        message,
+        content,
+        contentIndex,
+      );
+      segments.push({
+        key: `thought:${segmented.id}`,
+        message: segmented,
+        type: "thought",
+      });
+    });
+  }
+  flushActivities();
+  return segments;
 }
 
 export interface ChatTranscriptEntriesProps {
@@ -77,6 +152,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
     const entry = transcriptEntry.entry;
     if (entry.type === "activityGroup") {
       if (entry.kind === "turn") {
+        const workSegments = completedTurnWorkSegments(entry.messages);
         return (
           <CompletedTurnActivityGroup
             endedAt={entry.endedAt}
@@ -86,13 +162,24 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
             turnId={entry.turnId}
             turnKey={entry.turnKey}
           >
-            {entry.messages.map((message) => (
-              <MessageContent
-                key={message.id}
-                message={message}
-                onOpenFile={onOpenFile}
-              />
-            ))}
+            {workSegments.map((segment) =>
+              segment.type === "activities" ? (
+                <ActivityGroup
+                  active={false}
+                  activities={segment.activities}
+                  key={segment.key}
+                  turnId={entry.turnId}
+                  turnKey={entry.turnKey}
+                />
+              ) : (
+                <div data-slot="completed-turn-thought" key={segment.key}>
+                  <MessageContent
+                    message={segment.message}
+                    onOpenFile={onOpenFile}
+                  />
+                </div>
+              ),
+            )}
           </CompletedTurnActivityGroup>
         );
       }

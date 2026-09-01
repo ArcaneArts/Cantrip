@@ -217,103 +217,11 @@ export function activityLabel(activity: AgentActivity): string {
   }
 }
 
-type ActivitySummaryKind =
-  | "agent"
-  | "command"
-  | "context"
-  | "file"
-  | "image"
-  | "notice"
-  | "plan"
-  | "review"
-  | "search"
-  | "tool"
-  | "worktree";
-
-function activitySummaryKind(activity: AgentActivity): ActivitySummaryKind {
-  switch (activity.type) {
-    case "command":
-      return "command";
-    case "fileChange":
-      return "file";
-    case "mcpToolCall":
-    case "dynamicToolCall":
-      return "tool";
-    case "collabToolCall":
-    case "subAgent":
-    case "agentCommunication":
-      return "agent";
-    case "webSearch":
-      return "search";
-    case "imageView":
-      return "image";
-    case "plan":
-      return "plan";
-    case "reviewMode":
-      return "review";
-    case "contextCompaction":
-      return "context";
-    case "worktree":
-      return "worktree";
-    case "instructionContext":
-    case "reasoning":
-    case "notice":
-    case "usage":
-    case "rateLimit":
-    case "turnSummary":
-      return "notice";
-  }
-}
-
-function summaryKindLabel(kind: ActivitySummaryKind, count: number): string {
-  switch (kind) {
-    case "command":
-      return count === 1 ? "ran a command" : "ran commands";
-    case "file":
-      return "edited files";
-    case "tool":
-      return count === 1 ? "used a tool" : "used tools";
-    case "agent":
-      return count === 1 ? "coordinated an agent" : "coordinated agents";
-    case "search":
-      return "searched the web";
-    case "image":
-      return count === 1 ? "viewed an image" : "viewed images";
-    case "plan":
-      return "updated the plan";
-    case "review":
-      return "reviewed changes";
-    case "context":
-      return "compacted context";
-    case "worktree":
-      return count === 1 ? "managed a worktree" : "managed worktrees";
-    case "notice":
-      return count === 1 ? "reported an update" : "reported updates";
-  }
-}
-
 export function activityGroupSummary(activities: AgentActivity[]): string {
-  if (activities.length === 1) {
-    const [activity] = activities;
-    if (
-      activity?.type === "mcpToolCall" ||
-      activity?.type === "dynamicToolCall"
-    ) {
-      return `Used ${activityLabel(activity).replace(/^(?:MCP|Tool) · /u, "")}`;
-    }
-  }
-
-  const counts = new Map<ActivitySummaryKind, number>();
-  for (const activity of activities) {
-    const kind = activitySummaryKind(activity);
-    counts.set(kind, (counts.get(kind) ?? 0) + 1);
-  }
-  const summary = [...counts]
-    .map(([kind, count]) => summaryKindLabel(kind, count))
-    .join(", ");
-  return summary
-    ? `${summary[0]!.toUpperCase()}${summary.slice(1)}`
-    : "Activity";
+  const latest = activities.at(-1);
+  if (!latest) return "Activity";
+  const hiddenCount = activities.length - 1;
+  return `${latestActivityLabel(latest)}${hiddenCount > 0 ? ` · +${hiddenCount} more` : ""}`;
 }
 
 export function latestActivityLabel(activity: AgentActivity): string {
@@ -784,7 +692,14 @@ export function CompletedTurnActivityGroup({
           </button>
         ) : null}
       </div>
-      {open ? <div className="grid min-w-0 gap-0 py-1">{children}</div> : null}
+      {open ? (
+        <div
+          className="grid min-w-0 gap-3 py-2"
+          data-slot="completed-turn-work"
+        >
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }
