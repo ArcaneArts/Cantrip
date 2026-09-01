@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -37,6 +44,38 @@ test("builds and bundles the worker CLI with platform naming", async () => {
     assert.equal((await stat(bundled)).mode & 0o111, 0o111);
     assert.equal(cantripCliExecutableName("win32"), "cantrip.exe");
   } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("uses Cargo's configured target directory for build artifacts", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-cli-target-"));
+  const previousCargoTargetDirectory = process.env.CARGO_TARGET_DIR;
+  try {
+    const cargoTargetDirectory = path.join(root, "shared-cargo-target");
+    process.env.CARGO_TARGET_DIR = cargoTargetDirectory;
+    const binary = buildCantripCli(root, {
+      release: true,
+      run() {},
+    });
+    assert.equal(
+      binary,
+      path.join(cargoTargetDirectory, "release", cantripCliExecutableName()),
+    );
+
+    await mkdir(path.dirname(binary), { recursive: true });
+    await writeFile(binary, "shared-cantrip-cli");
+    const destination = path.join(root, "worker", "bin");
+    const bundled = await bundleCantripCli(root, destination, {
+      platform: "darwin",
+    });
+    assert.equal(await readFile(bundled, "utf8"), "shared-cantrip-cli");
+  } finally {
+    if (previousCargoTargetDirectory === undefined) {
+      delete process.env.CARGO_TARGET_DIR;
+    } else {
+      process.env.CARGO_TARGET_DIR = previousCargoTargetDirectory;
+    }
     await rm(root, { force: true, recursive: true });
   }
 });

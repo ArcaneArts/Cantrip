@@ -10,12 +10,17 @@ export function cantripCliExecutableName(platform = process.platform) {
 
 export function cantripCliBinaryPath(
   root,
-  { platform = process.platform, release = false } = {},
+  {
+    platform = process.platform,
+    release = false,
+    cargoTargetDirectory = process.env.CARGO_TARGET_DIR,
+  } = {},
 ) {
+  const targetDirectory = cargoTargetDirectory
+    ? path.resolve(root, cargoTargetDirectory)
+    : path.join(root, "cantrip_cli", "target");
   return path.join(
-    root,
-    "cantrip_cli",
-    "target",
+    targetDirectory,
     release ? "release" : "debug",
     cantripCliExecutableName(platform),
   );
@@ -23,7 +28,11 @@ export function cantripCliBinaryPath(
 
 export function buildCantripCli(
   root,
-  { release = false, run = defaultRun } = {},
+  {
+    release = false,
+    run = defaultRun,
+    cargoTargetDirectory = process.env.CARGO_TARGET_DIR,
+  } = {},
 ) {
   const arguments_ = [
     "build",
@@ -33,7 +42,7 @@ export function buildCantripCli(
   ];
   if (release) arguments_.push("--release");
   run("cargo", arguments_, { cwd: root });
-  return cantripCliBinaryPath(root, { release });
+  return cantripCliBinaryPath(root, { cargoTargetDirectory, release });
 }
 
 export async function bundleCantripCli(
@@ -42,7 +51,12 @@ export async function bundleCantripCli(
   {
     platform = process.platform,
     release = true,
-    source = cantripCliBinaryPath(root, { platform, release }),
+    cargoTargetDirectory = process.env.CARGO_TARGET_DIR,
+    source = cantripCliBinaryPath(root, {
+      cargoTargetDirectory,
+      platform,
+      release,
+    }),
   } = {},
 ) {
   await mkdir(destination, { recursive: true });
