@@ -29,10 +29,50 @@ import { CodeDirectEndpointManager } from "../src/code/direct-endpoint.js";
 import { CodeWorkbenchBridge } from "../src/code/workbench-bridge.js";
 import {
   CodeSupervisor,
+  renameWorkspaceFile,
   terminateCodeProcess,
   type CodeSupervisorOptions,
   waitForAuthenticatedCodeHttp,
 } from "../src/code/supervisor.js";
+
+describe("renameWorkspaceFile", () => {
+  it("retries transient Windows file replacement failures", async () => {
+    const attempts: string[] = [];
+    const delays: number[] = [];
+    await renameWorkspaceFile("workspace.tmp", "workspace.code-workspace", {
+      platform: "win32",
+      renameFile: async () => {
+        attempts.push("rename");
+        if (attempts.length < 3) {
+          throw Object.assign(new Error("temporarily locked"), {
+            code: attempts.length === 1 ? "EPERM" : "EBUSY",
+          });
+        }
+      },
+      wait: async (milliseconds) => {
+        delays.push(milliseconds);
+      },
+    });
+
+    expect(attempts).toHaveLength(3);
+    expect(delays).toEqual([25, 50]);
+  });
+
+  it("does not retry Windows-only errors on other platforms", async () => {
+    const renameFile = vi.fn(async () => {
+      throw Object.assign(new Error("denied"), { code: "EPERM" });
+    });
+
+    await expect(
+      renameWorkspaceFile("workspace.tmp", "workspace.code-workspace", {
+        platform: "darwin",
+        renameFile,
+        wait: async () => undefined,
+      }),
+    ).rejects.toThrow("denied");
+    expect(renameFile).toHaveBeenCalledTimes(1);
+  });
+});
 
 const directories: string[] = [];
 const endpointManagers: CodeDirectEndpointManager[] = [];

@@ -143,6 +143,7 @@ const DEFAULT_PROFILE_IDLE_TIMEOUT_MS = 30 * 60_000;
 const MAX_RESTORED_SESSION_RECORDS = 10_000;
 const RUNTIME_STATE_SCHEMA_VERSION = 2;
 const PROFILE_BUILD_FINGERPRINT_FILE = ".cantrip-code-build";
+const WINDOWS_WORKSPACE_RENAME_RETRY_DELAYS_MS = [25, 50, 100, 200, 400];
 
 const THEME_NAMES: Record<CodeAppearance, string> = {
   light: "Cantrip Light",
@@ -197,6 +198,37 @@ async function pathExists(candidatePath: string): Promise<boolean> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
+  }
+}
+
+export async function renameWorkspaceFile(
+  source: string,
+  destination: string,
+  options: {
+    platform?: NodeJS.Platform;
+    renameFile?: (source: string, destination: string) => Promise<void>;
+    wait?: (milliseconds: number) => Promise<void>;
+  } = {},
+): Promise<void> {
+  const platform = options.platform ?? process.platform;
+  const renameFile = options.renameFile ?? rename;
+  const wait =
+    options.wait ??
+    ((milliseconds: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await renameFile(source, destination);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const retryable =
+        platform === "win32" &&
+        (code === "EACCES" || code === "EBUSY" || code === "EPERM") &&
+        attempt < WINDOWS_WORKSPACE_RENAME_RETRY_DELAYS_MS.length;
+      if (!retryable) throw error;
+      await wait(WINDOWS_WORKSPACE_RENAME_RETRY_DELAYS_MS[attempt]!);
+    }
   }
 }
 
@@ -707,18 +739,6 @@ export class CodeSupervisor {
         this.#sessions.set(command.sessionId, session);
         createdSession = session;
         await this.#attachProfile(session, generation);
-        await this.#writeWorkspace(session);
-        this.#assertCurrentOperation(command.sessionId, generation, session);
-        workerLogger.event("debug", "Cantrip Code workspace prepared", {
-          event: "code.workspace.prepared",
-          subsystem: "code",
-          operation: "prepare-workspace",
-          status: "completed",
-          appearance: session.appearance,
-          sessionId: session.sessionId,
-          projectId: session.projectId,
-          worktreeId: session.worktreeId,
-        });
       }
 
       session.appearance = command.appearance;
@@ -732,6 +752,18 @@ export class CodeSupervisor {
       session.status = "starting";
       await this.#writeWorkspace(session);
       this.#assertCurrentOperation(command.sessionId, generation, session);
+      if (createdSession) {
+        workerLogger.event("debug", "Cantrip Code workspace prepared", {
+          event: "code.workspace.prepared",
+          subsystem: "code",
+          operation: "prepare-workspace",
+          status: "completed",
+          appearance: session.appearance,
+          sessionId: session.sessionId,
+          projectId: session.projectId,
+          worktreeId: session.worktreeId,
+        });
+      }
       await this.#ensureAttachedProfile(session, generation);
       this.#assertCurrentOperation(command.sessionId, generation, session);
       const startupAppearance = session.appearance;
@@ -2061,7 +2093,7 @@ export class CodeSupervisor {
         encoding: "utf8",
         mode: 0o600,
       });
-      await rename(temporary, session.workspacePath);
+      await renameWorkspaceFile(temporary, session.workspacePath);
     } finally {
       await rm(temporary, { force: true }).catch(() => undefined);
     }
