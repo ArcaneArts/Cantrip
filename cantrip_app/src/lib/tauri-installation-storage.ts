@@ -1,4 +1,4 @@
-import { requireByteLength } from "@cantrip/crypto";
+import { decodeBase64Url, requireByteLength } from "@cantrip/crypto";
 import type { ClientMasterKeyWrapper } from "@cantrip/protocol/encryption";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
@@ -9,6 +9,7 @@ import {
 } from "./client-device-key-provider";
 import {
   InstallationCatalogError,
+  installationKeyAlias,
   type ClientDeviceKeyCustodyBackend,
   type InstallationAccountBinding,
   type InstallationCatalog,
@@ -96,7 +97,8 @@ function parseNativeStatus(value: NativeInstallationStorageStatus) {
     value.schemaVersion !== 1 ||
     typeof value.catalogPath !== "string" ||
     value.catalogPath.length === 0 ||
-    value.keyAliasFormat !== "cantrip.installation.v1.<installation-uuid>" ||
+    value.keyAliasFormat !==
+      "cantrip.installation.<installation-uuid>.hpke.v1" ||
     !nativeCustodyBackends.has(value.provider)
   ) {
     throw new ClientDeviceKeyProviderError(
@@ -109,18 +111,35 @@ function parseNativeStatus(value: NativeInstallationStorageStatus) {
 
 function parseNativeDescriptor(
   value: ClientDeviceKeyDescriptor,
+  expected: {
+    installationId?: string;
+    keyAlias: string;
+    provider: NativeInstallationStorageStatus["provider"];
+  },
 ): ClientDeviceKeyDescriptor {
+  let canonicalAlias: string | null = null;
+  let publicKeyLength = 0;
+  try {
+    canonicalAlias = installationKeyAlias(value?.installationId);
+    publicKeyLength = decodeBase64Url(value.publicKey?.value).byteLength;
+  } catch {
+    // The typed provider failure below owns the native boundary.
+  }
   if (
     typeof value?.createdAt !== "string" ||
+    !Number.isFinite(Date.parse(value.createdAt)) ||
     typeof value.installationId !== "string" ||
     typeof value.keyAlias !== "string" ||
-    !nativeCustodyBackends.has(
-      value.provider as NativeInstallationStorageStatus["provider"],
-    ) ||
+    value.keyAlias !== expected.keyAlias ||
+    value.keyAlias !== canonicalAlias ||
+    (expected.installationId !== undefined &&
+      value.installationId !== expected.installationId) ||
+    value.provider !== expected.provider ||
     value.publicKey?.algorithm !== "P-256" ||
     value.publicKey.format !== "raw" ||
     value.publicKey.version !== 1 ||
-    typeof value.publicKey.value !== "string"
+    typeof value.publicKey.value !== "string" ||
+    publicKeyLength !== 65
   ) {
     throw new ClientDeviceKeyProviderError(
       "key-unusable",
@@ -189,6 +208,9 @@ function mapCatalogError(error: unknown): never {
     "installation-device-key-invalid": "device-key-invalid",
     "installation-migration-invalid": "migration-invalid",
     "installation-profile-invalid": "installation-invalid",
+    "native-device-key-invalid": "device-key-invalid",
+    "native-device-key-metadata-mismatch": "device-key-invalid",
+    "native-device-key-missing": "device-key-invalid",
   } as const;
   if (code && code in validationCodes) {
     throw new InstallationCatalogError(
@@ -209,8 +231,14 @@ function mapProviderError(error: unknown): never {
   }
   if (
     code === "native-device-key-invalid" ||
-    code === "native-device-key-metadata-mismatch" ||
-    code === "client-master-key-decryption-failed"
+    code === "client-master-key-decryption-failed" ||
+    code === "client-master-key-wrapper-invalid" ||
+    code === "base64url-value-invalid" ||
+    code === "installation-catalog-corrupt" ||
+    code === "installation-device-key-invalid" ||
+    code === "installation-identifier-invalid" ||
+    code === "installation-profile-invalid" ||
+    code === "installation-timestamp-invalid"
   ) {
     throw new ClientDeviceKeyProviderError(
       "key-unusable",
@@ -220,6 +248,7 @@ function mapProviderError(error: unknown): never {
   if (
     code === "native-device-key-alias-invalid" ||
     code === "native-device-key-conflict" ||
+    code === "native-device-key-metadata-mismatch" ||
     code === "installation-missing"
   ) {
     throw new ClientDeviceKeyProviderError(
@@ -227,7 +256,7 @@ function mapProviderError(error: unknown): never {
       "The native installation key belongs to another installation.",
     );
   }
-  if (code?.includes("unavailable")) {
+  if (code?.includes("unavailable") || code === "native-storage-task-failed") {
     throw new ClientDeviceKeyProviderError(
       "key-store-unavailable",
       "The operating system secure-key store is unavailable.",
@@ -464,13 +493,25 @@ export class TauriClientDeviceKeyProvider implements ClientDeviceKeyProvider {
     keyAlias: string;
   }): Promise<ClientDeviceKeyDescriptor> {
     try {
+      if (installationKeyAlias(input.installationId) !== input.keyAlias) {
+        throw new ClientDeviceKeyProviderError(
+          "key-conflict",
+          "The native installation key alias does not match the installation.",
+        );
+      }
       return parseNativeDescriptor(
         await invoke<ClientDeviceKeyDescriptor>(
           "create_native_installation_key",
           { input },
         ),
+        {
+          installationId: input.installationId,
+          keyAlias: input.keyAlias,
+          provider: this.backend,
+        },
       );
     } catch (error) {
+      if (error instanceof ClientDeviceKeyProviderError) throw error;
       return mapProviderError(error);
     }
   }
@@ -481,8 +522,14 @@ export class TauriClientDeviceKeyProvider implements ClientDeviceKeyProvider {
         "inspect_native_installation_key",
         { keyAlias },
       );
-      return value === null ? null : parseNativeDescriptor(value);
+      return value === null
+        ? null
+        : parseNativeDescriptor(value, {
+            keyAlias,
+            provider: this.backend,
+          });
     } catch (error) {
+      if (error instanceof ClientDeviceKeyProviderError) throw error;
       return mapProviderError(error);
     }
   }
@@ -492,16 +539,38 @@ export class TauriClientDeviceKeyProvider implements ClientDeviceKeyProvider {
     ownerId: string;
     wrapper: ClientMasterKeyWrapper;
   }): Promise<Uint8Array> {
+    let source: unknown = null;
     try {
-      const value = new Uint8Array(
-        await invoke<number[]>("unwrap_native_account_master_key", {
-          input,
-        }),
-      );
-      requireByteLength(value, 32, "Account Master Key");
-      return value;
+      source = await invoke<number[]>("unwrap_native_account_master_key", {
+        input,
+      });
+      if (
+        !Array.isArray(source) ||
+        !source.every(
+          (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255,
+        )
+      ) {
+        throw new ClientDeviceKeyProviderError(
+          "key-unusable",
+          "Native installation storage returned invalid key bytes.",
+        );
+      }
+      const accountMasterKey = Uint8Array.from(source);
+      try {
+        requireByteLength(accountMasterKey, 32, "Account Master Key");
+      } catch {
+        accountMasterKey.fill(0);
+        throw new ClientDeviceKeyProviderError(
+          "key-unusable",
+          "Native installation storage returned an invalid Account Master Key.",
+        );
+      }
+      return accountMasterKey;
     } catch (error) {
+      if (error instanceof ClientDeviceKeyProviderError) throw error;
       return mapProviderError(error);
+    } finally {
+      if (Array.isArray(source)) source.fill(0);
     }
   }
 }

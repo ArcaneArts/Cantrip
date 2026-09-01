@@ -51,6 +51,21 @@ function binding(
 }
 
 describe("installation catalog contract", () => {
+  it("uses only canonical lowercase versioned UUID installation aliases", () => {
+    expect(installationKeyAlias(installationId)).toBe(
+      `cantrip.installation.${installationId}.hpke.v1`,
+    );
+    for (const invalid of [
+      "5f83bb4256714b11a87f32842af21af2",
+      "5f83bb42-5671-9b11-a87f-32842af21af2",
+      "5F83BB42-5671-4B11-A87F-32842AF21AF2",
+    ]) {
+      expect(() => installationKeyAlias(invalid)).toThrowError(
+        expect.objectContaining({ code: "installation-invalid" }),
+      );
+    }
+  });
+
   it("keeps one immutable installation while accepting idempotent initialization", async () => {
     const catalog = new MemoryInstallationCatalog();
 

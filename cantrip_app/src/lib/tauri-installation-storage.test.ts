@@ -16,9 +16,10 @@ import type {
   InstallationDeviceKey,
   InstallationProfile,
 } from "./installation-catalog";
+import { installationKeyAlias } from "./installation-catalog";
 
 const installationId = "5f83bb42-5671-4b11-a87f-32842af21af2";
-const keyAlias = `cantrip.installation.v1.${installationId}`;
+const keyAlias = installationKeyAlias(installationId);
 const createdAt = "2026-08-31T20:00:00.000Z";
 const profile: InstallationProfile = {
   createdAt,
@@ -157,7 +158,7 @@ describe("Tauri client device-key provider", () => {
       if (command === "native_installation_storage_status") {
         return Promise.resolve({
           catalogPath: "/native/installation/v1/catalog.sqlite3",
-          keyAliasFormat: "cantrip.installation.v1.<installation-uuid>",
+          keyAliasFormat: "cantrip.installation.<installation-uuid>.hpke.v1",
           provider: "apple-keychain",
           schemaVersion: 1,
         });
@@ -181,17 +182,18 @@ describe("Tauri client device-key provider", () => {
   });
 
   it("returns only the unwrapped Account Master Key bytes", async () => {
+    const nativeBytes = new Array<number>(32).fill(47);
     tauri.invoke.mockImplementation((command: string) => {
       if (command === "native_installation_storage_status") {
         return Promise.resolve({
           catalogPath: "/native/installation/v1/catalog.sqlite3",
-          keyAliasFormat: "cantrip.installation.v1.<installation-uuid>",
+          keyAliasFormat: "cantrip.installation.<installation-uuid>.hpke.v1",
           provider: "apple-keychain",
           schemaVersion: 1,
         });
       }
       if (command === "unwrap_native_account_master_key") {
-        return Promise.resolve(new Array<number>(32).fill(47));
+        return Promise.resolve(nativeBytes);
       }
       throw new Error(`Unexpected command: ${command}`);
     });
@@ -203,12 +205,93 @@ describe("Tauri client device-key provider", () => {
       wrapper: {} as ClientMasterKeyWrapper,
     });
     expect(opened).toEqual(new Uint8Array(32).fill(47));
+    expect(nativeBytes).toEqual(new Array<number>(32).fill(0));
+  });
+
+  it("rejects a native descriptor whose alias is not bound to its installation", async () => {
+    tauri.invoke.mockImplementation((command: string) => {
+      if (command === "native_installation_storage_status") {
+        return Promise.resolve({
+          catalogPath: "/native/installation/v1/catalog.sqlite3",
+          keyAliasFormat: "cantrip.installation.<installation-uuid>.hpke.v1",
+          provider: "apple-keychain",
+          schemaVersion: 1,
+        });
+      }
+      if (command === "inspect_native_installation_key") {
+        const { status: _status, version: _version, ...descriptor } = deviceKey;
+        return Promise.resolve({
+          ...descriptor,
+          installationId: "26ea4301-98e1-4a79-9842-9bc3ec98e4b8",
+        });
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    const provider = await TauriClientDeviceKeyProvider.open();
+
+    await expect(provider.inspect(keyAlias)).rejects.toMatchObject({
+      code: "key-unusable",
+    });
+  });
+
+  it("zeroes invalid Account Master Key response bytes before failing", async () => {
+    const nativeBytes = new Array<number>(31).fill(47);
+    tauri.invoke.mockImplementation((command: string) => {
+      if (command === "native_installation_storage_status") {
+        return Promise.resolve({
+          catalogPath: "/native/installation/v1/catalog.sqlite3",
+          keyAliasFormat: "cantrip.installation.<installation-uuid>.hpke.v1",
+          provider: "apple-keychain",
+          schemaVersion: 1,
+        });
+      }
+      if (command === "unwrap_native_account_master_key") {
+        return Promise.resolve(nativeBytes);
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    const provider = await TauriClientDeviceKeyProvider.open();
+
+    await expect(
+      provider.unwrapAccountMasterKey({
+        keyAlias,
+        ownerId: "owner-a",
+        wrapper: {} as ClientMasterKeyWrapper,
+      }),
+    ).rejects.toMatchObject({ code: "key-unusable" });
+    expect(nativeBytes).toEqual(new Array<number>(31).fill(0));
+  });
+
+  it("maps a non-array Account Master Key response without masking the failure", async () => {
+    tauri.invoke.mockImplementation((command: string) => {
+      if (command === "native_installation_storage_status") {
+        return Promise.resolve({
+          catalogPath: "/native/installation/v1/catalog.sqlite3",
+          keyAliasFormat: "cantrip.installation.<installation-uuid>.hpke.v1",
+          provider: "apple-keychain",
+          schemaVersion: 1,
+        });
+      }
+      if (command === "unwrap_native_account_master_key") {
+        return Promise.resolve("not-key-bytes");
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    const provider = await TauriClientDeviceKeyProvider.open();
+
+    await expect(
+      provider.unwrapAccountMasterKey({
+        keyAlias,
+        ownerId: "owner-a",
+        wrapper: {} as ClientMasterKeyWrapper,
+      }),
+    ).rejects.toMatchObject({ code: "key-unusable" });
   });
 
   it("rejects an unsupported native custody contract", async () => {
     tauri.invoke.mockResolvedValue({
       catalogPath: "/native/installation/v1/catalog.sqlite3",
-      keyAliasFormat: "cantrip.installation.v2.<installation-uuid>",
+      keyAliasFormat: "cantrip.installation.<installation-uuid>.hpke.v2",
       provider: "apple-keychain",
       schemaVersion: 2,
     });
@@ -223,7 +306,7 @@ describe("Tauri client device-key provider", () => {
       if (command === "native_installation_storage_status") {
         return Promise.resolve({
           catalogPath: "/native/installation/v1/catalog.sqlite3",
-          keyAliasFormat: "cantrip.installation.v1.<installation-uuid>",
+          keyAliasFormat: "cantrip.installation.<installation-uuid>.hpke.v1",
           provider: "apple-keychain",
           schemaVersion: 1,
         });
@@ -245,7 +328,7 @@ describe("Tauri client device-key provider", () => {
       if (command === "native_installation_storage_status") {
         return Promise.resolve({
           catalogPath: "/native/installation/v1/catalog.sqlite3",
-          keyAliasFormat: "cantrip.installation.v1.<installation-uuid>",
+          keyAliasFormat: "cantrip.installation.<installation-uuid>.hpke.v1",
           provider: "apple-keychain",
           schemaVersion: 1,
         });

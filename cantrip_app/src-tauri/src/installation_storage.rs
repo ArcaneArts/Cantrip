@@ -232,7 +232,7 @@ pub struct NativeDeviceKeyDescriptor {
     public_key: NativeEncryptionPublicKey,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeDeviceKeySecret {
     created_at: String,
@@ -240,6 +240,18 @@ struct NativeDeviceKeySecret {
     key_alias: String,
     private_key: String,
     version: i64,
+}
+
+impl Zeroize for NativeDeviceKeySecret {
+    fn zeroize(&mut self) {
+        self.private_key.zeroize();
+    }
+}
+
+impl Drop for NativeDeviceKeySecret {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -328,14 +340,14 @@ impl NativeInstallationStorage {
             return Err(error.clone());
         }
         prepare_catalog_parent(&self.catalog_path)?;
-        let connection = Connection::open(&self.catalog_path)
+        let mut connection = Connection::open(&self.catalog_path)
             .map_err(|_| "installation-catalog-unavailable".to_owned())?;
         connection
             .execute_batch(
                 "PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL; PRAGMA trusted_schema = OFF; PRAGMA busy_timeout = 5000;",
             )
             .map_err(|_| "installation-catalog-corrupt".to_owned())?;
-        initialize_schema(&connection)?;
+        initialize_schema(&mut connection)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -380,10 +392,11 @@ impl NativeInstallationStorage {
                 )
                 .map_err(|_| "installation-catalog-unavailable".to_owned())?;
         }
+        let snapshot = snapshot_from_connection(&transaction)?;
         transaction
             .commit()
             .map_err(|_| "installation-catalog-unavailable".to_owned())?;
-        snapshot_from_connection(&connection)
+        Ok(snapshot)
     }
 
     fn apply_operation(
@@ -429,13 +442,45 @@ impl NativeInstallationStorage {
                 {
                     return Err("native-device-key-metadata-mismatch".to_owned());
                 }
+                let public_key_json = serde_json::to_string(&device_key.public_key)
+                    .map_err(|_| "installation-device-key-invalid".to_owned())?;
+                let existing = transaction
+                    .query_row(
+                        "SELECT created_at, installation_id, provider, public_key_json, version FROM device_key WHERE key_alias = ?1",
+                        params![device_key.key_alias],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, String>(3)?,
+                                row.get::<_, i64>(4)?,
+                            ))
+                        },
+                    )
+                    .optional()
+                    .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+                if let Some((created_at, installation_id, provider, public_key, version)) = existing
+                {
+                    let public_key: NativeEncryptionPublicKey =
+                        serde_json::from_str(&public_key)
+                            .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+                    if created_at != device_key.created_at
+                        || installation_id != device_key.installation_id
+                        || provider != device_key.provider
+                        || public_key != device_key.public_key
+                        || version != device_key.version
+                    {
+                        return Err("native-device-key-metadata-mismatch".to_owned());
+                    }
+                }
                 transaction
                     .execute(
-                        "INSERT INTO device_key (key_alias, installation_id, public_key_json, provider, created_at, status, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(key_alias) DO UPDATE SET public_key_json = excluded.public_key_json, provider = excluded.provider, status = excluded.status",
+                        "INSERT INTO device_key (key_alias, installation_id, public_key_json, provider, created_at, status, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(key_alias) DO UPDATE SET status = excluded.status",
                         params![
                             device_key.key_alias,
                             device_key.installation_id,
-                            serde_json::to_string(&device_key.public_key).map_err(|_| "installation-device-key-invalid".to_owned())?,
+                            public_key_json,
                             device_key.provider,
                             device_key.created_at,
                             device_key.status,
@@ -483,8 +528,11 @@ impl NativeInstallationStorage {
             .access
             .lock()
             .map_err(|_| "native-key-store-unavailable".to_owned())?;
-        let connection = self.connection()?;
-        let installation: Option<String> = connection
+        let mut connection = self.connection()?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        let installation: Option<String> = transaction
             .query_row(
                 "SELECT installation_id FROM installation WHERE singleton_id = 1",
                 [],
@@ -502,24 +550,35 @@ impl NativeInstallationStorage {
                 Err("native-device-key-conflict".to_owned())
             };
         }
+        let catalog_key_exists: bool = transaction
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM device_key WHERE key_alias = ?1)",
+                params![input.key_alias],
+                |row| row.get(0),
+            )
+            .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+        if catalog_key_exists {
+            return Err("native-device-key-missing".to_owned());
+        }
 
         let (private_key, public_key) = NativeKem::gen_keypair();
-        let mut private_key_bytes = private_key.to_bytes().to_vec();
+        let private_key_bytes = Zeroizing::new(private_key.to_bytes().to_vec());
         let created_at = input.created_at.unwrap_or_else(current_timestamp);
-        let mut secret_record = NativeDeviceKeySecret {
+        let secret_record = NativeDeviceKeySecret {
             created_at: created_at.clone(),
             installation_id: input.installation_id.clone(),
             key_alias: input.key_alias.clone(),
             private_key: URL_SAFE_NO_PAD.encode(&private_key_bytes),
             version: DEVICE_KEY_VERSION,
         };
-        let mut serialized = serde_json::to_vec(&secret_record)
-            .map_err(|_| "native-device-key-invalid".to_owned())?;
-        let result = self.secrets.put(&input.key_alias, &serialized);
-        serialized.zeroize();
-        private_key_bytes.zeroize();
-        secret_record.private_key.zeroize();
-        result?;
+        let serialized = Zeroizing::new(
+            serde_json::to_vec(&secret_record)
+                .map_err(|_| "native-device-key-invalid".to_owned())?,
+        );
+        self.secrets.put(&input.key_alias, serialized.as_slice())?;
+        transaction
+            .commit()
+            .map_err(|_| "installation-catalog-unavailable".to_owned())?;
         Ok(NativeDeviceKeyDescriptor {
             created_at,
             installation_id: input.installation_id,
@@ -542,12 +601,10 @@ impl NativeInstallationStorage {
         key_alias: &str,
     ) -> Result<Option<NativeDeviceKeyDescriptor>, String> {
         validate_identifier(key_alias)?;
-        let Some(mut secret) = self.secrets.get(key_alias)? else {
+        let Some(secret) = self.secrets.get(key_alias)? else {
             return Ok(None);
         };
-        let result = parse_key_secret(&secret, key_alias);
-        secret.zeroize();
-        result.map(Some)
+        parse_key_secret(Zeroizing::new(secret).as_slice(), key_alias).map(Some)
     }
 
     fn unwrap_account_master_key(
@@ -559,18 +616,17 @@ impl NativeInstallationStorage {
             .access
             .lock()
             .map_err(|_| "native-key-store-unavailable".to_owned())?;
-        let Some(mut secret) = self.secrets.get(&input.key_alias)? else {
+        let Some(secret) = self.secrets.get(&input.key_alias)? else {
             return Err("native-device-key-missing".to_owned());
         };
-        let mut record: NativeDeviceKeySecret =
-            serde_json::from_slice(&secret).map_err(|_| "native-device-key-invalid".to_owned())?;
-        secret.zeroize();
-        validate_secret_record(&record, &input.key_alias)?;
-        let mut private_key_bytes = decode_base64url(&record.private_key, 32)?;
-        record.private_key.zeroize();
-        let private_key = <NativeKem as KemTrait>::PrivateKey::from_bytes(&private_key_bytes)
+        let secret = Zeroizing::new(secret);
+        let record: NativeDeviceKeySecret = serde_json::from_slice(secret.as_slice())
             .map_err(|_| "native-device-key-invalid".to_owned())?;
-        private_key_bytes.zeroize();
+        validate_secret_record(&record, &input.key_alias)?;
+        let private_key_bytes = Zeroizing::new(decode_base64url(&record.private_key, 32)?);
+        let private_key =
+            <NativeKem as KemTrait>::PrivateKey::from_bytes(private_key_bytes.as_slice())
+                .map_err(|_| "native-device-key-invalid".to_owned())?;
         let encapsulated_bytes = decode_base64url(&input.wrapper.envelope.encapsulated_key, 65)?;
         let encapsulated_key =
             <NativeKem as KemTrait>::EncappedKey::from_bytes(&encapsulated_bytes)
@@ -586,20 +642,21 @@ impl NativeInstallationStorage {
             table: "encryption_client_principals",
         })
         .map_err(|_| "client-master-key-wrapper-invalid".to_owned())?;
-        let mut plaintext = single_shot_open::<AesGcm256, HkdfSha256, NativeKem>(
-            &OpModeR::Base,
-            &private_key,
-            &encapsulated_key,
-            HPKE_INFO,
-            &ciphertext,
-            &associated_data,
-        )
-        .map_err(|_| "client-master-key-decryption-failed".to_owned())?;
+        let plaintext = Zeroizing::new(
+            single_shot_open::<AesGcm256, HkdfSha256, NativeKem>(
+                &OpModeR::Base,
+                &private_key,
+                &encapsulated_key,
+                HPKE_INFO,
+                &ciphertext,
+                &associated_data,
+            )
+            .map_err(|_| "client-master-key-decryption-failed".to_owned())?,
+        );
         if plaintext.len() != 32 {
-            plaintext.zeroize();
             return Err("client-master-key-decryption-failed".to_owned());
         }
-        Ok(SensitiveBytes(Zeroizing::new(plaintext)))
+        Ok(SensitiveBytes(plaintext))
     }
 }
 
@@ -626,7 +683,7 @@ pub fn native_installation_storage_status(
     }
     Ok(NativeInstallationStorageStatus {
         catalog_path: storage.catalog_path.to_string_lossy().into_owned(),
-        key_alias_format: "cantrip.installation.v1.<installation-uuid>",
+        key_alias_format: "cantrip.installation.<installation-uuid>.hpke.v1",
         provider: native_key_provider(),
         schema_version: CATALOG_SCHEMA_VERSION,
     })
@@ -685,62 +742,203 @@ async fn run_blocking<T: Send + 'static>(
         .map_err(Into::into)
 }
 
-fn initialize_schema(connection: &Connection) -> Result<(), String> {
+const CATALOG_SCHEMA_SQL: &str = "
+    CREATE TABLE catalog_meta (
+      singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+      schema_version INTEGER NOT NULL,
+      revision INTEGER NOT NULL
+    );
+    INSERT INTO catalog_meta (singleton_id, schema_version, revision)
+      VALUES (1, 1, 0);
+    CREATE TABLE installation (
+      singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+      installation_id TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      schema_version INTEGER NOT NULL
+    );
+    CREATE TABLE device_key (
+      key_alias TEXT PRIMARY KEY,
+      installation_id TEXT NOT NULL,
+      public_key_json TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      FOREIGN KEY (installation_id) REFERENCES installation(installation_id)
+    );
+    CREATE TABLE account_binding (
+      server_id TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      principal_id TEXT NOT NULL,
+      key_alias TEXT NOT NULL,
+      grant_revision INTEGER NOT NULL,
+      master_key_revision INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (server_id, owner_id),
+      FOREIGN KEY (key_alias) REFERENCES device_key(key_alias)
+    );
+    CREATE TABLE migration (
+      migration_id TEXT PRIMARY KEY,
+      started_at TEXT,
+      completed_at TEXT,
+      state TEXT NOT NULL,
+      verification_state TEXT
+    );
+    PRAGMA user_version = 1;
+";
+
+const CATALOG_TABLE_DEFINITIONS: [(&str, &str); 5] = [
+    (
+        "account_binding",
+        "CREATE TABLE account_binding (
+          server_id TEXT NOT NULL,
+          owner_id TEXT NOT NULL,
+          principal_id TEXT NOT NULL,
+          key_alias TEXT NOT NULL,
+          grant_revision INTEGER NOT NULL,
+          master_key_revision INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (server_id, owner_id),
+          FOREIGN KEY (key_alias) REFERENCES device_key(key_alias)
+        )",
+    ),
+    (
+        "catalog_meta",
+        "CREATE TABLE catalog_meta (
+          singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+          schema_version INTEGER NOT NULL,
+          revision INTEGER NOT NULL
+        )",
+    ),
+    (
+        "device_key",
+        "CREATE TABLE device_key (
+          key_alias TEXT PRIMARY KEY,
+          installation_id TEXT NOT NULL,
+          public_key_json TEXT NOT NULL,
+          provider TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          status TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          FOREIGN KEY (installation_id) REFERENCES installation(installation_id)
+        )",
+    ),
+    (
+        "installation",
+        "CREATE TABLE installation (
+          singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+          installation_id TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL,
+          schema_version INTEGER NOT NULL
+        )",
+    ),
+    (
+        "migration",
+        "CREATE TABLE migration (
+          migration_id TEXT PRIMARY KEY,
+          started_at TEXT,
+          completed_at TEXT,
+          state TEXT NOT NULL,
+          verification_state TEXT
+        )",
+    ),
+];
+
+fn initialize_schema(connection: &mut Connection) -> Result<(), String> {
     let schema_version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(|_| "installation-catalog-corrupt".to_owned())?;
     if schema_version > CATALOG_SCHEMA_VERSION {
         return Err("installation-catalog-version-unsupported".to_owned());
     }
+    if schema_version == CATALOG_SCHEMA_VERSION {
+        return verify_schema(connection);
+    }
+    if !user_schema_objects(connection)?.is_empty() {
+        return Err("installation-catalog-corrupt".to_owned());
+    }
     connection
-        .execute_batch(
-            "
-            PRAGMA journal_mode = WAL;
-            CREATE TABLE IF NOT EXISTS catalog_meta (
-              singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-              schema_version INTEGER NOT NULL,
-              revision INTEGER NOT NULL
-            );
-            INSERT OR IGNORE INTO catalog_meta (singleton_id, schema_version, revision)
-              VALUES (1, 1, 0);
-            CREATE TABLE IF NOT EXISTS installation (
-              singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
-              installation_id TEXT NOT NULL UNIQUE,
-              created_at TEXT NOT NULL,
-              schema_version INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS device_key (
-              key_alias TEXT PRIMARY KEY,
-              installation_id TEXT NOT NULL,
-              public_key_json TEXT NOT NULL,
-              provider TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              status TEXT NOT NULL,
-              version INTEGER NOT NULL,
-              FOREIGN KEY (installation_id) REFERENCES installation(installation_id)
-            );
-            CREATE TABLE IF NOT EXISTS account_binding (
-              server_id TEXT NOT NULL,
-              owner_id TEXT NOT NULL,
-              principal_id TEXT NOT NULL,
-              key_alias TEXT NOT NULL,
-              grant_revision INTEGER NOT NULL,
-              master_key_revision INTEGER NOT NULL,
-              updated_at TEXT NOT NULL,
-              PRIMARY KEY (server_id, owner_id),
-              FOREIGN KEY (key_alias) REFERENCES device_key(key_alias)
-            );
-            CREATE TABLE IF NOT EXISTS migration (
-              migration_id TEXT PRIMARY KEY,
-              started_at TEXT,
-              completed_at TEXT,
-              state TEXT NOT NULL,
-              verification_state TEXT
-            );
-            PRAGMA user_version = 1;
-            ",
+        .execute_batch("PRAGMA journal_mode = WAL;")
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+    transaction
+        .execute_batch(CATALOG_SCHEMA_SQL)
+        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+    transaction
+        .commit()
+        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+    verify_schema(connection)
+}
+
+fn user_schema_objects(connection: &Connection) -> Result<Vec<(String, String, String)>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT type, name, COALESCE(sql, '') FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY name",
         )
         .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+    let objects = statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+    Ok(objects)
+}
+
+fn normalized_schema_sql(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+fn verify_schema(connection: &Connection) -> Result<(), String> {
+    let objects = user_schema_objects(connection)?;
+    if objects.len() != CATALOG_TABLE_DEFINITIONS.len() {
+        return Err("installation-catalog-corrupt".to_owned());
+    }
+    for ((object_type, object_name, object_sql), (expected_name, expected_sql)) in
+        objects.iter().zip(CATALOG_TABLE_DEFINITIONS)
+    {
+        if object_type != "table"
+            || object_name != expected_name
+            || normalized_schema_sql(object_sql) != normalized_schema_sql(expected_sql)
+        {
+            return Err("installation-catalog-corrupt".to_owned());
+        }
+    }
+    let meta = connection
+        .prepare("SELECT singleton_id, schema_version, revision FROM catalog_meta")
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+    if meta.len() != 1 || meta[0].0 != 1 || meta[0].1 != CATALOG_SCHEMA_VERSION || meta[0].2 < 0 {
+        return Err("installation-catalog-corrupt".to_owned());
+    }
+    let integrity: String = connection
+        .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+    if integrity != "ok" {
+        return Err("installation-catalog-corrupt".to_owned());
+    }
+    let foreign_key_failure = connection
+        .prepare("PRAGMA foreign_key_check")
+        .and_then(|mut statement| statement.exists([]))
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
+    if foreign_key_failure {
+        return Err("installation-catalog-corrupt".to_owned());
+    }
     Ok(())
 }
 
@@ -761,11 +959,11 @@ fn snapshot_from_connection(
             },
         )
         .optional()
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
 
     let mut device_statement = connection
         .prepare("SELECT created_at, installation_id, key_alias, provider, public_key_json, status, version FROM device_key ORDER BY key_alias")
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
     let device_keys = device_statement
         .query_map([], |row| {
             let public_key_json: String = row.get(4)?;
@@ -786,13 +984,13 @@ fn snapshot_from_connection(
                 version: row.get(6)?,
             })
         })
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
 
     let mut binding_statement = connection
         .prepare("SELECT grant_revision, key_alias, master_key_revision, owner_id, principal_id, server_id, updated_at FROM account_binding ORDER BY server_id, owner_id")
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
     let account_bindings = binding_statement
         .query_map([], |row| {
             Ok(NativeInstallationAccountBinding {
@@ -805,13 +1003,13 @@ fn snapshot_from_connection(
                 updated_at: row.get(6)?,
             })
         })
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
 
     let mut migration_statement = connection
         .prepare("SELECT completed_at, migration_id, started_at, state, verification_state FROM migration ORDER BY migration_id")
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
     let migrations = migration_statement
         .query_map([], |row| {
             Ok(NativeInstallationMigration {
@@ -822,18 +1020,20 @@ fn snapshot_from_connection(
                 verification_state: row.get(4)?,
             })
         })
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| "installation-catalog-unavailable".to_owned())?;
+        .map_err(|_| "installation-catalog-corrupt".to_owned())?;
 
-    Ok(NativeInstallationCatalogSnapshot {
+    let snapshot = NativeInstallationCatalogSnapshot {
         account_bindings,
         device_keys,
         installation,
         migrations,
         revision,
         schema_version: CATALOG_SCHEMA_VERSION,
-    })
+    };
+    validate_snapshot(&snapshot)?;
+    Ok(snapshot)
 }
 
 fn catalog_revision(connection: &Connection) -> Result<i64, String> {
@@ -843,7 +1043,45 @@ fn catalog_revision(connection: &Connection) -> Result<i64, String> {
             [],
             |row| row.get(0),
         )
-        .map_err(|_| "installation-catalog-unavailable".to_owned())
+        .map_err(|_| "installation-catalog-corrupt".to_owned())
+}
+
+fn validate_snapshot(snapshot: &NativeInstallationCatalogSnapshot) -> Result<(), String> {
+    let validation = (|| {
+        if snapshot.schema_version != CATALOG_SCHEMA_VERSION || snapshot.revision < 0 {
+            return Err("installation-catalog-corrupt".to_owned());
+        }
+        match snapshot.installation.as_ref() {
+            Some(profile) => validate_profile(profile)?,
+            None if !snapshot.device_keys.is_empty() || !snapshot.account_bindings.is_empty() => {
+                return Err("installation-catalog-corrupt".to_owned());
+            }
+            None => {}
+        }
+        for device_key in &snapshot.device_keys {
+            let installation_id = snapshot
+                .installation
+                .as_ref()
+                .map(|profile| profile.installation_id.as_str())
+                .ok_or_else(|| "installation-catalog-corrupt".to_owned())?;
+            validate_device_key_fields(device_key, installation_id)?;
+        }
+        for binding in &snapshot.account_bindings {
+            validate_binding_fields(binding)?;
+            if !snapshot
+                .device_keys
+                .iter()
+                .any(|key| key.key_alias == binding.key_alias && key.status == "active")
+            {
+                return Err("installation-catalog-corrupt".to_owned());
+            }
+        }
+        for migration in &snapshot.migrations {
+            validate_migration(migration)?;
+        }
+        Ok(())
+    })();
+    validation.map_err(|_| "installation-catalog-corrupt".to_owned())
 }
 
 fn validate_profile(profile: &NativeInstallationProfile) -> Result<(), String> {
@@ -859,18 +1097,6 @@ fn validate_device_key(
     transaction: &Transaction<'_>,
     device_key: &NativeInstallationDeviceKey,
 ) -> Result<(), String> {
-    validate_timestamp(&device_key.created_at)?;
-    if device_key.version != DEVICE_KEY_VERSION
-        || device_key.provider != native_key_provider()
-        || !matches!(device_key.status.as_str(), "active" | "retired")
-        || device_key.key_alias != installation_key_alias(&device_key.installation_id)
-        || device_key.public_key.version != 1
-        || device_key.public_key.algorithm != "P-256"
-        || device_key.public_key.format != "raw"
-        || decode_base64url(&device_key.public_key.value, 65).is_err()
-    {
-        return Err("installation-device-key-invalid".to_owned());
-    }
     let installation_id: Option<String> = transaction
         .query_row(
             "SELECT installation_id FROM installation WHERE singleton_id = 1",
@@ -879,7 +1105,31 @@ fn validate_device_key(
         )
         .optional()
         .map_err(|_| "installation-catalog-unavailable".to_owned())?;
-    if installation_id.as_deref() != Some(device_key.installation_id.as_str()) {
+    let installation_id = installation_id
+        .as_deref()
+        .ok_or_else(|| "installation-device-key-invalid".to_owned())?;
+    validate_device_key_fields(device_key, installation_id)
+}
+
+fn validate_device_key_fields(
+    device_key: &NativeInstallationDeviceKey,
+    installation_id: &str,
+) -> Result<(), String> {
+    validate_timestamp(&device_key.created_at)?;
+    let public_key_is_valid = decode_base64url(&device_key.public_key.value, 65)
+        .ok()
+        .and_then(|bytes| <NativeKem as KemTrait>::PublicKey::from_bytes(&bytes).ok())
+        .is_some();
+    if device_key.version != DEVICE_KEY_VERSION
+        || device_key.installation_id != installation_id
+        || device_key.provider != native_key_provider()
+        || !matches!(device_key.status.as_str(), "active" | "retired")
+        || device_key.key_alias != installation_key_alias(&device_key.installation_id)
+        || device_key.public_key.version != 1
+        || device_key.public_key.algorithm != "P-256"
+        || device_key.public_key.format != "raw"
+        || !public_key_is_valid
+    {
         return Err("installation-device-key-invalid".to_owned());
     }
     Ok(())
@@ -889,14 +1139,7 @@ fn validate_binding(
     transaction: &Transaction<'_>,
     binding: &NativeInstallationAccountBinding,
 ) -> Result<(), String> {
-    validate_identifier(&binding.server_id)?;
-    validate_identifier(&binding.owner_id)?;
-    validate_identifier(&binding.principal_id)?;
-    validate_identifier(&binding.key_alias)?;
-    validate_timestamp(&binding.updated_at)?;
-    if binding.grant_revision < 1 || binding.master_key_revision < 1 {
-        return Err("installation-account-binding-invalid".to_owned());
-    }
+    validate_binding_fields(binding)?;
     let active: Option<i64> = transaction
         .query_row(
             "SELECT 1 FROM device_key WHERE key_alias = ?1 AND status = 'active'",
@@ -906,6 +1149,18 @@ fn validate_binding(
         .optional()
         .map_err(|_| "installation-catalog-unavailable".to_owned())?;
     if active.is_none() {
+        return Err("installation-account-binding-invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_binding_fields(binding: &NativeInstallationAccountBinding) -> Result<(), String> {
+    validate_identifier(&binding.server_id)?;
+    validate_identifier(&binding.owner_id)?;
+    validate_identifier(&binding.principal_id)?;
+    validate_identifier(&binding.key_alias)?;
+    validate_timestamp(&binding.updated_at)?;
+    if binding.grant_revision < 1 || binding.master_key_revision < 1 {
         return Err("installation-account-binding-invalid".to_owned());
     }
     Ok(())
@@ -962,19 +1217,20 @@ fn parse_key_secret(
     secret: &[u8],
     expected_key_alias: &str,
 ) -> Result<NativeDeviceKeyDescriptor, String> {
-    let mut record: NativeDeviceKeySecret =
+    let record: NativeDeviceKeySecret =
         serde_json::from_slice(secret).map_err(|_| "native-device-key-invalid".to_owned())?;
     validate_secret_record(&record, expected_key_alias)?;
-    let mut private_key_bytes = decode_base64url(&record.private_key, 32)?;
-    record.private_key.zeroize();
-    let private_key = <NativeKem as KemTrait>::PrivateKey::from_bytes(&private_key_bytes)
+    let private_key_bytes = Zeroizing::new(decode_base64url(&record.private_key, 32)?);
+    let private_key = <NativeKem as KemTrait>::PrivateKey::from_bytes(private_key_bytes.as_slice())
         .map_err(|_| "native-device-key-invalid".to_owned())?;
-    private_key_bytes.zeroize();
     let public_key = NativeKem::sk_to_pk(&private_key);
+    let created_at = record.created_at.clone();
+    let installation_id = record.installation_id.clone();
+    let key_alias = record.key_alias.clone();
     Ok(NativeDeviceKeyDescriptor {
-        created_at: record.created_at,
-        installation_id: record.installation_id,
-        key_alias: record.key_alias,
+        created_at,
+        installation_id,
+        key_alias,
         provider: native_key_provider(),
         public_key: public_key_metadata(public_key.to_bytes().as_slice()),
     })
@@ -1005,10 +1261,11 @@ fn public_key_metadata(bytes: &[u8]) -> NativeEncryptionPublicKey {
 }
 
 fn decode_base64url(value: &str, expected_length: usize) -> Result<Vec<u8>, String> {
-    let decoded = URL_SAFE_NO_PAD
+    let mut decoded = URL_SAFE_NO_PAD
         .decode(value)
         .map_err(|_| "base64url-value-invalid".to_owned())?;
     if decoded.len() != expected_length || URL_SAFE_NO_PAD.encode(&decoded) != value {
+        decoded.zeroize();
         return Err("base64url-value-invalid".to_owned());
     }
     Ok(decoded)
@@ -1016,7 +1273,10 @@ fn decode_base64url(value: &str, expected_length: usize) -> Result<Vec<u8>, Stri
 
 fn validate_installation_id(value: &str) -> Result<(), String> {
     let parsed = Uuid::parse_str(value).map_err(|_| "installation-profile-invalid".to_owned())?;
-    if parsed.get_variant() != uuid::Variant::RFC4122 {
+    if parsed.get_variant() != uuid::Variant::RFC4122
+        || !(1..=8).contains(&parsed.get_version_num())
+        || parsed.hyphenated().to_string() != value
+    {
         return Err("installation-profile-invalid".to_owned());
     }
     Ok(())
@@ -1036,7 +1296,7 @@ fn validate_timestamp(value: &str) -> Result<(), String> {
 }
 
 fn installation_key_alias(installation_id: &str) -> String {
-    format!("cantrip.installation.v1.{installation_id}")
+    format!("cantrip.installation.{installation_id}.hpke.v1")
 }
 
 fn current_timestamp() -> String {
@@ -1110,6 +1370,13 @@ mod tests {
     }
 
     impl MemorySecretStore {
+        fn remove(&self, key_alias: &str) {
+            self.secrets
+                .lock()
+                .expect("secret store lock")
+                .remove(key_alias);
+        }
+
         fn replace(&self, key_alias: &str, secret: &[u8]) {
             self.secrets
                 .lock()
@@ -1304,6 +1571,51 @@ mod tests {
     }
 
     #[test]
+    fn cross_row_invariants_are_validated_before_commit() {
+        let (_directory, storage) = test_storage();
+        create_profile(&storage);
+        let descriptor = create_key_and_metadata(&storage);
+        storage
+            .apply_transaction(NativeCatalogTransactionRequest {
+                expected_revision: 2,
+                operations: vec![NativeCatalogOperation::PutAccountBinding {
+                    binding: NativeInstallationAccountBinding {
+                        grant_revision: 1,
+                        key_alias: descriptor.key_alias.clone(),
+                        master_key_revision: 1,
+                        owner_id: "owner-a".to_owned(),
+                        principal_id: "principal-a".to_owned(),
+                        server_id: "server-a".to_owned(),
+                        updated_at: "2026-08-31T20:00:02.000Z".to_owned(),
+                    },
+                }],
+            })
+            .expect("store binding");
+
+        let failure = storage.apply_transaction(NativeCatalogTransactionRequest {
+            expected_revision: 3,
+            operations: vec![NativeCatalogOperation::PutDeviceKey {
+                device_key: NativeInstallationDeviceKey {
+                    created_at: descriptor.created_at,
+                    installation_id: descriptor.installation_id,
+                    key_alias: descriptor.key_alias,
+                    provider: descriptor.provider.to_owned(),
+                    public_key: descriptor.public_key,
+                    status: "retired".to_owned(),
+                    version: 1,
+                },
+            }],
+        });
+        assert_eq!(
+            failure.expect_err("bound key cannot retire in isolation"),
+            "installation-catalog-corrupt"
+        );
+        let snapshot = storage.snapshot().expect("preserved snapshot");
+        assert_eq!(snapshot.revision, 3);
+        assert_eq!(snapshot.device_keys[0].status, "active");
+    }
+
+    #[test]
     fn corrupt_secure_store_record_is_never_replaced() {
         let directory = tempdir().expect("temp directory");
         let secrets = Arc::new(MemorySecretStore::default());
@@ -1328,6 +1640,70 @@ mod tests {
             "native-device-key-invalid"
         );
         assert_eq!(secrets.stored(&descriptor.key_alias), corrupt_record);
+    }
+
+    #[test]
+    fn cataloged_key_missing_from_secure_store_is_never_replaced() {
+        let directory = tempdir().expect("temp directory");
+        let secrets = Arc::new(MemorySecretStore::default());
+        let storage = NativeInstallationStorage::open(
+            directory.path().join("installation/v1/catalog.sqlite3"),
+            secrets.clone(),
+        )
+        .expect("storage");
+        create_profile(&storage);
+        let descriptor = create_key_and_metadata(&storage);
+        secrets.remove(&descriptor.key_alias);
+
+        let failure = storage.create_key(NativeDeviceKeyCreateInput {
+            created_at: None,
+            installation_id: profile().installation_id,
+            key_alias: descriptor.key_alias.clone(),
+        });
+
+        assert_eq!(
+            failure.expect_err("missing cataloged key must fail closed"),
+            "native-device-key-missing"
+        );
+        assert!(secrets
+            .get(&descriptor.key_alias)
+            .expect("secret read")
+            .is_none());
+    }
+
+    #[test]
+    fn concurrent_storage_instances_create_or_load_one_key() {
+        use std::{sync::Barrier, thread};
+
+        let directory = tempdir().expect("temp directory");
+        let catalog_path = directory.path().join("installation/v1/catalog.sqlite3");
+        let secrets = Arc::new(MemorySecretStore::default());
+        let setup = NativeInstallationStorage::open(catalog_path.clone(), secrets.clone())
+            .expect("storage");
+        create_profile(&setup);
+        drop(setup);
+        let first = NativeInstallationStorage::deferred(catalog_path.clone(), secrets.clone());
+        let second = NativeInstallationStorage::deferred(catalog_path, secrets);
+        let barrier = Arc::new(Barrier::new(3));
+        let create = |storage: NativeInstallationStorage,
+                      barrier: Arc<Barrier>,
+                      created_at: &'static str| {
+            thread::spawn(move || {
+                barrier.wait();
+                storage.create_key(NativeDeviceKeyCreateInput {
+                    created_at: Some(created_at.to_owned()),
+                    installation_id: profile().installation_id,
+                    key_alias: installation_key_alias(&profile().installation_id),
+                })
+            })
+        };
+        let first = create(first, barrier.clone(), "2026-08-31T20:00:01.000Z");
+        let second = create(second, barrier.clone(), "2026-08-31T20:00:02.000Z");
+        barrier.wait();
+
+        let first = first.join().expect("first thread").expect("first key");
+        let second = second.join().expect("second thread").expect("second key");
+        assert_eq!(first, second);
     }
 
     #[test]
@@ -1378,6 +1754,287 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM future_data", [], |row| row.get(0))
             .expect("future table");
         assert_eq!(marker, 0);
+    }
+
+    #[test]
+    fn damaged_version_one_catalog_is_rejected_without_repair() {
+        let (directory, storage) = test_storage();
+        let catalog_path = directory.path().join("installation/v1/catalog.sqlite3");
+        drop(storage);
+        let connection = Connection::open(&catalog_path).expect("catalog");
+        connection
+            .execute_batch("DROP TABLE migration;")
+            .expect("damage schema");
+        drop(connection);
+        let storage = NativeInstallationStorage::deferred(
+            catalog_path.clone(),
+            Arc::new(MemorySecretStore::default()),
+        );
+
+        assert_eq!(
+            storage
+                .snapshot()
+                .expect_err("damaged schema must fail closed"),
+            "installation-catalog-corrupt"
+        );
+        let preserved = Connection::open(catalog_path).expect("preserved catalog");
+        let migration_tables: i64 = preserved
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'migration'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("migration table count");
+        assert_eq!(migration_tables, 0);
+        let version: i64 = preserved
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("schema version");
+        assert_eq!(version, CATALOG_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn missing_catalog_metadata_is_rejected_without_reinitialization() {
+        let (directory, storage) = test_storage();
+        let catalog_path = directory.path().join("installation/v1/catalog.sqlite3");
+        drop(storage);
+        let connection = Connection::open(&catalog_path).expect("catalog");
+        connection
+            .execute("DELETE FROM catalog_meta", [])
+            .expect("remove metadata");
+        drop(connection);
+        let storage = NativeInstallationStorage::deferred(
+            catalog_path.clone(),
+            Arc::new(MemorySecretStore::default()),
+        );
+
+        assert_eq!(
+            storage
+                .snapshot()
+                .expect_err("missing metadata must fail closed"),
+            "installation-catalog-corrupt"
+        );
+        let preserved = Connection::open(catalog_path).expect("preserved catalog");
+        let rows: i64 = preserved
+            .query_row("SELECT COUNT(*) FROM catalog_meta", [], |row| row.get(0))
+            .expect("metadata row count");
+        assert_eq!(rows, 0);
+    }
+
+    #[test]
+    fn nonempty_version_zero_database_is_not_adopted() {
+        let directory = tempdir().expect("temp directory");
+        let catalog_path = directory.path().join("installation/v1/catalog.sqlite3");
+        prepare_catalog_parent(&catalog_path).expect("catalog parent");
+        let connection = Connection::open(&catalog_path).expect("catalog");
+        connection
+            .execute_batch(
+                "CREATE TABLE legacy_marker (value TEXT NOT NULL);\
+                 INSERT INTO legacy_marker (value) VALUES ('preserve-me');",
+            )
+            .expect("legacy schema");
+        drop(connection);
+        let storage = NativeInstallationStorage::deferred(
+            catalog_path.clone(),
+            Arc::new(MemorySecretStore::default()),
+        );
+
+        assert_eq!(
+            storage
+                .snapshot()
+                .expect_err("nonempty version-zero database must fail closed"),
+            "installation-catalog-corrupt"
+        );
+        let preserved = Connection::open(catalog_path).expect("preserved catalog");
+        let value: String = preserved
+            .query_row("SELECT value FROM legacy_marker", [], |row| row.get(0))
+            .expect("legacy marker");
+        assert_eq!(value, "preserve-me");
+        let version: i64 = preserved
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("schema version");
+        assert_eq!(version, 0);
+    }
+
+    #[test]
+    fn view_only_version_zero_database_is_not_adopted() {
+        let directory = tempdir().expect("temp directory");
+        let catalog_path = directory.path().join("installation/v1/catalog.sqlite3");
+        prepare_catalog_parent(&catalog_path).expect("catalog parent");
+        let connection = Connection::open(&catalog_path).expect("catalog");
+        connection
+            .execute_batch("CREATE VIEW legacy_marker AS SELECT 'preserve-me' AS value;")
+            .expect("legacy view");
+        drop(connection);
+        let storage = NativeInstallationStorage::deferred(
+            catalog_path.clone(),
+            Arc::new(MemorySecretStore::default()),
+        );
+
+        assert_eq!(
+            storage
+                .snapshot()
+                .expect_err("view-only database must fail closed"),
+            "installation-catalog-corrupt"
+        );
+        let preserved = Connection::open(catalog_path).expect("preserved catalog");
+        let value: String = preserved
+            .query_row("SELECT value FROM legacy_marker", [], |row| row.get(0))
+            .expect("legacy view");
+        assert_eq!(value, "preserve-me");
+    }
+
+    #[test]
+    fn lookalike_version_one_schema_is_rejected_without_repair() {
+        let directory = tempdir().expect("temp directory");
+        let catalog_path = directory.path().join("installation/v1/catalog.sqlite3");
+        prepare_catalog_parent(&catalog_path).expect("catalog parent");
+        let connection = Connection::open(&catalog_path).expect("catalog");
+        connection
+            .execute_batch(
+                "CREATE TABLE catalog_meta (singleton_id INTEGER, schema_version INTEGER, revision INTEGER);\
+                 INSERT INTO catalog_meta VALUES (1, 1, 0);\
+                 CREATE TABLE installation (singleton_id INTEGER, installation_id TEXT, created_at TEXT, schema_version INTEGER);\
+                 CREATE TABLE device_key (key_alias TEXT, installation_id TEXT, public_key_json TEXT, provider TEXT, created_at TEXT, status TEXT, version INTEGER);\
+                 CREATE TABLE account_binding (server_id TEXT, owner_id TEXT, principal_id TEXT, key_alias TEXT, grant_revision INTEGER, master_key_revision INTEGER, updated_at TEXT);\
+                 CREATE TABLE migration (migration_id TEXT, started_at TEXT, completed_at TEXT, state TEXT, verification_state TEXT);\
+                 PRAGMA user_version = 1;",
+            )
+            .expect("lookalike schema");
+        drop(connection);
+        let storage = NativeInstallationStorage::deferred(
+            catalog_path.clone(),
+            Arc::new(MemorySecretStore::default()),
+        );
+
+        assert_eq!(
+            storage
+                .snapshot()
+                .expect_err("lookalike schema must fail closed"),
+            "installation-catalog-corrupt"
+        );
+        let preserved = Connection::open(catalog_path).expect("preserved catalog");
+        let sql: String = preserved
+            .query_row(
+                "SELECT sql FROM sqlite_schema WHERE name = 'device_key'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("device key schema");
+        assert!(!sql.contains("FOREIGN KEY"));
+    }
+
+    #[test]
+    fn logically_corrupt_rows_are_rejected_on_read() {
+        let (_directory, storage) = test_storage();
+        create_profile(&storage);
+        let descriptor = create_key_and_metadata(&storage);
+        let connection = storage.connection().expect("connection");
+        connection
+            .execute(
+                "UPDATE device_key SET created_at = 'not-a-timestamp' WHERE key_alias = ?1",
+                params![descriptor.key_alias],
+            )
+            .expect("corrupt metadata");
+        drop(connection);
+
+        assert_eq!(
+            storage
+                .snapshot()
+                .expect_err("invalid row must fail closed"),
+            "installation-catalog-corrupt"
+        );
+    }
+
+    #[test]
+    fn off_curve_public_key_metadata_is_rejected_on_read() {
+        let (_directory, storage) = test_storage();
+        create_profile(&storage);
+        let descriptor = create_key_and_metadata(&storage);
+        let public_key = NativeEncryptionPublicKey {
+            algorithm: "P-256".to_owned(),
+            format: "raw".to_owned(),
+            value: URL_SAFE_NO_PAD.encode([0_u8; 65]),
+            version: 1,
+        };
+        let connection = storage.connection().expect("connection");
+        connection
+            .execute(
+                "UPDATE device_key SET public_key_json = ?1 WHERE key_alias = ?2",
+                params![
+                    serde_json::to_string(&public_key).expect("public key json"),
+                    descriptor.key_alias
+                ],
+            )
+            .expect("corrupt public key");
+        drop(connection);
+
+        assert_eq!(
+            storage
+                .snapshot()
+                .expect_err("off-curve public key must fail closed"),
+            "installation-catalog-corrupt"
+        );
+    }
+
+    #[test]
+    fn noncanonical_installation_ids_are_rejected_without_mutation() {
+        let (_directory, storage) = test_storage();
+        for installation_id in [
+            "5f83bb4256714b11a87f32842af21af2",
+            "5f83bb42-5671-9b11-a87f-32842af21af2",
+            "5F83BB42-5671-4B11-A87F-32842AF21AF2",
+        ] {
+            let mut invalid = profile();
+            invalid.installation_id = installation_id.to_owned();
+            assert_eq!(
+                storage
+                    .apply_transaction(NativeCatalogTransactionRequest {
+                        expected_revision: 0,
+                        operations: vec![NativeCatalogOperation::CreateInstallation {
+                            profile: invalid,
+                        }],
+                    })
+                    .expect_err("noncanonical identifier must fail"),
+                "installation-profile-invalid"
+            );
+        }
+        let snapshot = storage.snapshot().expect("empty snapshot");
+        assert_eq!(snapshot.revision, 0);
+        assert!(snapshot.installation.is_none());
+    }
+
+    #[test]
+    fn immutable_device_key_metadata_cannot_be_rewritten() {
+        let (_directory, storage) = test_storage();
+        create_profile(&storage);
+        let descriptor = create_key_and_metadata(&storage);
+        let connection = storage.connection().expect("connection");
+        connection
+            .execute(
+                "UPDATE device_key SET created_at = '2026-08-31T20:00:09.000Z' WHERE key_alias = ?1",
+                params![descriptor.key_alias],
+            )
+            .expect("simulate conflicting metadata");
+        drop(connection);
+
+        let failure = storage.apply_transaction(NativeCatalogTransactionRequest {
+            expected_revision: 2,
+            operations: vec![NativeCatalogOperation::PutDeviceKey {
+                device_key: NativeInstallationDeviceKey {
+                    created_at: descriptor.created_at,
+                    installation_id: descriptor.installation_id,
+                    key_alias: descriptor.key_alias,
+                    provider: descriptor.provider.to_owned(),
+                    public_key: descriptor.public_key,
+                    status: "active".to_owned(),
+                    version: 1,
+                },
+            }],
+        });
+        assert_eq!(
+            failure.expect_err("immutable metadata mismatch must fail closed"),
+            "native-device-key-metadata-mismatch"
+        );
     }
 
     #[test]
@@ -1442,5 +2099,69 @@ mod tests {
             })
             .expect("unwrap");
         assert_eq!(opened.0.as_slice(), expected);
+    }
+
+    #[test]
+    fn unwraps_fixture_produced_by_typescript_hpke_implementation() {
+        // Generated once with @cantrip/crypto's wrapAccountMasterKeyForClient,
+        // which uses @hpke/core. This guards the TypeScript/Rust wire contract.
+        let directory = tempdir().expect("temp directory");
+        let secrets = Arc::new(MemorySecretStore::default());
+        let installation_id = "5f83bb42-5671-4b11-a87f-32842af21af2";
+        let key_alias = installation_key_alias(installation_id);
+        let secret = serde_json::json!({
+            "createdAt": "2026-08-31T20:00:01.000Z",
+            "installationId": installation_id,
+            "keyAlias": key_alias,
+            "privateKey": "GWNtSM7CrLBobff0RFc_ShU9pQNYlyleLZ9PF-4oz24",
+            "version": 1
+        });
+        secrets
+            .put(
+                &key_alias,
+                serde_json::to_vec(&secret)
+                    .expect("serialize fixture")
+                    .as_slice(),
+            )
+            .expect("store fixture key");
+        let storage = NativeInstallationStorage::open(
+            directory.path().join("installation/v1/catalog.sqlite3"),
+            secrets,
+        )
+        .expect("storage");
+        let descriptor = storage
+            .inspect_key(&key_alias)
+            .expect("inspect fixture key")
+            .expect("fixture key");
+        assert_eq!(
+            descriptor.public_key.value,
+            "BFm_YxDfIRPBuAS45UTQYjE8vzxylVItLMAVyHFU6lIiPo7gCNlzos45NP7Dn2vfhj1cxO-yYGwrBdlAmOzin1M"
+        );
+
+        let opened = storage
+            .unwrap_account_master_key(NativeMasterKeyUnwrapInput {
+                key_alias,
+                owner_id: "owner-typescript-fixture".to_owned(),
+                wrapper: NativeClientMasterKeyWrapper {
+                    client_id: "principal-typescript-fixture".to_owned(),
+                    envelope: NativeHpkeEnvelope {
+                        algorithm: "HPKE-RFC9180".to_owned(),
+                        ciphertext: "98u_jm9tt8G_c3OwxvFx7fZOicyrsoK3La8XB1RRGsDneXd6gMaFpkb77z5BN98v".to_owned(),
+                        encapsulated_key: "BGkT85BaSxTdeamdxr3Q7440QJ112z-MkNB2QpGOgju-WoxFFPNqLg5UJPeKwd1vBbR1KRDY0pIukEgUYVXbSCE".to_owned(),
+                        suite: NativeHpkeSuite {
+                            aead: "AES-256-GCM".to_owned(),
+                            kdf: "HKDF-SHA256".to_owned(),
+                            kem: "DHKEM(P-256,HKDF-SHA256)".to_owned(),
+                            mode: "base".to_owned(),
+                        },
+                        version: 1,
+                    },
+                    master_key_revision: 7,
+                    purpose: "client-account-master-key".to_owned(),
+                    version: 1,
+                },
+            })
+            .expect("unwrap TypeScript fixture");
+        assert_eq!(opened.0.as_slice(), [47_u8; 32]);
     }
 }

@@ -231,7 +231,7 @@ fallback: an unavailable Secret Service produces a recoverable storage error.
 The provider contract is versioned as follows:
 
 - keyring service: `art.cantrip.installation.hpke.v1`;
-- key alias: `cantrip.installation.v1.<installation-uuid>`;
+- key alias: `cantrip.installation.<installation-uuid>.hpke.v1`;
 - catalog location: `<local-app-data>/installation/v1/catalog.sqlite3`; and
 - catalog schema: SQLite `user_version = 1`.
 
@@ -249,10 +249,12 @@ metadata and the 32-byte Account Master Key needed by the existing in-memory
 component-key service. A missing, malformed, conflicting, or unavailable
 native key fails closed and is never silently regenerated.
 
-The catalog rejects a newer schema without changing the file. Catalog writes
-use an immediate SQLite transaction and an expected revision, so installation,
-key metadata, bindings, and migration checkpoints can be committed as a single
-reviewable unit. Platform runtime smoke testing and legacy migration are
+The catalog rejects a newer, damaged, incomplete, or lookalike schema without
+changing the file. Catalog writes use an immediate SQLite transaction and an
+expected revision, and validate full-schema, P-256 public-key, and cross-row
+binding invariants before commit, so installation, key metadata, bindings, and
+migration checkpoints can be committed as a single reviewable unit. Platform
+runtime smoke testing and legacy migration are
 recorded separately in the progress ledger; shared tests alone are not treated
 as proof that every operating-system credential service works.
 
