@@ -1,0 +1,28 @@
+name: Desktop native tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-native-tests.yml"
+      - "cantrip_app/src-tauri/**"
+      - "scripts/fixtures/installation-update/**"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installation-update:
+    name: Windows installation update fixture
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: desktop-native-tests-win32-x64
+          workspaces: cantrip_app/src-tauri -> target
+      - name: Open and decrypt the frozen installation fixture
+        run: cargo test --manifest-path cantrip_app/src-tauri/Cargo.toml frozen_version_one_fixture_opens_and_decrypts_with_current_runtime --lib
