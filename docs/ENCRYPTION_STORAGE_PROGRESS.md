@@ -952,8 +952,8 @@ corrects that ordering and adds mutation-negative regression coverage.
 ### Cycle 15 — final release-readiness audit and warm-path bound
 
 - Branch: `codex/encryption-storage-final-readiness`
-- Pull request: pending
-- Commit: pending
+- Pull request: [#1557](https://github.com/ArcaneArts/Cantrip/pull/1557)
+- Implementation commit: `4cca1260629cee51d89c4e215ada63cef8b24ad9`
 - Merge: pending
 - Behavior implemented:
   - Audited every completion criterion against merged runtime code, native
