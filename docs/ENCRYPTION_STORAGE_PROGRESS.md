@@ -496,8 +496,9 @@ flowchart TD
 ### Cycle 9 — anonymous recovery and verified key replacement
 
 - Branch: `codex/encryption-storage-cycle9-anonymous-recovery`
-- Pull request: pending
-- Commit and merge: pending
+- Pull request: [#1550](https://github.com/ArcaneArts/Cantrip/pull/1550)
+- Commit: `7acc5b84186b832e5fc6b2693fc4861613762ba8`
+- Merge: pending
 - Behavior implemented:
   - Added a strict, versioned anonymous recovery artifact containing a fresh
     256-bit recovery secret and an AES-256-GCM Account Master Key envelope
