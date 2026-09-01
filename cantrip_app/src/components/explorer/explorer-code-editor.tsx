@@ -63,7 +63,6 @@ import {
   SerializedAttachmentLifecycle,
 } from "@/lib/serialized-attachment-lifecycle";
 
-const FILE_OPEN_TIMEOUT_MS = 3_000;
 const THEME_UPDATE_RETRY_DELAY_MS = 500;
 const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
 const SHARED_SESSION_RENEWAL_MIN_DELAY_MS = 30_000;
@@ -1472,10 +1471,7 @@ export function ExplorerCodeEditor({
         const result = await openDirectCodeAttachmentFile(
           preferredAttachment.attachment,
           path,
-          {
-            signal: navigationController.signal,
-            timeoutMs: FILE_OPEN_TIMEOUT_MS,
-          },
+          { signal: navigationController.signal },
         );
         if (cancelled) return;
         if (result.relativePath !== path) {

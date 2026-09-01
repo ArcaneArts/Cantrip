@@ -689,6 +689,36 @@ describe("stopDirectCodeAttachment", () => {
 });
 
 describe("openDirectCodeAttachmentFile", () => {
+  it("allows a cold worker bridge to connect after three seconds", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.fetch.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  json: async () => ({ relativePath: "src/cold.ts" }),
+                  ok: true,
+                }),
+              3_500,
+            );
+          }),
+      );
+
+      const request = openDirectCodeAttachmentFile(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        "src/cold.ts",
+      );
+
+      await vi.advanceTimersByTimeAsync(3_500);
+
+      await expect(request).resolves.toEqual({ relativePath: "src/cold.ts" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("honors a shorter caller deadline for a ready editor", async () => {
     vi.useFakeTimers();
     try {
