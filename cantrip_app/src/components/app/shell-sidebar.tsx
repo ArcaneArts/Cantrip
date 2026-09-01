@@ -37,7 +37,7 @@ export function DesktopAppModeMenu({
   onSwitchIde(): void;
   overlayTitlebar: boolean;
 }) {
-  const label = appMode === "ide" ? "Cantrip IDE" : "Cantrip Chat";
+  const label = appMode === "ide" ? "IDE" : "Chat";
 
   return (
     <DropdownMenu.Root>

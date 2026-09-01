@@ -5,8 +5,8 @@ import { DesktopAppModeMenu } from "./shell-sidebar";
 
 describe("desktop app mode menu", () => {
   it.each([
-    ["ide", "Cantrip IDE"],
-    ["chat", "Cantrip Chat"],
+    ["ide", "IDE"],
+    ["chat", "Chat"],
   ] as const)("labels the %s titlebar mode", (appMode, label) => {
     const markup = renderToStaticMarkup(
       <DesktopAppModeMenu
