@@ -28,6 +28,10 @@ test("browser and Tauri development keep separate encrypted state", async () => 
     /CANTRIP_WORKER_DATA_DIR=\.\.\/\.cantrip\/browser-dev\/worker/u,
   );
   assert.match(browserLauncher, /VITE_CANTRIP_LOCAL_ONLY=true/u);
-  assert.match(desktopLauncher, /\.\.\/\.cantrip\/dev/u);
+  assert.match(
+    desktopLauncher,
+    /const packageStateDirectory = `\.\.\/\$\{relativeStateDirectory\}`/u,
+  );
+  assert.match(desktopLauncher, /\? "\.cantrip\/dev"/u);
   assert.doesNotMatch(desktopLauncher, /\.cantrip\/browser-dev/u);
 });

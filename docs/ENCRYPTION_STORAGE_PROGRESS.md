@@ -172,7 +172,7 @@ flowchart TD
 
 - Branch: `codex/encryption-storage-cycle4-tauri-migration`
 - Pull request: [#1545](https://github.com/ArcaneArts/Cantrip/pull/1545)
-- Merge: pending
+- Merge: squash-merged as `c089532c1c7960eec7f806cba721dd31920dff55`
 - Behavior implemented:
   - Selected the native Tauri catalog and OS key provider during normal Tauri
     startup while leaving browser and Capacitor runtime selection unchanged.
@@ -228,9 +228,8 @@ flowchart TD
   - Browser: existing IndexedDB runtime remains active and behavior is
     unchanged in this cycle.
   - Capacitor: runtime behavior remains unchanged pending Cycles 6–7.
-- Migration status: implemented for accessible legacy records in the current
-  Tauri WebView origin; final PR validation and merge are pending. Legacy
-  custody is deliberately retained after verification.
+- Migration status: merged for accessible legacy records in the current Tauri
+  WebView origin. Legacy custody is deliberately retained after verification.
 - Remaining work: Cycles 5–12 below, including native-key-loss rotation,
   anonymous recovery artifacts, browser recovery, mobile providers, and
   platform update harnesses.
@@ -241,10 +240,64 @@ flowchart TD
 - Manual verification: migrate a real pre-cycle Tauri profile on macOS and
   confirm the second launch unlocks from Keychain without reading IndexedDB.
 
+### Cycle 5 — stable named development profiles and diagnostics
+
+- Branch: `codex/encryption-storage-cycle5-dev-profile`
+- Pull request: [#1546](https://github.com/ArcaneArts/Cantrip/pull/1546)
+- Commit: `3f93fb040718fbea34613e7e195ee22f16aace0d`
+- Merge: pending auto-merge
+- Behavior implemented:
+  - Moved the canonical development profile identity out of worktree-local
+    `.cantrip` and build output into versioned shared Git metadata. The
+    `default` profile is now reused by every branch and worktree.
+  - Added compatibility adoption of the primary checkout's existing
+    `tauri-dev.conf.json` identifier. The migration projects that exact identity
+    into the current worktree instead of silently choosing a new WebView/native
+    application-data namespace.
+  - Kept `.cantrip/dev` as the default server/worker state contract and made
+    named clean lanes explicit under `.cantrip/dev-profiles/<name>`. Their
+    server, worker, logs, Tauri config projection, and Cargo target paths are
+    isolated while their canonical identity remains outside the worktree.
+  - Added `pnpm dev:profile inspect [name]` to report non-secret profile,
+    installation, provider, catalog, binding count, migration state, origin,
+    and data/build paths. The diagnostic reads no secure-store secret or raw
+    private key.
+  - Added `pnpm dev:profile create <name>` and
+    `pnpm devtop -- --profile <name>` for deliberate clean test installations.
+    Existing profile names are never overwritten or reset implicitly.
+- Validation:
+  - `node --test scripts/devtop-tauri-config.test.mjs scripts/development-profile.test.mjs scripts/devtop.test.mjs scripts/dev-browser.test.mjs` — 21 tests passed.
+  - `pnpm typecheck` — passed across all workspace packages.
+  - `pnpm --filter @cantrip/app... build` — passed.
+  - `pnpm --filter @cantrip/app test` — 1,842 tests passed and 3 skipped
+    across 350 test files after building workspace package entrypoints.
+  - `node --test scripts/*.test.mjs` — 115 tests passed and two unrelated
+    baseline tests failed: the application-platform deployment assertion and
+    tranche-two sidebar acceptance assertion. The same two failures reproduce
+    on clean `main`, and neither fixture is changed by this cycle.
+  - `pnpm check:large-files` and `git diff --check` — passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle introduced no decomposition overage.
+- Supported platforms: deterministic app-local data/provider diagnostics cover
+  macOS, Windows, and Linux; `devtop` remains the Tauri desktop development
+  lane. Browser and Capacitor runtime behavior is unchanged.
+- Migration status: legacy worktree identity adoption is implemented and
+  preserves the primary development namespace; PR merge is pending.
+- Remaining work: Cycles 6–12 below.
+- Known risks or blockers: a first post-migration launch should be smoke-tested
+  on macOS to confirm Tauri resolves the reported application-local data path
+  exactly as the diagnostic predicts. Profile destruction is intentionally not
+  automated because native secure-store deletion requires platform-specific,
+  explicitly destructive handling.
+- Manual verification: run `pnpm dev:profile inspect`, start `pnpm devtop`,
+  verify the previous encrypted workspace opens, then inspect again and confirm
+  the installation ID remains unchanged after deleting only Cargo target output.
+
 ## Remaining cycles
 
-4. Merge and manually smoke-test the transactional Tauri migration above.
-5. Stabilize named development profiles and add non-secret diagnostics.
+4. Manually smoke-test the merged transactional Tauri migration above.
+5. Merge and manually smoke-test the stable development profile above.
 6. Implement Capacitor SQLite and iOS/Android secure-key providers.
 7. Connect Capacitor migration and recovery.
 8. Harden browser persistence, replacement-device recovery, and recovery UI.

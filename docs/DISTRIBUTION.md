@@ -476,12 +476,31 @@ shell points its Local profile at the externally orchestrated development
 server so TypeScript watchers and Vite hot reload remain fast.
 
 Plain browser `pnpm dev` and Tauri `pnpm devtop` keep separate durable
-development lanes. Browser development uses `.cantrip/browser-dev`, while
-desktop development uses `.cantrip/dev` paired with the worktree's persisted
-Tauri application identity. The clients have separate nonextractable key
-stores, so sharing one anonymous encryption registry would lock whichever
-client did not initialize it. Each lane remains stable across restarts without
-weakening the production or packaged-client encryption model.
+development lanes. Browser development uses `.cantrip/browser-dev`. Desktop
+development uses the named `default` profile: its canonical Tauri identifier
+lives under the repository's shared Git directory at
+`.git/cantrip/development-profiles/v1/default/tauri.conf.json`, while its
+server/worker state remains at `.cantrip/dev`. The first migrated launch adopts
+the primary checkout's existing development identifier. Subsequent launches
+from any branch or worktree project that shared identity into a disposable
+worktree-local config, so removing build output or a worktree cannot rotate the
+native installation.
+
+`pnpm dev:profile inspect [name]` reports the profile identifier, installation
+ID, native provider, application-local data path, SQLite catalog path,
+repository state/target paths, binding count, and migration states without
+opening or printing private-key material. Create a genuinely separate clean
+lane with `pnpm dev:profile create <name>` and launch it with
+`pnpm devtop -- --profile <name>` (or `CANTRIP_DEV_PROFILE=<name>`). Named lanes
+keep server/worker state under `.cantrip/dev-profiles/<name>`. Existing names
+are never reset automatically, and no build/clean command removes the shared
+profile or OS-backed installation key. Use another explicit name instead of
+deleting a profile whose encrypted data may still be needed.
+
+The browser and Tauri clients have separate custody providers, so sharing one
+anonymous encryption registry would lock whichever client did not initialize
+it. Each lane remains stable across restarts without weakening the production
+or packaged-client encryption model.
 
 Browser development automatically creates a built-in Local server profile for
 the current Vite origin and reaches the development API through Vite's loopback

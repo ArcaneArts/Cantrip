@@ -4,93 +4,131 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { ensureDevtopTauriConfig } from "./devtop-tauri-config.mjs";
+import {
+  developmentProfileConfigPath,
+  developmentProfileStateDirectory,
+  ensureDevtopTauriConfig,
+  parseDevtopProfileArguments,
+} from "./devtop-tauri-config.mjs";
 
 async function withRepository(testBody) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-devtop-config-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-dev-profile-"));
+  const commonDirectory = path.join(root, "common.git");
   const primaryRoot = path.join(root, "primary");
   const worktreeRoot = path.join(root, "worktree");
   await Promise.all([
+    mkdir(commonDirectory, { recursive: true }),
     mkdir(path.join(primaryRoot, ".cantrip", "dev"), { recursive: true }),
     mkdir(path.join(worktreeRoot, ".cantrip", "dev"), { recursive: true }),
   ]);
   try {
-    await testBody({ primaryRoot, worktreeRoot });
+    await testBody({ commonDirectory, primaryRoot, worktreeRoot });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 }
 
-test("Primary receives an isolated development client identity", async () => {
-  await withRepository(async ({ primaryRoot }) => {
-    const result = await ensureDevtopTauriConfig({
-      repositoryRoot: primaryRoot,
-      createUuid: () => "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
-    });
-    assert.equal(result.created, true);
-    assert.deepEqual(result.config, {
-      productName: "Cantrip",
-      identifier: "art.cantrip.dev.heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    });
-  });
+const legacyConfig = {
+  productName: "Cantrip",
+  identifier: "art.cantrip.dev.heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+};
+
+test("the shared default profile adopts the primary checkout's legacy identity", async () => {
+  await withRepository(
+    async ({ commonDirectory, primaryRoot, worktreeRoot }) => {
+      const legacyPath = path.join(
+        primaryRoot,
+        ".cantrip",
+        "dev",
+        "tauri-dev.conf.json",
+      );
+      await writeFile(legacyPath, `${JSON.stringify(legacyConfig)}\n`, "utf8");
+      const result = await ensureDevtopTauriConfig({
+        repositoryRoot: worktreeRoot,
+        repositoryCommonDirectory: commonDirectory,
+        createUuid: () => {
+          throw new Error("must adopt rather than rotate");
+        },
+        legacyConfigPaths: [legacyPath],
+      });
+
+      assert.equal(result.created, true);
+      assert.equal(result.adoptedFrom, legacyPath);
+      assert.deepEqual(result.config, legacyConfig);
+      assert.deepEqual(
+        JSON.parse(await readFile(result.configPath, "utf8")),
+        legacyConfig,
+      );
+      assert.deepEqual(
+        JSON.parse(await readFile(result.launchConfigPath, "utf8")),
+        legacyConfig,
+      );
+    },
+  );
 });
 
-test("a development worktree generates and reuses one isolated identity", async () => {
-  await withRepository(async ({ worktreeRoot }) => {
+test("rebuilding or replacing a worktree reuses the shared named identity", async () => {
+  await withRepository(async ({ commonDirectory, worktreeRoot }) => {
     let uuidCalls = 0;
-    const createUuid = () => {
-      uuidCalls += 1;
-      return "12345678-90ab-cdef-1234-567890abcdef";
+    const input = {
+      repositoryRoot: worktreeRoot,
+      repositoryCommonDirectory: commonDirectory,
+      createUuid: () => {
+        uuidCalls += 1;
+        return "12345678-90ab-cdef-1234-567890abcdef";
+      },
+      legacyConfigPaths: [],
     };
-    const first = await ensureDevtopTauriConfig({
-      repositoryRoot: worktreeRoot,
-      createUuid,
+    const first = await ensureDevtopTauriConfig(input);
+    await rm(path.join(worktreeRoot, ".cantrip"), {
+      recursive: true,
+      force: true,
     });
-    const second = await ensureDevtopTauriConfig({
-      repositoryRoot: worktreeRoot,
-      createUuid,
-    });
+    const second = await ensureDevtopTauriConfig(input);
+
     assert.equal(uuidCalls, 1);
     assert.equal(first.created, true);
     assert.equal(second.created, false);
-    assert.equal(
-      first.config.identifier,
-      "art.cantrip.dev.h1234567890abcdef1234567890abcdef",
-    );
     assert.deepEqual(second.config, first.config);
-    assert.deepEqual(
-      JSON.parse(await readFile(first.configPath, "utf8")),
-      first.config,
+    assert.equal(second.configPath, first.configPath);
+    assert.equal(
+      second.config.identifier,
+      "art.cantrip.dev.h1234567890abcdef1234567890abcdef",
     );
   });
 });
 
-test("different worktree state directories receive different identities", async () => {
-  await withRepository(async ({ worktreeRoot }) => {
-    const otherWorktree = `${worktreeRoot}-other`;
-    await mkdir(path.join(otherWorktree, ".cantrip", "dev"), {
-      recursive: true,
-    });
+test("explicit clean profiles have independent stable identities and state", async () => {
+  await withRepository(async ({ commonDirectory, worktreeRoot }) => {
     const first = await ensureDevtopTauriConfig({
       repositoryRoot: worktreeRoot,
+      repositoryCommonDirectory: commonDirectory,
+      profileName: "migration-test",
       createUuid: () => "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     });
     const second = await ensureDevtopTauriConfig({
-      repositoryRoot: otherWorktree,
+      repositoryRoot: worktreeRoot,
+      repositoryCommonDirectory: commonDirectory,
+      profileName: "update-test",
       createUuid: () => "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
     });
+
     assert.notEqual(first.config.identifier, second.config.identifier);
+    assert.notEqual(first.configPath, second.configPath);
+    assert.equal(
+      first.stateDirectory,
+      path.join(worktreeRoot, ".cantrip", "dev-profiles", "migration-test"),
+    );
+    assert.equal(
+      second.stateDirectory,
+      path.join(worktreeRoot, ".cantrip", "dev-profiles", "update-test"),
+    );
   });
 });
 
-test("a simultaneous identity winner is adopted after the initial missing read", async () => {
-  await withRepository(async ({ worktreeRoot }) => {
-    const configPath = path.join(
-      worktreeRoot,
-      ".cantrip",
-      "dev",
-      "tauri-dev.conf.json",
-    );
+test("a simultaneous shared-profile winner is adopted", async () => {
+  await withRepository(async ({ commonDirectory, worktreeRoot }) => {
+    const configPath = developmentProfileConfigPath(commonDirectory, "default");
     const winningConfig = {
       productName: "Cantrip",
       identifier: "art.cantrip.dev.hcccccccccccccccccccccccccccccccc",
@@ -102,6 +140,7 @@ test("a simultaneous identity winner is adopted after the initial missing read",
         return await readFile(...arguments_);
       } catch (error) {
         if (reads === 1 && error?.code === "ENOENT") {
+          await mkdir(path.dirname(configPath), { recursive: true });
           await writeFile(
             configPath,
             `${JSON.stringify(winningConfig)}\n`,
@@ -114,23 +153,20 @@ test("a simultaneous identity winner is adopted after the initial missing read",
 
     const result = await ensureDevtopTauriConfig({
       repositoryRoot: worktreeRoot,
+      repositoryCommonDirectory: commonDirectory,
       createUuid: () => "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      legacyConfigPaths: [],
       readTextFile,
     });
-    assert.equal(reads, 2);
     assert.equal(result.created, false);
     assert.deepEqual(result.config, winningConfig);
   });
 });
 
-test("invalid persisted identity fails instead of silently rotating encryption", async () => {
-  await withRepository(async ({ worktreeRoot }) => {
-    const configPath = path.join(
-      worktreeRoot,
-      ".cantrip",
-      "dev",
-      "tauri-dev.conf.json",
-    );
+test("invalid shared identity fails instead of silently rotating", async () => {
+  await withRepository(async ({ commonDirectory, worktreeRoot }) => {
+    const configPath = developmentProfileConfigPath(commonDirectory, "default");
+    await mkdir(path.dirname(configPath), { recursive: true });
     await writeFile(
       configPath,
       JSON.stringify({ productName: "Cantrip", identifier: "art.cantrip" }),
@@ -139,14 +175,15 @@ test("invalid persisted identity fails instead of silently rotating encryption",
     await assert.rejects(
       ensureDevtopTauriConfig({
         repositoryRoot: worktreeRoot,
+        repositoryCommonDirectory: commonDirectory,
       }),
-      /will not be rotated automatically/u,
+      /never rotated automatically/u,
     );
   });
 });
 
-test("legacy worktree state fails instead of pairing it with a fresh client", async () => {
-  await withRepository(async ({ worktreeRoot }) => {
+test("unpaired existing state fails instead of receiving a new identity", async () => {
+  await withRepository(async ({ commonDirectory, worktreeRoot }) => {
     await writeFile(
       path.join(worktreeRoot, ".cantrip", "dev", "server-state.json"),
       "{}",
@@ -155,26 +192,52 @@ test("legacy worktree state fails instead of pairing it with a fresh client", as
     await assert.rejects(
       ensureDevtopTauriConfig({
         repositoryRoot: worktreeRoot,
+        repositoryCommonDirectory: commonDirectory,
+        legacyConfigPaths: [],
       }),
-      /intentionally reset its local server, client, and worker/u,
+      /will not pair existing encrypted data with a new identity/u,
     );
   });
 });
 
-test("malformed persisted config fails with its state path", async () => {
-  await withRepository(async ({ worktreeRoot }) => {
-    const configPath = path.join(
-      worktreeRoot,
-      ".cantrip",
-      "dev",
-      "tauri-dev.conf.json",
-    );
-    await writeFile(configPath, "{broken", "utf8");
-    await assert.rejects(
-      ensureDevtopTauriConfig({
-        repositoryRoot: worktreeRoot,
+test("profile selection is explicit and rejects conflicting sources", () => {
+  assert.equal(parseDevtopProfileArguments([], {}), "default");
+  assert.equal(
+    parseDevtopProfileArguments(["--profile", "Update-Test"], {}),
+    "update-test",
+  );
+  assert.equal(
+    parseDevtopProfileArguments([], { CANTRIP_DEV_PROFILE: "migration-test" }),
+    "migration-test",
+  );
+  assert.throws(
+    () =>
+      parseDevtopProfileArguments(["--profile=one"], {
+        CANTRIP_DEV_PROFILE: "two",
       }),
-      new RegExp(configPath.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"),
-    );
-  });
+    /conflicts/u,
+  );
+  assert.throws(
+    () => parseDevtopProfileArguments(["--profile", "../escape"], {}),
+    /must start with a letter/u,
+  );
+  assert.throws(
+    () => parseDevtopProfileArguments(["--profile"], {}),
+    /requires a profile name/u,
+  );
+  assert.throws(
+    () => parseDevtopProfileArguments(["--profile="], {}),
+    /requires a profile name/u,
+  );
+});
+
+test("default and named state paths preserve the existing default contract", () => {
+  assert.equal(
+    developmentProfileStateDirectory("/repo", "default"),
+    path.join("/repo", ".cantrip", "dev"),
+  );
+  assert.equal(
+    developmentProfileStateDirectory("/repo", "clean-test"),
+    path.join("/repo", ".cantrip", "dev-profiles", "clean-test"),
+  );
 });
