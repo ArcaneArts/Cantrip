@@ -1053,7 +1053,7 @@ goal work.
 - Branch: `codex/fix-dev-key-custody`
 - Pull request: [#1562](https://github.com/ArcaneArts/Cantrip/pull/1562)
 - Implementation commit: `24aa8138`
-- Merge: pending
+- Merge: squash-merged as `b51d94323cee4dc4b58e9a323ab4d12ff4a25015`
 - Behavior implemented:
   - `pnpm devtop` on macOS selects a stable profile-local development vault
     instead of repeatedly prompting for Apple Keychain access from rebuilt,
@@ -1081,7 +1081,9 @@ goal work.
   Packaged Tauri, Windows, Linux, Capacitor, and browser custody are unchanged.
 - Migration status: compatible and non-destructive. Existing cataloged macOS
   development Keychain records are retained after their first successful copy.
-- Remaining work: PR review gates and merge observation.
+- Remaining work: none for this correction. The non-required Windows frozen
+  fixture workflow was still queued after the PR merged and is observed as a
+  post-merge platform signal.
 - Known risks or blockers: owner-only application-local development custody is
   intentionally weaker than Keychain and is restricted to explicit debug
   launches. A profile with an already-cataloged Keychain key may receive one
