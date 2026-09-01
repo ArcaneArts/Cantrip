@@ -148,7 +148,7 @@ a {
 }
 .icon-button,
 .github-link,
-.open-app-link {
+.header-download-link {
   height: 38px;
   border: 1px solid var(--line);
   background: var(--bg-raised);
@@ -166,7 +166,7 @@ a {
   font-size: 13px;
   font-weight: 600;
 }
-.open-app-link {
+.header-download-link {
   gap: 8px;
   padding: 0 14px;
   border-color: var(--ink);
@@ -177,10 +177,10 @@ a {
 }
 .icon-button:hover,
 .github-link:hover,
-.open-app-link:hover {
+.header-download-link:hover {
   border-color: var(--line-strong);
 }
-.open-app-link:hover {
+.header-download-link:hover {
   transform: translateY(-1px);
 }
 .theme-settings {
@@ -327,6 +327,44 @@ h1 {
 }
 .button-quiet {
   background: var(--bg-raised);
+}
+.download-button-loading {
+  cursor: wait;
+  opacity: 0.7;
+}
+.download-button-loading:hover {
+  transform: none;
+}
+.download-spinner {
+  animation: download-spin 0.9s linear infinite;
+}
+.download-secondary-actions {
+  min-height: 20px;
+  margin-top: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 15px;
+  color: var(--ink-faint);
+  font-family: "SFMono-Regular", "Cascadia Code", monospace;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.download-secondary-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.download-secondary-actions a:hover {
+  color: var(--ink);
+}
+.download-secondary-actions span {
+  opacity: 0.72;
+}
+@keyframes download-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .hero-proof {
   margin-top: 41px;
@@ -2004,6 +2042,9 @@ h1 {
   justify-content: center;
   gap: 11px;
 }
+.closing-section .download-secondary-actions {
+  justify-content: center;
+}
 .site-footer {
   border-top: 1px solid var(--line);
 }
@@ -2233,12 +2274,12 @@ h1 {
   .brand {
     font-size: 12px;
   }
-  .open-app-link {
+  .header-download-link {
     width: 38px;
     padding: 0;
   }
-  .open-app-link span,
-  .open-app-link svg:last-child {
+  .header-download-link span,
+  .header-download-link svg:last-child {
     display: none;
   }
   .hero-actions {

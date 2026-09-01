@@ -17,6 +17,7 @@ import {
   Code2,
   Columns3,
   Command,
+  Download,
   ExternalLink,
   FolderTree,
   GitBranch,
@@ -26,6 +27,7 @@ import {
   Laptop,
   Link2,
   ListTodo,
+  Loader2,
   MessageSquare,
   Monitor,
   Moon,
@@ -51,11 +53,20 @@ import {
   SITE_REDUCED_MOTION_GLITCH_CONFIG,
   usePrefersReducedMotion,
 } from "./site-glitch";
+import {
+  detectDesktopPlatform,
+  GITHUB_URL,
+  LATEST_RELEASE_API_URL,
+  LATEST_RELEASE_URL,
+  parseLatestDesktopRelease,
+  platformDownload,
+  type DesktopPlatform,
+  type LatestDesktopRelease,
+} from "./release-downloads";
 
 type ThemeMode = "system" | "light" | "dark";
 type DemoTab = "editor" | "agents" | "terminal" | "git";
 
-const GITHUB_URL = "https://github.com/ArcaneArts/Cantrip";
 const APP_URL = "https://app.cantrip.art";
 
 const surfaces: Array<{
@@ -442,6 +453,118 @@ function ThemeSettings({
   );
 }
 
+function browserDesktopPlatform(): DesktopPlatform {
+  const browserNavigator = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  return detectDesktopPlatform({
+    platform: browserNavigator.userAgentData?.platform ?? navigator.platform,
+    userAgent: navigator.userAgent,
+  });
+}
+
+function useLatestDesktopRelease() {
+  const [platform] = useState(browserDesktopPlatform);
+  const [release, setRelease] = useState<LatestDesktopRelease | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(LATEST_RELEASE_API_URL, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+        const parsed = parseLatestDesktopRelease(await response.json());
+        if (!parsed) throw new Error("The latest release has no installers.");
+        setRelease(parsed);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
+
+  return { failed, platform, release };
+}
+
+function DesktopDownloadButton({
+  className,
+  compact = false,
+  failed,
+  platform,
+  release,
+}: {
+  className: string;
+  compact?: boolean;
+  failed: boolean;
+  platform: DesktopPlatform;
+  release: LatestDesktopRelease | null;
+}) {
+  const download = release ? platformDownload(platform, release) : null;
+  if (download) {
+    return (
+      <a className={className} href={download.href}>
+        <Download size={compact ? 16 : 18} />
+        <span>{compact ? "Download" : download.label}</span>
+        {!compact && <ArrowRight size={16} />}
+      </a>
+    );
+  }
+  if (platform === "other" || failed) {
+    return (
+      <a
+        className={className}
+        href={LATEST_RELEASE_URL}
+        rel="noreferrer"
+        target="_blank"
+      >
+        <GitPullRequest size={compact ? 16 : 18} />
+        <span>{compact ? "Downloads" : "View downloads on GitHub"}</span>
+        {!compact && <ExternalLink size={15} />}
+      </a>
+    );
+  }
+  return (
+    <span
+      aria-disabled="true"
+      className={`${className} download-button-loading`}
+    >
+      <Loader2 className="download-spinner" size={compact ? 16 : 18} />
+      <span>{compact ? "Download" : "Finding latest download…"}</span>
+    </span>
+  );
+}
+
+function ReleaseLinks({ release }: { release: LatestDesktopRelease | null }) {
+  const releaseUrl = release?.changelogUrl ?? LATEST_RELEASE_URL;
+  return (
+    <div className="download-secondary-actions">
+      <a href={releaseUrl} rel="noreferrer" target="_blank">
+        Other downloads <ExternalLink size={12} />
+      </a>
+      {release ? <span>Latest v{release.version}</span> : null}
+    </div>
+  );
+}
+
+function ChangelogButton({
+  release,
+}: {
+  release: LatestDesktopRelease | null;
+}) {
+  return (
+    <a
+      className="button button-quiet"
+      href={release?.changelogUrl ?? LATEST_RELEASE_URL}
+      rel="noreferrer"
+      target="_blank"
+    >
+      View Change Log <ExternalLink size={15} />
+    </a>
+  );
+}
+
 function GlintMark() {
   return <span aria-hidden="true" className="glint-mark" />;
 }
@@ -776,6 +899,7 @@ function WorkflowBoard() {
 
 function App() {
   const { mode, setMode } = useTheme();
+  const latestRelease = useLatestDesktopRelease();
   const reducedMotion = usePrefersReducedMotion();
   const glitchConfig = reducedMotion
     ? SITE_REDUCED_MOTION_GLITCH_CONFIG
@@ -803,15 +927,11 @@ function App() {
             >
               <GitPullRequest size={17} /> <span>GitHub</span>
             </a>
-            <a
-              className="open-app-link"
-              href={APP_URL}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <AppWindow size={16} /> <span>Open app</span>
-              <ArrowRight size={14} />
-            </a>
+            <DesktopDownloadButton
+              className="header-download-link"
+              compact
+              {...latestRelease}
+            />
           </div>
         </div>
       </header>
@@ -858,23 +978,21 @@ function App() {
               replayKey={0}
             >
               <div className="hero-actions">
-                <a
+                <DesktopDownloadButton
                   className="button button-primary"
+                  {...latestRelease}
+                />
+                <a
+                  className="button button-quiet"
                   href={APP_URL}
                   rel="noreferrer"
                   target="_blank"
                 >
-                  <AppWindow size={18} /> Open the IDE <ArrowRight size={16} />
+                  <AppWindow size={18} /> Open the web IDE
                 </a>
-                <a
-                  className="button button-quiet"
-                  href={GITHUB_URL}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <GitPullRequest size={17} /> View source
-                </a>
+                <ChangelogButton release={latestRelease.release} />
               </div>
+              <ReleaseLinks release={latestRelease.release} />
             </EliteReveal>
             <EliteReveal config={glitchConfig} index={4} replayKey={0}>
               <div className="hero-proof">
@@ -1401,23 +1519,21 @@ function App() {
             control plane. Cantrip is open source and under active development.
           </p>
           <div className="closing-actions">
-            <a
+            <DesktopDownloadButton
               className="button button-primary"
+              {...latestRelease}
+            />
+            <a
+              className="button button-quiet"
               href={APP_URL}
               rel="noreferrer"
               target="_blank"
             >
-              <AppWindow size={18} /> Open the IDE <ArrowRight size={16} />
+              <AppWindow size={17} /> Open the web IDE
             </a>
-            <a
-              className="button button-quiet"
-              href={GITHUB_URL}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <GitPullRequest size={17} /> Explore the source
-            </a>
+            <ChangelogButton release={latestRelease.release} />
           </div>
+          <ReleaseLinks release={latestRelease.release} />
         </section>
       </main>
 
@@ -1431,6 +1547,9 @@ function App() {
             </a>
             <a href={GITHUB_URL} rel="noreferrer" target="_blank">
               GitHub
+            </a>
+            <a href={LATEST_RELEASE_URL} rel="noreferrer" target="_blank">
+              Downloads
             </a>
             <a
               href={`${GITHUB_URL}/blob/main/README.md`}
