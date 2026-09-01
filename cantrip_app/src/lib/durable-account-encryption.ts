@@ -653,7 +653,7 @@ async function legacyDeviceStatus(
   | { status: "corrupt" | "missing" | "unsupported" }
 > {
   try {
-    const device = await service.loadDevice(identity);
+    const device = await service.loadLegacyDevice(identity);
     return device ? { device, status: "available" } : { status: "missing" };
   } catch (error) {
     if (error instanceof ClientEncryptionError) {
@@ -687,7 +687,7 @@ async function unlockLegacy(input: {
     input.profile.activeMasterKeyRevision,
   );
   if (!grant) return false;
-  await input.service.unlockWithDevice({
+  await input.service.unlockWithLegacyDevice({
     grant,
     identity: input.identity,
     principal,

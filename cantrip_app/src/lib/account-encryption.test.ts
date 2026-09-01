@@ -28,8 +28,8 @@ import {
 import { serializeAnonymousRecoveryArtifact } from "./anonymous-recovery-artifact";
 import {
   ClientEncryptionService,
-  IndexedDbClientDeviceKeyStore,
-  type ClientDeviceKeyStore,
+  LegacyIndexedDbClientDeviceKeyStore,
+  type LegacyClientDeviceKeyStore,
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
 } from "./client-encryption";
@@ -59,16 +59,11 @@ const testKdf = () =>
     parallelism: 1,
   });
 
-class MemoryDeviceKeyStore implements ClientDeviceKeyStore {
+class MemoryDeviceKeyStore implements LegacyClientDeviceKeyStore {
   private readonly records = new Map<string, unknown>();
 
   seed(target: ClientEncryptionIdentity, record: unknown): void {
     this.records.set(this.key(target), record);
-  }
-
-  delete(target: ClientEncryptionIdentity): Promise<void> {
-    this.records.delete(this.key(target));
-    return Promise.resolve();
   }
 
   load(target: ClientEncryptionIdentity): Promise<unknown | null> {
@@ -622,10 +617,10 @@ describe("durable native account encryption", () => {
   async function initializeLegacyAccount(input: {
     api: MemoryAccountEncryptionApi;
     authMode?: "accounts" | "none";
-    store: ClientDeviceKeyStore;
+    store: LegacyClientDeviceKeyStore;
   }) {
     const service = new ClientEncryptionService(input.store);
-    const device = await service.ensureDevice(identity);
+    const device = await service.ensureLegacyDevice(identity);
     const accountMasterKey = generateAccountMasterKey();
     try {
       service.setAccountMasterKey({
@@ -646,7 +641,7 @@ describe("durable native account encryption", () => {
           id: device.clientId,
           label: "Legacy Cantrip browser",
           publicKey: device.publicKey,
-          wrappedMasterKey: await service.createDeviceWrapper(identity),
+          wrappedMasterKey: await service.createLegacyDeviceWrapper(identity),
         },
         profile: {
           activeMasterKeyRevision: 1,
@@ -664,7 +659,7 @@ describe("durable native account encryption", () => {
 
   it("migrates the released per-account browser key into one stable browser installation", async () => {
     const api = new MemoryAccountEncryptionApi(password);
-    const legacyStore = new IndexedDbClientDeviceKeyStore();
+    const legacyStore = new LegacyIndexedDbClientDeviceKeyStore();
     await initializeLegacyAccount({ api, store: legacyStore });
     const legacyPrincipalId = [...api.principals.keys()][0]!;
     const service = new ClientEncryptionService(legacyStore);
@@ -699,7 +694,6 @@ describe("durable native account encryption", () => {
 
     service.lock();
     const stableOnly = new ClientEncryptionService({
-      delete: () => Promise.reject(new Error("legacy storage not used")),
       load: () => Promise.reject(new Error("legacy storage not used")),
       save: () => Promise.reject(new Error("legacy storage not used")),
     });
@@ -810,7 +804,6 @@ describe("durable native account encryption", () => {
       expect(states.at(-1)).toBe("ready");
 
       const nativeOnly = new ClientEncryptionService({
-        delete: () => Promise.reject(new Error("legacy storage not used")),
         load: () => Promise.reject(new Error("legacy storage not used")),
         save: () => Promise.reject(new Error("legacy storage not used")),
       });

@@ -7,14 +7,15 @@ import type {
   EncryptionKeyGrant,
   EncryptionPrincipal,
 } from "@cantrip/protocol/encryption";
-import { afterEach, describe, expect, it } from "vitest";
+import { IDBFactory } from "fake-indexeddb";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ClientEncryptionService,
-  IndexedDbClientDeviceKeyStore,
+  LegacyIndexedDbClientDeviceKeyStore,
   clientEncryption,
   clientEncryptionForRuntime,
-  type ClientDeviceKeyStore,
+  type LegacyClientDeviceKeyStore,
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
 } from "./client-encryption";
@@ -71,13 +72,8 @@ function missingRecordIndexedDbFactory(
   } as unknown as IDBFactory;
 }
 
-class MemoryDeviceKeyStore implements ClientDeviceKeyStore {
+class MemoryDeviceKeyStore implements LegacyClientDeviceKeyStore {
   private readonly records = new Map<string, unknown>();
-
-  delete(target: ClientEncryptionIdentity): Promise<void> {
-    this.records.delete(this.key(target));
-    return Promise.resolve();
-  }
 
   load(target: ClientEncryptionIdentity): Promise<unknown | null> {
     return Promise.resolve(this.records.get(this.key(target)) ?? null);
@@ -142,20 +138,38 @@ function authorization(
 afterEach(() => {
   clearClientLogs();
   clearClientSession();
+  vi.unstubAllGlobals();
 });
 
 describe("client encryption key custody", () => {
+  it("does not select the legacy origin-scoped store by default", async () => {
+    const open = vi.fn();
+    vi.stubGlobal("indexedDB", { open });
+    const service = new ClientEncryptionService();
+
+    await expect(service.loadLegacyDevice(identity)).resolves.toBeNull();
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("normalizes IndexedDB's undefined missing-record result to null", async () => {
-    const store = new IndexedDbClientDeviceKeyStore(
+    const store = new LegacyIndexedDbClientDeviceKeyStore(
       missingRecordIndexedDbFactory(),
     );
 
     await expect(store.load(identity)).resolves.toBeNull();
   });
 
+  it("does not create an obsolete legacy database while probing a fresh origin", async () => {
+    const factory = new IDBFactory();
+    const store = new LegacyIndexedDbClientDeviceKeyStore(factory);
+
+    await expect(store.load(identity)).resolves.toBeNull();
+    await expect(factory.databases()).resolves.toEqual([]);
+  });
+
   it("preserves the exact legacy IndexedDB address for migration readers", async () => {
     const observation: IndexedDbContractObservation = {};
-    const store = new IndexedDbClientDeviceKeyStore(
+    const store = new LegacyIndexedDbClientDeviceKeyStore(
       missingRecordIndexedDbFactory(observation),
     );
 
@@ -192,7 +206,7 @@ describe("client encryption key custody", () => {
   it("persists a nonextractable device key and unlocks after a simulated restart", async () => {
     const store = new MemoryDeviceKeyStore();
     const firstRun = new ClientEncryptionService(store);
-    const device = await firstRun.ensureDevice(identity);
+    const device = await firstRun.ensureLegacyDevice(identity);
     const stored = store.read(identity) as StoredClientDeviceRecord;
 
     expect(stored.privateKey.extractable).toBe(false);
@@ -206,7 +220,7 @@ describe("client encryption key custody", () => {
       identity,
       masterKeyRevision: 1,
     });
-    const deviceWrapper = await firstRun.createDeviceWrapper(identity);
+    const deviceWrapper = await firstRun.createLegacyDeviceWrapper(identity);
     const passwordWrapper = await firstRun.createPasswordWrapper({
       identity,
       password: "a correct test password",
@@ -226,7 +240,7 @@ describe("client encryption key custody", () => {
       identity,
       keyRevision: 1,
     });
-    await expect(firstRun.loadDevice(identity)).resolves.toEqual(device);
+    await expect(firstRun.loadLegacyDevice(identity)).resolves.toEqual(device);
     expect(firstRun.getSnapshot().status).toBe("ready");
     expect(
       firstRun.componentKey({
@@ -238,8 +252,8 @@ describe("client encryption key custody", () => {
     firstRun.lock();
 
     const restarted = new ClientEncryptionService(store);
-    await expect(restarted.loadDevice(identity)).resolves.toEqual(device);
-    await restarted.unlockWithDevice({
+    await expect(restarted.loadLegacyDevice(identity)).resolves.toEqual(device);
+    await restarted.unlockWithLegacyDevice({
       identity,
       ...authorization(device.clientId, device.publicKey, deviceWrapper),
     });
@@ -280,7 +294,7 @@ describe("client encryption key custody", () => {
   it("treats a structured-cloned WebKit device key as an opaque native handle", async () => {
     const store = new MemoryDeviceKeyStore();
     const service = new ClientEncryptionService(store);
-    const device = await service.ensureDevice(identity);
+    const device = await service.ensureLegacyDevice(identity);
     const stored = store.read(identity) as StoredClientDeviceRecord;
     store.seed(identity, {
       ...stored,
@@ -289,12 +303,12 @@ describe("client encryption key custody", () => {
       privateKey: {} as CryptoKey,
     });
 
-    await expect(service.loadDevice(identity)).resolves.toEqual(device);
+    await expect(service.loadLegacyDevice(identity)).resolves.toEqual(device);
   });
 
   it("isolates keys by server and account and clears the singleton on sign-out", async () => {
     const service = new ClientEncryptionService(new MemoryDeviceKeyStore());
-    await service.ensureDevice(identity);
+    await service.ensureLegacyDevice(identity);
     service.setAccountMasterKey({
       accountMasterKey: new Uint8Array(32).fill(23),
       identity,
@@ -302,7 +316,7 @@ describe("client encryption key custody", () => {
     });
 
     await expect(
-      service.loadDevice({ ownerId: "owner-a", serverId: "server-b" }),
+      service.loadLegacyDevice({ ownerId: "owner-a", serverId: "server-b" }),
     ).resolves.toBeNull();
     expect(service.getSnapshot()).toMatchObject({
       identity: { ownerId: "owner-a", serverId: "server-b" },
@@ -341,17 +355,17 @@ describe("client encryption key custody", () => {
   it("fails closed for corrupt, unsupported, and revoked device state", async () => {
     const store = new MemoryDeviceKeyStore();
     const service = new ClientEncryptionService(store);
-    const device = await service.ensureDevice(identity);
+    const device = await service.ensureLegacyDevice(identity);
     service.setAccountMasterKey({
       accountMasterKey: new Uint8Array(32).fill(31),
       identity,
       masterKeyRevision: 1,
     });
-    const wrapper = await service.createDeviceWrapper(identity);
+    const wrapper = await service.createLegacyDeviceWrapper(identity);
     const approved = authorization(device.clientId, device.publicKey, wrapper);
 
     await expect(
-      service.unlockWithDevice({
+      service.unlockWithLegacyDevice({
         identity,
         grant: approved.grant,
         principal: {
@@ -365,7 +379,7 @@ describe("client encryption key custody", () => {
     expect(service.getSnapshot().status).toBe("revoked");
 
     await expect(
-      service.unlockWithDevice({
+      service.unlockWithLegacyDevice({
         identity,
         grant: {
           ...approved.grant,
@@ -379,7 +393,7 @@ describe("client encryption key custody", () => {
     const stored = store.read(identity) as StoredClientDeviceRecord;
     store.seed(identity, { ...stored, privateKey: {} as CryptoKey });
     await expect(
-      service.unlockWithDevice({
+      service.unlockWithLegacyDevice({
         identity,
         grant: approved.grant,
         principal: approved.principal,
@@ -392,7 +406,7 @@ describe("client encryption key custody", () => {
       serverId: identity.serverId,
       version: 1,
     });
-    await expect(service.loadDevice(identity)).rejects.toMatchObject({
+    await expect(service.loadLegacyDevice(identity)).rejects.toMatchObject({
       code: "corrupt-device-record",
     });
     expect(service.getSnapshot().status).toBe("corrupt");

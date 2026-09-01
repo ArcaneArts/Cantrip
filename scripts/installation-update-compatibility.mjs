@@ -302,13 +302,27 @@ export async function verifyRepositoryCompatibilityContracts({
   );
   includes(
     legacyStorage,
-    `deviceDatabaseName = "${contract.browser.legacyDatabaseName}"`,
+    `legacyDeviceDatabaseName = "${contract.browser.legacyDatabaseName}"`,
     "Legacy browser database",
   );
   includes(
     legacyStorage,
-    `deviceDatabaseVersion = ${contract.browser.legacyDatabaseVersion}`,
+    `legacyDeviceDatabaseVersion = ${contract.browser.legacyDatabaseVersion}`,
     "Legacy browser database version",
+  );
+  includes(
+    legacyStorage,
+    "private readonly legacyDeviceStore: LegacyClientDeviceKeyStore | null = null",
+    "Legacy storage is not a client-encryption default",
+  );
+  includes(
+    legacyStorage,
+    "new LegacyIndexedDbClientDeviceKeyStore()",
+    "Explicit legacy migration reader",
+  );
+  assert.ok(
+    !legacyStorage.includes("async replaceDevice("),
+    "The destructive legacy device replacement path must remain retired.",
   );
   includes(
     protocolEncryption,

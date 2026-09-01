@@ -576,7 +576,7 @@ flowchart TD
 - Branch: `codex/encryption-storage-cycle10-update-safety`
 - Pull request: [#1551](https://github.com/ArcaneArts/Cantrip/pull/1551)
 - Commit: `bbc6401e6a51fce85046ee8e546e9a3ee53c0edd`
-- Merge: pending
+- Merge: squash-merged as `2c8161562ede8ca3bc2b672620f35744e25fbac9`
 - Behavior implemented:
   - Added an immutable version-one compatibility manifest for bundle IDs,
     WebView origins, native data ownership, catalog schemas and paths, secure
@@ -642,7 +642,62 @@ flowchart TD
   confirm the installation ID, alias, server identity, and data survive. Repeat
   ordinary upgrade and storage-clearing recovery in a production browser.
 
+### Cycle 11 — retire obsolete device-key defaults
+
+- Branch: `codex/encryption-storage-cycle11-retire-defaults`
+- Pull request: pending
+- Commit and merge: pending
+- Behavior implemented:
+  - Removed the origin-scoped legacy IndexedDB store from
+    `ClientEncryptionService`'s constructor default. Ordinary service instances
+    now have no device store and cannot accidentally treat `[serverId, ownerId]`
+    as installation identity.
+  - Renamed all compatibility operations and types around legacy device
+    records. Durable startup explicitly injects the retained legacy reader and
+    uses it only after a current catalog binding cannot unlock the established
+    server profile.
+  - Removed the unused destructive legacy-device replacement operation and the
+    legacy store's delete contract. Verified migration and recovery continue to
+    retain the old key, principal, and grant.
+  - Prevented a read-only legacy probe from creating
+    `cantrip-client-encryption` on a fresh origin. The compatibility writer is
+    retained only so deterministic tests can construct released-version
+    migration fixtures.
+- Validation:
+  - Focused legacy migration, account recovery, and private-label lifecycle
+    suite — 34 tests passed.
+  - `pnpm --filter @cantrip/app test` — 1,875 tests passed and 3 skipped across
+    356 files.
+  - `pnpm --filter @cantrip/app typecheck` and
+    `pnpm --filter @cantrip/app build` — passed.
+  - `pnpm verify:installation-compatibility` and the focused compatibility
+    suite — passed; all seven update/recovery harnesses and 5 contract tests
+    remain green after the legacy API retirement.
+  - `node --test scripts/*.test.mjs` — 122 tests passed and the two known
+    clean-`main` baseline assertions failed for the App Platform build-command
+    fixture and tranche-two sidebar lifecycle fixture. This cycle changes
+    neither surface.
+  - `pnpm check:large-files`, changed-file Prettier validation, and
+    `git diff --check` — passed.
+  - `pnpm check:app-decomposition` — failed only on the unchanged baseline
+    `chat-turn-runtime.ts` (2,103/1,999 lines) and `task-routes.ts`
+    (2,147/1,999 lines); this cycle introduced no newly reported overage.
+- Supported platforms: the explicit compatibility reader is shared by Tauri,
+  Capacitor iOS/Android, and browser migration. Current native and browser key
+  custody remains unchanged.
+- Migration status: the legacy IndexedDB address and reader remain available;
+  no legacy record is deleted. New installations no longer create the legacy
+  database as a side effect of probing.
+- Remaining work: Cycle 12 cross-platform audit, final regression suite, and
+  documentation closure.
+- Known risks or blockers: removing the legacy reader itself would strand
+  released nonextractable WebCrypto keys, so it deliberately remains. No
+  external blocker prevents Cycle 12.
+- Manual verification: open a previously released installation with a legacy
+  record and confirm migration still succeeds; on a fresh browser profile,
+  complete password recovery and confirm only the current browser installation
+  database is created.
+
 ## Remaining cycles
 
-1. Retire obsolete defaults while retaining required legacy readers.
-2. Complete the cross-platform audit, full validation, and documentation.
+1. Complete the cross-platform audit, full validation, and documentation.
