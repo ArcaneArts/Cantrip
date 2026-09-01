@@ -1051,8 +1051,8 @@ goal work.
 ### Post-completion correction — macOS development custody and legacy migration reuse
 
 - Branch: `codex/fix-dev-key-custody`
-- Pull request: pending
-- Implementation commit: pending
+- Pull request: [#1562](https://github.com/ArcaneArts/Cantrip/pull/1562)
+- Implementation commit: `24aa8138`
 - Merge: pending
 - Behavior implemented:
   - `pnpm devtop` on macOS selects a stable profile-local development vault
