@@ -1138,3 +1138,44 @@ goal work.
   native catalog and server database without launching the application. The
   next user-started `pnpm devtop` remains the UI smoke check; implementation did
   not relaunch the prompt-spamming build.
+
+### Post-completion correction — native device-key transaction bridge
+
+- Branch: `codex/fix-dev-encryption-startup`
+- Pull request: [#1566](https://github.com/ArcaneArts/Cantrip/pull/1566)
+- Implementation commit: `b478d69ae81ce1ebebe80631272743f90adadbe2`
+- Merge: squash-merged as `15e421bc50ca3656ddabd2f85667db5440551ce8`
+- Behavior implemented:
+  - Corrected the Tauri native catalog boundary so device-key operations accept
+    the frontend's camelCase `deviceKey` payload. The tagged Rust enum had
+    renamed operation variants but still expected the field as `device_key`,
+    causing Tauri to reject the transaction before its handler ran.
+  - Preserved an already-created development-vault key and the stable
+    installation ID. A subsequent launch can now resume the in-progress
+    replacement, record the existing key in SQLite, and continue profile
+    initialization without Keychain access or another key replacement.
+  - Added a regression test that deserializes and applies both frontend
+    `put-device-key` and `replace-device-key` JSON transactions to the native
+    SQLite catalog.
+- Validation:
+  - Tauri installation-storage suite — 24 tests passed.
+  - `cargo check` and `cargo fmt --check` passed.
+  - A read-only diagnosis plus copied-profile transaction reproduced the exact
+    key-file/catalog split and verified that the existing key can be cataloged;
+    the temporary profile copy was deleted afterward.
+  - Diff whitespace validation passed.
+- Supported platforms: the corrected Tauri bridge contract applies to macOS,
+  Windows, and Linux. The observed recovery path is macOS `devtop`; packaged
+  secure-store providers and Capacitor/browser storage are unchanged.
+- Migration status: compatible and resumable. No key, principal, grant,
+  encrypted payload, or installation profile is deleted. The existing
+  in-progress replacement record is completed by normal startup after the
+  catalog accepts the preserved key metadata.
+- Remaining work: none for implementation.
+- Known risks or blockers: no known code blocker. The earlier generic
+  `NonError` log came from Tauri rejecting command deserialization before the
+  Rust handler; the corrected payload now reaches the typed storage path.
+- Manual verification: restart `pnpm devtop` once and confirm it opens without
+  the private-data lock screen or any Keychain prompt. The agent did not launch
+  the application because the user explicitly stopped authorizing the
+  prompt-spamming build.
