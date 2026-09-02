@@ -66,7 +66,12 @@ function worker(): WorkerSummary {
       remove: false,
       exactRevision: false,
     },
-    managedFolders: { create: true, convertToGithub: true, remove: true },
+    managedFolders: {
+      create: true,
+      convertToGithub: true,
+      remove: true,
+      workspaceScopedRoots: true,
+    },
     chatRelocation: false,
     externalCodexHistory: false,
     startedAt: now,
@@ -91,6 +96,9 @@ describe("project folder setup executor", () => {
     const requeueRetryableForWorker = vi.fn().mockResolvedValue(1);
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectWorkspaceStorageContext: vi
+        .fn()
+        .mockResolvedValue({ kind: "system" }),
       projectFolderSetupJobs: {
         claimNext: vi
           .fn()
@@ -141,6 +149,10 @@ describe("project folder setup executor", () => {
     });
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectWorkspaceStorageContext: vi.fn().mockResolvedValue({
+        kind: "managed",
+        workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+      }),
       projectFolderSetupJobs: {
         claimNext: vi
           .fn()
@@ -171,6 +183,10 @@ describe("project folder setup executor", () => {
         jobId: active.id,
         attempt: active.attempt,
         projectId: active.projectId,
+        workspaceStorage: {
+          kind: "managed",
+          workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+        },
       },
       { timeoutMs: 60_000 },
     );

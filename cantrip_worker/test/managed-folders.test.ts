@@ -16,10 +16,15 @@ import {
   deriveManagedFolderLocation,
   ManagedFolderManager,
 } from "../src/managed-folders.js";
+import {
+  deriveManagedRepositoryTarget,
+  deriveProjectWorkspaceRoot,
+} from "../src/project-workspace-storage.js";
 
 const directories: string[] = [];
 const projectId = "019fe8aa-a7a3-7404-8a96-d3be7f0fb338";
 const jobId = "019fe8aa-a7a3-7404-8a96-d3be7f0fb339";
+const workspaceId = "019fe8aa-a7a3-7404-8a96-d3be7f0fb337";
 
 afterEach(async () => {
   await Promise.all(
@@ -57,6 +62,7 @@ describe("managed folders", () => {
     const location = deriveManagedFolderLocation(
       test.dataDirectory,
       projectId.toUpperCase(),
+      { kind: "system" },
       test.pathApi,
     );
     expect(location).toEqual({
@@ -66,6 +72,139 @@ describe("managed folders", () => {
     });
     expect(test.pathApi.dirname(location.target)).toBe(location.root);
     expect(location.target).not.toBe(location.root);
+  });
+
+  it.each([
+    {
+      dataDirectory: "/srv/cantrip/worker-data",
+      expectedFolder: `/srv/cantrip/worker-data/workspaces/${workspaceId}/folders/${projectId}`,
+      expectedRepository: `/srv/cantrip/worker-data/workspaces/${workspaceId}/repositories/ArcaneArts/Cantrip`,
+      expectedRoot: `/srv/cantrip/worker-data/workspaces/${workspaceId}`,
+      name: "POSIX",
+      pathApi: path.posix,
+    },
+    {
+      dataDirectory: "C:\\Cantrip\\worker-data",
+      expectedFolder: `C:\\Cantrip\\worker-data\\workspaces\\${workspaceId}\\folders\\${projectId}`,
+      expectedRepository: `C:\\Cantrip\\worker-data\\workspaces\\${workspaceId}\\repositories\\ArcaneArts\\Cantrip`,
+      expectedRoot: `C:\\Cantrip\\worker-data\\workspaces\\${workspaceId}`,
+      name: "Windows",
+      pathApi: path.win32,
+    },
+  ])("isolates managed workspace roots on $name", (test) => {
+    const storage = { kind: "managed" as const, workspaceId };
+    expect(
+      deriveProjectWorkspaceRoot(test.dataDirectory, storage, test.pathApi),
+    ).toEqual({
+      displayPrefix: test.pathApi.join("workspaces", workspaceId),
+      root: test.expectedRoot,
+    });
+    expect(
+      deriveManagedFolderLocation(
+        test.dataDirectory,
+        projectId,
+        storage,
+        test.pathApi,
+      ).target,
+    ).toBe(test.expectedFolder);
+    expect(
+      deriveManagedRepositoryTarget(
+        test.dataDirectory,
+        storage,
+        "ArcaneArts",
+        "Cantrip",
+        test.pathApi,
+      ),
+    ).toBe(test.expectedRepository);
+  });
+
+  it.each(["system", "legacy", "attached"] as const)(
+    "preserves the worker-level root for %s storage",
+    (kind) => {
+      const storage =
+        kind === "attached"
+          ? { kind, workspaceId, workerId: "worker-one" }
+          : { kind };
+      expect(
+        deriveManagedFolderLocation(
+          "/srv/cantrip/worker-data",
+          projectId,
+          storage,
+          path.posix,
+        ).target,
+      ).toBe(`/srv/cantrip/worker-data/folders/${projectId}`);
+    },
+  );
+
+  it("materializes the same project id independently in two managed workspaces", async () => {
+    const test = await manager();
+    const firstStorage = { kind: "managed" as const, workspaceId };
+    const secondStorage = {
+      kind: "managed" as const,
+      workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb336",
+    };
+    const first = await test.manager.materialize({
+      projectId,
+      jobId,
+      attempt: 1,
+      workspaceStorage: firstStorage,
+    });
+    const second = await test.manager.materialize({
+      projectId,
+      jobId,
+      attempt: 1,
+      workspaceStorage: secondStorage,
+    });
+
+    expect(first.path).not.toBe(second.path);
+    expect(first.path).toContain(path.join("workspaces", workspaceId));
+    expect(second.path).toContain(
+      path.join("workspaces", secondStorage.workspaceId),
+    );
+  });
+
+  it("materializes the same managed workspace independently on two workers", async () => {
+    const firstWorker = await manager();
+    const secondWorker = await manager();
+    const storage = { kind: "managed" as const, workspaceId };
+
+    const first = await firstWorker.manager.materialize({
+      projectId,
+      jobId,
+      attempt: 1,
+      workspaceStorage: storage,
+    });
+    const second = await secondWorker.manager.materialize({
+      projectId,
+      jobId,
+      attempt: 1,
+      workspaceStorage: storage,
+    });
+
+    expect(first.path).not.toBe(second.path);
+    expect(first.path).toContain(path.join("workspaces", workspaceId));
+    expect(second.path).toContain(path.join("workspaces", workspaceId));
+  });
+
+  it("rejects a symlinked managed workspace boundary", async () => {
+    const test = await manager();
+    const outside = path.join(test.directory, "outside-workspace");
+    const workspaceRoot = path.join(test.directory, "workspaces", workspaceId);
+    await mkdir(path.dirname(workspaceRoot), { recursive: true });
+    await mkdir(outside);
+    await symlink(outside, workspaceRoot, "dir");
+
+    await expect(
+      test.manager.materialize({
+        projectId,
+        jobId,
+        attempt: 1,
+        workspaceStorage: { kind: "managed", workspaceId },
+      }),
+    ).rejects.toThrow("unsafe directory boundary");
+    await expect(lstat(path.join(outside, "folders"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("materializes an owner-only UUID directory idempotently", async () => {
@@ -104,7 +243,12 @@ describe("managed folders", () => {
       "project UUID",
     );
     expect(() =>
-      deriveManagedFolderLocation(test.directory, "folders", path.posix),
+      deriveManagedFolderLocation(
+        test.directory,
+        "folders",
+        { kind: "system" },
+        path.posix,
+      ),
     ).toThrow("project UUID");
   });
 

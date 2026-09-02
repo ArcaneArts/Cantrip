@@ -176,7 +176,19 @@ export class ProjectGithubConversionJobExecutor {
         this.onChanged({ ownerId: claimed.ownerId, job: blocked });
         return;
       }
-      if (!worker.managedFolders.convertToGithub) {
+      const workspaceStorage =
+        await this.repository.getProjectWorkspaceStorageContext(
+          claimed.ownerId,
+          job.projectId,
+        );
+      if (!workspaceStorage) {
+        throw new Error("Project workspace storage is unavailable.");
+      }
+      if (
+        !worker.managedFolders.convertToGithub ||
+        (workspaceStorage.kind === "managed" &&
+          !worker.managedFolders.workspaceScopedRoots)
+      ) {
         const failed = await this.repository.projectGithubConversionJobs.fail(
           job.id,
           claimed.commandId,
@@ -197,6 +209,7 @@ export class ProjectGithubConversionJobExecutor {
             attempt: job.attempt,
             projectId: job.projectId,
             repository: job.repository,
+            workspaceStorage,
             confirmationToken: claimed.confirmationToken,
             initialCommit: claimed.initialCommit,
           },

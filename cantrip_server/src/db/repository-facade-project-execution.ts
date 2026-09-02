@@ -54,6 +54,7 @@ import type {
   ProjectWireSummary,
   ProjectWorkspaceWireList,
   ProjectWorkspaceWireSummary,
+  ProjectWorkspaceStorageContext,
   ProjectWorktreePolicyUpdate,
   ProjectWorktreeSummary,
   RemoteDesktopWireSummary,
@@ -390,6 +391,13 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     projectId: string,
   ): Promise<ProjectWireSummary | null> {
     return this.projects.getProject(ownerId, projectId);
+  }
+
+  async getProjectWorkspaceStorageContext(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectWorkspaceStorageContext | null> {
+    return this.projects.getProjectWorkspaceStorageContext(ownerId, projectId);
   }
   async listMcpServers(
     ownerId: string,

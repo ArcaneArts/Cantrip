@@ -1,5 +1,6 @@
 import {
   projectCapabilitiesForOriginKind,
+  projectWorkspaceStorageContextSchema,
   projectWorkspaceStorageCanBeDefault,
   projectWireSummarySchema,
   type EncryptedProjectWorkspaceCreate,
@@ -8,6 +9,7 @@ import {
   type ProjectWireSummary,
   type ProjectWorkspaceWireList,
   type ProjectWorkspaceWireSummary,
+  type ProjectWorkspaceStorageContext,
   type ProjectWorktreePolicyUpdate,
   type ProjectWorktreeSummary,
   type WorkerSummary,
@@ -31,6 +33,24 @@ type ProjectWorkspaceStorageProfileRow =
 type WorkerRow = typeof schema.workers.$inferSelect;
 
 export class ProjectWorkspaceInvariantError extends Error {}
+
+function toProjectWorkspaceStorageContext(input: {
+  kind: ProjectWorkspaceStorageProfileRow["kind"];
+  workerId: string | null;
+  workspaceId: string;
+}): ProjectWorkspaceStorageContext {
+  return projectWorkspaceStorageContextSchema.parse(
+    input.kind === "managed"
+      ? { kind: input.kind, workspaceId: input.workspaceId }
+      : input.kind === "attached"
+        ? {
+            kind: input.kind,
+            workspaceId: input.workspaceId,
+            workerId: input.workerId,
+          }
+        : { kind: input.kind },
+  );
+}
 
 export interface ProjectWorktreeExecutionContext {
   projectId: string;
@@ -340,6 +360,41 @@ export class ProjectRepository {
       project,
       (await this.collaborators.listProjectReplicas(ownerId, projectId)) ?? [],
     );
+  }
+
+  async getProjectWorkspaceStorageContext(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectWorkspaceStorageContext | null> {
+    const rows = await this.database
+      .select({
+        kind: schema.projectWorkspaceStorageProfiles.kind,
+        workerId: schema.projectWorkspaceStorageProfiles.workerId,
+        workspaceId: schema.projectWorkspaceMemberships.workspaceId,
+      })
+      .from(schema.projectWorkspaceMemberships)
+      .innerJoin(
+        schema.projectWorkspaces,
+        eq(
+          schema.projectWorkspaces.id,
+          schema.projectWorkspaceMemberships.workspaceId,
+        ),
+      )
+      .innerJoin(
+        schema.projectWorkspaceStorageProfiles,
+        eq(
+          schema.projectWorkspaceStorageProfiles.workspaceId,
+          schema.projectWorkspaceMemberships.workspaceId,
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projectWorkspaceMemberships.projectId, projectId),
+          eq(schema.projectWorkspaces.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toProjectWorkspaceStorageContext(rows[0]) : null;
   }
 
   async ensureDefaultProjectWorkspace(

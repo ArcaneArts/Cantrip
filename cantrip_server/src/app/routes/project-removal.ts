@@ -203,6 +203,7 @@ export function installProjectRemovalRoute(
                   await bridge.request(workerId, {
                     type: "project.folder.delete",
                     projectId: request.params.projectId,
+                    workspaceStorage: context.workspaceStorage,
                   }),
                 );
               } else {
@@ -216,6 +217,7 @@ export function installProjectRemovalRoute(
                     await bridge.request(managedFolderSource.workerId, {
                       type: "project.folder.delete",
                       projectId: request.params.projectId,
+                      workspaceStorage: context.workspaceStorage,
                     }),
                   );
                 }

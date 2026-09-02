@@ -9,6 +9,7 @@ export const projectReplicaCapabilitiesSchema = z.object({
   managedLinkPlacement: z.boolean().default(false),
   attachExisting: z.boolean().default(false),
   recursiveParentCreation: z.boolean().default(false),
+  workspaceScopedRoots: z.boolean().default(false),
 });
 
 export const unavailableProjectReplicaCapabilities =
@@ -21,6 +22,7 @@ export const unavailableProjectReplicaCapabilities =
     managedLinkPlacement: false,
     attachExisting: false,
     recursiveParentCreation: false,
+    workspaceScopedRoots: false,
   });
 
 export const managedFolderCapabilitiesSchema = z.object({
@@ -28,6 +30,7 @@ export const managedFolderCapabilitiesSchema = z.object({
   attachExisting: z.boolean().default(false),
   convertToGithub: z.boolean().default(false),
   remove: z.boolean(),
+  workspaceScopedRoots: z.boolean().default(false),
 });
 
 export const unavailableManagedFolderCapabilities =
@@ -36,6 +39,7 @@ export const unavailableManagedFolderCapabilities =
     attachExisting: false,
     convertToGithub: false,
     remove: false,
+    workspaceScopedRoots: false,
   });
 
 export const standaloneChatScratchCapabilitiesSchema = z

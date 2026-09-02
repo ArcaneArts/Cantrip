@@ -76,6 +76,7 @@ import {
   type ProjectReplicaRemoveResult,
   type ProjectReplicaSynchronizationPolicy,
   type ProjectReplicaSynchronizeResult,
+  type ProjectWorkspaceStorageContext,
   type WorktreePolicy,
 } from "@cantrip/protocol";
 
@@ -83,6 +84,10 @@ import {
   ProjectReplicaPlacementError,
   ProjectReplicaPlacementManager,
 } from "./project-replica-placement.js";
+import {
+  deriveManagedRepositoryTarget,
+  ensureManagedWorkspaceDirectory,
+} from "./project-workspace-storage.js";
 import {
   canonicalProjectSourcePath,
   normalizeProjectSourcePath,
@@ -2112,6 +2117,7 @@ export class GithubClient {
       projectId: jobId,
       nameWithOwner,
       placement: { mode: "managed" },
+      workspaceStorage: { kind: "system" },
       expectedRevision: null,
     });
     if (provisioned.status === "blocked") {
@@ -2136,6 +2142,7 @@ export class GithubClient {
       projectId?: string;
       nameWithOwner: string;
       placement?: ProjectReplicaPlacementRequest;
+      workspaceStorage?: ProjectWorkspaceStorageContext;
       expectedRevision: string | null;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void = () =>
@@ -2145,11 +2152,17 @@ export class GithubClient {
       ...input,
       projectId: input.projectId ?? input.jobId,
       placement: input.placement ?? ({ mode: "managed" } as const),
+      workspaceStorage: input.workspaceStorage ?? ({ kind: "system" } as const),
     };
     const [owner, repository] = repositorySegments(input.nameWithOwner);
     const queueTarget =
       normalizedInput.placement.mode !== "direct"
-        ? path.join(this.dataDirectory, "repositories", owner, repository)
+        ? deriveManagedRepositoryTarget(
+            this.dataDirectory,
+            normalizedInput.workspaceStorage,
+            owner,
+            repository,
+          )
         : normalizedInput.placement.path;
     const previous =
       this.replicaOperationQueues.get(queueTarget) ?? Promise.resolve();
@@ -2180,6 +2193,7 @@ export class GithubClient {
       projectId: string;
       nameWithOwner: string;
       placement: ProjectReplicaPlacementRequest;
+      workspaceStorage: ProjectWorkspaceStorageContext;
       expectedRevision: string | null;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
@@ -2210,14 +2224,26 @@ export class GithubClient {
     });
     let prepared;
     try {
+      const managedTarget =
+        input.workspaceStorage.kind === "managed" &&
+        input.placement.mode !== "direct"
+          ? path.join(
+              await ensureManagedWorkspaceDirectory(
+                this.dataDirectory,
+                input.workspaceStorage,
+                ["repositories", owner],
+              ),
+              repository,
+            )
+          : deriveManagedRepositoryTarget(
+              this.dataDirectory,
+              input.workspaceStorage,
+              owner,
+              repository,
+            );
       prepared = await this.placementManager.prepare({
         jobId: input.jobId,
-        managedTarget: path.join(
-          this.dataDirectory,
-          "repositories",
-          owner,
-          repository,
-        ),
+        managedTarget,
         placement: input.placement,
         projectId: input.projectId,
       });

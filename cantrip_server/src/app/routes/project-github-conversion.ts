@@ -96,11 +96,26 @@ export function installProjectGithubConversionRoutes(
         });
       }
       const worker = await repository.getWorker(applicationOwnerId(), workerId);
-      if (!worker?.managedFolders.convertToGithub) {
+      const workspaceStorage =
+        await repository.getProjectWorkspaceStorageContext(
+          applicationOwnerId(),
+          project.id,
+        );
+      if (!workspaceStorage) {
+        return reply.code(409).send({
+          code: "project-not-ready",
+          error: "Project workspace storage is unavailable.",
+        });
+      }
+      if (
+        !worker?.managedFolders.convertToGithub ||
+        (workspaceStorage.kind === "managed" &&
+          !worker.managedFolders.workspaceScopedRoots)
+      ) {
         return reply.code(409).send({
           code: "capability-missing",
           error:
-            "The owning worker does not support managed folder conversion.",
+            "The owning worker does not support managed folder conversion for this workspace.",
         });
       }
       if (!bridge.isConnected(workerId)) {
@@ -118,6 +133,7 @@ export function installProjectGithubConversionRoutes(
                 type: "project.folder-conversion.preflight",
                 projectId: project.id,
                 repository: input.data.repository,
+                workspaceStorage,
               },
               { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
             ),
@@ -164,11 +180,26 @@ export function installProjectGithubConversionRoutes(
         });
       }
       const worker = await repository.getWorker(applicationOwnerId(), workerId);
-      if (!worker?.managedFolders.convertToGithub) {
+      const workspaceStorage =
+        await repository.getProjectWorkspaceStorageContext(
+          applicationOwnerId(),
+          project.id,
+        );
+      if (!workspaceStorage) {
+        return reply.code(409).send({
+          code: "project-not-ready",
+          error: "Project workspace storage is unavailable.",
+        });
+      }
+      if (
+        !worker?.managedFolders.convertToGithub ||
+        (workspaceStorage.kind === "managed" &&
+          !worker.managedFolders.workspaceScopedRoots)
+      ) {
         return reply.code(409).send({
           code: "capability-missing",
           error:
-            "The owning worker does not support managed folder conversion.",
+            "The owning worker does not support managed folder conversion for this workspace.",
         });
       }
       if (!bridge.isConnected(workerId)) {
