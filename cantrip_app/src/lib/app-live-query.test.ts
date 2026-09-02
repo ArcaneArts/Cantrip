@@ -1482,6 +1482,7 @@ describe("application live query bridge", () => {
         stateRevision: 2,
         attempt: 1,
         depth: 3,
+        diagnosticCode: null,
         truncated: false,
         counts: null,
         error: null,
@@ -1505,6 +1506,7 @@ describe("application live query bridge", () => {
         skippedSymlinks: 1,
         unreadableDirectories: 2,
       },
+      diagnosticCode: null,
       truncated: false,
     };
 

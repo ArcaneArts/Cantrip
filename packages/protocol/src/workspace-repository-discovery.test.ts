@@ -39,9 +39,10 @@ describe("workspace repository discovery contracts", () => {
     expect(
       workspaceRepositoryDiscoveryProgressSchema.parse({
         counts,
+        diagnosticCode: null,
         truncated: false,
       }),
-    ).toEqual({ counts, truncated: false });
+    ).toEqual({ counts, diagnosticCode: null, truncated: false });
     expect(
       workspaceRepositoryDiscoveryWorkerResultSchema.parse({
         jobId,
@@ -58,6 +59,7 @@ describe("workspace repository discovery contracts", () => {
           },
         ],
         counts,
+        diagnosticCode: null,
         truncated: false,
       }).candidates,
     ).toHaveLength(1);
@@ -146,6 +148,7 @@ describe("workspace repository discovery contracts", () => {
           skippedSymlinks: 0,
           unreadableDirectories: 0,
         },
+        diagnosticCode: null,
         truncated: false,
       }),
     ).toThrow(/classification metadata/iu);
@@ -174,6 +177,7 @@ describe("workspace repository discovery contracts", () => {
           skippedSymlinks: 0,
           unreadableDirectories: 0,
         },
+        diagnosticCode: null,
         truncated: false,
       }).candidates[0],
     ).toMatchObject({
@@ -204,6 +208,7 @@ describe("workspace repository discovery contracts", () => {
           skippedSymlinks: 0,
           unreadableDirectories: 0,
         },
+        diagnosticCode: null,
         truncated: false,
       }),
     ).toThrow(/classification metadata/iu);
@@ -276,6 +281,7 @@ describe("workspace repository discovery contracts", () => {
           stateRevision: 3,
           attempt: 1,
           depth: 3,
+          diagnosticCode: null,
           truncated: false,
           counts: {
             candidates: 0,
@@ -295,5 +301,80 @@ describe("workspace repository discovery contracts", () => {
         candidates: [],
       }).job.state,
     ).toBe("succeeded");
+  });
+
+  it("requires explicit, consistent truncation and duplicate diagnostics", () => {
+    const counts = {
+      candidates: 0,
+      collapsedRepositories: 0,
+      rejectedRepositories: 0,
+      scannedDirectories: 1,
+      scannedEntries: 1,
+      skippedSymlinks: 0,
+      unreadableDirectories: 0,
+    };
+    expect(
+      workspaceRepositoryDiscoveryProgressSchema.parse({
+        counts,
+        diagnosticCode: "scan-truncated",
+        truncated: true,
+      }).diagnosticCode,
+    ).toBe("scan-truncated");
+    expect(() =>
+      workspaceRepositoryDiscoveryProgressSchema.parse({
+        counts,
+        diagnosticCode: null,
+        truncated: true,
+      }),
+    ).toThrow(/truncation metadata/iu);
+    expect(
+      workspaceRepositoryDiscoveryWorkerResultSchema.parse({
+        jobId: "72b3b25e-dd0f-4a12-bef5-1a77cc064219",
+        attempt: 1,
+        candidates: [],
+        counts,
+        diagnosticCode: "scan-truncated",
+        truncated: true,
+      }).diagnosticCode,
+    ).toBe("scan-truncated");
+
+    const candidate = {
+      id: "fe47e031-8924-44c0-9b51-677fc23397ca",
+      jobId: "72b3b25e-dd0f-4a12-bef5-1a77cc064219",
+      workspaceId: "workspace-one",
+      workerId: "worker-one",
+      pathHandle: `ctrr_${"a".repeat(43)}`,
+      displayHandle: `ctrr_${"b".repeat(43)}`,
+      originUrlHandle: null,
+      github: null,
+      repositoryFingerprint: "c".repeat(64),
+      classification: "local-git",
+      importState: "pending",
+      diagnosticCode: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    expect(
+      workspaceRepositoryCandidateSummarySchema.parse({
+        ...candidate,
+        conflict: {
+          code: "duplicate-checkout",
+          kind: "checkout",
+          projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
+          workspaceId: "workspace-two",
+        },
+      }).conflict?.code,
+    ).toBe("duplicate-checkout");
+    expect(() =>
+      workspaceRepositoryCandidateSummarySchema.parse({
+        ...candidate,
+        conflict: {
+          code: "duplicate-github",
+          kind: "checkout",
+          projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
+          workspaceId: "workspace-two",
+        },
+      }),
+    ).toThrow();
   });
 });

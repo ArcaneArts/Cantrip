@@ -2305,6 +2305,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             skippedSymlinks: result.skippedSymlinks,
             unreadableDirectories: result.unreadableDirectories,
           },
+          diagnosticCode: result.truncated ? "scan-truncated" : null,
           truncated: result.truncated,
         };
       }

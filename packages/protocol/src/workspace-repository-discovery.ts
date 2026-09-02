@@ -42,12 +42,35 @@ export const workspaceRepositoryDiscoveryCountsSchema = z
   })
   .strict();
 
+export const workspaceRepositoryDiscoveryDiagnosticCodeSchema = z.enum([
+  "scan-truncated",
+]);
+
+function discoveryTruncationMetadataIsValid(input: {
+  diagnosticCode: z.infer<
+    typeof workspaceRepositoryDiscoveryDiagnosticCodeSchema
+  > | null;
+  truncated: boolean;
+}): boolean {
+  return input.truncated === (input.diagnosticCode === "scan-truncated");
+}
+
 export const workspaceRepositoryDiscoveryProgressSchema = z
   .object({
     counts: workspaceRepositoryDiscoveryCountsSchema,
+    diagnosticCode: workspaceRepositoryDiscoveryDiagnosticCodeSchema.nullable(),
     truncated: z.boolean(),
   })
-  .strict();
+  .strict()
+  .superRefine((progress, context) => {
+    if (!discoveryTruncationMetadataIsValid(progress)) {
+      context.addIssue({
+        code: "custom",
+        message: "Repository discovery truncation metadata is invalid.",
+        path: ["diagnosticCode"],
+      });
+    }
+  });
 
 export const workspaceRepositoryDiscoveryJobSummarySchema = z
   .object({
@@ -58,6 +81,7 @@ export const workspaceRepositoryDiscoveryJobSummarySchema = z
     stateRevision: z.number().int().positive(),
     attempt: z.number().int().nonnegative(),
     depth: z.number().int().min(0).max(16),
+    diagnosticCode: workspaceRepositoryDiscoveryDiagnosticCodeSchema.nullable(),
     truncated: z.boolean(),
     counts: workspaceRepositoryDiscoveryCountsSchema.nullable(),
     error: workspaceRepositoryDiscoveryErrorSchema.nullable(),
@@ -66,7 +90,16 @@ export const workspaceRepositoryDiscoveryJobSummarySchema = z
     startedAt: z.string().datetime().nullable(),
     completedAt: z.string().datetime().nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((job, context) => {
+    if (!discoveryTruncationMetadataIsValid(job)) {
+      context.addIssue({
+        code: "custom",
+        message: "Repository discovery truncation metadata is invalid.",
+        path: ["diagnosticCode"],
+      });
+    }
+  });
 
 export const workspaceRepositoryCandidateClassificationSchema = z.enum([
   "unclassified",
@@ -142,13 +175,33 @@ export const workspaceRepositoryCandidateImportStateSchema = z.enum([
   "skipped",
 ]);
 
-export const workspaceRepositoryCandidateConflictSchema = z
-  .object({
-    kind: z.enum(["checkout", "github"]),
-    projectId: z.string().uuid(),
-    workspaceId: z.string().min(1),
-  })
-  .strict();
+export const workspaceRepositoryCandidateConflictCodeSchema = z.enum([
+  "duplicate-checkout",
+  "duplicate-github",
+]);
+
+const workspaceRepositoryCandidateConflictIdentitySchema = z.object({
+  projectId: z.string().uuid(),
+  workspaceId: z.string().min(1),
+});
+
+export const workspaceRepositoryCandidateConflictSchema = z.discriminatedUnion(
+  "kind",
+  [
+    workspaceRepositoryCandidateConflictIdentitySchema
+      .extend({
+        code: z.literal("duplicate-checkout"),
+        kind: z.literal("checkout"),
+      })
+      .strict(),
+    workspaceRepositoryCandidateConflictIdentitySchema
+      .extend({
+        code: z.literal("duplicate-github"),
+        kind: z.literal("github"),
+      })
+      .strict(),
+  ],
+);
 
 export const workspaceRepositoryImportErrorCodeSchema = z.enum([
   "worker-offline",
@@ -369,9 +422,19 @@ export const workspaceRepositoryDiscoveryWorkerResultSchema = z
       )
       .max(500),
     counts: workspaceRepositoryDiscoveryCountsSchema,
+    diagnosticCode: workspaceRepositoryDiscoveryDiagnosticCodeSchema.nullable(),
     truncated: z.boolean(),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    if (!discoveryTruncationMetadataIsValid(result)) {
+      context.addIssue({
+        code: "custom",
+        message: "Repository discovery truncation metadata is invalid.",
+        path: ["diagnosticCode"],
+      });
+    }
+  });
 
 export type WorkspaceRepositoryDiscoveryJobState = z.infer<
   typeof workspaceRepositoryDiscoveryJobStateSchema
@@ -384,6 +447,9 @@ export type WorkspaceRepositoryDiscoveryError = z.infer<
 >;
 export type WorkspaceRepositoryDiscoveryCounts = z.infer<
   typeof workspaceRepositoryDiscoveryCountsSchema
+>;
+export type WorkspaceRepositoryDiscoveryDiagnosticCode = z.infer<
+  typeof workspaceRepositoryDiscoveryDiagnosticCodeSchema
 >;
 export type WorkspaceRepositoryDiscoveryProgress = z.infer<
   typeof workspaceRepositoryDiscoveryProgressSchema
@@ -405,6 +471,9 @@ export type WorkspaceRepositoryCandidateDiagnosticCode = z.infer<
 >;
 export type WorkspaceRepositoryCandidateImportState = z.infer<
   typeof workspaceRepositoryCandidateImportStateSchema
+>;
+export type WorkspaceRepositoryCandidateConflictCode = z.infer<
+  typeof workspaceRepositoryCandidateConflictCodeSchema
 >;
 export type WorkspaceRepositoryCandidateConflict = z.infer<
   typeof workspaceRepositoryCandidateConflictSchema

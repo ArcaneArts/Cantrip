@@ -109,6 +109,7 @@ function toJob(row: JobRow): WorkspaceRepositoryDiscoveryJobSummary {
     stateRevision: row.stateRevision,
     attempt: row.attempt,
     depth: row.depth,
+    diagnosticCode: row.truncated ? "scan-truncated" : null,
     truncated: row.truncated,
     counts: counts(row),
     error: row.lastErrorCode
@@ -285,16 +286,23 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
         const github = candidate.protectedGithubRepositoryIdHandle
           ? githubConflictById.get(candidate.protectedGithubRepositoryIdHandle)
           : undefined;
-        const conflict = checkout ?? github;
         return toCandidate(
           candidate,
-          conflict
+          checkout
             ? {
-                kind: checkout ? "checkout" : "github",
-                projectId: conflict.projectId,
-                workspaceId: conflict.workspaceId,
+                code: "duplicate-checkout",
+                kind: "checkout",
+                projectId: checkout.projectId,
+                workspaceId: checkout.workspaceId,
               }
-            : null,
+            : github
+              ? {
+                  code: "duplicate-github",
+                  kind: "github",
+                  projectId: github.projectId,
+                  workspaceId: github.workspaceId,
+                }
+              : null,
         );
       }),
     });

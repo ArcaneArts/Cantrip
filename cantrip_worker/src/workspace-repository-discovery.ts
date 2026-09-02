@@ -565,6 +565,7 @@ export async function discoverWorkspaceRepositories(
         skippedSymlinks,
         unreadableDirectories,
       },
+      diagnosticCode: truncated ? "scan-truncated" : null,
       truncated,
     });
   };
