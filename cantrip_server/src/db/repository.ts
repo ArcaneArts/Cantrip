@@ -117,6 +117,7 @@ import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
 import { ProjectTabLayoutRepository } from "./tab-layouts.js";
+import { WorkspaceRepositoryDiscoveryJobRepository } from "./workspace-repository-discovery-jobs.js";
 import { ProjectExecutionRepositoryFacade } from "./repository-facade-project-execution.js";
 
 export type { RepositoryDatabase } from "./repository/database.js";
@@ -303,6 +304,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly taskScheduling: TaskSchedulingRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
+  readonly workspaceRepositoryDiscoveryJobs: WorkspaceRepositoryDiscoveryJobRepository;
   readonly standaloneChatRootJobs: StandaloneChatRootJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
@@ -608,6 +610,8 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     this.taskScheduling = new TaskSchedulingRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);
+    this.workspaceRepositoryDiscoveryJobs =
+      new WorkspaceRepositoryDiscoveryJobRepository(database);
     this.standaloneChatRootJobs = new StandaloneChatRootJobRepository(database);
     this.projectGithubConversionJobs = new ProjectGithubConversionJobRepository(
       database,

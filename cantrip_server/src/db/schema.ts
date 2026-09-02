@@ -42,6 +42,10 @@ import type {
   ProjectReplicaOwnershipKind,
   ProjectReplicaPlacementMode,
   ProjectWorkspaceStorageKind,
+  WorkspaceRepositoryCandidateClassification,
+  WorkspaceRepositoryCandidateImportState,
+  WorkspaceRepositoryDiscoveryErrorCode,
+  WorkspaceRepositoryDiscoveryJobState,
   ProjectRootKind,
   ProjectSourceKind,
   RemoteSurfaceCapabilities,
@@ -2019,6 +2023,190 @@ export const projectWorkspaceStorageProfiles = pgTable(
     check(
       "project_workspace_storage_profiles_revision_check",
       sql`${table.revision} >= 1`,
+    ),
+  ],
+);
+
+export const workspaceRepositoryDiscoveryJobs = pgTable(
+  "workspace_repository_discovery_jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => projectWorkspaces.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id),
+    state: text("state")
+      .$type<WorkspaceRepositoryDiscoveryJobState>()
+      .notNull(),
+    stateRevision: integer("state_revision").notNull().default(1),
+    attempt: integer("attempt").notNull().default(0),
+    depth: integer("depth").notNull().default(3),
+    commandId: text("command_id"),
+    lastErrorCode:
+      text("last_error_code").$type<WorkspaceRepositoryDiscoveryErrorCode>(),
+    errorRetryable: boolean("error_retryable"),
+    truncated: boolean("truncated").notNull().default(false),
+    candidateCount: integer("candidate_count"),
+    collapsedRepositoryCount: integer("collapsed_repository_count"),
+    rejectedRepositoryCount: integer("rejected_repository_count"),
+    scannedDirectoryCount: integer("scanned_directory_count"),
+    scannedEntryCount: integer("scanned_entry_count"),
+    skippedSymlinkCount: integer("skipped_symlink_count"),
+    unreadableDirectoryCount: integer("unreadable_directory_count"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workspace_repository_discovery_jobs_workspace_unique").on(
+      table.workspaceId,
+    ),
+    uniqueIndex("workspace_repository_discovery_jobs_identity_unique").on(
+      table.id,
+      table.ownerId,
+      table.workspaceId,
+      table.workerId,
+    ),
+    uniqueIndex("workspace_repository_discovery_jobs_command_unique")
+      .on(table.commandId)
+      .where(sql`${table.commandId} IS NOT NULL`),
+    index("workspace_repository_discovery_jobs_dispatch_index").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+    ),
+    index("workspace_repository_discovery_jobs_worker_state_index").on(
+      table.workerId,
+      table.state,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_state_check",
+      sql`${table.state} IN ('queued', 'running', 'blocked', 'succeeded', 'failed')`,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_revision_check",
+      sql`${table.stateRevision} > 0`,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_attempt_check",
+      sql`${table.attempt} >= 0`,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_depth_check",
+      sql`${table.depth} >= 0 AND ${table.depth} <= 16`,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_error_shape_check",
+      sql`(${table.lastErrorCode} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_error_code_check",
+      sql`${table.lastErrorCode} IS NULL OR ${table.lastErrorCode} IN ('worker-offline', 'capability-missing', 'root-unavailable', 'discovery-failed')`,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_execution_shape_check",
+      sql`(${table.state} = 'running' AND ${table.commandId} IS NOT NULL AND ${table.leaseExpiresAt} IS NOT NULL) OR (${table.state} <> 'running' AND ${table.commandId} IS NULL AND ${table.leaseExpiresAt} IS NULL)`,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_completion_shape_check",
+      sql`(${table.state} IN ('succeeded', 'failed') AND ${table.completedAt} IS NOT NULL) OR (${table.state} NOT IN ('succeeded', 'failed') AND ${table.completedAt} IS NULL)`,
+    ),
+    check(
+      "workspace_repository_discovery_jobs_counts_shape_check",
+      sql`(${table.state} = 'succeeded' AND num_nonnulls(${table.candidateCount}, ${table.collapsedRepositoryCount}, ${table.rejectedRepositoryCount}, ${table.scannedDirectoryCount}, ${table.scannedEntryCount}, ${table.skippedSymlinkCount}, ${table.unreadableDirectoryCount}) = 7 AND ${table.candidateCount} >= 0 AND ${table.collapsedRepositoryCount} >= 0 AND ${table.rejectedRepositoryCount} >= 0 AND ${table.scannedDirectoryCount} >= 0 AND ${table.scannedEntryCount} >= 0 AND ${table.skippedSymlinkCount} >= 0 AND ${table.unreadableDirectoryCount} >= 0) OR (${table.state} <> 'succeeded' AND num_nonnulls(${table.candidateCount}, ${table.collapsedRepositoryCount}, ${table.rejectedRepositoryCount}, ${table.scannedDirectoryCount}, ${table.scannedEntryCount}, ${table.skippedSymlinkCount}, ${table.unreadableDirectoryCount}) = 0)`,
+    ),
+  ],
+);
+
+export const workspaceRepositoryCandidates = pgTable(
+  "workspace_repository_candidates",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    jobId: text("job_id").notNull(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => projectWorkspaces.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id),
+    protectedPathHandle: text("protected_path_handle").notNull(),
+    protectedDisplayHandle: text("protected_display_handle").notNull(),
+    repositoryFingerprint: text("repository_fingerprint").notNull(),
+    classification: text("classification")
+      .$type<WorkspaceRepositoryCandidateClassification>()
+      .notNull()
+      .default("unclassified"),
+    importState: text("import_state")
+      .$type<WorkspaceRepositoryCandidateImportState>()
+      .notNull()
+      .default("pending"),
+    diagnosticCode: text("diagnostic_code"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.jobId, table.ownerId, table.workspaceId, table.workerId],
+      foreignColumns: [
+        workspaceRepositoryDiscoveryJobs.id,
+        workspaceRepositoryDiscoveryJobs.ownerId,
+        workspaceRepositoryDiscoveryJobs.workspaceId,
+        workspaceRepositoryDiscoveryJobs.workerId,
+      ],
+      name: "workspace_repository_candidates_job_identity_fk",
+    }).onDelete("cascade"),
+    uniqueIndex(
+      "workspace_repository_candidates_workspace_fingerprint_unique",
+    ).on(table.workspaceId, table.repositoryFingerprint),
+    index("workspace_repository_candidates_job_index").on(
+      table.jobId,
+      table.importState,
+      table.createdAt,
+    ),
+    check(
+      "workspace_repository_candidates_path_handle_check",
+      sql`${table.protectedPathHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "workspace_repository_candidates_display_handle_check",
+      sql`${table.protectedDisplayHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "workspace_repository_candidates_fingerprint_check",
+      sql`${table.repositoryFingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "workspace_repository_candidates_classification_check",
+      sql`${table.classification} IN ('unclassified', 'local-git', 'github-accessible', 'github-unavailable')`,
+    ),
+    check(
+      "workspace_repository_candidates_import_state_check",
+      sql`${table.importState} IN ('pending', 'importing', 'imported', 'failed', 'skipped')`,
+    ),
+    check(
+      "workspace_repository_candidates_diagnostic_code_check",
+      sql`${table.diagnosticCode} IS NULL OR length(${table.diagnosticCode}) <= 200`,
     ),
   ],
 );
