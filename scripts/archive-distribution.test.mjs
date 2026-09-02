@@ -14,7 +14,7 @@ import test from "node:test";
 import { gunzipSync } from "node:zlib";
 
 import { archiveDistribution } from "./archive-distribution.mjs";
-import { bundleNativeArtifacts } from "./bundle.mjs";
+import { bundleNativeArtifacts, desktopWorkspaceBuilds } from "./bundle.mjs";
 import { normalizeTarget } from "./cantrip-code/build-lib.mjs";
 import { serviceWorkspaceBuilds } from "./package-workspace-runtime.mjs";
 
@@ -109,9 +109,19 @@ test("orchestrates server and worker before assembling the client", async () => 
     const workspaceBuildLabels = serviceWorkspaceBuilds.map(
       (packageName) => `${packageName} build`,
     );
+    const desktopWorkspaceBuildLabels = desktopWorkspaceBuilds.map(
+      (packageName) => `${packageName} build`,
+    );
     assert.deepEqual(
       labels.slice(0, workspaceBuildLabels.length),
       workspaceBuildLabels,
+    );
+    assert.deepEqual(
+      labels.slice(
+        workspaceBuildLabels.length,
+        workspaceBuildLabels.length + desktopWorkspaceBuildLabels.length,
+      ),
+      desktopWorkspaceBuildLabels,
     );
     assert.ok(
       labels.indexOf(workspaceBuildLabels.at(-1)) <
@@ -120,6 +130,10 @@ test("orchestrates server and worker before assembling the client", async () => 
     assert.ok(
       labels.indexOf(workspaceBuildLabels.at(-1)) <
         labels.indexOf("worker package"),
+    );
+    assert.ok(
+      labels.indexOf(desktopWorkspaceBuildLabels.at(-1)) <
+        labels.indexOf("Desktop package"),
     );
     assert.ok(
       labels.indexOf("server package") < labels.indexOf("Desktop package"),

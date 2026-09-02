@@ -150,6 +150,8 @@ await step("build-services", "Build Cantrip services", async () => {
       "--filter",
       "@cantrip/protocol",
       "--filter",
+      "@cantrip/glitch",
+      "--filter",
       "@cantrip/crypto",
       "build",
     ],
