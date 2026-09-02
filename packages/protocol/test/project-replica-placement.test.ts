@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   encryptedGithubProjectCreateSchema,
+  encryptedProjectReplicaProvisionCreateSchema,
+  encryptedProjectReplicaRemoveCreateSchema,
   encryptedProjectReplicaPlacementRequestSchema,
   projectReplicaCapabilitiesSchema,
   projectReplicaPlacementRequestSchema,
@@ -98,5 +100,27 @@ describe("project replica placement contracts", () => {
         placement: { mode: "direct", path: "/srv/repos/Cantrip" },
       }).success,
     ).toBe(false);
+  });
+
+  it("supports protected attach-only local Git source jobs without a GitHub identity", () => {
+    expect(
+      encryptedProjectReplicaProvisionCreateSchema.parse({
+        workerId: "worker-two",
+        repository: null,
+        expectedRevision: "a".repeat(40),
+        idempotencyKey: "attach:worker-two",
+        placement: { mode: "direct", path: routingHandle },
+      }),
+    ).toMatchObject({
+      repository: null,
+      placement: { mode: "direct", path: routingHandle },
+    });
+    expect(
+      encryptedProjectReplicaRemoveCreateSchema.parse({
+        repository: null,
+        deleteLocalFiles: false,
+        idempotencyKey: "detach:worker-two",
+      }),
+    ).toMatchObject({ repository: null, deleteLocalFiles: false });
   });
 });

@@ -251,9 +251,11 @@ export const workerGithubProjectCommandSchemas = [
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     projectId: z.string().uuid().optional(),
-    repository: z.object({
-      nameWithOwner: workerRepositoryNameSchema,
-    }),
+    repository: z
+      .object({
+        nameWithOwner: workerRepositoryNameSchema,
+      })
+      .nullable(),
     workspaceStorage: projectWorkspaceStorageContextSchema.default({
       kind: "system",
     }),
@@ -282,9 +284,11 @@ export const workerGithubProjectCommandSchemas = [
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     projectId: z.string().uuid().optional(),
-    repository: z.object({
-      nameWithOwner: workerRepositoryNameSchema,
-    }),
+    repository: z
+      .object({
+        nameWithOwner: workerRepositoryNameSchema,
+      })
+      .nullable(),
     sourcePath: z.string().min(1).max(8_192),
     placement: projectReplicaPlacementResultSchema.optional(),
     repositoryFingerprint: z

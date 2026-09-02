@@ -477,6 +477,122 @@ describe("GitHub project files", () => {
     expect(await readFile(existingFile, "utf8")).toBe("do not replace\n");
   });
 
+  it("attaches and detaches a local-only Git source without cloning or changing files", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-local-git-source-test-"),
+    );
+    directories.push(dataDirectory);
+    const target = path.join(dataDirectory, "existing", "repository");
+    await mkdir(target, { recursive: true });
+    await execFileAsync("git", ["init", "--initial-branch=main", target]);
+    await writeFile(path.join(target, "README.md"), "local only\n");
+    await execFileAsync("git", ["-C", target, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      target,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Initial",
+    ]);
+    await writeFile(path.join(target, "LOCAL.txt"), "preserve me\n");
+    const revision = (
+      await execFileAsync("git", ["-C", target, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const before = (
+      await execFileAsync("git", [
+        "-C",
+        target,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+      ])
+    ).stdout;
+    const github = new GithubClient(dataDirectory, "worker-local-source");
+    const request = {
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb3a0",
+      attempt: 1,
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb3a1",
+      nameWithOwner: null,
+      placement: { mode: "direct" as const, path: target },
+      expectedRevision: revision,
+    };
+
+    const attached = await github.provisionReplica(request);
+    expect(attached).toMatchObject({
+      status: "ready",
+      resolvedRevision: revision,
+      placement: {
+        materialization: "attached",
+        ownership: "user",
+      },
+    });
+    if (attached.status !== "ready" || !attached.placement) {
+      throw new Error("Local Git source attachment did not complete.");
+    }
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          target,
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all",
+        ])
+      ).stdout,
+    ).toBe(before);
+    await expect(
+      github.provisionReplica({
+        ...request,
+        attempt: 2,
+        placement: {
+          mode: "direct",
+          path: path.join(dataDirectory, "missing", "repository"),
+        },
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "target-not-found", retryable: false },
+    });
+    await expect(
+      github.removeReplica({
+        jobId: request.jobId,
+        attempt: 3,
+        projectId: request.projectId,
+        nameWithOwner: null,
+        sourcePath: attached.path,
+        placement: attached.placement,
+        repositoryFingerprint: attached.repositoryFingerprint,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "policy-denied", retryable: false },
+    });
+    await expect(
+      github.removeReplica({
+        jobId: request.jobId,
+        attempt: 4,
+        projectId: request.projectId,
+        nameWithOwner: null,
+        sourcePath: attached.path,
+        placement: attached.placement,
+        repositoryFingerprint: attached.repositoryFingerprint,
+        deleteLocalFiles: false,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: false,
+      ownershipReleased: true,
+    });
+    await expect(
+      readFile(path.join(target, "LOCAL.txt"), "utf8"),
+    ).resolves.toBe("preserve me\n");
+  });
+
   it("creates, repairs, retains, and safely removes managed repository links", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-managed-link-test-"),

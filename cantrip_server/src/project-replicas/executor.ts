@@ -197,6 +197,10 @@ export class ProjectReplicaJobExecutor {
       if (!workspaceStorage) {
         throw new Error("Project workspace storage is unavailable.");
       }
+      const directProvisionCapable =
+        job.kind !== "provision" ||
+        (worker.projectReplicas.attachExisting &&
+          (!job.repository || worker.projectReplicas.recursiveParentCreation));
       const placementCapable =
         (workspaceStorage.kind !== "managed" ||
           placementMode === "direct" ||
@@ -207,9 +211,7 @@ export class ProjectReplicaJobExecutor {
               (job.kind !== "provision" ||
                 worker.projectReplicas.recursiveParentCreation)
             : worker.projectReplicas.directPlacement &&
-              (job.kind !== "provision" ||
-                (worker.projectReplicas.attachExisting &&
-                  worker.projectReplicas.recursiveParentCreation))));
+              directProvisionCapable));
       const capable =
         job.kind === "provision"
           ? worker.projectReplicas.provision &&
@@ -274,7 +276,9 @@ export class ProjectReplicaJobExecutor {
               jobId: job.id,
               attempt: job.attempt,
               projectId: job.projectId,
-              repository: { nameWithOwner: job.repository },
+              repository: job.repository
+                ? { nameWithOwner: job.repository }
+                : null,
               workspaceStorage,
               placement:
                 placementMode === "managed"
@@ -330,7 +334,11 @@ export class ProjectReplicaJobExecutor {
             },
           );
         } else if (job.kind === "synchronize") {
-          if (!job.expectedRevision || !job.synchronizationPolicy) {
+          if (
+            !job.repository ||
+            !job.expectedRevision ||
+            !job.synchronizationPolicy
+          ) {
             throw new Error("Synchronization job payload is incomplete.");
           }
           const result = projectReplicaSynchronizeResultSchema.parse(
@@ -430,7 +438,9 @@ export class ProjectReplicaJobExecutor {
                       jobId: job.id,
                       attempt: job.attempt,
                       projectId: job.projectId,
-                      repository: { nameWithOwner: job.repository },
+                      repository: job.repository
+                        ? { nameWithOwner: job.repository }
+                        : null,
                       sourcePath: context.sourcePath,
                       placement: {
                         mode: context.placementMode ?? "managed",

@@ -183,6 +183,93 @@ describe("project replica job executor", () => {
     );
   });
 
+  it("dispatches attach-only local Git sources without clone-directory capability", async () => {
+    const active: ProjectReplicaJobSummary = {
+      ...job("synchronize"),
+      projectReplicaId: null,
+      kind: "provision",
+      idempotencyKey: "attach:project-one:worker-one",
+      repository: null,
+      placementMode: "direct",
+      placementPath: `ctrr_${"P".repeat(43)}`,
+      expectedRevision: "a".repeat(40),
+      synchronizationPolicy: null,
+    };
+    const completed = { ...active, state: "succeeded" as const };
+    const result = {
+      status: "ready" as const,
+      jobId: active.id,
+      attempt: 1,
+      path: `ctrr_${"C".repeat(43)}`,
+      displayPath: `ctrr_${"D".repeat(43)}`,
+      repositoryFingerprint: "f".repeat(64),
+      resolvedRevision: "a".repeat(40),
+      branch: "main",
+      reused: true,
+      placement: {
+        mode: "direct" as const,
+        materialization: "attached" as const,
+        ownership: "user" as const,
+        canonicalPath: `ctrr_${"C".repeat(43)}`,
+        requestedPath: `ctrr_${"R".repeat(43)}`,
+        linkPath: null,
+      },
+      worktreePolicy: null,
+    };
+    const request = vi.fn().mockResolvedValue(result);
+    const completeProvision = vi.fn().mockResolvedValue(completed);
+    const capableWorker = worker();
+    capableWorker.projectReplicas = {
+      ...capableWorker.projectReplicas,
+      directPlacement: true,
+      attachExisting: true,
+      recursiveParentCreation: false,
+    };
+    const repository = {
+      getWorker: vi.fn().mockResolvedValue(capableWorker),
+      getProjectWorkspaceStorageContext: vi
+        .fn()
+        .mockResolvedValue({ kind: "system" }),
+      projectGithubConversionJobs: {
+        isConvertedManagedFolderSource: vi.fn().mockResolvedValue(false),
+      },
+      projectReplicaJobs: {
+        claimNext: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ownerId: "owner-one",
+            commandId: "command-one",
+            job: active,
+          })
+          .mockResolvedValue(null),
+        completeProvision,
+      },
+    } as unknown as ServerRepository;
+    const bridge = {
+      isConnected: vi.fn().mockReturnValue(true),
+      request,
+    } as unknown as WorkerCommandBus;
+    const executor = new ProjectReplicaJobExecutor(repository, bridge, {
+      error: vi.fn(),
+      warn: vi.fn(),
+    });
+
+    executor.queueAvailable();
+    await executor.drain();
+
+    expect(request).toHaveBeenCalledWith(
+      "worker-one",
+      expect.objectContaining({
+        type: "project.replica.provision",
+        repository: null,
+        placement: { mode: "direct", path: active.placementPath },
+        expectedRevision: active.expectedRevision,
+      }),
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    );
+    expect(completeProvision).toHaveBeenCalledOnce();
+  });
+
   it("blocks managed placement on workers that cannot derive workspace roots", async () => {
     const active = job("synchronize");
     const blocked = {

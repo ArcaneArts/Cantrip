@@ -1289,6 +1289,13 @@
       "when": 1788379200000,
       "tag": "0183_medical_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1788379200001,
+      "tag": "0184_heavy_elektra",
+      "breakpoints": true
     }
   ]
 }

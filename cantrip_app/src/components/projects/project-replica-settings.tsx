@@ -1,8 +1,9 @@
-import type {
-  ProjectReplicaJobSummary,
-  ProjectReplicaSummary,
-  ProjectSummary,
-  WorkerSummary,
+import {
+  isLocalGitProject,
+  type ProjectReplicaJobSummary,
+  type ProjectReplicaSummary,
+  type ProjectSummary,
+  type WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -73,6 +74,21 @@ export function projectReplicaForWorker(
   workerId: string,
 ): ProjectReplicaSummary | null {
   return replicas.find((replica) => replica.workerId === workerId) ?? null;
+}
+
+export function preferredWorkerOptions(
+  project: ProjectSummary,
+  workers: WorkerSummary[],
+): WorkerSummary[] {
+  if (!isLocalGitProject(project.originKind, project.capabilities.git)) {
+    return workers;
+  }
+  const eligibleWorkerIds = new Set(
+    project.replicas
+      .filter(({ ready }) => ready)
+      .map(({ workerId }) => workerId),
+  );
+  return workers.filter(({ workerId }) => eligibleWorkerIds.has(workerId));
 }
 
 function shortRevision(revision: string | null): string {
@@ -300,6 +316,14 @@ export function ProjectReplicaSettings({
     cancel.error ??
     jobs.error;
   const canonicalRevision = canonicalReplicaRevision(project);
+  const localGitProject = isLocalGitProject(
+    project.originKind,
+    project.capabilities.git,
+  );
+  const preferredWorkers = useMemo(
+    () => preferredWorkerOptions(project, workers),
+    [project, workers],
+  );
 
   return (
     <div
@@ -321,8 +345,9 @@ export function ProjectReplicaSettings({
           <span>
             <span className="block text-sm font-medium">Preferred worker</span>
             <span className="block text-xs text-muted-foreground">
-              Falls back to the global default when no project preference is
-              set. Existing surfaces are not moved.
+              {localGitProject
+                ? "Only workers with an attached, ready source are eligible. Existing surfaces are not moved."
+                : "Falls back to the global default when no project preference is set. Existing surfaces are not moved."}
             </span>
           </span>
           <NativeSelect
@@ -334,7 +359,7 @@ export function ProjectReplicaSettings({
             }
           >
             <option value="">Use global default</option>
-            {workers.map((worker) => (
+            {preferredWorkers.map((worker) => (
               <option key={worker.workerId} value={worker.workerId}>
                 {worker.name} ({worker.online ? "online" : "offline"})
               </option>
@@ -347,30 +372,35 @@ export function ProjectReplicaSettings({
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 id="replicas-title" className="font-semibold">
-              Worker replicas{" "}
+              {localGitProject ? "Worker sources" : "Worker replicas"}{" "}
               <span className="text-muted-foreground">
                 ({project.replicas.length})
               </span>
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              One logical project with independent worker-local checkouts.
-              Synchronization is revision-pinned and preserves local work.
+              {localGitProject
+                ? "Attach existing compatible checkouts explicitly. Cantrip never clones or deletes these local-only sources."
+                : "One logical project with independent worker-local checkouts. Synchronization is revision-pinned and preserves local work."}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <NativeSelect
-              aria-label="Replica synchronization policy"
-              size="sm"
-              value={synchronizationPolicy}
-              onChange={(event) =>
-                setSynchronizationPolicy(
-                  event.target.value as typeof synchronizationPolicy,
-                )
-              }
-            >
-              <option value="verify-only">Verify only</option>
-              <option value="fast-forward-primary">Fast-forward Primary</option>
-            </NativeSelect>
+            {!localGitProject ? (
+              <NativeSelect
+                aria-label="Replica synchronization policy"
+                size="sm"
+                value={synchronizationPolicy}
+                onChange={(event) =>
+                  setSynchronizationPolicy(
+                    event.target.value as typeof synchronizationPolicy,
+                  )
+                }
+              >
+                <option value="verify-only">Verify only</option>
+                <option value="fast-forward-primary">
+                  Fast-forward Primary
+                </option>
+              </NativeSelect>
+            ) : null}
             <Button
               size="sm"
               variant="outline"
@@ -416,8 +446,13 @@ export function ProjectReplicaSettings({
               worker.online &&
               worker.projectReplicas.provision &&
               worker.projectReplicas.exactRevision &&
+              (!localGitProject ||
+                (Boolean(canonicalRevision) &&
+                  worker.projectReplicas.directPlacement &&
+                  worker.projectReplicas.attachExisting)) &&
               !jobActive;
             const canSynchronize =
+              !localGitProject &&
               Boolean(replica) &&
               worker.online &&
               worker.projectReplicas.synchronize &&
@@ -535,8 +570,12 @@ export function ProjectReplicaSettings({
                   ) : (
                     <p className="text-muted-foreground">
                       {worker.online
-                        ? "No checkout on this worker."
-                        : "Connect this worker to provision a checkout."}
+                        ? localGitProject
+                          ? "No compatible source attached on this worker."
+                          : "No checkout on this worker."
+                        : localGitProject
+                          ? "Connect this worker to attach an existing source."
+                          : "Connect this worker to provision a checkout."}
                     </p>
                   )}
                   {job ? <JobProgress job={job} /> : null}
@@ -546,48 +585,66 @@ export function ProjectReplicaSettings({
                     <WifiOff className="mr-1 size-4 text-muted-foreground" />
                   ) : null}
                   {!replica ? (
-                    <>
+                    localGitProject ? (
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={!canProvision || provision.isPending}
-                        onClick={() =>
-                          provision.mutate({
-                            workerId: worker.workerId,
-                            placement: { mode: "managed" },
-                          })
-                        }
+                        onClick={() => setProvisionTarget(worker)}
                       >
                         {provision.isPending ? (
                           <Loader2 className="size-3.5 animate-spin" />
                         ) : (
-                          <Plus className="size-3.5" />
+                          <MapPin className="size-3.5" />
                         )}
-                        Provision
+                        Attach source
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={!canProvision || provision.isPending}
-                        title="Provision with location"
-                        onClick={() => setProvisionTarget(worker)}
-                      >
-                        <MapPin className="size-3.5" />
-                        <span className="sr-only">
-                          Provision on {worker.name} with location
-                        </span>
-                      </Button>
-                    </>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canProvision || provision.isPending}
+                          onClick={() =>
+                            provision.mutate({
+                              workerId: worker.workerId,
+                              placement: { mode: "managed" },
+                            })
+                          }
+                        >
+                          {provision.isPending ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Plus className="size-3.5" />
+                          )}
+                          Provision
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={!canProvision || provision.isPending}
+                          title="Provision with location"
+                          onClick={() => setProvisionTarget(worker)}
+                        >
+                          <MapPin className="size-3.5" />
+                          <span className="sr-only">
+                            Provision on {worker.name} with location
+                          </span>
+                        </Button>
+                      </>
+                    )
                   ) : (
                     <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!canSynchronize || synchronize.isPending}
-                        onClick={() => synchronize.mutate(replica)}
-                      >
-                        <GitCompareArrows className="size-3.5" /> Sync
-                      </Button>
+                      {!localGitProject ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canSynchronize || synchronize.isPending}
+                          onClick={() => synchronize.mutate(replica)}
+                        >
+                          <GitCompareArrows className="size-3.5" /> Sync
+                        </Button>
+                      ) : null}
                       {replica.placementMode === "managed-link" ? (
                         <Button
                           size="icon"
@@ -612,7 +669,8 @@ export function ProjectReplicaSettings({
                         disabled={!canRemove || remove.isPending}
                         onClick={() => {
                           setDeleteLocalFiles(
-                            replica.placementMode === "managed" &&
+                            !localGitProject &&
+                              replica.placementMode === "managed" &&
                               replica.ownershipKind === "cantrip",
                           );
                           setRemoveTarget(replica);
@@ -666,30 +724,36 @@ export function ProjectReplicaSettings({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove worker replica?</DialogTitle>
+            <DialogTitle>
+              {localGitProject
+                ? "Detach worker source?"
+                : "Remove worker replica?"}
+            </DialogTitle>
             <DialogDescription>
-              Cantrip will first verify that no live surface, lease, job,
-              unpublished commit, local change, or extra worktree depends on
-              this checkout. The last active replica cannot be removed.
+              {localGitProject
+                ? "Cantrip will remove only its source registration. The checkout and every file in it remain untouched. The last active source cannot be detached."
+                : "Cantrip will first verify that no live surface, lease, job, unpublished commit, local change, or extra worktree depends on this checkout. The last active replica cannot be removed."}
             </DialogDescription>
           </DialogHeader>
-          <label className="flex items-start gap-3 border-y px-2 py-3 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 accent-foreground"
-              checked={deleteLocalFiles}
-              disabled={removeTarget?.ownershipKind === "user"}
-              onChange={(event) => setDeleteLocalFiles(event.target.checked)}
-            />
-            <span>
-              <span className="block font-medium">Delete local checkout</span>
-              <span className="block text-xs text-muted-foreground">
-                {removeTarget
-                  ? replicaRemovalCopy(removeTarget)
-                  : "Keep local files on the worker."}
+          {!localGitProject ? (
+            <label className="flex items-start gap-3 border-y px-2 py-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-foreground"
+                checked={deleteLocalFiles}
+                disabled={removeTarget?.ownershipKind === "user"}
+                onChange={(event) => setDeleteLocalFiles(event.target.checked)}
+              />
+              <span>
+                <span className="block font-medium">Delete local checkout</span>
+                <span className="block text-xs text-muted-foreground">
+                  {removeTarget
+                    ? replicaRemovalCopy(removeTarget)
+                    : "Keep local files on the worker."}
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemoveTarget(null)}>
               Cancel
@@ -701,18 +765,23 @@ export function ProjectReplicaSettings({
               pendingLabel="Removing…"
             >
               <Trash2 className="size-4" />
-              Remove replica
+              {localGitProject ? "Detach source" : "Remove replica"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <RepositoryImportOptionsDialog
+        attachOnly={localGitProject}
         error={provision.error ? errorMessage(provision.error) : null}
         open={Boolean(provisionTarget)}
         pending={provision.isPending}
         repositoryName={project.github?.nameWithOwner ?? project.name}
-        submitLabel="Provision replica"
-        title="Provision with location"
+        submitLabel={localGitProject ? "Attach source" : "Provision replica"}
+        title={
+          localGitProject
+            ? "Attach local Git source"
+            : "Provision with location"
+        }
         worker={provisionTarget}
         onOpenChange={(open) => !open && setProvisionTarget(null)}
         onSubmit={async ({ placement }) => {

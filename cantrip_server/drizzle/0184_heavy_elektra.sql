@@ -1,0 +1,1 @@
+ALTER TABLE "project_replica_jobs" ALTER COLUMN "repository" DROP NOT NULL;

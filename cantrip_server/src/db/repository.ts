@@ -161,6 +161,7 @@ export {
   McpServerWorkerBindingError,
 } from "./repository/mcp.js";
 export {
+  ProjectPreferredWorkerConflictError,
   ProjectWorkspaceInvariantError,
   type ProjectWorktreeExecutionContext,
 } from "./repository/projects.js";

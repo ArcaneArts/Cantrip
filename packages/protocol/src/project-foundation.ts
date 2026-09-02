@@ -44,10 +44,14 @@ export function projectCapabilitiesForSource(input: {
   originKind: z.infer<typeof projectOriginKindSchema>;
 }): z.infer<typeof projectCapabilitiesSchema> {
   const originCapabilities = projectCapabilitiesForOriginKind(input.originKind);
+  const git = originCapabilities.git || input.git;
+  const localGit = isLocalGitProject(input.originKind, git);
   return {
     ...originCapabilities,
-    git: originCapabilities.git || input.git,
+    git,
     github: originCapabilities.github || input.github,
+    replicas: originCapabilities.replicas || localGit,
+    relocation: originCapabilities.relocation || localGit,
   };
 }
 

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  isLocalGitProject,
   projectReplicaJobListSchema,
   projectReplicaJobSummarySchema,
   type ProjectReplicaJobError,
@@ -219,9 +220,29 @@ export class ProjectReplicaJobRepository {
             "Project or target worker was not found.",
           );
         }
-        if (!target.project.githubRepositoryFullName) {
+        const githubProject = Boolean(target.project.githubRepositoryFullName);
+        const localGitProject = isLocalGitProject(
+          target.project.originKind,
+          target.project.gitCapability,
+        );
+        if (!githubProject && !localGitProject) {
           throw new ProjectReplicaJobConflictError(
-            "Only GitHub-backed projects can provision worker replicas.",
+            "Only GitHub-backed or local Git projects can add worker sources.",
+          );
+        }
+        if (githubProject !== (input.repository !== null)) {
+          throw new ProjectReplicaJobConflictError(
+            githubProject
+              ? "GitHub replica provisioning requires protected repository identity."
+              : "Local Git source attachment cannot include GitHub repository identity.",
+          );
+        }
+        if (
+          localGitProject &&
+          (placement.mode !== "direct" || !input.expectedRevision)
+        ) {
+          throw new ProjectReplicaJobConflictError(
+            "Local Git sources must attach an existing direct checkout at the project's current revision.",
           );
         }
         const supportsPlacement =
@@ -231,7 +252,8 @@ export class ProjectReplicaJobRepository {
               target.capabilities.recursiveParentCreation === true
             : target.capabilities.directPlacement === true &&
               target.capabilities.attachExisting === true &&
-              target.capabilities.recursiveParentCreation === true);
+              (localGitProject ||
+                target.capabilities.recursiveParentCreation === true));
         if (!supportsPlacement) {
           throw new ProjectReplicaJobConflictError(
             "The selected worker does not support this repository placement mode.",
@@ -417,9 +439,35 @@ export class ProjectReplicaJobRepository {
             "Project replica or target worker was not found.",
           );
         }
-        if (!target.project.githubRepositoryFullName) {
+        const githubProject = Boolean(target.project.githubRepositoryFullName);
+        const localGitProject = isLocalGitProject(
+          target.project.originKind,
+          target.project.gitCapability,
+        );
+        if (!githubProject && !localGitProject) {
           throw new ProjectReplicaJobConflictError(
-            "Only GitHub-backed project replicas support this operation.",
+            "Only GitHub-backed or local Git project sources support this operation.",
+          );
+        }
+        if (githubProject !== (input.repository !== null)) {
+          throw new ProjectReplicaJobConflictError(
+            githubProject
+              ? "GitHub replica operations require protected repository identity."
+              : "Local Git source operations cannot include GitHub repository identity.",
+          );
+        }
+        if (localGitProject && kind !== "remove") {
+          throw new ProjectReplicaJobConflictError(
+            "Local Git sources do not support remote synchronization.",
+          );
+        }
+        if (
+          localGitProject &&
+          kind === "remove" &&
+          (input as EncryptedProjectReplicaRemoveCreate).deleteLocalFiles
+        ) {
+          throw new ProjectReplicaJobConflictError(
+            "Detaching a local Git source never deletes its checkout.",
           );
         }
         if (
@@ -1347,6 +1395,42 @@ export class ProjectReplicaJobRepository {
         .where(
           eq(schema.projectWorktrees.projectSourceId, job.projectReplicaId),
         );
+      const preferred = await transaction
+        .select({ workerId: schema.projects.preferredWorkerId })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, job.projectId))
+        .limit(1);
+      if (preferred[0]?.workerId === job.workerId) {
+        const replacement = await transaction
+          .select({ workerId: schema.projectSources.workerId })
+          .from(schema.projectSources)
+          .innerJoin(
+            schema.projectWorktrees,
+            and(
+              eq(
+                schema.projectWorktrees.projectSourceId,
+                schema.projectSources.id,
+              ),
+              eq(schema.projectWorktrees.isPrimary, true),
+              eq(schema.projectWorktrees.lifecycleState, "ready"),
+            ),
+          )
+          .where(
+            and(
+              eq(schema.projectSources.projectId, job.projectId),
+              isNull(schema.projectSources.removedAt),
+            ),
+          )
+          .orderBy(asc(schema.projectSources.createdAt))
+          .limit(1);
+        await transaction
+          .update(schema.projects)
+          .set({
+            preferredWorkerId: replacement[0]?.workerId ?? null,
+            updatedAt: now,
+          })
+          .where(eq(schema.projects.id, job.projectId));
+      }
       const updated = await transaction
         .update(schema.projectReplicaJobs)
         .set({
