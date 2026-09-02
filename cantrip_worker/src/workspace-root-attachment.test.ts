@@ -59,12 +59,19 @@ describe("attachWorkspaceRoot", () => {
 
     await expect(
       attachWorkspaceRoot("relative/path", registry),
-    ).rejects.toThrow(/absolute path/iu);
+    ).rejects.toMatchObject({
+      code: "invalid-root",
+      message: expect.stringMatching(/absolute path/iu),
+    });
     await expect(
       attachWorkspaceRoot(path.join(temporary, "missing"), registry),
-    ).rejects.toThrow(/does not exist|inaccessible/iu);
-    await expect(attachWorkspaceRoot(file, registry)).rejects.toThrow(
-      /accessible directory/iu,
-    );
+    ).rejects.toMatchObject({
+      code: "root-unavailable",
+      message: expect.stringMatching(/does not exist|inaccessible/iu),
+    });
+    await expect(attachWorkspaceRoot(file, registry)).rejects.toMatchObject({
+      code: "invalid-root",
+      message: expect.stringMatching(/not a directory/iu),
+    });
   });
 });

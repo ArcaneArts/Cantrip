@@ -2468,7 +2468,9 @@ export async function createEncryptedAttachedProjectWorkspace(input: {
     opaque: result.operation.protectedResponse,
     schema: repositoryOperationOutcomeContentSchema,
   });
-  if (!outcome.ok) throw new CantripApiError(outcome.error, 422);
+  if (!outcome.ok) {
+    throw new CantripApiError(outcome.error, 422, outcome.code ?? null);
+  }
   const attachment = workspaceRootAttachmentSchema.parse(outcome.result);
   if (
     !result.workspace ||
