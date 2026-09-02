@@ -9,6 +9,10 @@ import type {
   TunnelUserWireUpdate,
   TunnelWireSummary,
 } from "@cantrip/protocol";
+import {
+  isLocalGitProject,
+  isWorkerBoundFolderProject,
+} from "@cantrip/protocol";
 import type {
   ProtectedTunnelContentRecord,
   TunnelContentErrorCode,
@@ -257,10 +261,11 @@ export class TunnelRepository {
         ),
       ),
     ];
-    const [projectRows, workerRows] = await Promise.all([
+    const [projectRows, workerRows, sourceWorkerRows] = await Promise.all([
       projectId
         ? this.database
             .select({
+              gitCapability: schema.projects.gitCapability,
               id: schema.projects.id,
               originKind: schema.projects.originKind,
               preferredWorkerId: schema.projects.preferredWorkerId,
@@ -284,15 +289,50 @@ export class TunnelRepository {
             inArray(schema.workers.id, workerIds),
           ),
         ),
+      projectId
+        ? this.database
+            .select({ workerId: schema.projectSources.workerId })
+            .from(schema.projectSources)
+            .innerJoin(
+              schema.projectWorktrees,
+              and(
+                eq(
+                  schema.projectWorktrees.projectSourceId,
+                  schema.projectSources.id,
+                ),
+                eq(schema.projectWorktrees.isPrimary, true),
+                eq(schema.projectWorktrees.lifecycleState, "ready"),
+              ),
+            )
+            .where(
+              and(
+                eq(schema.projectSources.projectId, projectId),
+                isNull(schema.projectSources.removedAt),
+              ),
+            )
+        : Promise.resolve([]),
     ]);
     const project = projectRows[0];
     if (projectId && !project) return false;
     if (
-      project?.originKind === "managed-folder" &&
+      project &&
+      isWorkerBoundFolderProject(project.originKind, project.gitCapability) &&
       workerIds.some((workerId) => workerId !== project.preferredWorkerId)
     ) {
       throw new TunnelManagementError(
         "This worker-managed folder is bound to its owning worker.",
+      );
+    }
+    if (
+      project &&
+      isLocalGitProject(project.originKind, project.gitCapability) &&
+      workerIds.some(
+        (workerId) =>
+          !sourceWorkerRows.some((source) => source.workerId === workerId),
+      )
+    ) {
+      throw new TunnelManagementError(
+        "This local Git project has no ready source on the selected worker.",
       );
     }
     return workerRows.length === workerIds.length;

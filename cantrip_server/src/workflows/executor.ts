@@ -716,10 +716,9 @@ export class WorkflowExecutor {
         }
         let target = {
           ...source!,
-          rootKind:
-            project!.originKind === "managed-folder"
-              ? ("folder-root" as const)
-              : ("git-worktree" as const),
+          rootKind: project!.capabilities.git
+            ? ("git-worktree" as const)
+            : ("folder-root" as const),
         };
         if (ready.node.writeCapable && project!.capabilities.worktrees) {
           try {

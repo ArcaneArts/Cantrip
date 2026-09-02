@@ -326,6 +326,48 @@ describe("project overview", () => {
     expect(markup).not.toContain("Reachable repository history");
   });
 
+  it("uses repository terminology for imported local Git projects", () => {
+    const localGitProject = {
+      ...project,
+      originKind: "managed-folder" as const,
+      folderManagement: "external" as const,
+      capabilities: {
+        git: true,
+        github: false,
+        worktrees: false,
+        replicas: false,
+        relocation: false,
+      },
+      github: null,
+      source: {
+        ...project.source,
+        placementMode: "direct" as const,
+        ownershipKind: "user" as const,
+      },
+    } satisfies ProjectSummary;
+    const markup = renderToStaticMarkup(
+      <ProjectOverview
+        creatingKinds={new Set()}
+        project={localGitProject}
+        stats={stats}
+        statsLoading={false}
+        usageLoading={false}
+        surfaces={[]}
+        workerOnline
+        worktrees={[worktree]}
+        onCreateSurface={vi.fn()}
+        onOpenSurface={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Lines of code");
+    expect(markup).toContain("Repository size");
+    expect(markup).toContain("Reachable repository history");
+    expect(markup).toContain("1 worktree");
+    expect(markup).toContain("Primary");
+    expect(markup).not.toContain("Lines of text");
+  });
+
   it("renders a useful empty state before the first project tab exists", () => {
     const markup = renderToStaticMarkup(
       <ProjectOverview

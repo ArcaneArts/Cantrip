@@ -10,6 +10,7 @@ import type { FastifyInstance } from "fastify";
 
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
+import { projectAllowsExecutionOnWorker } from "../../projects/worker-affinity.js";
 import {
   type WorkerCommandBus,
   WorkerUnavailableError,
@@ -73,8 +74,7 @@ export function installRemoteDesktopReadRoutes(
         .filter(
           (worker) =>
             worker.remoteSurfaces.desktop &&
-            (project.originKind !== "managed-folder" ||
-              worker.workerId === project.preferredWorkerId),
+            projectAllowsExecutionOnWorker(project, worker.workerId),
         )
         .sort(
           (left, right) =>

@@ -5,6 +5,7 @@ import type {
   ScriptCommand,
   WorkerSummary,
 } from "@cantrip/protocol";
+import { isWorkerBoundFolderProject } from "@cantrip/protocol";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Command as CommandPrimitive } from "cmdk";
 import {
@@ -89,7 +90,7 @@ function projectDetail(
   const source =
     project.source?.displayPath ??
     project.github?.nameWithOwner ??
-    (project.originKind === "managed-folder"
+    (isWorkerBoundFolderProject(project.originKind, project.capabilities.git)
       ? "Worker-bound folder"
       : "GitHub repository");
   return workspace ? `${source} · ${workspace.name}` : source;

@@ -94,16 +94,13 @@ export function installProjectInsightRoutes(
       try {
         const stats = await bridge.request(
           source.workerId,
-          project.originKind === "managed-folder"
-            ? { type: "project.folder-stats", root: source.cwd }
-            : { type: "project.repository-stats", cwd: source.cwd },
+          project.capabilities.git
+            ? { type: "project.repository-stats", cwd: source.cwd }
+            : { type: "project.folder-stats", root: source.cwd },
           { timeoutMs: 30_000 },
         );
         const parsed = projectRepositoryStatsSchema.parse(stats);
-        if (
-          (project.originKind === "managed-folder") !==
-          (parsed.kind === "folder")
-        ) {
+        if (project.capabilities.git !== (parsed.kind === "git")) {
           throw new Error(
             "Worker returned statistics for the wrong project kind.",
           );

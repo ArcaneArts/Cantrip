@@ -5,6 +5,7 @@ import type {
   ProjectWorktreeSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
+import { isWorkerBoundFolderProject } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
@@ -127,7 +128,10 @@ export function ExternalChatImportSettings({
   const readyWorktrees = worktrees.filter(
     ({ lifecycleState }) => lifecycleState === "ready",
   );
-  const directFolder = project.originKind === "managed-folder";
+  const directFolder = isWorkerBoundFolderProject(
+    project.originKind,
+    project.capabilities.git,
+  );
   const workersById = new Map(
     workers.map(({ name, workerId }) => [workerId, name]),
   );

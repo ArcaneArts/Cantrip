@@ -43,6 +43,8 @@ export {
   projectCapabilitySchema,
   projectCapabilityUnavailableErrorSchema,
   projectCapabilitiesForOriginKind,
+  isLocalGitProject,
+  isWorkerBoundFolderProject,
 } from "./project-foundation.js";
 
 export type {

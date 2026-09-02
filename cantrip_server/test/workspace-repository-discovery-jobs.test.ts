@@ -392,6 +392,127 @@ describe("workspace repository discovery jobs", () => {
         expect.objectContaining({ projectId: firstProjectId, workspaceId }),
       );
 
+      const replicaWorkerId = "workspace-discovery-replica-worker";
+      const replicaSourceId = "24b62297-057d-4eaa-9270-6c969edc61ce";
+      await database.insert(schema.workers).values({
+        id: replicaWorkerId,
+        ownerId: LOCAL_USER_ID,
+        name: "Discovery replica worker",
+        platform: "linux",
+        architecture: "x64",
+        startedAt: new Date(),
+        lastSeenAt: new Date(),
+      });
+      await database.insert(schema.projectSources).values({
+        id: replicaSourceId,
+        projectId: firstProjectId,
+        workerId: replicaWorkerId,
+        sourceKind: "git",
+        absolutePath: `ctrr_${"u".repeat(43)}`,
+        displayPath: `ctrr_${"v".repeat(43)}`,
+        placementMode: "direct",
+        ownershipKind: "user",
+        requestedPath: `ctrr_${"u".repeat(43)}`,
+        repositoryFingerprint: "6".repeat(64),
+      });
+      await database.insert(schema.projectWorktrees).values({
+        id: "f831374f-5606-4764-8114-53e02f366930",
+        projectSourceId: replicaSourceId,
+        workerId: replicaWorkerId,
+        rootKind: "git-worktree",
+        name: "Primary",
+        absolutePath: `ctrr_${"u".repeat(43)}`,
+        displayPath: `ctrr_${"v".repeat(43)}`,
+        isPrimary: true,
+        isDefault: true,
+        origin: "external",
+        lifecycleState: "ready",
+      });
+      expect(
+        await repository.resolveProjectExecutionPlacement(
+          LOCAL_USER_ID,
+          firstProjectId,
+          "terminal",
+          undefined,
+          () => true,
+        ),
+      ).toMatchObject({
+        selection: "project-preference",
+        placement: { workerId },
+      });
+      expect(
+        await repository.resolveProjectExecutionPlacement(
+          LOCAL_USER_ID,
+          firstProjectId,
+          "terminal",
+          undefined,
+          (candidateWorkerId) => candidateWorkerId === replicaWorkerId,
+        ),
+      ).toMatchObject({
+        selection: "fallback",
+        placement: {
+          projectReplicaId: replicaSourceId,
+          workerId: replicaWorkerId,
+        },
+      });
+
+      const unattachedWorkerId = "workspace-discovery-unattached-worker";
+      await database.insert(schema.workers).values({
+        id: unattachedWorkerId,
+        ownerId: LOCAL_USER_ID,
+        name: "Unattached worker",
+        platform: "linux",
+        architecture: "x64",
+        startedAt: new Date(),
+        lastSeenAt: new Date(),
+      });
+      const executionTargets = await repository.listProjectExecutionTargets(
+        LOCAL_USER_ID,
+        firstProjectId,
+        () => true,
+      );
+      expect(executionTargets?.targets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            resourceKind: "worker",
+            placement: expect.objectContaining({ workerId }),
+          }),
+          expect.objectContaining({
+            resourceKind: "worker",
+            placement: expect.objectContaining({ workerId: replicaWorkerId }),
+          }),
+          expect.objectContaining({
+            resourceKind: "replica",
+            placement: expect.objectContaining({ workerId: replicaWorkerId }),
+          }),
+          expect.objectContaining({
+            resourceKind: "worktree",
+            placement: expect.objectContaining({ workerId: replicaWorkerId }),
+          }),
+        ]),
+      );
+      expect(
+        executionTargets?.targets.some(
+          ({ placement }) => placement.workerId === unattachedWorkerId,
+        ),
+      ).toBe(false);
+      await expect(
+        repository.resolveExecutionTarget(
+          LOCAL_USER_ID,
+          firstProjectId,
+          {
+            kind: "worker",
+            projectId: firstProjectId,
+            workerId: unattachedWorkerId,
+          },
+          () => true,
+        ),
+      ).rejects.toMatchObject({
+        code: "target-mismatch",
+        message:
+          "This local Git project has no ready source on the selected worker.",
+      });
+
       const duplicateWorkspaceId = "facb4083-8fef-4b31-9d60-0d64a6c1e77f";
       await database.insert(schema.projectWorkspaces).values({
         id: duplicateWorkspaceId,

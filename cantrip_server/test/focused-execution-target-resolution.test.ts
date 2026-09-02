@@ -450,6 +450,8 @@ describe.sequential("focused execution target resolution", () => {
     try {
       await database.update(schema.projects).set({
         folderManagement: "managed",
+        gitCapability: false,
+        githubCapability: false,
         githubRepositoryBlindIndex: null,
         originKind: "managed-folder",
         preferredWorkerId: workerId,
@@ -534,6 +536,8 @@ describe.sequential("focused execution target resolution", () => {
     try {
       await database.update(schema.projects).set({
         folderManagement: "managed",
+        gitCapability: false,
+        githubCapability: false,
         githubRepositoryBlindIndex: null,
         originKind: "managed-folder",
         preferredWorkerId: null,

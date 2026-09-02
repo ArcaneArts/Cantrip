@@ -11,7 +11,11 @@ import type {
   TerminalWireSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
+import {
+  isLocalGitProject,
+  isWorkerBoundFolderProject,
+} from "@cantrip/protocol";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { unionAll } from "drizzle-orm/pg-core";
@@ -60,6 +64,31 @@ type PublicCollaboratorName =
   | "listTerminals"
   | "listWorkers"
   | "resolveProjectExecutionPlacement";
+
+interface ExecutionTargetProjectScope {
+  eligibleWorkerIds: readonly string[];
+  localGitProject: boolean;
+  owningWorkerId: string | null;
+  workerBoundFolder: boolean;
+}
+
+interface ExactFocusedExecutionTarget {
+  eligibleSource: boolean;
+  localGitProject: boolean;
+  preferredWorkerId: string | null;
+  target: ExecutionTarget;
+  workerId: string;
+  workerBoundFolder: boolean;
+}
+
+function executionTargetWorkerAllowed(
+  scope: ExecutionTargetProjectScope,
+  workerId: string,
+): boolean {
+  if (scope.workerBoundFolder) return workerId === scope.owningWorkerId;
+  if (scope.localGitProject) return scope.eligibleWorkerIds.includes(workerId);
+  return true;
+}
 
 export type ExecutionTargetRepositoryCollaborators = Pick<
   ServerRepository,
@@ -357,14 +386,33 @@ export class ExecutionTargetRepository {
       }
     }
 
+    const workerBoundFolder = isWorkerBoundFolderProject(
+      project.originKind,
+      project.capabilities.git,
+    );
+    const localGitProject = isLocalGitProject(
+      project.originKind,
+      project.capabilities.git,
+    );
     if (
-      project.originKind === "managed-folder" &&
+      workerBoundFolder &&
       placement.workerId !==
         (project.preferredWorkerId ?? project.source?.workerId)
     ) {
       throw new ExecutionPlacementUnavailableError(
         "target-mismatch",
         "This worker-managed folder is bound to its owning worker.",
+      );
+    }
+    if (
+      localGitProject &&
+      !replicas.some(
+        (replica) => replica.ready && replica.workerId === placement.workerId,
+      )
+    ) {
+      throw new ExecutionPlacementUnavailableError(
+        "target-mismatch",
+        "This local Git project has no ready source on the selected worker.",
       );
     }
 
@@ -423,12 +471,11 @@ export class ExecutionTargetRepository {
   private async executionTargetProjectScope(
     ownerId: string,
     projectId: string,
-  ): Promise<{
-    folderProject: boolean;
-    owningWorkerId: string | null;
-  } | null> {
+  ): Promise<ExecutionTargetProjectScope | null> {
     const rows = await this.database
       .select({
+        gitCapability: schema.projects.gitCapability,
+        lifecycleState: schema.projectWorktrees.lifecycleState,
         originKind: schema.projects.originKind,
         preferredWorkerId: schema.projects.preferredWorkerId,
         sourceWorkerId: schema.projectSources.workerId,
@@ -460,21 +507,36 @@ export class ExecutionTargetRepository {
         ),
         asc(schema.projectSources.createdAt),
         asc(schema.projectSources.id),
-      )
-      .limit(1);
-    const row = rows[0];
-    return row
-      ? {
-          folderProject: row.originKind === "managed-folder",
-          owningWorkerId: row.preferredWorkerId ?? row.sourceWorkerId,
-        }
-      : null;
+      );
+    const project = rows[0];
+    if (!project) return null;
+    return {
+      eligibleWorkerIds: [
+        ...new Set(
+          rows.flatMap((source) =>
+            source.lifecycleState === "ready" && source.sourceWorkerId
+              ? [source.sourceWorkerId]
+              : [],
+          ),
+        ),
+      ],
+      localGitProject: isLocalGitProject(
+        project.originKind,
+        project.gitCapability,
+      ),
+      owningWorkerId:
+        project.preferredWorkerId ?? project.sourceWorkerId ?? null,
+      workerBoundFolder: isWorkerBoundFolderProject(
+        project.originKind,
+        project.gitCapability,
+      ),
+    };
   }
 
   private buildFocusedExecutionTargetCatalog(
     projectId: string,
     resourceKind: FocusedExecutionTargetResourceKind,
-    scope: { folderProject: boolean; owningWorkerId: string | null },
+    scope: ExecutionTargetProjectScope,
     resources: {
       browsers?: readonly BrowserWireSummary[];
       explorers?: readonly ExplorerWireSummary[];
@@ -498,14 +560,12 @@ export class ExecutionTargetRepository {
       replicas: resources.replicas ?? [],
       resourceKinds: [resourceKind],
       terminals: resources.terminals ?? [],
-      workers: scope.folderProject
-        ? resources.workers.filter(
-            ({ workerId }) => workerId === scope.owningWorkerId,
-          )
-        : resources.workers,
+      workers: resources.workers.filter(({ workerId }) =>
+        executionTargetWorkerAllowed(scope, workerId),
+      ),
       worktrees: resources.worktrees ?? [],
     });
-    return scope.folderProject && resourceKind === "worktree"
+    return scope.workerBoundFolder && resourceKind === "worktree"
       ? { ...catalog, targets: [] }
       : catalog;
   }
@@ -607,15 +667,19 @@ export class ExecutionTargetRepository {
   private async listUntypedExecutionTargetSelectorCandidates(
     ownerId: string,
     projectId: string,
-    scope: { folderProject: boolean; owningWorkerId: string | null },
+    scope: ExecutionTargetProjectScope,
     selector: string,
     exactOnly: boolean,
   ): Promise<ExecutionTargetSelectorCandidate[]> {
     const workerAllowed = (workerId: typeof schema.workers.id) =>
-      scope.folderProject
+      scope.workerBoundFolder
         ? eq(workerId, scope.owningWorkerId ?? "")
-        : undefined;
-    const folderRootExcluded = scope.folderProject
+        : scope.localGitProject
+          ? scope.eligibleWorkerIds.length > 0
+            ? inArray(workerId, scope.eligibleWorkerIds)
+            : sql<boolean>`false`
+          : undefined;
+    const folderRootExcluded = scope.workerBoundFolder
       ? sql<boolean>`false`
       : undefined;
     const noTitle = sql<string | null>`null::text`;
@@ -1022,15 +1086,11 @@ export class ExecutionTargetRepository {
       "browser" | "explorer" | "terminal"
     >,
     resourceId: string,
-  ): Promise<{
-    folderProject: boolean;
-    preferredWorkerId: string | null;
-    target: ExecutionTarget;
-    workerId: string;
-  } | null> {
+  ): Promise<ExactFocusedExecutionTarget | null> {
     if (resourceKind === "explorer") {
       const rows = await this.database
         .select({
+          gitCapability: schema.projects.gitCapability,
           id: schema.explorers.id,
           originKind: schema.projects.originKind,
           preferredWorkerId: schema.projects.preferredWorkerId,
@@ -1082,7 +1142,11 @@ export class ExecutionTargetRepository {
         .limit(1);
       return rows[0]
         ? {
-            folderProject: rows[0].originKind === "managed-folder",
+            eligibleSource: true,
+            localGitProject: isLocalGitProject(
+              rows[0].originKind,
+              rows[0].gitCapability,
+            ),
             preferredWorkerId: rows[0].preferredWorkerId,
             target: {
               kind: "surface",
@@ -1091,12 +1155,17 @@ export class ExecutionTargetRepository {
               surfaceId: resourceId,
             },
             workerId: rows[0].workerId,
+            workerBoundFolder: isWorkerBoundFolderProject(
+              rows[0].originKind,
+              rows[0].gitCapability,
+            ),
           }
         : null;
     }
     if (resourceKind === "terminal") {
       const rows = await this.database
         .select({
+          gitCapability: schema.projects.gitCapability,
           id: schema.terminals.id,
           originKind: schema.projects.originKind,
           preferredWorkerId: schema.projects.preferredWorkerId,
@@ -1149,7 +1218,11 @@ export class ExecutionTargetRepository {
         .limit(1);
       return rows[0]
         ? {
-            folderProject: rows[0].originKind === "managed-folder",
+            eligibleSource: true,
+            localGitProject: isLocalGitProject(
+              rows[0].originKind,
+              rows[0].gitCapability,
+            ),
             preferredWorkerId: rows[0].preferredWorkerId,
             target: {
               kind: "surface",
@@ -1158,11 +1231,27 @@ export class ExecutionTargetRepository {
               surfaceId: resourceId,
             },
             workerId: rows[0].workerId,
+            workerBoundFolder: isWorkerBoundFolderProject(
+              rows[0].originKind,
+              rows[0].gitCapability,
+            ),
           }
         : null;
     }
     const rows = await this.database
       .select({
+        eligibleSource: sql<boolean>`exists (
+          select 1
+          from ${schema.projectSources}
+          inner join ${schema.projectWorktrees}
+            on ${schema.projectWorktrees.projectSourceId} = ${schema.projectSources.id}
+           and ${schema.projectWorktrees.isPrimary} = true
+           and ${schema.projectWorktrees.lifecycleState} = 'ready'
+          where ${schema.projectSources.projectId} = ${schema.projects.id}
+            and ${schema.projectSources.workerId} = ${schema.remoteSurfaces.workerId}
+            and ${schema.projectSources.removedAt} is null
+        )`,
+        gitCapability: schema.projects.gitCapability,
         id: schema.browsers.id,
         originKind: schema.projects.originKind,
         preferredWorkerId: schema.projects.preferredWorkerId,
@@ -1201,7 +1290,11 @@ export class ExecutionTargetRepository {
       .limit(1);
     return rows[0]
       ? {
-          folderProject: rows[0].originKind === "managed-folder",
+          eligibleSource: rows[0].eligibleSource,
+          localGitProject: isLocalGitProject(
+            rows[0].originKind,
+            rows[0].gitCapability,
+          ),
           preferredWorkerId: rows[0].preferredWorkerId,
           target: {
             kind: "surface",
@@ -1210,8 +1303,27 @@ export class ExecutionTargetRepository {
             surfaceId: resourceId,
           },
           workerId: rows[0].workerId,
+          workerBoundFolder: isWorkerBoundFolderProject(
+            rows[0].originKind,
+            rows[0].gitCapability,
+          ),
         }
       : null;
+  }
+
+  private async exactFocusedExecutionTargetAllowed(
+    ownerId: string,
+    projectId: string,
+    exact: ExactFocusedExecutionTarget,
+  ): Promise<boolean> {
+    if (exact.localGitProject) return exact.eligibleSource;
+    if (!exact.workerBoundFolder) return true;
+    const owningWorkerId =
+      exact.preferredWorkerId ??
+      (await this.executionTargetProjectScope(ownerId, projectId))
+        ?.owningWorkerId ??
+      null;
+    return exact.workerId === owningWorkerId;
   }
 
   async resolveExecutionTargetSelector(
@@ -1238,16 +1350,15 @@ export class ExecutionTargetRepository {
         resourceKind,
         selector,
       );
-      if (exact) {
-        const owningWorkerId = exact.folderProject
-          ? (exact.preferredWorkerId ??
-            (await this.executionTargetProjectScope(ownerId, projectId))
-              ?.owningWorkerId ??
-            null)
-          : exact.workerId;
-        if (exact.workerId === owningWorkerId) {
-          return { outcome: "selected", target: exact.target };
-        }
+      if (
+        exact &&
+        (await this.exactFocusedExecutionTargetAllowed(
+          ownerId,
+          projectId,
+          exact,
+        ))
+      ) {
+        return { outcome: "selected", target: exact.target };
       }
     } else if (!selector && resourceKind === "terminal" && context.terminalId) {
       const current = await this.resolveExactFocusedExecutionTarget(
@@ -1256,16 +1367,15 @@ export class ExecutionTargetRepository {
         resourceKind,
         context.terminalId,
       );
-      if (current) {
-        const owningWorkerId = current.folderProject
-          ? (current.preferredWorkerId ??
-            (await this.executionTargetProjectScope(ownerId, projectId))
-              ?.owningWorkerId ??
-            null)
-          : current.workerId;
-        if (current.workerId === owningWorkerId) {
-          return { outcome: "selected", target: current.target };
-        }
+      if (
+        current &&
+        (await this.exactFocusedExecutionTargetAllowed(
+          ownerId,
+          projectId,
+          current,
+        ))
+      ) {
+        return { outcome: "selected", target: current.target };
       }
     } else if (!selector && resourceKind === "worker") {
       const [scope, worker] = await Promise.all([
@@ -1273,7 +1383,10 @@ export class ExecutionTargetRepository {
         this.collaborators.getWorker(ownerId, context.workerId),
       ]);
       if (!scope) return null;
-      if (scope.folderProject && scope.owningWorkerId === context.workerId) {
+      if (
+        (scope.workerBoundFolder || scope.localGitProject) &&
+        executionTargetWorkerAllowed(scope, context.workerId)
+      ) {
         if (
           worker &&
           executionTargetAvailability(worker, null, isWorkerConnected)
@@ -1370,9 +1483,19 @@ export class ExecutionTargetRepository {
       this.collaborators.listRemoteSurfaces(ownerId, projectId),
     ]);
     if (!project || !replicas) return null;
-    const folderProject = project.originKind === "managed-folder";
+    const workerBoundFolder = isWorkerBoundFolderProject(
+      project.originKind,
+      project.capabilities.git,
+    );
+    const localGitProject = isLocalGitProject(
+      project.originKind,
+      project.capabilities.git,
+    );
     const owningWorkerId =
       project.preferredWorkerId ?? project.source?.workerId ?? null;
+    const eligibleWorkerIds = new Set(
+      replicas.flatMap((replica) => (replica.ready ? [replica.workerId] : [])),
+    );
     const catalog = buildExecutionTargetCatalog({
       browsers,
       chats,
@@ -1384,12 +1507,14 @@ export class ExecutionTargetRepository {
       remoteSurfaces,
       replicas,
       terminals,
-      workers: folderProject
-        ? workers.filter(({ workerId }) => workerId === owningWorkerId)
-        : workers,
+      workers: workers.filter(({ workerId }) =>
+        workerBoundFolder
+          ? workerId === owningWorkerId
+          : !localGitProject || eligibleWorkerIds.has(workerId),
+      ),
       worktrees,
     });
-    return folderProject
+    return workerBoundFolder
       ? {
           ...catalog,
           targets: catalog.targets.filter(
