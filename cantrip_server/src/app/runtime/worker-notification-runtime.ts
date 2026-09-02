@@ -336,6 +336,7 @@ export function createWorkerNotificationRuntime({
     const source = await repository.getProjectSource(
       applicationOwnerId(),
       projectId,
+      { isWorkerAvailable: (workerId) => bridge.isConnected(workerId) },
     );
     if (source) scheduleWorkerWorktreeObservation(source.workerId);
   };
@@ -742,6 +743,7 @@ export function createWorkerNotificationRuntime({
       const source = await repository.getProjectSource(
         ownerId,
         notification.projectId,
+        { workerId },
       );
       if (
         !source ||

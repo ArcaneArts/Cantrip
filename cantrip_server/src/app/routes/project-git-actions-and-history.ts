@@ -18,7 +18,7 @@ import { worktreeStatusFromGitStatus } from "../shared/worktree-status.js";
 
 export interface ProjectGitActionAndHistoryRouteDependencies {
   applicationOwnerId: () => string;
-  bridge: Pick<WorkerCommandBus, "request">;
+  bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   recordLiveWorktreeStatus: (
     projectId: string,
     worktreeId: string,
@@ -103,6 +103,7 @@ export function installProjectGitActionAndHistoryRoutes(
     const source = await repository.getProjectSource(
       applicationOwnerId(),
       request.params.projectId,
+      { isWorkerAvailable: (workerId) => bridge.isConnected(workerId) },
     );
     if (!source) {
       return reply.code(404).send({ error: "Project source not found." });

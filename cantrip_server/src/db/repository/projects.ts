@@ -63,6 +63,11 @@ export interface ProjectWorktreeExecutionContext {
   worktree: ProjectWorktreeSummary;
 }
 
+export interface ProjectSourceSelectionOptions {
+  isWorkerAvailable?: (workerId: string) => boolean;
+  workerId?: string;
+}
+
 export interface ProjectRepositoryCollaborators {
   ensureDefaultProjectWorkspace(ownerId: string): Promise<ProjectWorkspaceRow>;
   getWorker(ownerId: string, workerId: string): Promise<WorkerSummary | null>;
@@ -92,6 +97,16 @@ export function toProjectWireSummary(
           url: project.githubRepositoryUrl,
         }
       : null;
+  const sourceReplica =
+    (project.preferredWorkerId
+      ? replicas.find(
+          (replica) =>
+            replica.workerId === project.preferredWorkerId && replica.ready,
+        )
+      : null) ??
+    replicas.find((replica) => replica.ready) ??
+    replicas[0] ??
+    null;
 
   return projectWireSummarySchema.parse({
     id: project.id,
@@ -106,17 +121,17 @@ export function toProjectWireSummary(
       project.worktreePolicy as ProjectWireSummary["worktreePolicy"],
     preferredWorkerId: project.preferredWorkerId,
     github,
-    source: replicas[0]
+    source: sourceReplica
       ? {
-          id: replicas[0].id,
-          sourceKind: replicas[0].sourceKind,
-          workerId: replicas[0].workerId,
-          path: replicas[0].path,
-          displayPath: replicas[0].displayPath,
-          placementMode: replicas[0].placementMode,
-          ownershipKind: replicas[0].ownershipKind,
-          requestedPath: replicas[0].requestedPath,
-          linkPath: replicas[0].linkPath,
+          id: sourceReplica.id,
+          sourceKind: sourceReplica.sourceKind,
+          workerId: sourceReplica.workerId,
+          path: sourceReplica.path,
+          displayPath: sourceReplica.displayPath,
+          placementMode: sourceReplica.placementMode,
+          ownershipKind: sourceReplica.ownershipKind,
+          requestedPath: sourceReplica.requestedPath,
+          linkPath: sourceReplica.linkPath,
         }
       : null,
     replicas,
@@ -939,7 +954,11 @@ export class ProjectRepository {
     return replicas?.find((replica) => replica.id === projectReplicaId) ?? null;
   }
 
-  async getProjectSource(ownerId: string, projectId: string) {
+  async getProjectSource(
+    ownerId: string,
+    projectId: string,
+    options: ProjectSourceSelectionOptions = {},
+  ) {
     const rows = await this.database
       .select({
         projectReplicaId: schema.projectSources.id,
@@ -959,21 +978,36 @@ export class ProjectRepository {
           eq(schema.projectWorktrees.isPrimary, true),
         ),
       )
+      .leftJoin(
+        schema.userSettings,
+        eq(schema.userSettings.userId, schema.projects.ownerId),
+      )
       .where(
         and(
           eq(schema.projects.id, projectId),
           eq(schema.projects.ownerId, ownerId),
           isNull(schema.projectSources.removedAt),
           eq(schema.projectWorktrees.lifecycleState, "ready"),
+          options.workerId
+            ? eq(schema.projectSources.workerId, options.workerId)
+            : undefined,
         ),
       )
       .orderBy(
-        desc(sql<boolean>`${schema.projectWorktrees.lifecycleState} = 'ready'`),
+        desc(
+          sql<boolean>`coalesce(${schema.projectSources.workerId} = ${schema.projects.preferredWorkerId}, false)`,
+        ),
+        desc(
+          sql<boolean>`coalesce(${schema.projectSources.workerId} = ${schema.userSettings.defaultWorkerId}, false)`,
+        ),
         asc(schema.projectSources.createdAt),
         asc(schema.projectSources.id),
-      )
-      .limit(1);
-    return rows[0] ?? null;
+      );
+    const isWorkerAvailable = options.isWorkerAvailable;
+    const selected = isWorkerAvailable
+      ? (rows.find(({ workerId }) => isWorkerAvailable(workerId)) ?? rows[0])
+      : rows[0];
+    return selected ?? null;
   }
 
   async getProjectWorktreeContext(

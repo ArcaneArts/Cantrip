@@ -14,7 +14,7 @@ import { worktreeStatusFromGitStatus } from "../shared/worktree-status.js";
 
 export interface ProjectGitStatusAndActionRouteDependencies {
   applicationOwnerId: () => string;
-  bridge: Pick<WorkerCommandBus, "request">;
+  bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   recordLiveWorktreeStatus: (
     projectId: string,
     worktreeId: string,
@@ -46,6 +46,7 @@ export function installProjectGitStatusAndActionRoutes(
       const source = await repository.getProjectSource(
         applicationOwnerId(),
         request.params.projectId,
+        { isWorkerAvailable: (workerId) => bridge.isConnected(workerId) },
       );
       if (!source) {
         return reply.code(404).send({ error: "Project source not found." });
@@ -72,6 +73,7 @@ export function installProjectGitStatusAndActionRoutes(
       const source = await repository.getProjectSource(
         applicationOwnerId(),
         request.params.projectId,
+        { isWorkerAvailable: (workerId) => bridge.isConnected(workerId) },
       );
       if (!source) {
         return reply.code(404).send({ error: "Project source not found." });

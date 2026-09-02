@@ -202,7 +202,9 @@ export function createRunConfigurationRuntime({
     ownerId: string,
     projectId: string,
   ) => {
-    const source = await repository.getProjectSource(ownerId, projectId);
+    const source = await repository.getProjectSource(ownerId, projectId, {
+      isWorkerAvailable: (workerId) => bridge.isConnected(workerId),
+    });
     if (!source) {
       throw new CliCommandRequestError(
         "not-found",
@@ -228,7 +230,9 @@ export function createRunConfigurationRuntime({
   ) => {
     const primary = targetWorktreeId
       ? null
-      : await repository.getProjectSource(ownerId, projectId);
+      : await repository.getProjectSource(ownerId, projectId, {
+          isWorkerAvailable: (workerId) => bridge.isConnected(workerId),
+        });
     if (!targetWorktreeId && !primary) {
       throw new CliCommandRequestError(
         "not-found",

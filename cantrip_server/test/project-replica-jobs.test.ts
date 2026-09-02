@@ -674,6 +674,54 @@ describe("durable project replica jobs", () => {
           secondaryWorkerId,
         ),
       ).toMatchObject({ preferredWorkerId: secondaryWorkerId });
+      expect(
+        await connection.repository.getProject(
+          LOCAL_USER_ID,
+          created.project.id,
+        ),
+      ).toMatchObject({
+        preferredWorkerId: secondaryWorkerId,
+        source: { workerId: secondaryWorkerId },
+      });
+      expect(
+        await connection.repository.getProjectSource(
+          LOCAL_USER_ID,
+          created.project.id,
+        ),
+      ).toMatchObject({ workerId: secondaryWorkerId });
+      expect(
+        await connection.repository.getProjectSource(
+          LOCAL_USER_ID,
+          created.project.id,
+          { isWorkerAvailable: (workerId) => workerId === homeWorkerId },
+        ),
+      ).toMatchObject({ workerId: homeWorkerId });
+      expect(
+        await connection.repository.getProjectSource(
+          LOCAL_USER_ID,
+          created.project.id,
+          { workerId: homeWorkerId },
+        ),
+      ).toMatchObject({ workerId: homeWorkerId });
+      await expect(
+        connection.repository.getProjectSource(
+          LOCAL_USER_ID,
+          created.project.id,
+          { workerId: "local-git-unattached" },
+        ),
+      ).resolves.toBeNull();
+      await expect(
+        connection.repository.resolveProjectExecutionPlacement(
+          LOCAL_USER_ID,
+          created.project.id,
+          "terminal",
+          undefined,
+          (workerId) => workerId === homeWorkerId,
+        ),
+      ).resolves.toMatchObject({
+        selection: "fallback",
+        placement: { workerId: homeWorkerId },
+      });
 
       await expect(
         connection.repository.projectReplicaJobs.createSynchronize(

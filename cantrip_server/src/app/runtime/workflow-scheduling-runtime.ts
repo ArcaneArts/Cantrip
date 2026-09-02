@@ -112,6 +112,7 @@ export function createWorkflowSchedulingRuntime({
     const source = await repository.getProjectSource(
       applicationOwnerId(),
       context.trigger.projectId,
+      { isWorkerAvailable: (workerId) => bridge.isConnected(workerId) },
     );
     if (!source) {
       throw new WorkflowTriggerConflictError(
@@ -376,6 +377,9 @@ export function createWorkflowSchedulingRuntime({
           const source = await repository.getProjectSource(
             applicationOwnerId(),
             trigger.projectId,
+            {
+              isWorkerAvailable: (workerId) => bridge.isConnected(workerId),
+            },
           );
           if (!source || !bridge.isConnected(source.workerId)) {
             if (configuration.offlinePolicy === "pause") {

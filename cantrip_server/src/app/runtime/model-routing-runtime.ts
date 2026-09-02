@@ -635,7 +635,11 @@ export function createModelRoutingRuntime({
       throw new SkillSettingsRequestError(404, "Model provider not found.");
     }
     const source = input.projectId
-      ? await repository.getProjectSource(applicationOwnerId(), input.projectId)
+      ? await repository.getProjectSource(
+          applicationOwnerId(),
+          input.projectId,
+          { workerId: input.workerId },
+        )
       : null;
     if (input.projectId && !source) {
       throw new SkillSettingsRequestError(404, "Project source not found.");

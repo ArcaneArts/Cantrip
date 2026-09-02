@@ -169,6 +169,7 @@ export function installProjectNetworkShareRoutes(
       const source = await repository.getProjectSource(
         ownerId,
         request.params.projectId,
+        { workerId: input.data.workerId },
       );
       if (!source) {
         return reply.code(404).send({ error: "Project source not found." });

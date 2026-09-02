@@ -26,7 +26,7 @@ export interface ProjectPreferenceRouteDependencies {
 
 export interface ProjectInsightRouteDependencies {
   applicationOwnerId: () => string;
-  bridge: Pick<WorkerCommandBus, "request">;
+  bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   repository: Pick<
     ServerRepository,
     "getProject" | "getProjectSource" | "getProjectTokenUsage"
@@ -99,7 +99,9 @@ export function installProjectInsightRoutes(
       const ownerId = applicationOwnerId();
       const [project, source] = await Promise.all([
         repository.getProject(ownerId, request.params.projectId),
-        repository.getProjectSource(ownerId, request.params.projectId),
+        repository.getProjectSource(ownerId, request.params.projectId, {
+          isWorkerAvailable: (workerId) => bridge.isConnected(workerId),
+        }),
       ]);
       if (!project || !source) {
         return reply.code(404).send({ error: "Project source not found." });
