@@ -78,6 +78,7 @@ describe("ExplorerEntryRow native reveal", () => {
           commit: null,
           depth: 0,
           entry,
+          localFolderModifier: false,
           onOpen: vi.fn(),
           onReveal,
           revealLabel: "Show in Finder",

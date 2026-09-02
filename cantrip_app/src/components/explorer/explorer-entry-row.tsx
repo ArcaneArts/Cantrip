@@ -23,6 +23,7 @@ import {
   StyledContextMenuContent,
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
+import { NativeFolderRevealIcon } from "@/components/ui/native-folder-reveal-icon";
 import { cn } from "@/lib/utils";
 
 function entryIcon(entry: ExplorerEntry, expanded: boolean) {
@@ -51,6 +52,7 @@ export function ExplorerEntryRow({
   depth,
   entry,
   expanded = false,
+  localFolderModifier,
   onOpen,
   onReveal,
   revealLabel,
@@ -63,6 +65,7 @@ export function ExplorerEntryRow({
   depth: number;
   entry: ExplorerEntry;
   expanded?: boolean;
+  localFolderModifier: boolean;
   onOpen(): void;
   onReveal?(localFolder: boolean): void;
   revealLabel?: string;
@@ -203,7 +206,10 @@ export function ExplorerEntryRow({
                 onReveal(localFolder);
               }}
             >
-              <FolderOpen className="size-4" />
+              <NativeFolderRevealIcon
+                className="size-4"
+                localFolder={localFolderModifier}
+              />
               {revealLabel}
             </StyledContextMenuItem>
           ) : null}

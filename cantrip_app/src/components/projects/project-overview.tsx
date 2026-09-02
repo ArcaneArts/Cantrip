@@ -13,7 +13,6 @@ import {
   Files,
   Folder,
   FolderGit2,
-  FolderOpen,
   GitBranch,
   GitCommitHorizontal,
   HardDrive,
@@ -27,6 +26,10 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InlineAlert } from "@/components/ui/inline-alert";
+import {
+  NativeFolderRevealIcon,
+  useShiftKeyHeld,
+} from "@/components/ui/native-folder-reveal-icon";
 import { ProjectSurfaceCreateMenu } from "@/components/workspace/project-surface-create-menu";
 import type {
   ProjectSurfaceCreateKind,
@@ -220,6 +223,7 @@ export function ProjectOverview({
   const [revealError, setRevealError] = useState<string | null>(null);
   const [revealPending, setRevealPending] = useState(false);
   const [usageOpen, setUsageOpen] = useState(false);
+  const shiftKeyHeld = useShiftKeyHeld();
   const orderedSurfaces = useMemo(
     () =>
       [...surfaces].sort((left, right) =>
@@ -340,7 +344,10 @@ export function ProjectOverview({
                   {revealPending ? (
                     <Loader2 className="size-3.5 animate-spin" />
                   ) : (
-                    <FolderOpen className="size-3.5" />
+                    <NativeFolderRevealIcon
+                      className="size-3.5"
+                      localFolder={shiftKeyHeld}
+                    />
                   )}
                   {revealLabel}
                 </Button>

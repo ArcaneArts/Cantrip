@@ -24,7 +24,6 @@ import {
   Code2,
   CopyPlus,
   FileCode2,
-  FolderOpen,
   FolderTree,
   GitCommitHorizontal,
   Globe2,
@@ -55,6 +54,10 @@ import {
 import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
 import { Button } from "@/components/ui/button";
 import { InlineAlert } from "@/components/ui/inline-alert";
+import {
+  NativeFolderRevealIcon,
+  useShiftKeyHeld,
+} from "@/components/ui/native-folder-reveal-icon";
 import {
   openSidebarActionsMenu,
   SortableSidebarSurfaceRow,
@@ -273,6 +276,7 @@ export function ProjectOverviewTab({
   const failed = project.setupStatus === "failed";
   const folderBlocked = preparing && folderSetupJob?.state === "blocked";
   const revealLocalFolder = useRef(false);
+  const shiftKeyHeld = useShiftKeyHeld();
   return (
     <div className="group mb-1 flex min-h-full flex-col">
       <div
@@ -365,7 +369,11 @@ export function ProjectOverviewTab({
                       onReveal(localFolder);
                     }}
                   >
-                    <FolderOpen className="size-4" /> {projectRevealLabel}
+                    <NativeFolderRevealIcon
+                      className="size-4"
+                      localFolder={shiftKeyHeld}
+                    />{" "}
+                    {projectRevealLabel}
                   </StyledDropdownMenuItem>
                 ) : null}
                 <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
