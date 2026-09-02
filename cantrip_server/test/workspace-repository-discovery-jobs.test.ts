@@ -751,6 +751,53 @@ describe("workspace repository discovery jobs", () => {
         conflict: { projectId: firstProjectId, workspaceId },
       });
       expect(await database.select().from(schema.projects)).toHaveLength(1);
+
+      await expect(
+        repository.unlinkWorker(LOCAL_USER_ID, workerId),
+      ).resolves.toBe(true);
+      await expect(
+        repository.getWorker(LOCAL_USER_ID, workerId),
+      ).resolves.toBeNull();
+      expect(
+        (
+          await repository.listProjectWorkspaceWire(LOCAL_USER_ID)
+        ).workspaces.find((workspace) => workspace.id === workspaceId)?.storage,
+      ).toEqual({
+        kind: "attached",
+        workerId,
+        rootPathHandle,
+        displayHandle: `ctrr_${"b".repeat(43)}`,
+      });
+      expect(
+        await repository.resolveProjectExecutionPlacement(
+          LOCAL_USER_ID,
+          firstProjectId,
+          "terminal",
+          undefined,
+          (candidateWorkerId) => candidateWorkerId === replicaWorkerId,
+        ),
+      ).toMatchObject({
+        selection: "fallback",
+        placement: {
+          projectReplicaId: replicaSourceId,
+          workerId: replicaWorkerId,
+        },
+      });
+      const targetsAfterUnlink = await repository.listProjectExecutionTargets(
+        LOCAL_USER_ID,
+        firstProjectId,
+        () => true,
+      );
+      expect(
+        targetsAfterUnlink?.targets.some(
+          ({ placement }) => placement.workerId === workerId,
+        ),
+      ).toBe(false);
+      expect(
+        targetsAfterUnlink?.targets.some(
+          ({ placement }) => placement.workerId === replicaWorkerId,
+        ),
+      ).toBe(true);
     } finally {
       await client.close();
     }
