@@ -274,9 +274,9 @@ export function GlobalContentHost({
           projectSetupJobs={projectSetupJobs}
           workers={workers.data ?? []}
           workspaces={projectWorkspaces.data ?? []}
-          onCreateWorkspace={async (name) => {
-            await createWorkspaceMutation.mutateAsync(name);
-          }}
+          onCreateWorkspace={(input) =>
+            createWorkspaceMutation.mutateAsync(input)
+          }
           onManageWorkspaces={() => openCompactRootSettings("workspaces")}
           onNewProject={(source) => openProjectCreateSource(source, true)}
           onOpenAdmin={openServerAdmin}

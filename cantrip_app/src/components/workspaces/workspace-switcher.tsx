@@ -1,5 +1,9 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import type { ProjectWorkspaceSummary } from "@cantrip/protocol";
+import type {
+  ProjectWorkspaceCreate,
+  ProjectWorkspaceSummary,
+  WorkerSummary,
+} from "@cantrip/protocol";
 import { Check, ChevronDown, Layers3, Plus, Settings } from "lucide-react";
 import { useState } from "react";
 
@@ -19,13 +23,15 @@ export function WorkspaceSwitcher({
   onCreate,
   onManage,
   onSelect,
+  workers,
   workspaces,
 }: {
   activeWorkspaceId: string | null;
   onAddProject(source: ProjectCreateSource): void;
-  onCreate(name: string): Promise<void>;
+  onCreate(input: ProjectWorkspaceCreate): Promise<ProjectWorkspaceSummary>;
   onManage(): void;
   onSelect(workspaceId: string): void;
+  workers: WorkerSummary[];
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const active =
@@ -113,6 +119,8 @@ export function WorkspaceSwitcher({
         onCreate={onCreate}
         onOpenChange={setDialogOpen}
         open={dialogOpen}
+        workers={workers}
+        workspaces={workspaces}
       />
     </>
   );

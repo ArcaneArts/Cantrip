@@ -1,6 +1,7 @@
 import type {
   ProjectReplicaJobSummary,
   ProjectSummary,
+  ProjectWorkspaceCreate,
   ProjectWorkspaceSummary,
 } from "@cantrip/protocol";
 import { useMutation, type QueryClient } from "@tanstack/react-query";
@@ -59,8 +60,8 @@ export function useProjectSetupOperations({
     },
   });
   const createWorkspaceMutation = useMutation({
-    mutationFn: (name: string) =>
-      createProjectWorkspace({ name, storage: { kind: "managed" } }),
+    mutationFn: (input: ProjectWorkspaceCreate) =>
+      createProjectWorkspace(input),
     onSuccess: (workspace) => {
       queryClient.setQueryData<ProjectWorkspaceSummary[]>(
         ["project-workspaces"],

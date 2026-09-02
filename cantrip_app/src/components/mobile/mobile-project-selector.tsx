@@ -1,7 +1,8 @@
 import type {
-  ProjectSummary,
   ProjectFolderSetupJobSummary,
   ProjectReplicaJobSummary,
+  ProjectSummary,
+  ProjectWorkspaceCreate,
   ProjectWorkspaceSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
@@ -91,7 +92,9 @@ export function MobileProjectSelector({
   currentUserName: string;
   error?: string | null;
   loading: boolean;
-  onCreateWorkspace(name: string): Promise<void>;
+  onCreateWorkspace(
+    input: ProjectWorkspaceCreate,
+  ): Promise<ProjectWorkspaceSummary>;
   onManageWorkspaces(): void;
   onNewProject(source: ProjectCreateSource): void;
   onOpenAdmin(): void;
@@ -143,6 +146,7 @@ export function MobileProjectSelector({
           onCreate={onCreateWorkspace}
           onAddProject={onNewProject}
           onManage={onManageWorkspaces}
+          workers={workers}
         />
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
