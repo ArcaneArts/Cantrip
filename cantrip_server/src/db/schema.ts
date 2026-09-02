@@ -1976,7 +1976,7 @@ export const projectWorkspaceMemberships = pgTable(
   {
     workspaceId: text("workspace_id")
       .notNull()
-      .references(() => projectWorkspaces.id, { onDelete: "cascade" }),
+      .references(() => projectWorkspaces.id, { onDelete: "restrict" }),
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
@@ -1986,7 +1986,9 @@ export const projectWorkspaceMemberships = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.workspaceId, table.projectId] }),
-    index("project_workspace_memberships_project_index").on(table.projectId),
+    uniqueIndex("project_workspace_memberships_project_unique").on(
+      table.projectId,
+    ),
   ],
 );
 

@@ -99,7 +99,6 @@ class MemoryWorkspaceApi implements ProjectWorkspaceWireApi {
     const next: ProjectWorkspaceWireSummary = {
       ...current,
       ...(input.nameProtection ? { nameProtection: input.nameProtection } : {}),
-      ...(input.projectIds ? { projectIds: input.projectIds } : {}),
       ...(input.isDefault ? { isDefault: true } : {}),
       revision: current.revision + 1,
       updatedAt: timestamp,
@@ -150,10 +149,8 @@ describe("workspace encryption adapter", () => {
     await expect(adapter.create({ name: "  TEAM " })).rejects.toMatchObject({
       status: 409,
     });
-    const renamed = await adapter.update(created.id, {
-      name: "Research",
-      projectIds: ["project-1"],
-    });
+    api.rows.find(({ id }) => id === created.id)!.projectIds.push("project-1");
+    const renamed = await adapter.update(created.id, { name: "Research" });
     expect(renamed.name).toBe("Research");
     const workspaces = await adapter.list();
     const projects = [{ id: "project-1", name: "Cantrip" }] as ProjectSummary[];

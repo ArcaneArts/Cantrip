@@ -492,27 +492,6 @@ export class ProjectRepository {
         );
       }
     }
-    const projectIds = input.projectIds
-      ? [...new Set(input.projectIds)]
-      : undefined;
-    if (projectIds) {
-      const ownedProjects = projectIds.length
-        ? await this.database
-            .select({ id: schema.projects.id })
-            .from(schema.projects)
-            .where(
-              and(
-                eq(schema.projects.ownerId, ownerId),
-                inArray(schema.projects.id, projectIds),
-              ),
-            )
-        : [];
-      if (ownedProjects.length !== projectIds.length) {
-        throw new ProjectWorkspaceInvariantError(
-          "Workspace membership contained an unknown project.",
-        );
-      }
-    }
     await this.database.transaction(async (transaction) => {
       const updatedAt = new Date();
       if (input.isDefault) {
@@ -559,20 +538,6 @@ export class ProjectRepository {
           "Workspace revision changed before the update could be saved.",
         );
       }
-      if (projectIds !== undefined) {
-        await transaction
-          .delete(schema.projectWorkspaceMemberships)
-          .where(
-            eq(schema.projectWorkspaceMemberships.workspaceId, workspaceId),
-          );
-        if (projectIds.length) {
-          await transaction
-            .insert(schema.projectWorkspaceMemberships)
-            .values(
-              projectIds.map((projectId) => ({ workspaceId, projectId })),
-            );
-        }
-      }
     });
     return (
       await this.collaborators.listProjectWorkspaceWire(ownerId)
@@ -597,6 +562,16 @@ export class ProjectRepository {
     if (rows[0].isDefault) {
       throw new ProjectWorkspaceInvariantError(
         "The Default workspace cannot be deleted.",
+      );
+    }
+    const assignedProjects = await this.database
+      .select({ projectId: schema.projectWorkspaceMemberships.projectId })
+      .from(schema.projectWorkspaceMemberships)
+      .where(eq(schema.projectWorkspaceMemberships.workspaceId, workspaceId))
+      .limit(1);
+    if (assignedProjects[0]) {
+      throw new ProjectWorkspaceInvariantError(
+        "A workspace containing projects cannot be deleted.",
       );
     }
     await this.database

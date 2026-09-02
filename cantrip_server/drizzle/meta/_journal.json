@@ -1254,6 +1254,13 @@
       "when": 1788267000000,
       "tag": "0178_optional_content_gutters",
       "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1788364800000,
+      "tag": "0179_single_project_workspace",
+      "breakpoints": true
     }
   ]
 }

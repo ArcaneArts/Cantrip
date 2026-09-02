@@ -27,22 +27,15 @@ export function projectsInWorkspace(
 export function resolveProjectWorkspaceForSelection(
   workspaces: readonly ProjectWorkspaceSummary[],
   projectId: string,
-  preferredWorkspaceId: string | null,
 ): ProjectWorkspaceSummary | null {
-  const preferred = workspaces.find(
-    ({ id, projectIds }) =>
-      id === preferredWorkspaceId && projectIds.includes(projectId),
-  );
   return (
-    preferred ??
-    workspaces.find(({ projectIds }) => projectIds.includes(projectId)) ??
-    null
+    workspaces.find(({ projectIds }) => projectIds.includes(projectId)) ?? null
   );
 }
 
 export interface ProjectSearchResult {
-  memberships: ProjectWorkspaceSummary[];
   project: ProjectSummary;
+  workspace: ProjectWorkspaceSummary | null;
 }
 
 export function searchProjects(
@@ -51,12 +44,10 @@ export function searchProjects(
   activeWorkspace: ProjectWorkspaceSummary | null,
   query: string,
 ): ProjectSearchResult[] {
-  const membershipsByProjectId = new Map<string, ProjectWorkspaceSummary[]>();
+  const workspaceByProjectId = new Map<string, ProjectWorkspaceSummary>();
   for (const workspace of workspaces) {
     for (const projectId of workspace.projectIds) {
-      const memberships = membershipsByProjectId.get(projectId) ?? [];
-      memberships.push(workspace);
-      membershipsByProjectId.set(projectId, memberships);
+      workspaceByProjectId.set(projectId, workspace);
     }
   }
 
@@ -67,18 +58,18 @@ export function searchProjects(
   return candidates
     .filter((project) => {
       if (!needle) return true;
-      const memberships = membershipsByProjectId.get(project.id) ?? [];
+      const workspace = workspaceByProjectId.get(project.id);
       return [
         project.name,
         project.github?.nameWithOwner,
         project.source?.displayPath,
-        ...memberships.map(({ name }) => name),
+        workspace?.name,
       ]
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle));
     })
     .map((project) => ({
-      memberships: membershipsByProjectId.get(project.id) ?? [],
       project,
+      workspace: workspaceByProjectId.get(project.id) ?? null,
     }));
 }

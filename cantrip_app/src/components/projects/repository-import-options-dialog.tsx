@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
+import { WorkspaceAssignment } from "@/components/workspaces/workspace-assignment";
 import { pickLocalFolder } from "@/lib/desktop-folder-picker";
 import { listDesktopWorkers } from "@/lib/desktop-worker";
 import { errorMessage } from "@/lib/error-message";
@@ -34,7 +34,6 @@ export type RepositoryPlacementMode = ProjectReplicaPlacementRequest["mode"];
 
 export interface RepositoryImportOptions {
   placement: ProjectReplicaPlacementRequest;
-  workspaceIds?: string[];
 }
 
 export function repositoryPlacementAvailability(worker: WorkerSummary) {
@@ -88,36 +87,33 @@ const choices: Array<{
 
 export function RepositoryImportOptionsDialog({
   error,
-  initialWorkspaceIds,
   onOpenChange,
   onSubmit,
   open,
   pending = false,
   repositoryName,
-  requiredWorkspaceId,
   submitLabel = "Add repository",
   title = "Add with location",
   worker,
+  workspaceId,
   workspaces = [],
 }: {
   error?: string | null;
-  initialWorkspaceIds?: readonly string[];
   onOpenChange(open: boolean): void;
   onSubmit(options: RepositoryImportOptions): Promise<void> | void;
   open: boolean;
   pending?: boolean;
   repositoryName: string;
-  requiredWorkspaceId?: string;
   submitLabel?: string;
   title?: string;
   worker: WorkerSummary | null;
+  workspaceId?: string;
   workspaces?: ProjectWorkspaceSummary[];
 }) {
   const [mode, setMode] = useState<RepositoryPlacementMode>("managed");
   const [path, setPath] = useState("");
   const [picking, setPicking] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
-  const [workspaceIds, setWorkspaceIds] = useState<Set<string>>(new Set());
   const wasOpen = useRef(false);
   const desktopWorkers = useQuery({
     enabled: open,
@@ -146,10 +142,7 @@ export function RepositoryImportOptionsDialog({
     setPath("");
     setPicking(false);
     setPickerError(null);
-    const selected = new Set(initialWorkspaceIds ?? []);
-    if (requiredWorkspaceId) selected.add(requiredWorkspaceId);
-    setWorkspaceIds(selected);
-  }, [initialWorkspaceIds, open, requiredWorkspaceId]);
+  }, [open]);
 
   const customMode = mode !== "managed";
   const selectedModeAvailable =
@@ -163,8 +156,7 @@ export function RepositoryImportOptionsDialog({
     selectedModeAvailable &&
     !pending &&
     !picking &&
-    (!customMode || path.trim()) &&
-    (!requiredWorkspaceId || workspaceIds.has(requiredWorkspaceId)),
+    (!customMode || path.trim()),
   );
 
   const chooseFolder = async () => {
@@ -326,12 +318,10 @@ export function RepositoryImportOptionsDialog({
           </label>
         ) : null}
 
-        {requiredWorkspaceId ? (
-          <WorkspaceMembershipPicker
-            requiredWorkspaceId={requiredWorkspaceId}
-            selectedIds={workspaceIds}
+        {workspaceId ? (
+          <WorkspaceAssignment
+            workspaceId={workspaceId}
             workspaces={workspaces}
-            onChange={setWorkspaceIds}
           />
         ) : null}
 
@@ -365,9 +355,6 @@ export function RepositoryImportOptionsDialog({
                   mode === "managed"
                     ? { mode: "managed" }
                     : { mode, path: path.trim() },
-                ...(requiredWorkspaceId
-                  ? { workspaceIds: [...workspaceIds] }
-                  : {}),
               };
               void Promise.resolve(onSubmit(options)).catch(() => undefined);
             }}

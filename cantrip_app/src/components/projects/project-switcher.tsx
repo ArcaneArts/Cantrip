@@ -33,16 +33,16 @@ import { cn } from "@/lib/utils";
 
 function projectContext(
   project: ProjectSummary,
-  memberships: readonly ProjectWorkspaceSummary[],
-  showMemberships: boolean,
+  workspace: ProjectWorkspaceSummary | null,
+  showWorkspace: boolean,
 ): string {
-  if (showMemberships && memberships.length > 0) {
-    return memberships.map(({ name }) => name).join(" · ");
+  if (showWorkspace && workspace) {
+    return workspace.name;
   }
   return (
     project.github?.nameWithOwner ||
     project.source?.displayPath ||
-    memberships.map(({ name }) => name).join(" · ") ||
+    workspace?.name ||
     "Project"
   );
 }
@@ -159,7 +159,7 @@ export function ProjectSwitcher({
                   <CommandGroup
                     heading={searchingEverywhere ? "All projects" : undefined}
                   >
-                    {results.map(({ memberships, project }) => (
+                    {results.map(({ project, workspace }) => (
                       <CommandItem
                         key={project.id}
                         className="py-2"
@@ -177,7 +177,7 @@ export function ProjectSwitcher({
                           <span className="block truncate text-[11px] text-muted-foreground">
                             {projectContext(
                               project,
-                              memberships,
+                              workspace,
                               searchingEverywhere,
                             )}
                           </span>

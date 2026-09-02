@@ -806,7 +806,6 @@ export function createShellNavigationCommands({
     const targetWorkspace = resolveProjectWorkspaceForSelection(
       projectWorkspaces ?? [],
       projectId,
-      activeProjectWorkspace?.id ?? null,
     );
     if (!targetWorkspace) return false;
     if (targetWorkspace.id !== activeProjectWorkspace?.id) {

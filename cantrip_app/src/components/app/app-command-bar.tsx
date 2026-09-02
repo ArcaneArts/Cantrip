@@ -73,16 +73,18 @@ const scopeLabels: Record<CommandBarScope, string> = {
   "new-project": "New Project",
 };
 
-function projectMemberships(
+function projectWorkspace(
   projectId: string,
   workspaces: readonly ProjectWorkspaceSummary[],
-): ProjectWorkspaceSummary[] {
-  return workspaces.filter(({ projectIds }) => projectIds.includes(projectId));
+): ProjectWorkspaceSummary | null {
+  return (
+    workspaces.find(({ projectIds }) => projectIds.includes(projectId)) ?? null
+  );
 }
 
 function projectDetail(
   project: ProjectSummary,
-  memberships: readonly ProjectWorkspaceSummary[],
+  workspace: ProjectWorkspaceSummary | null,
 ): string {
   const source =
     project.source?.displayPath ??
@@ -90,8 +92,7 @@ function projectDetail(
     (project.originKind === "managed-folder"
       ? "Worker-bound folder"
       : "GitHub repository");
-  const workspaceNames = memberships.map(({ name }) => name).join(", ");
-  return workspaceNames ? `${source} · ${workspaceNames}` : source;
+  return workspace ? `${source} · ${workspace.name}` : source;
 }
 
 function AppActionIcon({ actionId }: { actionId: AppActionId }) {
@@ -131,8 +132,8 @@ function ProjectCommandGroup({
   return (
     <CommandGroup heading={heading}>
       {projects.map((project) => {
-        const memberships = projectMemberships(project.id, workspaces);
-        const detail = projectDetail(project, memberships);
+        const workspace = projectWorkspace(project.id, workspaces);
+        const detail = projectDetail(project, workspace);
         const current = project.id === currentProjectId;
         return (
           <CommandItem
@@ -318,10 +319,7 @@ export function AppCommandBar({
     setOperationError(null);
   }, [open]);
 
-  const rememberProject = (
-    project: ProjectSummary,
-    workspaceIds: ReadonlySet<string>,
-  ) => {
+  const rememberProject = (project: ProjectSummary, workspaceId: string) => {
     queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
       [...current.filter((item) => item.id !== project.id), project].sort(
         (left, right) => left.position - right.position,
@@ -331,7 +329,7 @@ export function AppCommandBar({
       ["project-workspaces"],
       (current) =>
         current?.map((workspace) =>
-          workspaceIds.has(workspace.id) &&
+          workspace.id === workspaceId &&
           !workspace.projectIds.includes(project.id)
             ? {
                 ...workspace,
@@ -362,7 +360,6 @@ export function AppCommandBar({
     const workspace = resolveProjectWorkspaceForSelection(
       workspaces,
       project.id,
-      activeWorkspaceId,
     );
     if (!workspace) {
       setOperationError(
@@ -384,9 +381,9 @@ export function AppCommandBar({
       const project = await createManagedFolderProject({
         name,
         workerId: folderWorker.workerId,
-        workspaceIds: [activeWorkspaceId],
+        workspaceId: activeWorkspaceId,
       });
-      rememberProject(project, new Set([activeWorkspaceId]));
+      rememberProject(project, activeWorkspaceId);
       onOpenChange(false);
       onCreatedProject(project);
     } catch (error) {
@@ -410,8 +407,6 @@ export function AppCommandBar({
     }
     setPendingRepositoryId(repository.id);
     setOperationError(null);
-    const workspaceIds = new Set(options?.workspaceIds ?? [activeWorkspaceId]);
-    workspaceIds.add(activeWorkspaceId);
     try {
       const project = await createGithubProject({
         workerId: githubWorkerId,
@@ -419,9 +414,9 @@ export function AppCommandBar({
         nameWithOwner: repository.nameWithOwner,
         url: repository.url,
         ...(options?.placement ? { placement: options.placement } : {}),
-        workspaceIds: [...workspaceIds],
+        workspaceId: activeWorkspaceId,
       });
-      rememberProject(project, workspaceIds);
+      rememberProject(project, activeWorkspaceId);
       const markImported = (queryKey: readonly unknown[]) =>
         queryClient.setQueryData<GithubRepository[]>(queryKey, (current) =>
           current?.map((item) =>
@@ -873,13 +868,10 @@ export function AppCommandBar({
       </DialogContent>
       <RepositoryImportOptionsDialog
         error={operationError}
-        initialWorkspaceIds={
-          activeWorkspaceId ? [activeWorkspaceId] : undefined
-        }
         open={Boolean(customRepository)}
         pending={Boolean(pendingRepositoryId)}
         repositoryName={customRepository?.nameWithOwner ?? "repository"}
-        requiredWorkspaceId={activeWorkspaceId ?? undefined}
+        workspaceId={activeWorkspaceId ?? undefined}
         worker={githubWorker}
         workspaces={[...workspaces]}
         onOpenChange={(next) => !next && setCustomRepository(null)}

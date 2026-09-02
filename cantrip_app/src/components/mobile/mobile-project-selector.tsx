@@ -171,7 +171,7 @@ export function MobileProjectSelector({
           </div>
         ) : results.length > 0 ? (
           <nav aria-label="Projects" className="space-y-1">
-            {results.map(({ memberships, project }) => {
+            {results.map(({ project, workspace }) => {
               const status = projectStatus(
                 project,
                 workers,
@@ -220,21 +220,18 @@ export function MobileProjectSelector({
                         {project.source.displayPath}
                       </p>
                     ) : null}
-                    {searchingEverywhere && memberships.length > 0 ? (
+                    {searchingEverywhere && workspace ? (
                       <div className="mt-2 flex flex-wrap gap-1">
-                        {memberships.map((workspace) => (
-                          <Badge
-                            key={workspace.id}
-                            className="h-5 px-1.5 text-[9px] font-normal"
-                            variant={
-                              workspace.id === activeWorkspace?.id
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {workspace.name}
-                          </Badge>
-                        ))}
+                        <Badge
+                          className="h-5 px-1.5 text-[9px] font-normal"
+                          variant={
+                            workspace.id === activeWorkspace?.id
+                              ? "secondary"
+                              : "outline"
+                          }
+                        >
+                          {workspace.name}
+                        </Badge>
                       </div>
                     ) : null}
                   </div>

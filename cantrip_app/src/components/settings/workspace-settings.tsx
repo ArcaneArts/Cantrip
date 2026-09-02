@@ -54,17 +54,6 @@ export function promoteDefaultWorkspace(
   );
 }
 
-export function toggleWorkspaceProject(
-  projectIds: string[],
-  projectId: string,
-  checked: boolean,
-): string[] {
-  const next = new Set(projectIds);
-  if (checked) next.add(projectId);
-  else next.delete(projectId);
-  return [...next];
-}
-
 export function WorkspaceSettings({
   onOpenPolicySettings,
 }: {
@@ -108,16 +97,6 @@ export function WorkspaceSettings({
       setName("");
     },
   });
-  const membership = useMutation({
-    mutationFn: ({
-      projectIds,
-      workspaceId,
-    }: {
-      projectIds: string[];
-      workspaceId: string;
-    }) => updateProjectWorkspace(workspaceId, { projectIds }),
-    onSuccess: replaceWorkspace,
-  });
   const makeDefault = useMutation({
     mutationFn: (workspaceId: string) =>
       updateProjectWorkspace(workspaceId, { isDefault: true }),
@@ -157,6 +136,13 @@ export function WorkspaceSettings({
     if (name.trim()) save.mutate();
   };
 
+  const workspaceByProjectId = new Map<string, ProjectWorkspaceSummary>();
+  for (const workspace of workspaces.data ?? []) {
+    for (const projectId of workspace.projectIds) {
+      workspaceByProjectId.set(projectId, workspace);
+    }
+  }
+
   if ((projects.isLoading || workspaces.isLoading) && !workspaces.data) {
     return (
       <div className="grid min-h-48 place-items-center text-muted-foreground">
@@ -172,8 +158,7 @@ export function WorkspaceSettings({
           <div>
             <h1 className="text-base font-semibold">Workspaces</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              Filter the sidebar without duplicating projects, repositories, or
-              worktrees.
+              Organize each project in one permanent workspace.
             </p>
           </div>
           <Button size="sm" onClick={() => openEditor(null)}>
@@ -191,7 +176,8 @@ export function WorkspaceSettings({
           <div>
             <h2 className="text-sm font-semibold">Workspace management</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Rename workspaces, choose the default, and configure policies.
+              Rename workspaces, choose the default for new projects, and
+              configure policies.
             </p>
           </div>
           <div className="divide-y border-y">
@@ -284,13 +270,13 @@ export function WorkspaceSettings({
 
         <section className="grid gap-3 pt-2">
           <div>
-            <h2 className="text-sm font-semibold">Project membership</h2>
+            <h2 className="text-sm font-semibold">Project workspaces</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Check which workspaces should show each project in the sidebar.
+              A project stays in the workspace where it was created or imported.
             </p>
           </div>
           {(projects.data ?? []).length ? (
-            <div className="overflow-x-auto border-y">
+            <div className="border-y">
               <table className="min-w-full border-collapse text-left text-sm">
                 <thead className="bg-background text-xs text-muted-foreground">
                   <tr className="border-b">
@@ -300,23 +286,9 @@ export function WorkspaceSettings({
                     >
                       Project
                     </th>
-                    {(workspaces.data ?? []).map((workspace) => (
-                      <th
-                        key={workspace.id}
-                        scope="col"
-                        className="min-w-40 px-3 py-2 text-center font-medium"
-                      >
-                        <span className="inline-flex max-w-36 items-center gap-1.5">
-                          <span className="truncate">{workspace.name}</span>
-                          {workspace.isDefault ? (
-                            <Star
-                              aria-label="Default workspace"
-                              className="size-3 shrink-0 fill-current"
-                            />
-                          ) : null}
-                        </span>
-                      </th>
-                    ))}
+                    <th scope="col" className="min-w-48 px-3 py-2 font-medium">
+                      Workspace
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -334,37 +306,10 @@ export function WorkspaceSettings({
                           <span className="truncate">{project.name}</span>
                         </span>
                       </th>
-                      {(workspaces.data ?? []).map((workspace) => {
-                        const checked = workspace.projectIds.includes(
-                          project.id,
-                        );
-                        return (
-                          <td
-                            key={workspace.id}
-                            className="p-0 text-center group-hover:bg-muted/30"
-                          >
-                            <label className="flex cursor-pointer justify-center px-3 py-3">
-                              <input
-                                type="checkbox"
-                                className="size-4 accent-primary"
-                                checked={checked}
-                                disabled={membership.isPending}
-                                aria-label={`Show ${project.name} in ${workspace.name}`}
-                                onChange={(event) =>
-                                  membership.mutate({
-                                    workspaceId: workspace.id,
-                                    projectIds: toggleWorkspaceProject(
-                                      workspace.projectIds,
-                                      project.id,
-                                      event.target.checked,
-                                    ),
-                                  })
-                                }
-                              />
-                            </label>
-                          </td>
-                        );
-                      })}
+                      <td className="px-3 py-2.5 text-muted-foreground group-hover:bg-muted/30">
+                        {workspaceByProjectId.get(project.id)?.name ??
+                          "Unavailable"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -372,14 +317,14 @@ export function WorkspaceSettings({
             </div>
           ) : (
             <p className="border-y px-3 py-8 text-center text-sm text-muted-foreground">
-              Import a project before assigning workspace visibility.
+              Add a project to see its workspace here.
             </p>
           )}
         </section>
 
-        {membership.isError || makeDefault.isError || remove.isError ? (
+        {makeDefault.isError || remove.isError ? (
           <p className="text-sm text-destructive">
-            {message(membership.error ?? makeDefault.error ?? remove.error)}
+            {message(makeDefault.error ?? remove.error)}
           </p>
         ) : null}
       </div>
@@ -392,7 +337,7 @@ export function WorkspaceSettings({
                 {editing ? "Rename workspace" : "New workspace"}
               </DialogTitle>
               <DialogDescription>
-                A workspace is only a project visibility filter.
+                Projects added here remain assigned to this workspace.
               </DialogDescription>
             </DialogHeader>
             <label className="grid gap-2 text-sm">
@@ -428,8 +373,8 @@ export function WorkspaceSettings({
           <DialogHeader>
             <DialogTitle>Delete {deleteTarget?.name}?</DialogTitle>
             <DialogDescription>
-              Projects, repositories, tabs, and files are not deleted. This
-              removes only the workspace filter and its memberships.
+              Only an empty workspace can be deleted. Projects are never moved
+              or deleted with a workspace.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

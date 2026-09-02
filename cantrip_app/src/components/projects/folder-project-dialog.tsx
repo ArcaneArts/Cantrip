@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Folder, FolderOpen, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
-import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
+import { WorkspaceAssignment } from "@/components/workspaces/workspace-assignment";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
@@ -61,9 +61,6 @@ export function FolderProjectDialog({
   const [name, setName] = useState("");
   const [existingPath, setExistingPath] = useState("");
   const [workerId, setWorkerId] = useState(defaultWorkerId ?? "");
-  const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState(
-    () => new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
-  );
   const [submitting, setSubmitting] = useState(false);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,10 +90,7 @@ export function FolderProjectDialog({
   useEffect(() => {
     if (!open) return;
     setMode(initialMode);
-    setSelectedWorkspaceIds(
-      new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
-    );
-  }, [activeWorkspaceId, initialMode, open]);
+  }, [initialMode, open]);
 
   useEffect(() => {
     if (eligibleWorkers.some((worker) => worker.workerId === workerId)) return;
@@ -118,10 +112,7 @@ export function FolderProjectDialog({
     setPicking(false);
   };
 
-  const rememberProject = (
-    project: ProjectSummary,
-    workspaceIds: ReadonlySet<string>,
-  ) => {
+  const rememberProject = (project: ProjectSummary, workspaceId: string) => {
     queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
       [...current.filter((item) => item.id !== project.id), project].sort(
         (left, right) => left.position - right.position,
@@ -131,7 +122,7 @@ export function FolderProjectDialog({
       ["project-workspaces"],
       (current) =>
         current?.map((workspace) =>
-          workspaceIds.has(workspace.id) &&
+          workspace.id === workspaceId &&
           !workspace.projectIds.includes(project.id)
             ? {
                 ...workspace,
@@ -173,16 +164,14 @@ export function FolderProjectDialog({
     }
     setSubmitting(true);
     setError(null);
-    const workspaceIds = new Set(selectedWorkspaceIds);
-    workspaceIds.add(activeWorkspaceId);
     try {
       const project = await createManagedFolderProject({
         name: projectName,
         workerId,
         ...(mode === "existing" ? { existingPath: path } : {}),
-        workspaceIds: [...workspaceIds],
+        workspaceId: activeWorkspaceId,
       });
-      rememberProject(project, workspaceIds);
+      rememberProject(project, activeWorkspaceId);
       onCreatedProject(project);
       onOpenChange(false);
       reset();
@@ -308,11 +297,9 @@ export function FolderProjectDialog({
           )}
 
           {activeWorkspaceId ? (
-            <WorkspaceMembershipPicker
-              requiredWorkspaceId={activeWorkspaceId}
-              selectedIds={selectedWorkspaceIds}
+            <WorkspaceAssignment
+              workspaceId={activeWorkspaceId}
               workspaces={workspaces}
-              onChange={setSelectedWorkspaceIds}
             />
           ) : null}
 

@@ -35,7 +35,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
+import { WorkspaceAssignment } from "@/components/workspaces/workspace-assignment";
 import {
   getCachedGithubRepositories,
   getGithubRepositories,
@@ -103,14 +103,6 @@ export function RepositoryImporter({
   const [importErrors, setImportErrors] = useState<Map<string, string>>(
     new Map(),
   );
-  const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState(
-    () => new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
-  );
-  useEffect(() => {
-    setSelectedWorkspaceIds(
-      new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
-    );
-  }, [activeWorkspaceId]);
   useEffect(() => {
     setRenderedRepositoryCount(REPOSITORY_IMPORT_PAGE_SIZE);
     repositoryListRef.current?.scrollTo({ top: 0 });
@@ -133,10 +125,7 @@ export function RepositoryImporter({
     queryKey: ["github-repositories-cache", workerId, github.data?.login],
     staleTime: 30_000,
   });
-  const rememberProject = (
-    project: ProjectSummary,
-    workspaceIds: ReadonlySet<string>,
-  ) => {
+  const rememberProject = (project: ProjectSummary, workspaceId: string) => {
     queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
       [...current.filter((item) => item.id !== project.id), project].sort(
         (left, right) => left.position - right.position,
@@ -146,7 +135,7 @@ export function RepositoryImporter({
       ["project-workspaces"],
       (current) =>
         current?.map((workspace) =>
-          workspaceIds.has(workspace.id) &&
+          workspace.id === workspaceId &&
           !workspace.projectIds.includes(project.id)
             ? {
                 ...workspace,
@@ -175,8 +164,6 @@ export function RepositoryImporter({
       return next;
     });
 
-    const workspaceIds = new Set(options?.workspaceIds ?? selectedWorkspaceIds);
-    workspaceIds.add(activeWorkspaceId);
     try {
       const project = await createGithubProject({
         workerId,
@@ -184,9 +171,9 @@ export function RepositoryImporter({
         nameWithOwner: repository.nameWithOwner,
         url: repository.url,
         ...(options?.placement ? { placement: options.placement } : {}),
-        workspaceIds: [...workspaceIds],
+        workspaceId: activeWorkspaceId,
       });
-      rememberProject(project, workspaceIds);
+      rememberProject(project, activeWorkspaceId);
       const markImported = (queryKey: readonly unknown[]) =>
         queryClient.setQueryData<GithubRepository[]>(queryKey, (current) =>
           current?.map((item) =>
@@ -375,9 +362,8 @@ export function RepositoryImporter({
               </div>
 
               {activeWorkspaceId ? (
-                <WorkspaceMembershipPicker
-                  requiredWorkspaceId={activeWorkspaceId}
-                  selectedIds={selectedWorkspaceIds}
+                <WorkspaceAssignment
+                  workspaceId={activeWorkspaceId}
                   trailingAction={
                     <Button
                       size="sm"
@@ -389,7 +375,6 @@ export function RepositoryImporter({
                     </Button>
                   }
                   workspaces={workspaces}
-                  onChange={setSelectedWorkspaceIds}
                 />
               ) : null}
             </div>
@@ -630,14 +615,13 @@ export function RepositoryImporter({
                   ? (importErrors.get(customRepository.id) ?? null)
                   : null
               }
-              initialWorkspaceIds={[...selectedWorkspaceIds]}
               open={Boolean(customRepository)}
               pending={Boolean(
                 customRepository &&
                 pendingRepositoryIds.has(customRepository.id),
               )}
               repositoryName={customRepository?.nameWithOwner ?? "repository"}
-              requiredWorkspaceId={activeWorkspaceId ?? undefined}
+              workspaceId={activeWorkspaceId ?? undefined}
               worker={selectedWorker}
               workspaces={workspaces}
               onOpenChange={(open) => !open && setCustomRepository(null)}
