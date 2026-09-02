@@ -43,6 +43,7 @@ import type {
   ProjectReplicaPlacementMode,
   ProjectWorkspaceStorageKind,
   WorkspaceRepositoryCandidateClassification,
+  WorkspaceRepositoryCandidateDiagnosticCode,
   WorkspaceRepositoryCandidateImportState,
   WorkspaceRepositoryDiscoveryErrorCode,
   WorkspaceRepositoryDiscoveryJobState,
@@ -2149,6 +2150,14 @@ export const workspaceRepositoryCandidates = pgTable(
       .references(() => workers.id),
     protectedPathHandle: text("protected_path_handle").notNull(),
     protectedDisplayHandle: text("protected_display_handle").notNull(),
+    protectedOriginUrlHandle: text("protected_origin_url_handle"),
+    protectedGithubRepositoryIdHandle: text(
+      "protected_github_repository_id_handle",
+    ),
+    protectedGithubNameWithOwnerHandle: text(
+      "protected_github_name_with_owner_handle",
+    ),
+    protectedGithubUrlHandle: text("protected_github_url_handle"),
     repositoryFingerprint: text("repository_fingerprint").notNull(),
     classification: text("classification")
       .$type<WorkspaceRepositoryCandidateClassification>()
@@ -2158,7 +2167,10 @@ export const workspaceRepositoryCandidates = pgTable(
       .$type<WorkspaceRepositoryCandidateImportState>()
       .notNull()
       .default("pending"),
-    diagnosticCode: text("diagnostic_code"),
+    diagnosticCode:
+      text(
+        "diagnostic_code",
+      ).$type<WorkspaceRepositoryCandidateDiagnosticCode>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -2192,6 +2204,18 @@ export const workspaceRepositoryCandidates = pgTable(
     check(
       "workspace_repository_candidates_display_handle_check",
       sql`${table.protectedDisplayHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "workspace_repository_candidates_origin_handle_check",
+      sql`${table.protectedOriginUrlHandle} IS NULL OR ${table.protectedOriginUrlHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "workspace_repository_candidates_github_handles_check",
+      sql`num_nonnulls(${table.protectedGithubRepositoryIdHandle}, ${table.protectedGithubNameWithOwnerHandle}, ${table.protectedGithubUrlHandle}) IN (0, 3) AND (${table.protectedGithubRepositoryIdHandle} IS NULL OR (${table.protectedGithubRepositoryIdHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$' AND ${table.protectedGithubNameWithOwnerHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$' AND ${table.protectedGithubUrlHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$'))`,
+    ),
+    check(
+      "workspace_repository_candidates_classification_shape_check",
+      sql`(${table.classification} = 'github-accessible' AND ${table.protectedOriginUrlHandle} IS NOT NULL AND ${table.protectedGithubRepositoryIdHandle} IS NOT NULL) OR (${table.classification} = 'github-unavailable' AND ${table.protectedOriginUrlHandle} IS NOT NULL AND ${table.protectedGithubRepositoryIdHandle} IS NULL) OR (${table.classification} IN ('unclassified', 'local-git') AND ${table.protectedGithubRepositoryIdHandle} IS NULL)`,
     ),
     check(
       "workspace_repository_candidates_fingerprint_check",

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { repositoryRoutingHandleSchema } from "./repository-operation.js";
+import { projectGithubRoutingRepositorySchema } from "./projects.js";
 
 export const workspaceRepositoryDiscoveryJobStateSchema = z.enum([
   "queued",
@@ -69,6 +70,18 @@ export const workspaceRepositoryCandidateClassificationSchema = z.enum([
   "github-unavailable",
 ]);
 
+export const workspaceRepositoryDetectedClassificationSchema =
+  workspaceRepositoryCandidateClassificationSchema.exclude(["unclassified"]);
+
+export const workspaceRepositoryCandidateDiagnosticCodeSchema = z.enum([
+  "origin-invalid",
+  "origin-unavailable",
+  "github-cli-unavailable",
+  "github-api-unavailable",
+  "github-api-invalid",
+  "github-identity-mismatch",
+]);
+
 export const workspaceRepositoryCandidateImportStateSchema = z.enum([
   "pending",
   "importing",
@@ -85,14 +98,40 @@ export const workspaceRepositoryCandidateSummarySchema = z
     workerId: z.string().min(1),
     pathHandle: repositoryRoutingHandleSchema,
     displayHandle: repositoryRoutingHandleSchema,
+    originUrlHandle: repositoryRoutingHandleSchema.nullable(),
+    github: projectGithubRoutingRepositorySchema.nullable(),
     repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
     classification: workspaceRepositoryCandidateClassificationSchema,
     importState: workspaceRepositoryCandidateImportStateSchema,
-    diagnosticCode: z.string().min(1).max(200).nullable(),
+    diagnosticCode: workspaceRepositoryCandidateDiagnosticCodeSchema.nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
-  .strict();
+  .strict()
+  .superRefine((candidate, context) => {
+    const hasGithub = candidate.github !== null;
+    const hasOrigin = candidate.originUrlHandle !== null;
+    const hasDiagnostic = candidate.diagnosticCode !== null;
+    const valid =
+      (candidate.classification === "github-accessible" &&
+        hasGithub &&
+        hasOrigin &&
+        !hasDiagnostic) ||
+      (candidate.classification === "github-unavailable" &&
+        !hasGithub &&
+        hasOrigin &&
+        hasDiagnostic) ||
+      ((candidate.classification === "unclassified" ||
+        candidate.classification === "local-git") &&
+        !hasGithub);
+    if (!valid) {
+      context.addIssue({
+        code: "custom",
+        message: "Repository candidate classification metadata is invalid.",
+        path: ["classification"],
+      });
+    }
+  });
 
 export const workspaceRepositoryDiscoverySnapshotSchema = z
   .object({
@@ -131,9 +170,37 @@ export const workspaceRepositoryDiscoveryWorkerResultSchema = z
           .object({
             path: repositoryRoutingHandleSchema,
             displayPath: repositoryRoutingHandleSchema,
+            originUrl: repositoryRoutingHandleSchema.nullable(),
+            github: projectGithubRoutingRepositorySchema.nullable(),
             repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+            classification: workspaceRepositoryDetectedClassificationSchema,
+            diagnosticCode:
+              workspaceRepositoryCandidateDiagnosticCodeSchema.nullable(),
           })
-          .strict(),
+          .strict()
+          .superRefine((candidate, context) => {
+            const hasGithub = candidate.github !== null;
+            const hasOrigin = candidate.originUrl !== null;
+            const hasDiagnostic = candidate.diagnosticCode !== null;
+            const valid =
+              (candidate.classification === "github-accessible" &&
+                hasGithub &&
+                hasOrigin &&
+                !hasDiagnostic) ||
+              (candidate.classification === "github-unavailable" &&
+                !hasGithub &&
+                hasOrigin &&
+                hasDiagnostic) ||
+              (candidate.classification === "local-git" && !hasGithub);
+            if (!valid) {
+              context.addIssue({
+                code: "custom",
+                message:
+                  "Repository candidate classification metadata is invalid.",
+                path: ["classification"],
+              });
+            }
+          }),
       )
       .max(500),
     counts: workspaceRepositoryDiscoveryCountsSchema,
@@ -161,6 +228,12 @@ export type WorkspaceRepositoryDiscoveryJobSummary = z.infer<
 >;
 export type WorkspaceRepositoryCandidateClassification = z.infer<
   typeof workspaceRepositoryCandidateClassificationSchema
+>;
+export type WorkspaceRepositoryDetectedClassification = z.infer<
+  typeof workspaceRepositoryDetectedClassificationSchema
+>;
+export type WorkspaceRepositoryCandidateDiagnosticCode = z.infer<
+  typeof workspaceRepositoryCandidateDiagnosticCodeSchema
 >;
 export type WorkspaceRepositoryCandidateImportState = z.infer<
   typeof workspaceRepositoryCandidateImportStateSchema

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   workspaceRepositoryCandidateClassificationSchema,
+  workspaceRepositoryCandidateDiagnosticCodeSchema,
   workspaceRepositoryCandidateSummarySchema,
   workspaceRepositoryDiscoveryCountsSchema,
   workspaceRepositoryDiscoveryJobSummarySchema,
@@ -49,6 +50,12 @@ export interface DiscoveredWorkspaceRepositoryCandidate {
   classification?: WorkspaceRepositoryCandidateClassification;
   diagnosticCode?: string | null;
   displayHandle: string;
+  originUrlHandle?: string | null;
+  github?: {
+    repositoryId: string;
+    nameWithOwner: string;
+    url: string;
+  } | null;
   pathHandle: string;
   repositoryFingerprint: string;
 }
@@ -99,6 +106,17 @@ function toCandidate(row: CandidateRow) {
     workerId: row.workerId,
     pathHandle: row.protectedPathHandle,
     displayHandle: row.protectedDisplayHandle,
+    originUrlHandle: row.protectedOriginUrlHandle,
+    github:
+      row.protectedGithubRepositoryIdHandle &&
+      row.protectedGithubNameWithOwnerHandle &&
+      row.protectedGithubUrlHandle
+        ? {
+            repositoryId: row.protectedGithubRepositoryIdHandle,
+            nameWithOwner: row.protectedGithubNameWithOwnerHandle,
+            url: row.protectedGithubUrlHandle,
+          }
+        : null,
     repositoryFingerprint: row.repositoryFingerprint,
     classification: row.classification,
     importState: row.importState,
@@ -438,18 +456,26 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
       classification: workspaceRepositoryCandidateClassificationSchema.parse(
         candidate.classification ?? "unclassified",
       ),
-      diagnosticCode: (() => {
-        const value = candidate.diagnosticCode?.trim() || null;
-        if (value && value.length > 200) {
-          throw new WorkspaceRepositoryDiscoveryInvariantError(
-            "Repository discovery diagnostic code is invalid.",
-          );
-        }
-        return value;
-      })(),
+      diagnosticCode: workspaceRepositoryCandidateDiagnosticCodeSchema
+        .nullable()
+        .parse(candidate.diagnosticCode?.trim() || null),
       displayHandle: repositoryRoutingHandleSchema.parse(
         candidate.displayHandle,
       ),
+      originUrlHandle: candidate.originUrlHandle
+        ? repositoryRoutingHandleSchema.parse(candidate.originUrlHandle)
+        : null,
+      github: candidate.github
+        ? {
+            repositoryId: repositoryRoutingHandleSchema.parse(
+              candidate.github.repositoryId,
+            ),
+            nameWithOwner: repositoryRoutingHandleSchema.parse(
+              candidate.github.nameWithOwner,
+            ),
+            url: repositoryRoutingHandleSchema.parse(candidate.github.url),
+          }
+        : null,
       pathHandle: repositoryRoutingHandleSchema.parse(candidate.pathHandle),
       repositoryFingerprint: (() => {
         if (!/^[0-9a-f]{64}$/u.test(candidate.repositoryFingerprint)) {
@@ -460,6 +486,28 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
         return candidate.repositoryFingerprint;
       })(),
     }));
+    for (const candidate of candidates) {
+      const hasOrigin = candidate.originUrlHandle !== null;
+      const hasGithub = candidate.github !== null;
+      const hasDiagnostic = candidate.diagnosticCode !== null;
+      const valid =
+        (candidate.classification === "github-accessible" &&
+          hasOrigin &&
+          hasGithub &&
+          !hasDiagnostic) ||
+        (candidate.classification === "github-unavailable" &&
+          hasOrigin &&
+          !hasGithub &&
+          hasDiagnostic) ||
+        ((candidate.classification === "unclassified" ||
+          candidate.classification === "local-git") &&
+          !hasGithub);
+      if (!valid) {
+        throw new WorkspaceRepositoryDiscoveryInvariantError(
+          "Repository discovery classification metadata is invalid.",
+        );
+      }
+    }
     if (
       new Set(
         candidates.map(({ repositoryFingerprint }) => repositoryFingerprint),
@@ -498,6 +546,12 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
             workerId: job.workerId,
             protectedPathHandle: candidate.pathHandle,
             protectedDisplayHandle: candidate.displayHandle,
+            protectedOriginUrlHandle: candidate.originUrlHandle,
+            protectedGithubRepositoryIdHandle:
+              candidate.github?.repositoryId ?? null,
+            protectedGithubNameWithOwnerHandle:
+              candidate.github?.nameWithOwner ?? null,
+            protectedGithubUrlHandle: candidate.github?.url ?? null,
             repositoryFingerprint: candidate.repositoryFingerprint,
             classification: candidate.classification,
             diagnosticCode: candidate.diagnosticCode,
@@ -513,6 +567,12 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
               workerId: job.workerId,
               protectedPathHandle: candidate.pathHandle,
               protectedDisplayHandle: candidate.displayHandle,
+              protectedOriginUrlHandle: candidate.originUrlHandle,
+              protectedGithubRepositoryIdHandle:
+                candidate.github?.repositoryId ?? null,
+              protectedGithubNameWithOwnerHandle:
+                candidate.github?.nameWithOwner ?? null,
+              protectedGithubUrlHandle: candidate.github?.url ?? null,
               classification: candidate.classification,
               diagnosticCode: candidate.diagnosticCode,
               updatedAt: now,

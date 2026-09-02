@@ -47,7 +47,11 @@ describe("workspace repository discovery contracts", () => {
           {
             path: handle,
             displayPath: `ctrr_${"b".repeat(43)}`,
+            originUrl: null,
+            github: null,
             repositoryFingerprint: "c".repeat(64),
+            classification: "local-git",
+            diagnosticCode: null,
           },
         ],
         counts,
@@ -68,6 +72,8 @@ describe("workspace repository discovery contracts", () => {
         workerId: "worker-one",
         pathHandle: "/private/repository",
         displayHandle: `ctrr_${"a".repeat(43)}`,
+        originUrlHandle: null,
+        github: null,
         repositoryFingerprint: "b".repeat(64),
         classification: "unclassified",
         importState: "pending",
@@ -76,6 +82,66 @@ describe("workspace repository discovery contracts", () => {
         updatedAt: now,
       }),
     ).toThrow();
+  });
+
+  it("requires protected metadata consistent with candidate classification", () => {
+    const handle = `ctrr_${"a".repeat(43)}`;
+    const candidate = {
+      id: "fe47e031-8924-44c0-9b51-677fc23397ca",
+      jobId: "72b3b25e-dd0f-4a12-bef5-1a77cc064219",
+      workspaceId: "workspace-one",
+      workerId: "worker-one",
+      pathHandle: handle,
+      displayHandle: handle,
+      originUrlHandle: handle,
+      github: {
+        repositoryId: handle,
+        nameWithOwner: handle,
+        url: handle,
+      },
+      repositoryFingerprint: "b".repeat(64),
+      classification: "github-accessible" as const,
+      importState: "pending" as const,
+      diagnosticCode: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    expect(workspaceRepositoryCandidateSummarySchema.parse(candidate)).toEqual(
+      candidate,
+    );
+    expect(() =>
+      workspaceRepositoryCandidateSummarySchema.parse({
+        ...candidate,
+        github: null,
+      }),
+    ).toThrow(/classification metadata/iu);
+    expect(() =>
+      workspaceRepositoryDiscoveryWorkerResultSchema.parse({
+        jobId: candidate.jobId,
+        attempt: 1,
+        candidates: [
+          {
+            path: handle,
+            displayPath: handle,
+            originUrl: handle,
+            github: null,
+            repositoryFingerprint: candidate.repositoryFingerprint,
+            classification: "github-unavailable",
+            diagnosticCode: null,
+          },
+        ],
+        counts: {
+          candidates: 1,
+          collapsedRepositories: 0,
+          rejectedRepositories: 0,
+          scannedDirectories: 1,
+          scannedEntries: 1,
+          skippedSymlinks: 0,
+          unreadableDirectories: 0,
+        },
+        truncated: false,
+      }),
+    ).toThrow(/classification metadata/iu);
   });
 
   it("parses a completed durable snapshot", () => {

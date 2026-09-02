@@ -14,6 +14,10 @@ import { WorkspaceRepositoryDiscoveryJobExecutor } from "../src/workspace-reposi
 const now = "2026-09-02T12:00:00.000Z";
 const pathHandle = `ctrr_${"a".repeat(43)}`;
 const displayHandle = `ctrr_${"b".repeat(43)}`;
+const originUrlHandle = `ctrr_${"d".repeat(43)}`;
+const githubRepositoryIdHandle = `ctrr_${"e".repeat(43)}`;
+const githubNameWithOwnerHandle = `ctrr_${"f".repeat(43)}`;
+const githubUrlHandle = `ctrr_${"g".repeat(43)}`;
 
 function job(): WorkspaceRepositoryDiscoveryJobSummary {
   return {
@@ -76,7 +80,15 @@ describe("workspace repository discovery executor", () => {
             {
               path: pathHandle,
               displayPath: displayHandle,
+              originUrl: originUrlHandle,
+              github: {
+                repositoryId: githubRepositoryIdHandle,
+                nameWithOwner: githubNameWithOwnerHandle,
+                url: githubUrlHandle,
+              },
               repositoryFingerprint: "c".repeat(64),
+              classification: "github-accessible",
+              diagnosticCode: null,
             },
           ],
           counts,
@@ -135,7 +147,15 @@ describe("workspace repository discovery executor", () => {
         {
           pathHandle,
           displayHandle,
+          originUrlHandle,
+          github: {
+            repositoryId: githubRepositoryIdHandle,
+            nameWithOwner: githubNameWithOwnerHandle,
+            url: githubUrlHandle,
+          },
           repositoryFingerprint: "c".repeat(64),
+          classification: "github-accessible",
+          diagnosticCode: null,
         },
       ],
       counts,

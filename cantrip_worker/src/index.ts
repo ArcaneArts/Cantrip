@@ -2284,7 +2284,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           candidates: result.candidates.map((candidate) => ({
             path: candidate.canonicalPath,
             displayPath: candidate.relativePath,
+            originUrl: candidate.originUrl,
+            github: candidate.github,
             repositoryFingerprint: candidate.repositoryFingerprint,
+            classification: candidate.classification,
+            diagnosticCode: candidate.diagnosticCode,
           })),
           counts: {
             candidates: result.candidates.length,

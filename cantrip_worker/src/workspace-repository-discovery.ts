@@ -4,7 +4,12 @@ import { lstat, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import type { WorkspaceRepositoryDiscoveryProgress } from "@cantrip/protocol";
+import {
+  projectGithubConversionRepositorySchema,
+  type ProjectGithubConversionRepository,
+  type WorkspaceRepositoryCandidateClassification,
+  type WorkspaceRepositoryDiscoveryProgress,
+} from "@cantrip/protocol";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,10 +29,29 @@ export interface WorkspaceRepositoryDiscoveryLimits {
 
 export interface WorkspaceRepositoryDiscoveryCandidate {
   canonicalPath: string;
+  classification: WorkspaceRepositoryCandidateClassification;
+  diagnosticCode: string | null;
   gitCommonDirectory: string;
+  github: ProjectGithubConversionRepository | null;
+  originUrl: string | null;
   relativePath: string;
   repositoryFingerprint: string;
 }
+
+export interface WorkspaceRepositoryOriginClassification {
+  classification: Exclude<
+    WorkspaceRepositoryCandidateClassification,
+    "unclassified"
+  >;
+  diagnosticCode: string | null;
+  github: ProjectGithubConversionRepository | null;
+  originUrl: string | null;
+}
+
+export type WorkspaceRepositoryGithubApiRunner = (
+  nameWithOwner: string,
+  options: { maxBuffer: number; timeout: number },
+) => Promise<unknown>;
 
 export interface WorkspaceRepositoryDiscoveryResult {
   candidates: WorkspaceRepositoryDiscoveryCandidate[];
@@ -95,6 +119,139 @@ function portableRelativePath(root: string, candidate: string): string {
   return relative ? relative.split(path.sep).join("/") : ".";
 }
 
+export function parseGithubRepositoryOrigin(
+  value: string,
+): { nameWithOwner: string; url: string } | null {
+  const origin = value.trim();
+  const match =
+    origin.match(
+      /^https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9-]{0,99})\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/iu,
+    ) ??
+    origin.match(
+      /^git@github\.com:([A-Za-z0-9][A-Za-z0-9-]{0,99})\/([A-Za-z0-9._-]+?)(?:\.git)?$/iu,
+    ) ??
+    origin.match(
+      /^ssh:\/\/git@github\.com\/([A-Za-z0-9][A-Za-z0-9-]{0,99})\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/iu,
+    );
+  const owner = match?.[1];
+  const repository = match?.[2];
+  if (!owner || !repository || repository === "." || repository === "..") {
+    return null;
+  }
+  const nameWithOwner = `${owner}/${repository}`;
+  return {
+    nameWithOwner,
+    url: `https://github.com/${nameWithOwner}`,
+  };
+}
+
+async function defaultGithubApiRunner(
+  nameWithOwner: string,
+  options: { maxBuffer: number; timeout: number },
+): Promise<unknown> {
+  const { stdout } = await execFileAsync(
+    "gh",
+    ["api", `repos/${nameWithOwner}`],
+    {
+      encoding: "utf8",
+      ...options,
+    },
+  );
+  return JSON.parse(stdout) as unknown;
+}
+
+export async function classifyWorkspaceRepositoryOrigin(
+  originUrl: string | null,
+  options: {
+    githubApi?: WorkspaceRepositoryGithubApiRunner;
+    maxBuffer: number;
+    timeout: number;
+  },
+): Promise<WorkspaceRepositoryOriginClassification> {
+  const origin = originUrl?.trim() || null;
+  if (!origin) {
+    return {
+      classification: "local-git",
+      diagnosticCode: null,
+      github: null,
+      originUrl: null,
+    };
+  }
+  if (origin.length > 32_768) {
+    return {
+      classification: "local-git",
+      diagnosticCode: "origin-invalid",
+      github: null,
+      originUrl: null,
+    };
+  }
+  const expected = parseGithubRepositoryOrigin(origin);
+  if (!expected) {
+    return {
+      classification: "local-git",
+      diagnosticCode: null,
+      github: null,
+      originUrl: origin,
+    };
+  }
+  try {
+    const value = await (options.githubApi ?? defaultGithubApiRunner)(
+      expected.nameWithOwner,
+      { maxBuffer: options.maxBuffer, timeout: options.timeout },
+    );
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {
+        classification: "github-unavailable",
+        diagnosticCode: "github-api-invalid",
+        github: null,
+        originUrl: origin,
+      };
+    }
+    const record = value as Record<string, unknown>;
+    const repository = projectGithubConversionRepositorySchema.safeParse({
+      repositoryId:
+        typeof record.id === "number" || typeof record.id === "string"
+          ? String(record.id)
+          : "",
+      nameWithOwner: record.full_name,
+      url: record.html_url,
+    });
+    const apiOrigin =
+      repository.success && parseGithubRepositoryOrigin(repository.data.url);
+    if (
+      !repository.success ||
+      !apiOrigin ||
+      repository.data.nameWithOwner.toLowerCase() !==
+        expected.nameWithOwner.toLowerCase() ||
+      apiOrigin.nameWithOwner.toLowerCase() !==
+        expected.nameWithOwner.toLowerCase()
+    ) {
+      return {
+        classification: "github-unavailable",
+        diagnosticCode: "github-identity-mismatch",
+        github: null,
+        originUrl: origin,
+      };
+    }
+    return {
+      classification: "github-accessible",
+      diagnosticCode: null,
+      github: repository.data,
+      originUrl: origin,
+    };
+  } catch (error) {
+    const code =
+      error && typeof error === "object" ? Reflect.get(error, "code") : null;
+    return {
+      classification: "github-unavailable",
+      diagnosticCode:
+        code === "ENOENT" ? "github-cli-unavailable" : "github-api-unavailable",
+      github: null,
+      originUrl: origin,
+    };
+  }
+}
+
 async function resolveGitPath(
   checkout: string,
   value: string,
@@ -150,8 +307,33 @@ async function inspectRepositoryRoot(
   );
   if (!pathsEqual(gitDirectory, gitCommonDirectory)) return null;
 
+  let originUrl: string | null = null;
+  let originReadFailed = false;
+  try {
+    originUrl = await git(["config", "--get", "remote.origin.url"]);
+  } catch (error) {
+    const code =
+      error && typeof error === "object" ? Reflect.get(error, "code") : null;
+    if (code !== 1) originReadFailed = true;
+  }
+  const classification = originReadFailed
+    ? {
+        classification: "local-git" as const,
+        diagnosticCode: "origin-unavailable",
+        github: null,
+        originUrl: null,
+      }
+    : await classifyWorkspaceRepositoryOrigin(originUrl, {
+        maxBuffer: limits.maxGitOutputBytes,
+        timeout: Math.max(
+          1,
+          Math.min(limits.perGitCommandTimeoutMs, remainingDurationMs()),
+        ),
+      });
+
   return {
     canonicalPath: topLevel,
+    ...classification,
     gitCommonDirectory,
     relativePath: portableRelativePath(root, topLevel),
     repositoryFingerprint: createHash("sha256")
@@ -288,6 +470,10 @@ export async function discoverWorkspaceRepositories(
           } else {
             fingerprints.add(candidate.repositoryFingerprint);
             candidates.push(candidate);
+            if (remainingDurationMs() <= 0) {
+              truncated = true;
+              break scan;
+            }
           }
         } catch {
           rejectedRepositories += 1;

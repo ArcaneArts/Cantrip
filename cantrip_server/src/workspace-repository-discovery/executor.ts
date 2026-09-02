@@ -236,7 +236,11 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
             candidates: result.candidates.map((candidate) => ({
               pathHandle: candidate.path,
               displayHandle: candidate.displayPath,
+              originUrlHandle: candidate.originUrl,
+              github: candidate.github,
               repositoryFingerprint: candidate.repositoryFingerprint,
+              classification: candidate.classification,
+              diagnosticCode: candidate.diagnosticCode,
             })),
             counts: result.counts,
             truncated: result.truncated,
