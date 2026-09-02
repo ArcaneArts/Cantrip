@@ -1,0 +1,1 @@
+ALTER TABLE "workers" ALTER COLUMN "managed_folder_capabilities" SET DEFAULT '{"create":false,"attachExisting":false,"attachWorkspaceRoot":false,"discoverWorkspaceRepositories":false,"convertToGithub":false,"convertExternalGitToGithub":false,"remove":false,"workspaceScopedRoots":false}'::jsonb;
