@@ -306,6 +306,8 @@ describe("rich Codex activity", () => {
     );
     expect(running).toContain("Calling github/search_issues");
     expect(running.match(/chat-working-shimmer/gu)).toHaveLength(1);
+    expect(running).toContain('data-elite-global=""');
+    expect(running).toContain('data-slot="activity-group-label"');
     expect(running).toContain('data-turn-key="legacy:user-1"');
     expect(running).not.toContain("git status --short");
 
@@ -333,6 +335,77 @@ describe("rich Codex activity", () => {
         })),
       ),
     ).toBe("Ran pnpm test · +5 more");
+  });
+
+  it("remounts the Elite reveal boundary when the grouped activity label changes", async () => {
+    const firstCommand: AgentActivity = {
+      type: "command",
+      id: "command-1",
+      command: "pnpm test",
+      cwd: ".",
+      status: "running",
+      exitCode: null,
+      output: null,
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <ActivityGroup
+          active
+          activities={[firstCommand]}
+          turnId="turn-live"
+          turnKey="runtime:turn-live"
+        />,
+      );
+    });
+
+    const firstLabel = renderer.root.findByProps({
+      "data-slot": "activity-group-label",
+    });
+    expect(firstLabel.children).toEqual(["Running pnpm test"]);
+    expect(firstLabel.props["data-elite-global"]).toBe("");
+
+    const secondCommand: AgentActivity = {
+      ...firstCommand,
+      id: "command-2",
+      command: "pnpm build",
+    };
+    await act(async () => {
+      renderer.update(
+        <ActivityGroup
+          active
+          activities={[firstCommand, secondCommand]}
+          turnId="turn-live"
+          turnKey="runtime:turn-live"
+        />,
+      );
+    });
+    const secondLabel = renderer.root.findByProps({
+      "data-slot": "activity-group-label",
+    });
+    expect(secondLabel.children).toEqual(["Running pnpm build"]);
+    expect(secondLabel).not.toBe(firstLabel);
+
+    await act(async () => {
+      renderer.update(
+        <ActivityGroup
+          active
+          activities={[
+            firstCommand,
+            { ...secondCommand, status: "completed", exitCode: 0 },
+          ]}
+          turnId="turn-live"
+          turnKey="runtime:turn-live"
+        />,
+      );
+    });
+    const completedLabel = renderer.root.findByProps({
+      "data-slot": "activity-group-label",
+    });
+    expect(completedLabel.children).toEqual(["Ran pnpm build"]);
+    expect(completedLabel).not.toBe(secondLabel);
+
+    await act(async () => renderer.unmount());
   });
 
   it("shows the latest syntax-highlighted file preview in a collapsed live group", () => {

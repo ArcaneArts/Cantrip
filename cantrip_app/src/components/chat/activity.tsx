@@ -801,7 +801,10 @@ export function ActivityGroup({
         >
           <Workflow className="size-4 shrink-0" />
           <span
+            key={label}
             className={cn("min-w-0 truncate", active && "chat-working-shimmer")}
+            data-elite-global=""
+            data-slot="activity-group-label"
           >
             {label}
           </span>
