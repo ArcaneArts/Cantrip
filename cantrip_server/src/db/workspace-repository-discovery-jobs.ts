@@ -362,6 +362,14 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
           );
         }
         if (
+          candidate.classification === "unclassified" ||
+          candidate.classification === "unsupported"
+        ) {
+          throw new WorkspaceRepositoryDiscoveryInvariantError(
+            "This repository candidate is not eligible for automatic import.",
+          );
+        }
+        if (
           ["imported", "skipped", "importing"].includes(candidate.importState)
         ) {
           continue;
@@ -1257,6 +1265,9 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
       const hasOrigin = candidate.originUrlHandle !== null;
       const hasGithub = candidate.github !== null;
       const hasDiagnostic = candidate.diagnosticCode !== null;
+      const unsupportedDiagnostic =
+        candidate.diagnosticCode === "bare-repository" ||
+        candidate.diagnosticCode === "linked-worktree";
       const valid =
         (candidate.classification === "github-accessible" &&
           hasOrigin &&
@@ -1265,10 +1276,15 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
         (candidate.classification === "github-unavailable" &&
           hasOrigin &&
           !hasGithub &&
-          hasDiagnostic) ||
+          hasDiagnostic &&
+          !unsupportedDiagnostic) ||
         ((candidate.classification === "unclassified" ||
           candidate.classification === "local-git") &&
-          !hasGithub);
+          !hasGithub &&
+          !unsupportedDiagnostic) ||
+        (candidate.classification === "unsupported" &&
+          !hasGithub &&
+          unsupportedDiagnostic);
       if (!valid) {
         throw new WorkspaceRepositoryDiscoveryInvariantError(
           "Repository discovery classification metadata is invalid.",

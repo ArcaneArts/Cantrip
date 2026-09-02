@@ -1317,6 +1317,13 @@
       "when": 1788374270970,
       "tag": "0187_enforce_immutable_workspace_bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1788375598535,
+      "tag": "0188_parallel_thor_girl",
+      "breakpoints": true
     }
   ]
 }

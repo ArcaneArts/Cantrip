@@ -176,6 +176,74 @@ describe("discoverWorkspaceRepositories", () => {
     expect(result.rejectedRepositories).toBe(1);
   });
 
+  it("reports bare repositories and standalone linked worktrees as unsupported", async () => {
+    const root = await temporaryRoot();
+    const primaryRoot = await temporaryRoot();
+    const primary = path.join(primaryRoot, "primary");
+    const linked = path.join(root, "linked");
+    const bare = path.join(root, "bare.git");
+    await initializeRepository(primary);
+    await execFileAsync("git", [
+      "-C",
+      primary,
+      "config",
+      "user.email",
+      "test@example.com",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      primary,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await writeFile(path.join(primary, "README.md"), "test");
+    await execFileAsync("git", ["-C", primary, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      primary,
+      "commit",
+      "--quiet",
+      "-m",
+      "initial",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      primary,
+      "worktree",
+      "add",
+      "--quiet",
+      linked,
+    ]);
+    await execFileAsync("git", ["init", "--bare", "--quiet", bare]);
+
+    const result = await discoverWorkspaceRepositories(root);
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        relativePath: "bare.git",
+        classification: "unsupported",
+        diagnosticCode: "bare-repository",
+      }),
+      expect.objectContaining({
+        relativePath: "linked",
+        classification: "unsupported",
+        diagnosticCode: "linked-worktree",
+      }),
+    ]);
+    expect(result.rejectedRepositories).toBe(2);
+    await expect(
+      validateWorkspaceRepositoryImport({
+        attempt: 1,
+        candidateId: "7c23b8ff-a03a-4ffc-9c33-98a8ab722ee7",
+        expectedRepositoryFingerprint:
+          result.candidates[1]!.repositoryFingerprint,
+        path: linked,
+        rootPath: root,
+      }),
+    ).rejects.toMatchObject({ code: "repository-unavailable" });
+  });
+
   it("applies candidate and entry bounds", async () => {
     const root = await temporaryRoot();
     await initializeRepository(path.join(root, "a"));

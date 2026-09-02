@@ -2244,7 +2244,7 @@ export const workspaceRepositoryCandidates = pgTable(
     ),
     check(
       "workspace_repository_candidates_classification_shape_check",
-      sql`(${table.classification} = 'github-accessible' AND ${table.protectedOriginUrlHandle} IS NOT NULL AND ${table.protectedGithubRepositoryIdHandle} IS NOT NULL) OR (${table.classification} = 'github-unavailable' AND ${table.protectedOriginUrlHandle} IS NOT NULL AND ${table.protectedGithubRepositoryIdHandle} IS NULL) OR (${table.classification} IN ('unclassified', 'local-git') AND ${table.protectedGithubRepositoryIdHandle} IS NULL)`,
+      sql`(${table.classification} = 'github-accessible' AND ${table.protectedOriginUrlHandle} IS NOT NULL AND ${table.protectedGithubRepositoryIdHandle} IS NOT NULL AND ${table.diagnosticCode} IS NULL) OR (${table.classification} = 'github-unavailable' AND ${table.protectedOriginUrlHandle} IS NOT NULL AND ${table.protectedGithubRepositoryIdHandle} IS NULL AND ${table.diagnosticCode} IS NOT NULL AND ${table.diagnosticCode} NOT IN ('bare-repository', 'linked-worktree')) OR (${table.classification} IN ('unclassified', 'local-git') AND ${table.protectedGithubRepositoryIdHandle} IS NULL AND (${table.diagnosticCode} IS NULL OR ${table.diagnosticCode} NOT IN ('bare-repository', 'linked-worktree'))) OR (${table.classification} = 'unsupported' AND ${table.protectedGithubRepositoryIdHandle} IS NULL AND ${table.diagnosticCode} IN ('bare-repository', 'linked-worktree'))`,
     ),
     check(
       "workspace_repository_candidates_fingerprint_check",
@@ -2252,7 +2252,11 @@ export const workspaceRepositoryCandidates = pgTable(
     ),
     check(
       "workspace_repository_candidates_classification_check",
-      sql`${table.classification} IN ('unclassified', 'local-git', 'github-accessible', 'github-unavailable')`,
+      sql`${table.classification} IN ('unclassified', 'local-git', 'github-accessible', 'github-unavailable', 'unsupported')`,
+    ),
+    check(
+      "workspace_repository_candidates_diagnostic_kind_check",
+      sql`${table.diagnosticCode} IS NULL OR ${table.diagnosticCode} IN ('origin-invalid', 'origin-unavailable', 'github-cli-unavailable', 'github-api-unavailable', 'github-api-invalid', 'github-identity-mismatch', 'bare-repository', 'linked-worktree')`,
     ),
     check(
       "workspace_repository_candidates_import_state_check",

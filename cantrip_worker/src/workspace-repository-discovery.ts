@@ -9,6 +9,7 @@ import {
   type ProjectGithubConversionRepository,
   type WorkspaceRepositoryCandidateDiagnosticCode,
   type WorkspaceRepositoryDetectedClassification,
+  type WorkspaceRepositoryDiscoveredClassification,
   type WorkspaceRepositoryDiscoveryProgress,
   type WorkspaceRepositoryImportValidationResult,
 } from "@cantrip/protocol";
@@ -31,7 +32,7 @@ export interface WorkspaceRepositoryDiscoveryLimits {
 
 export interface WorkspaceRepositoryDiscoveryCandidate {
   canonicalPath: string;
-  classification: WorkspaceRepositoryDetectedClassification;
+  classification: WorkspaceRepositoryDiscoveredClassification;
   diagnosticCode: WorkspaceRepositoryCandidateDiagnosticCode | null;
   gitCommonDirectory: string;
   github: ProjectGithubConversionRepository | null;
@@ -123,6 +124,10 @@ function pathIsWithin(root: string, candidate: string): boolean {
 function portableRelativePath(root: string, candidate: string): string {
   const relative = path.relative(root, candidate);
   return relative ? relative.split(path.sep).join("/") : ".";
+}
+
+function repositoryFingerprint(gitCommonDirectory: string): string {
+  return createHash("sha256").update(gitCommonDirectory).digest("hex");
 }
 
 export function parseGithubRepositoryOrigin(
@@ -293,14 +298,30 @@ async function inspectRepositoryRoot(
     return stdout.trim();
   };
 
+  const bare = await git(["rev-parse", "--is-bare-repository"]);
+  if (bare === "true") {
+    const gitCommonDirectory = await resolveGitPath(
+      directory,
+      await git(["rev-parse", "--git-common-dir"]),
+    );
+    return {
+      canonicalPath: directory,
+      classification: "unsupported",
+      diagnosticCode: "bare-repository",
+      gitCommonDirectory,
+      github: null,
+      originUrl: null,
+      relativePath: portableRelativePath(root, directory),
+      repositoryFingerprint: repositoryFingerprint(gitCommonDirectory),
+    };
+  }
+  if (bare !== "false") return null;
+
   const topLevel = await resolveGitPath(
     directory,
     await git(["rev-parse", "--show-toplevel"]),
   );
   if (!pathsEqual(topLevel, directory) || !pathIsWithin(root, topLevel)) {
-    return null;
-  }
-  if ((await git(["rev-parse", "--is-bare-repository"])) !== "false") {
     return null;
   }
   const gitDirectory = await resolveGitPath(
@@ -311,7 +332,18 @@ async function inspectRepositoryRoot(
     directory,
     await git(["rev-parse", "--git-common-dir"]),
   );
-  if (!pathsEqual(gitDirectory, gitCommonDirectory)) return null;
+  if (!pathsEqual(gitDirectory, gitCommonDirectory)) {
+    return {
+      canonicalPath: topLevel,
+      classification: "unsupported",
+      diagnosticCode: "linked-worktree",
+      gitCommonDirectory,
+      github: null,
+      originUrl: null,
+      relativePath: portableRelativePath(root, topLevel),
+      repositoryFingerprint: repositoryFingerprint(gitCommonDirectory),
+    };
+  }
 
   let originUrl: string | null = null;
   let originReadFailed = false;
@@ -342,9 +374,7 @@ async function inspectRepositoryRoot(
     ...classification,
     gitCommonDirectory,
     relativePath: portableRelativePath(root, topLevel),
-    repositoryFingerprint: createHash("sha256")
-      .update(gitCommonDirectory)
-      .digest("hex"),
+    repositoryFingerprint: repositoryFingerprint(gitCommonDirectory),
   };
 }
 
@@ -413,6 +443,12 @@ export async function validateWorkspaceRepositoryImport(input: {
     throw importValidationError(
       "repository-unavailable",
       "The repository import path is no longer a primary Git checkout.",
+    );
+  }
+  if (candidate.classification === "unsupported") {
+    throw importValidationError(
+      "repository-unavailable",
+      "The repository import path is not an importable primary Git checkout.",
     );
   }
   if (candidate.repositoryFingerprint !== input.expectedRepositoryFingerprint) {
@@ -505,7 +541,7 @@ export async function discoverWorkspaceRepositories(
     Math.max(0, limits.durationMs - (Date.now() - startedAt));
   const queue: SearchDirectory[] = [{ canonicalPath: canonicalRoot, depth: 0 }];
   const candidates: WorkspaceRepositoryDiscoveryCandidate[] = [];
-  const fingerprints = new Set<string>();
+  const candidateIndexByFingerprint = new Map<string, number>();
   let collapsedRepositories = 0;
   let queueIndex = 0;
   let rejectedRepositories = 0;
@@ -553,16 +589,26 @@ export async function discoverWorkspaceRepositories(
     }
     entries.sort((left, right) => left.name.localeCompare(right.name));
     const gitMarker = entries.find((entry) => entry.name === ".git");
-    if (gitMarker) {
-      scannedEntries += 1;
+    const bareMarkers = ["HEAD", "objects", "refs"].map((name) =>
+      entries.find((entry) => entry.name === name),
+    );
+    const possibleBareRepository =
+      bareMarkers[0]?.isFile() === true &&
+      bareMarkers[1]?.isDirectory() === true &&
+      bareMarkers[2]?.isDirectory() === true;
+    if (gitMarker || possibleBareRepository) {
+      scannedEntries += gitMarker ? 1 : bareMarkers.length;
       if (scannedEntries > limits.maxEntries) {
         truncated = true;
         break;
       }
-      if (gitMarker.isSymbolicLink()) {
+      if (gitMarker?.isSymbolicLink()) {
         skippedSymlinks += 1;
         rejectedRepositories += 1;
-      } else if (gitMarker.isDirectory() || gitMarker.isFile()) {
+      } else if (
+        (gitMarker && (gitMarker.isDirectory() || gitMarker.isFile())) ||
+        possibleBareRepository
+      ) {
         try {
           const candidate = await inspectRepositoryRoot(
             directory.canonicalPath,
@@ -572,14 +618,32 @@ export async function discoverWorkspaceRepositories(
           );
           if (!candidate) {
             rejectedRepositories += 1;
-          } else if (fingerprints.has(candidate.repositoryFingerprint)) {
-            collapsedRepositories += 1;
-          } else if (candidates.length >= limits.maxCandidates) {
-            truncated = true;
-            break scan;
           } else {
-            fingerprints.add(candidate.repositoryFingerprint);
-            candidates.push(candidate);
+            if (candidate.classification === "unsupported") {
+              rejectedRepositories += 1;
+            }
+            const existingIndex = candidateIndexByFingerprint.get(
+              candidate.repositoryFingerprint,
+            );
+            if (existingIndex !== undefined) {
+              collapsedRepositories += 1;
+              const existing = candidates[existingIndex]!;
+              if (
+                existing.classification === "unsupported" &&
+                candidate.classification !== "unsupported"
+              ) {
+                candidates[existingIndex] = candidate;
+              }
+            } else if (candidates.length >= limits.maxCandidates) {
+              truncated = true;
+              break scan;
+            } else {
+              candidateIndexByFingerprint.set(
+                candidate.repositoryFingerprint,
+                candidates.length,
+              );
+              candidates.push(candidate);
+            }
             if (remainingDurationMs() <= 0) {
               truncated = true;
               break scan;

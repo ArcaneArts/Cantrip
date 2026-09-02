@@ -73,9 +73,16 @@ export const workspaceRepositoryCandidateClassificationSchema = z.enum([
   "local-git",
   "github-accessible",
   "github-unavailable",
+  "unsupported",
 ]);
 
 export const workspaceRepositoryDetectedClassificationSchema =
+  workspaceRepositoryCandidateClassificationSchema.exclude([
+    "unclassified",
+    "unsupported",
+  ]);
+
+export const workspaceRepositoryDiscoveredClassificationSchema =
   workspaceRepositoryCandidateClassificationSchema.exclude(["unclassified"]);
 
 export const workspaceRepositoryCandidateDiagnosticCodeSchema = z.enum([
@@ -85,7 +92,45 @@ export const workspaceRepositoryCandidateDiagnosticCodeSchema = z.enum([
   "github-api-unavailable",
   "github-api-invalid",
   "github-identity-mismatch",
+  "bare-repository",
+  "linked-worktree",
 ]);
+
+function candidateClassificationMetadataIsValid(candidate: {
+  classification: z.infer<
+    typeof workspaceRepositoryCandidateClassificationSchema
+  >;
+  diagnosticCode: z.infer<
+    typeof workspaceRepositoryCandidateDiagnosticCodeSchema
+  > | null;
+  github: unknown | null;
+  origin: unknown | null;
+}): boolean {
+  const hasGithub = candidate.github !== null;
+  const hasOrigin = candidate.origin !== null;
+  const hasDiagnostic = candidate.diagnosticCode !== null;
+  const unsupportedDiagnostic =
+    candidate.diagnosticCode === "bare-repository" ||
+    candidate.diagnosticCode === "linked-worktree";
+  return (
+    (candidate.classification === "github-accessible" &&
+      hasGithub &&
+      hasOrigin &&
+      !hasDiagnostic) ||
+    (candidate.classification === "github-unavailable" &&
+      !hasGithub &&
+      hasOrigin &&
+      hasDiagnostic &&
+      !unsupportedDiagnostic) ||
+    ((candidate.classification === "unclassified" ||
+      candidate.classification === "local-git") &&
+      !hasGithub &&
+      !unsupportedDiagnostic) ||
+    (candidate.classification === "unsupported" &&
+      !hasGithub &&
+      unsupportedDiagnostic)
+  );
+}
 
 export const workspaceRepositoryCandidateImportStateSchema = z.enum([
   "pending",
@@ -146,22 +191,14 @@ export const workspaceRepositoryCandidateSummarySchema = z
   })
   .strict()
   .superRefine((candidate, context) => {
-    const hasGithub = candidate.github !== null;
-    const hasOrigin = candidate.originUrlHandle !== null;
-    const hasDiagnostic = candidate.diagnosticCode !== null;
-    const valid =
-      (candidate.classification === "github-accessible" &&
-        hasGithub &&
-        hasOrigin &&
-        !hasDiagnostic) ||
-      (candidate.classification === "github-unavailable" &&
-        !hasGithub &&
-        hasOrigin &&
-        hasDiagnostic) ||
-      ((candidate.classification === "unclassified" ||
-        candidate.classification === "local-git") &&
-        !hasGithub);
-    if (!valid) {
+    if (
+      !candidateClassificationMetadataIsValid({
+        classification: candidate.classification,
+        diagnosticCode: candidate.diagnosticCode,
+        github: candidate.github,
+        origin: candidate.originUrlHandle,
+      })
+    ) {
       context.addIssue({
         code: "custom",
         message: "Repository candidate classification metadata is invalid.",
@@ -266,20 +303,14 @@ export const workspaceRepositoryImportValidationResultSchema = z
   })
   .strict()
   .superRefine((candidate, context) => {
-    const hasGithub = candidate.github !== null;
-    const hasOrigin = candidate.originUrl !== null;
-    const hasDiagnostic = candidate.diagnosticCode !== null;
-    const valid =
-      (candidate.classification === "github-accessible" &&
-        hasGithub &&
-        hasOrigin &&
-        !hasDiagnostic) ||
-      (candidate.classification === "github-unavailable" &&
-        !hasGithub &&
-        hasOrigin &&
-        hasDiagnostic) ||
-      (candidate.classification === "local-git" && !hasGithub);
-    if (!valid) {
+    if (
+      !candidateClassificationMetadataIsValid({
+        classification: candidate.classification,
+        diagnosticCode: candidate.diagnosticCode,
+        github: candidate.github,
+        origin: candidate.originUrl,
+      })
+    ) {
       context.addIssue({
         code: "custom",
         message: "Repository import classification metadata is invalid.",
@@ -301,26 +332,20 @@ export const workspaceRepositoryDiscoveryWorkerResultSchema = z
             originUrl: repositoryRoutingHandleSchema.nullable(),
             github: projectGithubRoutingRepositorySchema.nullable(),
             repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-            classification: workspaceRepositoryDetectedClassificationSchema,
+            classification: workspaceRepositoryDiscoveredClassificationSchema,
             diagnosticCode:
               workspaceRepositoryCandidateDiagnosticCodeSchema.nullable(),
           })
           .strict()
           .superRefine((candidate, context) => {
-            const hasGithub = candidate.github !== null;
-            const hasOrigin = candidate.originUrl !== null;
-            const hasDiagnostic = candidate.diagnosticCode !== null;
-            const valid =
-              (candidate.classification === "github-accessible" &&
-                hasGithub &&
-                hasOrigin &&
-                !hasDiagnostic) ||
-              (candidate.classification === "github-unavailable" &&
-                !hasGithub &&
-                hasOrigin &&
-                hasDiagnostic) ||
-              (candidate.classification === "local-git" && !hasGithub);
-            if (!valid) {
+            if (
+              !candidateClassificationMetadataIsValid({
+                classification: candidate.classification,
+                diagnosticCode: candidate.diagnosticCode,
+                github: candidate.github,
+                origin: candidate.originUrl,
+              })
+            ) {
               context.addIssue({
                 code: "custom",
                 message:
@@ -359,6 +384,9 @@ export type WorkspaceRepositoryCandidateClassification = z.infer<
 >;
 export type WorkspaceRepositoryDetectedClassification = z.infer<
   typeof workspaceRepositoryDetectedClassificationSchema
+>;
+export type WorkspaceRepositoryDiscoveredClassification = z.infer<
+  typeof workspaceRepositoryDiscoveredClassificationSchema
 >;
 export type WorkspaceRepositoryCandidateDiagnosticCode = z.infer<
   typeof workspaceRepositoryCandidateDiagnosticCodeSchema
