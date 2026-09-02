@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   repositoryMetadataValuesSchema,
   repositoryOperationAccess,
+  repositoryOperationOutcomeContentSchema,
   repositoryOperationTypeSchema,
   repositoryOperationWireRequestSchema,
+  workspaceRootAttachmentErrorCodeSchema,
 } from "../src/repository-operation.js";
 
 describe("repository operation access", () => {
@@ -52,6 +54,31 @@ describe("repository operation access", () => {
     expect(
       repositoryMetadataValuesSchema.safeParse({
         arbitraryPlacementAlias: "/workspace/Cantrip",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("carries bounded attached-root failure codes inside protected outcomes", () => {
+    expect(workspaceRootAttachmentErrorCodeSchema.options).toEqual([
+      "invalid-root",
+      "root-unavailable",
+    ]);
+    expect(
+      repositoryOperationOutcomeContentSchema.parse({
+        ok: false,
+        error: "Workspace root is unavailable.",
+        code: "root-unavailable",
+      }),
+    ).toEqual({
+      ok: false,
+      error: "Workspace root is unavailable.",
+      code: "root-unavailable",
+    });
+    expect(
+      repositoryOperationOutcomeContentSchema.safeParse({
+        ok: false,
+        error: "Workspace root is unavailable.",
+        code: "Root path: /private/example",
       }).success,
     ).toBe(false);
   });

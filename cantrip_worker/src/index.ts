@@ -193,7 +193,10 @@ import { GithubClient } from "./github.js";
 import { githubOperationRequiresCheckout } from "./github-operation-scope.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
-import { attachWorkspaceRoot } from "./workspace-root-attachment.js";
+import {
+  attachWorkspaceRoot,
+  WorkspaceRootAttachmentError,
+} from "./workspace-root-attachment.js";
 import {
   discoverWorkspaceRepositories,
   validateWorkspaceRepositoryImport,
@@ -3111,6 +3114,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               error instanceof Error
                 ? error.message.slice(0, 2_000)
                 : "Repository operation failed.",
+            ...(error instanceof WorkspaceRootAttachmentError
+              ? { code: error.code }
+              : {}),
           };
         }
         return repositoryOperationWireResponseSchema.parse({

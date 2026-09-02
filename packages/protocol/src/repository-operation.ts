@@ -21,6 +21,11 @@ export const workspaceRootAttachmentSchema = z
   })
   .strict();
 
+export const workspaceRootAttachmentErrorCodeSchema = z.enum([
+  "invalid-root",
+  "root-unavailable",
+]);
+
 export const workspaceRootAttachArgumentsSchema = z
   .object({ rootPath: z.string().trim().min(1).max(8_192) })
   .strict();
@@ -312,6 +317,11 @@ export const repositoryOperationOutcomeContentSchema = z.discriminatedUnion(
       .object({
         ok: z.literal(false),
         error: z.string().min(1).max(2_000),
+        code: z
+          .string()
+          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u)
+          .max(100)
+          .optional(),
       })
       .strict(),
   ],
@@ -375,4 +385,7 @@ export type RepositoryMetadataResult = z.infer<
 >;
 export type WorkspaceRootAttachment = z.infer<
   typeof workspaceRootAttachmentSchema
+>;
+export type WorkspaceRootAttachmentErrorCode = z.infer<
+  typeof workspaceRootAttachmentErrorCodeSchema
 >;
