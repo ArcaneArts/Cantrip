@@ -18,6 +18,14 @@ const projects = [
   {
     id: "project-1",
     name: "Cantrip",
+    originKind: "github",
+    capabilities: {
+      git: true,
+      github: true,
+      worktrees: true,
+      replicas: true,
+      relocation: true,
+    },
     setupStatus: "ready",
     github: { nameWithOwner: "ArcaneArts/Cantrip" },
     source: { workerId: "worker-1", displayPath: "~/Cantrip" },
@@ -25,6 +33,14 @@ const projects = [
   {
     id: "project-2",
     name: "CareMap",
+    originKind: "github",
+    capabilities: {
+      git: true,
+      github: true,
+      worktrees: true,
+      replicas: true,
+      relocation: true,
+    },
     setupStatus: "ready",
     github: { nameWithOwner: "ArcaneArts/CareMap" },
     source: { workerId: "worker-1", displayPath: "~/CareMap" },
@@ -163,6 +179,53 @@ describe("mobile project selector", () => {
     expect(markup).toContain("Worker offline");
     expect(markup).toContain("lucide-folder");
     expect(markup).not.toContain("lucide-folder-git");
+  });
+
+  it("keeps local Git projects available through an online secondary source", () => {
+    const project = {
+      ...projects[0]!,
+      originKind: "managed-folder",
+      folderManagement: "external",
+      capabilities: {
+        git: true,
+        github: false,
+        worktrees: false,
+        replicas: false,
+        relocation: false,
+      },
+      github: null,
+      replicas: [
+        { workerId: "worker-1", ready: true },
+        { workerId: "worker-2", ready: true },
+      ],
+    } as ProjectSummary;
+    const markup = renderMobile(
+      <MobileProjectSelector
+        activeWorkspace={workspaces[0]!}
+        currentUserName="Local User"
+        loading={false}
+        projects={[project]}
+        workers={
+          [
+            { workerId: "worker-1", name: "Home", online: false },
+            { workerId: "worker-2", name: "Replica", online: true },
+          ] as WorkerSummary[]
+        }
+        workspaces={workspaces}
+        onCreateWorkspace={vi.fn()}
+        onManageWorkspaces={vi.fn()}
+        onNewProject={vi.fn()}
+        onOpenAdmin={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onSwitchChat={vi.fn()}
+        onSelectProject={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Ready");
+    expect(markup).toContain("lucide-folder-git");
+    expect(markup).not.toContain("Worker offline");
   });
 
   it("exposes project settings and close actions in the overview header", () => {

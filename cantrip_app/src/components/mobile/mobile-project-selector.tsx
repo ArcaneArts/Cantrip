@@ -5,6 +5,7 @@ import type {
   ProjectWorkspaceSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
+import { isWorkerBoundFolderProject } from "@cantrip/protocol";
 import {
   CircleAlert,
   Folder,
@@ -47,10 +48,19 @@ function projectStatus(
   if (project.setupStatus === "failed") {
     return { icon: "error", label: "Setup failed" };
   }
+  const readySourceWorkerIds = (project.replicas ?? []).flatMap((replica) =>
+    replica.ready ? [replica.workerId] : [],
+  );
+  const eligibleWorkerIds =
+    readySourceWorkerIds.length > 0
+      ? readySourceWorkerIds
+      : project.source
+        ? [project.source.workerId]
+        : [];
   if (
-    project.source &&
+    eligibleWorkerIds.length > 0 &&
     !workers.some(
-      ({ online, workerId }) => online && workerId === project.source?.workerId,
+      ({ online, workerId }) => online && eligibleWorkerIds.includes(workerId),
     )
   ) {
     return { icon: "offline", label: "Worker offline" };
@@ -186,7 +196,10 @@ export function MobileProjectSelector({
                   type="button"
                 >
                   <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg border bg-card">
-                    {project.originKind === "managed-folder" ? (
+                    {isWorkerBoundFolderProject(
+                      project.originKind,
+                      project.capabilities.git,
+                    ) ? (
                       <Folder className="size-4" />
                     ) : (
                       <FolderGit2 className="size-4" />

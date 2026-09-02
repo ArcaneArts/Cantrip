@@ -13,6 +13,7 @@ import type {
   WorkerSummary,
   WorktreePolicy,
 } from "@cantrip/protocol";
+import { isWorkerBoundFolderProject } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
@@ -579,6 +580,10 @@ export function ProjectSettingsPage({
   const projectWorker = workers.find(
     ({ workerId }) => workerId === project.source?.workerId,
   );
+  const workerBoundFolder = isWorkerBoundFolderProject(
+    project.originKind,
+    project.capabilities.git,
+  );
 
   useEffect(() => {
     setSection(normalizedInitialSection);
@@ -772,13 +777,7 @@ export function ProjectSettingsPage({
                 </p>
               </div>
               <dl className="divide-y border-y">
-                <DetailRow
-                  label={
-                    project.originKind === "managed-folder"
-                      ? "Folder"
-                      : "Repository"
-                  }
-                >
+                <DetailRow label={workerBoundFolder ? "Folder" : "Repository"}>
                   {project.github ? (
                     <a
                       className="inline-flex items-center gap-1.5 hover:underline"
@@ -793,9 +792,11 @@ export function ProjectSettingsPage({
                     <span className="inline-flex items-center gap-2">
                       {project.name}
                       <Badge variant="secondary">
-                        {project.folderManagement === "external"
-                          ? "Attached folder"
-                          : "Managed folder"}
+                        {project.capabilities.git
+                          ? "Local Git"
+                          : project.folderManagement === "external"
+                            ? "Attached folder"
+                            : "Managed folder"}
                       </Badge>
                     </span>
                   )}

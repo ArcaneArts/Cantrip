@@ -7,6 +7,7 @@ import type { FastifyInstance } from "fastify";
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage } from "../../http/request-helpers.js";
 import { sendWorkerRequestFailure } from "../../http/worker-request-failures.js";
+import { projectAllowsExecutionOnWorker } from "../../projects/worker-affinity.js";
 import {
   type WorkerCommandBus,
   WorkerUnavailableError,
@@ -50,8 +51,7 @@ export function installBrowserServiceDiscoveryRoutes(
         .filter(
           (worker) =>
             worker.remoteSurfaces.browser &&
-            (project.originKind !== "managed-folder" ||
-              worker.workerId === project.preferredWorkerId),
+            projectAllowsExecutionOnWorker(project, worker.workerId),
         )
         .sort(
           (left, right) =>

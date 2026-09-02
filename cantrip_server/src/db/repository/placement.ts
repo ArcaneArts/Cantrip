@@ -3,6 +3,7 @@ import type {
   ExecutionSurfaceKind,
   ExecutionTarget,
 } from "@cantrip/protocol";
+import { isWorkerBoundFolderProject } from "@cantrip/protocol";
 import { and, asc, eq, isNull } from "drizzle-orm";
 
 import * as schema from "../schema.js";
@@ -41,6 +42,7 @@ export class PlacementRepository {
   ): Promise<ExecutionPlacementResolution> {
     const projectRows = await this.database
       .select({
+        gitCapability: schema.projects.gitCapability,
         id: schema.projects.id,
         originKind: schema.projects.originKind,
         preferredWorkerId: schema.projects.preferredWorkerId,
@@ -107,15 +109,18 @@ export class PlacementRepository {
         ),
     ]);
     const workerById = new Map(workers.map((worker) => [worker.id, worker]));
-    const folderProject = project.originKind === "managed-folder";
-    const owningWorkerId = folderProject
+    const workerBoundFolder = isWorkerBoundFolderProject(
+      project.originKind,
+      project.gitCapability,
+    );
+    const owningWorkerId = workerBoundFolder
       ? (project.preferredWorkerId ??
         replicaRows.find(({ source }) => source.sourceKind === "folder")?.source
           .workerId ??
         null)
       : null;
     const requiresExecutionRoot =
-      folderProject ||
+      project.originKind === "managed-folder" ||
       surfaceKind === "chat" ||
       surfaceKind === "terminal" ||
       surfaceKind === "explorer" ||
@@ -158,7 +163,11 @@ export class PlacementRepository {
       explicitWorktreeId?: string,
       strict = false,
     ): ExecutionPlacementResolution | null => {
-      if (owningWorkerId !== null && workerId !== owningWorkerId) {
+      if (
+        workerBoundFolder &&
+        owningWorkerId !== null &&
+        workerId !== owningWorkerId
+      ) {
         if (!strict) return null;
         throw new ExecutionPlacementUnavailableError(
           "target-mismatch",
@@ -219,7 +228,7 @@ export class PlacementRepository {
         if (!strict) return null;
         throw new ExecutionPlacementUnavailableError(
           "replica-unavailable",
-          folderProject
+          workerBoundFolder
             ? "The worker-managed folder has not finished preparing its execution root."
             : "The selected worker does not have an active project replica.",
         );
@@ -232,7 +241,7 @@ export class PlacementRepository {
         if (!strict) return null;
         throw new ExecutionPlacementUnavailableError(
           "worktree-unavailable",
-          folderProject
+          workerBoundFolder
             ? "The worker-managed folder execution root is not ready."
             : explicitWorktreeId
               ? "The selected worktree is not ready on this project replica."
@@ -312,7 +321,7 @@ export class PlacementRepository {
     const preferredCandidates: Array<{
       selection: ExecutionPlacementResolution["selection"];
       workerId: string | null;
-    }> = folderProject
+    }> = workerBoundFolder
       ? [
           {
             workerId: owningWorkerId,
@@ -338,11 +347,11 @@ export class PlacementRepository {
         candidate.selection,
         undefined,
         undefined,
-        folderProject,
+        workerBoundFolder,
       );
       if (placement) return placement;
     }
-    for (const worker of folderProject ? [] : workers) {
+    for (const worker of workerBoundFolder ? [] : workers) {
       if (visited.has(worker.id)) continue;
       const placement = placementForWorker(worker.id, "fallback");
       if (placement) return placement;

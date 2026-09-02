@@ -51,6 +51,20 @@ export function projectCapabilitiesForSource(input: {
   };
 }
 
+export function isWorkerBoundFolderProject(
+  originKind: z.infer<typeof projectOriginKindSchema>,
+  gitCapability: boolean,
+): boolean {
+  return originKind === "managed-folder" && !gitCapability;
+}
+
+export function isLocalGitProject(
+  originKind: z.infer<typeof projectOriginKindSchema>,
+  gitCapability: boolean,
+): boolean {
+  return originKind === "managed-folder" && gitCapability;
+}
+
 export type ProjectOriginKind = z.infer<typeof projectOriginKindSchema>;
 
 export type ProjectFolderManagement = z.infer<

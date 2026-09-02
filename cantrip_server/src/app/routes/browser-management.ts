@@ -16,6 +16,7 @@ import {
   type ServerRepository,
 } from "../../db/repository.js";
 import { invalidBody } from "../../http/request-helpers.js";
+import { projectAllowsExecutionOnWorker } from "../../projects/worker-affinity.js";
 import type { TunnelRuntimeManager } from "../../tunnels/runtime.js";
 import type { WorkerLinkService } from "../../worker-links/service.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
@@ -99,13 +100,15 @@ export function installBrowserManagementRoutes(
         ownerId,
         context.surface.projectId,
       );
-      if (
-        project?.originKind === "managed-folder" &&
-        workerId !== project.preferredWorkerId
-      ) {
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      if (!projectAllowsExecutionOnWorker(project, workerId)) {
         return reply.code(409).send({
           code: "target-mismatch",
-          error: "This worker-managed folder is bound to its owning worker.",
+          error: project.capabilities.git
+            ? "This local Git project has no ready source on the selected worker."
+            : "This worker-managed folder is bound to its owning worker.",
         });
       }
       const workerOwned = (await repository.listWorkers(ownerId)).some(

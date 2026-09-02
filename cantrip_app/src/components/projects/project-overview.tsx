@@ -5,6 +5,7 @@ import type {
   ProjectTokenUsage,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
+import { isWorkerBoundFolderProject } from "@cantrip/protocol";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -242,7 +243,10 @@ export function ProjectOverview({
   ).length;
   const folderStats = stats?.kind === "folder" ? stats : null;
   const gitStats = stats?.kind === "git" ? stats : null;
-  const folderProject = project.originKind === "managed-folder";
+  const folderProject = isWorkerBoundFolderProject(
+    project.originKind,
+    project.capabilities.git,
+  );
   const loadingValue = statsLoading ? (
     <Loader2 className="size-5 animate-spin text-muted-foreground" />
   ) : (
