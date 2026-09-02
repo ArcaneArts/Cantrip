@@ -2698,7 +2698,7 @@ export const projectReplicaJobs = pgTable(
     stateRevision: integer("state_revision").notNull().default(1),
     idempotencyKey: text("idempotency_key").notNull(),
     payloadFingerprint: text("payload_fingerprint").notNull(),
-    repository: text("repository").notNull(),
+    repository: text("repository"),
     placementMode: text("placement_mode")
       .$type<ProjectReplicaPlacementMode>()
       .notNull()

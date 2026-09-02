@@ -526,7 +526,7 @@ export const projectReplicaJobSummarySchema = z.object({
   state: projectReplicaJobStateSchema,
   stateRevision: z.number().int().positive(),
   idempotencyKey: z.string().min(1).max(200),
-  repository: z.string().min(1),
+  repository: z.string().min(1).nullable(),
   placementMode: projectReplicaPlacementModeSchema.default("managed"),
   placementPath: z.string().min(1).nullable().default(null),
   resolvedMaterialization: projectReplicaMaterializationSchema
@@ -566,7 +566,7 @@ export const encryptedProjectReplicaProvisionCreateSchema =
     .omit({ placement: true })
     .extend({
       placement: encryptedProjectReplicaPlacementRequestSchema.optional(),
-      repository: repositoryRoutingHandleSchema,
+      repository: repositoryRoutingHandleSchema.nullable(),
     })
     .strict();
 
@@ -593,7 +593,7 @@ export const projectReplicaRemoveCreateSchema = z.object({
 
 export const encryptedProjectReplicaRemoveCreateSchema =
   projectReplicaRemoveCreateSchema
-    .extend({ repository: repositoryRoutingHandleSchema })
+    .extend({ repository: repositoryRoutingHandleSchema.nullable() })
     .strict();
 
 export const projectReplicaJobRetrySchema = z.object({

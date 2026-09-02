@@ -536,4 +536,211 @@ describe("durable project replica jobs", () => {
     ).toMatchObject({ state: "queued", attempt: 2 });
     await second.close();
   });
+
+  it("attaches local Git sources and limits preferred workers to ready sources", async () => {
+    const localGitDataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-local-git-replica-jobs-"),
+    );
+    const connection = await connectDatabase({
+      ...config,
+      dataDirectory: localGitDataDirectory,
+    });
+    try {
+      const homeWorkerId = "local-git-home";
+      const secondaryWorkerId = "local-git-secondary";
+      for (const workerId of [homeWorkerId, secondaryWorkerId]) {
+        await connection.repository.recordWorker(LOCAL_USER_ID, {
+          workerId,
+          name: workerId,
+          platform: "linux",
+          architecture: "x64",
+          codexVersion: null,
+          codexRuntime: unprobedCodexRuntimeReport,
+          remoteSurfaces: {
+            browser: false,
+            desktop: false,
+            transports: ["websocket"],
+            maxSessions: 1,
+          },
+          projectReplicas: {
+            provision: true,
+            synchronize: true,
+            remove: true,
+            exactRevision: true,
+            directPlacement: true,
+            attachExisting: true,
+            recursiveParentCreation: false,
+          },
+          startedAt: "2026-08-11T12:00:00.000Z",
+        });
+      }
+      const created = await connection.repository.createManagedFolderProject(
+        LOCAL_USER_ID,
+        {
+          workerId: homeWorkerId,
+          ...protectedProjectFields(),
+          existingPath: `ctrr_${"H".repeat(43)}`,
+        },
+      );
+      const setup =
+        await connection.repository.projectFolderSetupJobs.claimNext();
+      if (!setup) throw new Error("Expected local Git setup job.");
+      await connection.repository.projectFolderSetupJobs.complete(
+        setup.job.id,
+        setup.commandId,
+        {
+          status: "ready",
+          jobId: setup.job.id,
+          attempt: setup.job.attempt,
+          path: `ctrr_${"I".repeat(43)}`,
+          displayPath: `ctrr_${"J".repeat(43)}`,
+          reused: true,
+          repositoryFingerprint: "c".repeat(64),
+          github: null,
+        },
+      );
+      expect(
+        await connection.repository.getProject(
+          LOCAL_USER_ID,
+          created.project.id,
+        ),
+      ).toMatchObject({
+        capabilities: {
+          git: true,
+          github: false,
+          worktrees: false,
+          replicas: true,
+          relocation: true,
+        },
+      });
+      await expect(
+        connection.repository.updateProjectPreferredWorker(
+          LOCAL_USER_ID,
+          created.project.id,
+          secondaryWorkerId,
+        ),
+      ).rejects.toThrow(
+        "Attach a ready local Git source on this worker before selecting it as preferred.",
+      );
+
+      const revision = "d".repeat(40);
+      const attachment =
+        await connection.repository.projectReplicaJobs.createProvision(
+          LOCAL_USER_ID,
+          created.project.id,
+          {
+            workerId: secondaryWorkerId,
+            repository: null,
+            expectedRevision: revision,
+            idempotencyKey: "attach:local-git-secondary",
+            placement: {
+              mode: "direct",
+              path: `ctrr_${"K".repeat(43)}`,
+            },
+          },
+        );
+      const attachmentAttempt =
+        await connection.repository.projectReplicaJobs.claimNext();
+      expect(attachmentAttempt?.job.id).toBe(attachment.id);
+      const attached =
+        await connection.repository.projectReplicaJobs.completeProvision(
+          attachment.id,
+          attachmentAttempt!.commandId,
+          {
+            status: "ready",
+            jobId: attachment.id,
+            attempt: attachmentAttempt!.job.attempt,
+            path: `ctrr_${"L".repeat(43)}`,
+            displayPath: `ctrr_${"M".repeat(43)}`,
+            repositoryFingerprint: "e".repeat(64),
+            resolvedRevision: revision,
+            branch: "main",
+            reused: true,
+            worktreePolicy: null,
+            placement: {
+              mode: "direct",
+              materialization: "attached",
+              ownership: "user",
+              canonicalPath: `ctrr_${"L".repeat(43)}`,
+              requestedPath: `ctrr_${"K".repeat(43)}`,
+              linkPath: null,
+            },
+          },
+        );
+      expect(
+        await connection.repository.updateProjectPreferredWorker(
+          LOCAL_USER_ID,
+          created.project.id,
+          secondaryWorkerId,
+        ),
+      ).toMatchObject({ preferredWorkerId: secondaryWorkerId });
+
+      await expect(
+        connection.repository.projectReplicaJobs.createSynchronize(
+          LOCAL_USER_ID,
+          created.project.id,
+          attached.projectReplicaId!,
+          {
+            repository: null,
+            expectedRevision: revision,
+            policy: "verify-only",
+            idempotencyKey: "sync:local-git-secondary",
+          },
+        ),
+      ).rejects.toThrow(
+        "Local Git sources do not support remote synchronization.",
+      );
+      await expect(
+        connection.repository.projectReplicaJobs.createRemove(
+          LOCAL_USER_ID,
+          created.project.id,
+          attached.projectReplicaId!,
+          {
+            repository: null,
+            deleteLocalFiles: true,
+            idempotencyKey: "delete:local-git-secondary",
+          },
+        ),
+      ).rejects.toThrow(
+        "Detaching a local Git source never deletes its checkout.",
+      );
+      const removal =
+        await connection.repository.projectReplicaJobs.createRemove(
+          LOCAL_USER_ID,
+          created.project.id,
+          attached.projectReplicaId!,
+          {
+            repository: null,
+            deleteLocalFiles: false,
+            idempotencyKey: "detach:local-git-secondary",
+          },
+        );
+      const removalAttempt =
+        await connection.repository.projectReplicaJobs.claimNext();
+      await connection.repository.projectReplicaJobs.markRemovalStarted(
+        attached.projectReplicaId!,
+      );
+      await connection.repository.projectReplicaJobs.completeRemove(
+        removal.id,
+        removalAttempt!.commandId,
+        {
+          status: "removed",
+          jobId: removal.id,
+          attempt: removalAttempt!.job.attempt,
+          path: `ctrr_${"L".repeat(43)}`,
+          localFilesDeleted: false,
+          ownershipReleased: true,
+        },
+      );
+      expect(
+        await connection.repository.getProject(
+          LOCAL_USER_ID,
+          created.project.id,
+        ),
+      ).toMatchObject({ preferredWorkerId: homeWorkerId });
+    } finally {
+      await connection.close();
+      await rm(localGitDataDirectory, { recursive: true, force: true });
+    }
+  });
 });

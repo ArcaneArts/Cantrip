@@ -62,6 +62,7 @@ const cleanStatus: GitStatus = {
 describe("project settings", () => {
   it("hides worktree and replica settings for managed folders", () => {
     const tabs = projectSettingsTabsForProject({
+      originKind: "managed-folder",
       capabilities: {
         git: false,
         github: false,
@@ -85,6 +86,28 @@ describe("project settings", () => {
     ]);
   });
 
+  it("exposes attachable sources for local Git projects", () => {
+    const tabs = projectSettingsTabsForProject({
+      originKind: "managed-folder",
+      capabilities: {
+        git: true,
+        github: false,
+        worktrees: false,
+        replicas: true,
+        relocation: true,
+      },
+    });
+
+    expect(tabs.find(({ id }) => id === "replicas")).toMatchObject({
+      label: "Sources",
+      searchItems: [
+        expect.anything(),
+        expect.objectContaining({ label: "Worker sources" }),
+      ],
+    });
+    expect(tabs.map(({ id }) => id)).not.toContain("worktrees");
+  });
+
   it("indexes settings from every project category", () => {
     expect(
       settingsSearchResults("archived chats", projectSettingsSections),
@@ -104,6 +127,7 @@ describe("project settings", () => {
         "abcdef123456",
         projectSettingsTabsForProject(
           {
+            originKind: "github",
             capabilities: {
               git: true,
               github: true,

@@ -1,5 +1,7 @@
 import {
-  projectCapabilitiesForOriginKind,
+  isLocalGitProject,
+  isWorkerBoundFolderProject,
+  projectCapabilitiesForSource,
   projectWorkspaceStorageContextSchema,
   projectWorkspaceStorageCanBeDefault,
   projectWireSummarySchema,
@@ -33,6 +35,7 @@ type ProjectWorkspaceStorageProfileRow =
 type WorkerRow = typeof schema.workers.$inferSelect;
 
 export class ProjectWorkspaceInvariantError extends Error {}
+export class ProjectPreferredWorkerConflictError extends Error {}
 
 function toProjectWorkspaceStorageContext(input: {
   kind: ProjectWorkspaceStorageProfileRow["kind"];
@@ -74,9 +77,11 @@ export function toProjectWireSummary(
   project: ProjectRow,
   replicas: ProjectReplicaSummary[] = [],
 ): ProjectWireSummary {
-  const originCapabilities = projectCapabilitiesForOriginKind(
-    project.originKind,
-  );
+  const capabilities = projectCapabilitiesForSource({
+    originKind: project.originKind,
+    git: project.gitCapability,
+    github: project.githubCapability,
+  });
   const github =
     project.githubRepositoryId &&
     project.githubRepositoryFullName &&
@@ -94,11 +99,7 @@ export function toProjectWireSummary(
     position: project.position,
     originKind: project.originKind,
     folderManagement: project.folderManagement,
-    capabilities: {
-      ...originCapabilities,
-      git: originCapabilities.git || project.gitCapability,
-      github: originCapabilities.github || project.githubCapability,
-    },
+    capabilities,
     setupStatus: project.setupStatus as ProjectWireSummary["setupStatus"],
     setupError: project.setupError,
     worktreePolicy:
@@ -847,6 +848,45 @@ export class ProjectRepository {
   ): Promise<ProjectWireSummary | null> {
     if (workerId && !(await this.collaborators.getWorker(ownerId, workerId))) {
       return null;
+    }
+    const projects = await this.database
+      .select({
+        gitCapability: schema.projects.gitCapability,
+        originKind: schema.projects.originKind,
+        preferredWorkerId: schema.projects.preferredWorkerId,
+      })
+      .from(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const project = projects[0];
+    if (!project) return null;
+    if (workerId) {
+      const replicas =
+        (await this.collaborators.listProjectReplicas(ownerId, projectId)) ??
+        [];
+      if (
+        isWorkerBoundFolderProject(project.originKind, project.gitCapability) &&
+        workerId !== (project.preferredWorkerId ?? replicas[0]?.workerId)
+      ) {
+        throw new ProjectPreferredWorkerConflictError(
+          "This folder project is bound to its owning worker.",
+        );
+      }
+      if (
+        isLocalGitProject(project.originKind, project.gitCapability) &&
+        !replicas.some(
+          (replica) => replica.workerId === workerId && replica.ready,
+        )
+      ) {
+        throw new ProjectPreferredWorkerConflictError(
+          "Attach a ready local Git source on this worker before selecting it as preferred.",
+        );
+      }
     }
     const rows = await this.database
       .update(schema.projects)

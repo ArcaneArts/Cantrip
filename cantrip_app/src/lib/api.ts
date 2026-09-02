@@ -4401,11 +4401,17 @@ export async function createProjectReplica(
   },
 ) {
   const { placement, repository, ...requestInput } = input;
-  const repositoryHandle = await protectReplicaRepository({
-    projectId,
-    workerId: input.workerId,
-    repository,
-  });
+  const project = (await getProjectWireList()).find(
+    ({ id }) => id === projectId,
+  );
+  if (!project) throw new CantripApiError("Project not found.", 404);
+  const repositoryHandle = project.capabilities.github
+    ? await protectReplicaRepository({
+        projectId,
+        workerId: input.workerId,
+        repository,
+      })
+    : null;
   const protectedPlacement = await protectReplicaPlacement({
     placement,
     projectId,
@@ -4458,16 +4464,20 @@ export async function removeProjectReplica(
     repository?: ProjectGithubConversionRepository;
   },
 ) {
-  const replica = (await getProjectWireList())
-    .find(({ id }) => id === projectId)
-    ?.replicas.find(({ id }) => id === projectReplicaId);
+  const project = (await getProjectWireList()).find(
+    ({ id }) => id === projectId,
+  );
+  if (!project) throw new CantripApiError("Project not found.", 404);
+  const replica = project.replicas.find(({ id }) => id === projectReplicaId);
   if (!replica) throw new CantripApiError("Project replica not found.", 404);
   const { repository, ...requestInput } = input;
-  const repositoryHandle = await protectReplicaRepository({
-    projectId,
-    workerId: replica.workerId,
-    repository,
-  });
+  const repositoryHandle = project.capabilities.github
+    ? await protectReplicaRepository({
+        projectId,
+        workerId: replica.workerId,
+        repository,
+      })
+    : null;
   return openProjectReplicaJob(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}/remove`,

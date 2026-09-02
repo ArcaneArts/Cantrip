@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   ProjectReplicaSettings,
   canonicalReplicaRevision,
+  preferredWorkerOptions,
   projectReplicaForWorker,
   replicaPlacementLabel,
   replicaRemovalCopy,
@@ -71,6 +72,13 @@ const worker = workerSummarySchema.parse({
   online: true,
   lastSeenAt: now,
 });
+const secondaryWorker = workerSummarySchema.parse({
+  ...worker,
+  workerId: "worker-two",
+  name: "Build Linux",
+  platform: "linux",
+  architecture: "x64",
+});
 
 describe("project replica settings", () => {
   it("selects the canonical replica revision and maps replicas to workers", () => {
@@ -113,5 +121,59 @@ describe("project replica settings", () => {
     expect(markup).toContain("Canonical: /srv/cantrip");
     expect(markup).toContain("Sync");
     expect(markup).toContain("Fast-forward Primary");
+  });
+
+  it("presents local Git replicas as attach-only worker sources", () => {
+    const localGitProject = projectSummarySchema.parse({
+      ...project,
+      originKind: "managed-folder",
+      folderManagement: "external",
+      capabilities: {
+        git: true,
+        github: false,
+        worktrees: false,
+        replicas: true,
+        relocation: true,
+      },
+      github: null,
+      source: {
+        ...project.source,
+        placementMode: "direct",
+        ownershipKind: "user",
+        requestedPath: "/srv/projects/cantrip",
+      },
+      replicas: [
+        {
+          ...project.replicas[0],
+          placementMode: "direct",
+          ownershipKind: "user",
+          requestedPath: "/srv/projects/cantrip",
+        },
+      ],
+    });
+    expect(
+      preferredWorkerOptions(localGitProject, [worker, secondaryWorker]).map(
+        ({ workerId }) => workerId,
+      ),
+    ).toEqual(["worker-one"]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <ProjectReplicaSettings
+          project={localGitProject}
+          workers={[worker, secondaryWorker]}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(markup).toContain("Worker sources");
+    expect(markup).toContain("Attach source");
+    expect(markup).toContain("Build Linux");
+    expect(markup).toContain("User-owned; never deleted by Cantrip");
+    expect(markup).not.toContain("Fast-forward Primary");
+    expect(markup).not.toContain(">Sync<");
   });
 });

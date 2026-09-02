@@ -1388,7 +1388,12 @@ describe("Cantrip protocol", () => {
     expect(
       projectSummarySchema.safeParse({
         ...folder,
-        capabilities: { ...folder.capabilities, git: true },
+        capabilities: {
+          ...folder.capabilities,
+          git: true,
+          replicas: true,
+          relocation: true,
+        },
       }).success,
     ).toBe(true);
     expect(
@@ -1398,6 +1403,8 @@ describe("Cantrip protocol", () => {
           ...folder.capabilities,
           git: true,
           github: true,
+          replicas: true,
+          relocation: true,
         },
       }).success,
     ).toBe(true);
@@ -1857,6 +1864,21 @@ describe("Cantrip protocol", () => {
         expectedRevision: "a".repeat(40),
       }),
     ).toMatchObject({ attempt: 2, expectedRevision: "a".repeat(40) });
+    expect(
+      workerCommandSchema.parse({
+        type: "project.replica.provision",
+        jobId,
+        attempt: 1,
+        projectId: "019fe8a8-6473-7b1f-9152-e06964be098b",
+        repository: null,
+        workspaceStorage: { kind: "system" },
+        placement: { mode: "direct", path: "/srv/repos/local-project" },
+        expectedRevision: "b".repeat(40),
+      }),
+    ).toMatchObject({
+      repository: null,
+      placement: { mode: "direct", path: "/srv/repos/local-project" },
+    });
     expect(
       projectReplicaJobSummarySchema.parse({
         id: jobId,

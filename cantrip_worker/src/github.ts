@@ -2140,7 +2140,7 @@ export class GithubClient {
       jobId: string;
       attempt: number;
       projectId?: string;
-      nameWithOwner: string;
+      nameWithOwner: string | null;
       placement?: ProjectReplicaPlacementRequest;
       workspaceStorage?: ProjectWorkspaceStorageContext;
       expectedRevision: string | null;
@@ -2154,16 +2154,20 @@ export class GithubClient {
       placement: input.placement ?? ({ mode: "managed" } as const),
       workspaceStorage: input.workspaceStorage ?? ({ kind: "system" } as const),
     };
-    const [owner, repository] = repositorySegments(input.nameWithOwner);
+    const repositoryIdentity = input.nameWithOwner
+      ? repositorySegments(input.nameWithOwner)
+      : null;
     const queueTarget =
-      normalizedInput.placement.mode !== "direct"
-        ? deriveManagedRepositoryTarget(
-            this.dataDirectory,
-            normalizedInput.workspaceStorage,
-            owner,
-            repository,
-          )
-        : normalizedInput.placement.path;
+      normalizedInput.placement.mode === "direct"
+        ? normalizedInput.placement.path
+        : repositoryIdentity
+          ? deriveManagedRepositoryTarget(
+              this.dataDirectory,
+              normalizedInput.workspaceStorage,
+              repositoryIdentity[0],
+              repositoryIdentity[1],
+            )
+          : `invalid-local-git:${normalizedInput.jobId}`;
     const previous =
       this.replicaOperationQueues.get(queueTarget) ?? Promise.resolve();
     let release!: () => void;
@@ -2191,14 +2195,16 @@ export class GithubClient {
       jobId: string;
       attempt: number;
       projectId: string;
-      nameWithOwner: string;
+      nameWithOwner: string | null;
       placement: ProjectReplicaPlacementRequest;
       workspaceStorage: ProjectWorkspaceStorageContext;
       expectedRevision: string | null;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
   ): Promise<ProjectReplicaProvisionResult> {
-    const [owner, repository] = repositorySegments(input.nameWithOwner);
+    const repositoryIdentity = input.nameWithOwner
+      ? repositorySegments(input.nameWithOwner)
+      : null;
     const blocked = (
       code: ProjectReplicaJobErrorCode,
       message: string,
@@ -2222,25 +2228,40 @@ export class GithubClient {
           : "validating-placement",
       percent: 10,
     });
+    if (!repositoryIdentity && input.placement.mode !== "direct") {
+      return blocked(
+        "policy-denied",
+        "Local Git sources can only attach an existing checkout at an explicit worker path.",
+        false,
+      );
+    }
+    if (!repositoryIdentity && !input.expectedRevision) {
+      return blocked(
+        "target-revision-mismatch",
+        "Local Git source attachment requires a current project revision for compatibility verification.",
+        false,
+      );
+    }
     let prepared;
     try {
       const managedTarget =
-        input.workspaceStorage.kind === "managed" &&
-        input.placement.mode !== "direct"
-          ? path.join(
-              await ensureManagedWorkspaceDirectory(
+        input.placement.mode === "direct"
+          ? input.placement.path
+          : input.workspaceStorage.kind === "managed"
+            ? path.join(
+                await ensureManagedWorkspaceDirectory(
+                  this.dataDirectory,
+                  input.workspaceStorage,
+                  ["repositories", repositoryIdentity![0]],
+                ),
+                repositoryIdentity![1],
+              )
+            : deriveManagedRepositoryTarget(
                 this.dataDirectory,
                 input.workspaceStorage,
-                ["repositories", owner],
-              ),
-              repository,
-            )
-          : deriveManagedRepositoryTarget(
-              this.dataDirectory,
-              input.workspaceStorage,
-              owner,
-              repository,
-            );
+                repositoryIdentity![0],
+                repositoryIdentity![1],
+              );
       prepared = await this.placementManager.prepare({
         jobId: input.jobId,
         managedTarget,
@@ -2297,22 +2318,24 @@ export class GithubClient {
             false,
           );
         }
-        const origin = (
-          await execFileAsync(
-            "git",
-            ["-C", target, "config", "--get", "remote.origin.url"],
-            { maxBuffer: 1024 * 1024 },
-          )
-        ).stdout.trim();
-        if (
-          githubRepositoryFromRemoteUrl(origin) !==
-          input.nameWithOwner.toLowerCase()
-        ) {
-          return blocked(
-            "target-repository-mismatch",
-            "The requested checkout belongs to a different GitHub repository.",
-            false,
-          );
+        if (input.nameWithOwner) {
+          const origin = (
+            await execFileAsync(
+              "git",
+              ["-C", target, "config", "--get", "remote.origin.url"],
+              { maxBuffer: 1024 * 1024 },
+            )
+          ).stdout.trim();
+          if (
+            githubRepositoryFromRemoteUrl(origin) !==
+            input.nameWithOwner.toLowerCase()
+          ) {
+            return blocked(
+              "target-repository-mismatch",
+              "The requested checkout belongs to a different GitHub repository.",
+              false,
+            );
+          }
         }
         const gitDirOutput = (
           await execFileAsync("git", ["-C", target, "rev-parse", "--git-dir"], {
@@ -2354,7 +2377,7 @@ export class GithubClient {
             false,
           );
         }
-        if (input.expectedRevision) {
+        if (input.expectedRevision && input.nameWithOwner) {
           const status = (
             await execFileAsync(
               "git",
@@ -2397,6 +2420,13 @@ export class GithubClient {
         );
       }
     } else if (prepared.exists) {
+      if (!input.nameWithOwner) {
+        return blocked(
+          "policy-denied",
+          "Local Git repositories can only be attached through direct placement.",
+          false,
+        );
+      }
       let origin: string;
       try {
         origin = (
@@ -2496,6 +2526,12 @@ export class GithubClient {
           false,
         );
       }
+    } else if (!input.nameWithOwner) {
+      return blocked(
+        "target-not-found",
+        "The local Git checkout does not exist. Cantrip will not clone a local-only project.",
+        false,
+      );
     } else {
       const staging = prepared.stagingPath;
       reportProgress({
@@ -2673,22 +2709,24 @@ export class GithubClient {
 
     if (prepared.mode === "direct") {
       try {
-        const configuredOrigin = (
-          await execFileAsync(
-            "git",
-            ["-C", canonicalTarget, "config", "--get", "remote.origin.url"],
-            { maxBuffer: 1024 * 1024 },
-          )
-        ).stdout.trim();
-        if (
-          githubRepositoryFromRemoteUrl(configuredOrigin) !==
-          input.nameWithOwner.toLowerCase()
-        ) {
-          return blocked(
-            "target-repository-mismatch",
-            "The materialized checkout belongs to a different GitHub repository.",
-            false,
-          );
+        if (input.nameWithOwner) {
+          const configuredOrigin = (
+            await execFileAsync(
+              "git",
+              ["-C", canonicalTarget, "config", "--get", "remote.origin.url"],
+              { maxBuffer: 1024 * 1024 },
+            )
+          ).stdout.trim();
+          if (
+            githubRepositoryFromRemoteUrl(configuredOrigin) !==
+            input.nameWithOwner.toLowerCase()
+          ) {
+            return blocked(
+              "target-repository-mismatch",
+              "The materialized checkout belongs to a different GitHub repository.",
+              false,
+            );
+          }
         }
         const topLevel = await realpath(
           (
@@ -2781,7 +2819,9 @@ export class GithubClient {
       jobId: input.jobId,
       attempt: input.attempt,
       path: canonicalTarget,
-      displayPath: prepared.requestedPath ?? `${owner}/${repository}`,
+      displayPath:
+        prepared.requestedPath ??
+        `${repositoryIdentity![0]}/${repositoryIdentity![1]}`,
       repositoryFingerprint,
       resolvedRevision,
       branch: branch || null,
@@ -3157,7 +3197,7 @@ export class GithubClient {
       jobId: string;
       attempt: number;
       projectId?: string;
-      nameWithOwner: string;
+      nameWithOwner: string | null;
       sourcePath: string;
       placement?: ProjectReplicaPlacementResult;
       repositoryFingerprint?: string;
@@ -3180,7 +3220,7 @@ export class GithubClient {
       jobId: string;
       attempt: number;
       projectId: string;
-      nameWithOwner: string;
+      nameWithOwner: string | null;
       sourcePath: string;
       placement?: ProjectReplicaPlacementResult;
       repositoryFingerprint?: string;
@@ -3203,6 +3243,13 @@ export class GithubClient {
       error: ProjectReplicaPlacementError,
     ): ProjectReplicaRemoveResult =>
       blocked(error.code, error.message, error.retryable);
+    if (!input.nameWithOwner && input.deleteLocalFiles) {
+      return blocked(
+        "policy-denied",
+        "Detaching a local Git source never deletes its checkout.",
+        false,
+      );
+    }
     const target = path.resolve(input.sourcePath);
     const placement = input.placement ?? null;
     const placementMode = placement?.mode ?? "managed";
@@ -3334,10 +3381,17 @@ export class GithubClient {
       }
       throw error;
     }
+    if (placementMode !== "direct" && !input.nameWithOwner) {
+      return blocked(
+        "policy-denied",
+        "Local Git repositories can only be removed from direct placement.",
+        false,
+      );
+    }
     const validation =
       placementMode === "direct"
         ? await this.validateDirectReplica(target, input.nameWithOwner)
-        : await this.validateManagedReplica(target, input.nameWithOwner);
+        : await this.validateManagedReplica(target, input.nameWithOwner!);
     if (!validation.ok) {
       return blocked(validation.code, validation.message, false);
     }
@@ -3636,7 +3690,7 @@ export class GithubClient {
 
   private async validateDirectReplica(
     repositoryPath: string,
-    nameWithOwner: string,
+    nameWithOwner: string | null,
   ): Promise<
     | { ok: true; path: string }
     | {
@@ -3691,24 +3745,32 @@ export class GithubClient {
           { maxBuffer: 1024 * 1024 },
         )
       ).stdout.trim();
-      const origin = (
-        await execFileAsync(
-          "git",
-          ["-C", target, "config", "--get", "remote.origin.url"],
-          { maxBuffer: 1024 * 1024 },
-        )
-      ).stdout.trim();
-      if (
-        !pathsEqual(topLevel, target) ||
-        isBare !== "false" ||
-        githubRepositoryFromRemoteUrl(origin) !== nameWithOwner.toLowerCase()
-      ) {
+      if (!pathsEqual(topLevel, target) || isBare !== "false") {
         return {
           ok: false,
           code: "target-repository-mismatch",
           message:
-            "The direct checkout no longer matches this GitHub repository.",
+            "The direct checkout is no longer an attachable Git repository.",
         };
+      }
+      if (nameWithOwner) {
+        const origin = (
+          await execFileAsync(
+            "git",
+            ["-C", target, "config", "--get", "remote.origin.url"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+        if (
+          githubRepositoryFromRemoteUrl(origin) !== nameWithOwner.toLowerCase()
+        ) {
+          return {
+            ok: false,
+            code: "target-repository-mismatch",
+            message:
+              "The direct checkout no longer matches this GitHub repository.",
+          };
+        }
       }
       const gitDirOutput = (
         await execFileAsync("git", ["-C", target, "rev-parse", "--git-dir"], {

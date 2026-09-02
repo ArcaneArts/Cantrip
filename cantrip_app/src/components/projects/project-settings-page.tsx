@@ -13,7 +13,10 @@ import type {
   WorkerSummary,
   WorktreePolicy,
 } from "@cantrip/protocol";
-import { isWorkerBoundFolderProject } from "@cantrip/protocol";
+import {
+  isLocalGitProject,
+  isWorkerBoundFolderProject,
+} from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
@@ -286,10 +289,14 @@ export const projectSettingsSections: readonly SettingsNavigationSection<Project
   ];
 
 export function projectSettingsTabsForProject(
-  project: Pick<ProjectSummary, "capabilities">,
+  project: Pick<ProjectSummary, "capabilities" | "originKind">,
   worktrees: readonly ProjectWorktreeSummary[] = [],
   workers: readonly WorkerSummary[] = [],
 ): readonly SettingsNavigationSection<ProjectSettingsSection>[] {
+  const localGitProject = isLocalGitProject(
+    project.originKind,
+    project.capabilities.git,
+  );
   return projectSettingsSections
     .filter(
       ({ id }) =>
@@ -297,32 +304,51 @@ export function projectSettingsTabsForProject(
         (id !== "worktrees" || project.capabilities.worktrees),
     )
     .map((section) =>
-      section.id === "worktrees"
+      section.id === "replicas" && localGitProject
         ? {
             ...section,
+            label: "Sources",
+            description: "Worker placement",
             searchItems: [
-              ...section.searchItems,
-              ...worktrees.map((worktree) => {
-                const worker = workers.find(
-                  ({ workerId }) => workerId === worktree.workerId,
-                );
-                return {
-                  id: `worktree:${worktree.id}`,
-                  label: worktree.name,
-                  description: worktree.displayPath,
-                  keywords: [
-                    worktree.path,
-                    worktree.branch ?? "detached",
-                    worktree.head ?? "",
-                    worker?.name ?? worktree.workerId,
-                    worktree.isPrimary ? "primary" : "isolated",
-                    worktree.locked ? "locked" : "unlocked",
-                  ],
-                };
-              }),
+              {
+                id: "project-placement",
+                label: "Project placement",
+                description: "Choose an eligible worker for this project.",
+              },
+              {
+                id: "worker-replicas",
+                label: "Worker sources",
+                description: "Attach compatible existing Git checkouts.",
+                keywords: ["source attach checkout machine"],
+              },
             ],
           }
-        : section,
+        : section.id === "worktrees"
+          ? {
+              ...section,
+              searchItems: [
+                ...section.searchItems,
+                ...worktrees.map((worktree) => {
+                  const worker = workers.find(
+                    ({ workerId }) => workerId === worktree.workerId,
+                  );
+                  return {
+                    id: `worktree:${worktree.id}`,
+                    label: worktree.name,
+                    description: worktree.displayPath,
+                    keywords: [
+                      worktree.path,
+                      worktree.branch ?? "detached",
+                      worktree.head ?? "",
+                      worker?.name ?? worktree.workerId,
+                      worktree.isPrimary ? "primary" : "isolated",
+                      worktree.locked ? "locked" : "unlocked",
+                    ],
+                  };
+                }),
+              ],
+            }
+          : section,
     );
 }
 

@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   canBrowseRepositoryPath,
+  repositoryAttachmentAvailability,
   repositoryPlacementAvailability,
+  repositoryPlacementRequest,
 } from "./repository-import-options-dialog";
 
 const now = "2026-08-22T12:00:00.000Z";
@@ -64,5 +66,25 @@ describe("repository import placement options", () => {
       canBrowseRepositoryPath("direct", "worker-two", localWorkerIds),
     ).toBe(false);
     expect(canBrowseRepositoryPath("direct", null, localWorkerIds)).toBe(false);
+  });
+
+  it("does not require clone directory creation for attach-only paths", () => {
+    expect(
+      repositoryAttachmentAvailability(
+        worker({
+          directPlacement: true,
+          attachExisting: true,
+          recursiveParentCreation: false,
+        }),
+      ),
+    ).toEqual({ direct: true });
+    expect(
+      repositoryAttachmentAvailability(
+        worker({ directPlacement: true, attachExisting: false }),
+      ),
+    ).toEqual({ direct: false });
+    expect(
+      repositoryPlacementRequest(true, "managed", "  /srv/repositories/app  "),
+    ).toEqual({ mode: "direct", path: "/srv/repositories/app" });
   });
 });

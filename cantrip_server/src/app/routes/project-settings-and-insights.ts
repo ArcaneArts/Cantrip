@@ -8,7 +8,10 @@ import {
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
-import type { ServerRepository } from "../../db/repository.js";
+import {
+  ProjectPreferredWorkerConflictError,
+  type ServerRepository,
+} from "../../db/repository.js";
 import { invalidBody } from "../../http/request-helpers.js";
 import { sendWorkerRequestFailure } from "../../http/worker-request-failures.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
@@ -46,14 +49,24 @@ export function installProjectPreferenceRoutes(
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const project = await repository.updateProjectPreferredWorker(
-        applicationOwnerId(),
-        request.params.projectId,
-        input.data.workerId,
-      );
-      return project
-        ? reply.send(projectWireSummarySchema.parse(project))
-        : reply.code(404).send({ error: "Project or worker not found." });
+      try {
+        const project = await repository.updateProjectPreferredWorker(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data.workerId,
+        );
+        return project
+          ? reply.send(projectWireSummarySchema.parse(project))
+          : reply.code(404).send({ error: "Project or worker not found." });
+      } catch (error) {
+        if (error instanceof ProjectPreferredWorkerConflictError) {
+          return reply.code(409).send({
+            code: "target-mismatch",
+            error: error.message,
+          });
+        }
+        throw error;
+      }
     },
   );
 

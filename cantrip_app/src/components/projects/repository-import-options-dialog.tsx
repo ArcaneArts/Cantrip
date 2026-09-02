@@ -49,12 +49,29 @@ export function repositoryPlacementAvailability(worker: WorkerSummary) {
   };
 }
 
+export function repositoryAttachmentAvailability(worker: WorkerSummary) {
+  return {
+    direct:
+      worker.projectReplicas.directPlacement &&
+      worker.projectReplicas.attachExisting,
+  };
+}
+
 export function canBrowseRepositoryPath(
   mode: RepositoryPlacementMode,
   workerId: string | null,
   localWorkerIds: ReadonlySet<string>,
 ): boolean {
   return mode === "direct" && workerId !== null && localWorkerIds.has(workerId);
+}
+
+export function repositoryPlacementRequest(
+  attachOnly: boolean,
+  mode: RepositoryPlacementMode,
+  path: string,
+): ProjectReplicaPlacementRequest {
+  if (attachOnly) return { mode: "direct", path: path.trim() };
+  return mode === "managed" ? { mode: "managed" } : { mode, path: path.trim() };
 }
 
 const choices: Array<{
@@ -86,6 +103,7 @@ const choices: Array<{
 ];
 
 export function RepositoryImportOptionsDialog({
+  attachOnly = false,
   error,
   onOpenChange,
   onSubmit,
@@ -98,6 +116,7 @@ export function RepositoryImportOptionsDialog({
   workspaceId,
   workspaces = [],
 }: {
+  attachOnly?: boolean;
   error?: string | null;
   onOpenChange(open: boolean): void;
   onSubmit(options: RepositoryImportOptions): Promise<void> | void;
@@ -110,7 +129,9 @@ export function RepositoryImportOptionsDialog({
   workspaceId?: string;
   workspaces?: ProjectWorkspaceSummary[];
 }) {
-  const [mode, setMode] = useState<RepositoryPlacementMode>("managed");
+  const [mode, setMode] = useState<RepositoryPlacementMode>(
+    attachOnly ? "direct" : "managed",
+  );
   const [path, setPath] = useState("");
   const [picking, setPicking] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
@@ -138,15 +159,16 @@ export function RepositoryImportOptionsDialog({
     const opening = open && !wasOpen.current;
     wasOpen.current = open;
     if (!opening) return;
-    setMode("managed");
+    setMode(attachOnly ? "direct" : "managed");
     setPath("");
     setPicking(false);
     setPickerError(null);
-  }, [open]);
+  }, [attachOnly, open]);
 
-  const customMode = mode !== "managed";
-  const selectedModeAvailable =
-    mode === "managed"
+  const customMode = attachOnly || mode !== "managed";
+  const selectedModeAvailable = attachOnly
+    ? Boolean(worker && repositoryAttachmentAvailability(worker).direct)
+    : mode === "managed"
       ? availability?.managed
       : mode === "managed-link"
         ? availability?.managedLink
@@ -178,8 +200,9 @@ export function RepositoryImportOptionsDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Choose where {repositoryName} is available on the selected worker.
-            Cantrip always runs the project from its canonical checkout.
+            {attachOnly
+              ? `Attach an existing compatible checkout of ${repositoryName} on the selected worker. Cantrip will not clone, move, or modify it.`
+              : `Choose where ${repositoryName} is available on the selected worker. Cantrip always runs the project from its canonical checkout.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -205,60 +228,72 @@ export function RepositoryImportOptionsDialog({
 
         <fieldset className="grid gap-2">
           <legend className="mb-1 text-sm font-medium">
-            Repository placement
+            {attachOnly ? "Source attachment" : "Repository placement"}
           </legend>
-          {choices.map((choice) => {
-            const supported =
-              choice.mode === "managed"
-                ? availability?.managed
-                : choice.mode === "managed-link"
-                  ? availability?.managedLink
-                  : availability?.direct;
-            const Icon = choice.icon;
-            return (
-              <label
-                key={choice.mode}
-                className={cn(
-                  "flex items-start gap-3 rounded-lg border px-3 py-3",
-                  supported
-                    ? "cursor-pointer hover:bg-muted/30"
-                    : "cursor-not-allowed opacity-55",
-                  mode === choice.mode &&
-                    supported &&
-                    "border-foreground/50 bg-muted/30",
-                )}
-              >
-                <input
-                  checked={mode === choice.mode}
-                  className="mt-1 size-4 accent-foreground"
-                  disabled={!supported || pending}
-                  name="repository-placement"
-                  type="radio"
-                  value={choice.mode}
-                  onChange={() => {
-                    setMode(choice.mode);
-                    setPickerError(null);
-                  }}
-                />
-                <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium">
-                    {choice.label}
-                  </span>
-                  <span className="block text-xs leading-5 text-muted-foreground">
-                    {choice.description}
-                  </span>
-                  {!supported && choice.mode !== "managed" ? (
-                    <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">
-                      {choice.mode === "managed-link"
-                        ? "This worker cannot safely create repository links."
-                        : "This worker cannot safely clone or attach at custom paths."}
+          {choices
+            .filter((choice) => !attachOnly || choice.mode === "direct")
+            .map((choice) => {
+              const supported =
+                attachOnly && choice.mode === "direct"
+                  ? Boolean(
+                      worker && repositoryAttachmentAvailability(worker).direct,
+                    )
+                  : choice.mode === "managed"
+                    ? availability?.managed
+                    : choice.mode === "managed-link"
+                      ? availability?.managedLink
+                      : availability?.direct;
+              const Icon = choice.icon;
+              return (
+                <label
+                  key={choice.mode}
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg border px-3 py-3",
+                    supported
+                      ? "cursor-pointer hover:bg-muted/30"
+                      : "cursor-not-allowed opacity-55",
+                    mode === choice.mode &&
+                      supported &&
+                      "border-foreground/50 bg-muted/30",
+                  )}
+                >
+                  <input
+                    checked={mode === choice.mode}
+                    className="mt-1 size-4 accent-foreground"
+                    disabled={!supported || pending}
+                    name="repository-placement"
+                    type="radio"
+                    value={choice.mode}
+                    onChange={() => {
+                      setMode(choice.mode);
+                      setPickerError(null);
+                    }}
+                  />
+                  <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">
+                      {attachOnly
+                        ? "Attach existing worker path"
+                        : choice.label}
                     </span>
-                  ) : null}
-                </span>
-              </label>
-            );
-          })}
+                    <span className="block text-xs leading-5 text-muted-foreground">
+                      {attachOnly
+                        ? "Register an existing Primary Git checkout without taking ownership of its files."
+                        : choice.description}
+                    </span>
+                    {!supported && choice.mode !== "managed" ? (
+                      <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">
+                        {choice.mode === "managed-link"
+                          ? "This worker cannot safely create repository links."
+                          : attachOnly
+                            ? "This worker cannot attach existing repository paths."
+                            : "This worker cannot safely clone or attach at custom paths."}
+                      </span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
         </fieldset>
 
         {customMode && worker ? (
@@ -300,13 +335,18 @@ export function RepositoryImportOptionsDialog({
             </div>
             <span className="font-normal leading-5 text-muted-foreground">
               {canBrowsePath
-                ? "Browse this machine or enter the exact final worker path. Missing parent directories are created."
-                : "Enter the exact final worker path. Missing parent directories are created. Paths are interpreted on the worker—not this browser or phone—and container workers can use only mounted locations."}
+                ? attachOnly
+                  ? "Browse this machine or enter the exact existing checkout path."
+                  : "Browse this machine or enter the exact final worker path. Missing parent directories are created."
+                : attachOnly
+                  ? "Enter the exact existing checkout path. Paths are interpreted on the worker—not this browser or phone—and container workers can use only mounted locations."
+                  : "Enter the exact final worker path. Missing parent directories are created. Paths are interpreted on the worker—not this browser or phone—and container workers can use only mounted locations."}
             </span>
             {mode === "direct" ? (
               <span className="font-normal leading-5 text-muted-foreground">
-                A missing path is cloned. A matching existing Primary checkout
-                is attached without Cantrip taking ownership of its files.
+                {attachOnly
+                  ? "The path must already be a compatible Primary checkout at the project's current revision. Cantrip never clones a local-only project."
+                  : "A missing path is cloned. A matching existing Primary checkout is attached without Cantrip taking ownership of its files."}
               </span>
             ) : mode === "managed-link" ? (
               <span className="font-normal leading-5 text-muted-foreground">
@@ -351,10 +391,7 @@ export function RepositoryImportOptionsDialog({
             type="button"
             onClick={() => {
               const options: RepositoryImportOptions = {
-                placement:
-                  mode === "managed"
-                    ? { mode: "managed" }
-                    : { mode, path: path.trim() },
+                placement: repositoryPlacementRequest(attachOnly, mode, path),
               };
               void Promise.resolve(onSubmit(options)).catch(() => undefined);
             }}
