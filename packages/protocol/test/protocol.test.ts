@@ -1697,6 +1697,7 @@ describe("Cantrip protocol", () => {
       attachWorkspaceRoot: false,
       discoverWorkspaceRepositories: false,
       convertToGithub: false,
+      convertExternalGitToGithub: false,
       remove: false,
       workspaceScopedRoots: false,
     });

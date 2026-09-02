@@ -31,6 +31,7 @@ export const managedFolderCapabilitiesSchema = z.object({
   attachWorkspaceRoot: z.boolean().default(false),
   discoverWorkspaceRepositories: z.boolean().default(false),
   convertToGithub: z.boolean().default(false),
+  convertExternalGitToGithub: z.boolean().default(false),
   remove: z.boolean(),
   workspaceScopedRoots: z.boolean().default(false),
 });
@@ -42,6 +43,7 @@ export const unavailableManagedFolderCapabilities =
     attachWorkspaceRoot: false,
     discoverWorkspaceRepositories: false,
     convertToGithub: false,
+    convertExternalGitToGithub: false,
     remove: false,
     workspaceScopedRoots: false,
   });

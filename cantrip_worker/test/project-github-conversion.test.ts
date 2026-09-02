@@ -1,9 +1,11 @@
 import { execFile } from "node:child_process";
 import {
+  access,
   chmod,
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -98,6 +100,7 @@ exit 1
   return {
     bare,
     converter: new ProjectGithubConverter(folders),
+    dataDirectory,
     materialized,
   };
 }
@@ -113,6 +116,7 @@ describe("project GitHub conversion", () => {
     expect(preflight).toMatchObject({
       status: "ready",
       localState: "not-initialized",
+      remoteAction: "push",
       requiresInitialCommit: true,
     });
     if (preflight.status !== "ready") throw new Error("preflight failed");
@@ -144,6 +148,21 @@ describe("project GitHub conversion", () => {
       ).stdout,
     ).toBe("scratch\n");
 
+    const marker = path.join(
+      test.materialized.path,
+      ".git",
+      "cantrip-conversion.json",
+    );
+    await writeFile(
+      marker,
+      JSON.stringify({
+        confirmationToken: preflight.confirmationToken,
+        jobId,
+        projectId,
+        repositoryId: repository.repositoryId,
+      }),
+    );
+
     const replay = await test.converter.execute({
       attempt: 2,
       confirmationToken: preflight.confirmationToken,
@@ -159,6 +178,7 @@ describe("project GitHub conversion", () => {
       status: "ready",
       branch: "main",
     });
+    await expect(access(marker)).rejects.toThrow();
   });
 
   it("refuses a GitHub repository that already has history", async () => {
@@ -176,6 +196,125 @@ describe("project GitHub conversion", () => {
       status: "blocked",
       error: { code: "repository-not-empty", retryable: false },
     });
+  });
+
+  it("links a user-owned checkout whose existing GitHub branch matches", async () => {
+    const test = await fixture();
+    const seed = path.join(path.dirname(test.bare), "existing-seed");
+    await execFileAsync("git", ["init", "--initial-branch=main", seed]);
+    await writeFile(path.join(seed, "README.md"), "existing\n");
+    await execFileAsync("git", ["-C", seed, "add", "README.md"]);
+    await execFileAsync("git", ["-C", seed, "commit", "-m", "Existing"]);
+    await execFileAsync("git", ["-C", seed, "branch", "release"]);
+    await execFileAsync("git", ["-C", seed, "tag", "v1"]);
+    await execFileAsync("git", ["-C", seed, "push", "--all", test.bare]);
+    await execFileAsync("git", ["-C", seed, "push", "--tags", test.bare]);
+    const attached = path.join(test.dataDirectory, "attached-checkout");
+    await execFileAsync("git", [
+      "clone",
+      "--branch",
+      "main",
+      test.bare,
+      attached,
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      attached,
+      "remote",
+      "set-url",
+      "origin",
+      "https://github.com/ArcaneArts/Scratch.git",
+    ]);
+
+    const preflight = await test.converter.preflight({
+      projectId,
+      repository,
+      sourcePath: attached,
+      sourceDisplayPath: attached,
+    });
+    expect(preflight).toMatchObject({
+      status: "ready",
+      localState: "committed",
+      remoteAction: "link",
+      requiresInitialCommit: false,
+    });
+    if (preflight.status !== "ready") throw new Error("preflight failed");
+
+    const linked = await test.converter.execute({
+      attempt: 1,
+      confirmationToken: preflight.confirmationToken,
+      initialCommit: null,
+      jobId,
+      projectId,
+      repository,
+      sourcePath: attached,
+      sourceDisplayPath: attached,
+    });
+    expect(linked).toMatchObject({
+      status: "ready",
+      path: await realpath(attached),
+      displayPath: attached,
+      branch: "main",
+    });
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          attached,
+          "config",
+          "--get",
+          "remote.origin.url",
+        ])
+      ).stdout.trim(),
+    ).toBe("https://github.com/ArcaneArts/Scratch.git");
+    expect(await readFile(path.join(attached, "README.md"), "utf8")).toBe(
+      "existing\n",
+    );
+
+    const remoteHead = (
+      await execFileAsync("git", [
+        "--git-dir",
+        test.bare,
+        "rev-parse",
+        "refs/heads/main",
+      ])
+    ).stdout.trim();
+    await writeFile(
+      path.join(attached, "LOCAL.md"),
+      "changed after preflight\n",
+    );
+    await execFileAsync("git", ["-C", attached, "add", "LOCAL.md"]);
+    await execFileAsync("git", [
+      "-C",
+      attached,
+      "commit",
+      "-m",
+      "Local change",
+    ]);
+    const stale = await test.converter.execute({
+      attempt: 2,
+      confirmationToken: preflight.confirmationToken,
+      initialCommit: null,
+      jobId,
+      projectId,
+      repository,
+      sourcePath: attached,
+      sourceDisplayPath: attached,
+    });
+    expect(stale).toMatchObject({
+      status: "blocked",
+      error: { code: "repository-not-empty", retryable: false },
+    });
+    expect(
+      (
+        await execFileAsync("git", [
+          "--git-dir",
+          test.bare,
+          "rev-parse",
+          "refs/heads/main",
+        ])
+      ).stdout.trim(),
+    ).toBe(remoteHead);
   });
 
   it("refuses a manually initialized repository bound elsewhere", async () => {

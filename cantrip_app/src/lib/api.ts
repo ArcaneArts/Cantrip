@@ -4587,7 +4587,8 @@ export async function preflightProjectGithubConversion(
   const project = (await getProjectWireList()).find(
     ({ id }) => id === projectId,
   );
-  const workerId = project?.source?.workerId ?? project?.preferredWorkerId;
+  const source = project?.source;
+  const workerId = source?.workerId ?? project?.preferredWorkerId;
   if (!workerId)
     throw new CantripApiError("Project worker is unavailable.", 409);
   const protectedIdentity = await protectWorkerRepositoryIdentity({
@@ -4601,6 +4602,9 @@ export async function preflightProjectGithubConversion(
       encryptedProjectGithubConversionPreflightRequestSchema.parse({
         repository: protectedIdentity.repository,
         repositoryBlindIndex: protectedIdentity.repositoryBlindIndex,
+        ...(source
+          ? { projectSourceId: source.id, workerId: source.workerId }
+          : {}),
       }),
     ),
   );
@@ -4642,7 +4646,8 @@ export async function startProjectGithubConversion(
   const project = (await getProjectWireList()).find(
     ({ id }) => id === projectId,
   );
-  const workerId = project?.source?.workerId ?? project?.preferredWorkerId;
+  const workerId =
+    parsed.workerId ?? project?.source?.workerId ?? project?.preferredWorkerId;
   if (!workerId)
     throw new CantripApiError("Project worker is unavailable.", 409);
   const protectedIdentity = await protectWorkerRepositoryIdentity({
@@ -4663,6 +4668,12 @@ export async function startProjectGithubConversion(
       encryptedProjectGithubConversionStartSchema.parse({
         repository: protectedIdentity.repository,
         repositoryBlindIndex: protectedIdentity.repositoryBlindIndex,
+        ...(parsed.projectSourceId && parsed.workerId
+          ? {
+              projectSourceId: parsed.projectSourceId,
+              workerId: parsed.workerId,
+            }
+          : {}),
         confirmationToken: parsed.confirmationToken,
         initialCommit: protectedInitialCommit
           ? { message: protectedInitialCommit.values.message }

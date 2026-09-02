@@ -19,6 +19,7 @@ import {
 
 import { readProjectWorktreePolicy } from "./github.js";
 import type { ManagedFolderManager } from "./managed-folders.js";
+import { canonicalProjectSourcePath } from "./project-source-path.js";
 
 const execFileAsync = promisify(execFile);
 const SAFE_REPOSITORY_SEGMENT = /^[A-Za-z0-9_.-]+$/;
@@ -182,7 +183,7 @@ async function inspectLocalGit(cwd: string): Promise<LocalGitState> {
   );
   if (topLevel !== cwd) {
     throw new Error(
-      "The local Git repository is rooted outside the managed folder.",
+      "The local Git repository is rooted outside the selected project source.",
     );
   }
   const remotes = (await runGit(cwd, ["remote"]))
@@ -281,6 +282,27 @@ async function writeConversionMarker(
 export class ProjectGithubConverter {
   constructor(private readonly managedFolders: ManagedFolderManager) {}
 
+  private async target(input: {
+    projectId: string;
+    sourceDisplayPath?: string;
+    sourcePath?: string;
+    workspaceStorage?: ProjectWorkspaceStorageContext;
+  }): Promise<{ displayPath: string; path: string }> {
+    if (input.sourcePath) {
+      if (!input.sourceDisplayPath) {
+        throw new Error("The external project source display path is missing.");
+      }
+      return {
+        displayPath: input.sourceDisplayPath,
+        path: await canonicalProjectSourcePath(input.sourcePath),
+      };
+    }
+    return this.managedFolders.resolve(
+      input.projectId,
+      input.workspaceStorage ?? { kind: "system" },
+    );
+  }
+
   private async githubApi(pathname: string): Promise<unknown> {
     const { stdout } = await execFileAsync("gh", ["api", pathname], {
       encoding: "utf8",
@@ -357,6 +379,8 @@ export class ProjectGithubConverter {
   async preflight(input: {
     projectId: string;
     repository: ProjectGithubConversionRepository;
+    sourceDisplayPath?: string;
+    sourcePath?: string;
     workspaceStorage?: ProjectWorkspaceStorageContext;
   }): Promise<ProjectGithubConversionPreflightResult> {
     const expected = projectGithubConversionRepositorySchema.parse(
@@ -378,11 +402,9 @@ export class ProjectGithubConverter {
       });
     }
     let local: LocalGitState;
+    let target: { displayPath: string; path: string };
     try {
-      const target = await this.managedFolders.resolve(
-        input.projectId,
-        input.workspaceStorage ?? { kind: "system" },
-      );
+      target = await this.target(input);
       local = await inspectLocalGit(target.path);
     } catch (error) {
       return blocked(input.projectId, verified.repository, {
@@ -405,14 +427,27 @@ export class ProjectGithubConverter {
         retryable: false,
       });
     }
+    let remoteEmpty: boolean;
     try {
-      if (!(await this.repositoryIsEmpty(verified.repository))) {
-        return blocked(input.projectId, verified.repository, {
-          code: "repository-not-empty",
-          message:
-            "V1 conversion accepts only a new or empty GitHub repository. Importing or merging existing history must be handled separately.",
-          retryable: false,
-        });
+      remoteEmpty = await this.repositoryIsEmpty(verified.repository);
+      if (!remoteEmpty) {
+        if (!local.originUrl || !local.branch || !local.head) {
+          return blocked(input.projectId, verified.repository, {
+            code: "repository-not-empty",
+            message:
+              "An existing GitHub repository can only be linked when this checkout has the matching origin, branch, and commit.",
+            retryable: false,
+          });
+        }
+        const refs = await this.remoteRefs(verified.repository);
+        if (refs.get(`refs/heads/${local.branch}`) !== local.head) {
+          return blocked(input.projectId, verified.repository, {
+            code: "repository-not-empty",
+            message:
+              "The selected GitHub repository does not contain this checkout's current branch at the same commit. Cantrip did not push, merge, or overwrite it.",
+            retryable: false,
+          });
+        }
       }
     } catch (error) {
       return blocked(input.projectId, verified.repository, {
@@ -428,14 +463,20 @@ export class ProjectGithubConverter {
       "Conversion is one-way in V1.",
       "Cantrip will never force-push or merge unrelated remote history.",
     ];
-    if (local.dirty && local.head) {
+    if (remoteEmpty) {
+      if (local.dirty && local.head) {
+        warnings.push(
+          "Uncommitted local changes will remain uncommitted; only the current branch history will be pushed.",
+        );
+      }
+      if (!local.head) {
+        warnings.push(
+          "An initial commit containing the current folder contents is required before the empty repository can be pushed.",
+        );
+      }
+    } else {
       warnings.push(
-        "Uncommitted local changes will remain uncommitted; only the current branch history will be pushed.",
-      );
-    }
-    if (!local.head) {
-      warnings.push(
-        "An initial commit containing the current folder contents is required before the empty repository can be pushed.",
+        "The existing GitHub branch exactly matches this checkout. Cantrip will link it without pushing or rewriting remote history.",
       );
     }
     return projectGithubConversionPreflightResultSchema.parse({
@@ -452,7 +493,8 @@ export class ProjectGithubConverter {
       head: local.head,
       dirty: local.dirty,
       originUrl: local.originUrl,
-      requiresInitialCommit: !local.head,
+      remoteAction: remoteEmpty ? "push" : "link",
+      requiresInitialCommit: remoteEmpty && !local.head,
       warnings,
     });
   }
@@ -486,6 +528,8 @@ export class ProjectGithubConverter {
     jobId: string;
     projectId: string;
     repository: ProjectGithubConversionRepository;
+    sourceDisplayPath?: string;
+    sourcePath?: string;
     workspaceStorage?: ProjectWorkspaceStorageContext;
   }): Promise<ProjectGithubConversionExecutionResult> {
     try {
@@ -518,6 +562,8 @@ export class ProjectGithubConverter {
     jobId: string;
     projectId: string;
     repository: ProjectGithubConversionRepository;
+    sourceDisplayPath?: string;
+    sourcePath?: string;
     workspaceStorage?: ProjectWorkspaceStorageContext;
   }): Promise<ProjectGithubConversionReady> {
     let verified: Awaited<
@@ -536,10 +582,7 @@ export class ProjectGithubConverter {
         error,
       );
     }
-    const target = await this.managedFolders.resolve(
-      input.projectId,
-      input.workspaceStorage ?? { kind: "system" },
-    );
+    const target = await this.target(input);
     let local: LocalGitState;
     try {
       local = await inspectLocalGit(target.path);
@@ -568,19 +611,19 @@ export class ProjectGithubConverter {
         error,
       );
     }
+    const existingMarker = await readConversionMarker(target.path);
+    const resumesMarkedAttempt =
+      existingMarker?.confirmationToken === input.confirmationToken &&
+      existingMarker.jobId === input.jobId &&
+      existingMarker.projectId === input.projectId &&
+      existingMarker.repositoryId === verified.repository.repositoryId;
     if (remoteEmpty) {
       const currentToken = confirmationToken({
         local,
         projectId: input.projectId,
         repository: verified.repository,
       });
-      const marker = await readConversionMarker(target.path);
-      const resumable =
-        marker?.confirmationToken === input.confirmationToken &&
-        marker.jobId === input.jobId &&
-        marker.projectId === input.projectId &&
-        marker.repositoryId === verified.repository.repositoryId;
-      if (currentToken !== input.confirmationToken && !resumable) {
+      if (currentToken !== input.confirmationToken && !resumesMarkedAttempt) {
         throw conversionFailure(
           "preflight-changed",
           "The local Git state changed after preflight. Run conversion preflight again before retrying.",
@@ -608,12 +651,14 @@ export class ProjectGithubConverter {
       }
       local = await inspectLocalGit(target.path);
     }
-    await writeConversionMarker(target.path, {
-      confirmationToken: input.confirmationToken,
-      jobId: input.jobId,
-      projectId: input.projectId,
-      repositoryId: verified.repository.repositoryId,
-    });
+    if (remoteEmpty) {
+      await writeConversionMarker(target.path, {
+        confirmationToken: input.confirmationToken,
+        jobId: input.jobId,
+        projectId: input.projectId,
+        repositoryId: verified.repository.repositoryId,
+      });
+    }
     if (
       local.originUrl &&
       normalizedGithubRepository(local.originUrl) !==
@@ -622,6 +667,13 @@ export class ProjectGithubConverter {
       throw conversionFailure(
         "local-git-ambiguous",
         `The local origin points to ${local.originUrl}, not ${verified.repository.nameWithOwner}.`,
+        false,
+      );
+    }
+    if (!local.originUrl && !remoteEmpty) {
+      throw conversionFailure(
+        "local-git-ambiguous",
+        "An existing GitHub repository can only be linked from a checkout with the matching origin.",
         false,
       );
     }
@@ -712,7 +764,7 @@ export class ProjectGithubConverter {
           error,
         );
       }
-      if (refs.size !== 1 || refs.get(branchRef) !== local.head) {
+      if (refs.get(branchRef) !== local.head) {
         throw conversionFailure(
           "repository-not-empty",
           "The GitHub repository gained history that does not exactly match this conversion attempt. Cantrip did not merge or overwrite it.",
@@ -731,7 +783,7 @@ export class ProjectGithubConverter {
         error,
       );
     }
-    if (refs.size !== 1 || refs.get(branchRef) !== local.head) {
+    if (refs.get(branchRef) !== local.head) {
       throw conversionFailure(
         "reconciliation-failed",
         "The pushed GitHub branch could not be reconciled exactly. Cantrip did not enable Git capabilities.",
@@ -762,7 +814,9 @@ export class ProjectGithubConverter {
       head: local.head,
       worktreePolicy: policy.policy ?? "agent-managed",
     });
-    await rm(markerPath(target.path), { force: true });
+    if (remoteEmpty || resumesMarkedAttempt) {
+      await rm(markerPath(target.path), { force: true });
+    }
     return ready;
   }
 }

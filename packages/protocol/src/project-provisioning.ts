@@ -116,12 +116,15 @@ const projectGithubConversionPreflightBaseSchema = z.object({
 export const projectGithubConversionPreflightReadySchema =
   projectGithubConversionPreflightBaseSchema.extend({
     status: z.literal("ready"),
+    projectSourceId: z.string().uuid().optional(),
+    workerId: z.string().min(1).optional(),
     confirmationToken: z.string().regex(/^[0-9a-f]{64}$/u),
     localState: z.enum(["not-initialized", "unborn", "committed"]),
     branch: z.string().min(1).max(255).nullable(),
     head: gitObjectRevisionSchema.nullable(),
     dirty: z.boolean(),
     originUrl: z.string().min(1).max(8_192).nullable(),
+    remoteAction: z.enum(["push", "link"]).default("push"),
     requiresInitialCommit: z.boolean(),
     warnings: z.array(z.string().min(1).max(1_000)).max(20),
   });
@@ -138,19 +141,37 @@ export const projectGithubConversionPreflightResultSchema =
     projectGithubConversionPreflightBlockedSchema,
   ]);
 
-export const projectGithubConversionPreflightRequestSchema = z.object({
-  repository: projectGithubConversionRepositorySchema,
-});
+export const projectGithubConversionPreflightRequestSchema = z
+  .object({
+    repository: projectGithubConversionRepositorySchema,
+    projectSourceId: z.string().uuid().optional(),
+    workerId: z.string().min(1).optional(),
+  })
+  .strict()
+  .refine(
+    (input) =>
+      (input.projectSourceId === undefined) === (input.workerId === undefined),
+    { message: "Conversion source fields must be provided together." },
+  );
 
 export const encryptedProjectGithubConversionPreflightRequestSchema = z
   .object({
     repository: projectGithubRoutingRepositorySchema,
     repositoryBlindIndex: encryptionKeyBytesSchema,
+    projectSourceId: z.string().uuid().optional(),
+    workerId: z.string().min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (input) =>
+      (input.projectSourceId === undefined) === (input.workerId === undefined),
+    { message: "Conversion source fields must be provided together." },
+  );
 
-export const projectGithubConversionStartSchema = z.object({
+const projectGithubConversionStartObjectSchema = z.object({
   repository: projectGithubConversionRepositorySchema,
+  projectSourceId: z.string().uuid().optional(),
+  workerId: z.string().min(1).optional(),
   confirmationToken:
     projectGithubConversionPreflightReadySchema.shape.confirmationToken,
   initialCommit: z
@@ -161,8 +182,15 @@ export const projectGithubConversionStartSchema = z.object({
     .default(null),
 });
 
+export const projectGithubConversionStartSchema =
+  projectGithubConversionStartObjectSchema.refine(
+    (input) =>
+      (input.projectSourceId === undefined) === (input.workerId === undefined),
+    { message: "Conversion source fields must be provided together." },
+  );
+
 export const encryptedProjectGithubConversionStartSchema =
-  projectGithubConversionStartSchema
+  projectGithubConversionStartObjectSchema
     .omit({ repository: true, initialCommit: true })
     .extend({
       repository: projectGithubRoutingRepositorySchema,
@@ -171,7 +199,13 @@ export const encryptedProjectGithubConversionStartSchema =
         .object({ message: repositoryRoutingHandleSchema })
         .nullable(),
     })
-    .strict();
+    .strict()
+    .refine(
+      (input) =>
+        (input.projectSourceId === undefined) ===
+        (input.workerId === undefined),
+      { message: "Conversion source fields must be provided together." },
+    );
 
 export const projectGithubConversionJobStateSchema = z.enum([
   "queued",

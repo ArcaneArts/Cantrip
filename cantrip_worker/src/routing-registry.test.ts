@@ -174,6 +174,10 @@ describe("WorkerRoutingRegistry", () => {
       repositoryId: expect.stringMatching(/^ctrr_/u),
       url: expect.stringMatching(/^ctrr_/u),
     });
+    const protectedConversionSource = await registry.protectMetadata({
+      sourcePath: "/Users/example/private-repository",
+      sourceDisplayPath: "private-repository",
+    });
     const protectedFolder = managedFolderMaterializeReadySchema.parse(
       await registry.protectResult("project.folder.materialize", {
         status: "ready",
@@ -224,6 +228,29 @@ describe("WorkerRoutingRegistry", () => {
     ).toMatchObject({
       rootPath: "/Users/example/private-repository",
       path: "/Users/example/private-repository",
+    });
+    expect(
+      await restarted.resolveCommand({
+        type: "project.folder-conversion.preflight",
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb349",
+        repository: protectedIdentity as {
+          repositoryId: string;
+          nameWithOwner: string;
+          url: string;
+        },
+        sourcePath: protectedConversionSource.sourcePath as string,
+        sourceDisplayPath:
+          protectedConversionSource.sourceDisplayPath as string,
+        workspaceStorage: { kind: "system" },
+      }),
+    ).toMatchObject({
+      repository: {
+        repositoryId: "private-repository-id",
+        nameWithOwner: "ArcaneArts/Private",
+        url: "https://github.com/ArcaneArts/Private",
+      },
+      sourcePath: "/Users/example/private-repository",
+      sourceDisplayPath: "private-repository",
     });
     expect(await restarted.resolveMetadata(protectedIdentity)).toEqual({
       nameWithOwner: "ArcaneArts/Private",

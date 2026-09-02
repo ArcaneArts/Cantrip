@@ -49,6 +49,7 @@ export const REPOSITORY_METADATA_FIELDS = [
   "requestedPath",
   "revision",
   "rootPath",
+  "sourceDisplayPath",
   "sourcePath",
   "setupError",
   "startPoint",

@@ -75,6 +75,7 @@ function worker(): WorkerSummary {
     managedFolders: {
       create: true,
       convertToGithub: true,
+      convertExternalGitToGithub: true,
       remove: true,
       workspaceScopedRoots: true,
     },
@@ -107,6 +108,30 @@ describe("project GitHub conversion executor", () => {
     });
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectReplica: vi.fn().mockResolvedValue({
+        id: "source-one",
+        projectId: active.projectId,
+        sourceKind: "folder",
+        workerId: active.workerId,
+        workerName: "Worker One",
+        workerOnline: true,
+        path: `ctrr_${"p".repeat(43)}`,
+        displayPath: `ctrr_${"d".repeat(43)}`,
+        placementMode: "managed",
+        ownershipKind: "cantrip",
+        requestedPath: null,
+        linkPath: null,
+        repositoryFingerprint: null,
+        primaryWorktreeId: "primary-one",
+        branch: null,
+        head: null,
+        dirty: null,
+        ready: true,
+        worktreeCount: 1,
+        lastObservedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
       getProjectWorkspaceStorageContext: vi.fn().mockResolvedValue({
         kind: "managed",
         workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
@@ -120,6 +145,7 @@ describe("project GitHub conversion executor", () => {
             confirmationToken: "a".repeat(64),
             initialCommit: { message: "Initial commit" },
             job: active,
+            projectSourceId: "source-one",
           })
           .mockResolvedValue(null),
         complete,
@@ -159,6 +185,96 @@ describe("project GitHub conversion executor", () => {
     );
   });
 
+  it("resolves and sends the job's exact user-owned Git source", async () => {
+    const active = job();
+    const sourcePath = `ctrr_${"p".repeat(43)}`;
+    const sourceDisplayPath = `ctrr_${"d".repeat(43)}`;
+    const complete = vi.fn().mockResolvedValue({
+      ...active,
+      state: "succeeded" as const,
+    });
+    const request = vi.fn().mockResolvedValue({
+      status: "ready",
+      jobId: active.id,
+      attempt: active.attempt,
+      repository: active.repository,
+      path: sourcePath,
+      displayPath: sourceDisplayPath,
+      repositoryFingerprint: "b".repeat(64),
+      branch: "main",
+      head: "c".repeat(40),
+      worktreePolicy: "agent-managed",
+    });
+    const repository = {
+      getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectReplica: vi.fn().mockResolvedValue({
+        id: "source-one",
+        projectId: active.projectId,
+        sourceKind: "git",
+        workerId: active.workerId,
+        workerName: "Worker One",
+        workerOnline: true,
+        path: sourcePath,
+        displayPath: sourceDisplayPath,
+        placementMode: "direct",
+        ownershipKind: "user",
+        requestedPath: sourcePath,
+        linkPath: null,
+        repositoryFingerprint: "b".repeat(64),
+        primaryWorktreeId: "primary-one",
+        branch: "main",
+        head: "c".repeat(40),
+        dirty: false,
+        ready: true,
+        worktreeCount: 1,
+        lastObservedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
+      getProjectWorkspaceStorageContext: vi
+        .fn()
+        .mockResolvedValue({ kind: "attached", workerId: active.workerId }),
+      projectGithubConversionJobs: {
+        claimNext: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ownerId: "owner-one",
+            commandId: "command-one",
+            confirmationToken: "a".repeat(64),
+            initialCommit: null,
+            job: active,
+            projectSourceId: "source-one",
+          })
+          .mockResolvedValue(null),
+        complete,
+      },
+    } as unknown as ServerRepository;
+    const bridge = {
+      isConnected: vi.fn().mockReturnValue(true),
+      request,
+    } as unknown as WorkerCommandBus;
+    const executor = new ProjectGithubConversionJobExecutor(
+      repository,
+      bridge,
+      { error: vi.fn(), warn: vi.fn() },
+    );
+
+    executor.queueAvailable();
+    await executor.drain();
+
+    expect(request).toHaveBeenCalledWith(
+      active.workerId,
+      expect.objectContaining({
+        type: "project.folder-conversion.execute",
+        projectId: active.projectId,
+        sourcePath,
+        sourceDisplayPath,
+      }),
+      expect.any(Object),
+    );
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
   it("keeps an offline conversion durable for reconnect recovery", async () => {
     const active = job();
     const blocked = {
@@ -183,6 +299,7 @@ describe("project GitHub conversion executor", () => {
             confirmationToken: "a".repeat(64),
             initialCommit: null,
             job: active,
+            projectSourceId: "source-one",
           })
           .mockResolvedValue(null),
         block,

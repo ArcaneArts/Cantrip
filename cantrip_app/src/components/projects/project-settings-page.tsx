@@ -857,7 +857,8 @@ export function ProjectSettingsPage({
 
           {section === "general" ? (
             project.originKind === "managed-folder" &&
-            project.folderManagement !== "external" ? (
+            (project.folderManagement === "managed" ||
+              project.capabilities.git) ? (
               <ProjectGithubConversion project={project} workers={workers} />
             ) : null
           ) : null}

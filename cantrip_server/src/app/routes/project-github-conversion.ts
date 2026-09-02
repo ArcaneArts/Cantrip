@@ -28,6 +28,33 @@ export interface ProjectGithubConversionRouteDependencies {
   repository: ServerRepository;
 }
 
+async function resolveConversionSource(
+  repository: ServerRepository,
+  bridge: WorkerCommandBus,
+  ownerId: string,
+  projectId: string,
+  requested: { projectSourceId?: string; workerId?: string },
+) {
+  if (requested.projectSourceId && requested.workerId) {
+    const source = await repository.getProjectReplica(
+      ownerId,
+      projectId,
+      requested.projectSourceId,
+    );
+    return source?.workerId === requested.workerId ? source : null;
+  }
+  const selected = await repository.getProjectSource(ownerId, projectId, {
+    isWorkerAvailable: (workerId) => bridge.isConnected(workerId),
+  });
+  return selected
+    ? repository.getProjectReplica(
+        ownerId,
+        projectId,
+        selected.projectReplicaId,
+      )
+    : null;
+}
+
 export function installProjectGithubConversionRoutes(
   app: FastifyInstance,
   {
@@ -57,13 +84,11 @@ export function installProjectGithubConversionRoutes(
       }
       if (
         project.originKind !== "managed-folder" ||
-        project.setupStatus !== "ready" ||
-        project.folderManagement !== "managed"
+        project.setupStatus !== "ready"
       ) {
         return reply.code(409).send({
           code: "project-not-ready",
-          error:
-            "Only a ready folder managed by Cantrip can be converted. Attached folders remain user-owned.",
+          error: "Only a ready folder or local Git project can be converted.",
         });
       }
       if (
@@ -88,13 +113,39 @@ export function installProjectGithubConversionRoutes(
             "This GitHub repository is already bound to another Cantrip project.",
         });
       }
-      const workerId = project.preferredWorkerId;
-      if (!workerId) {
+      if (
+        project.folderManagement === "external" &&
+        (!input.data.projectSourceId || !input.data.workerId)
+      ) {
         return reply.code(409).send({
-          code: "project-not-ready",
-          error: "The folder project no longer has an owning worker.",
+          code: "source-required",
+          error:
+            "Refresh the project before converting so the request can bind to its exact local Git source.",
         });
       }
+      const source = await resolveConversionSource(
+        repository,
+        bridge,
+        applicationOwnerId(),
+        project.id,
+        input.data,
+      );
+      const managedFolderSource =
+        project.folderManagement === "managed" &&
+        source?.sourceKind === "folder" &&
+        source.ownershipKind === "cantrip";
+      const externalGitSource =
+        project.folderManagement === "external" &&
+        project.capabilities.git &&
+        source?.sourceKind === "git" &&
+        source.ownershipKind === "user";
+      if (!source?.ready || (!managedFolderSource && !externalGitSource)) {
+        return reply.code(409).send({
+          code: "project-not-ready",
+          error: "The project no longer has an eligible conversion source.",
+        });
+      }
+      const workerId = source.workerId;
       const worker = await repository.getWorker(applicationOwnerId(), workerId);
       const workspaceStorage =
         await repository.getProjectWorkspaceStorageContext(
@@ -109,13 +160,16 @@ export function installProjectGithubConversionRoutes(
       }
       if (
         !worker?.managedFolders.convertToGithub ||
-        (workspaceStorage.kind === "managed" &&
+        (externalGitSource &&
+          !worker.managedFolders.convertExternalGitToGithub) ||
+        (managedFolderSource &&
+          workspaceStorage.kind === "managed" &&
           !worker.managedFolders.workspaceScopedRoots)
       ) {
         return reply.code(409).send({
           code: "capability-missing",
           error:
-            "The owning worker does not support managed folder conversion for this workspace.",
+            "The source worker does not support GitHub conversion for this project.",
         });
       }
       if (!bridge.isConnected(workerId)) {
@@ -125,19 +179,32 @@ export function installProjectGithubConversionRoutes(
         });
       }
       try {
-        return reply.send(
-          projectGithubConversionPreflightResultSchema.parse(
-            await bridge.request(
-              workerId,
-              {
-                type: "project.folder-conversion.preflight",
-                projectId: project.id,
-                repository: input.data.repository,
-                workspaceStorage,
-              },
-              { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
-            ),
+        const result = projectGithubConversionPreflightResultSchema.parse(
+          await bridge.request(
+            workerId,
+            {
+              type: "project.folder-conversion.preflight",
+              projectId: project.id,
+              repository: input.data.repository,
+              workspaceStorage,
+              ...(externalGitSource
+                ? {
+                    sourcePath: source.path,
+                    sourceDisplayPath: source.displayPath,
+                  }
+                : {}),
+            },
+            { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
           ),
+        );
+        return reply.send(
+          result.status === "ready"
+            ? projectGithubConversionPreflightResultSchema.parse({
+                ...result,
+                projectSourceId: source.id,
+                workerId,
+              })
+            : result,
         );
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
@@ -163,22 +230,46 @@ export function installProjectGithubConversionRoutes(
       }
       if (
         project.originKind !== "managed-folder" ||
-        project.setupStatus !== "ready" ||
-        project.folderManagement !== "managed"
+        project.setupStatus !== "ready"
       ) {
         return reply.code(409).send({
           code: "project-not-ready",
-          error:
-            "Only a ready folder managed by Cantrip can be converted. Attached folders remain user-owned.",
+          error: "Only a ready folder or local Git project can be converted.",
         });
       }
-      const workerId = project.preferredWorkerId;
-      if (!workerId) {
+      if (
+        project.folderManagement === "external" &&
+        (!input.data.projectSourceId || !input.data.workerId)
+      ) {
+        return reply.code(409).send({
+          code: "preflight-required",
+          error:
+            "Run conversion preflight again to bind this request to its exact local Git source.",
+        });
+      }
+      const source = await resolveConversionSource(
+        repository,
+        bridge,
+        applicationOwnerId(),
+        project.id,
+        input.data,
+      );
+      const managedFolderSource =
+        project.folderManagement === "managed" &&
+        source?.sourceKind === "folder" &&
+        source.ownershipKind === "cantrip";
+      const externalGitSource =
+        project.folderManagement === "external" &&
+        project.capabilities.git &&
+        source?.sourceKind === "git" &&
+        source.ownershipKind === "user";
+      if (!source?.ready || (!managedFolderSource && !externalGitSource)) {
         return reply.code(409).send({
           code: "project-not-ready",
-          error: "The folder project no longer has an owning worker.",
+          error: "The project no longer has an eligible conversion source.",
         });
       }
+      const workerId = source.workerId;
       const worker = await repository.getWorker(applicationOwnerId(), workerId);
       const workspaceStorage =
         await repository.getProjectWorkspaceStorageContext(
@@ -193,13 +284,16 @@ export function installProjectGithubConversionRoutes(
       }
       if (
         !worker?.managedFolders.convertToGithub ||
-        (workspaceStorage.kind === "managed" &&
+        (externalGitSource &&
+          !worker.managedFolders.convertExternalGitToGithub) ||
+        (managedFolderSource &&
+          workspaceStorage.kind === "managed" &&
           !worker.managedFolders.workspaceScopedRoots)
       ) {
         return reply.code(409).send({
           code: "capability-missing",
           error:
-            "The owning worker does not support managed folder conversion for this workspace.",
+            "The source worker does not support GitHub conversion for this project.",
         });
       }
       if (!bridge.isConnected(workerId)) {
@@ -225,6 +319,7 @@ export function installProjectGithubConversionRoutes(
           applicationOwnerId(),
           project.id,
           workerId,
+          source.id,
           input.data,
         );
         publishProjectGithubConversionChange({

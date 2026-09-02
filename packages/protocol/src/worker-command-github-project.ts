@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { repositoryRoutingHandleSchema } from "./repository-operation.js";
 import { protectedTunnelContentRecordSchema } from "./tunnel-content.js";
 import {
   runConfigurationCapabilitiesWorkerCommandSchema,
@@ -225,27 +226,49 @@ export const workerGithubProjectCommandSchemas = [
       kind: "system",
     }),
   }),
-  z.object({
-    type: z.literal("project.folder-conversion.preflight"),
-    projectId: z.string().uuid(),
-    repository: projectGithubWireRepositorySchema,
-    workspaceStorage: projectWorkspaceStorageContextSchema.default({
-      kind: "system",
-    }),
-  }),
-  z.object({
-    type: z.literal("project.folder-conversion.execute"),
-    jobId: z.string().uuid(),
-    attempt: z.number().int().positive(),
-    projectId: z.string().uuid(),
-    repository: projectGithubWireRepositorySchema,
-    workspaceStorage: projectWorkspaceStorageContextSchema.default({
-      kind: "system",
-    }),
-    confirmationToken:
-      projectGithubConversionPreflightReadySchema.shape.confirmationToken,
-    initialCommit: projectGithubConversionStartSchema.shape.initialCommit,
-  }),
+  z
+    .object({
+      type: z.literal("project.folder-conversion.preflight"),
+      projectId: z.string().uuid(),
+      repository: projectGithubWireRepositorySchema,
+      sourcePath: repositoryRoutingHandleSchema.optional(),
+      sourceDisplayPath: repositoryRoutingHandleSchema.optional(),
+      workspaceStorage: projectWorkspaceStorageContextSchema.default({
+        kind: "system",
+      }),
+    })
+    .refine(
+      (input) =>
+        (input.sourcePath === undefined) ===
+        (input.sourceDisplayPath === undefined),
+      {
+        message: "External conversion source fields must be provided together.",
+      },
+    ),
+  z
+    .object({
+      type: z.literal("project.folder-conversion.execute"),
+      jobId: z.string().uuid(),
+      attempt: z.number().int().positive(),
+      projectId: z.string().uuid(),
+      repository: projectGithubWireRepositorySchema,
+      sourcePath: repositoryRoutingHandleSchema.optional(),
+      sourceDisplayPath: repositoryRoutingHandleSchema.optional(),
+      workspaceStorage: projectWorkspaceStorageContextSchema.default({
+        kind: "system",
+      }),
+      confirmationToken:
+        projectGithubConversionPreflightReadySchema.shape.confirmationToken,
+      initialCommit: projectGithubConversionStartSchema.shape.initialCommit,
+    })
+    .refine(
+      (input) =>
+        (input.sourcePath === undefined) ===
+        (input.sourceDisplayPath === undefined),
+      {
+        message: "External conversion source fields must be provided together.",
+      },
+    ),
   z.object({
     type: z.literal("project.replica.provision"),
     jobId: z.string().uuid(),

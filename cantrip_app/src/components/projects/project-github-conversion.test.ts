@@ -1,7 +1,10 @@
 import type { ProjectGithubConversionPreflightReady } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { githubConversionCanStart } from "./project-github-conversion";
+import {
+  githubConversionCanStart,
+  githubConversionWorkerCanConvert,
+} from "./project-github-conversion";
 
 const ready = {
   status: "ready",
@@ -17,6 +20,7 @@ const ready = {
   head: null,
   dirty: false,
   originUrl: null,
+  remoteAction: "push",
   requiresInitialCommit: true,
   warnings: [],
 } satisfies ProjectGithubConversionPreflightReady;
@@ -47,5 +51,47 @@ describe("githubConversionCanStart", () => {
         preflight: { ...ready, requiresInitialCommit: false },
       }),
     ).toBe(true);
+  });
+});
+
+describe("githubConversionWorkerCanConvert", () => {
+  const worker = {
+    managedFolders: {
+      create: true,
+      attachExisting: true,
+      attachWorkspaceRoot: true,
+      discoverWorkspaceRepositories: true,
+      convertToGithub: true,
+      convertExternalGitToGithub: true,
+      remove: true,
+      workspaceScopedRoots: true,
+    },
+  };
+  const capabilities = {
+    git: true,
+    github: false,
+    worktrees: false,
+    replicas: false,
+    relocation: false,
+  };
+
+  it("requires the explicit external Git conversion capability", () => {
+    expect(
+      githubConversionWorkerCanConvert(
+        { capabilities, folderManagement: "external" },
+        worker,
+      ),
+    ).toBe(true);
+    expect(
+      githubConversionWorkerCanConvert(
+        { capabilities, folderManagement: "external" },
+        {
+          managedFolders: {
+            ...worker.managedFolders,
+            convertExternalGitToGithub: false,
+          },
+        },
+      ),
+    ).toBe(false);
   });
 });

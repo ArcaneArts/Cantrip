@@ -37,6 +37,7 @@ export interface ClaimedProjectGithubConversionJob {
   initialCommit: { message: string } | null;
   job: ProjectGithubConversionJobSummary;
   ownerId: string;
+  projectSourceId: string;
 }
 
 export interface ConvertedManagedFolderSource {
@@ -123,11 +124,20 @@ export class ProjectGithubConversionJobRepository {
         workerId: schema.projectGithubConversionJobs.workerId,
       })
       .from(schema.projectGithubConversionJobs)
+      .innerJoin(
+        schema.projectSources,
+        eq(
+          schema.projectSources.id,
+          schema.projectGithubConversionJobs.projectSourceId,
+        ),
+      )
       .where(
         and(
           eq(schema.projectGithubConversionJobs.ownerId, ownerId),
           eq(schema.projectGithubConversionJobs.projectId, projectId),
           eq(schema.projectGithubConversionJobs.state, "succeeded"),
+          eq(schema.projectSources.ownershipKind, "cantrip"),
+          isNull(schema.projectSources.removedAt),
         ),
       )
       .orderBy(desc(schema.projectGithubConversionJobs.completedAt))
@@ -155,6 +165,7 @@ export class ProjectGithubConversionJobRepository {
     ownerId: string,
     projectId: string,
     workerId: string,
+    projectSourceId: string,
     input: EncryptedProjectGithubConversionStart,
   ): Promise<ProjectGithubConversionJobSummary> {
     const now = new Date();
@@ -174,11 +185,10 @@ export class ProjectGithubConversionJobRepository {
       if (!project) throw new ProjectGithubConversionJobNotFoundError();
       if (
         project.originKind !== "managed-folder" ||
-        project.setupStatus !== "ready" ||
-        project.preferredWorkerId !== workerId
+        project.setupStatus !== "ready"
       ) {
         throw new ProjectGithubConversionJobConflictError(
-          "Only a ready folder project on its owning worker can be converted.",
+          "Only a ready folder or local Git project can be converted.",
         );
       }
       const [activeJobs, collisions, activeWorkflows, sources] =
@@ -223,13 +233,25 @@ export class ProjectGithubConversionJobRepository {
             )
             .limit(1),
           transaction
-            .select({ id: schema.projectSources.id })
+            .select({ source: schema.projectSources })
             .from(schema.projectSources)
+            .innerJoin(
+              schema.projectWorktrees,
+              and(
+                eq(
+                  schema.projectWorktrees.projectSourceId,
+                  schema.projectSources.id,
+                ),
+                eq(schema.projectWorktrees.isPrimary, true),
+                eq(schema.projectWorktrees.isDefault, true),
+                eq(schema.projectWorktrees.lifecycleState, "ready"),
+              ),
+            )
             .where(
               and(
                 eq(schema.projectSources.projectId, projectId),
+                eq(schema.projectSources.id, projectSourceId),
                 eq(schema.projectSources.workerId, workerId),
-                eq(schema.projectSources.sourceKind, "folder"),
                 isNull(schema.projectSources.removedAt),
               ),
             )
@@ -250,9 +272,19 @@ export class ProjectGithubConversionJobRepository {
           "Wait for active project workflows to finish before converting.",
         );
       }
-      if (!sources[0]) {
+      const source = sources[0]?.source;
+      const managedFolderSource =
+        project.folderManagement === "managed" &&
+        source?.sourceKind === "folder" &&
+        source.ownershipKind === "cantrip";
+      const externalGitSource =
+        project.folderManagement === "external" &&
+        project.gitCapability &&
+        source?.sourceKind === "git" &&
+        source.ownershipKind === "user";
+      if (!managedFolderSource && !externalGitSource) {
         throw new ProjectGithubConversionJobConflictError(
-          "The project no longer has its owning folder source.",
+          "The project no longer has an eligible conversion source.",
         );
       }
       const rows = await transaction
@@ -261,7 +293,7 @@ export class ProjectGithubConversionJobRepository {
           id: randomUUID(),
           ownerId,
           projectId,
-          projectSourceId: sources[0].id,
+          projectSourceId: source.id,
           workerId,
           repositoryBlindIndex: input.repositoryBlindIndex,
           repositoryId: input.repository.repositoryId,
@@ -349,6 +381,7 @@ export class ProjectGithubConversionJobRepository {
           : null,
         job: toJob(rows[0]),
         ownerId: rows[0].ownerId,
+        projectSourceId: rows[0].projectSourceId,
       };
     });
   }
@@ -485,7 +518,6 @@ export class ProjectGithubConversionJobRepository {
               eq(schema.projectSources.projectId, job.projectId),
               eq(schema.projectSources.id, job.projectSourceId),
               eq(schema.projectSources.workerId, job.workerId),
-              eq(schema.projectSources.sourceKind, "folder"),
               isNull(schema.projectSources.removedAt),
             ),
           )
@@ -507,9 +539,22 @@ export class ProjectGithubConversionJobRepository {
       ]);
       const project = projects[0];
       const source = sources[0];
-      if (!project || project.originKind !== "managed-folder" || !source) {
+      const managedFolderSource =
+        project?.folderManagement === "managed" &&
+        source?.sourceKind === "folder" &&
+        source.ownershipKind === "cantrip";
+      const externalGitSource =
+        project?.folderManagement === "external" &&
+        project.gitCapability &&
+        source?.sourceKind === "git" &&
+        source.ownershipKind === "user";
+      if (
+        !project ||
+        project.originKind !== "managed-folder" ||
+        (!managedFolderSource && !externalGitSource)
+      ) {
         throw new ProjectGithubConversionJobConflictError(
-          "The folder project changed before conversion completed.",
+          "The project conversion source changed before conversion completed.",
         );
       }
       if (collisions[0] && collisions[0].id !== project.id) {
@@ -523,21 +568,25 @@ export class ProjectGithubConversionJobRepository {
         .where(
           and(
             eq(schema.projectWorktrees.projectSourceId, source.id),
-            eq(schema.projectWorktrees.rootKind, "folder-root"),
             eq(schema.projectWorktrees.isPrimary, true),
             eq(schema.projectWorktrees.isDefault, true),
+            eq(schema.projectWorktrees.lifecycleState, "ready"),
           ),
         )
         .for("update")
         .limit(1);
       const root = roots[0];
+      const rootKindMatches =
+        (managedFolderSource && root?.rootKind === "folder-root") ||
+        (externalGitSource && root?.rootKind === "git-worktree");
       if (
         !root ||
+        !rootKindMatches ||
         source.absolutePath !== result.path ||
         root.absolutePath !== result.path
       ) {
         throw new ProjectGithubConversionJobConflictError(
-          "The Primary folder path changed before conversion completed.",
+          "The Primary project path changed before conversion completed.",
         );
       }
       await transaction
