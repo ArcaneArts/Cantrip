@@ -8,15 +8,21 @@ import {
   workspaceRepositoryDiscoveryJobSummarySchema,
   workspaceRepositoryDiscoverySnapshotSchema,
   type WorkspaceRepositoryCandidateClassification,
+  type WorkspaceRepositoryCandidateConflict,
   type WorkspaceRepositoryDiscoveryCounts,
   type WorkspaceRepositoryDiscoveryError,
   type WorkspaceRepositoryDiscoveryJobSummary,
   type WorkspaceRepositoryDiscoverySnapshot,
+  type WorkspaceRepositoryImportCandidateCreate,
+  type WorkspaceRepositoryImportError,
+  type WorkspaceRepositoryImportValidationResult,
+  type PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
 import { repositoryRoutingHandleSchema } from "@cantrip/protocol/repository-operation";
 import {
   and,
   asc,
+  desc,
   eq,
   inArray,
   isNull,
@@ -35,9 +41,11 @@ type JobRow = typeof schema.workspaceRepositoryDiscoveryJobs.$inferSelect;
 type CandidateRow = typeof schema.workspaceRepositoryCandidates.$inferSelect;
 
 export const WORKSPACE_REPOSITORY_DISCOVERY_JOB_LEASE_MS = 2 * 60_000;
+export const WORKSPACE_REPOSITORY_IMPORT_LEASE_MS = 2 * 60_000;
 
 export class WorkspaceRepositoryDiscoveryInvariantError extends Error {}
 export class WorkspaceRepositoryDiscoveryStaleAttemptError extends Error {}
+export class WorkspaceRepositoryImportStaleAttemptError extends Error {}
 
 export interface ClaimedWorkspaceRepositoryDiscoveryJob {
   commandId: string;
@@ -58,6 +66,21 @@ export interface DiscoveredWorkspaceRepositoryCandidate {
   } | null;
   pathHandle: string;
   repositoryFingerprint: string;
+}
+
+export interface ClaimedWorkspaceRepositoryImport {
+  attempt: number;
+  candidateId: string;
+  commandId: string;
+  expectedRepositoryFingerprint: string;
+  nameProtection: PrivateDisplayLabelOpaque;
+  ownerId: string;
+  pathHandle: string;
+  projectId: string;
+  repositoryBlindIndex: string | null;
+  rootPathHandle: string;
+  workerId: string;
+  workspaceId: string;
 }
 
 function toISOString(value: Date): string {
@@ -98,7 +121,10 @@ function toJob(row: JobRow): WorkspaceRepositoryDiscoveryJobSummary {
   });
 }
 
-function toCandidate(row: CandidateRow) {
+function toCandidate(
+  row: CandidateRow,
+  conflict: WorkspaceRepositoryCandidateConflict | null = null,
+) {
   return workspaceRepositoryCandidateSummarySchema.parse({
     id: row.id,
     jobId: row.jobId,
@@ -120,6 +146,15 @@ function toCandidate(row: CandidateRow) {
     repositoryFingerprint: row.repositoryFingerprint,
     classification: row.classification,
     importState: row.importState,
+    importAttempt: row.importAttempt,
+    importError: row.importErrorCode
+      ? {
+          code: row.importErrorCode,
+          retryable: row.importErrorRetryable ?? false,
+        }
+      : null,
+    projectId: row.importProjectId,
+    conflict,
     diagnosticCode: row.diagnosticCode,
     createdAt: toISOString(row.createdAt),
     updatedAt: toISOString(row.updatedAt),
@@ -155,9 +190,741 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
         ),
       )
       .orderBy(asc(schema.workspaceRepositoryCandidates.createdAt));
+    const fingerprints = candidates.map(
+      ({ repositoryFingerprint }) => repositoryFingerprint,
+    );
+    const githubRepositoryIds = candidates.flatMap(
+      ({ protectedGithubRepositoryIdHandle }) =>
+        protectedGithubRepositoryIdHandle
+          ? [protectedGithubRepositoryIdHandle]
+          : [],
+    );
+    const [checkoutConflicts, githubConflicts] = await Promise.all([
+      fingerprints.length
+        ? this.database
+            .select({
+              projectId: schema.projects.id,
+              repositoryFingerprint:
+                schema.projectSources.repositoryFingerprint,
+              workspaceId: schema.projectWorkspaceMemberships.workspaceId,
+            })
+            .from(schema.projectSources)
+            .innerJoin(
+              schema.projects,
+              and(
+                eq(schema.projects.id, schema.projectSources.projectId),
+                eq(schema.projects.ownerId, ownerId),
+              ),
+            )
+            .innerJoin(
+              schema.projectWorkspaceMemberships,
+              eq(
+                schema.projectWorkspaceMemberships.projectId,
+                schema.projects.id,
+              ),
+            )
+            .where(
+              and(
+                isNull(schema.projectSources.removedAt),
+                eq(schema.projectSources.workerId, job.workerId),
+                inArray(
+                  schema.projectSources.repositoryFingerprint,
+                  fingerprints,
+                ),
+              ),
+            )
+            .orderBy(asc(schema.projectSources.createdAt))
+        : Promise.resolve([]),
+      githubRepositoryIds.length
+        ? this.database
+            .select({
+              projectId: schema.projects.id,
+              repositoryId: schema.projects.githubRepositoryId,
+              workspaceId: schema.projectWorkspaceMemberships.workspaceId,
+            })
+            .from(schema.projects)
+            .innerJoin(
+              schema.projectWorkspaceMemberships,
+              eq(
+                schema.projectWorkspaceMemberships.projectId,
+                schema.projects.id,
+              ),
+            )
+            .where(
+              and(
+                eq(schema.projects.ownerId, ownerId),
+                inArray(
+                  schema.projects.githubRepositoryId,
+                  githubRepositoryIds,
+                ),
+              ),
+            )
+            .orderBy(asc(schema.projects.createdAt))
+        : Promise.resolve([]),
+    ]);
+    const checkoutConflictByFingerprint = new Map(
+      checkoutConflicts.flatMap((conflict) =>
+        conflict.repositoryFingerprint
+          ? [[conflict.repositoryFingerprint, conflict] as const]
+          : [],
+      ),
+    );
+    const githubConflictById = new Map(
+      githubConflicts.flatMap((conflict) =>
+        conflict.repositoryId
+          ? [[conflict.repositoryId, conflict] as const]
+          : [],
+      ),
+    );
     return workspaceRepositoryDiscoverySnapshotSchema.parse({
       job: toJob(job),
-      candidates: candidates.map(toCandidate),
+      candidates: candidates.map((candidate) => {
+        const checkout = checkoutConflictByFingerprint.get(
+          candidate.repositoryFingerprint,
+        );
+        const github = candidate.protectedGithubRepositoryIdHandle
+          ? githubConflictById.get(candidate.protectedGithubRepositoryIdHandle)
+          : undefined;
+        const conflict = checkout ?? github;
+        return toCandidate(
+          candidate,
+          conflict
+            ? {
+                kind: checkout ? "checkout" : "github",
+                projectId: conflict.projectId,
+                workspaceId: conflict.workspaceId,
+              }
+            : null,
+        );
+      }),
+    });
+  }
+
+  async queueImports(
+    ownerId: string,
+    workspaceId: string,
+    input: {
+      candidates: WorkspaceRepositoryImportCandidateCreate[];
+      expectedStateRevision: number;
+    },
+  ): Promise<WorkspaceRepositoryDiscoverySnapshot | null> {
+    const now = new Date();
+    const queued = await this.database.transaction(async (transaction) => {
+      const jobs = await transaction
+        .select()
+        .from(schema.workspaceRepositoryDiscoveryJobs)
+        .where(
+          and(
+            eq(schema.workspaceRepositoryDiscoveryJobs.ownerId, ownerId),
+            eq(
+              schema.workspaceRepositoryDiscoveryJobs.workspaceId,
+              workspaceId,
+            ),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const job = jobs[0];
+      if (
+        !job ||
+        job.state !== "succeeded" ||
+        job.stateRevision !== input.expectedStateRevision
+      ) {
+        return false;
+      }
+      const ids = input.candidates.map(({ candidateId }) => candidateId);
+      const rows = await transaction
+        .select()
+        .from(schema.workspaceRepositoryCandidates)
+        .where(
+          and(
+            eq(schema.workspaceRepositoryCandidates.ownerId, ownerId),
+            eq(schema.workspaceRepositoryCandidates.workspaceId, workspaceId),
+            eq(schema.workspaceRepositoryCandidates.jobId, job.id),
+            inArray(schema.workspaceRepositoryCandidates.id, ids),
+          ),
+        )
+        .for("update");
+      if (rows.length !== ids.length) {
+        throw new WorkspaceRepositoryDiscoveryInvariantError(
+          "Repository import referenced an unknown discovery candidate.",
+        );
+      }
+      const rowsById = new Map(rows.map((row) => [row.id, row]));
+      for (const requested of input.candidates) {
+        const candidate = rowsById.get(requested.candidateId)!;
+        if (
+          candidate.classification === "github-accessible" &&
+          !requested.repositoryBlindIndex
+        ) {
+          throw new WorkspaceRepositoryDiscoveryInvariantError(
+            "GitHub repository import requires a protected identity index.",
+          );
+        }
+        if (
+          ["imported", "skipped", "importing"].includes(candidate.importState)
+        ) {
+          continue;
+        }
+        if (
+          candidate.importState === "queued" &&
+          candidate.importProjectId !== requested.projectId
+        ) {
+          throw new WorkspaceRepositoryDiscoveryInvariantError(
+            "Repository import is already queued with another project identity.",
+          );
+        }
+        await transaction
+          .update(schema.workspaceRepositoryCandidates)
+          .set({
+            importState: "queued",
+            importProjectId: requested.projectId,
+            protectedImportName: requested.nameProtection,
+            importRepositoryBlindIndex: requested.repositoryBlindIndex,
+            importCommandId: null,
+            importErrorCode: null,
+            importErrorRetryable: null,
+            importAvailableAt: now,
+            importLeaseExpiresAt: null,
+            updatedAt: now,
+          })
+          .where(eq(schema.workspaceRepositoryCandidates.id, candidate.id));
+      }
+      await transaction
+        .update(schema.workspaceRepositoryDiscoveryJobs)
+        .set({ stateRevision: job.stateRevision + 1, updatedAt: now })
+        .where(eq(schema.workspaceRepositoryDiscoveryJobs.id, job.id));
+      return true;
+    });
+    return queued ? this.getSnapshot(ownerId, workspaceId) : null;
+  }
+
+  async claimNextImport(): Promise<ClaimedWorkspaceRepositoryImport | null> {
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          candidate: schema.workspaceRepositoryCandidates,
+          job: schema.workspaceRepositoryDiscoveryJobs,
+          rootPathHandle:
+            schema.projectWorkspaceStorageProfiles.protectedRootPathHandle,
+        })
+        .from(schema.workspaceRepositoryCandidates)
+        .innerJoin(
+          schema.workspaceRepositoryDiscoveryJobs,
+          and(
+            eq(
+              schema.workspaceRepositoryDiscoveryJobs.id,
+              schema.workspaceRepositoryCandidates.jobId,
+            ),
+            eq(schema.workspaceRepositoryDiscoveryJobs.state, "succeeded"),
+          ),
+        )
+        .innerJoin(
+          schema.projectWorkspaceStorageProfiles,
+          and(
+            eq(
+              schema.projectWorkspaceStorageProfiles.workspaceId,
+              schema.workspaceRepositoryCandidates.workspaceId,
+            ),
+            eq(
+              schema.projectWorkspaceStorageProfiles.workerId,
+              schema.workspaceRepositoryCandidates.workerId,
+            ),
+            eq(schema.projectWorkspaceStorageProfiles.kind, "attached"),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.workspaceRepositoryCandidates.importState, "queued"),
+            lte(schema.workspaceRepositoryCandidates.importAvailableAt, now),
+          ),
+        )
+        .orderBy(
+          asc(schema.workspaceRepositoryCandidates.importAvailableAt),
+          asc(schema.workspaceRepositoryCandidates.createdAt),
+        )
+        .for("update", { skipLocked: true })
+        .limit(1);
+      const selected = rows[0];
+      if (
+        !selected?.candidate.importProjectId ||
+        !selected.candidate.protectedImportName ||
+        !selected.rootPathHandle
+      ) {
+        return null;
+      }
+      const commandId = randomUUID();
+      const updated = await transaction
+        .update(schema.workspaceRepositoryCandidates)
+        .set({
+          importState: "importing",
+          importAttempt: selected.candidate.importAttempt + 1,
+          importCommandId: commandId,
+          importLeaseExpiresAt: new Date(
+            now.getTime() + WORKSPACE_REPOSITORY_IMPORT_LEASE_MS,
+          ),
+          importErrorCode: null,
+          importErrorRetryable: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workspaceRepositoryCandidates.id, selected.candidate.id),
+            eq(schema.workspaceRepositoryCandidates.importState, "queued"),
+          ),
+        )
+        .returning();
+      if (!updated[0]) return null;
+      await transaction
+        .update(schema.workspaceRepositoryDiscoveryJobs)
+        .set({
+          stateRevision: selected.job.stateRevision + 1,
+          updatedAt: now,
+        })
+        .where(eq(schema.workspaceRepositoryDiscoveryJobs.id, selected.job.id));
+      return {
+        attempt: updated[0].importAttempt,
+        candidateId: updated[0].id,
+        commandId,
+        expectedRepositoryFingerprint: updated[0].repositoryFingerprint,
+        nameProtection: updated[0].protectedImportName!,
+        ownerId: updated[0].ownerId,
+        pathHandle: updated[0].protectedPathHandle,
+        projectId: updated[0].importProjectId!,
+        repositoryBlindIndex: updated[0].importRepositoryBlindIndex,
+        rootPathHandle: selected.rootPathHandle,
+        workerId: updated[0].workerId,
+        workspaceId: updated[0].workspaceId,
+      };
+    });
+  }
+
+  async renewImportLease(claimed: ClaimedWorkspaceRepositoryImport) {
+    const rows = await this.database
+      .update(schema.workspaceRepositoryCandidates)
+      .set({
+        importLeaseExpiresAt: new Date(
+          Date.now() + WORKSPACE_REPOSITORY_IMPORT_LEASE_MS,
+        ),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.workspaceRepositoryCandidates.id, claimed.candidateId),
+          eq(schema.workspaceRepositoryCandidates.importState, "importing"),
+          eq(
+            schema.workspaceRepositoryCandidates.importCommandId,
+            claimed.commandId,
+          ),
+          eq(
+            schema.workspaceRepositoryCandidates.importAttempt,
+            claimed.attempt,
+          ),
+        ),
+      )
+      .returning({ id: schema.workspaceRepositoryCandidates.id });
+    return rows.length === 1;
+  }
+
+  async blockImport(
+    claimed: ClaimedWorkspaceRepositoryImport,
+    error: WorkspaceRepositoryImportError,
+  ): Promise<WorkspaceRepositoryDiscoveryJobSummary> {
+    return this.settleImport(claimed, "blocked", error);
+  }
+
+  async failImport(
+    claimed: ClaimedWorkspaceRepositoryImport,
+    error: WorkspaceRepositoryImportError,
+  ): Promise<WorkspaceRepositoryDiscoveryJobSummary> {
+    return this.settleImport(claimed, "failed", error);
+  }
+
+  private async settleImport(
+    claimed: ClaimedWorkspaceRepositoryImport,
+    state: "blocked" | "failed",
+    error: WorkspaceRepositoryImportError,
+  ): Promise<WorkspaceRepositoryDiscoveryJobSummary> {
+    const now = new Date();
+    const job = await this.database.transaction(async (transaction) => {
+      const candidates = await transaction
+        .update(schema.workspaceRepositoryCandidates)
+        .set({
+          importState: state,
+          importCommandId: null,
+          importErrorCode: error.code,
+          importErrorRetryable: error.retryable,
+          importAvailableAt: null,
+          importLeaseExpiresAt: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workspaceRepositoryCandidates.id, claimed.candidateId),
+            eq(schema.workspaceRepositoryCandidates.importState, "importing"),
+            eq(
+              schema.workspaceRepositoryCandidates.importCommandId,
+              claimed.commandId,
+            ),
+            eq(
+              schema.workspaceRepositoryCandidates.importAttempt,
+              claimed.attempt,
+            ),
+          ),
+        )
+        .returning({ jobId: schema.workspaceRepositoryCandidates.jobId });
+      if (!candidates[0]) {
+        throw new WorkspaceRepositoryImportStaleAttemptError(
+          "The repository import attempt is no longer current.",
+        );
+      }
+      const jobs = await transaction
+        .update(schema.workspaceRepositoryDiscoveryJobs)
+        .set({
+          stateRevision: sql`${schema.workspaceRepositoryDiscoveryJobs.stateRevision} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          eq(schema.workspaceRepositoryDiscoveryJobs.id, candidates[0].jobId),
+        )
+        .returning();
+      return jobs[0]!;
+    });
+    return toJob(job);
+  }
+
+  async completeImport(
+    claimed: ClaimedWorkspaceRepositoryImport,
+    result: WorkspaceRepositoryImportValidationResult,
+  ): Promise<WorkspaceRepositoryDiscoveryJobSummary> {
+    const now = new Date();
+    const job = await this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          candidate: schema.workspaceRepositoryCandidates,
+          job: schema.workspaceRepositoryDiscoveryJobs,
+          storage: schema.projectWorkspaceStorageProfiles,
+        })
+        .from(schema.workspaceRepositoryCandidates)
+        .innerJoin(
+          schema.workspaceRepositoryDiscoveryJobs,
+          eq(
+            schema.workspaceRepositoryDiscoveryJobs.id,
+            schema.workspaceRepositoryCandidates.jobId,
+          ),
+        )
+        .innerJoin(
+          schema.projectWorkspaceStorageProfiles,
+          eq(
+            schema.projectWorkspaceStorageProfiles.workspaceId,
+            schema.workspaceRepositoryCandidates.workspaceId,
+          ),
+        )
+        .where(eq(schema.workspaceRepositoryCandidates.id, claimed.candidateId))
+        .for("update")
+        .limit(1);
+      const current = rows[0];
+      if (
+        !current ||
+        current.candidate.importState !== "importing" ||
+        current.candidate.importCommandId !== claimed.commandId ||
+        current.candidate.importAttempt !== result.attempt ||
+        result.candidateId !== current.candidate.id ||
+        result.repositoryFingerprint !==
+          current.candidate.repositoryFingerprint ||
+        current.storage.kind !== "attached" ||
+        current.storage.workerId !== current.candidate.workerId
+      ) {
+        throw new WorkspaceRepositoryImportStaleAttemptError(
+          "The repository import completion is no longer current.",
+        );
+      }
+
+      const checkoutConflicts = await transaction
+        .select({
+          projectId: schema.projects.id,
+          workspaceId: schema.projectWorkspaceMemberships.workspaceId,
+        })
+        .from(schema.projectSources)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.projectSources.projectId),
+            eq(schema.projects.ownerId, claimed.ownerId),
+          ),
+        )
+        .innerJoin(
+          schema.projectWorkspaceMemberships,
+          eq(schema.projectWorkspaceMemberships.projectId, schema.projects.id),
+        )
+        .where(
+          and(
+            eq(schema.projectSources.workerId, claimed.workerId),
+            eq(
+              schema.projectSources.repositoryFingerprint,
+              result.repositoryFingerprint,
+            ),
+            isNull(schema.projectSources.removedAt),
+          ),
+        )
+        .orderBy(asc(schema.projectSources.createdAt))
+        .limit(1);
+      const githubConflicts = result.github
+        ? await transaction
+            .select({
+              projectId: schema.projects.id,
+              workspaceId: schema.projectWorkspaceMemberships.workspaceId,
+            })
+            .from(schema.projects)
+            .innerJoin(
+              schema.projectWorkspaceMemberships,
+              eq(
+                schema.projectWorkspaceMemberships.projectId,
+                schema.projects.id,
+              ),
+            )
+            .where(
+              and(
+                eq(schema.projects.ownerId, claimed.ownerId),
+                or(
+                  eq(
+                    schema.projects.githubRepositoryId,
+                    result.github.repositoryId,
+                  ),
+                  claimed.repositoryBlindIndex
+                    ? eq(
+                        schema.projects.githubRepositoryBlindIndex,
+                        claimed.repositoryBlindIndex,
+                      )
+                    : undefined,
+                ),
+              ),
+            )
+            .orderBy(asc(schema.projects.createdAt))
+            .limit(1)
+        : [];
+      const conflict = checkoutConflicts[0] ?? githubConflicts[0];
+      if (conflict) {
+        await transaction
+          .update(schema.workspaceRepositoryCandidates)
+          .set({
+            importState: "skipped",
+            importProjectId: conflict.projectId,
+            importCommandId: null,
+            importErrorCode: null,
+            importErrorRetryable: null,
+            importAvailableAt: null,
+            importLeaseExpiresAt: null,
+            updatedAt: now,
+          })
+          .where(
+            eq(schema.workspaceRepositoryCandidates.id, claimed.candidateId),
+          );
+      } else {
+        const projectCollision = await transaction
+          .select({ id: schema.projects.id })
+          .from(schema.projects)
+          .where(eq(schema.projects.id, claimed.projectId))
+          .limit(1);
+        if (projectCollision[0]) {
+          throw new WorkspaceRepositoryDiscoveryInvariantError(
+            "Repository import project identity already exists.",
+          );
+        }
+        const githubImport = Boolean(
+          result.classification === "github-accessible" &&
+          result.github &&
+          claimed.repositoryBlindIndex,
+        );
+        const lastProjects = await transaction
+          .select({ position: schema.projects.position })
+          .from(schema.projects)
+          .where(eq(schema.projects.ownerId, claimed.ownerId))
+          .orderBy(desc(schema.projects.position))
+          .limit(1);
+        await transaction.insert(schema.projects).values({
+          id: claimed.projectId,
+          ownerId: claimed.ownerId,
+          protectedLabel: claimed.nameProtection,
+          position: (lastProjects[0]?.position ?? -1) + 1,
+          originKind: githubImport ? "github" : "managed-folder",
+          folderManagement: githubImport ? null : "external",
+          setupStatus: "ready",
+          setupError: null,
+          worktreePolicy: githubImport ? "agent-managed" : "direct",
+          gitCapability: true,
+          githubCapability: githubImport,
+          preferredWorkerId: claimed.workerId,
+          githubRepositoryBlindIndex: githubImport
+            ? claimed.repositoryBlindIndex
+            : null,
+          githubRepositoryId: githubImport ? result.github!.repositoryId : null,
+          githubRepositoryFullName: githubImport
+            ? result.github!.nameWithOwner
+            : null,
+          githubRepositoryUrl: githubImport ? result.github!.url : null,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await transaction.insert(schema.projectWorkspaceMemberships).values({
+          workspaceId: claimed.workspaceId,
+          projectId: claimed.projectId,
+          createdAt: now,
+        });
+        const sourceId = randomUUID();
+        await transaction.insert(schema.projectSources).values({
+          id: sourceId,
+          projectId: claimed.projectId,
+          workerId: claimed.workerId,
+          sourceKind: "git",
+          absolutePath: result.path,
+          displayPath: result.displayPath,
+          placementMode: "direct",
+          ownershipKind: "user",
+          requestedPath: result.path,
+          linkPath: null,
+          repositoryFingerprint: result.repositoryFingerprint,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await transaction.insert(schema.projectWorktrees).values({
+          id: randomUUID(),
+          projectSourceId: sourceId,
+          workerId: claimed.workerId,
+          rootKind: "git-worktree",
+          name: "Primary",
+          absolutePath: result.path,
+          displayPath: result.displayPath,
+          isPrimary: true,
+          isDefault: true,
+          origin: "external",
+          lifecycleState: "ready",
+          branch: result.branch,
+          head: result.head,
+          detached: result.head !== null && result.branch === null,
+          lastScannedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await transaction
+          .update(schema.workspaceRepositoryCandidates)
+          .set({
+            classification: result.classification,
+            diagnosticCode: result.diagnosticCode,
+            protectedPathHandle: result.path,
+            protectedOriginUrlHandle: result.originUrl,
+            protectedGithubRepositoryIdHandle:
+              result.github?.repositoryId ?? null,
+            protectedGithubNameWithOwnerHandle:
+              result.github?.nameWithOwner ?? null,
+            protectedGithubUrlHandle: result.github?.url ?? null,
+            importState: "imported",
+            importCommandId: null,
+            importErrorCode: null,
+            importErrorRetryable: null,
+            importAvailableAt: null,
+            importLeaseExpiresAt: null,
+            updatedAt: now,
+          })
+          .where(
+            eq(schema.workspaceRepositoryCandidates.id, claimed.candidateId),
+          );
+      }
+      const jobs = await transaction
+        .update(schema.workspaceRepositoryDiscoveryJobs)
+        .set({
+          stateRevision: current.job.stateRevision + 1,
+          updatedAt: now,
+        })
+        .where(eq(schema.workspaceRepositoryDiscoveryJobs.id, current.job.id))
+        .returning();
+      return jobs[0]!;
+    });
+    return toJob(job);
+  }
+
+  async recoverInterruptedImports(
+    force = true,
+    now = new Date(),
+  ): Promise<number> {
+    return this.database.transaction(async (transaction) => {
+      const recovered = await transaction
+        .update(schema.workspaceRepositoryCandidates)
+        .set({
+          importState: "queued",
+          importCommandId: null,
+          importLeaseExpiresAt: null,
+          importAvailableAt: now,
+          updatedAt: now,
+        })
+        .where(
+          force
+            ? eq(schema.workspaceRepositoryCandidates.importState, "importing")
+            : and(
+                eq(
+                  schema.workspaceRepositoryCandidates.importState,
+                  "importing",
+                ),
+                or(
+                  isNull(
+                    schema.workspaceRepositoryCandidates.importLeaseExpiresAt,
+                  ),
+                  lte(
+                    schema.workspaceRepositoryCandidates.importLeaseExpiresAt,
+                    now,
+                  ),
+                ),
+              ),
+        )
+        .returning({
+          jobId: schema.workspaceRepositoryCandidates.jobId,
+        });
+      for (const jobId of new Set(recovered.map((row) => row.jobId))) {
+        await transaction
+          .update(schema.workspaceRepositoryDiscoveryJobs)
+          .set({
+            stateRevision: sql`${schema.workspaceRepositoryDiscoveryJobs.stateRevision} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(schema.workspaceRepositoryDiscoveryJobs.id, jobId));
+      }
+      return recovered.length;
+    });
+  }
+
+  async requeueRetryableImportsForWorker(workerId: string): Promise<number> {
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const requeued = await transaction
+        .update(schema.workspaceRepositoryCandidates)
+        .set({
+          importState: "queued",
+          importErrorCode: null,
+          importErrorRetryable: null,
+          importAvailableAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.workspaceRepositoryCandidates.workerId, workerId),
+            eq(schema.workspaceRepositoryCandidates.importState, "blocked"),
+            eq(schema.workspaceRepositoryCandidates.importErrorRetryable, true),
+          ),
+        )
+        .returning({
+          jobId: schema.workspaceRepositoryCandidates.jobId,
+        });
+      for (const jobId of new Set(requeued.map((row) => row.jobId))) {
+        await transaction
+          .update(schema.workspaceRepositoryDiscoveryJobs)
+          .set({
+            stateRevision: sql`${schema.workspaceRepositoryDiscoveryJobs.stateRevision} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(schema.workspaceRepositoryDiscoveryJobs.id, jobId));
+      }
+      return requeued.length;
     });
   }
 
@@ -637,7 +1404,7 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
     });
     return workspaceRepositoryDiscoverySnapshotSchema.parse({
       job: toJob(result.job),
-      candidates: result.candidates.map(toCandidate),
+      candidates: result.candidates.map((candidate) => toCandidate(candidate)),
     });
   }
 

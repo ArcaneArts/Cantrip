@@ -40,7 +40,10 @@ export function mutationLiveResources(
   ) {
     return ["policy"];
   }
-  if (route === "/api/workspaces/:workspaceId/repository-discovery") {
+  if (
+    route === "/api/workspaces/:workspaceId/repository-discovery" ||
+    route === "/api/workspaces/:workspaceId/repository-imports"
+  ) {
     return ["workspace-repository-discovery-job"];
   }
   if (route === "/api/workspaces" || route.startsWith("/api/workspaces/")) {

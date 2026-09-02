@@ -109,6 +109,32 @@ describe("WorkerRoutingRegistry", () => {
     expect(JSON.stringify(protectedDiscovery)).not.toContain(
       "/Users/example/private-repository",
     );
+    const protectedImportValidation = (await registry.protectResult(
+      "workspace.repository-import.validate",
+      {
+        candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
+        attempt: 1,
+        path: "/Users/example/private-repository",
+        displayPath: "/Users/example/private-repository",
+        originUrl: "git@github.com:ArcaneArts/Private.git",
+        github: {
+          repositoryId: "private-repository-id",
+          nameWithOwner: "ArcaneArts/Private",
+          url: "https://github.com/ArcaneArts/Private",
+        },
+        repositoryFingerprint: "a".repeat(64),
+        classification: "github-accessible",
+        diagnosticCode: null,
+        branch: "main",
+        head: "b".repeat(40),
+      },
+    )) as { path: string; displayPath: string; branch: string; head: string };
+    expect(protectedImportValidation).toMatchObject({
+      path: protectedResult.worktree.path,
+      displayPath: expect.stringMatching(/^ctrr_/u),
+      branch: expect.stringMatching(/^ctrr_/u),
+      head: "b".repeat(40),
+    });
     const protectedObservation = (await registry.protectResult(
       "worktree.observation.configure",
       {
@@ -185,6 +211,19 @@ describe("WorkerRoutingRegistry", () => {
       }),
     ).toMatchObject({
       rootPath: "/Users/example/private-repository",
+    });
+    expect(
+      await restarted.resolveCommand({
+        type: "workspace.repository-import.validate",
+        candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
+        attempt: 1,
+        rootPath: protectedDiscovery.candidates[0]!.path,
+        path: protectedImportValidation.path,
+        expectedRepositoryFingerprint: "a".repeat(64),
+      }),
+    ).toMatchObject({
+      rootPath: "/Users/example/private-repository",
+      path: "/Users/example/private-repository",
     });
     expect(await restarted.resolveMetadata(protectedIdentity)).toEqual({
       nameWithOwner: "ArcaneArts/Private",

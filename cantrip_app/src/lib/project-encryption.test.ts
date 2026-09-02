@@ -1,8 +1,9 @@
-import { generateAccountMasterKey } from "@cantrip/crypto";
+import { encodeBase64Url, generateAccountMasterKey } from "@cantrip/crypto";
 import type {
   EncryptedGithubProjectCreate,
   EncryptedManagedFolderProjectCreate,
   ProjectPreferredWorkerUpdate,
+  ProjectGithubConversionRepository,
   ProjectWorktreeSummary,
   ProjectWireSummary,
   WorktreePolicy,
@@ -22,6 +23,7 @@ const identity = {
   serverId: "server-project-label",
 };
 const timestamp = "2026-08-19T12:00:00.000Z";
+const repositoryBlindIndex = encodeBase64Url(new Uint8Array(32).fill(11));
 
 function session(): ClientSessionContext {
   return {
@@ -86,11 +88,20 @@ class MemoryProjectApi implements ProjectWireApi {
     [];
   readonly rows: ProjectWireSummary[] = [];
   readonly routingValues = new Map<string, string>();
+  readonly repositoryProtections: Array<{
+    projectId: string;
+    repository: ProjectGithubConversionRepository;
+    workerId: string;
+  }> = [];
   readonly worktrees: ProjectWorktreeSummary[] = [];
   metadataResolutionCalls = 0;
   writes = 0;
 
-  protectRepositoryIdentity(): Promise<{
+  protectRepositoryIdentity(input: {
+    projectId: string;
+    repository: ProjectGithubConversionRepository;
+    workerId: string;
+  }): Promise<{
     repository: {
       repositoryId: string;
       nameWithOwner: string;
@@ -98,13 +109,14 @@ class MemoryProjectApi implements ProjectWireApi {
     };
     repositoryBlindIndex: string;
   }> {
+    this.repositoryProtections.push(structuredClone(input));
     return Promise.resolve({
       repository: {
         repositoryId: `ctrr_${"i".repeat(43)}`,
         nameWithOwner: `ctrr_${"n".repeat(43)}`,
         url: `ctrr_${"u".repeat(43)}`,
       },
-      repositoryBlindIndex: "b".repeat(43),
+      repositoryBlindIndex,
     });
   }
 
@@ -232,7 +244,7 @@ describe("encrypted project display names", () => {
       "ArcaneArts/SentinelProject",
     );
     expect(api.githubCreates[0]).toMatchObject({
-      repositoryBlindIndex: "b".repeat(43),
+      repositoryBlindIndex,
       repositoryId: expect.stringMatching(/^ctrr_/u),
       nameWithOwner: expect.stringMatching(/^ctrr_/u),
       url: expect.stringMatching(/^ctrr_/u),
@@ -260,6 +272,34 @@ describe("encrypted project display names", () => {
       path: `ctrr_${"p".repeat(43)}`,
     });
     expect(JSON.stringify(api.githubCreates)).not.toContain(placementPath);
+  });
+
+  it("prepares import candidates with encrypted names and blind GitHub identities", async () => {
+    const { adapter, api } = fixture();
+    const prepared = await adapter.prepareWorkspaceRepositoryImport({
+      candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
+      name: "Sentinel Repository",
+      repository: {
+        repositoryId: "repository-1",
+        nameWithOwner: "ArcaneArts/SentinelRepository",
+        url: "https://github.com/ArcaneArts/SentinelRepository",
+      },
+      workerId: "worker-a",
+    });
+
+    expect(prepared).toMatchObject({
+      candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
+      projectId: expect.any(String),
+      repositoryBlindIndex,
+      nameProtection: { classification: { recordKind: "project" } },
+    });
+    expect(JSON.stringify(prepared)).not.toContain("Sentinel Repository");
+    expect(api.repositoryProtections).toEqual([
+      expect.objectContaining({
+        projectId: prepared.projectId,
+        workerId: "worker-a",
+      }),
+    ]);
   });
 
   it("blocks locked writes and rejects row swaps and tampering", async () => {

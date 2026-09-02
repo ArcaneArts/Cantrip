@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { repositoryRoutingHandleSchema } from "./repository-operation.js";
-import { projectGithubRoutingRepositorySchema } from "./projects.js";
+import { encryptionKeyBytesSchema } from "./encryption.js";
+import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
+import {
+  gitObjectRevisionSchema,
+  projectGithubRoutingRepositorySchema,
+} from "./projects.js";
 
 export const workspaceRepositoryDiscoveryJobStateSchema = z.enum([
   "queued",
@@ -84,11 +89,37 @@ export const workspaceRepositoryCandidateDiagnosticCodeSchema = z.enum([
 
 export const workspaceRepositoryCandidateImportStateSchema = z.enum([
   "pending",
+  "queued",
   "importing",
   "imported",
+  "blocked",
   "failed",
   "skipped",
 ]);
+
+export const workspaceRepositoryCandidateConflictSchema = z
+  .object({
+    kind: z.enum(["checkout", "github"]),
+    projectId: z.string().uuid(),
+    workspaceId: z.string().min(1),
+  })
+  .strict();
+
+export const workspaceRepositoryImportErrorCodeSchema = z.enum([
+  "worker-offline",
+  "capability-missing",
+  "repository-unavailable",
+  "repository-changed",
+  "project-conflict",
+  "import-failed",
+]);
+
+export const workspaceRepositoryImportErrorSchema = z
+  .object({
+    code: workspaceRepositoryImportErrorCodeSchema,
+    retryable: z.boolean(),
+  })
+  .strict();
 
 export const workspaceRepositoryCandidateSummarySchema = z
   .object({
@@ -103,6 +134,12 @@ export const workspaceRepositoryCandidateSummarySchema = z
     repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
     classification: workspaceRepositoryCandidateClassificationSchema,
     importState: workspaceRepositoryCandidateImportStateSchema,
+    importAttempt: z.number().int().nonnegative().default(0),
+    importError: workspaceRepositoryImportErrorSchema.nullable().default(null),
+    projectId: z.string().uuid().nullable().default(null),
+    conflict: workspaceRepositoryCandidateConflictSchema
+      .nullable()
+      .default(null),
     diagnosticCode: workspaceRepositoryCandidateDiagnosticCodeSchema.nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -131,6 +168,23 @@ export const workspaceRepositoryCandidateSummarySchema = z
         path: ["classification"],
       });
     }
+    const hasImportError = candidate.importError !== null;
+    const needsImportError =
+      candidate.importState === "blocked" || candidate.importState === "failed";
+    if (needsImportError !== hasImportError) {
+      context.addIssue({
+        code: "custom",
+        message: "Repository candidate import error metadata is invalid.",
+        path: ["importError"],
+      });
+    }
+    if (candidate.importState !== "pending" && !candidate.projectId) {
+      context.addIssue({
+        code: "custom",
+        message: "Repository candidate import project identity is missing.",
+        path: ["projectId"],
+      });
+    }
   });
 
 export const workspaceRepositoryDiscoverySnapshotSchema = z
@@ -150,6 +204,31 @@ export const workspaceRepositoryDiscoveryStartSchema = z
   })
   .strict();
 
+export const workspaceRepositoryImportCandidateCreateSchema = z
+  .object({
+    candidateId: z.string().uuid(),
+    projectId: z.string().uuid(),
+    nameProtection: privateDisplayLabelOpaqueSchema,
+    repositoryBlindIndex: encryptionKeyBytesSchema.nullable().default(null),
+  })
+  .strict();
+
+export const workspaceRepositoryImportStartSchema = z
+  .object({
+    expectedStateRevision: z.number().int().positive(),
+    candidates: z
+      .array(workspaceRepositoryImportCandidateCreateSchema)
+      .min(1)
+      .max(100)
+      .refine(
+        (candidates) =>
+          new Set(candidates.map(({ candidateId }) => candidateId)).size ===
+          candidates.length,
+        { message: "Repository import candidates must be unique." },
+      ),
+  })
+  .strict();
+
 export const workspaceRepositoryDiscoveryCommandSchema = z
   .object({
     type: z.literal("workspace.repositories.discover"),
@@ -159,6 +238,55 @@ export const workspaceRepositoryDiscoveryCommandSchema = z
     depth: z.number().int().min(0).max(16),
   })
   .strict();
+
+export const workspaceRepositoryImportValidateCommandSchema = z
+  .object({
+    type: z.literal("workspace.repository-import.validate"),
+    candidateId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    rootPath: repositoryRoutingHandleSchema,
+    path: repositoryRoutingHandleSchema,
+    expectedRepositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .strict();
+
+export const workspaceRepositoryImportValidationResultSchema = z
+  .object({
+    candidateId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    path: repositoryRoutingHandleSchema,
+    displayPath: repositoryRoutingHandleSchema,
+    originUrl: repositoryRoutingHandleSchema.nullable(),
+    github: projectGithubRoutingRepositorySchema.nullable(),
+    repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+    classification: workspaceRepositoryDetectedClassificationSchema,
+    diagnosticCode: workspaceRepositoryCandidateDiagnosticCodeSchema.nullable(),
+    branch: z.string().min(1).max(512).nullable(),
+    head: gitObjectRevisionSchema.nullable(),
+  })
+  .strict()
+  .superRefine((candidate, context) => {
+    const hasGithub = candidate.github !== null;
+    const hasOrigin = candidate.originUrl !== null;
+    const hasDiagnostic = candidate.diagnosticCode !== null;
+    const valid =
+      (candidate.classification === "github-accessible" &&
+        hasGithub &&
+        hasOrigin &&
+        !hasDiagnostic) ||
+      (candidate.classification === "github-unavailable" &&
+        !hasGithub &&
+        hasOrigin &&
+        hasDiagnostic) ||
+      (candidate.classification === "local-git" && !hasGithub);
+    if (!valid) {
+      context.addIssue({
+        code: "custom",
+        message: "Repository import classification metadata is invalid.",
+        path: ["classification"],
+      });
+    }
+  });
 
 export const workspaceRepositoryDiscoveryWorkerResultSchema = z
   .object({
@@ -238,6 +366,15 @@ export type WorkspaceRepositoryCandidateDiagnosticCode = z.infer<
 export type WorkspaceRepositoryCandidateImportState = z.infer<
   typeof workspaceRepositoryCandidateImportStateSchema
 >;
+export type WorkspaceRepositoryCandidateConflict = z.infer<
+  typeof workspaceRepositoryCandidateConflictSchema
+>;
+export type WorkspaceRepositoryImportErrorCode = z.infer<
+  typeof workspaceRepositoryImportErrorCodeSchema
+>;
+export type WorkspaceRepositoryImportError = z.infer<
+  typeof workspaceRepositoryImportErrorSchema
+>;
 export type WorkspaceRepositoryCandidateSummary = z.infer<
   typeof workspaceRepositoryCandidateSummarySchema
 >;
@@ -247,9 +384,21 @@ export type WorkspaceRepositoryDiscoverySnapshot = z.infer<
 export type WorkspaceRepositoryDiscoveryStart = z.infer<
   typeof workspaceRepositoryDiscoveryStartSchema
 >;
+export type WorkspaceRepositoryImportCandidateCreate = z.infer<
+  typeof workspaceRepositoryImportCandidateCreateSchema
+>;
+export type WorkspaceRepositoryImportStart = z.infer<
+  typeof workspaceRepositoryImportStartSchema
+>;
 export type WorkspaceRepositoryDiscoveryCommand = z.infer<
   typeof workspaceRepositoryDiscoveryCommandSchema
 >;
 export type WorkspaceRepositoryDiscoveryWorkerResult = z.infer<
   typeof workspaceRepositoryDiscoveryWorkerResultSchema
+>;
+export type WorkspaceRepositoryImportValidateCommand = z.infer<
+  typeof workspaceRepositoryImportValidateCommandSchema
+>;
+export type WorkspaceRepositoryImportValidationResult = z.infer<
+  typeof workspaceRepositoryImportValidationResultSchema
 >;

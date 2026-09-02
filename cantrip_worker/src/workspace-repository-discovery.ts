@@ -7,8 +7,10 @@ import { promisify } from "node:util";
 import {
   projectGithubConversionRepositorySchema,
   type ProjectGithubConversionRepository,
-  type WorkspaceRepositoryCandidateClassification,
+  type WorkspaceRepositoryCandidateDiagnosticCode,
+  type WorkspaceRepositoryDetectedClassification,
   type WorkspaceRepositoryDiscoveryProgress,
+  type WorkspaceRepositoryImportValidationResult,
 } from "@cantrip/protocol";
 
 const execFileAsync = promisify(execFile);
@@ -29,8 +31,8 @@ export interface WorkspaceRepositoryDiscoveryLimits {
 
 export interface WorkspaceRepositoryDiscoveryCandidate {
   canonicalPath: string;
-  classification: WorkspaceRepositoryCandidateClassification;
-  diagnosticCode: string | null;
+  classification: WorkspaceRepositoryDetectedClassification;
+  diagnosticCode: WorkspaceRepositoryCandidateDiagnosticCode | null;
   gitCommonDirectory: string;
   github: ProjectGithubConversionRepository | null;
   originUrl: string | null;
@@ -39,11 +41,8 @@ export interface WorkspaceRepositoryDiscoveryCandidate {
 }
 
 export interface WorkspaceRepositoryOriginClassification {
-  classification: Exclude<
-    WorkspaceRepositoryCandidateClassification,
-    "unclassified"
-  >;
-  diagnosticCode: string | null;
+  classification: WorkspaceRepositoryDetectedClassification;
+  diagnosticCode: WorkspaceRepositoryCandidateDiagnosticCode | null;
   github: ProjectGithubConversionRepository | null;
   originUrl: string | null;
 }
@@ -82,6 +81,13 @@ const DEFAULT_LIMITS: WorkspaceRepositoryDiscoveryLimits = {
 
 function rootUnavailable(message: string): Error {
   return Object.assign(new Error(message), { code: "root-unavailable" });
+}
+
+function importValidationError(
+  code: "repository-unavailable" | "repository-changed",
+  message: string,
+): Error {
+  return Object.assign(new Error(message), { code });
 }
 
 function boundedInteger(value: number, minimum: number): number {
@@ -319,7 +325,7 @@ async function inspectRepositoryRoot(
   const classification = originReadFailed
     ? {
         classification: "local-git" as const,
-        diagnosticCode: "origin-unavailable",
+        diagnosticCode: "origin-unavailable" as const,
         github: null,
         originUrl: null,
       }
@@ -339,6 +345,110 @@ async function inspectRepositoryRoot(
     repositoryFingerprint: createHash("sha256")
       .update(gitCommonDirectory)
       .digest("hex"),
+  };
+}
+
+export async function validateWorkspaceRepositoryImport(input: {
+  attempt: number;
+  candidateId: string;
+  expectedRepositoryFingerprint: string;
+  path: string;
+  rootPath: string;
+}): Promise<WorkspaceRepositoryImportValidationResult> {
+  if (!path.isAbsolute(input.rootPath)) {
+    throw importValidationError(
+      "repository-unavailable",
+      "The attached workspace root is not absolute.",
+    );
+  }
+  const rootMetadata = await lstat(input.rootPath).catch(() => null);
+  if (!rootMetadata?.isDirectory() || rootMetadata.isSymbolicLink()) {
+    throw importValidationError(
+      "repository-unavailable",
+      "The attached workspace root is no longer accessible.",
+    );
+  }
+  const canonicalRoot = await realpath(input.rootPath).catch(() => null);
+  if (!canonicalRoot) {
+    throw importValidationError(
+      "repository-unavailable",
+      "The attached workspace root could not be resolved.",
+    );
+  }
+  if (!path.isAbsolute(input.path)) {
+    throw importValidationError(
+      "repository-unavailable",
+      "The repository import path is not absolute.",
+    );
+  }
+  const metadata = await lstat(input.path).catch(() => null);
+  if (!metadata?.isDirectory() || metadata.isSymbolicLink()) {
+    throw importValidationError(
+      "repository-unavailable",
+      "The repository import path is no longer an accessible directory.",
+    );
+  }
+  const canonicalPath = await realpath(input.path).catch(() => null);
+  if (!canonicalPath || !pathIsWithin(canonicalRoot, canonicalPath)) {
+    throw importValidationError(
+      "repository-unavailable",
+      "The repository import path is outside the attached workspace root.",
+    );
+  }
+  let candidate: WorkspaceRepositoryDiscoveryCandidate | null;
+  try {
+    candidate = await inspectRepositoryRoot(
+      canonicalPath,
+      canonicalRoot,
+      DEFAULT_LIMITS,
+      () => DEFAULT_LIMITS.durationMs,
+    );
+  } catch {
+    throw importValidationError(
+      "repository-unavailable",
+      "The repository import path is no longer an attachable Git checkout.",
+    );
+  }
+  if (!candidate) {
+    throw importValidationError(
+      "repository-unavailable",
+      "The repository import path is no longer a primary Git checkout.",
+    );
+  }
+  if (candidate.repositoryFingerprint !== input.expectedRepositoryFingerprint) {
+    throw importValidationError(
+      "repository-changed",
+      "The repository checkout changed after discovery.",
+    );
+  }
+  const git = async (arguments_: string[]): Promise<string | null> => {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["-C", canonicalPath, ...arguments_],
+        {
+          encoding: "utf8",
+          maxBuffer: DEFAULT_LIMITS.maxGitOutputBytes,
+          timeout: DEFAULT_LIMITS.perGitCommandTimeoutMs,
+        },
+      );
+      return stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    candidateId: input.candidateId,
+    attempt: input.attempt,
+    path: candidate.canonicalPath,
+    displayPath: candidate.canonicalPath,
+    originUrl: candidate.originUrl,
+    github: candidate.github,
+    repositoryFingerprint: candidate.repositoryFingerprint,
+    classification: candidate.classification,
+    diagnosticCode: candidate.diagnosticCode,
+    branch: await git(["symbolic-ref", "--quiet", "--short", "HEAD"]),
+    head: await git(["rev-parse", "--verify", "HEAD"]),
   };
 }
 

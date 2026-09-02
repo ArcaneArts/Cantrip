@@ -9,6 +9,7 @@ import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { WorkspaceRepositoryDiscoveryInvariantError } from "../src/db/workspace-repository-discovery-jobs.js";
 import { SecretVault } from "../src/security/secret-vault.js";
+import { protectedProjectFields } from "./private-label-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 const workspaceId = "118e3c88-d173-4208-9a6c-c6d688f14e54";
@@ -241,6 +242,477 @@ describe("workspace repository discovery jobs", () => {
           managedWorkspaceId,
         ),
       ).rejects.toBeInstanceOf(WorkspaceRepositoryDiscoveryInvariantError);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("imports candidates independently and records an existing checkout without cloning", async () => {
+    const { client, database, repository } = await fixture();
+    try {
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        workspaceId,
+      );
+      const discovery =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      const completed =
+        await repository.workspaceRepositoryDiscoveryJobs.complete(
+          discovery!.job.id,
+          discovery!.commandId,
+          {
+            attempt: discovery!.job.attempt,
+            candidates: [
+              {
+                pathHandle: `ctrr_${"c".repeat(43)}`,
+                displayHandle: `ctrr_${"d".repeat(43)}`,
+                repositoryFingerprint: "1".repeat(64),
+                classification: "local-git",
+                diagnosticCode: null,
+              },
+              {
+                pathHandle: `ctrr_${"e".repeat(43)}`,
+                displayHandle: `ctrr_${"f".repeat(43)}`,
+                repositoryFingerprint: "2".repeat(64),
+                classification: "local-git",
+                diagnosticCode: null,
+              },
+            ],
+            counts: {
+              candidates: 2,
+              collapsedRepositories: 0,
+              rejectedRepositories: 0,
+              scannedDirectories: 2,
+              scannedEntries: 2,
+              skippedSymlinks: 0,
+              unreadableDirectories: 0,
+            },
+            truncated: false,
+          },
+        );
+      const firstProjectId = "09dd9169-04ca-41c1-a473-250b5716bf7c";
+      const secondProjectId = "a6b5056a-dde0-4385-b948-5f084603520a";
+      const queued =
+        await repository.workspaceRepositoryDiscoveryJobs.queueImports(
+          LOCAL_USER_ID,
+          workspaceId,
+          {
+            expectedStateRevision: completed.job.stateRevision,
+            candidates: [
+              {
+                candidateId: completed.candidates[0]!.id,
+                projectId: firstProjectId,
+                nameProtection:
+                  protectedProjectFields(firstProjectId).nameProtection,
+                repositoryBlindIndex: null,
+              },
+              {
+                candidateId: completed.candidates[1]!.id,
+                projectId: secondProjectId,
+                nameProtection:
+                  protectedProjectFields(secondProjectId).nameProtection,
+                repositoryBlindIndex: null,
+              },
+            ],
+          },
+        );
+      expect(queued?.candidates.map(({ importState }) => importState)).toEqual([
+        "queued",
+        "queued",
+      ]);
+
+      const first =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+      expect(first).toMatchObject({
+        projectId: firstProjectId,
+        rootPathHandle,
+        workerId,
+      });
+      await repository.workspaceRepositoryDiscoveryJobs.completeImport(first!, {
+        candidateId: first!.candidateId,
+        attempt: first!.attempt,
+        path: `ctrr_${"c".repeat(43)}`,
+        displayPath: `ctrr_${"d".repeat(43)}`,
+        originUrl: null,
+        github: null,
+        repositoryFingerprint: "1".repeat(64),
+        classification: "local-git",
+        diagnosticCode: null,
+        branch: `ctrr_${"g".repeat(43)}`,
+        head: null,
+      });
+
+      const second =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+      await repository.workspaceRepositoryDiscoveryJobs.failImport(second!, {
+        code: "repository-unavailable",
+        retryable: false,
+      });
+      const outcome =
+        await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+          LOCAL_USER_ID,
+          workspaceId,
+        );
+      expect(outcome?.candidates).toEqual([
+        expect.objectContaining({
+          importState: "imported",
+          projectId: firstProjectId,
+        }),
+        expect.objectContaining({
+          importState: "failed",
+          projectId: secondProjectId,
+          importError: {
+            code: "repository-unavailable",
+            retryable: false,
+          },
+        }),
+      ]);
+      expect(await database.select().from(schema.projects)).toEqual([
+        expect.objectContaining({
+          id: firstProjectId,
+          originKind: "managed-folder",
+          folderManagement: "external",
+          gitCapability: true,
+          githubCapability: false,
+          preferredWorkerId: workerId,
+        }),
+      ]);
+      expect(await database.select().from(schema.projectSources)).toEqual([
+        expect.objectContaining({
+          projectId: firstProjectId,
+          workerId,
+          placementMode: "direct",
+          ownershipKind: "user",
+          repositoryFingerprint: "1".repeat(64),
+        }),
+      ]);
+      expect(
+        await database.select().from(schema.projectWorkspaceMemberships),
+      ).toContainEqual(
+        expect.objectContaining({ projectId: firstProjectId, workspaceId }),
+      );
+
+      const duplicateWorkspaceId = "facb4083-8fef-4b31-9d60-0d64a6c1e77f";
+      await database.insert(schema.projectWorkspaces).values({
+        id: duplicateWorkspaceId,
+        ownerId: LOCAL_USER_ID,
+        nameEnvelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: Buffer.alloc(12, 8).toString("base64url"),
+          ciphertext: Buffer.alloc(16, 9).toString("base64url"),
+        },
+        nameBlindIndex: Buffer.alloc(32, 10).toString("base64url"),
+        nameFormatVersion: 1,
+        nameKeyRevision: 1,
+        position: 2,
+      });
+      await database.insert(schema.projectWorkspaceStorageProfiles).values({
+        workspaceId: duplicateWorkspaceId,
+        kind: "attached",
+        workerId,
+        protectedRootPathHandle: `ctrr_${"q".repeat(43)}`,
+        protectedDisplayHandle: `ctrr_${"r".repeat(43)}`,
+      });
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        duplicateWorkspaceId,
+      );
+      const duplicateDiscovery =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      await repository.workspaceRepositoryDiscoveryJobs.complete(
+        duplicateDiscovery!.job.id,
+        duplicateDiscovery!.commandId,
+        {
+          attempt: duplicateDiscovery!.job.attempt,
+          candidates: [
+            {
+              pathHandle: `ctrr_${"c".repeat(43)}`,
+              displayHandle: `ctrr_${"s".repeat(43)}`,
+              repositoryFingerprint: "1".repeat(64),
+              classification: "local-git",
+              diagnosticCode: null,
+            },
+          ],
+          counts: {
+            candidates: 1,
+            collapsedRepositories: 0,
+            rejectedRepositories: 0,
+            scannedDirectories: 1,
+            scannedEntries: 1,
+            skippedSymlinks: 0,
+            unreadableDirectories: 0,
+          },
+          truncated: false,
+        },
+      );
+      const duplicateScan =
+        await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+          LOCAL_USER_ID,
+          duplicateWorkspaceId,
+        );
+      expect(duplicateScan?.candidates[0]?.conflict).toEqual({
+        kind: "checkout",
+        projectId: firstProjectId,
+        workspaceId,
+      });
+      const duplicateProjectId = "f3d84519-25fb-462f-a9e4-1a11ace33b3f";
+      await repository.workspaceRepositoryDiscoveryJobs.queueImports(
+        LOCAL_USER_ID,
+        duplicateWorkspaceId,
+        {
+          expectedStateRevision: duplicateScan!.job.stateRevision,
+          candidates: [
+            {
+              candidateId: duplicateScan!.candidates[0]!.id,
+              projectId: duplicateProjectId,
+              nameProtection:
+                protectedProjectFields(duplicateProjectId).nameProtection,
+              repositoryBlindIndex: null,
+            },
+          ],
+        },
+      );
+      const duplicateClaim =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+      await repository.workspaceRepositoryDiscoveryJobs.completeImport(
+        duplicateClaim!,
+        {
+          candidateId: duplicateClaim!.candidateId,
+          attempt: duplicateClaim!.attempt,
+          path: `ctrr_${"c".repeat(43)}`,
+          displayPath: `ctrr_${"d".repeat(43)}`,
+          originUrl: null,
+          github: null,
+          repositoryFingerprint: "1".repeat(64),
+          classification: "local-git",
+          diagnosticCode: null,
+          branch: null,
+          head: null,
+        },
+      );
+      const duplicateOutcome =
+        await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+          LOCAL_USER_ID,
+          duplicateWorkspaceId,
+        );
+      expect(duplicateOutcome?.candidates[0]).toMatchObject({
+        importState: "skipped",
+        projectId: firstProjectId,
+        conflict: { projectId: firstProjectId, workspaceId },
+      });
+      expect(await database.select().from(schema.projects)).toHaveLength(1);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("registers an accessible GitHub checkout with its direct attached source", async () => {
+    const { client, database, repository } = await fixture();
+    try {
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        workspaceId,
+      );
+      const discovery =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      const github = {
+        repositoryId: `ctrr_${"g".repeat(43)}`,
+        nameWithOwner: `ctrr_${"h".repeat(43)}`,
+        url: `ctrr_${"i".repeat(43)}`,
+      };
+      const completed =
+        await repository.workspaceRepositoryDiscoveryJobs.complete(
+          discovery!.job.id,
+          discovery!.commandId,
+          {
+            attempt: discovery!.job.attempt,
+            candidates: [
+              {
+                pathHandle: `ctrr_${"c".repeat(43)}`,
+                displayHandle: `ctrr_${"d".repeat(43)}`,
+                originUrlHandle: `ctrr_${"e".repeat(43)}`,
+                github,
+                repositoryFingerprint: "3".repeat(64),
+                classification: "github-accessible",
+                diagnosticCode: null,
+              },
+            ],
+            counts: {
+              candidates: 1,
+              collapsedRepositories: 0,
+              rejectedRepositories: 0,
+              scannedDirectories: 1,
+              scannedEntries: 1,
+              skippedSymlinks: 0,
+              unreadableDirectories: 0,
+            },
+            truncated: false,
+          },
+        );
+      const projectId = "a2d806a2-f83b-4bfd-967f-0dc364ac5cd4";
+      const repositoryBlindIndex = Buffer.alloc(32, 12).toString("base64url");
+      await repository.workspaceRepositoryDiscoveryJobs.queueImports(
+        LOCAL_USER_ID,
+        workspaceId,
+        {
+          expectedStateRevision: completed.job.stateRevision,
+          candidates: [
+            {
+              candidateId: completed.candidates[0]!.id,
+              projectId,
+              nameProtection: protectedProjectFields(projectId).nameProtection,
+              repositoryBlindIndex,
+            },
+          ],
+        },
+      );
+      const claimed =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+      await repository.workspaceRepositoryDiscoveryJobs.completeImport(
+        claimed!,
+        {
+          candidateId: claimed!.candidateId,
+          attempt: claimed!.attempt,
+          path: `ctrr_${"c".repeat(43)}`,
+          displayPath: `ctrr_${"j".repeat(43)}`,
+          originUrl: `ctrr_${"e".repeat(43)}`,
+          github,
+          repositoryFingerprint: "3".repeat(64),
+          classification: "github-accessible",
+          diagnosticCode: null,
+          branch: `ctrr_${"k".repeat(43)}`,
+          head: "4".repeat(40),
+        },
+      );
+
+      expect(await database.select().from(schema.projects)).toEqual([
+        expect.objectContaining({
+          id: projectId,
+          originKind: "github",
+          worktreePolicy: "agent-managed",
+          githubCapability: true,
+          githubRepositoryBlindIndex: repositoryBlindIndex,
+          githubRepositoryId: github.repositoryId,
+        }),
+      ]);
+      expect(await database.select().from(schema.projectWorktrees)).toEqual([
+        expect.objectContaining({
+          workerId,
+          origin: "external",
+          lifecycleState: "ready",
+          branch: `ctrr_${"k".repeat(43)}`,
+          head: "4".repeat(40),
+        }),
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("downgrades a GitHub candidate to local Git when access disappears before import", async () => {
+    const { client, database, repository } = await fixture();
+    try {
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        workspaceId,
+      );
+      const discovery =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      const completed =
+        await repository.workspaceRepositoryDiscoveryJobs.complete(
+          discovery!.job.id,
+          discovery!.commandId,
+          {
+            attempt: discovery!.job.attempt,
+            candidates: [
+              {
+                pathHandle: `ctrr_${"c".repeat(43)}`,
+                displayHandle: `ctrr_${"d".repeat(43)}`,
+                originUrlHandle: `ctrr_${"e".repeat(43)}`,
+                github: {
+                  repositoryId: `ctrr_${"g".repeat(43)}`,
+                  nameWithOwner: `ctrr_${"h".repeat(43)}`,
+                  url: `ctrr_${"i".repeat(43)}`,
+                },
+                repositoryFingerprint: "5".repeat(64),
+                classification: "github-accessible",
+                diagnosticCode: null,
+              },
+            ],
+            counts: {
+              candidates: 1,
+              collapsedRepositories: 0,
+              rejectedRepositories: 0,
+              scannedDirectories: 1,
+              scannedEntries: 1,
+              skippedSymlinks: 0,
+              unreadableDirectories: 0,
+            },
+            truncated: false,
+          },
+        );
+      const projectId = "611cb653-ddfd-4d1d-9185-9661827b2a0c";
+      await repository.workspaceRepositoryDiscoveryJobs.queueImports(
+        LOCAL_USER_ID,
+        workspaceId,
+        {
+          expectedStateRevision: completed.job.stateRevision,
+          candidates: [
+            {
+              candidateId: completed.candidates[0]!.id,
+              projectId,
+              nameProtection: protectedProjectFields(projectId).nameProtection,
+              repositoryBlindIndex: Buffer.alloc(32, 13).toString("base64url"),
+            },
+          ],
+        },
+      );
+      const claimed =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+      await repository.workspaceRepositoryDiscoveryJobs.completeImport(
+        claimed!,
+        {
+          candidateId: claimed!.candidateId,
+          attempt: claimed!.attempt,
+          path: `ctrr_${"c".repeat(43)}`,
+          displayPath: `ctrr_${"j".repeat(43)}`,
+          originUrl: `ctrr_${"e".repeat(43)}`,
+          github: null,
+          repositoryFingerprint: "5".repeat(64),
+          classification: "github-unavailable",
+          diagnosticCode: "github-api-unavailable",
+          branch: null,
+          head: null,
+        },
+      );
+
+      expect(await database.select().from(schema.projects)).toEqual([
+        expect.objectContaining({
+          id: projectId,
+          originKind: "managed-folder",
+          folderManagement: "external",
+          worktreePolicy: "direct",
+          gitCapability: true,
+          githubCapability: false,
+          githubRepositoryBlindIndex: null,
+          githubRepositoryId: null,
+        }),
+      ]);
+      expect(
+        (
+          await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+            LOCAL_USER_ID,
+            workspaceId,
+          )
+        )?.candidates[0],
+      ).toMatchObject({
+        classification: "github-unavailable",
+        diagnosticCode: "github-api-unavailable",
+        importState: "imported",
+        projectId,
+      });
     } finally {
       await client.close();
     }

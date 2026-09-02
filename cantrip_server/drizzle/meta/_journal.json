@@ -1282,6 +1282,13 @@
       "when": 1788375600000,
       "tag": "0182_stiff_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1788379200000,
+      "tag": "0183_medical_wrecking_crew",
+      "breakpoints": true
     }
   ]
 }

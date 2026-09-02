@@ -275,6 +275,7 @@ import {
   projectWorkspaceWireSummarySchema,
   workspaceRepositoryDiscoverySnapshotSchema,
   workspaceRepositoryDiscoveryStartSchema,
+  workspaceRepositoryImportStartSchema,
   projectTabLayoutWireSummarySchema,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
@@ -500,6 +501,7 @@ import type {
   ProjectReplicaRemoveCreate,
   ProjectReplicaSynchronizeCreate,
   WorkspaceRepositoryDiscoveryStart,
+  WorkspaceRepositoryImportStart,
   ExecutionPlacementResolveRequest,
   ExecutionTarget,
   ExecutionTargetResolveRequest,
@@ -2516,6 +2518,18 @@ export async function startWorkspaceRepositoryDiscovery(
     await post(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/repository-discovery`,
       workspaceRepositoryDiscoveryStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function startWorkspaceRepositoryImports(
+  workspaceId: string,
+  input: WorkspaceRepositoryImportStart,
+) {
+  return workspaceRepositoryDiscoverySnapshotSchema.parse(
+    await post(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/repository-imports`,
+      workspaceRepositoryImportStartSchema.parse(input),
     ),
   );
 }

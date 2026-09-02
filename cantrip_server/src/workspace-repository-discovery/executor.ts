@@ -1,11 +1,15 @@
 import {
   workspaceRepositoryDiscoveryWorkerResultSchema,
+  workspaceRepositoryImportValidationResultSchema,
   type WorkspaceRepositoryDiscoveryJobSummary,
   type WorkspaceRepositoryDiscoveryProgress,
 } from "@cantrip/protocol";
 
 import {
+  WorkspaceRepositoryDiscoveryInvariantError,
   WorkspaceRepositoryDiscoveryStaleAttemptError,
+  WorkspaceRepositoryImportStaleAttemptError,
+  type ClaimedWorkspaceRepositoryImport,
   type ClaimedWorkspaceRepositoryDiscoveryJob,
 } from "../db/workspace-repository-discovery-jobs.js";
 import type { ServerRepository } from "../db/repository.js";
@@ -47,18 +51,30 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
   ) {}
 
   async recoverAfterRestart(force = true): Promise<number> {
-    return this.repository.workspaceRepositoryDiscoveryJobs.recoverInterrupted(
-      force,
-    );
+    const [discoveries, imports] = await Promise.all([
+      this.repository.workspaceRepositoryDiscoveryJobs.recoverInterrupted(
+        force,
+      ),
+      this.repository.workspaceRepositoryDiscoveryJobs.recoverInterruptedImports(
+        force,
+      ),
+    ]);
+    return discoveries + imports;
   }
 
   startRecoverySweep(): void {
     if (this.#recoveryTimer || this.#stopping) return;
     this.#recoveryTimer = setInterval(() => {
-      void this.repository.workspaceRepositoryDiscoveryJobs
-        .recoverInterrupted(false)
-        .then((recovered) => {
-          if (recovered > 0) this.queueAvailable();
+      void Promise.all([
+        this.repository.workspaceRepositoryDiscoveryJobs.recoverInterrupted(
+          false,
+        ),
+        this.repository.workspaceRepositoryDiscoveryJobs.recoverInterruptedImports(
+          false,
+        ),
+      ])
+        .then(([discoveries, imports]) => {
+          if (discoveries + imports > 0) this.queueAvailable();
         })
         .catch((error: unknown) => {
           this.logger.error(
@@ -93,9 +109,14 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
   }
 
   async workerConnected(workerId: string): Promise<void> {
-    await this.repository.workspaceRepositoryDiscoveryJobs.requeueRetryableForWorker(
-      workerId,
-    );
+    await Promise.all([
+      this.repository.workspaceRepositoryDiscoveryJobs.requeueRetryableForWorker(
+        workerId,
+      ),
+      this.repository.workspaceRepositoryDiscoveryJobs.requeueRetryableImportsForWorker(
+        workerId,
+      ),
+    ]);
     this.queueAvailable();
   }
 
@@ -117,12 +138,21 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
     while (!this.#stopping && this.#active.size === 0) {
       const claimed =
         await this.repository.workspaceRepositoryDiscoveryJobs.claimNext();
-      if (!claimed) break;
-      const task = this.#execute(claimed)
+      const importClaimed = claimed
+        ? null
+        : await this.repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+      if (!claimed && !importClaimed) break;
+      const task = (
+        claimed ? this.#execute(claimed) : this.#executeImport(importClaimed!)
+      )
         .catch((error: unknown) => {
           this.logger.error(
-            { err: error, workspaceRepositoryDiscoveryJobId: claimed.job.id },
-            "Workspace repository discovery failed outside its durable transition",
+            {
+              err: error,
+              workspaceRepositoryDiscoveryJobId: claimed?.job.id,
+              workspaceRepositoryImportCandidateId: importClaimed?.candidateId,
+            },
+            "Workspace repository work failed outside its durable transition",
           );
         })
         .finally(() => {
@@ -281,6 +311,142 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
           !(
             settleError instanceof WorkspaceRepositoryDiscoveryStaleAttemptError
           )
+        ) {
+          throw settleError;
+        }
+      }
+    } finally {
+      clearInterval(renewalTimer);
+    }
+  }
+
+  async #executeImport(
+    claimed: ClaimedWorkspaceRepositoryImport,
+  ): Promise<void> {
+    const snapshot =
+      await this.repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+        claimed.ownerId,
+        claimed.workspaceId,
+      );
+    if (snapshot)
+      this.onChanged({ ownerId: claimed.ownerId, job: snapshot.job });
+    let renewalInFlight = false;
+    const renewalTimer = setInterval(() => {
+      if (renewalInFlight) return;
+      renewalInFlight = true;
+      void this.repository.workspaceRepositoryDiscoveryJobs
+        .renewImportLease(claimed)
+        .then((renewed) => {
+          if (!renewed) {
+            this.logger.warn(
+              {
+                workspaceRepositoryImportCandidateId: claimed.candidateId,
+                attempt: claimed.attempt,
+              },
+              "Workspace repository import no longer owns its durable lease",
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            {
+              err: error,
+              workspaceRepositoryImportCandidateId: claimed.candidateId,
+            },
+            "Could not renew workspace repository import lease",
+          );
+        })
+        .finally(() => {
+          renewalInFlight = false;
+        });
+    }, LEASE_RENEWAL_INTERVAL_MS);
+    renewalTimer.unref();
+    try {
+      const worker = await this.repository.getWorker(
+        claimed.ownerId,
+        claimed.workerId,
+      );
+      if (!worker || !this.bridge.isConnected(claimed.workerId)) {
+        const job =
+          await this.repository.workspaceRepositoryDiscoveryJobs.blockImport(
+            claimed,
+            { code: "worker-offline", retryable: true },
+          );
+        this.onChanged({ ownerId: claimed.ownerId, job });
+        return;
+      }
+      if (!worker.managedFolders.discoverWorkspaceRepositories) {
+        const job =
+          await this.repository.workspaceRepositoryDiscoveryJobs.failImport(
+            claimed,
+            { code: "capability-missing", retryable: false },
+          );
+        this.onChanged({ ownerId: claimed.ownerId, job });
+        return;
+      }
+      const result = workspaceRepositoryImportValidationResultSchema.parse(
+        await this.bridge.request(
+          claimed.workerId,
+          {
+            type: "workspace.repository-import.validate",
+            candidateId: claimed.candidateId,
+            attempt: claimed.attempt,
+            rootPath: claimed.rootPathHandle,
+            path: claimed.pathHandle,
+            expectedRepositoryFingerprint:
+              claimed.expectedRepositoryFingerprint,
+          },
+          {
+            ownerId: claimed.ownerId,
+            timeoutMs: WORKSPACE_REPOSITORY_DISCOVERY_TIMEOUT_MS,
+          },
+        ),
+      );
+      const job =
+        await this.repository.workspaceRepositoryDiscoveryJobs.completeImport(
+          claimed,
+          result,
+        );
+      this.onChanged({ ownerId: claimed.ownerId, job });
+    } catch (error) {
+      if (error instanceof WorkspaceRepositoryImportStaleAttemptError) {
+        this.logger.warn(
+          {
+            err: error,
+            workspaceRepositoryImportCandidateId: claimed.candidateId,
+          },
+          "Ignored stale workspace repository import completion",
+        );
+        return;
+      }
+      try {
+        const job =
+          error instanceof WorkerUnavailableError
+            ? await this.repository.workspaceRepositoryDiscoveryJobs.blockImport(
+                claimed,
+                { code: "worker-offline", retryable: true },
+              )
+            : await this.repository.workspaceRepositoryDiscoveryJobs.failImport(
+                claimed,
+                {
+                  code:
+                    error instanceof WorkerCommandError &&
+                    error.code === "repository-unavailable"
+                      ? "repository-unavailable"
+                      : error instanceof WorkerCommandError &&
+                          error.code === "repository-changed"
+                        ? "repository-changed"
+                        : error instanceof
+                            WorkspaceRepositoryDiscoveryInvariantError
+                          ? "project-conflict"
+                          : "import-failed",
+                  retryable: false,
+                },
+              );
+        this.onChanged({ ownerId: claimed.ownerId, job });
+      } catch (settleError) {
+        if (
+          !(settleError instanceof WorkspaceRepositoryImportStaleAttemptError)
         ) {
           throw settleError;
         }

@@ -5,6 +5,7 @@ import {
   projectGithubConversionRepositorySchema,
   projectPreferredWorkerUpdateSchema,
   projectSummarySchema,
+  workspaceRepositoryImportCandidateCreateSchema,
   type EncryptedGithubProjectCreate,
   type EncryptedManagedFolderProjectCreate,
   type GithubProjectCreate,
@@ -14,6 +15,7 @@ import {
   type ProjectGithubRoutingRepository,
   type ProjectSummary,
   type ProjectWorktreeSummary,
+  type WorkspaceRepositoryImportCandidateCreate,
   type ProjectWireSummary,
   type WorktreePolicy,
 } from "@cantrip/protocol";
@@ -472,6 +474,34 @@ export class ProjectEncryptionAdapter {
     );
   }
 
+  async prepareWorkspaceRepositoryImport(input: {
+    candidateId: string;
+    name: string;
+    repository: ProjectGithubConversionRepository | null;
+    workerId: string;
+  }): Promise<WorkspaceRepositoryImportCandidateCreate> {
+    const projectId = globalThis.crypto.randomUUID();
+    let repositoryBlindIndex: string | null = null;
+    if (input.repository) {
+      if (!this.api.protectRepositoryIdentity) {
+        throw new Error("Protected repository identity is unavailable.");
+      }
+      repositoryBlindIndex = (
+        await this.api.protectRepositoryIdentity({
+          projectId,
+          repository: input.repository,
+          workerId: input.workerId,
+        })
+      ).repositoryBlindIndex;
+    }
+    return workspaceRepositoryImportCandidateCreateSchema.parse({
+      candidateId: input.candidateId,
+      projectId,
+      nameProtection: await this.protectName(projectId, input.name),
+      repositoryBlindIndex,
+    });
+  }
+
   async updatePreferredWorker(
     projectId: string,
     input: ProjectPreferredWorkerUpdate,
@@ -499,6 +529,12 @@ export const createGithubProject = (input: GithubProjectCreate) =>
   projectEncryption.createGithub(input);
 export const createManagedFolderProject = (input: ManagedFolderProjectCreate) =>
   projectEncryption.createManagedFolder(input);
+export const prepareWorkspaceRepositoryImport = (input: {
+  candidateId: string;
+  name: string;
+  repository: ProjectGithubConversionRepository | null;
+  workerId: string;
+}) => projectEncryption.prepareWorkspaceRepositoryImport(input);
 export const updateProjectPreferredWorker = (
   projectId: string,
   input: ProjectPreferredWorkerUpdate,

@@ -818,7 +818,11 @@ describe("application live query bridge", () => {
           scope: { kind: "current-user" },
         }),
       ),
-    ).toEqual([["workspace-repository-discovery", "workspace-one"]]);
+    ).toEqual([
+      ["workspace-repository-discovery", "workspace-one"],
+      ["projects"],
+      ["project-workspaces"],
+    ]);
     expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
       "workspace-repository-discovery",
     ]);

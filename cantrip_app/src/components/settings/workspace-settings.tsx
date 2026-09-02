@@ -672,6 +672,7 @@ export function WorkspaceSettings({
           if (!open) setRepositoryReviewWorkspaceId(null);
         }}
         workspace={repositoryReviewWorkspace}
+        workspaces={workspaces.data ?? []}
         workerOnline={repositoryReviewWorker?.online === true}
       />
     </>

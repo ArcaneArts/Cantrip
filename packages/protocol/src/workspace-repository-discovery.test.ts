@@ -7,6 +7,9 @@ import {
   workspaceRepositoryDiscoverySnapshotSchema,
   workspaceRepositoryDiscoveryStartSchema,
   workspaceRepositoryDiscoveryWorkerResultSchema,
+  workspaceRepositoryImportStartSchema,
+  workspaceRepositoryImportValidateCommandSchema,
+  workspaceRepositoryImportValidationResultSchema,
 } from "./workspace-repository-discovery.js";
 
 const now = "2026-09-02T12:00:00.000Z";
@@ -106,9 +109,13 @@ describe("workspace repository discovery contracts", () => {
       createdAt: now,
       updatedAt: now,
     };
-    expect(workspaceRepositoryCandidateSummarySchema.parse(candidate)).toEqual(
-      candidate,
-    );
+    expect(workspaceRepositoryCandidateSummarySchema.parse(candidate)).toEqual({
+      ...candidate,
+      conflict: null,
+      importAttempt: 0,
+      importError: null,
+      projectId: null,
+    });
     expect(() =>
       workspaceRepositoryCandidateSummarySchema.parse({
         ...candidate,
@@ -142,6 +149,62 @@ describe("workspace repository discovery contracts", () => {
         truncated: false,
       }),
     ).toThrow(/classification metadata/iu);
+  });
+
+  it("defines protected, revision-fenced repository imports", () => {
+    const handle = `ctrr_${"a".repeat(43)}`;
+    const candidateId = "fe47e031-8924-44c0-9b51-677fc23397ca";
+    expect(
+      workspaceRepositoryImportStartSchema.parse({
+        expectedStateRevision: 4,
+        candidates: [
+          {
+            candidateId,
+            projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
+            nameProtection: {
+              classification: { recordKind: "project" },
+              protectedLabel: {
+                formatVersion: 1,
+                keyRevision: 1,
+                envelope: {
+                  version: 1,
+                  algorithm: "AES-256-GCM",
+                  keyRevision: 1,
+                  nonce: "AAAAAAAAAAAAAAAA",
+                  ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+                },
+              },
+            },
+            repositoryBlindIndex: null,
+          },
+        ],
+      }).expectedStateRevision,
+    ).toBe(4);
+    expect(
+      workspaceRepositoryImportValidateCommandSchema.parse({
+        type: "workspace.repository-import.validate",
+        candidateId,
+        attempt: 1,
+        rootPath: handle,
+        path: handle,
+        expectedRepositoryFingerprint: "b".repeat(64),
+      }),
+    ).toMatchObject({ rootPath: handle, path: handle });
+    expect(
+      workspaceRepositoryImportValidationResultSchema.parse({
+        candidateId,
+        attempt: 1,
+        path: handle,
+        displayPath: handle,
+        originUrl: null,
+        github: null,
+        repositoryFingerprint: "b".repeat(64),
+        classification: "local-git",
+        diagnosticCode: null,
+        branch: handle,
+        head: "c".repeat(40),
+      }).classification,
+    ).toBe("local-git");
   });
 
   it("parses a completed durable snapshot", () => {
