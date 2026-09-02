@@ -688,6 +688,10 @@ export class WorkflowExecutor {
             this.repository.getProjectSource(
               this.#ownerId(),
               candidate.projectId,
+              {
+                isWorkerAvailable: (workerId) =>
+                  this.bridge.isConnected(workerId),
+              },
             ),
           ])
         : [null, null];

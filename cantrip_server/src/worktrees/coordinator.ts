@@ -268,7 +268,13 @@ export class ProjectWorktreeCoordinator {
         );
       }
 
-      const source = await this.repository.getProjectSource(ownerId, projectId);
+      const source = await this.repository.getProjectSource(
+        ownerId,
+        projectId,
+        {
+          isWorkerAvailable: (workerId) => this.bridge.isConnected(workerId),
+        },
+      );
       if (!source) return null;
       const primaryContext = await this.repository.getProjectWorktreeContext(
         ownerId,
@@ -640,7 +646,13 @@ export class ProjectWorktreeCoordinator {
     projectId: string,
   ): Promise<ProjectWorktreeSummary[] | null> {
     return this.serialize(projectId, async () => {
-      const source = await this.repository.getProjectSource(ownerId, projectId);
+      const source = await this.repository.getProjectSource(
+        ownerId,
+        projectId,
+        {
+          isWorkerAvailable: (workerId) => this.bridge.isConnected(workerId),
+        },
+      );
       if (!source) return null;
       const inventory = worktreeInventorySchema.parse(
         await this.bridge.request(source.workerId, {
@@ -662,7 +674,9 @@ export class ProjectWorktreeCoordinator {
     projectId: string,
     input: ProjectWorktreeCreateRequest,
   ): Promise<ProjectWorktreeSummary | null> {
-    const source = await this.repository.getProjectSource(ownerId, projectId);
+    const source = await this.repository.getProjectSource(ownerId, projectId, {
+      isWorkerAvailable: (workerId) => this.bridge.isConnected(workerId),
+    });
     if (!source) {
       throw new WorktreeCreateMutationError(
         "notStarted",

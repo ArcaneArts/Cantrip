@@ -22,7 +22,7 @@ import type { ProjectWorktreeCoordinator } from "../../worktrees/coordinator.js"
 
 export interface ProjectWorktreeRouteDependencies {
   applicationOwnerId: () => string;
-  bridge: Pick<WorkerCommandBus, "request">;
+  bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   repository: Pick<
     ServerRepository,
     | "getProjectSource"
@@ -317,6 +317,9 @@ export function installProjectWorktreeRoutes(
             const source = await repository.getProjectSource(
               applicationOwnerId(),
               request.params.projectId,
+              {
+                isWorkerAvailable: (workerId) => bridge.isConnected(workerId),
+              },
             );
             if (!source) return null;
             const result = worktreePruneResultSchema.parse(

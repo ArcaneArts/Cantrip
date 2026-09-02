@@ -130,6 +130,7 @@ import type {
 import type { ProjectViewRepository } from "./repository/project-views.js";
 import type {
   ProjectRepository,
+  ProjectSourceSelectionOptions,
   ProjectWorkspaceRow,
   ProjectWorktreeExecutionContext,
 } from "./repository/projects.js";
@@ -559,8 +560,12 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     );
   }
 
-  async getProjectSource(ownerId: string, projectId: string) {
-    return this.projects.getProjectSource(ownerId, projectId);
+  async getProjectSource(
+    ownerId: string,
+    projectId: string,
+    options?: ProjectSourceSelectionOptions,
+  ) {
+    return this.projects.getProjectSource(ownerId, projectId, options);
   }
 
   async getProjectWorktreeContext(
