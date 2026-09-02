@@ -26,6 +26,7 @@ import type { AppToastInput } from "@/components/ui/app-toast";
 import {
   createExplorer,
   getProjectTabLayout,
+  getProjectWorktreeStatus,
   pinExplorer,
   updateExplorerViewState,
 } from "@/lib/api";
@@ -424,12 +425,39 @@ export type SidebarExplorerMutations = ReturnType<
   typeof useSidebarExplorerMutations
 >;
 
+const PROTECTED_PATH_UNAVAILABLE = "Protected path unavailable";
+
+export async function resolveChatFileReferencePath({
+  reference,
+  sourcePath,
+  worktreePath,
+  refreshWorktreePath,
+}: {
+  reference: string;
+  sourcePath: string | null;
+  worktreePath: string | null;
+  refreshWorktreePath(): Promise<string | null>;
+}): Promise<{ path: string; refreshedWorktreePath: string | null } | null> {
+  const relative = projectFilePath(reference, null);
+  if (relative) return { path: relative, refreshedWorktreePath: null };
+  for (const root of [worktreePath, sourcePath]) {
+    if (!root || root === PROTECTED_PATH_UNAVAILABLE) continue;
+    const path = projectFilePath(reference, root);
+    if (path) return { path, refreshedWorktreePath: null };
+  }
+  const refreshedWorktreePath = await refreshWorktreePath().catch(() => null);
+  if (!refreshedWorktreePath) return null;
+  const path = projectFilePath(reference, refreshedWorktreePath);
+  return path ? { path, refreshedWorktreePath } : null;
+}
+
 export function createProjectExplorerFileOpening({
   codeAppearance,
   desktopRuntime,
   explorers,
   explorerLifecycleRef,
   openCreatedTab,
+  openSidebarFilePreviewPath,
   queryClient,
   selectedProject,
   setPopoutError,
@@ -441,6 +469,7 @@ export function createProjectExplorerFileOpening({
   explorers: ExplorerSummary[] | undefined;
   explorerLifecycleRef: ExplorerLifecycleRefs["explorerLifecycleRef"];
   openCreatedTab: OpenCreatedTab;
+  openSidebarFilePreviewPath?: (worktreeId: string, path: string) => boolean;
   queryClient: QueryClient;
   selectedProject: ProjectSummary | undefined;
   setPopoutError: (error: string | null) => void;
@@ -504,23 +533,56 @@ export function createProjectExplorerFileOpening({
     const worktree = (worktrees ?? []).find(
       (candidate) => candidate.id === chat.activeWorktreeId,
     );
-    const projectRoot =
-      worktree?.path ??
-      (selectedProject?.id === chat.projectId
-        ? selectedProject.source?.path
-        : null);
-    const path = projectRoot ? projectFilePath(reference, projectRoot) : null;
-    if (!projectRoot || !path) {
-      showAppToast({
-        message: projectRoot
-          ? "The link points outside the active project folder."
-          : "The active worktree is not available.",
-        title: "Could not open file link",
-        tone: "error",
-      });
-      return;
-    }
-    openProjectExplorerFile(chat.projectId, chat.activeWorktreeId, path);
+    void resolveChatFileReferencePath({
+      reference,
+      sourcePath:
+        selectedProject?.id === chat.projectId
+          ? (selectedProject.source?.path ?? null)
+          : null,
+      worktreePath: worktree?.path ?? null,
+      refreshWorktreePath: async () => {
+        const refreshed = await getProjectWorktreeStatus(
+          chat.projectId,
+          chat.activeWorktreeId,
+        );
+        queryClient.setQueryData<ProjectWorktreeSummary[]>(
+          ["worktrees", chat.projectId],
+          (current = []) =>
+            current.map((candidate) =>
+              candidate.id === chat.activeWorktreeId
+                ? {
+                    ...candidate,
+                    path: refreshed.worktree.path,
+                    displayPath: refreshed.worktree.path,
+                  }
+                : candidate,
+            ),
+        );
+        return refreshed.worktree.path;
+      },
+    })
+      .then((resolved) => {
+        if (!resolved) {
+          showAppToast({
+            message:
+              "The worker could not resolve this link inside the active project folder.",
+            title: "Could not open file link",
+            tone: "error",
+          });
+          return;
+        }
+        if (
+          openSidebarFilePreviewPath?.(chat.activeWorktreeId, resolved.path)
+        ) {
+          return;
+        }
+        openProjectExplorerFile(
+          chat.projectId,
+          chat.activeWorktreeId,
+          resolved.path,
+        );
+      })
+      .catch((error: unknown) => setPopoutError(errorText(error)));
   };
   return { openChatFileLink, openProjectExplorerFile } as const;
 }

@@ -296,6 +296,46 @@ describe("project sidebar file tree encryption gate", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("expands ancestor folders when a file is selected outside the tree", async () => {
+    const nestedDirectory = {
+      ...runtime.directoryEntry,
+      name: "components",
+      path: "src/components",
+    } satisfies ExplorerEntry;
+    const nestedFile = {
+      ...runtime.entry,
+      name: "app.ts",
+      path: "src/components/app.ts",
+    } satisfies ExplorerEntry;
+    runtime.entriesByPath.set("", [runtime.directoryEntry]);
+    runtime.entriesByPath.set("src", [nestedDirectory]);
+    runtime.entriesByPath.set("src/components", [nestedFile]);
+
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        tree({ activePath: "src/components/app.ts" }),
+      );
+    });
+
+    expect(runtime.directory).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true, path: "src" }),
+    );
+    expect(runtime.directory).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true, path: "src/components" }),
+    );
+    expect(
+      renderer.root
+        .findAllByProps({ role: "treeitem" })
+        .some(
+          (candidate) =>
+            textContent(candidate.props.children).includes("app.ts") &&
+            candidate.props.className.includes("bg-muted text-foreground"),
+        ),
+    ).toBe(true);
+    await act(async () => renderer.unmount());
+  });
+
   it("disables authorization and protected queries while Files is collapsed", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {

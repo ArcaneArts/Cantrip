@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  displayMarkdownFileReference,
   markdownFileLinkUrlTransform,
   markdownFilePathFromHref,
   markdownFileReference,
+  markdownFileReferences,
   projectFilePath,
 } from "./markdown-file-link";
 
@@ -57,5 +59,21 @@ describe("Markdown file links", () => {
     expect(
       projectFilePath("../../secret.txt", "/srv/repos/cantrip"),
     ).toBeNull();
+  });
+
+  it("extracts file links from Markdown while ignoring web links", () => {
+    expect(
+      markdownFileReferences(
+        "See [README](</srv/repos/My Project/README.md:12>) and [source](./src/main.ts#L4C2), not [the docs](https://example.com/docs).",
+      ),
+    ).toEqual(["/srv/repos/My Project/README.md:12", "./src/main.ts#L4C2"]);
+    expect(
+      displayMarkdownFileReference("/srv/repos/My Project/README.md:12"),
+    ).toBe("/srv/repos/My Project/README.md");
+  });
+
+  it("resolves safe relative links without requiring a hydrated root path", () => {
+    expect(projectFilePath("./src/App.tsx:12", null)).toBe("src/App.tsx");
+    expect(projectFilePath("/srv/repos/cantrip/src/App.tsx", null)).toBeNull();
   });
 });

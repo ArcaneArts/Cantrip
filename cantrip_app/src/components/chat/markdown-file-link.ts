@@ -90,20 +90,80 @@ function removeSourceLocation(value: string): string {
   return value.replace(/#L\d+(?:C\d+)?$/i, "").replace(/:\d+(?::\d+)?$/, "");
 }
 
+function markdownInlineLinkDestinations(markdown: string): string[] {
+  const destinations: string[] = [];
+  let cursor = 0;
+  while (cursor < markdown.length) {
+    const linkStart = markdown.indexOf("](", cursor);
+    if (linkStart < 0) break;
+    let destinationStart = linkStart + 2;
+    while (/\s/u.test(markdown[destinationStart] ?? "")) {
+      destinationStart += 1;
+    }
+    if (markdown[destinationStart] === "<") {
+      const destinationEnd = markdown.indexOf(">", destinationStart + 1);
+      if (destinationEnd >= 0) {
+        destinations.push(markdown.slice(destinationStart + 1, destinationEnd));
+        cursor = destinationEnd + 1;
+        continue;
+      }
+    } else {
+      let destinationEnd = destinationStart;
+      let nestedParentheses = 0;
+      while (destinationEnd < markdown.length) {
+        const character = markdown[destinationEnd];
+        if (character === "\\") {
+          destinationEnd += 2;
+          continue;
+        }
+        if (character === "(") nestedParentheses += 1;
+        if (character === ")") {
+          if (nestedParentheses === 0) break;
+          nestedParentheses -= 1;
+        }
+        if (/\s/u.test(character ?? "") && nestedParentheses === 0) break;
+        destinationEnd += 1;
+      }
+      if (destinationEnd > destinationStart) {
+        destinations.push(markdown.slice(destinationStart, destinationEnd));
+      }
+      cursor = Math.max(destinationEnd + 1, linkStart + 2);
+      continue;
+    }
+    cursor = linkStart + 2;
+  }
+  return destinations;
+}
+
+export function markdownFileReferences(markdown: string): string[] {
+  const references = markdownInlineLinkDestinations(markdown).flatMap(
+    (destination) => {
+      const reference = markdownFileReference(destination);
+      return reference ? [reference] : [];
+    },
+  );
+  return [...new Set(references)];
+}
+
+export function displayMarkdownFileReference(reference: string): string {
+  return removeSourceLocation(normalizedPath(reference)).replace(/^\.\//u, "");
+}
+
 export function projectFilePath(
   reference: string,
-  worktreePath: string,
+  worktreePath: string | null,
 ): string | null {
   const parsedReference = markdownFileReference(reference);
   if (!parsedReference) return null;
 
-  const root = normalizedPath(worktreePath);
   const candidate = removeSourceLocation(normalizedPath(parsedReference));
   const absolute =
     candidate.startsWith("/") || WINDOWS_ABSOLUTE_PATH.test(candidate);
 
   if (!absolute) return normalizedRelativePath(candidate);
+  if (!worktreePath) return null;
 
+  const root = normalizedPath(worktreePath);
   const windowsPath = WINDOWS_ABSOLUTE_PATH.test(root);
   const comparableRoot = windowsPath ? root.toLowerCase() : root;
   const comparableCandidate = windowsPath ? candidate.toLowerCase() : candidate;
