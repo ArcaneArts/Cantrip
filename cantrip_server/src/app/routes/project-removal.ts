@@ -173,8 +173,9 @@ export function installProjectRemovalRoute(
                   }
                 }
                 const offlineReplica = context.replicas.find(
-                  ({ id, workerId }) =>
+                  ({ id, ownershipKind, workerId }) =>
                     id !== managedFolderSource?.projectSourceId &&
+                    ownershipKind === "cantrip" &&
                     !bridge.isConnected(workerId),
                 );
                 if (offlineReplica) {
@@ -224,6 +225,7 @@ export function installProjectRemovalRoute(
                 for (const replica of context.replicas) {
                   if (replica.id === managedFolderSource?.projectSourceId)
                     continue;
+                  if (replica.ownershipKind === "user") continue;
                   await bridge.request(replica.workerId, {
                     type: "project.files.delete",
                     path: replica.cwd,
