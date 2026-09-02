@@ -578,19 +578,6 @@ export function App() {
       queryClient,
       setPopoutError,
     });
-  const { openChatFileLink, openProjectExplorerFile } =
-    createProjectExplorerFileOpening({
-      codeAppearance,
-      desktopRuntime,
-      explorers: explorers.data,
-      explorerLifecycleRef,
-      openCreatedTab,
-      queryClient,
-      selectedProject,
-      setPopoutError,
-      showAppToast,
-      worktrees: worktrees.data,
-    });
   const { newBrowser, newCodeTab, newProjectView } =
     useBrowserCodeViewCreationOperations({
       openCreatedTab,
@@ -748,6 +735,7 @@ export function App() {
     sidebarExplorer,
     sidebarFilePreviewRef,
     sidebarInlineExplorer,
+    sidebarInlineExplorers,
     sidebarPreviewSuccessorExplorer,
     sidebarPreviewExplorer,
   } = sidebarExplorerModel;
@@ -1571,6 +1559,7 @@ export function App() {
     closeSidebarFilePreview,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
+    openSidebarFilePreviewPath,
     openSidebarFolderGraph,
     openSidebarFolderNative,
     openSidebarFolderTerminal,
@@ -1601,6 +1590,28 @@ export function App() {
     tabLayout: tabLayout.data,
     worktrees: worktrees.data,
   });
+  const { openChatFileLink, openProjectExplorerFile } =
+    createProjectExplorerFileOpening({
+      codeAppearance,
+      desktopRuntime,
+      explorers: explorers.data,
+      explorerLifecycleRef,
+      openCreatedTab,
+      openSidebarFilePreviewPath: (worktreeId, path) => {
+        const explorer = sidebarInlineExplorers.find(
+          (candidate) => candidate.worktreeId === worktreeId,
+        );
+        if (!explorer) return false;
+        setSidebarCollapsed(false);
+        openSidebarFilePreviewPath(explorer, path);
+        return true;
+      },
+      queryClient,
+      selectedProject,
+      setPopoutError,
+      showAppToast,
+      worktrees: worktrees.data,
+    });
   const {
     createProjectSurface,
     creatingSurfaceKinds,

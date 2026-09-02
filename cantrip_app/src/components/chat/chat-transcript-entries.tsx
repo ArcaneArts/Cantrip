@@ -12,6 +12,11 @@ import {
   editableMessageText,
 } from "@/components/chat/latest-message-edit";
 import { MessageContent } from "@/components/chat/message-content";
+import {
+  editedFilesByAssistantMessage,
+  messageFileSummary,
+  MessageFileSummary,
+} from "@/components/chat/message-file-summary";
 import { SubagentLifecycleCard } from "@/components/chat/subagent-lifecycle-card";
 import { formatTurnMetadata } from "@/components/chat/timeline";
 import { Badge } from "@/components/ui/badge";
@@ -138,6 +143,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
   onViewSubagent,
   onViewTrajectory,
 }: ChatTranscriptEntriesProps) {
+  const editedFiles = editedFilesByAssistantMessage(entries);
   return entries.map((transcriptEntry) => {
     if (transcriptEntry.type === "agent") {
       if (!onViewSubagent) return null;
@@ -237,6 +243,10 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
             )
             .join("\n\n")
         : "";
+    const fileSummary = messageFileSummary(
+      message,
+      editedFiles.get(message.id) ?? [],
+    );
     const editingThisMessage = user && editingSentMessage?.id === message.id;
     const messageAttachments = user ? editableMessageAttachments(message) : [];
     return (
@@ -350,6 +360,9 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
           ) : (
             <MessageContent message={message} onOpenFile={onOpenFile} />
           )}
+          {fileSummary ? (
+            <MessageFileSummary model={fileSummary} onOpenFile={onOpenFile} />
+          ) : null}
           {user && message.providerName ? (
             <p className="mt-1.5 truncate text-[10px] text-muted-foreground">
               {message.providerName}

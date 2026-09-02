@@ -9,6 +9,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  resolveChatFileReferencePath,
   sidebarExplorerProvisioningDetails,
   sidebarFilePinCompletion,
   useSidebarExplorerModel,
@@ -25,6 +26,48 @@ const project = {
   source: { path: "/project", workerId: "worker-project" },
   capabilities: { worktrees: true },
 } as ProjectSummary;
+
+describe("chat file reference resolution", () => {
+  it("refreshes a protected or stale worktree path before rejecting an absolute link", async () => {
+    const refresh = vi
+      .fn()
+      .mockResolvedValue(
+        "/Users/test/Library/Application Support/art.cantrip/repositories/project",
+      );
+
+    await expect(
+      resolveChatFileReferencePath({
+        reference:
+          "/Users/test/Library/Application Support/art.cantrip/repositories/project/README.md",
+        sourcePath: "Protected path unavailable",
+        worktreePath: "Protected path unavailable",
+        refreshWorktreePath: refresh,
+      }),
+    ).resolves.toEqual({
+      path: "README.md",
+      refreshedWorktreePath:
+        "/Users/test/Library/Application Support/art.cantrip/repositories/project",
+    });
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("opens safe relative references without private path hydration", async () => {
+    const refresh = vi.fn();
+
+    await expect(
+      resolveChatFileReferencePath({
+        reference: "docs/README.md:14",
+        sourcePath: null,
+        worktreePath: "Protected path unavailable",
+        refreshWorktreePath: refresh,
+      }),
+    ).resolves.toEqual({
+      path: "docs/README.md",
+      refreshedWorktreePath: null,
+    });
+    expect(refresh).not.toHaveBeenCalled();
+  });
+});
 
 function explorer(workerId: string | null = "worker-explorer") {
   return { activeWorkerId: workerId } as ExplorerSummary;

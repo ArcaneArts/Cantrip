@@ -103,6 +103,7 @@ function SidebarFileRow({
   const Icon = entryIcon(entry, expanded);
   const openable = entry.kind === "directory" || entry.viewable;
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const cancelRenameOnBlurRef = useRef(false);
   const revealLocalFolder = useRef(false);
   useEffect(() => {
@@ -110,6 +111,10 @@ function SidebarFileRow({
     renameInputRef.current?.focus();
     renameInputRef.current?.select();
   }, [editing]);
+  useEffect(() => {
+    if (!active) return;
+    rowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [active]);
   const row = (
     <div
       aria-disabled={!openable}
@@ -144,6 +149,7 @@ function SidebarFileRow({
         onOpen();
       }}
       role="treeitem"
+      ref={rowRef}
       tabIndex={editing ? -1 : 0}
     >
       <span
@@ -438,6 +444,14 @@ function SidebarDirectoryNode({
   );
 }
 
+export function sidebarFileAncestorPaths(path: string | null): string[] {
+  if (!path) return [];
+  const segments = path.replaceAll("\\", "/").split("/").filter(Boolean);
+  return segments
+    .slice(0, -1)
+    .map((_, index) => segments.slice(0, index + 1).join("/"));
+}
+
 export function ProjectSidebarFileTree({
   activePath,
   error,
@@ -481,8 +495,10 @@ export function ProjectSidebarFileTree({
   workerOnline: boolean;
 }) {
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
-    () => new Set(),
+    () => new Set(sidebarFileAncestorPaths(activePath)),
   );
+  const activePathRef = useRef(activePath);
+  activePathRef.current = activePath;
   const [renameTarget, setRenameTarget] = useState<ExplorerEntry | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renamePending, setRenamePending] = useState(false);
@@ -491,6 +507,15 @@ export function ProjectSidebarFileTree({
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [filesCollapsed, setFilesCollapsed] = useState(false);
+  useEffect(() => {
+    const ancestors = sidebarFileAncestorPaths(activePath);
+    if (ancestors.length === 0) return;
+    setExpandedPaths((current) => {
+      const missing = ancestors.filter((path) => !current.has(path));
+      return missing.length > 0 ? new Set([...current, ...missing]) : current;
+    });
+    setFilesCollapsed(false);
+  }, [activePath]);
   const streamEncryption = useExplorerWorkerEncryption(
     explorer,
     !filesCollapsed,
@@ -588,7 +613,7 @@ export function ProjectSidebarFileTree({
   ]);
 
   useEffect(() => {
-    setExpandedPaths(new Set());
+    setExpandedPaths(new Set(sidebarFileAncestorPaths(activePathRef.current)));
   }, [explorer?.activeWorkerId, explorer?.projectId, explorer?.worktreeId]);
 
   useEffect(() => {

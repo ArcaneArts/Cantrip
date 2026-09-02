@@ -172,11 +172,10 @@ export function createSidebarExplorerCommands({
     openCreatedTab(explorer.projectId, "explorer", explorer.id);
     setDesktopSidebarDrawerOpen(false);
   };
-  const openSidebarFilePreview = (
+  const openSidebarFilePreviewPath = (
     explorer: ExplorerSummary,
-    entry: ExplorerEntry,
+    path: string,
   ) => {
-    if (entry.kind !== "file" || !entry.viewable) return;
     if (
       !sidebarExplorerCanOwnPreview({
         explorerId: explorer.id,
@@ -205,12 +204,12 @@ export function createSidebarExplorerCommands({
       projectId: explorer.projectId,
       samePath:
         sidebarFilePreview?.explorerId === explorer.id &&
-        sidebarFilePreview.path === entry.path,
+        sidebarFilePreview.path === path,
     });
     const pinned = pinnedExplorerForPath({
       explorers: explorers ?? [],
       layout: tabLayout,
-      path: entry.path,
+      path,
       worktreeId: explorer.worktreeId,
     });
     if (pinned) {
@@ -222,7 +221,7 @@ export function createSidebarExplorerCommands({
       sidebarFilePreviewMatches(sidebarFilePreview, {
         explorerId: explorer.id,
         groupId,
-        path: entry.path,
+        path,
         projectId: explorer.projectId,
       })
     ) {
@@ -232,7 +231,7 @@ export function createSidebarExplorerCommands({
       ? sidebarFilePreviewLifecycleRef.current
       : (explorerLifecycleRef.current.get(explorer.id) ?? null);
     if (
-      sidebarFilePreview?.path !== entry.path &&
+      sidebarFilePreview?.path !== path &&
       !confirmExplorerDiscard(previewLifecycle, () =>
         window.confirm(
           "Open another file and discard the unsaved changes in this preview?",
@@ -251,12 +250,19 @@ export function createSidebarExplorerCommands({
       active: true,
       explorerId: explorer.id,
       groupId,
-      path: entry.path,
+      path,
       projectId: explorer.projectId,
     });
     setDesktopSidebarDrawerOpen(false);
     setDetachedGroupId(null);
     revealWorkspace();
+  };
+  const openSidebarFilePreview = (
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+  ) => {
+    if (entry.kind !== "file" || !entry.viewable) return;
+    openSidebarFilePreviewPath(explorer, entry.path);
   };
   const pinSidebarFilePath = async (
     explorer: ExplorerSummary,
@@ -696,6 +702,7 @@ export function createSidebarExplorerCommands({
     closeSidebarFilePreview,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
+    openSidebarFilePreviewPath,
     openSidebarFolderGraph,
     openSidebarFolderNative,
     openSidebarFolderTerminal,
