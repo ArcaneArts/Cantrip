@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { repositoryRoutingHandleSchema } from "./repository-operation.js";
+import {
+  repositoryOperationContextSchema,
+  repositoryOperationOpaqueSchema,
+  repositoryOperationWireResponseSchema,
+  repositoryRoutingHandleSchema,
+} from "./repository-operation.js";
 
 import {
   encryptedPayloadEnvelopeSchema,
@@ -331,6 +336,28 @@ export const encryptedProjectWorkspaceCreateSchema = z
     id: z.string().uuid(),
     nameProtection: encryptedProjectWorkspaceNameSchema,
     storage: encryptedProjectWorkspaceStorageCreateSchema,
+  })
+  .strict();
+
+export const encryptedAttachedProjectWorkspaceCreateSchema = z
+  .object({
+    id: z.string().uuid(),
+    nameProtection: encryptedProjectWorkspaceNameSchema,
+    storage: z
+      .object({
+        kind: z.literal("attached"),
+        workerId: z.string().min(1),
+      })
+      .strict(),
+    operationId: repositoryOperationContextSchema.shape.operationId,
+    protectedRequest: repositoryOperationOpaqueSchema,
+  })
+  .strict();
+
+export const encryptedAttachedProjectWorkspaceCreateResultSchema = z
+  .object({
+    workspace: projectWorkspaceWireSummarySchema.nullable(),
+    operation: repositoryOperationWireResponseSchema,
   })
   .strict();
 
@@ -814,6 +841,14 @@ export type ProjectWorkspaceWireList = z.infer<
 
 export type EncryptedProjectWorkspaceCreate = z.infer<
   typeof encryptedProjectWorkspaceCreateSchema
+>;
+
+export type EncryptedAttachedProjectWorkspaceCreate = z.infer<
+  typeof encryptedAttachedProjectWorkspaceCreateSchema
+>;
+
+export type EncryptedAttachedProjectWorkspaceCreateResult = z.infer<
+  typeof encryptedAttachedProjectWorkspaceCreateResultSchema
 >;
 
 export type EncryptedProjectWorkspaceUpdate = z.infer<

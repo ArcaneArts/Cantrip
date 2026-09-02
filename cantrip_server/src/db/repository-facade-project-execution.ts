@@ -494,6 +494,13 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     return this.projects.createEncryptedProjectWorkspace(ownerId, input);
   }
 
+  async createVerifiedAttachedProjectWorkspace(
+    ownerId: string,
+    input: EncryptedProjectWorkspaceCreate,
+  ): Promise<ProjectWorkspaceWireSummary> {
+    return this.projects.createVerifiedAttachedProjectWorkspace(ownerId, input);
+  }
+
   async updateEncryptedProjectWorkspace(
     ownerId: string,
     workspaceId: string,

@@ -161,6 +161,38 @@ describe("workspace name encrypted persistence", () => {
           },
         }),
       ).rejects.toThrow(/verified root attachment/iu);
+      const verifiedAttached =
+        await repository.createVerifiedAttachedProjectWorkspace(LOCAL_USER_ID, {
+          id: "732416b3-3d23-4411-b449-dd4bbb603f57",
+          nameProtection: encryptedName(11),
+          storage: {
+            kind: "attached",
+            workerId: "workspace-worker",
+            rootPathHandle: `ctrr_${"c".repeat(43)}`,
+            displayHandle: `ctrr_${"d".repeat(43)}`,
+          },
+        });
+      expect(verifiedAttached.storage).toEqual({
+        kind: "attached",
+        workerId: "workspace-worker",
+        rootPathHandle: `ctrr_${"c".repeat(43)}`,
+        displayHandle: `ctrr_${"d".repeat(43)}`,
+      });
+      await expect(
+        repository.createVerifiedAttachedProjectWorkspace(LOCAL_USER_ID, {
+          id: "08908b16-b99e-4be0-931b-b125a6646eab",
+          nameProtection: encryptedName(12),
+          storage: {
+            kind: "attached",
+            workerId: "workspace-worker",
+            rootPathHandle: `ctrr_${"c".repeat(43)}`,
+            displayHandle: `ctrr_${"e".repeat(43)}`,
+          },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        repository.deleteProjectWorkspace(LOCAL_USER_ID, verifiedAttached.id),
+      ).resolves.toBe(true);
       const attachedWorkspaceId = "65bd154a-b14d-4346-b8f4-e81e2536df14";
       await database.insert(schema.projectWorkspaces).values({
         id: attachedWorkspaceId,

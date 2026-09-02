@@ -577,12 +577,31 @@ export class ProjectRepository {
     ownerId: string,
     input: EncryptedProjectWorkspaceCreate,
   ): Promise<ProjectWorkspaceWireSummary> {
-    await this.collaborators.ensureDefaultProjectWorkspace(ownerId);
     if (input.storage.kind !== "managed") {
       throw new ProjectWorkspaceInvariantError(
         "Attached workspaces must be created through verified root attachment.",
       );
     }
+    return this.#createEncryptedProjectWorkspace(ownerId, input);
+  }
+
+  async createVerifiedAttachedProjectWorkspace(
+    ownerId: string,
+    input: EncryptedProjectWorkspaceCreate,
+  ): Promise<ProjectWorkspaceWireSummary> {
+    if (input.storage.kind !== "attached") {
+      throw new ProjectWorkspaceInvariantError(
+        "Verified workspace attachment requires attached storage.",
+      );
+    }
+    return this.#createEncryptedProjectWorkspace(ownerId, input);
+  }
+
+  async #createEncryptedProjectWorkspace(
+    ownerId: string,
+    input: EncryptedProjectWorkspaceCreate,
+  ): Promise<ProjectWorkspaceWireSummary> {
+    await this.collaborators.ensureDefaultProjectWorkspace(ownerId);
     const profiles = await this.database
       .select({
         activeMasterKeyRevision:
@@ -626,7 +645,17 @@ export class ProjectRepository {
           .returning();
         const profiles = await transaction
           .insert(schema.projectWorkspaceStorageProfiles)
-          .values({ workspaceId: input.id, kind: "managed" })
+          .values(
+            input.storage.kind === "attached"
+              ? {
+                  workspaceId: input.id,
+                  kind: input.storage.kind,
+                  workerId: input.storage.workerId,
+                  protectedRootPathHandle: input.storage.rootPathHandle,
+                  protectedDisplayHandle: input.storage.displayHandle,
+                }
+              : { workspaceId: input.id, kind: input.storage.kind },
+          )
           .returning();
         return {
           profile: firstOrThrow(profiles, "creating workspace storage"),

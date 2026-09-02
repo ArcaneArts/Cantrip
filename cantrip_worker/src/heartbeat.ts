@@ -63,6 +63,7 @@ export function createHeartbeat(
     managedFolders: {
       create: true,
       attachExisting: true,
+      attachWorkspaceRoot: true,
       convertToGithub: true,
       remove: true,
       workspaceScopedRoots: true,

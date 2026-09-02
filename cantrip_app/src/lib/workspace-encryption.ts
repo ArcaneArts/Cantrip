@@ -22,6 +22,7 @@ import {
 import type { EncryptionAssociatedData } from "@cantrip/protocol/encryption";
 
 import {
+  createEncryptedAttachedProjectWorkspace,
   createEncryptedProjectWorkspace,
   deleteProjectWorkspace as deleteProjectWorkspaceWire,
   getProjectWorkspaceWireList,
@@ -49,6 +50,12 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
 export interface ProjectWorkspaceWireApi {
+  createAttached(input: {
+    id: string;
+    nameProtection: EncryptedProjectWorkspaceName;
+    rootPath: string;
+    workerId: string;
+  }): Promise<ProjectWorkspaceWireSummary>;
   create(
     input: EncryptedProjectWorkspaceCreate,
   ): Promise<ProjectWorkspaceWireSummary>;
@@ -61,6 +68,7 @@ export interface ProjectWorkspaceWireApi {
 }
 
 const defaultApi: ProjectWorkspaceWireApi = {
+  createAttached: createEncryptedAttachedProjectWorkspace,
   create: createEncryptedProjectWorkspace,
   delete: deleteProjectWorkspaceWire,
   list: getProjectWorkspaceWireList,
@@ -358,20 +366,23 @@ export class ProjectWorkspaceEncryptionAdapter {
     input: ProjectWorkspaceCreate,
   ): Promise<ProjectWorkspaceSummary> {
     const parsed = projectWorkspaceCreateSchema.parse(input);
-    if (parsed.storage.kind !== "managed") {
-      throw new Error(
-        "Attached workspaces must be created through verified root attachment.",
-      );
-    }
     await this.identity();
     await this.sealSystemDefault(await this.api.list());
     const id = globalThis.crypto.randomUUID();
+    const nameProtection = await this.encryptName(id, parsed.name);
     return this.decrypt(
-      await this.api.create({
-        id,
-        nameProtection: await this.encryptName(id, parsed.name),
-        storage: { kind: "managed" },
-      }),
+      parsed.storage.kind === "attached"
+        ? await this.api.createAttached({
+            id,
+            nameProtection,
+            rootPath: parsed.storage.rootPath,
+            workerId: parsed.storage.workerId,
+          })
+        : await this.api.create({
+            id,
+            nameProtection,
+            storage: { kind: "managed" },
+          }),
     );
   }
 

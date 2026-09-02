@@ -268,6 +268,7 @@ import {
   projectShareTunnelCreateSchema,
   type ProjectSummary,
   projectWireSummarySchema,
+  encryptedAttachedProjectWorkspaceCreateResultSchema,
   encryptedProjectWorkspaceCreateSchema,
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
@@ -405,6 +406,7 @@ import {
   repositoryOperationOutcomeContentSchema,
   repositoryOperationRequestContentSchema,
   repositoryOperationWireResponseSchema,
+  workspaceRootAttachmentSchema,
   type RepositoryMetadataValues,
   type RepositoryOperationType,
 } from "@cantrip/protocol/repository-operation";
@@ -506,6 +508,7 @@ import type {
   ProjectGithubConversionPreflightRequest,
   ProjectGithubConversionStart,
   EncryptedProjectWorkspaceCreate,
+  EncryptedProjectWorkspaceName,
   EncryptedProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
   ProjectWorktreeSummary,
@@ -2417,6 +2420,63 @@ export async function createEncryptedProjectWorkspace(
       encryptedProjectWorkspaceCreateSchema.parse(input),
     ),
   );
+}
+
+export async function createEncryptedAttachedProjectWorkspace(input: {
+  id: string;
+  nameProtection: EncryptedProjectWorkspaceName;
+  rootPath: string;
+  workerId: string;
+}) {
+  const worker = (await getWorkers()).find(
+    ({ workerId }) => workerId === input.workerId,
+  );
+  await ensureRepositoryWorkerEncryption({
+    refresh: refreshWorkerEncryption,
+    worker,
+  });
+  const operationId = crypto.randomUUID();
+  const context = {
+    projectId: input.id,
+    worktreeId: input.workerId,
+    operationId,
+  };
+  const protectedRequest = await protectRepositoryOperationContent({
+    context: { ...context, direction: "request" },
+    content: {
+      type: "workspace.root.attach" as const,
+      arguments: { rootPath: input.rootPath },
+    },
+    schema: repositoryOperationRequestContentSchema,
+  });
+  const result = encryptedAttachedProjectWorkspaceCreateResultSchema.parse(
+    await post("/api/workspaces/attached", {
+      id: input.id,
+      nameProtection: input.nameProtection,
+      storage: { kind: "attached", workerId: input.workerId },
+      operationId,
+      protectedRequest,
+    }),
+  );
+  const outcome = await openRepositoryOperationContent({
+    context: { ...context, direction: "response" },
+    opaque: result.operation.protectedResponse,
+    schema: repositoryOperationOutcomeContentSchema,
+  });
+  if (!outcome.ok) throw new CantripApiError(outcome.error, 422);
+  const attachment = workspaceRootAttachmentSchema.parse(outcome.result);
+  if (
+    !result.workspace ||
+    result.workspace.storage.kind !== "attached" ||
+    result.workspace.storage.rootPathHandle !== attachment.rootPathHandle ||
+    result.workspace.storage.displayHandle !== attachment.displayHandle
+  ) {
+    throw new CantripApiError(
+      "Attached workspace binding did not match the worker response.",
+      502,
+    );
+  }
+  return result.workspace;
 }
 
 export async function updateEncryptedProjectWorkspace(

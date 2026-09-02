@@ -1,11 +1,13 @@
 import type {
   ProjectSummary,
   ProjectWorkspaceSummary,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import { projectWorkspaceStorageCanBeDefault } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FolderGit2,
+  FolderOpen,
   Layers3,
   Loader2,
   Pencil,
@@ -14,7 +16,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { getWorkers, resolveWorkerRepositoryMetadata } from "@/lib/api";
+import { listDesktopWorkers } from "@/lib/desktop-worker";
+import { pickLocalFolder } from "@/lib/desktop-folder-picker";
 import { getProjects } from "@/lib/project-encryption";
 import {
   createProjectWorkspace,
@@ -40,6 +46,18 @@ import { PolicyAssignmentControls } from "./policy-assignment-controls";
 
 function message(error: unknown): string {
   return errorMessage(error, "Workspace update failed.");
+}
+
+function attachedWorkerStatus(
+  workspace: ProjectWorkspaceSummary,
+  workers: WorkerSummary[],
+): string | null {
+  if (workspace.storage.kind !== "attached") return null;
+  const workerId = workspace.storage.workerId;
+  const worker = workers.find((candidate) => candidate.workerId === workerId);
+  return `${worker?.name ?? "Home worker unavailable"} · ${
+    worker?.online ? "online" : "offline"
+  }`;
 }
 
 export function promoteDefaultWorkspace(
@@ -66,14 +84,26 @@ export function WorkspaceSettings({
     queryFn: getProjectWorkspaces,
     queryKey: ["project-workspaces"],
   });
+  const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectWorkspaceSummary | null>(null);
   const [name, setName] = useState("");
+  const [storageKind, setStorageKind] = useState<"attached" | "managed">(
+    "managed",
+  );
+  const [workerId, setWorkerId] = useState("");
+  const [rootPath, setRootPath] = useState("");
+  const [pickingFolder, setPickingFolder] = useState(false);
   const [deleteTarget, setDeleteTarget] =
     useState<ProjectWorkspaceSummary | null>(null);
   const [policyWorkspaceId, setPolicyWorkspaceId] = useState<string | null>(
     null,
   );
+  const desktopWorkers = useQuery({
+    enabled: editorOpen && !editing,
+    queryFn: listDesktopWorkers,
+    queryKey: ["desktop-workers"],
+  });
 
   const replaceWorkspace = (workspace: ProjectWorkspaceSummary) => {
     queryClient.setQueryData<ProjectWorkspaceSummary[]>(
@@ -92,13 +122,19 @@ export function WorkspaceSettings({
         ? updateProjectWorkspace(editing.id, { name: name.trim() })
         : createProjectWorkspace({
             name: name.trim(),
-            storage: { kind: "managed" },
+            storage:
+              storageKind === "attached"
+                ? { kind: "attached", workerId, rootPath }
+                : { kind: "managed" },
           }),
     onSuccess: (workspace) => {
       replaceWorkspace(workspace);
       setEditorOpen(false);
       setEditing(null);
       setName("");
+      setStorageKind("managed");
+      setWorkerId("");
+      setRootPath("");
     },
   });
   const makeDefault = useMutation({
@@ -133,11 +169,97 @@ export function WorkspaceSettings({
     save.reset();
     setEditing(workspace);
     setName(workspace?.name ?? "");
+    setStorageKind("managed");
+    setWorkerId("");
+    setRootPath("");
     setEditorOpen(true);
+  };
+  const attachableWorkers = useMemo(
+    () =>
+      (workers.data ?? []).filter(
+        ({ managedFolders }) => managedFolders.attachWorkspaceRoot,
+      ),
+    [workers.data],
+  );
+  const localWorkerIds = useMemo(
+    () => new Set(desktopWorkers.data?.map(({ workerId }) => workerId) ?? []),
+    [desktopWorkers.data],
+  );
+  useEffect(() => {
+    if (storageKind !== "attached" || workerId) return;
+    setWorkerId(
+      attachableWorkers.find(({ online }) => online)?.workerId ??
+        attachableWorkers[0]?.workerId ??
+        "",
+    );
+  }, [attachableWorkers, storageKind, workerId]);
+  const selectedWorker = attachableWorkers.find(
+    (worker) => worker.workerId === workerId,
+  );
+  const attachedPathTargets = useMemo(
+    () =>
+      (workspaces.data ?? []).flatMap((workspace) => {
+        const storage = workspace.storage;
+        if (storage.kind !== "attached") return [];
+        const worker = (workers.data ?? []).find(
+          ({ workerId }) => workerId === storage.workerId,
+        );
+        return worker?.online
+          ? [
+              {
+                workspaceId: workspace.id,
+                workerId: storage.workerId,
+                displayHandle: storage.displayHandle,
+              },
+            ]
+          : [];
+      }),
+    [workers.data, workspaces.data],
+  );
+  const attachedDisplayPaths = useQuery({
+    enabled: attachedPathTargets.length > 0,
+    queryFn: async () => {
+      const resolved = await Promise.all(
+        attachedPathTargets.map(async (target) => {
+          try {
+            const result = await resolveWorkerRepositoryMetadata({
+              scopeId: target.workspaceId,
+              workerId: target.workerId,
+              values: { displayPath: target.displayHandle },
+            });
+            return typeof result.values.displayPath === "string"
+              ? ([target.workspaceId, result.values.displayPath] as const)
+              : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      return Object.fromEntries(resolved.filter((value) => value !== null));
+    },
+    queryKey: ["project-workspace-attached-display-paths", attachedPathTargets],
+    retry: false,
+    staleTime: Infinity,
+  });
+  const canSubmit = Boolean(
+    name.trim() &&
+    !save.isPending &&
+    (editing ||
+      storageKind === "managed" ||
+      (workerId && rootPath.trim() && selectedWorker)),
+  );
+  const chooseFolder = async () => {
+    setPickingFolder(true);
+    try {
+      const selected = await pickLocalFolder();
+      if (selected) setRootPath(selected);
+    } finally {
+      setPickingFolder(false);
+    }
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (name.trim()) save.mutate();
+    if (canSubmit) save.mutate();
   };
 
   const workspaceByProjectId = new Map<string, ProjectWorkspaceSummary>();
@@ -199,11 +321,28 @@ export function WorkspaceSettings({
                       {workspace.isDefault ? (
                         <Badge variant="secondary">Default</Badge>
                       ) : null}
+                      {workspace.storage.kind === "attached" ? (
+                        <Badge variant="outline">Attached</Badge>
+                      ) : null}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {workspace.projectIds.length} project
                       {workspace.projectIds.length === 1 ? "" : "s"}
+                      {attachedWorkerStatus(workspace, workers.data ?? [])
+                        ? ` · ${attachedWorkerStatus(
+                            workspace,
+                            workers.data ?? [],
+                          )}`
+                        : ""}
                     </p>
+                    {attachedDisplayPaths.data?.[workspace.id] ? (
+                      <p
+                        className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground"
+                        title={attachedDisplayPaths.data[workspace.id]}
+                      >
+                        {attachedDisplayPaths.data[workspace.id]}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
                     <Button
@@ -358,11 +497,106 @@ export function WorkspaceSettings({
                 placeholder="Organization Company 1"
               />
             </label>
+            {!editing ? (
+              <div className="grid gap-3">
+                <span className="text-sm font-medium">Storage</span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button
+                    className="h-auto justify-start px-3 py-3 text-left"
+                    onClick={() => setStorageKind("managed")}
+                    type="button"
+                    variant={storageKind === "managed" ? "default" : "outline"}
+                  >
+                    <span>
+                      <span className="block font-medium">
+                        Managed by Cantrip
+                      </span>
+                      <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                        Available independently on every compatible worker.
+                      </span>
+                    </span>
+                  </Button>
+                  <Button
+                    className="h-auto justify-start px-3 py-3 text-left"
+                    onClick={() => setStorageKind("attached")}
+                    type="button"
+                    variant={storageKind === "attached" ? "default" : "outline"}
+                  >
+                    <span>
+                      <span className="block font-medium">
+                        Use an existing folder
+                      </span>
+                      <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                        Attach a user-owned directory on one home worker.
+                      </span>
+                    </span>
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {!editing && storageKind === "attached" ? (
+              <div className="grid gap-4 rounded-lg border p-3">
+                <label className="grid gap-2 text-sm">
+                  Home worker
+                  <NativeSelect
+                    disabled={!attachableWorkers.length}
+                    value={workerId}
+                    onChange={(event) => setWorkerId(event.target.value)}
+                  >
+                    {!attachableWorkers.length ? (
+                      <option value="">No compatible workers</option>
+                    ) : null}
+                    {attachableWorkers.map((worker) => (
+                      <option key={worker.workerId} value={worker.workerId}>
+                        {worker.name} · {worker.online ? "online" : "offline"}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </label>
+                <label className="grid gap-2 text-sm">
+                  Existing folder path
+                  <div className="flex gap-2">
+                    <Input
+                      className="font-mono"
+                      maxLength={8_192}
+                      placeholder="/path/on/the/selected/worker"
+                      value={rootPath}
+                      onChange={(event) => setRootPath(event.target.value)}
+                    />
+                    {localWorkerIds.has(workerId) ? (
+                      <Button
+                        disabled={pickingFolder}
+                        onClick={() => void chooseFolder()}
+                        type="button"
+                        variant="outline"
+                      >
+                        {pickingFolder ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <FolderOpen className="size-4" />
+                        )}
+                        Browse
+                      </Button>
+                    ) : null}
+                  </div>
+                  <span className="text-xs leading-5 text-muted-foreground">
+                    {localWorkerIds.has(workerId)
+                      ? "Browse this machine or enter an absolute path. The worker validates and protects it before Cantrip creates the workspace."
+                      : "Enter an absolute path on the selected worker. Cantrip never deletes or relocates the attached folder."}
+                  </span>
+                  {selectedWorker && !selectedWorker.online ? (
+                    <span className="text-xs text-destructive">
+                      The home worker must be online to attach this folder.
+                    </span>
+                  ) : null}
+                </label>
+              </div>
+            ) : null}
             {save.isError ? (
               <p className="text-sm text-destructive">{message(save.error)}</p>
             ) : null}
             <DialogFooter>
-              <Button disabled={!name.trim() || save.isPending} type="submit">
+              <Button disabled={!canSubmit} type="submit">
                 {save.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : null}

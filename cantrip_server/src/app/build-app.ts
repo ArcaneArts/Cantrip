@@ -989,6 +989,7 @@ export async function buildApp({
   installProjectWorkflowRoutes(app, {
     applicationOwnerId,
     bridge,
+    serverId,
     deliverWorkflowTrigger,
     directAttachments,
     gitOperationRequestRuntime,
