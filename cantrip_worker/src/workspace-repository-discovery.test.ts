@@ -88,6 +88,7 @@ describe("discoverWorkspaceRepositories", () => {
     });
     expect(progress.at(-1)).toMatchObject({
       counts: { candidates: 2 },
+      diagnosticCode: "scan-truncated",
       truncated: true,
     });
   });

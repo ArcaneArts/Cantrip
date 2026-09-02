@@ -260,10 +260,11 @@ describe("workspace repository discovery jobs", () => {
               skippedSymlinks: 2,
               unreadableDirectories: 0,
             },
-            truncated: false,
+            truncated: true,
           },
         );
       expect(completed.job).toMatchObject({
+        diagnosticCode: "scan-truncated",
         state: "succeeded",
         stateRevision: 3,
         counts: { candidates: 1, scannedDirectories: 4 },
@@ -786,6 +787,7 @@ describe("workspace repository discovery jobs", () => {
           duplicateWorkspaceId,
         );
       expect(duplicateScan?.candidates[0]?.conflict).toEqual({
+        code: "duplicate-checkout",
         kind: "checkout",
         projectId: firstProjectId,
         workspaceId,
@@ -833,7 +835,11 @@ describe("workspace repository discovery jobs", () => {
       expect(duplicateOutcome?.candidates[0]).toMatchObject({
         importState: "skipped",
         projectId: firstProjectId,
-        conflict: { projectId: firstProjectId, workspaceId },
+        conflict: {
+          code: "duplicate-checkout",
+          projectId: firstProjectId,
+          workspaceId,
+        },
       });
       expect(await database.select().from(schema.projects)).toHaveLength(1);
 
@@ -1098,6 +1104,85 @@ describe("workspace repository discovery jobs", () => {
           head: "4".repeat(40),
         }),
       ]);
+
+      const duplicateWorkerId = "workspace-github-duplicate-worker";
+      const duplicateWorkspaceId = "f9ada7fb-d27e-45f6-8b5e-c5e461cc3c3c";
+      await database.insert(schema.workers).values({
+        id: duplicateWorkerId,
+        ownerId: LOCAL_USER_ID,
+        name: "GitHub duplicate worker",
+        platform: "linux",
+        architecture: "x64",
+        startedAt: new Date(),
+        lastSeenAt: new Date(),
+      });
+      await database.insert(schema.projectWorkspaces).values({
+        id: duplicateWorkspaceId,
+        ownerId: LOCAL_USER_ID,
+        nameEnvelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: Buffer.alloc(12, 13).toString("base64url"),
+          ciphertext: Buffer.alloc(16, 14).toString("base64url"),
+        },
+        nameBlindIndex: Buffer.alloc(32, 15).toString("base64url"),
+        nameFormatVersion: 1,
+        nameKeyRevision: 1,
+        position: 2,
+      });
+      await database.insert(schema.projectWorkspaceStorageProfiles).values({
+        workspaceId: duplicateWorkspaceId,
+        kind: "attached",
+        workerId: duplicateWorkerId,
+        protectedRootPathHandle: `ctrr_${"o".repeat(43)}`,
+        protectedDisplayHandle: `ctrr_${"p".repeat(43)}`,
+      });
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        duplicateWorkspaceId,
+      );
+      const duplicateDiscovery =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      await repository.workspaceRepositoryDiscoveryJobs.complete(
+        duplicateDiscovery!.job.id,
+        duplicateDiscovery!.commandId,
+        {
+          attempt: duplicateDiscovery!.job.attempt,
+          candidates: [
+            {
+              pathHandle: `ctrr_${"l".repeat(43)}`,
+              displayHandle: `ctrr_${"m".repeat(43)}`,
+              originUrlHandle: `ctrr_${"n".repeat(43)}`,
+              github,
+              repositoryFingerprint: "5".repeat(64),
+              classification: "github-accessible",
+              diagnosticCode: null,
+            },
+          ],
+          counts: {
+            candidates: 1,
+            collapsedRepositories: 0,
+            rejectedRepositories: 0,
+            scannedDirectories: 1,
+            scannedEntries: 1,
+            skippedSymlinks: 0,
+            unreadableDirectories: 0,
+          },
+          truncated: false,
+        },
+      );
+      const duplicateSnapshot =
+        await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+          LOCAL_USER_ID,
+          duplicateWorkspaceId,
+        );
+      expect(duplicateSnapshot?.candidates[0]?.conflict).toEqual({
+        code: "duplicate-github",
+        kind: "github",
+        projectId,
+        workspaceId,
+      });
     } finally {
       await client.close();
     }

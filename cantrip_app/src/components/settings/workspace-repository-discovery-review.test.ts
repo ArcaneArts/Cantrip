@@ -72,6 +72,7 @@ describe("workspace repository import review", () => {
     );
     expect(workspaceRepositoryCandidateCanImport(candidate)).toBe(true);
     candidate.candidate.conflict = {
+      code: "duplicate-checkout",
       kind: "checkout",
       projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
       workspaceId: "workspace-two",

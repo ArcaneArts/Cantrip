@@ -28,6 +28,7 @@ function job(): WorkspaceRepositoryDiscoveryJobSummary {
     stateRevision: 2,
     attempt: 1,
     depth: 3,
+    diagnosticCode: null,
     truncated: false,
     counts: null,
     error: null,
@@ -91,7 +92,7 @@ describe("workspace repository discovery executor", () => {
           type: "workspace.repositories.discovery-progress",
           jobId: active.id,
           attempt: active.attempt,
-          progress: { counts, truncated: false },
+          progress: { counts, diagnosticCode: null, truncated: false },
         });
         return {
           jobId: active.id,
@@ -112,6 +113,7 @@ describe("workspace repository discovery executor", () => {
             },
           ],
           counts,
+          diagnosticCode: null,
           truncated: false,
         };
       },
@@ -185,7 +187,7 @@ describe("workspace repository discovery executor", () => {
     expect(changed).toHaveBeenCalledWith(
       expect.objectContaining({
         ownerId: "owner-one",
-        progress: { counts, truncated: false },
+        progress: { counts, diagnosticCode: null, truncated: false },
       }),
     );
     expect(changed).toHaveBeenLastCalledWith({

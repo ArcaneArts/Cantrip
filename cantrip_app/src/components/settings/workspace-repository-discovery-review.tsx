@@ -554,7 +554,7 @@ export function WorkspaceRepositoryDiscoveryReview({
                 invalid checkouts rejected
               </span>
             ) : null}
-            {snapshot.job.truncated ? (
+            {snapshot.job.diagnosticCode === "scan-truncated" ? (
               <span className="text-destructive">
                 Results reached the bounded scan limit.
               </span>
