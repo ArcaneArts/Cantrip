@@ -10,6 +10,7 @@ const appIconSource = join(iconDirectory, "source.svg");
 const trayIconSource = join(iconDirectory, "icons8-bolt.svg");
 const temporaryDirectory = mkdtempSync(join(tmpdir(), "cantrip-glint-icons-"));
 let opaqueRenderSequence = 0;
+let alphaSafeRenderSequence = 0;
 
 function run(command, arguments_) {
   const result = spawnSync(command, arguments_, {
@@ -33,6 +34,29 @@ function render(source, output, size) {
     String(size),
     source,
     "-o",
+    output,
+  ]);
+}
+
+function renderAlphaSafe(source, output, size) {
+  const intermediate = join(
+    temporaryDirectory,
+    `alpha-safe-${alphaSafeRenderSequence}.png`,
+  );
+  alphaSafeRenderSequence += 1;
+  render(source, intermediate, size);
+  // librsvg's translucent edge RGB is coverage-expanded when written as PNG.
+  // Normalize it before iconutil so macOS cannot composite a bright fringe.
+  run("magick", [
+    intermediate,
+    "-channel",
+    "RGB",
+    "-fx",
+    "u*a",
+    "+channel",
+    "-strip",
+    "-define",
+    "png:color-type=6",
     output,
   ]);
 }
@@ -94,7 +118,7 @@ try {
     ["icon_512x512@2x.png", 1024],
   ]);
   for (const [filename, size] of icnsOutputs) {
-    render(appIconSource, join(iconsetDirectory, filename), size);
+    renderAlphaSafe(appIconSource, join(iconsetDirectory, filename), size);
   }
   run("iconutil", [
     "--convert",

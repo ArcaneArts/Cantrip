@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inflateSync } from "node:zlib";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,6 +35,85 @@ function assertOpaquePng(path) {
   );
 }
 
+function paeth(left, above, upperLeft) {
+  const estimate = left + above - upperLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const aboveDistance = Math.abs(estimate - above);
+  const upperLeftDistance = Math.abs(estimate - upperLeft);
+  if (leftDistance <= aboveDistance && leftDistance <= upperLeftDistance) {
+    return left;
+  }
+  return aboveDistance <= upperLeftDistance ? above : upperLeft;
+}
+
+function pngRgba(image) {
+  assert.deepEqual(
+    [...image.subarray(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10],
+  );
+  const idat = [];
+  let width;
+  let height;
+  for (let offset = 8; offset < image.length;) {
+    const length = image.readUInt32BE(offset);
+    const type = image.subarray(offset + 4, offset + 8).toString("ascii");
+    const data = image.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      assert.deepEqual([...data.subarray(8, 13)], [8, 6, 0, 0, 0]);
+    } else if (type === "IDAT") {
+      idat.push(data);
+    }
+    offset += length + 12;
+  }
+  assert.ok(width && height && idat.length > 0);
+  const compressed = inflateSync(Buffer.concat(idat));
+  const stride = width * 4;
+  const pixels = Buffer.alloc(stride * height);
+  let sourceOffset = 0;
+  for (let row = 0; row < height; row += 1) {
+    const filter = compressed[sourceOffset];
+    sourceOffset += 1;
+    assert.ok(filter >= 0 && filter <= 4);
+    for (let column = 0; column < stride; column += 1) {
+      const value = compressed[sourceOffset];
+      sourceOffset += 1;
+      const output = row * stride + column;
+      const left = column >= 4 ? pixels[output - 4] : 0;
+      const above = row > 0 ? pixels[output - stride] : 0;
+      const upperLeft =
+        row > 0 && column >= 4 ? pixels[output - stride - 4] : 0;
+      const predictor =
+        filter === 0
+          ? 0
+          : filter === 1
+            ? left
+            : filter === 2
+              ? above
+              : filter === 3
+                ? Math.floor((left + above) / 2)
+                : paeth(left, above, upperLeft);
+      pixels[output] = (value + predictor) & 0xff;
+    }
+  }
+  return pixels;
+}
+
+function icnsEntry(path, expectedType) {
+  const icon = read(path);
+  assert.equal(icon.subarray(0, 4).toString("ascii"), "icns");
+  assert.equal(icon.readUInt32BE(4), icon.length);
+  for (let offset = 8; offset < icon.length;) {
+    const type = icon.subarray(offset, offset + 4).toString("ascii");
+    const length = icon.readUInt32BE(offset + 4);
+    if (type === expectedType)
+      return icon.subarray(offset + 8, offset + length);
+    offset += length;
+  }
+  assert.fail(`Missing ${expectedType} entry in ${path}`);
+}
+
 test("app icon artwork preserves the canonical glint geometry", () => {
   const canonical = circleCenters(svg("cantrip_app/src-tauri/icons/glint.svg"));
   assert.equal(canonical.length, 35);
@@ -61,6 +141,22 @@ test("app artwork keeps the tall glint inside a five-unit safe area", () => {
   );
   assert.ok(left >= 5 && 36 - right >= 5);
   assert.ok(top >= 5 && 36 - bottom >= 5);
+});
+
+test("macOS ICNS alpha edges cannot leak a bright halo", () => {
+  const pixels = pngRgba(
+    icnsEntry("cantrip_app/src-tauri/icons/icon.icns", "ic12"),
+  );
+  let translucentPixels = 0;
+  for (let index = 0; index < pixels.length; index += 4) {
+    const alpha = pixels[index + 3];
+    if (alpha === 0 || alpha === 255) continue;
+    translucentPixels += 1;
+    assert.ok(pixels[index] <= 17);
+    assert.ok(pixels[index + 1] <= 17);
+    assert.ok(pixels[index + 2] <= 19);
+  }
+  assert.ok(translucentPixels > 0);
 });
 
 test("macOS tray renders the supplied bolt SVG as an unscaled native template", () => {
