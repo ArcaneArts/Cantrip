@@ -184,6 +184,7 @@ import {
   readExplorerFile,
   readExplorerMediaFile,
   renameExplorerEntry,
+  createExplorerDirectory,
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
@@ -3465,6 +3466,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     request.path,
                     request.content,
                     request.version,
+                  ),
+                },
+              };
+              break;
+            case "explorer.directory.create":
+              outcome = {
+                ok: true as const,
+                result: {
+                  type: "explorer.directory.created" as const,
+                  value: await createExplorerDirectory(
+                    command.root,
+                    request.path,
                   ),
                 },
               };

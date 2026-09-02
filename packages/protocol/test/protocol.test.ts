@@ -3353,6 +3353,12 @@ describe("Cantrip protocol", () => {
   it("accepts basename-only Explorer entry mutations", () => {
     expect(
       explorerOperationRequestContentSchema.parse({
+        type: "explorer.directory.create",
+        path: "",
+      }),
+    ).toEqual({ type: "explorer.directory.create", path: "" });
+    expect(
+      explorerOperationRequestContentSchema.parse({
         type: "explorer.entry.rename",
         path: "src/old.ts",
         name: "new.ts",

@@ -49,22 +49,30 @@ vi.mock("@radix-ui/react-context-menu", async () => {
   const Item = React.forwardRef<
     unknown,
     {
+      "aria-label"?: string;
       children?: React.ReactNode;
+      disabled?: boolean;
       onClick?(event: { shiftKey: boolean }): void;
       onSelect?(): void;
     }
-  >(({ children, onClick, onSelect }, _ref) =>
-    React.createElement(
-      "button",
-      {
-        onClick: (event: { shiftKey: boolean }) => {
-          onClick?.(event);
-          onSelect?.();
+  >(
+    (
+      { "aria-label": ariaLabel, children, disabled, onClick, onSelect },
+      _ref,
+    ) =>
+      React.createElement(
+        "button",
+        {
+          "aria-label": ariaLabel,
+          disabled,
+          onClick: (event: { shiftKey: boolean }) => {
+            onClick?.(event);
+            onSelect?.();
+          },
+          type: "button",
         },
-        type: "button",
-      },
-      children,
-    ),
+        children,
+      ),
   );
   return {
     Content: Container,
@@ -160,6 +168,7 @@ function tree(
     activePath: null,
     explorer,
     loading: false,
+    onCreateFolder: async () => runtime.directoryEntry,
     onDelete: async () => undefined,
     onPin: () => undefined,
     onPreview: () => undefined,
@@ -191,6 +200,17 @@ function buttonNamed(
     .findAllByType("button")
     .find((candidate) => textContent(candidate.props.children).includes(name));
   if (!button) throw new Error(`Button not found: ${name}`);
+  return button;
+}
+
+function buttonWithAriaLabel(
+  renderer: TestRenderer.ReactTestRenderer,
+  label: string,
+): TestRenderer.ReactTestInstance {
+  const button = renderer.root
+    .findAllByType("button")
+    .find((candidate) => candidate.props["aria-label"] === label);
+  if (!button) throw new Error(`Button not found: ${label}`);
   return button;
 }
 
@@ -586,6 +606,95 @@ describe("project sidebar file tree encryption gate", () => {
     await act(async () => reveal.props.onClick({ shiftKey: true }));
     expect(onOpenNative).toHaveBeenLastCalledWith(runtime.entry, true);
     expect(onOpenNative).toHaveBeenCalledTimes(2);
+    await act(async () => renderer.unmount());
+  });
+
+  it("reveals the project root from empty tree space and forwards Shift", async () => {
+    const onOpenNativeRoot = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        tree({ onOpenNativeRoot, revealLabel: "Finder" }),
+      );
+    });
+
+    const reveal = buttonWithAriaLabel(renderer, "Open project root in Finder");
+    await act(async () => reveal.props.onClick({ shiftKey: false }));
+    expect(onOpenNativeRoot).toHaveBeenLastCalledWith(false);
+    await act(async () => reveal.props.onClick({ shiftKey: true }));
+    expect(onOpenNativeRoot).toHaveBeenLastCalledWith(true);
+    await act(async () => renderer.unmount());
+  });
+
+  it("creates a root folder and immediately focuses its selected rename field", async () => {
+    const created = {
+      ...runtime.directoryEntry,
+      name: "New Folder",
+      path: "New Folder",
+    };
+    const focus = vi.fn();
+    const select = vi.fn();
+    const onCreateFolder = vi.fn(async () => {
+      runtime.entriesByPath.set("", [runtime.entry, created]);
+      return created;
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ onCreateFolder }), {
+        createNodeMock: (element) =>
+          element.type === "input" ? { focus, select } : null,
+      });
+    });
+
+    await act(async () =>
+      buttonWithAriaLabel(
+        renderer,
+        "Create folder in project root",
+      ).props.onClick({ shiftKey: false }),
+    );
+
+    expect(onCreateFolder).toHaveBeenCalledWith(
+      "",
+      expect.objectContaining({ bindingKey: "binding-a" }),
+    );
+    expect(
+      renderer.root.findByProps({ "aria-label": "Rename New Folder" }).props
+        .value,
+    ).toBe("New Folder");
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(select).toHaveBeenCalledTimes(1);
+    await act(async () => renderer.unmount());
+  });
+
+  it("creates a child folder inside the right-clicked folder", async () => {
+    runtime.entriesByPath.set("", [runtime.directoryEntry]);
+    const created = {
+      ...runtime.directoryEntry,
+      name: "New Folder",
+      path: "src/New Folder",
+    };
+    const onCreateFolder = vi.fn(async () => {
+      runtime.entriesByPath.set("src", [created]);
+      return created;
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ onCreateFolder }));
+    });
+
+    await act(async () =>
+      buttonWithAriaLabel(renderer, "Create folder in src").props.onClick({
+        shiftKey: false,
+      }),
+    );
+
+    expect(onCreateFolder).toHaveBeenCalledWith(
+      "src",
+      expect.objectContaining({ bindingKey: "binding-a" }),
+    );
+    expect(
+      renderer.root.findByProps({ "aria-label": "Rename New Folder" }),
+    ).toBeDefined();
     await act(async () => renderer.unmount());
   });
 });

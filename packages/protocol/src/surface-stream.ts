@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import {
+  explorerDirectoryCreateSchema,
   explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
   explorerEntryDeleteSchema,
+  explorerEntrySchema,
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
   explorerFileSchema,
@@ -125,6 +127,10 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
       .extend(explorerFileWriteSchema.shape)
       .strict(),
     z
+      .object({ type: z.literal("explorer.directory.create") })
+      .extend(explorerDirectoryCreateSchema.shape)
+      .strict(),
+    z
       .object({ type: z.literal("explorer.entry.rename") })
       .extend(explorerEntryRenameSchema.shape)
       .strict(),
@@ -152,6 +158,12 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({ type: z.literal("explorer.file"), value: explorerFileSchema })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.directory.created"),
+        value: explorerEntrySchema,
+      })
       .strict(),
     z
       .object({

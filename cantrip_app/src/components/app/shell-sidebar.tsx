@@ -98,6 +98,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     codeTabs,
     createProjectSurface,
     createSidebarExplorerMutation,
+    createSidebarFolder,
     creatingSurfaceKinds,
     deleteBrowserMutation,
     deleteChatMutation,
@@ -127,6 +128,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     openSidebarFilePreview,
     openSidebarFolderGraph,
     openSidebarFolderNative,
+    openSidebarRootNative,
     openSidebarFolderTerminal,
     overlayTitlebar,
     permanentlyDeleteStandaloneChat,
@@ -409,7 +411,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                 </div>
 
                 <nav
-                  className="min-h-0 flex-1 overflow-y-auto px-2 pb-4"
+                  className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4"
                   data-slot="sidebar-scroll-region"
                 >
                   <ProjectChatList
@@ -476,9 +478,11 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     onOpenChatExplorer={openChatExplorerHere}
                     onOpenChatHistory={openChatHistoryHere}
                     onFilePin={pinSidebarFile}
+                    onFileCreateFolder={createSidebarFolder}
                     onFileDelete={deleteSidebarFileEntry}
                     onFileOpenGraph={openSidebarFolderGraph}
                     onFileOpenNative={openSidebarFolderNative}
+                    onFileOpenNativeRoot={openSidebarRootNative}
                     onFileOpenTerminal={openSidebarFolderTerminal}
                     onFilePreview={openSidebarFilePreview}
                     onFileRename={renameSidebarFileEntry}

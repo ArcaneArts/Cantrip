@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import {
   lstat,
+  mkdir,
   open,
   readFile,
   readdir,
@@ -18,6 +19,7 @@ import {
   explorerDirectorySchema,
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
+  explorerEntrySchema,
   explorerFileSchema,
   explorerMarkdownFileForPath,
   explorerMediaFileChunkSchema,
@@ -26,6 +28,7 @@ import {
   explorerTextFileForPath,
   type ExplorerDirectoryCommits,
   type ExplorerDirectory,
+  type ExplorerEntry,
   type ExplorerEntryMutationResult,
   type ExplorerFile,
   type ExplorerLastCommit,
@@ -117,6 +120,51 @@ async function resolveMutableEntry(root: string, relativePath: string) {
   const targetPath = path.join(parentPath, segments.at(-1)!);
   const metadata = await lstat(targetPath);
   return { metadata, parentPath, targetPath };
+}
+
+async function resolveMutableDirectory(root: string, relativePath: string) {
+  const rootPath = await realpath(root);
+  const directoryPath = await realpath(
+    path.resolve(rootPath, ...pathSegments(relativePath)),
+  );
+  if (!pathIsInside(rootPath, directoryPath)) {
+    throw new Error(
+      "Explorer mutations cannot follow links outside the project.",
+    );
+  }
+  const metadata = await lstat(directoryPath);
+  if (!metadata.isDirectory()) {
+    throw new Error("Explorer path is not a directory.");
+  }
+  return { directoryPath, rootPath };
+}
+
+export async function createExplorerDirectory(
+  root: string,
+  relativePath: string,
+): Promise<ExplorerEntry> {
+  const { directoryPath } = await resolveMutableDirectory(root, relativePath);
+  for (let suffix = 1; ; suffix += 1) {
+    const name = suffix === 1 ? "New Folder" : `New Folder ${suffix}`;
+    const targetPath = path.join(directoryPath, name);
+    try {
+      await mkdir(targetPath, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
+      throw error;
+    }
+    const metadata = await lstat(targetPath);
+    return explorerEntrySchema.parse({
+      kind: "directory",
+      markdown: false,
+      modifiedAt: metadata.mtime.toISOString(),
+      name,
+      path: relativePath ? `${relativePath}/${name}` : name,
+      size: null,
+      symbolicLink: false,
+      viewable: false,
+    });
+  }
 }
 
 export async function listExplorerDirectory(

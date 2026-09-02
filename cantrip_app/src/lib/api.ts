@@ -118,8 +118,10 @@ import {
   codexSkillRootsResultSchema,
   codexSkillRootsUpdateSchema,
   explorerDirectoryCommitsSchema,
+  explorerDirectoryCreateSchema,
   explorerDirectorySchema,
   explorerEntryDeleteSchema,
+  explorerEntrySchema,
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
   explorerFileSchema,
@@ -531,6 +533,8 @@ import type {
   TunnelUserUpdate,
   UserSettingsUpdate,
   ExplorerFileWrite,
+  ExplorerDirectoryCreate,
+  ExplorerEntry,
   ExplorerEntryDelete,
   ExplorerEntryMutationResult,
   ExplorerEntryRename,
@@ -6869,6 +6873,20 @@ export async function saveExplorerFile(
     throw new Error("Explorer returned an unexpected saved file result.");
   }
   return explorerFileSchema.parse(result.value);
+}
+
+export async function createExplorerDirectory(
+  explorerId: string,
+  input: ExplorerDirectoryCreate,
+): Promise<ExplorerEntry> {
+  const result = await executeExplorerOperation(explorerId, {
+    type: "explorer.directory.create",
+    ...explorerDirectoryCreateSchema.parse(input),
+  });
+  if (result.type !== "explorer.directory.created") {
+    throw new Error("Explorer returned an unexpected created folder result.");
+  }
+  return explorerEntrySchema.parse(result.value);
 }
 
 export async function renameExplorerEntry(
