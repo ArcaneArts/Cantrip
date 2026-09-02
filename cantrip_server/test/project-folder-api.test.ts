@@ -75,6 +75,37 @@ function protectedBytes(seed: string, count: number): string {
     .toString("base64url");
 }
 
+function protectedRoutingHandle(seed: string): string {
+  return `ctrr_${protectedBytes(seed, 32)}`;
+}
+
+function protectedGithubRepository(seed: string) {
+  return {
+    repository: {
+      repositoryId: protectedRoutingHandle(`${seed}:id`),
+      nameWithOwner: protectedRoutingHandle(`${seed}:name`),
+      url: protectedRoutingHandle(`${seed}:url`),
+    },
+    repositoryBlindIndex: protectedBytes(`${seed}:blind-index`, 32),
+  };
+}
+
+function protectedWorkspaceName(seed: string) {
+  return {
+    state: "encrypted" as const,
+    formatVersion: 1 as const,
+    keyRevision: 1,
+    blindIndex: protectedBytes(`${seed}:blind-index`, 32),
+    envelope: {
+      version: 1 as const,
+      algorithm: "AES-256-GCM" as const,
+      keyRevision: 1,
+      nonce: protectedBytes(`${seed}:nonce`, 12),
+      ciphertext: protectedBytes(`${seed}:ciphertext`, 32),
+    },
+  };
+}
+
 function protectedWorkflowEnvelope(seed: string) {
   return {
     formatVersion: 1 as const,
@@ -142,6 +173,8 @@ function opaqueTaskDraft(): TaskOpaqueContent {
 const connectedWorkers = new Set(["folder-worker"]);
 const commands: Array<{ command: WorkerCommand; workerId: string }> = [];
 const authenticatedAttachedPath = `ctrr_${"A".repeat(43)}`;
+const localGitAttachedPath = `ctrr_${"L".repeat(43)}`;
+const localGitAttachedDisplayPath = `ctrr_${"D".repeat(43)}`;
 let releaseHeldConversion: (() => void) | null = null;
 const bridge: WorkerCommandBus = {
   attach() {},
@@ -164,7 +197,8 @@ const bridge: WorkerCommandBus = {
       const target =
         command.existingPath ??
         path.join(dataDirectory, "folders", command.projectId);
-      const repositoryDetected = target === authenticatedAttachedPath;
+      const repositoryDetected =
+        target === authenticatedAttachedPath || target === localGitAttachedPath;
       return {
         status: "ready",
         jobId: command.jobId,
@@ -173,33 +207,39 @@ const bridge: WorkerCommandBus = {
         displayPath: command.existingPath ?? `folders/${command.projectId}`,
         reused: Boolean(command.existingPath),
         repositoryFingerprint: repositoryDetected ? "d".repeat(64) : null,
-        github: repositoryDetected
-          ? {
-              repositoryId: "detected-repository",
-              nameWithOwner: "ArcaneArts/Detected",
-              url: "https://github.com/ArcaneArts/Detected",
-            }
-          : null,
+        github:
+          target === authenticatedAttachedPath
+            ? {
+                repositoryId: "detected-repository",
+                nameWithOwner: "ArcaneArts/Detected",
+                url: "https://github.com/ArcaneArts/Detected",
+              }
+            : null,
       };
     }
     if (command.type === "project.folder.delete") return { deleted: true };
     if (command.type === "project.folder-conversion.preflight") {
+      const linkingExisting = Boolean(command.sourcePath);
       return {
         status: "ready",
         projectId: command.projectId,
         repository: command.repository,
         confirmationToken: "a".repeat(64),
-        localState: "not-initialized",
-        branch: null,
-        head: null,
+        localState: linkingExisting ? "committed" : "not-initialized",
+        branch: linkingExisting ? "main" : null,
+        head: linkingExisting ? "c".repeat(40) : null,
         dirty: false,
-        originUrl: null,
-        requiresInitialCommit: true,
+        originUrl: linkingExisting ? `ctrr_${"o".repeat(43)}` : null,
+        remoteAction: linkingExisting ? "link" : "push",
+        requiresInitialCommit: !linkingExisting,
         warnings: ["Conversion is one-way in V1."],
       };
     }
     if (command.type === "project.folder-conversion.execute") {
-      if (command.repository.repositoryId === "held-conversion-repository") {
+      if (
+        command.repository.repositoryId ===
+        protectedGithubRepository("held-conversion").repository.repositoryId
+      ) {
         await new Promise<void>((resolve) => {
           releaseHeldConversion = resolve;
         });
@@ -209,8 +249,11 @@ const bridge: WorkerCommandBus = {
         jobId: command.jobId,
         attempt: command.attempt,
         repository: command.repository,
-        path: path.join(dataDirectory, "folders", command.projectId),
-        displayPath: `folders/${command.projectId}`,
+        path:
+          command.sourcePath ??
+          path.join(dataDirectory, "folders", command.projectId),
+        displayPath:
+          command.sourceDisplayPath ?? `folders/${command.projectId}`,
         repositoryFingerprint: "b".repeat(64),
         branch: "main",
         head: "c".repeat(40),
@@ -292,6 +335,7 @@ beforeAll(async () => {
       create: true,
       attachExisting: true,
       convertToGithub: true,
+      convertExternalGitToGithub: true,
       remove: true,
     },
     code: {
@@ -363,6 +407,146 @@ async function waitUntilReady(projectId: string) {
     expect(project.setupStatus).toBe("ready");
     return project;
   });
+}
+
+async function importLocalGitProject() {
+  if (
+    !(await database.repository.encryptionRegistry.getProfile(LOCAL_USER_ID))
+  ) {
+    const clientId = randomUUID();
+    await database.repository.encryptionRegistry.initializeProfile(
+      LOCAL_USER_ID,
+      {
+        profile: {
+          formatVersion: 1,
+          activeMasterKeyRevision: 1,
+          passwordKdf: null,
+          passwordWrappedMasterKey: null,
+          payloadMigrationStatus: "complete",
+        },
+        initialClient: {
+          id: clientId,
+          label: "Project folder API test client",
+          publicKey: protectedBytes("project-folder-api-public-key", 65),
+          wrappedMasterKey: {
+            version: 1,
+            purpose: "client-account-master-key",
+            clientId,
+            masterKeyRevision: 1,
+            envelope: {
+              version: 1,
+              algorithm: "HPKE-RFC9180",
+              suite: {
+                mode: "base",
+                kem: "DHKEM(P-256,HKDF-SHA256)",
+                kdf: "HKDF-SHA256",
+                aead: "AES-256-GCM",
+              },
+              encapsulatedKey: protectedBytes(
+                "project-folder-api-encapsulated-key",
+                65,
+              ),
+              ciphertext: protectedBytes(
+                "project-folder-api-wrapped-master-key",
+                48,
+              ),
+            },
+          },
+        },
+      },
+    );
+  }
+  const workspaceId = randomUUID();
+  await database.repository.createVerifiedAttachedProjectWorkspace(
+    LOCAL_USER_ID,
+    {
+      id: workspaceId,
+      nameProtection: protectedWorkspaceName("local-git-workspace"),
+      storage: {
+        kind: "attached",
+        workerId: "folder-worker",
+        rootPathHandle: protectedRoutingHandle("local-git-workspace-root"),
+        displayHandle: protectedRoutingHandle("local-git-workspace-display"),
+      },
+    },
+  );
+  await database.repository.workspaceRepositoryDiscoveryJobs.queue(
+    LOCAL_USER_ID,
+    workspaceId,
+  );
+  const discovery =
+    await database.repository.workspaceRepositoryDiscoveryJobs.claimNext();
+  if (!discovery) throw new Error("Expected a repository discovery job.");
+  const discovered =
+    await database.repository.workspaceRepositoryDiscoveryJobs.complete(
+      discovery.job.id,
+      discovery.commandId,
+      {
+        attempt: discovery.job.attempt,
+        candidates: [
+          {
+            pathHandle: localGitAttachedPath,
+            displayHandle: localGitAttachedDisplayPath,
+            repositoryFingerprint: "1".repeat(64),
+            classification: "local-git",
+            diagnosticCode: null,
+          },
+        ],
+        counts: {
+          candidates: 1,
+          collapsedRepositories: 0,
+          rejectedRepositories: 0,
+          scannedDirectories: 1,
+          scannedEntries: 1,
+          skippedSymlinks: 0,
+          unreadableDirectories: 0,
+        },
+        truncated: false,
+      },
+    );
+  const projectId = randomUUID();
+  const queued =
+    await database.repository.workspaceRepositoryDiscoveryJobs.queueImports(
+      LOCAL_USER_ID,
+      workspaceId,
+      {
+        expectedStateRevision: discovered.job.stateRevision,
+        candidates: [
+          {
+            candidateId: discovered.candidates[0]!.id,
+            projectId,
+            nameProtection: protectedProjectFields(projectId).nameProtection,
+            repositoryBlindIndex: null,
+          },
+        ],
+      },
+    );
+  if (!queued) throw new Error("Expected the repository import to queue.");
+  const importJob =
+    await database.repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+  if (!importJob) throw new Error("Expected a repository import job.");
+  await database.repository.workspaceRepositoryDiscoveryJobs.completeImport(
+    importJob,
+    {
+      candidateId: importJob.candidateId,
+      attempt: importJob.attempt,
+      path: localGitAttachedPath,
+      displayPath: localGitAttachedDisplayPath,
+      originUrl: null,
+      github: null,
+      repositoryFingerprint: "1".repeat(64),
+      classification: "local-git",
+      diagnosticCode: null,
+      branch: protectedRoutingHandle("local-git-main-branch"),
+      head: "c".repeat(40),
+    },
+  );
+  const project = await database.repository.getProject(
+    LOCAL_USER_ID,
+    projectId,
+  );
+  if (!project) throw new Error("Expected the imported local Git project.");
+  return project;
 }
 
 describe("managed folder project lifecycle", () => {
@@ -439,13 +623,7 @@ describe("managed folder project lifecycle", () => {
     const conversion = await app.inject({
       method: "POST",
       url: `/api/projects/${created.id}/github-conversion/preflight`,
-      payload: {
-        repository: {
-          repositoryId: "external-folder-conversion",
-          nameWithOwner: "ArcaneArts/ExternalFolder",
-          url: "https://github.com/ArcaneArts/ExternalFolder",
-        },
-      },
+      payload: protectedGithubRepository("external-folder-conversion"),
     });
     expect(conversion.statusCode).toBe(409);
 
@@ -594,6 +772,141 @@ describe("managed folder project lifecycle", () => {
     });
   });
 
+  it("upgrades an attached local Git source without changing its path or ownership", async () => {
+    const ready = await importLocalGitProject();
+    expect(ready).toMatchObject({
+      originKind: "managed-folder",
+      folderManagement: "external",
+      capabilities: { git: true, github: false },
+      source: {
+        sourceKind: "git",
+        path: localGitAttachedPath,
+        placementMode: "direct",
+        ownershipKind: "user",
+      },
+    });
+    const repository = protectedGithubRepository("local-git-conversion");
+
+    const unboundPreflight = await app.inject({
+      method: "POST",
+      url: `/api/projects/${ready.id}/github-conversion/preflight`,
+      payload: repository,
+    });
+    expect(unboundPreflight.statusCode).toBe(409);
+    expect(unboundPreflight.json()).toMatchObject({ code: "source-required" });
+
+    const preflightResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${ready.id}/github-conversion/preflight`,
+      payload: {
+        ...repository,
+        projectSourceId: ready.source!.id,
+        workerId: ready.source!.workerId,
+      },
+    });
+    expect(preflightResponse.statusCode, preflightResponse.body).toBe(200);
+    const preflight = projectGithubConversionPreflightResultSchema.parse(
+      preflightResponse.json(),
+    );
+    expect(preflight).toMatchObject({
+      status: "ready",
+      projectSourceId: ready.source!.id,
+      workerId: "folder-worker",
+      remoteAction: "link",
+      requiresInitialCommit: false,
+    });
+    if (preflight.status !== "ready") throw new Error("preflight failed");
+    expect(
+      commands.find(
+        ({ command }) =>
+          command.type === "project.folder-conversion.preflight" &&
+          command.projectId === ready.id,
+      )?.command,
+    ).toMatchObject({
+      sourcePath: localGitAttachedPath,
+      sourceDisplayPath: localGitAttachedDisplayPath,
+    });
+
+    const mismatchedSource = await app.inject({
+      method: "POST",
+      url: `/api/projects/${ready.id}/github-conversion`,
+      payload: {
+        ...repository,
+        projectSourceId: randomUUID(),
+        workerId: preflight.workerId,
+        confirmationToken: preflight.confirmationToken,
+        initialCommit: null,
+      },
+    });
+    expect(mismatchedSource.statusCode).toBe(409);
+    expect(mismatchedSource.json()).toMatchObject({
+      code: "project-not-ready",
+    });
+
+    const start = await app.inject({
+      method: "POST",
+      url: `/api/projects/${ready.id}/github-conversion`,
+      payload: {
+        ...repository,
+        projectSourceId: preflight.projectSourceId,
+        workerId: preflight.workerId,
+        confirmationToken: preflight.confirmationToken,
+        initialCommit: null,
+      },
+    });
+    expect(start.statusCode, start.body).toBe(202);
+    const converted = await vi.waitFor(async () => {
+      const current = await database.repository.getProject(
+        LOCAL_USER_ID,
+        ready.id,
+      );
+      expect(current?.originKind).toBe("github");
+      return current!;
+    });
+    expect(converted).toMatchObject({
+      originKind: "github",
+      folderManagement: null,
+      source: {
+        id: ready.source!.id,
+        sourceKind: "git",
+        path: localGitAttachedPath,
+        placementMode: "direct",
+        ownershipKind: "user",
+      },
+      github: repository.repository,
+    });
+    await expect(
+      database.repository.projectGithubConversionJobs.convertedManagedFolderSource(
+        LOCAL_USER_ID,
+        ready.id,
+      ),
+    ).resolves.toBeNull();
+    expect(
+      commands.find(
+        ({ command }) =>
+          command.type === "project.folder-conversion.execute" &&
+          command.projectId === ready.id,
+      )?.command,
+    ).toMatchObject({
+      sourcePath: localGitAttachedPath,
+      sourceDisplayPath: localGitAttachedDisplayPath,
+    });
+
+    const commandCount = commands.length;
+    expect(
+      await app.inject({
+        method: "DELETE",
+        url: `/api/projects/${ready.id}`,
+        payload: { deleteLocalFiles: false },
+      }),
+    ).toMatchObject({ statusCode: 204 });
+    expect(
+      commands
+        .slice(commandCount)
+        .some(({ command }) => command.type === "project.folder.delete"),
+    ).toBe(false);
+  });
+
   it("converts only after explicit preflight, push reconciliation, and atomic kind transition", async () => {
     const project = await createFolder("Convert me");
     const ready = await waitUntilReady(project.id);
@@ -601,18 +914,14 @@ describe("managed folder project lifecycle", () => {
     const rootBefore = (
       await database.repository.listProjectWorktrees(LOCAL_USER_ID, project.id)
     )[0]!;
-    const repository = {
-      repositoryId: "conversion-repository-42",
-      nameWithOwner: "ArcaneArts/ConvertedFolder",
-      url: "https://github.com/ArcaneArts/ConvertedFolder",
-    };
+    const repository = protectedGithubRepository("managed-conversion");
 
     const preflightResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/github-conversion/preflight`,
-      payload: { repository },
+      payload: repository,
     });
-    expect(preflightResponse.statusCode).toBe(200);
+    expect(preflightResponse.statusCode, preflightResponse.body).toBe(200);
     const preflight = projectGithubConversionPreflightResultSchema.parse(
       preflightResponse.json(),
     );
@@ -633,9 +942,11 @@ describe("managed folder project lifecycle", () => {
       method: "POST",
       url: `/api/projects/${project.id}/github-conversion`,
       payload: {
-        repository,
+        ...repository,
         confirmationToken: preflight.confirmationToken,
-        initialCommit: { message: "Initial commit" },
+        initialCommit: {
+          message: protectedRoutingHandle("managed-initial-commit"),
+        },
       },
     });
     expect(startResponse.statusCode).toBe(202);
@@ -662,11 +973,7 @@ describe("managed folder project lifecycle", () => {
         sourceKind: "git",
         path: ready.source!.path,
       },
-      github: {
-        repositoryId: repository.repositoryId,
-        nameWithOwner: repository.nameWithOwner,
-        url: repository.url,
-      },
+      github: repository.repository,
       capabilities: {
         git: true,
         github: true,
@@ -707,7 +1014,7 @@ describe("managed folder project lifecycle", () => {
     const collision = await app.inject({
       method: "POST",
       url: `/api/projects/${collisionProject.id}/github-conversion/preflight`,
-      payload: { repository },
+      payload: repository,
     });
     expect(collision.statusCode).toBe(409);
     expect(collision.json()).toMatchObject({
@@ -743,13 +1050,7 @@ describe("managed folder project lifecycle", () => {
     const response = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/github-conversion/preflight`,
-      payload: {
-        repository: {
-          repositoryId: "offline-conversion-repository",
-          nameWithOwner: "ArcaneArts/OfflineConversion",
-          url: "https://github.com/ArcaneArts/OfflineConversion",
-        },
-      },
+      payload: protectedGithubRepository("offline-conversion"),
     });
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ code: "worker-offline" });
@@ -759,15 +1060,11 @@ describe("managed folder project lifecycle", () => {
   it("refuses project deletion while a durable conversion is active", async () => {
     const project = await createFolder("Held conversion");
     await waitUntilReady(project.id);
-    const repository = {
-      repositoryId: "held-conversion-repository",
-      nameWithOwner: "ArcaneArts/HeldConversion",
-      url: "https://github.com/ArcaneArts/HeldConversion",
-    };
+    const repository = protectedGithubRepository("held-conversion");
     const preflightResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/github-conversion/preflight`,
-      payload: { repository },
+      payload: repository,
     });
     const preflight = projectGithubConversionPreflightResultSchema.parse(
       preflightResponse.json(),
@@ -777,9 +1074,11 @@ describe("managed folder project lifecycle", () => {
       method: "POST",
       url: `/api/projects/${project.id}/github-conversion`,
       payload: {
-        repository,
+        ...repository,
         confirmationToken: preflight.confirmationToken,
-        initialCommit: { message: "Initial commit" },
+        initialCommit: {
+          message: protectedRoutingHandle("held-initial-commit"),
+        },
       },
     });
     expect(start.statusCode).toBe(202);

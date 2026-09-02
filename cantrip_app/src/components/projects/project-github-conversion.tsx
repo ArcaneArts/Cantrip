@@ -59,6 +59,17 @@ export function githubConversionCanStart(input: {
   );
 }
 
+export function githubConversionWorkerCanConvert(
+  project: Pick<ProjectSummary, "capabilities" | "folderManagement">,
+  worker: Pick<WorkerSummary, "managedFolders"> | undefined,
+): boolean {
+  if (!worker?.managedFolders.convertToGithub) return false;
+  return project.folderManagement !== "external"
+    ? true
+    : project.capabilities.git &&
+        worker.managedFolders.convertExternalGitToGithub;
+}
+
 function LocalState({
   preflight,
 }: {
@@ -170,6 +181,12 @@ export function ProjectGithubConversion({
     mutationFn: async (ready: ProjectGithubConversionPreflightReady) =>
       startProjectGithubConversion(project.id, {
         repository: ready.repository,
+        ...(ready.projectSourceId && ready.workerId
+          ? {
+              projectSourceId: ready.projectSourceId,
+              workerId: ready.workerId,
+            }
+          : {}),
         confirmationToken: ready.confirmationToken,
         initialCommit: ready.requiresInitialCommit
           ? { message: commitMessage }
@@ -193,7 +210,9 @@ export function ProjectGithubConversion({
     job && ["queued", "running", "blocked"].includes(job.state),
   );
   const canOpen = Boolean(
-    worker?.online && worker.managedFolders.convertToGithub && !active,
+    worker?.online &&
+    githubConversionWorkerCanConvert(project, worker) &&
+    !active,
   );
 
   return (
@@ -203,8 +222,8 @@ export function ProjectGithubConversion({
           GitHub conversion
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Explicitly initialize or reconcile Git, push a new history, and link
-          this project to one empty GitHub repository.
+          Explicitly reconcile this source with GitHub, then either push to an
+          empty repository or link an existing matching checkout.
         </p>
       </div>
       <div className="rounded-lg border p-4">
@@ -225,7 +244,7 @@ export function ProjectGithubConversion({
                   {job.state === "queued"
                     ? "Conversion queued"
                     : job.state === "running"
-                      ? "Converting and pushing…"
+                      ? "Reconciling with GitHub…"
                       : "Conversion waiting"}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
@@ -276,9 +295,10 @@ export function ProjectGithubConversion({
                 <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
                   The owning worker must be online.
                 </p>
-              ) : worker && !worker.managedFolders.convertToGithub ? (
+              ) : worker &&
+                !githubConversionWorkerCanConvert(project, worker) ? (
                 <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
-                  Update the owning worker before converting this folder.
+                  Update the source worker before converting this project.
                 </p>
               ) : null}
             </div>
@@ -306,8 +326,9 @@ export function ProjectGithubConversion({
           <DialogHeader>
             <DialogTitle>Convert {project.name} to GitHub?</DialogTitle>
             <DialogDescription>
-              Select the exact empty repository, run worker preflight, then
-              separately confirm the irreversible transition.
+              Select the exact repository, run worker preflight, then separately
+              confirm the irreversible transition. Existing history is accepted
+              only when its current branch matches exactly.
             </DialogDescription>
           </DialogHeader>
 
@@ -320,7 +341,7 @@ export function ProjectGithubConversion({
                 </span>
               ) : (
                 <>
-                  GitHub is not authenticated on the owning worker. Run{" "}
+                  GitHub is not authenticated on the source worker. Run{" "}
                   <code className="rounded bg-muted px-1">gh auth login</code>{" "}
                   there, then reopen this dialog.
                 </>
@@ -407,7 +428,9 @@ export function ProjectGithubConversion({
                           {preflight.repository.nameWithOwner}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Empty repository verified by the owning worker
+                          {preflight.remoteAction === "link"
+                            ? "Matching existing repository verified by the source worker"
+                            : "Empty repository verified by the source worker"}
                         </div>
                       </div>
                       <a
@@ -467,8 +490,11 @@ export function ProjectGithubConversion({
                     <span>
                       Convert this project to{" "}
                       <strong>{preflight.repository.nameWithOwner}</strong>,
-                      push without force, and enable Git/GitHub features only
-                      after complete reconciliation.
+                      {preflight.remoteAction === "link"
+                        ? " link the matching existing history without pushing,"
+                        : " push without force,"}{" "}
+                      and enable Git/GitHub features only after complete
+                      reconciliation.
                     </span>
                   </label>
                 </div>

@@ -184,9 +184,31 @@ export class ProjectGithubConversionJobExecutor {
       if (!workspaceStorage) {
         throw new Error("Project workspace storage is unavailable.");
       }
+      const source = await this.repository.getProjectReplica(
+        claimed.ownerId,
+        job.projectId,
+        claimed.projectSourceId,
+      );
+      if (!source || !source.ready || source.workerId !== job.workerId) {
+        const failed = await this.repository.projectGithubConversionJobs.fail(
+          job.id,
+          claimed.commandId,
+          {
+            code: "project-not-ready",
+            retryable: false,
+          },
+        );
+        this.onChanged({ ownerId: claimed.ownerId, job: failed });
+        return;
+      }
+      const externalGitSource =
+        source.sourceKind === "git" && source.ownershipKind === "user";
       if (
         !worker.managedFolders.convertToGithub ||
-        (workspaceStorage.kind === "managed" &&
+        (externalGitSource &&
+          !worker.managedFolders.convertExternalGitToGithub) ||
+        (!externalGitSource &&
+          workspaceStorage.kind === "managed" &&
           !worker.managedFolders.workspaceScopedRoots)
       ) {
         const failed = await this.repository.projectGithubConversionJobs.fail(
@@ -210,6 +232,12 @@ export class ProjectGithubConversionJobExecutor {
             projectId: job.projectId,
             repository: job.repository,
             workspaceStorage,
+            ...(externalGitSource
+              ? {
+                  sourcePath: source.path,
+                  sourceDisplayPath: source.displayPath,
+                }
+              : {}),
             confirmationToken: claimed.confirmationToken,
             initialCommit: claimed.initialCommit,
           },
