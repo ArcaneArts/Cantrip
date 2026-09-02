@@ -281,6 +281,16 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
     message: z.string().min(1),
     details: z.string().nullable(),
     willRetry: z.boolean().nullable(),
+    reasonCode: z.string().min(1).max(100).nullable().optional(),
+    retry: z
+      .object({
+        owner: z.enum(["codex", "cantrip"]),
+        attempt: z.number().int().positive().nullable(),
+        maxAttempts: z.number().int().positive().nullable(),
+        nextAttemptAtMs: z.number().int().nonnegative().nullable(),
+      })
+      .nullable()
+      .optional(),
   }),
   z.object({
     ...agentActivityBaseShape,

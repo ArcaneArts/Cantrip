@@ -1546,6 +1546,7 @@ interface ConfigWarningParams {
 
 interface TurnError {
   additionalDetails?: string | null;
+  codexErrorInfo?: unknown;
   message: string;
 }
 
@@ -3617,6 +3618,14 @@ export function normalizeNoticeActivity(input: {
   details?: string | null;
   level: "warning" | "error";
   message: string;
+  reasonCode?: string | null;
+  retry?: {
+    owner: "codex" | "cantrip";
+    attempt: number | null;
+    maxAttempts: number | null;
+    nextAttemptAtMs: number | null;
+  } | null;
+  status?: AgentActivity["status"];
   willRetry?: boolean | null;
 }): AgentActivity {
   return agentActivitySchema.parse({
@@ -3627,12 +3636,76 @@ export function normalizeNoticeActivity(input: {
       input.correlation.sourceMethod,
       input.message,
     ),
-    status: input.level === "error" ? "failed" : "completed",
+    status:
+      input.status ??
+      (input.willRetry
+        ? "running"
+        : input.level === "error"
+          ? "failed"
+          : "completed"),
     level: input.level,
     message: boundedText(input.message)?.trim() || input.level,
     details: boundedText(input.details),
     willRetry: input.willRetry ?? null,
+    reasonCode: input.reasonCode ?? null,
+    retry: input.retry ?? null,
     correlation: input.correlation,
+  });
+}
+
+export function codexErrorReasonCode(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() || null;
+  const record = objectRecord(value);
+  if (!record) return null;
+  const keys = Object.keys(record);
+  return keys.length === 1 ? keys[0]! : null;
+}
+
+const CANTRIP_CAPACITY_RETRY_DELAYS_MS = [10_000, 20_000, 40_000] as const;
+
+export function cantripCapacityRetryDelayMs(attempt: number): number | null {
+  return CANTRIP_CAPACITY_RETRY_DELAYS_MS[attempt - 1] ?? null;
+}
+
+export class CodexTurnFailureError extends Error {
+  constructor(
+    message: string,
+    readonly reasonCode: string | null,
+    readonly threadId: string,
+    readonly turnId: string,
+  ) {
+    super(message);
+    this.name = "CodexTurnFailureError";
+  }
+}
+
+function isServerOverloadedError(
+  error: unknown,
+): error is CodexTurnFailureError {
+  return (
+    error instanceof CodexTurnFailureError &&
+    error.reasonCode === "serverOverloaded"
+  );
+}
+
+function waitForCapacityRetry(
+  delayMs: number,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("Codex turn was interrupted."));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("Codex turn was interrupted."));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -3766,6 +3839,7 @@ export function normalizeCodexThreadTurn(
         level: "error",
         message: turn.error.message,
         details: turn.error.additionalDetails,
+        reasonCode: codexErrorReasonCode(turn.error.codexErrorInfo),
         willRetry: false,
         correlation: eventCorrelation(
           "thread/read",
@@ -3861,6 +3935,10 @@ export class CodexAppServer implements CodexRuntime {
   readonly #pendingAgentInteractions = new Map<
     string,
     NativePendingAgentInteraction
+  >();
+  readonly #pendingCapacityRetries = new Map<
+    string,
+    { controller: AbortController; threadId: string }
   >();
   readonly #pendingPlanQuestions = new Map<string, NativePendingPlanQuestion>();
   readonly #pausedChats = new Set<string>();
@@ -4181,29 +4259,111 @@ export class CodexAppServer implements CodexRuntime {
 
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
     let attemptedThreadId = options.threadId;
-    const firstAttemptOptions: RunAgentTurnOptions = {
-      ...options,
-      onThreadLoaded: (threadId) => {
-        attemptedThreadId = threadId;
-        options.onThreadLoaded?.(threadId);
-      },
-    };
-    try {
-      return await this.runTurnAttempt(firstAttemptOptions);
-    } catch (error) {
-      if (!attemptedThreadId || !isInvalidCompactionBlobError(error)) {
-        throw error;
-      }
-      this.forgetThread(attemptedThreadId);
-      workerLogger.warn(
-        "Codex rejected stored compaction state; retrying the turn on a fresh thread",
-        {
-          chatId: options.chatId,
-          providerKind: options.provider.kind,
-          staleThreadId: attemptedThreadId,
+    let compactionStateRetried = false;
+    let capacityRetryAttempt = 0;
+    for (;;) {
+      const attemptOptions: RunAgentTurnOptions = {
+        ...options,
+        threadId: attemptedThreadId,
+        onThreadLoaded: (threadId) => {
+          attemptedThreadId = threadId;
+          options.onThreadLoaded?.(threadId);
         },
-      );
-      return this.runTurnAttempt({ ...options, threadId: null });
+      };
+      try {
+        return await this.runTurnAttempt(attemptOptions);
+      } catch (error) {
+        if (
+          attemptedThreadId &&
+          !compactionStateRetried &&
+          isInvalidCompactionBlobError(error)
+        ) {
+          compactionStateRetried = true;
+          this.forgetThread(attemptedThreadId);
+          workerLogger.warn(
+            "Codex rejected stored compaction state; retrying the turn on a fresh thread",
+            {
+              chatId: options.chatId,
+              providerKind: options.provider.kind,
+              staleThreadId: attemptedThreadId,
+            },
+          );
+          attemptedThreadId = null;
+          continue;
+        }
+        if (!isServerOverloadedError(error)) throw error;
+        const delayMs = cantripCapacityRetryDelayMs(capacityRetryAttempt + 1);
+        if (delayMs === null) throw error;
+        capacityRetryAttempt += 1;
+        const nextAttemptAtMs = Date.now() + delayMs;
+        const retry = {
+          owner: "cantrip" as const,
+          attempt: capacityRetryAttempt,
+          maxAttempts: CANTRIP_CAPACITY_RETRY_DELAYS_MS.length,
+          nextAttemptAtMs,
+        };
+        const correlation = eventCorrelation(
+          "cantrip/capacity-retry",
+          null,
+          error.threadId,
+          error.turnId,
+          null,
+        );
+        const retryMessage = "Model at capacity";
+        options.onActivity?.(
+          normalizeNoticeActivity({
+            level: "warning",
+            message: retryMessage,
+            details: null,
+            reasonCode: error.reasonCode,
+            retry,
+            status: "running",
+            willRetry: true,
+            correlation,
+          }),
+        );
+        workerLogger.event("warn", "Codex model is at capacity; retrying", {
+          event: "codex.turn.capacity-retry",
+          subsystem: "codex",
+          operation: "chat-turn",
+          status: "retrying",
+          reasonCode: error.reasonCode ?? undefined,
+          chatId: options.chatId,
+          threadId: error.threadId,
+          turnId: error.turnId,
+          providerId: options.provider.id,
+          providerKind: options.provider.kind,
+          model: options.model.name,
+          attempt: capacityRetryAttempt,
+          maxAttempts: CANTRIP_CAPACITY_RETRY_DELAYS_MS.length,
+          delayMs,
+          nextAttemptAtMs,
+        });
+        const controller = new AbortController();
+        const pendingRetry = { controller, threadId: error.threadId };
+        this.#pendingCapacityRetries.set(options.chatId, pendingRetry);
+        try {
+          await waitForCapacityRetry(delayMs, controller.signal);
+          options.onActivity?.(
+            normalizeNoticeActivity({
+              level: "warning",
+              message: retryMessage,
+              details: null,
+              reasonCode: error.reasonCode,
+              retry: { ...retry, nextAttemptAtMs: null },
+              status: "completed",
+              willRetry: null,
+              correlation,
+            }),
+          );
+        } finally {
+          if (
+            this.#pendingCapacityRetries.get(options.chatId) === pendingRetry
+          ) {
+            this.#pendingCapacityRetries.delete(options.chatId);
+          }
+        }
+      }
     }
   }
 
@@ -5387,7 +5547,20 @@ export class CodexAppServer implements CodexRuntime {
     threadId: string | null,
   ): Promise<{ interrupted: boolean }> {
     const active = findActiveChatTurn(this.#activeTurns, chatId, threadId);
-    if (!active) return { interrupted: false };
+    if (!active) {
+      const pendingRetry = this.#pendingCapacityRetries.get(chatId);
+      if (!pendingRetry) return { interrupted: false };
+      pendingRetry.controller.abort();
+      workerLogger.event("info", "Codex capacity retry interrupted", {
+        event: "codex.turn.capacity-retry-interrupted",
+        subsystem: "codex",
+        operation: "interrupt-chat-turn",
+        status: "accepted",
+        chatId,
+        threadId: pendingRetry.threadId,
+      });
+      return { interrupted: true };
+    }
     const previousRequest = active[1].interruptionRequestedAtMs;
     active[1].interruptionRequestedAtMs = Date.now();
     try {
@@ -8184,6 +8357,15 @@ export class CodexAppServer implements CodexRuntime {
                   secrets: this.#diagnosticSecrets,
                 })
               : null,
+            reasonCode: codexErrorReasonCode(params.error.codexErrorInfo),
+            retry: params.willRetry
+              ? {
+                  owner: "codex",
+                  attempt: null,
+                  maxAttempts: null,
+                  nextAttemptAtMs: null,
+                }
+              : null,
             willRetry: params.willRetry,
             correlation: eventCorrelation(
               message.method,
@@ -8279,6 +8461,7 @@ export class CodexAppServer implements CodexRuntime {
                   { secrets: this.#diagnosticSecrets },
                 )
               : null,
+            reasonCode: codexErrorReasonCode(params.turn.error.codexErrorInfo),
             willRetry: false,
             correlation,
           }),
@@ -8342,7 +8525,7 @@ export class CodexAppServer implements CodexRuntime {
         void this.failTurn(
           active,
           params.turn.id,
-          new Error(
+          new CodexTurnFailureError(
             terminalStatus === "interrupted"
               ? "Codex turn was interrupted."
               : params.turn.error?.message
@@ -8351,6 +8534,9 @@ export class CodexAppServer implements CodexRuntime {
                     zai: this.#runtimeIsZai,
                   })
                 : `Codex turn ended with ${terminalStatus}.`,
+            codexErrorReasonCode(params.turn.error?.codexErrorInfo),
+            params.threadId,
+            params.turn.id,
           ),
           terminalStatus,
           observedAtMs,

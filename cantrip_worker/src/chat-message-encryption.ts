@@ -448,6 +448,9 @@ export class EncryptedChatEventSealer {
           : {
               kind: "activity" as const,
               activityType: activity.type,
+              ...(activity.type === "notice"
+                ? { reasonCode: activity.reasonCode ?? null }
+                : {}),
               turnId,
               ...(agentRuntime ? { agentRuntime } : {}),
             },

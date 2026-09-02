@@ -187,6 +187,28 @@ describe("worker chat message encryption", () => {
     expect(JSON.stringify(commandEvent.telemetry)).not.toContain(
       "captured request",
     );
+    const noticeEvent = await sealer.activity({
+      type: "notice",
+      id: "capacity-retry",
+      status: "running",
+      level: "warning",
+      message: "Model at capacity",
+      details: null,
+      willRetry: true,
+      reasonCode: "serverOverloaded",
+      retry: {
+        owner: "cantrip",
+        attempt: 1,
+        maxAttempts: 3,
+        nextAttemptAtMs: 20_000,
+      },
+    });
+    expect(noticeEvent.telemetry).toEqual({
+      kind: "activity",
+      activityType: "notice",
+      reasonCode: "serverOverloaded",
+      turnId: null,
+    });
     const childSummaryEvent = await sealer.activity({
       type: "turnSummary",
       id: "turn:child-turn:summary",

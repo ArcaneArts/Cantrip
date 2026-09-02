@@ -68,6 +68,47 @@ function formatReset(resetsAt: number | null) {
   return new Date(resetsAt * 1_000).toLocaleString();
 }
 
+type NoticeActivity = Extract<AgentActivity, { type: "notice" }>;
+
+export function noticeRetryLabel(
+  activity: NoticeActivity,
+  nowMs = Date.now(),
+): string | null {
+  if (activity.retry?.owner === "cantrip") {
+    const attempt = activity.retry.attempt;
+    const maxAttempts = activity.retry.maxAttempts;
+    const attemptLabel =
+      attempt !== null && maxAttempts !== null
+        ? ` · attempt ${attempt} of ${maxAttempts}`
+        : "";
+    if (activity.retry.nextAttemptAtMs !== null) {
+      const seconds = Math.max(
+        0,
+        Math.ceil((activity.retry.nextAttemptAtMs - nowMs) / 1_000),
+      );
+      return seconds > 0
+        ? `Retrying in ${seconds}s${attemptLabel}`
+        : `Retrying now${attemptLabel}`;
+    }
+    return `Retry started${attemptLabel}`;
+  }
+  if (activity.willRetry === true) return "Codex is reconnecting.";
+  if (activity.willRetry === false) return "Codex will not retry.";
+  return null;
+}
+
+function NoticeRetryStatus({ activity }: { activity: NoticeActivity }) {
+  const nextAttemptAtMs = activity.retry?.nextAttemptAtMs ?? null;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (nextAttemptAtMs === null || nextAttemptAtMs <= Date.now()) return;
+    const interval = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, [nextAttemptAtMs]);
+  const label = noticeRetryLabel(activity, nowMs);
+  return label ? <span role="status">{label}</span> : null;
+}
+
 function CorrelationDetails({ activity }: { activity: AgentActivity }) {
   const correlation = activity.correlation;
   if (!correlation) return null;
@@ -386,11 +427,9 @@ function RichActivityDetails({ activity }: { activity: AgentActivity }) {
           {activity.details ? (
             <p className="whitespace-pre-wrap">{activity.details}</p>
           ) : null}
-          {activity.willRetry !== null ? (
+          {activity.willRetry !== null || activity.retry ? (
             <p>
-              {activity.willRetry
-                ? "Codex will retry."
-                : "Codex will not retry."}
+              <NoticeRetryStatus activity={activity} />
             </p>
           ) : null}
         </div>
@@ -548,12 +587,20 @@ export function Activity({ activity }: { activity: AgentActivity }) {
                 : activity.type === "reviewMode"
                   ? Boolean(activity.review)
                   : activity.type === "notice"
-                    ? Boolean(activity.details || activity.willRetry !== null)
+                    ? Boolean(
+                        activity.details ||
+                        activity.willRetry !== null ||
+                        activity.retry,
+                      )
                     : true;
     return (
       <details
         className="group min-w-0 py-1 text-sm"
-        open={activity.type === "notice" && activity.level === "error"}
+        open={
+          activity.type === "notice" &&
+          activity.level === "error" &&
+          activity.willRetry !== true
+        }
       >
         <summary
           className={cn(
@@ -567,11 +614,17 @@ export function Activity({ activity }: { activity: AgentActivity }) {
               "min-w-0 truncate font-medium",
               activity.type === "notice" &&
                 activity.level === "error" &&
+                activity.willRetry !== true &&
                 "text-destructive",
             )}
           >
             {activityLabel(activity)}
           </span>
+          {activity.type === "notice" && activity.willRetry === true ? (
+            <span className="shrink-0 text-xs font-normal text-muted-foreground">
+              <NoticeRetryStatus activity={activity} />
+            </span>
+          ) : null}
           <ActivityState activity={activity} />
           {hasDetails || showCorrelation ? (
             <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />

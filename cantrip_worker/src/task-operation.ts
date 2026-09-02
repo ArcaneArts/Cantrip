@@ -117,6 +117,9 @@ export class EncryptedTaskEventSealer {
           : {
               kind: "activity" as const,
               activityType: activity.type,
+              ...(activity.type === "notice"
+                ? { reasonCode: activity.reasonCode ?? null }
+                : {}),
               turnId,
               ...(agentRuntime ? { agentRuntime } : {}),
             },
