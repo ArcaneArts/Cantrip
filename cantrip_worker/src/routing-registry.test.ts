@@ -71,16 +71,43 @@ describe("WorkerRoutingRegistry", () => {
           {
             path: "/Users/example/private-repository",
             displayPath: "private-repository",
+            originUrl: "git@github.com:ArcaneArts/Private.git",
+            github: {
+              repositoryId: "private-repository-id",
+              nameWithOwner: "ArcaneArts/Private",
+              url: "https://github.com/ArcaneArts/Private",
+            },
             repositoryFingerprint: "a".repeat(64),
+            classification: "github-accessible",
+            diagnosticCode: null,
           },
         ],
       },
-    )) as { candidates: Array<{ path: string; displayPath: string }> };
+    )) as {
+      candidates: Array<{
+        path: string;
+        displayPath: string;
+        originUrl: string;
+        github: { repositoryId: string; nameWithOwner: string; url: string };
+      }>;
+    };
     expect(protectedDiscovery.candidates[0]).toEqual(
       expect.objectContaining({
         path: protectedResult.worktree.path,
         displayPath: expect.stringMatching(/^ctrr_/u),
+        originUrl: expect.stringMatching(/^ctrr_/u),
+        github: {
+          repositoryId: expect.stringMatching(/^ctrr_/u),
+          nameWithOwner: expect.stringMatching(/^ctrr_/u),
+          url: expect.stringMatching(/^ctrr_/u),
+        },
       }),
+    );
+    expect(JSON.stringify(protectedDiscovery)).not.toContain(
+      "ArcaneArts/Private",
+    );
+    expect(JSON.stringify(protectedDiscovery)).not.toContain(
+      "/Users/example/private-repository",
     );
     const protectedObservation = (await registry.protectResult(
       "worktree.observation.configure",

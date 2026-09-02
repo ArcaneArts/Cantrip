@@ -95,7 +95,15 @@ describe("workspace repository discovery jobs", () => {
               {
                 pathHandle: `ctrr_${"c".repeat(43)}`,
                 displayHandle: `ctrr_${"d".repeat(43)}`,
+                originUrlHandle: `ctrr_${"f".repeat(43)}`,
+                github: {
+                  repositoryId: `ctrr_${"g".repeat(43)}`,
+                  nameWithOwner: `ctrr_${"h".repeat(43)}`,
+                  url: `ctrr_${"i".repeat(43)}`,
+                },
                 repositoryFingerprint: "e".repeat(64),
+                classification: "github-accessible",
+                diagnosticCode: null,
               },
             ],
             counts: {
@@ -120,7 +128,13 @@ describe("workspace repository discovery jobs", () => {
           workspaceId,
           workerId,
           repositoryFingerprint: "e".repeat(64),
-          classification: "unclassified",
+          classification: "github-accessible",
+          originUrlHandle: `ctrr_${"f".repeat(43)}`,
+          github: {
+            repositoryId: `ctrr_${"g".repeat(43)}`,
+            nameWithOwner: `ctrr_${"h".repeat(43)}`,
+            url: `ctrr_${"i".repeat(43)}`,
+          },
           importState: "pending",
         }),
       ]);

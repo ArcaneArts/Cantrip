@@ -12,9 +12,13 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import type { WorkspaceRepositoryDiscoveryProgress } from "@cantrip/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { discoverWorkspaceRepositories } from "./workspace-repository-discovery.js";
+import {
+  classifyWorkspaceRepositoryOrigin,
+  discoverWorkspaceRepositories,
+  parseGithubRepositoryOrigin,
+} from "./workspace-repository-discovery.js";
 
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
@@ -68,6 +72,10 @@ describe("discoverWorkspaceRepositories", () => {
     expect(result.candidates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          classification: "local-git",
+          diagnosticCode: null,
+          github: null,
+          originUrl: null,
           repositoryFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/u),
         }),
       ]),
@@ -94,6 +102,31 @@ describe("discoverWorkspaceRepositories", () => {
     expect(result.candidates).toEqual([]);
     expect(result.skippedSymlinks).toBe(1);
     expect(result.truncated).toBe(false);
+  });
+
+  it("retains protected-review metadata for non-GitHub origins", async () => {
+    const root = await temporaryRoot();
+    const repository = path.join(root, "gitlab-repository");
+    await initializeRepository(repository);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "remote",
+      "add",
+      "origin",
+      "ssh://git@gitlab.com/team/repository.git",
+    ]);
+
+    const result = await discoverWorkspaceRepositories(root);
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        classification: "local-git",
+        diagnosticCode: null,
+        github: null,
+        originUrl: "ssh://git@gitlab.com/team/repository.git",
+      }),
+    ]);
   });
 
   it("recognizes git marker files but excludes linked worktrees", async () => {
@@ -170,6 +203,116 @@ describe("discoverWorkspaceRepositories", () => {
     });
     await expect(discoverWorkspaceRepositories(root)).resolves.toMatchObject({
       candidates: [],
+    });
+  });
+
+  it("recognizes only supported GitHub.com SSH and HTTPS origins", () => {
+    expect(
+      parseGithubRepositoryOrigin("git@github.com:ArcaneArts/Cantrip.git"),
+    ).toEqual({
+      nameWithOwner: "ArcaneArts/Cantrip",
+      url: "https://github.com/ArcaneArts/Cantrip",
+    });
+    expect(
+      parseGithubRepositoryOrigin(
+        "ssh://git@github.com/ArcaneArts/Cantrip.git",
+      ),
+    ).toEqual({
+      nameWithOwner: "ArcaneArts/Cantrip",
+      url: "https://github.com/ArcaneArts/Cantrip",
+    });
+    expect(
+      parseGithubRepositoryOrigin("https://github.com/ArcaneArts/Cantrip.git/"),
+    ).toEqual({
+      nameWithOwner: "ArcaneArts/Cantrip",
+      url: "https://github.com/ArcaneArts/Cantrip",
+    });
+    expect(
+      parseGithubRepositoryOrigin("https://git.example.com/owner/repository"),
+    ).toBeNull();
+    expect(
+      parseGithubRepositoryOrigin("https://token@github.com/owner/repository"),
+    ).toBeNull();
+  });
+
+  it("classifies an accessible GitHub origin using the actual API operation", async () => {
+    const githubApi = vi.fn().mockResolvedValue({
+      id: 1234,
+      full_name: "ArcaneArts/Cantrip",
+      html_url: "https://github.com/ArcaneArts/Cantrip",
+    });
+
+    await expect(
+      classifyWorkspaceRepositoryOrigin(
+        "git@github.com:ArcaneArts/Cantrip.git",
+        { githubApi, maxBuffer: 1_024, timeout: 500 },
+      ),
+    ).resolves.toEqual({
+      classification: "github-accessible",
+      diagnosticCode: null,
+      github: {
+        repositoryId: "1234",
+        nameWithOwner: "ArcaneArts/Cantrip",
+        url: "https://github.com/ArcaneArts/Cantrip",
+      },
+      originUrl: "git@github.com:ArcaneArts/Cantrip.git",
+    });
+    expect(githubApi).toHaveBeenCalledWith("ArcaneArts/Cantrip", {
+      maxBuffer: 1_024,
+      timeout: 500,
+    });
+  });
+
+  it("keeps inaccessible GitHub and non-GitHub origins locally importable", async () => {
+    await expect(
+      classifyWorkspaceRepositoryOrigin(
+        "https://github.com/ArcaneArts/Private.git",
+        {
+          githubApi: vi
+            .fn()
+            .mockRejectedValue(
+              Object.assign(new Error("missing"), { code: "ENOENT" }),
+            ),
+          maxBuffer: 1_024,
+          timeout: 500,
+        },
+      ),
+    ).resolves.toEqual({
+      classification: "github-unavailable",
+      diagnosticCode: "github-cli-unavailable",
+      github: null,
+      originUrl: "https://github.com/ArcaneArts/Private.git",
+    });
+    await expect(
+      classifyWorkspaceRepositoryOrigin(
+        "https://github.com/ArcaneArts/Expected.git",
+        {
+          githubApi: vi.fn().mockResolvedValue({
+            id: 1234,
+            full_name: "ArcaneArts/Different",
+            html_url: "https://github.com/ArcaneArts/Different",
+          }),
+          maxBuffer: 1_024,
+          timeout: 500,
+        },
+      ),
+    ).resolves.toEqual({
+      classification: "github-unavailable",
+      diagnosticCode: "github-identity-mismatch",
+      github: null,
+      originUrl: "https://github.com/ArcaneArts/Expected.git",
+    });
+    await expect(
+      classifyWorkspaceRepositoryOrigin("ssh://git@gitlab.com/team/repo.git", {
+        githubApi: vi.fn(),
+        maxBuffer: 1_024,
+        timeout: 500,
+      }),
+    ).resolves.toEqual({
+      classification: "local-git",
+      diagnosticCode: null,
+      github: null,
+      originUrl: "ssh://git@gitlab.com/team/repo.git",
     });
   });
 });
