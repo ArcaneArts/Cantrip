@@ -6,6 +6,7 @@ import type {
   ProjectCloneResult,
   ProjectFolderSetupJobSummary,
   ProjectReplicaSummary,
+  ProjectWorkspaceStorageContext,
   ProjectWireSummary,
 } from "@cantrip/protocol";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -33,6 +34,7 @@ export interface ProjectRemovalContext {
   }>;
   remoteSurfaces: Array<{ id: string; workerId: string }>;
   setupStatus: ProjectWireSummary["setupStatus"];
+  workspaceStorage: ProjectWorkspaceStorageContext;
   terminals: Array<{
     id: string;
     workerId: string;
@@ -59,6 +61,10 @@ export interface ProjectLifecycleRepositoryCollaborators {
     ownerId: string,
     projectId: string,
   ): Promise<ProjectFolderSetupJobSummary | null>;
+  getProjectWorkspaceStorageContext(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectWorkspaceStorageContext | null>;
   listProjectReplicas(
     ownerId: string,
     projectId: string,
@@ -421,6 +427,16 @@ export class ProjectLifecycleRepository {
       .limit(1);
     const project = rows[0];
     if (!project) return null;
+    const workspaceStorage =
+      await this.collaborators.getProjectWorkspaceStorageContext(
+        ownerId,
+        projectId,
+      );
+    if (!workspaceStorage) {
+      throw new ProjectWorkspaceInvariantError(
+        "Project workspace storage is unavailable.",
+      );
+    }
     const convertedManagedFolderSource =
       project.originKind === "github"
         ? await this.collaborators.getConvertedManagedFolderSource(
@@ -467,6 +483,7 @@ export class ProjectLifecycleRepository {
         workerId: surface.workerId,
       })),
       setupStatus: project.setupStatus as ProjectWireSummary["setupStatus"],
+      workspaceStorage,
       terminals,
     };
   }

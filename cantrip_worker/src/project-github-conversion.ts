@@ -14,6 +14,7 @@ import {
   type ProjectGithubConversionPreflightResult,
   type ProjectGithubConversionReady,
   type ProjectGithubConversionRepository,
+  type ProjectWorkspaceStorageContext,
 } from "@cantrip/protocol";
 
 import { readProjectWorktreePolicy } from "./github.js";
@@ -356,6 +357,7 @@ export class ProjectGithubConverter {
   async preflight(input: {
     projectId: string;
     repository: ProjectGithubConversionRepository;
+    workspaceStorage?: ProjectWorkspaceStorageContext;
   }): Promise<ProjectGithubConversionPreflightResult> {
     const expected = projectGithubConversionRepositorySchema.parse(
       input.repository,
@@ -377,7 +379,10 @@ export class ProjectGithubConverter {
     }
     let local: LocalGitState;
     try {
-      const target = await this.managedFolders.resolve(input.projectId);
+      const target = await this.managedFolders.resolve(
+        input.projectId,
+        input.workspaceStorage ?? { kind: "system" },
+      );
       local = await inspectLocalGit(target.path);
     } catch (error) {
       return blocked(input.projectId, verified.repository, {
@@ -481,6 +486,7 @@ export class ProjectGithubConverter {
     jobId: string;
     projectId: string;
     repository: ProjectGithubConversionRepository;
+    workspaceStorage?: ProjectWorkspaceStorageContext;
   }): Promise<ProjectGithubConversionExecutionResult> {
     try {
       return await this.executeReady(input);
@@ -512,6 +518,7 @@ export class ProjectGithubConverter {
     jobId: string;
     projectId: string;
     repository: ProjectGithubConversionRepository;
+    workspaceStorage?: ProjectWorkspaceStorageContext;
   }): Promise<ProjectGithubConversionReady> {
     let verified: Awaited<
       ReturnType<ProjectGithubConverter["verifiedRepository"]>
@@ -529,7 +536,10 @@ export class ProjectGithubConverter {
         error,
       );
     }
-    const target = await this.managedFolders.resolve(input.projectId);
+    const target = await this.managedFolders.resolve(
+      input.projectId,
+      input.workspaceStorage ?? { kind: "system" },
+    );
     let local: LocalGitState;
     try {
       local = await inspectLocalGit(target.path);

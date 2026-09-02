@@ -189,16 +189,27 @@ export class ProjectReplicaJobExecutor {
             )
           : false;
       const placementMode = job.placementMode ?? "managed";
+      const workspaceStorage =
+        await this.repository.getProjectWorkspaceStorageContext(
+          claimed.ownerId,
+          job.projectId,
+        );
+      if (!workspaceStorage) {
+        throw new Error("Project workspace storage is unavailable.");
+      }
       const placementCapable =
-        placementMode === "managed" ||
-        (placementMode === "managed-link"
-          ? worker.projectReplicas.managedLinkPlacement &&
-            (job.kind !== "provision" ||
-              worker.projectReplicas.recursiveParentCreation)
-          : worker.projectReplicas.directPlacement &&
-            (job.kind !== "provision" ||
-              (worker.projectReplicas.attachExisting &&
-                worker.projectReplicas.recursiveParentCreation)));
+        (workspaceStorage.kind !== "managed" ||
+          placementMode === "direct" ||
+          worker.projectReplicas.workspaceScopedRoots) &&
+        (placementMode === "managed" ||
+          (placementMode === "managed-link"
+            ? worker.projectReplicas.managedLinkPlacement &&
+              (job.kind !== "provision" ||
+                worker.projectReplicas.recursiveParentCreation)
+            : worker.projectReplicas.directPlacement &&
+              (job.kind !== "provision" ||
+                (worker.projectReplicas.attachExisting &&
+                  worker.projectReplicas.recursiveParentCreation))));
       const capable =
         job.kind === "provision"
           ? worker.projectReplicas.provision &&
@@ -264,6 +275,7 @@ export class ProjectReplicaJobExecutor {
               attempt: job.attempt,
               projectId: job.projectId,
               repository: { nameWithOwner: job.repository },
+              workspaceStorage,
               placement:
                 placementMode === "managed"
                   ? { mode: "managed" }
@@ -398,6 +410,7 @@ export class ProjectReplicaJobExecutor {
                     await this.bridge.request(job.workerId, {
                       type: "project.folder.delete",
                       projectId: job.projectId,
+                      workspaceStorage,
                     }),
                   );
                 }

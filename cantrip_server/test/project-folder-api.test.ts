@@ -376,7 +376,7 @@ describe("managed folder project lifecycle", () => {
         workerId: "folder-worker",
       },
     });
-    expect(response.statusCode).toBe(202);
+    expect(response.statusCode, response.body).toBe(202);
     const ready = await waitUntilReady(
       projectWireSummarySchema.parse(response.json()).id,
     );
@@ -412,7 +412,7 @@ describe("managed folder project lifecycle", () => {
         workerId: "folder-worker",
       },
     });
-    expect(response.statusCode).toBe(202);
+    expect(response.statusCode, response.body).toBe(202);
     const created = projectWireSummarySchema.parse(response.json());
     expect(created.folderManagement).toBe("external");
     const ready = await waitUntilReady(created.id);
@@ -536,7 +536,11 @@ describe("managed folder project lifecycle", () => {
     ).toMatchObject({ statusCode: 204 });
     expect(commands.at(-1)).toEqual({
       workerId: "folder-worker",
-      command: { type: "project.folder.delete", projectId: second.id },
+      command: {
+        type: "project.folder.delete",
+        projectId: second.id,
+        workspaceStorage: { kind: "system" },
+      },
     });
   });
 
@@ -719,7 +723,11 @@ describe("managed folder project lifecycle", () => {
     expect(deletion.statusCode).toBe(204);
     expect(commands.slice(deletionCommandsStart)).toContainEqual({
       workerId: "folder-worker",
-      command: { type: "project.folder.delete", projectId: project.id },
+      command: {
+        type: "project.folder.delete",
+        projectId: project.id,
+        workspaceStorage: { kind: "system" },
+      },
     });
     expect(
       commands

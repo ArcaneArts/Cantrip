@@ -217,6 +217,7 @@ const unavailableProjectReplicaCapabilities = {
   managedLinkPlacement: false,
   attachExisting: false,
   recursiveParentCreation: false,
+  workspaceScopedRoots: false,
 } satisfies ProjectReplicaCapabilities;
 
 const unavailableStandaloneChatCapabilities = {
@@ -246,6 +247,7 @@ const unavailableManagedFolderCapabilities = {
   attachExisting: false,
   convertToGithub: false,
   remove: false,
+  workspaceScopedRoots: false,
 } satisfies ManagedFolderCapabilities;
 
 const unavailableDirectBroker = {

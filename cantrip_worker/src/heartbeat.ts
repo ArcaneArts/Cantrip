@@ -45,6 +45,7 @@ export function createHeartbeat(
     managedLinkPlacement: false,
     attachExisting: true,
     recursiveParentCreation: true,
+    workspaceScopedRoots: true,
   },
   webRuntimes: ManagedWebRuntimeCapabilities = unavailableManagedWebRuntimeCapabilities,
 ): WorkerHeartbeat {
@@ -64,6 +65,7 @@ export function createHeartbeat(
       attachExisting: true,
       convertToGithub: true,
       remove: true,
+      workspaceScopedRoots: true,
     },
     standaloneChat: {
       protocolVersion: 1,

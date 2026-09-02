@@ -76,6 +76,7 @@ function worker(): WorkerSummary {
       create: true,
       convertToGithub: true,
       remove: true,
+      workspaceScopedRoots: true,
     },
     chatRelocation: false,
     externalCodexHistory: false,
@@ -106,6 +107,10 @@ describe("project GitHub conversion executor", () => {
     });
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectWorkspaceStorageContext: vi.fn().mockResolvedValue({
+        kind: "managed",
+        workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+      }),
       projectGithubConversionJobs: {
         claimNext: vi
           .fn()
@@ -139,6 +144,10 @@ describe("project GitHub conversion executor", () => {
         projectId: active.projectId,
         repository: active.repository,
         confirmationToken: "a".repeat(64),
+        workspaceStorage: {
+          kind: "managed",
+          workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+        },
       }),
       expect.any(Object),
     );

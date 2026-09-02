@@ -622,6 +622,8 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
         ),
       getProjectFolderSetupJob: (ownerId, projectId) =>
         this.projectFolderSetupJobs.get(ownerId, projectId),
+      getProjectWorkspaceStorageContext: (ownerId, projectId) =>
+        this.getProjectWorkspaceStorageContext(ownerId, projectId),
       listProjectReplicas: (ownerId, projectId) =>
         this.listProjectReplicas(ownerId, projectId),
     });

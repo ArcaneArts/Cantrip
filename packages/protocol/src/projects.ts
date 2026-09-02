@@ -204,6 +204,40 @@ export const projectWorkspaceStorageProfileSchema = z.discriminatedUnion(
   ],
 );
 
+const projectWorkspacePortableStorageContextSchema = z
+  .object({
+    kind: z.enum(["system", "legacy"]),
+  })
+  .strict();
+
+const projectWorkspaceManagedStorageContextSchema = z
+  .object({
+    kind: z.literal("managed"),
+    workspaceId: z.string().uuid(),
+  })
+  .strict();
+
+const projectWorkspaceAttachedStorageContextSchema = z
+  .object({
+    kind: z.literal("attached"),
+    workspaceId: z.string().uuid(),
+    workerId: z.string().min(1),
+  })
+  .strict();
+
+/**
+ * Worker-safe workspace identity used when deriving project storage paths.
+ * Attached roots remain opaque and are deliberately absent from this payload.
+ */
+export const projectWorkspaceStorageContextSchema = z.discriminatedUnion(
+  "kind",
+  [
+    projectWorkspacePortableStorageContextSchema,
+    projectWorkspaceManagedStorageContextSchema,
+    projectWorkspaceAttachedStorageContextSchema,
+  ],
+);
+
 const encryptedProjectWorkspaceAttachedStorageCreateSchema = z
   .object({
     kind: z.literal("attached"),
@@ -752,6 +786,10 @@ export type EncryptedProjectWorkspaceStorageCreate = z.infer<
 
 export type ProjectWorkspaceStorageProfile = z.infer<
   typeof projectWorkspaceStorageProfileSchema
+>;
+
+export type ProjectWorkspaceStorageContext = z.infer<
+  typeof projectWorkspaceStorageContextSchema
 >;
 
 export type ProjectWorkspaceUpdate = z.infer<

@@ -129,6 +129,10 @@ describe("project replica job executor", () => {
     };
     const repository = {
       getWorker: vi.fn().mockResolvedValue(capableWorker),
+      getProjectWorkspaceStorageContext: vi.fn().mockResolvedValue({
+        kind: "managed",
+        workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+      }),
       projectGithubConversionJobs: {
         isConvertedManagedFolderSource: vi.fn().mockResolvedValue(false),
       },
@@ -161,6 +165,10 @@ describe("project replica job executor", () => {
       expect.objectContaining({
         type: "project.replica.provision",
         projectId: "project-one",
+        workspaceStorage: {
+          kind: "managed",
+          workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+        },
         placement: {
           mode: "direct",
           path: `ctrr_${"P".repeat(43)}`,
@@ -173,6 +181,60 @@ describe("project replica job executor", () => {
       "command-one",
       expect.objectContaining({ placement: result.placement }),
     );
+  });
+
+  it("blocks managed placement on workers that cannot derive workspace roots", async () => {
+    const active = job("synchronize");
+    const blocked = {
+      ...active,
+      state: "blocked" as const,
+      error: {
+        code: "capability-missing" as const,
+        message: "Capability missing.",
+        retryable: false,
+      },
+    };
+    const block = vi.fn().mockResolvedValue(blocked);
+    const request = vi.fn();
+    const repository = {
+      getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectWorkspaceStorageContext: vi.fn().mockResolvedValue({
+        kind: "managed",
+        workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+      }),
+      projectGithubConversionJobs: {
+        isConvertedManagedFolderSource: vi.fn().mockResolvedValue(false),
+      },
+      projectReplicaJobs: {
+        claimNext: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ownerId: "owner-one",
+            commandId: "command-one",
+            job: active,
+          })
+          .mockResolvedValue(null),
+        block,
+      },
+    } as unknown as ServerRepository;
+    const bridge = {
+      isConnected: vi.fn().mockReturnValue(true),
+      request,
+    } as unknown as WorkerCommandBus;
+    const executor = new ProjectReplicaJobExecutor(repository, bridge, {
+      error: vi.fn(),
+      warn: vi.fn(),
+    });
+
+    executor.queueAvailable();
+    await executor.drain();
+
+    expect(block).toHaveBeenCalledWith(
+      active.id,
+      "command-one",
+      expect.objectContaining({ code: "capability-missing", retryable: false }),
+    );
+    expect(request).not.toHaveBeenCalled();
   });
 
   it("routes exact-revision synchronization and commits only its active result", async () => {
@@ -191,6 +253,9 @@ describe("project replica job executor", () => {
     const completeSynchronize = vi.fn().mockResolvedValue(completed);
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectWorkspaceStorageContext: vi
+        .fn()
+        .mockResolvedValue({ kind: "system" }),
       projectGithubConversionJobs: {
         isConvertedManagedFolderSource: vi.fn().mockResolvedValue(false),
       },
@@ -257,6 +322,9 @@ describe("project replica job executor", () => {
     const markRemovalStarted = vi.fn();
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectWorkspaceStorageContext: vi
+        .fn()
+        .mockResolvedValue({ kind: "system" }),
       projectGithubConversionJobs: {
         isConvertedManagedFolderSource: vi.fn().mockResolvedValue(false),
       },
@@ -308,6 +376,9 @@ describe("project replica job executor", () => {
     const completeRemove = vi.fn().mockResolvedValue(completed);
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      getProjectWorkspaceStorageContext: vi
+        .fn()
+        .mockResolvedValue({ kind: "system" }),
       projectGithubConversionJobs: {
         isConvertedManagedFolderSource: vi.fn().mockResolvedValue(true),
       },
@@ -346,6 +417,7 @@ describe("project replica job executor", () => {
     expect(request).toHaveBeenCalledWith("worker-one", {
       type: "project.folder.delete",
       projectId: "project-one",
+      workspaceStorage: { kind: "system" },
     });
     expect(completeRemove).toHaveBeenCalledWith(
       active.id,

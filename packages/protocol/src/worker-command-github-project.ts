@@ -42,6 +42,7 @@ import {
   projectReplicaPlacementResultSchema,
   gitObjectRevisionSchema,
   projectReplicaSynchronizationPolicySchema,
+  projectWorkspaceStorageContextSchema,
 } from "./projects.js";
 import { chatTurnModeSchema } from "./chat-messages.js";
 import {
@@ -212,16 +213,25 @@ export const workerGithubProjectCommandSchemas = [
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     projectId: z.string().uuid(),
+    workspaceStorage: projectWorkspaceStorageContextSchema.default({
+      kind: "system",
+    }),
     existingPath: z.string().trim().min(1).max(8_192).optional(),
   }),
   z.object({
     type: z.literal("project.folder.delete"),
     projectId: z.string().uuid(),
+    workspaceStorage: projectWorkspaceStorageContextSchema.default({
+      kind: "system",
+    }),
   }),
   z.object({
     type: z.literal("project.folder-conversion.preflight"),
     projectId: z.string().uuid(),
     repository: projectGithubWireRepositorySchema,
+    workspaceStorage: projectWorkspaceStorageContextSchema.default({
+      kind: "system",
+    }),
   }),
   z.object({
     type: z.literal("project.folder-conversion.execute"),
@@ -229,6 +239,9 @@ export const workerGithubProjectCommandSchemas = [
     attempt: z.number().int().positive(),
     projectId: z.string().uuid(),
     repository: projectGithubWireRepositorySchema,
+    workspaceStorage: projectWorkspaceStorageContextSchema.default({
+      kind: "system",
+    }),
     confirmationToken:
       projectGithubConversionPreflightReadySchema.shape.confirmationToken,
     initialCommit: projectGithubConversionStartSchema.shape.initialCommit,
@@ -240,6 +253,9 @@ export const workerGithubProjectCommandSchemas = [
     projectId: z.string().uuid().optional(),
     repository: z.object({
       nameWithOwner: workerRepositoryNameSchema,
+    }),
+    workspaceStorage: projectWorkspaceStorageContextSchema.default({
+      kind: "system",
     }),
     placement: projectReplicaPlacementRequestSchema.optional(),
     expectedRevision: gitObjectRevisionSchema.nullable(),

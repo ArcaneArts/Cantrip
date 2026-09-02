@@ -987,6 +987,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     managedLinkPlacement,
     attachExisting: true,
     recursiveParentCreation: true,
+    workspaceScopedRoots: true,
   } as const;
   const searxngRuntime = new SearxngRuntimeManager({
     dataDirectory: config.dataDirectory,
@@ -2262,7 +2263,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return managedFolders.materialize(command);
       case "project.folder.delete": {
         await runConfigurationRuntimes.stopProject(command.projectId);
-        return managedFolders.delete(command.projectId);
+        return managedFolders.delete(
+          command.projectId,
+          command.workspaceStorage,
+        );
       }
       case "chat.scratch.provision":
         return chatScratch.provision(command);
@@ -2460,6 +2464,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             attempt: command.attempt,
             projectId: command.projectId ?? command.jobId,
             nameWithOwner: command.repository.nameWithOwner,
+            workspaceStorage: command.workspaceStorage,
             placement: command.placement ?? { mode: "managed" },
             expectedRevision: command.expectedRevision,
           },

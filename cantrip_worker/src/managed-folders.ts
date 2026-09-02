@@ -7,31 +7,39 @@ import {
   type ManagedFolderDeleteResult,
   type ManagedFolderMaterializeReady,
   type ProjectGithubConversionRepository,
+  type ProjectWorkspaceStorageContext,
 } from "@cantrip/protocol";
 
 import { canonicalProjectSourcePath } from "./project-source-path.js";
+import {
+  deriveProjectWorkspaceRoot,
+  ensureManagedWorkspaceDirectory,
+  type ProjectStoragePathApi,
+} from "./project-workspace-storage.js";
 
 const PROJECT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-type ManagedFolderPathApi = Pick<typeof path, "dirname" | "join" | "resolve">;
-
 export function deriveManagedFolderLocation(
   dataDirectory: string,
   projectId: string,
-  pathApi: ManagedFolderPathApi = path,
+  storage: ProjectWorkspaceStorageContext = { kind: "system" },
+  pathApi: ProjectStoragePathApi = path,
 ): { displayPath: string; root: string; target: string } {
   if (!PROJECT_ID_PATTERN.test(projectId)) {
     throw new Error("Managed folder commands require a project UUID.");
   }
   const normalizedProjectId = projectId.toLowerCase();
-  const root = pathApi.resolve(dataDirectory, "folders");
+  const workspace = deriveProjectWorkspaceRoot(dataDirectory, storage, pathApi);
+  const root = pathApi.join(workspace.root, "folders");
   const target = pathApi.join(root, normalizedProjectId);
   if (pathApi.dirname(target) !== root) {
     throw new Error("Managed folder target escaped its storage root.");
   }
   return {
-    displayPath: pathApi.join("folders", normalizedProjectId),
+    displayPath: workspace.displayPrefix
+      ? pathApi.join(workspace.displayPrefix, "folders", normalizedProjectId)
+      : pathApi.join("folders", normalizedProjectId),
     root,
     target,
   };
@@ -55,13 +63,25 @@ export class ManagedFolderManager {
     }> = async () => ({ github: null, repositoryFingerprint: null }),
   ) {}
 
-  private foldersRoot(): string {
-    return path.resolve(this.dataDirectory, "folders");
+  private foldersRoot(storage: ProjectWorkspaceStorageContext): string {
+    return path.join(
+      deriveProjectWorkspaceRoot(this.dataDirectory, storage).root,
+      "folders",
+    );
   }
 
-  private async canonicalRoot(): Promise<string> {
-    const root = this.foldersRoot();
-    await mkdir(root, { recursive: true, mode: 0o700 });
+  private async canonicalRoot(
+    storage: ProjectWorkspaceStorageContext,
+  ): Promise<string> {
+    const root =
+      storage.kind === "managed"
+        ? await ensureManagedWorkspaceDirectory(this.dataDirectory, storage, [
+            "folders",
+          ])
+        : this.foldersRoot(storage);
+    if (storage.kind !== "managed") {
+      await mkdir(root, { recursive: true, mode: 0o700 });
+    }
     const entry = await lstat(root);
     if (!entry.isDirectory() || entry.isSymbolicLink()) {
       throw new Error("The managed folders root is not a safe directory.");
@@ -69,22 +89,34 @@ export class ManagedFolderManager {
     return canonicalProjectSourcePath(root);
   }
 
-  private async verifiedTarget(projectId: string): Promise<{
+  private async verifiedTarget(
+    projectId: string,
+    storage: ProjectWorkspaceStorageContext,
+  ): Promise<{
     canonicalRoot: string;
     displayPath: string;
     target: string;
   }> {
-    const location = deriveManagedFolderLocation(this.dataDirectory, projectId);
-    const canonicalRoot = await this.canonicalRoot();
+    const location = deriveManagedFolderLocation(
+      this.dataDirectory,
+      projectId,
+      storage,
+    );
+    const canonicalRoot = await this.canonicalRoot(storage);
     return { canonicalRoot, ...location };
   }
 
-  async resolve(projectId: string): Promise<{
+  async resolve(
+    projectId: string,
+    storage: ProjectWorkspaceStorageContext = { kind: "system" },
+  ): Promise<{
     displayPath: string;
     path: string;
   }> {
-    const { canonicalRoot, displayPath, target } =
-      await this.verifiedTarget(projectId);
+    const { canonicalRoot, displayPath, target } = await this.verifiedTarget(
+      projectId,
+      storage,
+    );
     const entry = await directoryEntry(target);
     if (!entry || !entry.isDirectory() || entry.isSymbolicLink()) {
       throw new Error("The managed folder target is not a safe directory.");
@@ -104,6 +136,7 @@ export class ManagedFolderManager {
     existingPath?: string;
     jobId: string;
     projectId: string;
+    workspaceStorage?: ProjectWorkspaceStorageContext;
   }): Promise<ManagedFolderMaterializeReady> {
     if (input.existingPath) {
       const canonicalTarget = await canonicalProjectSourcePath(
@@ -126,6 +159,7 @@ export class ManagedFolderManager {
     }
     const { canonicalRoot, displayPath, target } = await this.verifiedTarget(
       input.projectId,
+      input.workspaceStorage ?? { kind: "system" },
     );
     const existing = await directoryEntry(target);
     if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) {
@@ -155,8 +189,14 @@ export class ManagedFolderManager {
     });
   }
 
-  async delete(projectId: string): Promise<ManagedFolderDeleteResult> {
-    const { canonicalRoot, target } = await this.verifiedTarget(projectId);
+  async delete(
+    projectId: string,
+    storage: ProjectWorkspaceStorageContext = { kind: "system" },
+  ): Promise<ManagedFolderDeleteResult> {
+    const { canonicalRoot, target } = await this.verifiedTarget(
+      projectId,
+      storage,
+    );
     const entry = await directoryEntry(target);
     if (!entry) {
       return managedFolderDeleteResultSchema.parse({ deleted: false });

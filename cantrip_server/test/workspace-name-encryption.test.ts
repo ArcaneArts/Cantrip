@@ -235,6 +235,12 @@ describe("workspace name encrypted persistence", () => {
         url: "https://github.com/ArcaneArts/WorkspaceProject",
       });
       const assigned = await repository.listProjectWorkspaceWire(LOCAL_USER_ID);
+      await expect(
+        repository.getProjectWorkspaceStorageContext(LOCAL_USER_ID, project.id),
+      ).resolves.toEqual({
+        kind: "managed",
+        workspaceId: customWorkspace.id,
+      });
       expect(
         assigned.workspaces.filter(({ projectIds }) =>
           projectIds.includes(project.id),

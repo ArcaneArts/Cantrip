@@ -170,7 +170,19 @@ export class ProjectFolderSetupJobExecutor {
         this.onChanged({ ownerId: claimed.ownerId, job: blocked });
         return;
       }
-      if (!worker.managedFolders.create) {
+      const workspaceStorage =
+        await this.repository.getProjectWorkspaceStorageContext(
+          claimed.ownerId,
+          job.projectId,
+        );
+      if (!workspaceStorage) {
+        throw new Error("Project workspace storage is unavailable.");
+      }
+      if (
+        !worker.managedFolders.create ||
+        (workspaceStorage.kind === "managed" &&
+          !worker.managedFolders.workspaceScopedRoots)
+      ) {
         const failed = await this.repository.projectFolderSetupJobs.fail(
           job.id,
           claimed.commandId,
@@ -190,6 +202,7 @@ export class ProjectFolderSetupJobExecutor {
             jobId: job.id,
             attempt: job.attempt,
             projectId: job.projectId,
+            workspaceStorage,
             ...(claimed.existingPath
               ? { existingPath: claimed.existingPath }
               : {}),

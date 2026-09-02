@@ -343,6 +343,10 @@ describe("worker channel JSON codec", () => {
         jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
         attempt: 1,
         projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+        workspaceStorage: {
+          kind: "managed",
+          workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+        },
         displayName: "Scratch prototype",
       }),
     ).not.toHaveProperty("path");
@@ -352,6 +356,7 @@ describe("worker channel JSON codec", () => {
         jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
         attempt: 1,
         projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+        workspaceStorage: { kind: "system" },
         displayName: "Existing project",
         existingPath: "C:\\code\\existing-project",
       }),
@@ -360,10 +365,22 @@ describe("worker channel JSON codec", () => {
       workerCommandSchema.parse({
         type: "project.folder.delete",
         projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+        workspaceStorage: { kind: "legacy" },
       }),
     ).toEqual({
       type: "project.folder.delete",
       projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+      workspaceStorage: { kind: "legacy" },
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "project.folder.delete",
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+      }),
+    ).toEqual({
+      type: "project.folder.delete",
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+      workspaceStorage: { kind: "system" },
     });
     expect(
       workerCommandSchema.safeParse({
@@ -380,6 +397,7 @@ describe("worker channel JSON codec", () => {
           nameWithOwner: "ArcaneArts/Scratch",
           url: "https://github.com/ArcaneArts/Scratch",
         },
+        workspaceStorage: { kind: "system" },
       }),
     ).not.toHaveProperty("path");
     expect(
@@ -392,6 +410,10 @@ describe("worker channel JSON codec", () => {
           repositoryId: "42",
           nameWithOwner: "ArcaneArts/Scratch",
           url: "https://github.com/ArcaneArts/Scratch",
+        },
+        workspaceStorage: {
+          kind: "managed",
+          workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
         },
         confirmationToken: "a".repeat(64),
         initialCommit: { message: "Initial commit" },
@@ -1660,12 +1682,14 @@ describe("Cantrip protocol", () => {
       managedLinkPlacement: false,
       attachExisting: false,
       recursiveParentCreation: false,
+      workspaceScopedRoots: false,
     });
     expect(heartbeat.managedFolders).toEqual({
       create: false,
       attachExisting: false,
       convertToGithub: false,
       remove: false,
+      workspaceScopedRoots: false,
     });
     expect(heartbeat.chatRelocation).toBe(false);
     expect(heartbeat.codegraph).toEqual(
@@ -1827,6 +1851,7 @@ describe("Cantrip protocol", () => {
         jobId,
         attempt: 2,
         repository: { nameWithOwner: "ArcaneArts/Cantrip" },
+        workspaceStorage: { kind: "system" },
         expectedRevision: "a".repeat(40),
       }),
     ).toMatchObject({ attempt: 2, expectedRevision: "a".repeat(40) });
@@ -1866,6 +1891,10 @@ describe("Cantrip protocol", () => {
         jobId,
         attempt: 1,
         repository: { nameWithOwner: "ArcaneArts/Cantrip" },
+        workspaceStorage: {
+          kind: "managed",
+          workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb337",
+        },
         expectedRevision: "main",
       }).success,
     ).toBe(false);
