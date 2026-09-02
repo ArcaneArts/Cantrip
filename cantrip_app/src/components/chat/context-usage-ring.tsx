@@ -159,16 +159,25 @@ function contextRingTone(remainingPercent: number | null) {
   return "text-muted-foreground";
 }
 
-function quotaAvailabilityText(provider: ModelProviderSummary) {
-  const availability = providerWeeklyAvailability(provider.accounts);
+function quotaAvailabilityText(
+  provider: ModelProviderSummary,
+  availableResetCredits?: ReadonlyMap<string, number>,
+) {
+  const availability = providerWeeklyAvailability(
+    provider.accounts,
+    provider.kind === "chatgpt" ? availableResetCredits : undefined,
+  );
   if (!availability) return "7-day quota is not reporting yet";
   const accountLabel = `${availability.signedInAccountCount} ${
     availability.signedInAccountCount === 1 ? "account" : "accounts"
   }`;
+  const resetLabel = availability.bankedResetCount
+    ? ` · Includes ${availability.bankedResetCount} banked ${availability.bankedResetCount === 1 ? "reset" : "resets"}`
+    : "";
   if (availability.reportedAccountCount !== availability.signedInAccountCount) {
-    return `${Math.round(availability.availablePercent)}% total 7-day available · ${availability.reportedAccountCount} of ${accountLabel} reporting`;
+    return `${Math.round(availability.availablePercent)}% total 7-day available · ${availability.reportedAccountCount} of ${accountLabel} reporting${resetLabel}`;
   }
-  return `${Math.round(availability.availablePercent)}% total 7-day available across ${accountLabel}`;
+  return `${Math.round(availability.availablePercent)}% total 7-day available across ${accountLabel}${resetLabel}`;
 }
 
 function ContextSummary({ usage }: { usage: ContextUsageSummary | null }) {
@@ -197,9 +206,11 @@ function ContextSummary({ usage }: { usage: ContextUsageSummary | null }) {
 }
 
 function QuotaSummary({
+  availableResetCredits,
   provider,
   selectedAccount,
 }: {
+  availableResetCredits?: ReadonlyMap<string, number>;
   provider: ModelProviderSummary;
   selectedAccount: ModelProviderAccountSummary | null;
 }) {
@@ -208,7 +219,9 @@ function QuotaSummary({
       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {quotaProviderLabel(provider)} quota
       </p>
-      <p className="text-xs leading-5">{quotaAvailabilityText(provider)}</p>
+      <p className="text-xs leading-5">
+        {quotaAvailabilityText(provider, availableResetCredits)}
+      </p>
       {selectedAccount ? (
         <div className="flex min-w-0 items-baseline justify-between gap-3 pt-1 text-xs">
           <span className="shrink-0 text-muted-foreground">
@@ -273,16 +286,21 @@ function AccountQuotaRow({
 }
 
 function QuotaDialog({
+  availableResetCredits,
   onOpenChange,
   open,
   provider,
 }: {
+  availableResetCredits?: ReadonlyMap<string, number>;
   onOpenChange(open: boolean): void;
   open: boolean;
   provider: ModelProviderSummary;
 }) {
   const accounts = signedInQuotaAccounts(provider);
-  const availability = providerWeeklyAvailability(provider.accounts);
+  const availability = providerWeeklyAvailability(
+    provider.accounts,
+    provider.kind === "chatgpt" ? availableResetCredits : undefined,
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -298,7 +316,7 @@ function QuotaDialog({
               <p className="text-sm font-medium">Total available</p>
               <p className="text-xs text-muted-foreground">
                 {availability
-                  ? `${availability.reportedAccountCount} of ${availability.signedInAccountCount} signed-in ${availability.signedInAccountCount === 1 ? "account" : "accounts"} reporting`
+                  ? `${availability.reportedAccountCount} of ${availability.signedInAccountCount} signed-in ${availability.signedInAccountCount === 1 ? "account" : "accounts"} reporting${availability.bankedResetCount ? ` · Includes ${availability.bankedResetCount} banked ${availability.bankedResetCount === 1 ? "reset" : "resets"}` : ""}`
                   : `${accounts.length} signed-in ${accounts.length === 1 ? "account" : "accounts"}`}
               </p>
             </div>
@@ -327,12 +345,14 @@ function QuotaDialog({
 }
 
 export function ContextUsageRing({
+  availableResetCredits,
   messages,
   model,
   modelRouteId = null,
   providerAccountId = null,
   providers,
 }: {
+  availableResetCredits?: ReadonlyMap<string, number>;
   messages: readonly ChatMessage[];
   model: ModelProfileSummary | undefined;
   modelRouteId?: string | null;
@@ -380,7 +400,7 @@ export function ContextUsageRing({
     ? `${formattedPercent(usage.remainingPercent)}% context left, ${numberFormat.format(usage.usedTokens)} of ${numberFormat.format(usage.contextWindowTokens)} tokens used`
     : "Context usage unavailable";
   const quotaLabel = quotaProvider
-    ? `, ${quotaAvailabilityText(quotaProvider)}`
+    ? `, ${quotaAvailabilityText(quotaProvider, availableResetCredits)}`
     : "";
   const accountLabel = quotaAccount
     ? `, current account ${quotaAccount.label}`
@@ -484,6 +504,7 @@ export function ContextUsageRing({
           {quotaProvider ? (
             <>
               <QuotaSummary
+                availableResetCredits={availableResetCredits}
                 provider={quotaProvider}
                 selectedAccount={quotaAccount}
               />
@@ -509,6 +530,7 @@ export function ContextUsageRing({
       </Popover>
       {quotaProvider ? (
         <QuotaDialog
+          availableResetCredits={availableResetCredits}
           open={quotaDialogOpen}
           provider={quotaProvider}
           onOpenChange={setQuotaDialogOpen}

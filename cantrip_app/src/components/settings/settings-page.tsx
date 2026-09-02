@@ -16,12 +16,7 @@ import {
   PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
   ZAI_CODING_PLAN_BASE_URL,
 } from "@cantrip/protocol";
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Cable,
   BarChart3,
@@ -166,6 +161,10 @@ import {
   providerCatalogQueryKey,
   useProviderCatalog,
 } from "./use-provider-catalog";
+import {
+  providerRateLimitResetQueryKey,
+  useChatGptAvailableResetCredits,
+} from "./use-provider-reset-credits";
 
 export type SettingsSection =
   | "general"
@@ -1136,52 +1135,12 @@ export function SettingsPage({
   const [deviceLinkCopied, setDeviceLinkCopied] = useState(false);
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
   const worker = workers.data?.find((item) => item.online) ?? null;
-  const chatGptResetTargets = (settings.data?.providers ?? []).flatMap(
-    (provider) =>
-      provider.kind === "chatgpt"
-        ? provider.accounts
-            .filter(
-              (account) =>
-                account.enabled && account.credentialState === "signed-in",
-            )
-            .map((account) => ({
-              accountId: account.id,
-              providerId: provider.id,
-            }))
-        : [],
-  );
-  const chatGptResetQueries = useQueries({
-    queries: chatGptResetTargets.map((target) => ({
-      enabled: section === "models" && Boolean(worker),
-      queryFn: () =>
-        getProviderRateLimitResets(
-          target.providerId,
-          target.accountId,
-          worker!.workerId,
-        ),
-      queryKey: [
-        "provider-rate-limit-resets",
-        target.providerId,
-        target.accountId,
-        worker?.workerId ?? null,
-      ],
-      refetchInterval: liveResourceRefreshInterval(
-        providerAuthResourcesLive,
-        30_000,
-      ),
-      retry: false,
-      staleTime: 30_000,
-    })),
+  const chatGptAvailableResetCredits = useChatGptAvailableResetCredits({
+    enabled: section === "models",
+    providers: settings.data?.providers ?? [],
+    resourcesLive: providerAuthResourcesLive,
+    workerId: worker?.workerId ?? null,
   });
-  const chatGptAvailableResetCredits = new Map(
-    chatGptResetTargets.flatMap((target, index) => {
-      const availableCount =
-        chatGptResetQueries[index]?.data?.rateLimitResetCredits?.availableCount;
-      return availableCount === undefined
-        ? []
-        : ([[target.accountId, availableCount]] as const);
-    }),
-  );
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [analyticsProvider, setAnalyticsProvider] =
     useState<ModelProviderSummary | null>(null);
@@ -1254,12 +1213,11 @@ export function SettingsPage({
       deviceLogin ? 10_000 : 30_000,
     ),
   });
-  const rateLimitResetQueryKey = [
-    "provider-rate-limit-resets",
-    accountProvider?.id ?? null,
-    selectedAccount?.id ?? null,
+  const rateLimitResetQueryKey = providerRateLimitResetQueryKey(
+    accountProvider?.id,
+    selectedAccount?.id,
     worker?.workerId ?? null,
-  ] as const;
+  );
   const rateLimitResets = useQuery({
     enabled: Boolean(
       providerDialogOpen &&
