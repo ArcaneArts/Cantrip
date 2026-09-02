@@ -116,6 +116,32 @@ export {
   projectPreferredWorkerUpdateSchema,
 } from "./projects.js";
 
+export {
+  workspaceRepositoryDiscoveryJobStateSchema,
+  workspaceRepositoryDiscoveryErrorCodeSchema,
+  workspaceRepositoryDiscoveryErrorSchema,
+  workspaceRepositoryDiscoveryCountsSchema,
+  workspaceRepositoryDiscoveryJobSummarySchema,
+  workspaceRepositoryCandidateClassificationSchema,
+  workspaceRepositoryCandidateImportStateSchema,
+  workspaceRepositoryCandidateSummarySchema,
+  workspaceRepositoryDiscoverySnapshotSchema,
+  workspaceRepositoryDiscoveryStartSchema,
+} from "./workspace-repository-discovery.js";
+
+export type {
+  WorkspaceRepositoryDiscoveryJobState,
+  WorkspaceRepositoryDiscoveryErrorCode,
+  WorkspaceRepositoryDiscoveryError,
+  WorkspaceRepositoryDiscoveryCounts,
+  WorkspaceRepositoryDiscoveryJobSummary,
+  WorkspaceRepositoryCandidateClassification,
+  WorkspaceRepositoryCandidateImportState,
+  WorkspaceRepositoryCandidateSummary,
+  WorkspaceRepositoryDiscoverySnapshot,
+  WorkspaceRepositoryDiscoveryStart,
+} from "./workspace-repository-discovery.js";
+
 export type {
   ProjectReplicaPlacementMode,
   ProjectReplicaPlacementRequest,

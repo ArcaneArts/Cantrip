@@ -188,6 +188,8 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
       "projects",
       "workspace",
     ),
+    accountOwned(schema.workspaceRepositoryDiscoveryJobs, "projects"),
+    accountOwned(schema.workspaceRepositoryCandidates, "projects"),
     projectOwned(schema.projectWorkspaceMemberships),
     projectOwned(schema.projectPolicyAssignments),
     projectOwned(schema.workspacePolicyAssignments, "projects", "workspace"),
