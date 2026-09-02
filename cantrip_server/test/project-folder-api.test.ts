@@ -22,8 +22,10 @@ import {
 } from "@cantrip/protocol/automations";
 import type { TaskOpaqueContent } from "@cantrip/protocol/tasks";
 import {
-  workflowAutomationTriggerSchema,
-  workflowDefinitionDetailSchema,
+  encryptedWorkflowAutomationTriggerCreateSchema,
+  encryptedWorkflowDefinitionCreateSchema,
+  workflowAutomationTriggerWireSchema,
+  workflowDefinitionWireDetailSchema,
 } from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -33,9 +35,14 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 import {
+  protectedBrowserFields,
+  protectedChatFields,
+  protectedDisplayLabelFields,
+  protectedExplorerFields,
   protectedProjectFields,
   protectedRemoteDesktopFields,
   protectedRemoteDesktopInventory,
+  protectedTerminalFields,
 } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
@@ -1207,21 +1214,22 @@ describe("managed folder project lifecycle", () => {
     const root = (
       await database.repository.listProjectWorktrees(LOCAL_USER_ID, project.id)
     )[0]!;
+    const taskChatId = randomUUID();
 
     for (const [suffix, payload] of [
-      ["chats", { title: "Folder agent" }],
+      ["chats", protectedChatFields()],
       [
         "tasks",
         {
-          chatId: randomUUID(),
-          title: "Folder task",
+          chatId: taskChatId,
+          titleProtection: protectedChatFields(taskChatId).titleProtection,
           task: opaqueTaskDraft(),
         },
       ],
-      ["terminals", { title: "Folder terminal" }],
-      ["explorers", { title: "Folder explorer" }],
-      ["code-tabs", { title: "Folder code" }],
-      ["browsers", { title: "Folder browser" }],
+      ["terminals", protectedTerminalFields()],
+      ["explorers", protectedExplorerFields()],
+      ["code-tabs", protectedDisplayLabelFields("code-tab")],
+      ["browsers", protectedBrowserFields()],
       ["remote-desktops", protectedRemoteDesktopFields()],
     ] as const) {
       const response = await app.inject({
@@ -1304,12 +1312,15 @@ describe("managed folder project lifecycle", () => {
       {
         method: "POST" as const,
         url: `/api/projects/${project.id}/views`,
-        payload: { title: "History", kind: "history" },
+        payload: {
+          ...protectedDisplayLabelFields("project-view"),
+          kind: "history",
+        },
         capability: "git",
       },
     ]) {
       const response = await app.inject(request);
-      expect(response.statusCode).toBe(409);
+      expect(response.statusCode, response.body).toBe(409);
       expect(response.json()).toMatchObject({
         code: "project-capability-unavailable",
         capability: request.capability,
@@ -1410,7 +1421,7 @@ describe("managed folder project lifecycle", () => {
     const chatResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/chats`,
-      payload: { title: "Scheduled folder work" },
+      payload: protectedChatFields(),
     });
     expect(chatResponse.statusCode).toBe(201);
     const chatId = (chatResponse.json() as { id: string }).id;
@@ -1506,74 +1517,107 @@ describe("managed folder project lifecycle", () => {
     const workflowResponse = await app.inject({
       method: "POST",
       url: "/api/workflows",
-      payload: {
+      payload: encryptedWorkflowDefinitionCreateSchema.parse({
+        id: randomUUID(),
         scope: "project",
         projectId: project.id,
-        slug: "scheduled-folder-review",
-        name: "Scheduled folder review",
+        source: "manual",
         trustState: "trusted",
+        slugBlindIndex: protectedBytes("folder-workflow-slug", 32),
+        content: {
+          protectedSlug: protectedWorkflowEnvelope("folder-workflow-slug"),
+          protectedName: protectedWorkflowEnvelope("folder-workflow-name"),
+          protectedDescription: protectedWorkflowEnvelope(
+            "folder-workflow-description",
+          ),
+          protectedProvenance: protectedWorkflowEnvelope(
+            "folder-workflow-provenance",
+          ),
+        },
         revision: {
-          graph: {
+          id: randomUUID(),
+          source: "manual",
+          trustState: "trusted",
+          contentBlindIndex: protectedBytes("folder-workflow-content", 32),
+          content: {
+            protectedProvenance: protectedWorkflowEnvelope(
+              "folder-workflow-revision-provenance",
+            ),
+            protectedContentHash: protectedWorkflowEnvelope(
+              "folder-workflow-content-hash",
+            ),
+            protectedDefinition: protectedWorkflowEnvelope(
+              "folder-workflow-definition",
+            ),
+          },
+          manifest: {
             version: 1,
             nodes: [
               {
-                key: "gate",
+                id: randomUUID(),
                 type: "gate",
-                name: "Folder gate",
-                configuration: { prompt: "Approve completion." },
-                permissionRequirements: preauthorized,
+                mutationMode: "read-only",
+                modelRouteId: null,
+                permissionProfileId: null,
               },
             ],
             edges: [],
           },
-          permissionRequirements: preauthorized,
-          trustState: "trusted",
         },
-      },
+      }),
     });
-    expect(workflowResponse.statusCode).toBe(201);
-    const revisionId = workflowDefinitionDetailSchema.parse(
+    expect(workflowResponse.statusCode, workflowResponse.body).toBe(201);
+    const revisionId = workflowDefinitionWireDetailSchema.parse(
       workflowResponse.json(),
     ).revision!.id;
     const triggerBase = {
+      id: randomUUID(),
       workflowRevisionId: revisionId,
       projectId: project.id,
-      name: "Folder automation",
       enabled: true,
-      structuredInput: {},
       permissionManifest: preauthorized,
+      selectedModelRouteId: null,
+      selectedPermissionProfileId: null,
+      protectedName: protectedWorkflowEnvelope("folder-trigger-name"),
+      protectedConfiguration: protectedWorkflowEnvelope(
+        "folder-trigger-configuration",
+      ),
+      protectedInput: protectedWorkflowEnvelope("folder-trigger-input"),
+      credentialHash: null,
     };
     const scheduleTrigger = await app.inject({
       method: "POST",
       url: "/api/workflow-triggers",
-      payload: {
+      payload: encryptedWorkflowAutomationTriggerCreateSchema.parse({
         ...triggerBase,
         type: "schedule",
-        configuration: {
+        publicConfiguration: {
+          type: "schedule",
           intervalSeconds: 60,
           startAt: startsAt,
           catchUpPolicy: "once",
           offlinePolicy: "pause",
         },
-      },
+      }),
     });
-    expect(scheduleTrigger.statusCode).toBe(201);
+    expect(scheduleTrigger.statusCode, scheduleTrigger.body).toBe(201);
     expect(
-      workflowAutomationTriggerSchema.parse(scheduleTrigger.json()),
+      workflowAutomationTriggerWireSchema.parse(scheduleTrigger.json()),
     ).toMatchObject({ type: "schedule", projectId: project.id });
 
     const gitTrigger = await app.inject({
       method: "POST",
       url: "/api/workflow-triggers",
-      payload: {
+      payload: encryptedWorkflowAutomationTriggerCreateSchema.parse({
         ...triggerBase,
+        id: randomUUID(),
         type: "git",
-        configuration: {
+        publicConfiguration: {
+          type: "git",
           event: "push",
-          branchPattern: "*",
           minimumIntervalSeconds: 1,
         },
-      },
+      }),
     });
     expect(gitTrigger.statusCode).toBe(409);
     expect(gitTrigger.json()).toMatchObject({
