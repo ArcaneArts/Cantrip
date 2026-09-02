@@ -2,10 +2,12 @@ import type { WorkspaceRepositoryCandidateSummary } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
+  defaultWorkspaceRepositorySelection,
   workspaceRepositoryCandidateCanImport,
   workspaceRepositoryCandidateClassificationLabel,
   workspaceRepositoryCandidateDiagnosticLabel,
   workspaceRepositoryCandidateGithub,
+  workspaceRepositoryCandidateIsVisible,
   workspaceRepositoryCandidateName,
   type ResolvedWorkspaceRepositoryCandidate,
 } from "./workspace-repository-discovery-review";
@@ -99,5 +101,44 @@ describe("workspace repository import review", () => {
     expect(workspaceRepositoryCandidateDiagnosticLabel("linked-worktree")).toBe(
       "Non-primary linked worktrees cannot be imported automatically.",
     );
+  });
+
+  it("defaults accessible GitHub repositories and keeps local repositories opt-in", () => {
+    const local = resolved();
+    const github = resolved({
+      id: "6140c772-84bd-4e75-b335-2d58ccabf763",
+      classification: "github-accessible",
+      github: {
+        repositoryId: handle,
+        nameWithOwner: handle,
+        url: handle,
+      },
+      originUrlHandle: handle,
+    });
+    github.github = {
+      repositoryId: "123",
+      nameWithOwner: "ArcaneArts/Sentinel",
+      url: "https://github.com/ArcaneArts/Sentinel",
+    };
+
+    expect(defaultWorkspaceRepositorySelection([local, github])).toEqual(
+      new Set([github.candidate.id]),
+    );
+  });
+
+  it("hides repositories already imported or registered elsewhere", () => {
+    const imported = resolved({ importState: "imported" });
+    const conflict = resolved({
+      conflict: {
+        code: "duplicate-checkout",
+        kind: "checkout",
+        projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
+        workspaceId: "workspace-two",
+      },
+    });
+
+    expect(workspaceRepositoryCandidateIsVisible(resolved())).toBe(true);
+    expect(workspaceRepositoryCandidateIsVisible(imported)).toBe(false);
+    expect(workspaceRepositoryCandidateIsVisible(conflict)).toBe(false);
   });
 });

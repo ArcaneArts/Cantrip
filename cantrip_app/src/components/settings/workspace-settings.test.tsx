@@ -116,7 +116,7 @@ describe("workspace settings", () => {
 
     expect(markup).not.toContain("Make Attached the default workspace");
     expect(markup).toContain("Delete Attached");
-    expect(markup).toContain("Repositories");
+    expect(markup).toContain("Import more");
   });
 
   it("only offers repository discovery for attached workspaces", () => {

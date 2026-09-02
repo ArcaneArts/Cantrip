@@ -10,6 +10,9 @@ import {
 } from "./workspace-create-dialog";
 
 const listDesktopWorkers = vi.fn();
+const getWorkerLocality = vi.fn(
+  async (): Promise<Array<{ internal: boolean; workerId: string }>> => [],
+);
 
 vi.mock("@/lib/desktop-worker", () => ({
   listDesktopWorkers: () => listDesktopWorkers(),
@@ -17,6 +20,15 @@ vi.mock("@/lib/desktop-worker", () => ({
 
 vi.mock("@/lib/desktop-folder-picker", () => ({
   pickLocalFolder: vi.fn(),
+}));
+
+vi.mock("@/lib/api", () => ({
+  getWorkerLocality: () => getWorkerLocality(),
+}));
+
+vi.mock("@/lib/server-connections", () => ({
+  getActiveServerConnection: () => ({ kind: "local" }),
+  getActiveServerUrl: () => "http://127.0.0.1:4310",
 }));
 
 vi.mock("@/components/ui/dialog", () => ({
@@ -86,6 +98,10 @@ function nodeText(node: ReactTestInstance): string {
   return node.children
     .map((child) => (typeof child === "string" ? child : nodeText(child)))
     .join("");
+}
+
+async function flushQueries(): Promise<void> {
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 }
 
 describe("workspace create dialog", () => {
@@ -158,7 +174,7 @@ describe("workspace create dialog", () => {
       nodeText(button).includes("Use an existing folder"),
     );
     await act(async () => attachedChoice!.props.onClick());
-    await act(async () => undefined);
+    await flushQueries();
     expect(
       buttons().some((button) => nodeText(button).includes("Browse")),
     ).toBe(true);
@@ -194,6 +210,50 @@ describe("workspace create dialog", () => {
       "data-open": "true",
       "data-workspace-id": attachedWorkspace.id,
     });
+
+    await act(async () => renderer.unmount());
+    queryClient.clear();
+  });
+
+  it("offers the native picker for a local server's internal worker", async () => {
+    listDesktopWorkers.mockResolvedValue([]);
+    getWorkerLocality.mockResolvedValue([
+      { internal: true, workerId: worker.workerId },
+    ]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <WorkspaceCreateDialog
+            onCreate={vi.fn()}
+            onOpenChange={vi.fn()}
+            open
+            workers={[worker]}
+            workspaces={[]}
+          />
+        </QueryClientProvider>,
+      );
+    });
+
+    const buttons = () => renderer.root.findAllByType("button");
+    await act(async () => {
+      buttons()
+        .find((button) => nodeText(button).includes("Use an existing folder"))!
+        .props.onClick();
+    });
+    await flushQueries();
+
+    expect(
+      buttons().some((button) => nodeText(button).includes("Browse")),
+    ).toBe(true);
+    const storageChoice = buttons().find((button) =>
+      nodeText(button).includes("Use an existing folder"),
+    );
+    expect(storageChoice?.props.className).toContain("min-w-0");
+    expect(storageChoice?.props.className).toContain("whitespace-normal");
 
     await act(async () => renderer.unmount());
     queryClient.clear();
@@ -240,7 +300,7 @@ describe("workspace create dialog", () => {
         .find((button) => nodeText(button).includes("Use an existing folder"))!
         .props.onClick();
     });
-    await act(async () => undefined);
+    await flushQueries();
     expect(
       buttons().some((button) => nodeText(button).includes("Browse")),
     ).toBe(true);

@@ -18,8 +18,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { getWorkerLocality } from "@/lib/api";
 import { pickLocalFolder } from "@/lib/desktop-folder-picker";
 import { listDesktopWorkers } from "@/lib/desktop-worker";
+import {
+  getActiveServerConnection,
+  getActiveServerUrl,
+} from "@/lib/server-connections";
+import { workspaceFolderPickerWorkerIds } from "@/lib/workspace-folder-picker";
 
 export function workspaceCreationCanSubmit(input: {
   name: string;
@@ -63,6 +69,10 @@ export function WorkspaceCreateDialog({
   const [localWorkerIds, setLocalWorkerIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const activeConnection = getActiveServerConnection();
+  const serverUrl =
+    getActiveServerUrl() ||
+    (typeof window === "undefined" ? "" : window.location.origin);
   const attachableWorkers = useMemo(
     () =>
       workers.filter(
@@ -73,21 +83,26 @@ export function WorkspaceCreateDialog({
   useEffect(() => {
     if (!open || storageKind !== "attached") return;
     let cancelled = false;
-    void listDesktopWorkers()
-      .then((desktopWorkers) => {
-        if (!cancelled) {
-          setLocalWorkerIds(
-            new Set(desktopWorkers.map((worker) => worker.workerId)),
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLocalWorkerIds(new Set());
-      });
+    void Promise.all([
+      listDesktopWorkers().catch(() => []),
+      activeConnection?.kind === "local"
+        ? getWorkerLocality().catch(() => [])
+        : Promise.resolve([]),
+    ]).then(([desktopWorkers, workerManagement]) => {
+      if (cancelled) return;
+      setLocalWorkerIds(
+        workspaceFolderPickerWorkerIds({
+          connectionKind: activeConnection?.kind ?? null,
+          desktopWorkers,
+          serverUrl,
+          workerManagement,
+        }),
+      );
+    });
     return () => {
       cancelled = true;
     };
-  }, [open, storageKind]);
+  }, [activeConnection?.kind, open, serverUrl, storageKind]);
   useEffect(() => {
     if (storageKind !== "attached" || workerId) return;
     setWorkerId(
@@ -167,7 +182,7 @@ export function WorkspaceCreateDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent>
-          <form className="grid gap-5" onSubmit={submit}>
+          <form className="grid min-w-0 gap-5" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle>New workspace</DialogTitle>
               <DialogDescription>
@@ -187,33 +202,33 @@ export function WorkspaceCreateDialog({
             </label>
             <div className="grid gap-3">
               <span className="text-sm font-medium">Storage</span>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <Button
-                  className="h-auto justify-start px-3 py-3 text-left"
+                  className="h-auto min-w-0 items-start justify-start whitespace-normal px-3 py-3 text-left"
                   onClick={() => setStorageKind("managed")}
                   type="button"
                   variant={storageKind === "managed" ? "default" : "outline"}
                 >
-                  <span>
+                  <span className="min-w-0">
                     <span className="block font-medium">
                       Managed by Cantrip
                     </span>
-                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    <span className="mt-1 block break-words text-xs font-normal text-muted-foreground">
                       Available independently on every compatible worker.
                     </span>
                   </span>
                 </Button>
                 <Button
-                  className="h-auto justify-start px-3 py-3 text-left"
+                  className="h-auto min-w-0 items-start justify-start whitespace-normal px-3 py-3 text-left"
                   onClick={() => setStorageKind("attached")}
                   type="button"
                   variant={storageKind === "attached" ? "default" : "outline"}
                 >
-                  <span>
+                  <span className="min-w-0">
                     <span className="block font-medium">
                       Use an existing folder
                     </span>
-                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    <span className="mt-1 block break-words text-xs font-normal text-muted-foreground">
                       Attach a user-owned directory on one home worker.
                     </span>
                   </span>
