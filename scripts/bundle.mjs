@@ -11,6 +11,8 @@ import {
 import { pnpmCommand } from "./pnpm-command.mjs";
 import { serviceWorkspaceBuilds } from "./package-workspace-runtime.mjs";
 
+export const desktopWorkspaceBuilds = ["@cantrip/glitch"];
+
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -57,6 +59,13 @@ export async function bundleNativeArtifacts({
   await rm(output, { force: true, recursive: true });
 
   for (const packageName of serviceWorkspaceBuilds) {
+    const build = pnpmCommand(["--filter", packageName, "build"]);
+    await run(build.command, build.arguments, {
+      cwd: root,
+      label: `${packageName} build`,
+    });
+  }
+  for (const packageName of desktopWorkspaceBuilds) {
     const build = pnpmCommand(["--filter", packageName, "build"]);
     await run(build.command, build.arguments, {
       cwd: root,
