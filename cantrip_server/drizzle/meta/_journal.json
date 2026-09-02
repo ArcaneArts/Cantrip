@@ -1310,6 +1310,13 @@
       "when": 1788374102349,
       "tag": "0186_external_git_conversion_capability_default",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1788374270970,
+      "tag": "0187_enforce_immutable_workspace_bindings",
+      "breakpoints": true
     }
   ]
 }
