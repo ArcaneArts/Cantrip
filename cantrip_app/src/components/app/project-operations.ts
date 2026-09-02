@@ -59,7 +59,8 @@ export function useProjectSetupOperations({
     },
   });
   const createWorkspaceMutation = useMutation({
-    mutationFn: (name: string) => createProjectWorkspace({ name }),
+    mutationFn: (name: string) =>
+      createProjectWorkspace({ name, storage: { kind: "managed" } }),
     onSuccess: (workspace) => {
       queryClient.setQueryData<ProjectWorkspaceSummary[]>(
         ["project-workspaces"],

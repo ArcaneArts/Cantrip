@@ -1261,6 +1261,13 @@
       "when": 1788364800000,
       "tag": "0179_single_project_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1788368400000,
+      "tag": "0180_workspace_storage_profiles",
+      "breakpoints": true
     }
   ]
 }

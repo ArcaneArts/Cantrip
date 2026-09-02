@@ -148,9 +148,83 @@ export const encryptedManagedFolderProjectCreateSchema =
     })
     .strict();
 
-export const projectWorkspaceCreateSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-});
+export const projectWorkspaceStorageKindSchema = z.enum([
+  "system",
+  "legacy",
+  "managed",
+  "attached",
+]);
+
+export function projectWorkspaceStorageCanBeDefault(
+  kind: z.infer<typeof projectWorkspaceStorageKindSchema>,
+): boolean {
+  return kind !== "attached";
+}
+
+const projectWorkspaceManagedStorageCreateSchema = z
+  .object({ kind: z.literal("managed") })
+  .strict();
+
+const projectWorkspaceAttachedStorageCreateSchema = z
+  .object({
+    kind: z.literal("attached"),
+    workerId: z.string().min(1),
+    rootPath: z.string().trim().min(1).max(8_192),
+  })
+  .strict();
+
+export const projectWorkspaceStorageCreateSchema = z.discriminatedUnion(
+  "kind",
+  [
+    projectWorkspaceManagedStorageCreateSchema,
+    projectWorkspaceAttachedStorageCreateSchema,
+  ],
+);
+
+const projectWorkspacePortableStorageProfileSchema = z
+  .object({
+    kind: z.enum(["system", "legacy", "managed"]),
+  })
+  .strict();
+
+const projectWorkspaceAttachedStorageProfileSchema = z
+  .object({
+    kind: z.literal("attached"),
+    workerId: z.string().min(1),
+    rootPathHandle: repositoryRoutingHandleSchema,
+    displayHandle: repositoryRoutingHandleSchema,
+  })
+  .strict();
+
+export const projectWorkspaceStorageProfileSchema = z.discriminatedUnion(
+  "kind",
+  [
+    projectWorkspacePortableStorageProfileSchema,
+    projectWorkspaceAttachedStorageProfileSchema,
+  ],
+);
+
+const encryptedProjectWorkspaceAttachedStorageCreateSchema = z
+  .object({
+    kind: z.literal("attached"),
+    workerId: z.string().min(1),
+    rootPathHandle: repositoryRoutingHandleSchema,
+    displayHandle: repositoryRoutingHandleSchema,
+  })
+  .strict();
+
+export const encryptedProjectWorkspaceStorageCreateSchema =
+  z.discriminatedUnion("kind", [
+    projectWorkspaceManagedStorageCreateSchema,
+    encryptedProjectWorkspaceAttachedStorageCreateSchema,
+  ]);
+
+export const projectWorkspaceCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    storage: projectWorkspaceStorageCreateSchema,
+  })
+  .strict();
 
 export const projectWorkspaceUpdateSchema = z
   .object({
@@ -166,6 +240,7 @@ export const projectWorkspaceUpdateSchema = z
 const projectWorkspaceWireBaseSchema = z
   .object({
     id: z.string().min(1).max(255),
+    storage: projectWorkspaceStorageProfileSchema,
     position: z.number().int().nonnegative(),
     isDefault: z.boolean(),
     projectIds: z.array(z.string().min(1)),
@@ -221,6 +296,7 @@ export const encryptedProjectWorkspaceCreateSchema = z
   .object({
     id: z.string().uuid(),
     nameProtection: encryptedProjectWorkspaceNameSchema,
+    storage: encryptedProjectWorkspaceStorageCreateSchema,
   })
   .strict();
 
@@ -240,6 +316,7 @@ export const encryptedProjectWorkspaceUpdateSchema = z
 export const projectWorkspaceSummarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  storage: projectWorkspaceStorageProfileSchema,
   position: z.number().int().nonnegative(),
   isDefault: z.boolean(),
   projectIds: z.array(z.string().min(1)),
@@ -659,6 +736,22 @@ export type ProjectReplicaJobCancel = z.infer<
 
 export type ProjectWorkspaceCreate = z.infer<
   typeof projectWorkspaceCreateSchema
+>;
+
+export type ProjectWorkspaceStorageKind = z.infer<
+  typeof projectWorkspaceStorageKindSchema
+>;
+
+export type ProjectWorkspaceStorageCreate = z.infer<
+  typeof projectWorkspaceStorageCreateSchema
+>;
+
+export type EncryptedProjectWorkspaceStorageCreate = z.infer<
+  typeof encryptedProjectWorkspaceStorageCreateSchema
+>;
+
+export type ProjectWorkspaceStorageProfile = z.infer<
+  typeof projectWorkspaceStorageProfileSchema
 >;
 
 export type ProjectWorkspaceUpdate = z.infer<

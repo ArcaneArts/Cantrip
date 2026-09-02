@@ -15,6 +15,7 @@ const now = "2026-08-16T12:00:00.000Z";
 const mainWorkspace = projectWorkspaceSummarySchema.parse({
   id: "workspace-main",
   name: "Main Workspace",
+  storage: { kind: "system" },
   position: 0,
   isDefault: true,
   projectIds: [],
@@ -25,6 +26,7 @@ const mainWorkspace = projectWorkspaceSummarySchema.parse({
 const personalWorkspace = projectWorkspaceSummarySchema.parse({
   id: "workspace-personal",
   name: "Personal",
+  storage: { kind: "managed" },
   position: 1,
   isDefault: false,
   projectIds: ["project-cantrip"],
@@ -82,5 +84,37 @@ describe("workspace settings", () => {
     expect(markup).toContain("Personal");
     expect(markup).not.toContain('type="checkbox"');
     expect(markup).toContain("Policies");
+  });
+
+  it("does not offer attached workspaces as default destinations", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    queryClient.setQueryData(["projects"], []);
+    queryClient.setQueryData(
+      ["project-workspaces"],
+      [
+        mainWorkspace,
+        {
+          ...personalWorkspace,
+          name: "Attached",
+          storage: {
+            kind: "attached" as const,
+            workerId: "worker-1",
+            rootPathHandle: `ctrr_${"a".repeat(43)}`,
+            displayHandle: `ctrr_${"b".repeat(43)}`,
+          },
+        },
+      ],
+    );
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSettings />
+      </QueryClientProvider>,
+    );
+
+    expect(markup).not.toContain("Make Attached the default workspace");
+    expect(markup).toContain("Delete Attached");
   });
 });

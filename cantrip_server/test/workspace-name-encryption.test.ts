@@ -4,6 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { EncryptedProjectWorkspaceName } from "@cantrip/protocol";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -64,6 +65,7 @@ describe("workspace name encrypted persistence", () => {
       const defaultWorkspace = initial.workspaces[0]!;
       expect(defaultWorkspace).toMatchObject({
         nameProtection: { state: "system-default" },
+        storage: { kind: "system" },
         position: 0,
         isDefault: true,
         projectIds: [],
@@ -117,14 +119,27 @@ describe("workspace name encrypted persistence", () => {
         {
           id: "bcb5c558-3dcb-4dca-8561-90f014b1860c",
           nameProtection: encryptedName(9),
+          storage: { kind: "managed" },
         },
       );
       await expect(
         repository.createEncryptedProjectWorkspace(LOCAL_USER_ID, {
           id: "3d931cba-1d7c-4883-bcd0-a32434b434c9",
           nameProtection: encryptedName(9),
+          storage: { kind: "managed" },
         }),
       ).rejects.toThrow();
+      expect(customWorkspace.storage).toEqual({ kind: "managed" });
+      const promotedCustomWorkspace =
+        await repository.updateEncryptedProjectWorkspace(
+          LOCAL_USER_ID,
+          customWorkspace.id,
+          { expectedRevision: customWorkspace.revision, isDefault: true },
+        );
+      expect(promotedCustomWorkspace?.isDefault).toBe(true);
+      await expect(
+        repository.deleteProjectWorkspace(LOCAL_USER_ID, defaultWorkspace.id),
+      ).rejects.toThrow(/cannot be deleted/iu);
 
       await client.exec(`
         INSERT INTO workers (
@@ -134,6 +149,82 @@ describe("workspace name encrypted persistence", () => {
           'linux', 'x64', now(), now()
         );
       `);
+      await expect(
+        repository.createEncryptedProjectWorkspace(LOCAL_USER_ID, {
+          id: "732416b3-3d23-4411-b449-dd4bbb603f57",
+          nameProtection: encryptedName(11),
+          storage: {
+            kind: "attached",
+            workerId: "workspace-worker",
+            rootPathHandle: `ctrr_${"c".repeat(43)}`,
+            displayHandle: `ctrr_${"d".repeat(43)}`,
+          },
+        }),
+      ).rejects.toThrow(/verified root attachment/iu);
+      const attachedWorkspaceId = "65bd154a-b14d-4346-b8f4-e81e2536df14";
+      await database.insert(schema.projectWorkspaces).values({
+        id: attachedWorkspaceId,
+        ownerId: LOCAL_USER_ID,
+        nameEnvelope: encryptedName(10).envelope,
+        nameBlindIndex: encryptedName(10).blindIndex,
+        nameFormatVersion: 1,
+        nameKeyRevision: 1,
+        position: 2,
+      });
+      await database.insert(schema.projectWorkspaceStorageProfiles).values({
+        workspaceId: attachedWorkspaceId,
+        kind: "attached",
+        workerId: "workspace-worker",
+        protectedRootPathHandle: `ctrr_${"a".repeat(43)}`,
+        protectedDisplayHandle: `ctrr_${"b".repeat(43)}`,
+      });
+      await expect(
+        repository.updateEncryptedProjectWorkspace(
+          LOCAL_USER_ID,
+          attachedWorkspaceId,
+          { expectedRevision: 1, isDefault: true },
+        ),
+      ).rejects.toThrow(/cannot be the default/iu);
+      expect(
+        (
+          await repository.listProjectWorkspaceWire(LOCAL_USER_ID)
+        ).workspaces.find(({ id }) => id === attachedWorkspaceId)?.storage,
+      ).toEqual({
+        kind: "attached",
+        workerId: "workspace-worker",
+        rootPathHandle: `ctrr_${"a".repeat(43)}`,
+        displayHandle: `ctrr_${"b".repeat(43)}`,
+      });
+      await database
+        .update(schema.projectWorkspaces)
+        .set({ isDefault: false })
+        .where(eq(schema.projectWorkspaces.id, customWorkspace.id));
+      await database
+        .update(schema.projectWorkspaces)
+        .set({ isDefault: true })
+        .where(eq(schema.projectWorkspaces.id, attachedWorkspaceId));
+      await expect(
+        repository.ensureDefaultProjectWorkspace(LOCAL_USER_ID),
+      ).resolves.toMatchObject({ id: defaultWorkspace.id, isDefault: true });
+      expect(
+        (
+          await repository.listProjectWorkspaceWire(LOCAL_USER_ID)
+        ).workspaces.find(({ id }) => id === attachedWorkspaceId)?.isDefault,
+      ).toBe(false);
+      await expect(
+        repository.deleteProjectWorkspace(LOCAL_USER_ID, attachedWorkspaceId),
+      ).resolves.toBe(true);
+      expect(
+        await database
+          .select()
+          .from(schema.projectWorkspaceStorageProfiles)
+          .where(
+            eq(
+              schema.projectWorkspaceStorageProfiles.workspaceId,
+              attachedWorkspaceId,
+            ),
+          ),
+      ).toEqual([]);
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
         workerId: "workspace-worker",
         workspaceId: customWorkspace.id,

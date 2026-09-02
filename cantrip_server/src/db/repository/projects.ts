@@ -1,5 +1,6 @@
 import {
   projectCapabilitiesForOriginKind,
+  projectWorkspaceStorageCanBeDefault,
   projectWireSummarySchema,
   type EncryptedProjectWorkspaceCreate,
   type EncryptedProjectWorkspaceUpdate,
@@ -25,6 +26,8 @@ type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
 export type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
+type ProjectWorkspaceStorageProfileRow =
+  typeof schema.projectWorkspaceStorageProfiles.$inferSelect;
 type WorkerRow = typeof schema.workers.$inferSelect;
 
 export class ProjectWorkspaceInvariantError extends Error {}
@@ -139,6 +142,7 @@ function toProjectReplicaSummary(
 
 function toProjectWorkspaceWireSummary(
   workspace: ProjectWorkspaceRow,
+  storage: ProjectWorkspaceStorageProfileRow,
   projectIds: string[],
 ): ProjectWorkspaceWireSummary {
   if (
@@ -173,9 +177,19 @@ function toProjectWorkspaceWireSummary(
           blindIndex: workspace.nameBlindIndex!,
           envelope: workspace.nameEnvelope,
         };
+  const storageSummary: ProjectWorkspaceWireSummary["storage"] =
+    storage.kind === "attached"
+      ? {
+          kind: "attached",
+          workerId: storage.workerId!,
+          rootPathHandle: storage.protectedRootPathHandle!,
+          displayHandle: storage.protectedDisplayHandle!,
+        }
+      : { kind: storage.kind };
   return {
     id: workspace.id,
     nameProtection,
+    storage: storageSummary,
     position: workspace.position,
     isDefault: workspace.isDefault,
     projectIds,
@@ -332,44 +346,116 @@ export class ProjectRepository {
     ownerId: string,
   ): Promise<ProjectWorkspaceRow> {
     const defaultId = `workspace:default:${ownerId}`;
-    let rows = await this.database
-      .select()
-      .from(schema.projectWorkspaces)
-      .where(
-        and(
-          eq(schema.projectWorkspaces.ownerId, ownerId),
-          eq(schema.projectWorkspaces.isDefault, true),
-        ),
-      )
-      .limit(1);
-    if (rows[0]) return rows[0];
-    await this.database
-      .insert(schema.projectWorkspaces)
-      .values({
-        id: defaultId,
-        ownerId,
-        position: 0,
-        isDefault: true,
-      })
-      .onConflictDoNothing();
-    rows = await this.database
-      .select()
-      .from(schema.projectWorkspaces)
-      .where(
-        and(
-          eq(schema.projectWorkspaces.ownerId, ownerId),
-          eq(schema.projectWorkspaces.isDefault, true),
-        ),
-      )
-      .limit(1);
-    return firstOrThrow(rows, "ensuring the default workspace");
+    return this.database.transaction(async (transaction) => {
+      let workspaces = await transaction
+        .select()
+        .from(schema.projectWorkspaces)
+        .where(eq(schema.projectWorkspaces.ownerId, ownerId));
+      await transaction
+        .insert(schema.projectWorkspaces)
+        .values({
+          id: defaultId,
+          ownerId,
+          position: 0,
+          isDefault: !workspaces.some(({ isDefault }) => isDefault),
+        })
+        .onConflictDoNothing();
+      workspaces = await transaction
+        .select()
+        .from(schema.projectWorkspaces)
+        .where(eq(schema.projectWorkspaces.ownerId, ownerId));
+
+      const existingProfiles = await transaction
+        .select({
+          workspaceId: schema.projectWorkspaceStorageProfiles.workspaceId,
+        })
+        .from(schema.projectWorkspaceStorageProfiles)
+        .innerJoin(
+          schema.projectWorkspaces,
+          eq(
+            schema.projectWorkspaces.id,
+            schema.projectWorkspaceStorageProfiles.workspaceId,
+          ),
+        )
+        .where(eq(schema.projectWorkspaces.ownerId, ownerId));
+      const profiledWorkspaceIds = new Set(
+        existingProfiles.map(({ workspaceId }) => workspaceId),
+      );
+      const missingProfiles = workspaces
+        .filter(({ id }) => !profiledWorkspaceIds.has(id))
+        .map(({ id }) => ({
+          workspaceId: id,
+          kind: id === defaultId ? ("system" as const) : ("legacy" as const),
+        }));
+      if (missingProfiles.length > 0) {
+        await transaction
+          .insert(schema.projectWorkspaceStorageProfiles)
+          .values(missingProfiles)
+          .onConflictDoNothing();
+      }
+
+      const profiles = await transaction
+        .select()
+        .from(schema.projectWorkspaceStorageProfiles)
+        .innerJoin(
+          schema.projectWorkspaces,
+          eq(
+            schema.projectWorkspaces.id,
+            schema.projectWorkspaceStorageProfiles.workspaceId,
+          ),
+        )
+        .where(eq(schema.projectWorkspaces.ownerId, ownerId));
+      const defaultWorkspace = profiles.find(
+        ({ project_workspaces: workspace }) => workspace.isDefault,
+      );
+      if (
+        defaultWorkspace &&
+        projectWorkspaceStorageCanBeDefault(
+          defaultWorkspace.project_workspace_storage_profiles.kind,
+        )
+      ) {
+        return defaultWorkspace.project_workspaces;
+      }
+
+      const updatedAt = new Date();
+      if (defaultWorkspace) {
+        await transaction
+          .update(schema.projectWorkspaces)
+          .set({
+            isDefault: false,
+            revision: sql`${schema.projectWorkspaces.revision} + 1`,
+            updatedAt,
+          })
+          .where(
+            eq(
+              schema.projectWorkspaces.id,
+              defaultWorkspace.project_workspaces.id,
+            ),
+          );
+      }
+      const restored = await transaction
+        .update(schema.projectWorkspaces)
+        .set({
+          isDefault: true,
+          revision: sql`${schema.projectWorkspaces.revision} + 1`,
+          updatedAt,
+        })
+        .where(
+          and(
+            eq(schema.projectWorkspaces.id, defaultId),
+            eq(schema.projectWorkspaces.ownerId, ownerId),
+          ),
+        )
+        .returning();
+      return firstOrThrow(restored, "restoring the system workspace default");
+    });
   }
 
   async listProjectWorkspaceWire(
     ownerId: string,
   ): Promise<ProjectWorkspaceWireList> {
     await this.collaborators.ensureDefaultProjectWorkspace(ownerId);
-    const [workspaces, memberships] = await Promise.all([
+    const [workspaces, storageProfiles, memberships] = await Promise.all([
       this.database
         .select()
         .from(schema.projectWorkspaces)
@@ -378,6 +464,17 @@ export class ProjectRepository {
           asc(schema.projectWorkspaces.position),
           asc(schema.projectWorkspaces.createdAt),
         ),
+      this.database
+        .select()
+        .from(schema.projectWorkspaceStorageProfiles)
+        .innerJoin(
+          schema.projectWorkspaces,
+          eq(
+            schema.projectWorkspaces.id,
+            schema.projectWorkspaceStorageProfiles.workspaceId,
+          ),
+        )
+        .where(eq(schema.projectWorkspaces.ownerId, ownerId)),
       this.database
         .select({
           workspaceId: schema.projectWorkspaceMemberships.workspaceId,
@@ -399,12 +496,25 @@ export class ProjectRepository {
       current.push(membership.projectId);
       projectIds.set(membership.workspaceId, current);
     }
-    const summaries = workspaces.map((workspace) =>
-      toProjectWorkspaceWireSummary(
-        workspace,
-        projectIds.get(workspace.id) ?? [],
-      ),
+    const storageByWorkspaceId = new Map(
+      storageProfiles.map(({ project_workspace_storage_profiles: profile }) => [
+        profile.workspaceId,
+        profile,
+      ]),
     );
+    const summaries = workspaces.map((workspace) => {
+      const storage = storageByWorkspaceId.get(workspace.id);
+      if (!storage) {
+        throw new ProjectWorkspaceInvariantError(
+          `Workspace ${workspace.id} has no storage profile.`,
+        );
+      }
+      return toProjectWorkspaceWireSummary(
+        workspace,
+        storage,
+        projectIds.get(workspace.id) ?? [],
+      );
+    });
     return { workspaces: summaries };
   }
 
@@ -413,6 +523,11 @@ export class ProjectRepository {
     input: EncryptedProjectWorkspaceCreate,
   ): Promise<ProjectWorkspaceWireSummary> {
     await this.collaborators.ensureDefaultProjectWorkspace(ownerId);
+    if (input.storage.kind !== "managed") {
+      throw new ProjectWorkspaceInvariantError(
+        "Attached workspaces must be created through verified root attachment.",
+      );
+    }
     const profiles = await this.database
       .select({
         activeMasterKeyRevision:
@@ -433,29 +548,41 @@ export class ProjectRepository {
         "Workspace encryption key revision is not active.",
       );
     }
-    const last = await this.database
-      .select({ position: schema.projectWorkspaces.position })
-      .from(schema.projectWorkspaces)
-      .where(eq(schema.projectWorkspaces.ownerId, ownerId))
-      .orderBy(desc(schema.projectWorkspaces.position))
-      .limit(1);
-    const rows = await this.database
-      .insert(schema.projectWorkspaces)
-      .values({
-        id: input.id,
-        ownerId,
-        nameEnvelope: input.nameProtection.envelope,
-        nameBlindIndex: input.nameProtection.blindIndex,
-        nameFormatVersion: input.nameProtection.formatVersion,
-        nameKeyRevision: input.nameProtection.keyRevision,
-        position: (last[0]?.position ?? -1) + 1,
-        isDefault: false,
-      })
-      .returning();
-    return toProjectWorkspaceWireSummary(
-      firstOrThrow(rows, "creating an encrypted project workspace"),
-      [],
+    const { profile, workspace } = await this.database.transaction(
+      async (transaction) => {
+        const last = await transaction
+          .select({ position: schema.projectWorkspaces.position })
+          .from(schema.projectWorkspaces)
+          .where(eq(schema.projectWorkspaces.ownerId, ownerId))
+          .orderBy(desc(schema.projectWorkspaces.position))
+          .limit(1);
+        const rows = await transaction
+          .insert(schema.projectWorkspaces)
+          .values({
+            id: input.id,
+            ownerId,
+            nameEnvelope: input.nameProtection.envelope,
+            nameBlindIndex: input.nameProtection.blindIndex,
+            nameFormatVersion: input.nameProtection.formatVersion,
+            nameKeyRevision: input.nameProtection.keyRevision,
+            position: (last[0]?.position ?? -1) + 1,
+            isDefault: false,
+          })
+          .returning();
+        const profiles = await transaction
+          .insert(schema.projectWorkspaceStorageProfiles)
+          .values({ workspaceId: input.id, kind: "managed" })
+          .returning();
+        return {
+          profile: firstOrThrow(profiles, "creating workspace storage"),
+          workspace: firstOrThrow(
+            rows,
+            "creating an encrypted project workspace",
+          ),
+        };
+      },
     );
+    return toProjectWorkspaceWireSummary(workspace, profile, []);
   }
 
   async updateEncryptedProjectWorkspace(
@@ -474,6 +601,23 @@ export class ProjectRepository {
       )
       .limit(1);
     if (!rows[0]) return null;
+    if (input.isDefault) {
+      const profiles = await this.database
+        .select({ kind: schema.projectWorkspaceStorageProfiles.kind })
+        .from(schema.projectWorkspaceStorageProfiles)
+        .where(
+          eq(schema.projectWorkspaceStorageProfiles.workspaceId, workspaceId),
+        )
+        .limit(1);
+      if (
+        !profiles[0] ||
+        !projectWorkspaceStorageCanBeDefault(profiles[0].kind)
+      ) {
+        throw new ProjectWorkspaceInvariantError(
+          "Attached workspaces cannot be the default workspace.",
+        );
+      }
+    }
     if (input.nameProtection) {
       const profiles = await this.database
         .select({
@@ -549,8 +693,18 @@ export class ProjectRepository {
     workspaceId: string,
   ): Promise<boolean> {
     const rows = await this.database
-      .select({ isDefault: schema.projectWorkspaces.isDefault })
+      .select({
+        isDefault: schema.projectWorkspaces.isDefault,
+        storageKind: schema.projectWorkspaceStorageProfiles.kind,
+      })
       .from(schema.projectWorkspaces)
+      .innerJoin(
+        schema.projectWorkspaceStorageProfiles,
+        eq(
+          schema.projectWorkspaceStorageProfiles.workspaceId,
+          schema.projectWorkspaces.id,
+        ),
+      )
       .where(
         and(
           eq(schema.projectWorkspaces.id, workspaceId),
@@ -559,7 +713,7 @@ export class ProjectRepository {
       )
       .limit(1);
     if (!rows[0]) return false;
-    if (rows[0].isDefault) {
+    if (rows[0].isDefault || rows[0].storageKind === "system") {
       throw new ProjectWorkspaceInvariantError(
         "The Default workspace cannot be deleted.",
       );
