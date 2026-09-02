@@ -116,5 +116,25 @@ describe("workspace settings", () => {
 
     expect(markup).not.toContain("Make Attached the default workspace");
     expect(markup).toContain("Delete Attached");
+    expect(markup).toContain("Repositories");
+  });
+
+  it("only offers repository discovery for attached workspaces", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    queryClient.setQueryData(["projects"], []);
+    queryClient.setQueryData(
+      ["project-workspaces"],
+      [mainWorkspace, personalWorkspace],
+    );
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSettings />
+      </QueryClientProvider>,
+    );
+
+    expect(markup).not.toContain("Repositories");
   });
 });
