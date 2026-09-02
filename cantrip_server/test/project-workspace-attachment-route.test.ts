@@ -7,6 +7,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { installProjectWorkspaceRoutes } from "../src/app/routes/project-workspaces.js";
+import { protectedProjectFields } from "./private-label-fixture.js";
 
 const operationId = "b621ff08-178a-48aa-93ba-b249435c1d3b";
 const workspaceId = "51567e1e-961e-417c-955f-395e489b9d69";
@@ -247,6 +248,57 @@ describe("attached project workspace route", () => {
     });
     expect(publishWorkspaceRepositoryDiscoveryChange).toHaveBeenCalledWith({
       job: { ...job, stateRevision: 2 },
+      ownerId: "owner-one",
+    });
+    expect(queueWorkspaceRepositoryDiscoveryJobs).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it("queues an explicit revision-fenced repository import batch", async () => {
+    const app = Fastify();
+    const job = { ...discoveryJob(), state: "succeeded" as const };
+    const candidateId = "fe47e031-8924-44c0-9b51-677fc23397ca";
+    const projectId = "95ed0d89-a1d5-48ac-a1b7-67a2037f8373";
+    const snapshot = workspaceRepositoryDiscoverySnapshotSchema.parse({
+      job: { ...job, stateRevision: 4 },
+      candidates: [],
+    });
+    const queueImports = vi.fn().mockResolvedValue(snapshot);
+    const publishWorkspaceRepositoryDiscoveryChange = vi.fn();
+    const queueWorkspaceRepositoryDiscoveryJobs = vi.fn();
+    installProjectWorkspaceRoutes(app, {
+      applicationOwnerId: () => "owner-one",
+      bridge: { request: vi.fn() },
+      repository: {
+        workspaceRepositoryDiscoveryJobs: { queueImports },
+      },
+      publishWorkspaceRepositoryDiscoveryChange,
+      queueWorkspaceRepositoryDiscoveryJobs,
+      serverId: "server-one",
+    } as never);
+    const candidate = {
+      candidateId,
+      projectId,
+      nameProtection: protectedProjectFields(projectId).nameProtection,
+      repositoryBlindIndex: null,
+    };
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/repository-imports`,
+      payload: { expectedStateRevision: 3, candidates: [candidate] },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(
+      workspaceRepositoryDiscoverySnapshotSchema.parse(response.json()),
+    ).toEqual(snapshot);
+    expect(queueImports).toHaveBeenCalledWith("owner-one", workspaceId, {
+      expectedStateRevision: 3,
+      candidates: [candidate],
+    });
+    expect(publishWorkspaceRepositoryDiscoveryChange).toHaveBeenCalledWith({
+      job: snapshot.job,
       ownerId: "owner-one",
     });
     expect(queueWorkspaceRepositoryDiscoveryJobs).toHaveBeenCalledOnce();

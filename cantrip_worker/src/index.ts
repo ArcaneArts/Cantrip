@@ -194,7 +194,10 @@ import { githubOperationRequiresCheckout } from "./github-operation-scope.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
 import { attachWorkspaceRoot } from "./workspace-root-attachment.js";
-import { discoverWorkspaceRepositories } from "./workspace-repository-discovery.js";
+import {
+  discoverWorkspaceRepositories,
+  validateWorkspaceRepositoryImport,
+} from "./workspace-repository-discovery.js";
 import { ChatScratchManager } from "./chat-scratch.js";
 import { ChatScratchFileManager } from "./chat-scratch-files.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
@@ -2302,6 +2305,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           truncated: result.truncated,
         };
       }
+      case "workspace.repository-import.validate":
+        return validateWorkspaceRepositoryImport(command);
       case "project.folder.delete": {
         await runConfigurationRuntimes.stopProject(command.projectId);
         return managedFolders.delete(

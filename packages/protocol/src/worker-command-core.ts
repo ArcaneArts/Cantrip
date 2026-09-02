@@ -43,7 +43,10 @@ import {
   standaloneChatScratchReconcileCommandSchema,
   standaloneChatFileOperationCommandSchema,
 } from "./worker-command-shared.js";
-import { workspaceRepositoryDiscoveryCommandSchema } from "./workspace-repository-discovery.js";
+import {
+  workspaceRepositoryDiscoveryCommandSchema,
+  workspaceRepositoryImportValidateCommandSchema,
+} from "./workspace-repository-discovery.js";
 
 export const workerCoreCommandSchemas = [
   directCapabilityPrepareCommandSchema,
@@ -69,6 +72,7 @@ export const workerCoreCommandSchemas = [
   standaloneChatScratchReconcileCommandSchema,
   standaloneChatFileOperationCommandSchema,
   workspaceRepositoryDiscoveryCommandSchema,
+  workspaceRepositoryImportValidateCommandSchema,
   z.object({ type: z.literal("worker.version") }),
   z.object({ type: z.literal("worker.restart") }),
   managedWebRuntimeActionRequestSchema.extend({

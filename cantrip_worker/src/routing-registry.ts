@@ -17,6 +17,7 @@ const protectedResultTypes = new Set([
   "project.clone",
   "project.folder.materialize",
   "workspace.repositories.discover",
+  "workspace.repository-import.validate",
   "chat.scratch.provision",
   "chat.scratch.resolve",
   "chat.scratch.archive",

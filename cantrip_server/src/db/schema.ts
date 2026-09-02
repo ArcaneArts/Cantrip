@@ -45,6 +45,7 @@ import type {
   WorkspaceRepositoryCandidateClassification,
   WorkspaceRepositoryCandidateDiagnosticCode,
   WorkspaceRepositoryCandidateImportState,
+  WorkspaceRepositoryImportErrorCode,
   WorkspaceRepositoryDiscoveryErrorCode,
   WorkspaceRepositoryDiscoveryJobState,
   ProjectRootKind,
@@ -2167,6 +2168,25 @@ export const workspaceRepositoryCandidates = pgTable(
       .$type<WorkspaceRepositoryCandidateImportState>()
       .notNull()
       .default("pending"),
+    // A queued import reserves its project identity before the project exists,
+    // so this cannot be a foreign key. Imported/skipped candidates retain the
+    // identity only as durable outcome metadata.
+    importProjectId: text("import_project_id"),
+    protectedImportName: jsonb(
+      "protected_import_name",
+    ).$type<PrivateDisplayLabelOpaque>(),
+    importRepositoryBlindIndex: text("import_repository_blind_index"),
+    importAttempt: integer("import_attempt").notNull().default(0),
+    importCommandId: text("import_command_id"),
+    importErrorCode:
+      text("import_error_code").$type<WorkspaceRepositoryImportErrorCode>(),
+    importErrorRetryable: boolean("import_error_retryable"),
+    importAvailableAt: timestamp("import_available_at", {
+      withTimezone: true,
+    }),
+    importLeaseExpiresAt: timestamp("import_lease_expires_at", {
+      withTimezone: true,
+    }),
     diagnosticCode:
       text(
         "diagnostic_code",
@@ -2195,6 +2215,14 @@ export const workspaceRepositoryCandidates = pgTable(
     index("workspace_repository_candidates_job_index").on(
       table.jobId,
       table.importState,
+      table.createdAt,
+    ),
+    uniqueIndex("workspace_repository_candidates_import_command_unique")
+      .on(table.importCommandId)
+      .where(sql`${table.importCommandId} IS NOT NULL`),
+    index("workspace_repository_candidates_import_dispatch_index").on(
+      table.importState,
+      table.importAvailableAt,
       table.createdAt,
     ),
     check(
@@ -2227,7 +2255,31 @@ export const workspaceRepositoryCandidates = pgTable(
     ),
     check(
       "workspace_repository_candidates_import_state_check",
-      sql`${table.importState} IN ('pending', 'importing', 'imported', 'failed', 'skipped')`,
+      sql`${table.importState} IN ('pending', 'queued', 'importing', 'imported', 'blocked', 'failed', 'skipped')`,
+    ),
+    check(
+      "workspace_repository_candidates_import_execution_shape_check",
+      sql`(${table.importState} = 'importing' AND ${table.importCommandId} IS NOT NULL AND ${table.importLeaseExpiresAt} IS NOT NULL) OR (${table.importState} <> 'importing' AND ${table.importCommandId} IS NULL AND ${table.importLeaseExpiresAt} IS NULL)`,
+    ),
+    check(
+      "workspace_repository_candidates_import_error_shape_check",
+      sql`(${table.importState} IN ('blocked', 'failed') AND ${table.importErrorCode} IS NOT NULL AND ${table.importErrorRetryable} IS NOT NULL) OR (${table.importState} NOT IN ('blocked', 'failed') AND ${table.importErrorCode} IS NULL AND ${table.importErrorRetryable} IS NULL)`,
+    ),
+    check(
+      "workspace_repository_candidates_import_error_code_check",
+      sql`${table.importErrorCode} IS NULL OR ${table.importErrorCode} IN ('worker-offline', 'capability-missing', 'repository-unavailable', 'repository-changed', 'project-conflict', 'import-failed')`,
+    ),
+    check(
+      "workspace_repository_candidates_import_payload_shape_check",
+      sql`${table.importState} = 'pending' OR (${table.importProjectId} IS NOT NULL AND ${table.protectedImportName} IS NOT NULL)`,
+    ),
+    check(
+      "workspace_repository_candidates_import_attempt_check",
+      sql`${table.importAttempt} >= 0`,
+    ),
+    check(
+      "workspace_repository_candidates_import_availability_check",
+      sql`(${table.importState} IN ('queued', 'importing') AND ${table.importAvailableAt} IS NOT NULL) OR (${table.importState} NOT IN ('queued', 'importing') AND ${table.importAvailableAt} IS NULL)`,
     ),
     check(
       "workspace_repository_candidates_diagnostic_code_check",

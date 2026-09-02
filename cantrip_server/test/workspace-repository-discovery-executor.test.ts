@@ -111,6 +111,7 @@ describe("workspace repository discovery executor", () => {
             job: active,
           })
           .mockResolvedValue(null),
+        claimNextImport: vi.fn().mockResolvedValue(null),
         complete,
         renewLease: vi.fn(),
       },
@@ -183,6 +184,7 @@ describe("workspace repository discovery executor", () => {
     };
     const block = vi.fn().mockResolvedValue(blocked);
     const requeueRetryableForWorker = vi.fn().mockResolvedValue(1);
+    const requeueRetryableImportsForWorker = vi.fn().mockResolvedValue(1);
     const repository = {
       getWorker: vi.fn().mockResolvedValue({
         workerId: "worker-one",
@@ -198,9 +200,11 @@ describe("workspace repository discovery executor", () => {
             job: active,
           })
           .mockResolvedValue(null),
+        claimNextImport: vi.fn().mockResolvedValue(null),
         block,
         renewLease: vi.fn(),
         requeueRetryableForWorker,
+        requeueRetryableImportsForWorker,
       },
     } as unknown as ServerRepository;
     const bridge = {
@@ -224,6 +228,7 @@ describe("workspace repository discovery executor", () => {
     await executor.workerConnected("worker-one");
     await executor.drain();
     expect(requeueRetryableForWorker).toHaveBeenCalledWith("worker-one");
+    expect(requeueRetryableImportsForWorker).toHaveBeenCalledWith("worker-one");
   });
 
   it("records protected root failures without persisting worker paths", async () => {
@@ -249,6 +254,7 @@ describe("workspace repository discovery executor", () => {
             job: active,
           })
           .mockResolvedValue(null),
+        claimNextImport: vi.fn().mockResolvedValue(null),
         fail,
         renewLease: vi.fn(),
       },
@@ -278,5 +284,109 @@ describe("workspace repository discovery executor", () => {
       retryable: false,
     });
     expect(JSON.stringify(fail.mock.calls)).not.toContain("/Users/");
+  });
+
+  it("revalidates and completes one durable import candidate", async () => {
+    const succeeded = {
+      ...job(),
+      state: "succeeded" as const,
+      stateRevision: 6,
+      counts,
+    };
+    const importClaim = {
+      attempt: 1,
+      candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
+      commandId: "import-command-one",
+      expectedRepositoryFingerprint: "c".repeat(64),
+      nameProtection: {
+        classification: { recordKind: "project" as const },
+        protectedLabel: {
+          formatVersion: 1 as const,
+          keyRevision: 1,
+          envelope: {
+            version: 1 as const,
+            algorithm: "AES-256-GCM" as const,
+            keyRevision: 1,
+            nonce: "a".repeat(16),
+            ciphertext: "b".repeat(22),
+          },
+        },
+      },
+      ownerId: "owner-one",
+      pathHandle,
+      projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
+      repositoryBlindIndex: null,
+      rootPathHandle: `ctrr_${"r".repeat(43)}`,
+      workerId: "worker-one",
+      workspaceId: "workspace-one",
+    };
+    const completeImport = vi.fn().mockResolvedValue(succeeded);
+    const request = vi.fn().mockResolvedValue({
+      candidateId: importClaim.candidateId,
+      attempt: 1,
+      path: pathHandle,
+      displayPath: displayHandle,
+      originUrl: null,
+      github: null,
+      repositoryFingerprint: "c".repeat(64),
+      classification: "local-git",
+      diagnosticCode: null,
+      branch: null,
+      head: null,
+    });
+    const repository = {
+      getWorker: vi.fn().mockResolvedValue({
+        workerId: "worker-one",
+        managedFolders: { discoverWorkspaceRepositories: true },
+      }),
+      workspaceRepositoryDiscoveryJobs: {
+        claimNext: vi.fn().mockResolvedValue(null),
+        claimNextImport: vi
+          .fn()
+          .mockResolvedValueOnce(importClaim)
+          .mockResolvedValue(null),
+        completeImport,
+        getSnapshot: vi.fn().mockResolvedValue({
+          job: succeeded,
+          candidates: [],
+        }),
+        renewImportLease: vi.fn(),
+      },
+    } as unknown as ServerRepository;
+    const bridge = {
+      isConnected: vi.fn().mockReturnValue(true),
+      request,
+    } as unknown as WorkerCommandBus;
+    const changed = vi.fn();
+    const executor = new WorkspaceRepositoryDiscoveryJobExecutor(
+      repository,
+      bridge,
+      { error: vi.fn(), warn: vi.fn() },
+      changed,
+    );
+
+    executor.queueAvailable();
+    await executor.drain();
+
+    expect(request).toHaveBeenCalledWith(
+      "worker-one",
+      {
+        type: "workspace.repository-import.validate",
+        candidateId: importClaim.candidateId,
+        attempt: 1,
+        rootPath: importClaim.rootPathHandle,
+        path: pathHandle,
+        expectedRepositoryFingerprint: "c".repeat(64),
+      },
+      { ownerId: "owner-one", timeoutMs: 60_000 },
+    );
+    expect(completeImport).toHaveBeenCalledWith(
+      importClaim,
+      expect.objectContaining({ classification: "local-git" }),
+    );
+    expect(changed).toHaveBeenLastCalledWith({
+      ownerId: "owner-one",
+      job: succeeded,
+    });
   });
 });

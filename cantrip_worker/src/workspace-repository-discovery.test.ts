@@ -18,6 +18,7 @@ import {
   classifyWorkspaceRepositoryOrigin,
   discoverWorkspaceRepositories,
   parseGithubRepositoryOrigin,
+  validateWorkspaceRepositoryImport,
 } from "./workspace-repository-discovery.js";
 
 const execFileAsync = promisify(execFile);
@@ -204,6 +205,58 @@ describe("discoverWorkspaceRepositories", () => {
     await expect(discoverWorkspaceRepositories(root)).resolves.toMatchObject({
       candidates: [],
     });
+  });
+
+  it("revalidates the same checkout inside the attached root", async () => {
+    const root = await temporaryRoot();
+    const repository = path.join(root, "repository");
+    await initializeRepository(repository);
+    const discovered = await discoverWorkspaceRepositories(root);
+    const candidate = discovered.candidates[0]!;
+
+    await expect(
+      validateWorkspaceRepositoryImport({
+        attempt: 2,
+        candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
+        expectedRepositoryFingerprint: candidate.repositoryFingerprint,
+        path: repository,
+        rootPath: root,
+      }),
+    ).resolves.toMatchObject({
+      attempt: 2,
+      classification: "local-git",
+      repositoryFingerprint: candidate.repositoryFingerprint,
+    });
+  });
+
+  it("rejects stale or out-of-root import candidates", async () => {
+    const root = await temporaryRoot();
+    const repository = path.join(root, "repository");
+    const outside = await temporaryRoot();
+    const outsideRepository = path.join(outside, "repository");
+    await initializeRepository(repository);
+    await initializeRepository(outsideRepository);
+    const [candidate] = (await discoverWorkspaceRepositories(root)).candidates;
+    const input = {
+      attempt: 1,
+      candidateId: "fe47e031-8924-44c0-9b51-677fc23397ca",
+      expectedRepositoryFingerprint: candidate!.repositoryFingerprint,
+      rootPath: root,
+    };
+
+    await expect(
+      validateWorkspaceRepositoryImport({
+        ...input,
+        expectedRepositoryFingerprint: "f".repeat(64),
+        path: repository,
+      }),
+    ).rejects.toMatchObject({ code: "repository-changed" });
+    await expect(
+      validateWorkspaceRepositoryImport({
+        ...input,
+        path: outsideRepository,
+      }),
+    ).rejects.toMatchObject({ code: "repository-unavailable" });
   });
 
   it("recognizes only supported GitHub.com SSH and HTTPS origins", () => {

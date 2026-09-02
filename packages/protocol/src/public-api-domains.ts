@@ -127,11 +127,18 @@ export {
   workspaceRepositoryDetectedClassificationSchema,
   workspaceRepositoryCandidateDiagnosticCodeSchema,
   workspaceRepositoryCandidateImportStateSchema,
+  workspaceRepositoryCandidateConflictSchema,
+  workspaceRepositoryImportErrorCodeSchema,
+  workspaceRepositoryImportErrorSchema,
   workspaceRepositoryCandidateSummarySchema,
   workspaceRepositoryDiscoverySnapshotSchema,
   workspaceRepositoryDiscoveryStartSchema,
   workspaceRepositoryDiscoveryCommandSchema,
   workspaceRepositoryDiscoveryWorkerResultSchema,
+  workspaceRepositoryImportCandidateCreateSchema,
+  workspaceRepositoryImportStartSchema,
+  workspaceRepositoryImportValidateCommandSchema,
+  workspaceRepositoryImportValidationResultSchema,
 } from "./workspace-repository-discovery.js";
 
 export type {
@@ -145,11 +152,18 @@ export type {
   WorkspaceRepositoryDetectedClassification,
   WorkspaceRepositoryCandidateDiagnosticCode,
   WorkspaceRepositoryCandidateImportState,
+  WorkspaceRepositoryCandidateConflict,
+  WorkspaceRepositoryImportErrorCode,
+  WorkspaceRepositoryImportError,
   WorkspaceRepositoryCandidateSummary,
   WorkspaceRepositoryDiscoverySnapshot,
   WorkspaceRepositoryDiscoveryStart,
   WorkspaceRepositoryDiscoveryCommand,
   WorkspaceRepositoryDiscoveryWorkerResult,
+  WorkspaceRepositoryImportCandidateCreate,
+  WorkspaceRepositoryImportStart,
+  WorkspaceRepositoryImportValidateCommand,
+  WorkspaceRepositoryImportValidationResult,
 } from "./workspace-repository-discovery.js";
 
 export type {

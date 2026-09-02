@@ -7,6 +7,7 @@ import {
   projectWorkspaceWireSummarySchema,
   workspaceRepositoryDiscoverySnapshotSchema,
   workspaceRepositoryDiscoveryStartSchema,
+  workspaceRepositoryImportStartSchema,
   type WorkspaceRepositoryDiscoveryJobSummary,
 } from "@cantrip/protocol";
 import { repositoryOperationWireResponseSchema } from "@cantrip/protocol/repository-operation";
@@ -221,6 +222,42 @@ export function installProjectWorkspaceRoutes(
           throw new Error("Queued workspace repository discovery disappeared.");
         }
         publishWorkspaceRepositoryDiscoveryChange({ job, ownerId });
+        queueWorkspaceRepositoryDiscoveryJobs();
+        return reply
+          .code(202)
+          .send(workspaceRepositoryDiscoverySnapshotSchema.parse(snapshot));
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId/repository-imports",
+    async (request, reply) => {
+      const input = workspaceRepositoryImportStartSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      try {
+        const snapshot =
+          await repository.workspaceRepositoryDiscoveryJobs.queueImports(
+            ownerId,
+            request.params.workspaceId,
+            input.data,
+          );
+        if (!snapshot) {
+          return reply.code(409).send({
+            error: "Repository discovery changed before the import was queued.",
+          });
+        }
+        publishWorkspaceRepositoryDiscoveryChange({
+          job: snapshot.job,
+          ownerId,
+        });
         queueWorkspaceRepositoryDiscoveryJobs();
         return reply
           .code(202)

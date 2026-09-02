@@ -135,8 +135,16 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : [["project-folder-setup"], ["projects"]];
     case "workspace-repository-discovery-job":
       return event.entityId
-        ? [["workspace-repository-discovery", event.entityId]]
-        : [["workspace-repository-discovery"]];
+        ? [
+            ["workspace-repository-discovery", event.entityId],
+            ["projects"],
+            ["project-workspaces"],
+          ]
+        : [
+            ["workspace-repository-discovery"],
+            ["projects"],
+            ["project-workspaces"],
+          ];
     case "project-github-conversion-job":
       return projectId
         ? [
