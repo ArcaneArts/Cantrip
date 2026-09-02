@@ -2540,7 +2540,17 @@ describe("local server foundation", () => {
       isDefault: false,
       projectIds: [],
     });
-    const assignedWorkspace = projectWorkspaceWireSummarySchema.parse(
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/workspaces/${personalWorkspace.id}`,
+        payload: {
+          expectedRevision: personalWorkspace.revision,
+          projectIds: [project.id],
+        },
+      }),
+    ).toMatchObject({ statusCode: 400 });
+    const renamedPersonalWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -2548,22 +2558,17 @@ describe("local server foundation", () => {
           payload: {
             expectedRevision: personalWorkspace.revision,
             nameProtection: workspaceNameProtection(3),
-            projectIds: [project.id],
           },
         })
       ).json(),
     );
-    expect(assignedWorkspace).toMatchObject({
-      nameProtection: { state: "encrypted" },
-      projectIds: [project.id],
-    });
     const promotedWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/workspaces/${personalWorkspace.id}`,
           payload: {
-            expectedRevision: assignedWorkspace.revision,
+            expectedRevision: renamedPersonalWorkspace.revision,
             isDefault: true,
           },
         })
@@ -2589,7 +2594,7 @@ describe("local server foundation", () => {
       updatedWorkspaces.filter(({ projectIds }) =>
         projectIds.includes(project.id),
       ),
-    ).toHaveLength(2);
+    ).toEqual([expect.objectContaining({ id: defaultWorkspace.id })]);
     expect(
       await firstApp.inject({
         method: "DELETE",
@@ -2600,6 +2605,24 @@ describe("local server foundation", () => {
       await firstApp.inject({
         method: "DELETE",
         url: `/api/workspaces/${defaultWorkspace.id}`,
+      }),
+    ).toMatchObject({ statusCode: 409 });
+    const emptyWorkspace = projectWorkspaceWireSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: "/api/workspaces",
+          payload: {
+            id: "28b33bd0-413e-42cb-985d-b516124dd4cc",
+            nameProtection: workspaceNameProtection(4),
+          },
+        })
+      ).json(),
+    );
+    expect(
+      await firstApp.inject({
+        method: "DELETE",
+        url: `/api/workspaces/${emptyWorkspace.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
     const projectShareTunnelId = randomUUID();

@@ -115,7 +115,7 @@ export const githubProjectCreateSchema = z.object({
   nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
   url: z.url(),
   placement: projectReplicaPlacementRequestSchema.optional(),
-  workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
+  workspaceId: z.string().min(1).optional(),
 });
 
 export const encryptedGithubProjectCreateSchema = githubProjectCreateSchema
@@ -135,7 +135,7 @@ export const managedFolderProjectCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   workerId: z.string().min(1),
   existingPath: z.string().trim().min(1).max(8_192).optional(),
-  workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
+  workspaceId: z.string().min(1).optional(),
 });
 
 export const encryptedManagedFolderProjectCreateSchema =
@@ -155,14 +155,11 @@ export const projectWorkspaceCreateSchema = z.object({
 export const projectWorkspaceUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(80).optional(),
-    projectIds: z.array(z.string().min(1)).max(10_000).optional(),
     isDefault: z.literal(true).optional(),
   })
+  .strict()
   .refine(
-    (input) =>
-      input.name !== undefined ||
-      input.projectIds !== undefined ||
-      input.isDefault !== undefined,
+    (input) => input.name !== undefined || input.isDefault !== undefined,
     { message: "At least one workspace field is required." },
   );
 
@@ -231,15 +228,12 @@ export const encryptedProjectWorkspaceUpdateSchema = z
   .object({
     expectedRevision: z.number().int().positive(),
     nameProtection: encryptedProjectWorkspaceNameSchema.optional(),
-    projectIds: z.array(z.string().min(1)).max(10_000).optional(),
     isDefault: z.literal(true).optional(),
   })
   .strict()
   .refine(
     (input) =>
-      input.nameProtection !== undefined ||
-      input.projectIds !== undefined ||
-      input.isDefault !== undefined,
+      input.nameProtection !== undefined || input.isDefault !== undefined,
     { message: "At least one workspace field is required." },
   );
 

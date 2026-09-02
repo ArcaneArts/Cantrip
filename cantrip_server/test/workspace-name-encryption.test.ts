@@ -13,6 +13,7 @@ import {
 } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { SecretVault } from "../src/security/secret-vault.js";
+import { protectedProjectFields } from "./private-label-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -111,16 +112,52 @@ describe("workspace name encrypted persistence", () => {
           },
         ),
       ).rejects.toBeInstanceOf(ProjectWorkspaceInvariantError);
-      await repository.createEncryptedProjectWorkspace(LOCAL_USER_ID, {
-        id: "bcb5c558-3dcb-4dca-8561-90f014b1860c",
-        nameProtection: encryptedName(9),
-      });
+      const customWorkspace = await repository.createEncryptedProjectWorkspace(
+        LOCAL_USER_ID,
+        {
+          id: "bcb5c558-3dcb-4dca-8561-90f014b1860c",
+          nameProtection: encryptedName(9),
+        },
+      );
       await expect(
         repository.createEncryptedProjectWorkspace(LOCAL_USER_ID, {
           id: "3d931cba-1d7c-4883-bcd0-a32434b434c9",
           nameProtection: encryptedName(9),
         }),
       ).rejects.toThrow();
+
+      await client.exec(`
+        INSERT INTO workers (
+          id, owner_id, name, platform, architecture, started_at, last_seen_at
+        ) VALUES (
+          'workspace-worker', '${LOCAL_USER_ID}', 'Workspace worker',
+          'linux', 'x64', now(), now()
+        );
+      `);
+      const project = await repository.createGithubProject(LOCAL_USER_ID, {
+        workerId: "workspace-worker",
+        workspaceId: customWorkspace.id,
+        ...protectedProjectFields("0ef1618a-a40c-4c61-9fd8-b709400477db"),
+        repositoryBlindIndex: Buffer.alloc(32, 17).toString("base64url"),
+        repositoryId: "opaque-workspace-project",
+        nameWithOwner: "ArcaneArts/WorkspaceProject",
+        url: "https://github.com/ArcaneArts/WorkspaceProject",
+      });
+      const assigned = await repository.listProjectWorkspaceWire(LOCAL_USER_ID);
+      expect(
+        assigned.workspaces.filter(({ projectIds }) =>
+          projectIds.includes(project.id),
+        ),
+      ).toEqual([expect.objectContaining({ id: customWorkspace.id })]);
+      await expect(
+        database.insert(schema.projectWorkspaceMemberships).values({
+          workspaceId: defaultWorkspace.id,
+          projectId: project.id,
+        }),
+      ).rejects.toThrow();
+      await expect(
+        repository.deleteProjectWorkspace(LOCAL_USER_ID, customWorkspace.id),
+      ).rejects.toBeInstanceOf(ProjectWorkspaceInvariantError);
 
       await migrate(database, { migrationsFolder });
       expect(

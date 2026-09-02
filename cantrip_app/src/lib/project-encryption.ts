@@ -404,7 +404,7 @@ export class ProjectEncryptionAdapter {
     }
     const {
       workerId,
-      workspaceIds,
+      workspaceId,
       placement = { mode: "managed" as const },
       ...repository
     } = parsed;
@@ -432,7 +432,7 @@ export class ProjectEncryptionAdapter {
     return this.decrypt(
       await this.api.createGithub({
         workerId,
-        workspaceIds,
+        workspaceId,
         placement: protectedPlacement,
         id,
         nameProtection: await this.protectName(id, name),

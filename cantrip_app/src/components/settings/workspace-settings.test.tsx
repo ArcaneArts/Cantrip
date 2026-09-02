@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import {
   WorkspaceSettings,
   promoteDefaultWorkspace,
-  toggleWorkspaceProject,
 } from "./workspace-settings";
 
 const now = "2026-08-16T12:00:00.000Z";
@@ -55,23 +54,6 @@ describe("workspace settings", () => {
     ).toEqual([{ ...mainWorkspace, isDefault: false }, promoted]);
   });
 
-  it("adds and removes project memberships without duplicating ids", () => {
-    expect(
-      toggleWorkspaceProject(
-        ["project-one", "project-two"],
-        "project-two",
-        true,
-      ),
-    ).toEqual(["project-one", "project-two"]);
-    expect(
-      toggleWorkspaceProject(
-        ["project-one", "project-two"],
-        "project-one",
-        false,
-      ),
-    ).toEqual(["project-two"]);
-  });
-
   it("allows every workspace to be renamed and only non-defaults promoted", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -95,9 +77,10 @@ describe("workspace settings", () => {
     expect(markup).not.toContain("Delete Main Workspace");
     expect(markup).toContain("Delete Personal");
     expect(markup).toContain("Workspace management");
-    expect(markup).toContain("Project membership");
-    expect(markup).toContain("Show Cantrip in Main Workspace");
-    expect(markup).toContain("Show Cantrip in Personal");
+    expect(markup).toContain("Project workspaces");
+    expect(markup).toContain("Cantrip");
+    expect(markup).toContain("Personal");
+    expect(markup).not.toContain('type="checkbox"');
     expect(markup).toContain("Policies");
   });
 });

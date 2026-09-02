@@ -552,7 +552,7 @@ describe("managed folder project lifecycle", () => {
     });
   });
 
-  it("rejects unknown workers and workspace memberships before setup", async () => {
+  it("rejects unknown workers and invalid workspace assignments before setup", async () => {
     const unknownWorker = await app.inject({
       method: "POST",
       url: "/api/projects/from-folder",
@@ -567,12 +567,26 @@ describe("managed folder project lifecycle", () => {
       payload: {
         ...protectedProjectFields(),
         workerId: "folder-worker",
-        workspaceIds: ["019fe8aa-a7a3-7404-8a96-d3be7f0fb999"],
+        workspaceId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb999",
       },
     });
     expect(unknownWorkspace.statusCode).toBe(400);
     expect(unknownWorkspace.json()).toMatchObject({
       error: expect.stringContaining("workspace"),
+    });
+
+    const legacyMultipleWorkspaces = await app.inject({
+      method: "POST",
+      url: "/api/projects/from-folder",
+      payload: {
+        ...protectedProjectFields(),
+        workerId: "folder-worker",
+        workspaceIds: ["workspace-a", "workspace-b"],
+      },
+    });
+    expect(legacyMultipleWorkspaces.statusCode).toBe(400);
+    expect(legacyMultipleWorkspaces.json()).toMatchObject({
+      error: "Invalid request body",
     });
   });
 

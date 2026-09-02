@@ -197,19 +197,17 @@ export class ProjectLifecycleRepository {
   ): Promise<ProjectWireSummary> {
     const defaultWorkspace =
       await this.collaborators.ensureDefaultProjectWorkspace(ownerId);
-    const workspaceIds = [
-      ...new Set(input.workspaceIds ?? [defaultWorkspace.id]),
-    ];
+    const workspaceId = input.workspaceId ?? defaultWorkspace.id;
     const ownedWorkspaces = await this.database
       .select({ id: schema.projectWorkspaces.id })
       .from(schema.projectWorkspaces)
       .where(
         and(
           eq(schema.projectWorkspaces.ownerId, ownerId),
-          inArray(schema.projectWorkspaces.id, workspaceIds),
+          eq(schema.projectWorkspaces.id, workspaceId),
         ),
       );
-    if (ownedWorkspaces.length !== workspaceIds.length) {
+    if (!ownedWorkspaces[0]) {
       throw new ProjectWorkspaceInvariantError(
         "Project import referenced an unknown workspace.",
       );
@@ -239,12 +237,10 @@ export class ProjectLifecycleRepository {
         })
         .returning();
       const created = firstOrThrow(projectResult, "creating a GitHub project");
-      await transaction.insert(schema.projectWorkspaceMemberships).values(
-        workspaceIds.map((workspaceId) => ({
-          workspaceId,
-          projectId: created.id,
-        })),
-      );
+      await transaction.insert(schema.projectWorkspaceMemberships).values({
+        workspaceId,
+        projectId: created.id,
+      });
       return created;
     });
     return toProjectWireSummary(project);
@@ -259,19 +255,17 @@ export class ProjectLifecycleRepository {
   }> {
     const defaultWorkspace =
       await this.collaborators.ensureDefaultProjectWorkspace(ownerId);
-    const workspaceIds = [
-      ...new Set(input.workspaceIds ?? [defaultWorkspace.id]),
-    ];
+    const workspaceId = input.workspaceId ?? defaultWorkspace.id;
     const ownedWorkspaces = await this.database
       .select({ id: schema.projectWorkspaces.id })
       .from(schema.projectWorkspaces)
       .where(
         and(
           eq(schema.projectWorkspaces.ownerId, ownerId),
-          inArray(schema.projectWorkspaces.id, workspaceIds),
+          eq(schema.projectWorkspaces.id, workspaceId),
         ),
       );
-    if (ownedWorkspaces.length !== workspaceIds.length) {
+    if (!ownedWorkspaces[0]) {
       throw new ProjectWorkspaceInvariantError(
         "Folder project creation referenced an unknown workspace.",
       );
@@ -322,9 +316,7 @@ export class ProjectLifecycleRepository {
         .returning();
       await transaction
         .insert(schema.projectWorkspaceMemberships)
-        .values(
-          workspaceIds.map((workspaceId) => ({ workspaceId, projectId })),
-        );
+        .values({ workspaceId, projectId });
       await transaction.insert(schema.projectFolderSetupJobs).values({
         id: jobId,
         ownerId,

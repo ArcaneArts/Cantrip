@@ -28,7 +28,7 @@ const workspaces = [
     id: "personal",
     name: "Personal",
     isDefault: false,
-    projectIds: ["project-2", "project-3"],
+    projectIds: ["project-3"],
   },
 ] as ProjectWorkspaceSummary[];
 
@@ -40,7 +40,7 @@ describe("project workspace filtering", () => {
     expect(resolveProjectWorkspace(workspaces, "missing")?.id).toBe("default");
   });
 
-  it("shows the same project in every workspace that contains it", () => {
+  it("shows each project only in its assigned workspace", () => {
     expect(
       projectsInWorkspace(
         projects,
@@ -52,30 +52,27 @@ describe("project workspace filtering", () => {
         projects,
         resolveProjectWorkspace(workspaces, "personal"),
       ).map(({ id }) => id),
-    ).toEqual(["project-2", "project-3"]);
+    ).toEqual(["project-3"]);
   });
 
-  it("keeps project selection in the active workspace when possible", () => {
+  it("resolves a project to its sole workspace", () => {
     expect(
-      resolveProjectWorkspaceForSelection(workspaces, "project-2", "personal")
-        ?.id,
-    ).toBe("personal");
+      resolveProjectWorkspaceForSelection(workspaces, "project-2")?.id,
+    ).toBe("default");
   });
 
-  it("selects the first workspace containing a project across workspaces", () => {
+  it("selects the assigned workspace across workspaces", () => {
     expect(
-      resolveProjectWorkspaceForSelection(workspaces, "project-3", "default")
-        ?.id,
+      resolveProjectWorkspaceForSelection(workspaces, "project-3")?.id,
     ).toBe("personal");
     expect(
-      resolveProjectWorkspaceForSelection(workspaces, "project-2", "missing")
-        ?.id,
+      resolveProjectWorkspaceForSelection(workspaces, "project-2")?.id,
     ).toBe("default");
   });
 
   it("rejects projects that are not assigned to a workspace", () => {
     expect(
-      resolveProjectWorkspaceForSelection(workspaces, "unassigned", "default"),
+      resolveProjectWorkspaceForSelection(workspaces, "unassigned"),
     ).toBeNull();
   });
 
@@ -87,14 +84,8 @@ describe("project workspace filtering", () => {
       "  ",
     );
 
-    expect(results.map(({ project }) => project.id)).toEqual([
-      "project-2",
-      "project-3",
-    ]);
-    expect(results[0]?.memberships.map(({ id }) => id)).toEqual([
-      "default",
-      "personal",
-    ]);
+    expect(results.map(({ project }) => project.id)).toEqual(["project-3"]);
+    expect(results[0]?.workspace?.id).toBe("personal");
   });
 
   it("searches project, repository, source, and workspace names globally", () => {
@@ -130,7 +121,7 @@ describe("project workspace filtering", () => {
       searchProjects(detailedProjects, workspaces, active, "personal").map(
         ({ project }) => project.id,
       ),
-    ).toEqual(["project-2", "project-3"]);
+    ).toEqual(["project-3"]);
   });
 
   it("returns no results when a global query matches no project metadata", () => {

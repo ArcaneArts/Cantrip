@@ -3581,15 +3581,19 @@ describe("Cantrip protocol", () => {
     ).toBe("git.operation.observed");
   });
 
-  it("validates project workspace names, memberships, and summaries", () => {
+  it("validates project workspace names and immutable assignments", () => {
     expect(
       projectWorkspaceCreateSchema.parse({ name: "  Personal  " }),
     ).toEqual({ name: "Personal" });
-    expect(
+    expect(() =>
+      projectWorkspaceUpdateSchema.parse({ projectIds: ["project-1"] }),
+    ).toThrow();
+    expect(() =>
       projectWorkspaceUpdateSchema.parse({
-        projectIds: ["project-1", "project-2"],
+        name: "Renamed",
+        projectIds: ["project-1"],
       }),
-    ).toEqual({ projectIds: ["project-1", "project-2"] });
+    ).toThrow();
     expect(projectWorkspaceUpdateSchema.parse({ isDefault: true })).toEqual({
       isDefault: true,
     });

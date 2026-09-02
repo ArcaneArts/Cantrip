@@ -386,9 +386,6 @@ export class ProjectWorkspaceEncryptionAdapter {
           : {
               nameProtection: await this.encryptName(workspaceId, parsed.name),
             }),
-        ...(parsed.projectIds === undefined
-          ? {}
-          : { projectIds: parsed.projectIds }),
         ...(parsed.isDefault ? { isDefault: true as const } : {}),
       }),
     );

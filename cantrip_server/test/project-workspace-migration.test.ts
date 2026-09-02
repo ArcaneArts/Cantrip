@@ -110,4 +110,76 @@ describe("project workspace migration", () => {
       await database.close();
     }
   });
+
+  it("reduces legacy memberships to one immutable workspace per project", async () => {
+    const database = new PGlite();
+    try {
+      await applyMigrations(database, 0, 38);
+      await database.exec(`
+        INSERT INTO users (id, kind, display_name)
+        VALUES ('user-1', 'anonymous', 'Local User');
+
+        INSERT INTO projects (id, owner_id, name, position)
+        VALUES
+          ('project-default', 'user-1', 'Default project', 0),
+          ('project-custom', 'user-1', 'Custom project', 1),
+          ('project-unassigned', 'user-1', 'Unassigned project', 2);
+      `);
+      await applyMigrations(database, 39, 39);
+      await database.exec(`
+        INSERT INTO project_workspaces (
+          id, owner_id, name, position, is_default
+        ) VALUES
+          ('workspace-custom-a', 'user-1', 'Custom A', 1, false),
+          ('workspace-custom-b', 'user-1', 'Custom B', 2, false);
+
+        INSERT INTO project_workspace_memberships (workspace_id, project_id)
+        VALUES
+          ('workspace-custom-a', 'project-custom'),
+          ('workspace-custom-b', 'project-custom');
+
+        DELETE FROM project_workspace_memberships
+        WHERE project_id = 'project-unassigned';
+      `);
+
+      await applyMigrations(database, 179, 179);
+
+      const memberships = await database.query<{
+        project_id: string;
+        workspace_id: string;
+      }>(`
+        SELECT workspace_id, project_id
+        FROM project_workspace_memberships
+        ORDER BY project_id
+      `);
+      expect(memberships.rows).toEqual([
+        {
+          workspace_id: "workspace-custom-a",
+          project_id: "project-custom",
+        },
+        {
+          workspace_id: "workspace:default:user-1",
+          project_id: "project-default",
+        },
+        {
+          workspace_id: "workspace:default:user-1",
+          project_id: "project-unassigned",
+        },
+      ]);
+
+      await expect(
+        database.exec(`
+          INSERT INTO project_workspace_memberships (workspace_id, project_id)
+          VALUES ('workspace-custom-b', 'project-custom');
+        `),
+      ).rejects.toThrow();
+      await expect(
+        database.exec(`
+          DELETE FROM project_workspaces WHERE id = 'workspace-custom-a';
+        `),
+      ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
 });

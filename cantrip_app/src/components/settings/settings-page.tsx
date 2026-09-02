@@ -393,9 +393,9 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           description: "Create, rename, order, and choose a default workspace.",
         },
         {
-          id: "project-membership",
-          label: "Project membership",
-          description: "Organize projects within workspaces.",
+          id: "project-workspaces",
+          label: "Project workspaces",
+          description: "View each project's permanent workspace.",
         },
       ],
     },
