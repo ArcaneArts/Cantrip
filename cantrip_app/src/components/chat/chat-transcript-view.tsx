@@ -69,6 +69,7 @@ export function ChatTranscriptView({
     capabilities,
     changeEditingSentMessage,
     chat,
+    chatGptAvailableResetCredits,
     chooseGithubReference,
     chooseSkill,
     clearDraftAttachments,
@@ -995,6 +996,7 @@ export function ChatTranscriptView({
                   />
                 ) : null}
                 <ContextUsageRing
+                  availableResetCredits={chatGptAvailableResetCredits}
                   messages={messages.data ?? []}
                   model={selectedModel}
                   modelRouteId={runtimeSelection.data?.modelRouteId}

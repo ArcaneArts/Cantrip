@@ -103,6 +103,7 @@ import { type ChatSurfaceCapabilities } from "@/components/chat/chat-surface-cap
 import { taskChatIsInspectOnly } from "@/components/tasks/task-chat-access";
 import { providerSupportsCatalog } from "@/components/settings/provider-catalog-display";
 import { providerCatalogQueryOptions } from "@/components/settings/use-provider-catalog";
+import { useChatGptAvailableResetCredits } from "@/components/settings/use-provider-reset-credits";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { useAppLiveStatus } from "@/lib/app-live-react";
@@ -432,6 +433,14 @@ export function useChatTranscriptController({
   const activeChatWorker = workers.data?.find(
     ({ workerId }) => workerId === chat.activeWorkerId,
   );
+  const providerResetWorkerId =
+    workers.data?.find(({ online }) => online)?.workerId ?? null;
+  const chatGptAvailableResetCredits = useChatGptAvailableResetCredits({
+    enabled: true,
+    providers: settings?.providers ?? [],
+    resourcesLive: chatResourcesLive,
+    workerId: providerResetWorkerId,
+  });
   const selectedModel = settings?.models.find(
     (model) => model.id === selectedModelId,
   );
@@ -1841,6 +1850,7 @@ export function useChatTranscriptController({
     capabilities,
     changeEditingSentMessage,
     chat,
+    chatGptAvailableResetCredits,
     chooseGithubReference,
     chooseSkill,
     clearDraftAttachments,

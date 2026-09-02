@@ -326,6 +326,28 @@ describe("context usage ring", () => {
     expect(markup).toContain('aria-expanded="false"');
   });
 
+  it("includes banked ChatGPT resets in the combined account capacity", () => {
+    const bundle = settings();
+    const provider = bundle.providers[0]!;
+    provider.accounts = [
+      account("Arcane", 96),
+      account("MPM", 1, { position: 1 }),
+      account("AI", 12, { position: 2 }),
+    ];
+    const markup = renderToStaticMarkup(
+      <ContextUsageRing
+        availableResetCredits={new Map([["Arcane", 1]])}
+        messages={[]}
+        model={bundle.models[0]}
+        providers={bundle.providers}
+      />,
+    );
+
+    expect(markup).toContain(
+      "291% total 7-day available across 3 accounts · Includes 1 banked reset",
+    );
+  });
+
   it("keeps the ring available before the first usage report", () => {
     const markup = renderToStaticMarkup(
       <ContextUsageRing messages={[]} model={undefined} providers={[]} />,
