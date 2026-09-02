@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   WorkspaceSettings,
   promoteDefaultWorkspace,
+  workspaceDeletionDescription,
 } from "./workspace-settings";
 
 const now = "2026-08-16T12:00:00.000Z";
@@ -54,6 +55,15 @@ describe("workspace settings", () => {
     expect(
       promoteDefaultWorkspace([mainWorkspace, personalWorkspace], promoted),
     ).toEqual([{ ...mainWorkspace, isDefault: false }, promoted]);
+  });
+
+  it("explains that workspace deletion removes project records but preserves files", () => {
+    expect(workspaceDeletionDescription(personalWorkspace)).toBe(
+      "This removes the workspace and its 1 project from Cantrip. Repository, worktree, and attached-folder files remain untouched.",
+    );
+    expect(workspaceDeletionDescription(mainWorkspace)).toBe(
+      "This removes the workspace from Cantrip. Repository, worktree, and attached-folder files remain untouched.",
+    );
   });
 
   it("allows every workspace to be renamed and only non-defaults promoted", () => {

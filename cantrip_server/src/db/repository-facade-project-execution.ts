@@ -131,6 +131,7 @@ import type { ProjectViewRepository } from "./repository/project-views.js";
 import type {
   ProjectRepository,
   ProjectSourceSelectionOptions,
+  ProjectWorkspaceDeletionPlan,
   ProjectWorkspaceRow,
   ProjectWorktreeExecutionContext,
 } from "./repository/projects.js";
@@ -519,6 +520,13 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     workspaceId: string,
   ): Promise<boolean> {
     return this.projects.deleteProjectWorkspace(ownerId, workspaceId);
+  }
+
+  async getProjectWorkspaceDeletionPlan(
+    ownerId: string,
+    workspaceId: string,
+  ): Promise<ProjectWorkspaceDeletionPlan | null> {
+    return this.projects.getProjectWorkspaceDeletionPlan(ownerId, workspaceId);
   }
 
   async updateProjectWorktreePolicy(

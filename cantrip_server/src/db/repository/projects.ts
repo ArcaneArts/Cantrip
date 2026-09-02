@@ -23,6 +23,7 @@ import {
   firstOrThrow,
   toISOString,
   type RepositoryDatabase,
+  type RepositoryTransaction,
 } from "./database.js";
 import { toWorkerSummary } from "./workers.js";
 
@@ -61,6 +62,10 @@ export interface ProjectWorktreeExecutionContext {
   sourcePath: string;
   workerId: string;
   worktree: ProjectWorktreeSummary;
+}
+
+export interface ProjectWorkspaceDeletionPlan {
+  projectIds: string[];
 }
 
 export interface ProjectSourceSelectionOptions {
@@ -792,7 +797,51 @@ export class ProjectRepository {
     ownerId: string,
     workspaceId: string,
   ): Promise<boolean> {
-    const rows = await this.database
+    return this.database.transaction(async (transaction) => {
+      const plan = await this.getProjectWorkspaceDeletionPlan(
+        ownerId,
+        workspaceId,
+        transaction,
+      );
+      if (!plan) return false;
+      if (plan.projectIds.length > 0) {
+        await transaction
+          .delete(schema.projects)
+          .where(
+            and(
+              eq(schema.projects.ownerId, ownerId),
+              inArray(schema.projects.id, plan.projectIds),
+            ),
+          );
+        for (const projectId of plan.projectIds) {
+          await transaction
+            .update(schema.userSettings)
+            .set({
+              mobileProjectTabConfigurations: sql`${schema.userSettings.mobileProjectTabConfigurations} - ${projectId}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.userSettings.userId, ownerId));
+        }
+      }
+      const deleted = await transaction
+        .delete(schema.projectWorkspaces)
+        .where(
+          and(
+            eq(schema.projectWorkspaces.id, workspaceId),
+            eq(schema.projectWorkspaces.ownerId, ownerId),
+          ),
+        )
+        .returning({ id: schema.projectWorkspaces.id });
+      return deleted.length === 1;
+    });
+  }
+
+  async getProjectWorkspaceDeletionPlan(
+    ownerId: string,
+    workspaceId: string,
+    database: RepositoryDatabase | RepositoryTransaction = this.database,
+  ): Promise<ProjectWorkspaceDeletionPlan | null> {
+    const rows = await database
       .select({
         isDefault: schema.projectWorkspaces.isDefault,
         storageKind: schema.projectWorkspaceStorageProfiles.kind,
@@ -812,26 +861,17 @@ export class ProjectRepository {
         ),
       )
       .limit(1);
-    if (!rows[0]) return false;
+    if (!rows[0]) return null;
     if (rows[0].isDefault || rows[0].storageKind === "system") {
       throw new ProjectWorkspaceInvariantError(
         "The Default workspace cannot be deleted.",
       );
     }
-    const assignedProjects = await this.database
+    const assignedProjects = await database
       .select({ projectId: schema.projectWorkspaceMemberships.projectId })
       .from(schema.projectWorkspaceMemberships)
-      .where(eq(schema.projectWorkspaceMemberships.workspaceId, workspaceId))
-      .limit(1);
-    if (assignedProjects[0]) {
-      throw new ProjectWorkspaceInvariantError(
-        "A workspace containing projects cannot be deleted.",
-      );
-    }
-    await this.database
-      .delete(schema.projectWorkspaces)
-      .where(eq(schema.projectWorkspaces.id, workspaceId));
-    return true;
+      .where(eq(schema.projectWorkspaceMemberships.workspaceId, workspaceId));
+    return { projectIds: assignedProjects.map(({ projectId }) => projectId) };
   }
 
   async updateProjectWorktreePolicy(

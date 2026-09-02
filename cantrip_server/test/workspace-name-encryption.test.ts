@@ -286,12 +286,20 @@ describe("workspace name encrypted persistence", () => {
       ).rejects.toThrow();
       await expect(
         repository.deleteProjectWorkspace(LOCAL_USER_ID, customWorkspace.id),
-      ).rejects.toBeInstanceOf(ProjectWorkspaceInvariantError);
+      ).resolves.toBe(true);
+      await expect(
+        repository.getProject(LOCAL_USER_ID, project.id),
+      ).resolves.toBeNull();
+      expect(
+        (
+          await repository.listProjectWorkspaceWire(LOCAL_USER_ID)
+        ).workspaces.find(({ id }) => id === customWorkspace.id),
+      ).toBeUndefined();
 
       await migrate(database, { migrationsFolder });
       expect(
         (await repository.listProjectWorkspaceWire(LOCAL_USER_ID)).workspaces,
-      ).toHaveLength(2);
+      ).toHaveLength(1);
     } finally {
       await client.close();
     }
