@@ -1332,6 +1332,12 @@ export async function getWorkerManagement() {
   );
 }
 
+export async function getWorkerLocality() {
+  return workerManagementListSchema
+    .parse(await request("/api/workers/management"))
+    .map(({ internal, workerId }) => ({ internal, workerId }));
+}
+
 export async function updateWorker(workerId: string, input: WorkerUpdate) {
   return workerSummarySchema.parse(
     await request(`/api/workers/${encodeURIComponent(workerId)}`, {

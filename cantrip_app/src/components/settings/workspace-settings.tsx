@@ -32,7 +32,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { getWorkers, resolveWorkerRepositoryMetadata } from "@/lib/api";
+import {
+  getWorkerLocality,
+  getWorkers,
+  resolveWorkerRepositoryMetadata,
+} from "@/lib/api";
 import { listDesktopWorkers } from "@/lib/desktop-worker";
 import { pickLocalFolder } from "@/lib/desktop-folder-picker";
 import { getProjects } from "@/lib/project-encryption";
@@ -43,6 +47,11 @@ import {
   updateProjectWorkspace,
 } from "@/lib/workspace-encryption";
 import { errorMessage } from "@/lib/error-message";
+import {
+  getActiveServerConnection,
+  getActiveServerUrl,
+} from "@/lib/server-connections";
+import { workspaceFolderPickerWorkerIds } from "@/lib/workspace-folder-picker";
 import { PolicyAssignmentControls } from "./policy-assignment-controls";
 import { WorkspaceRepositoryDiscoveryReview } from "./workspace-repository-discovery-review";
 
@@ -87,6 +96,10 @@ export function WorkspaceSettings({
     queryKey: ["project-workspaces"],
   });
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
+  const activeConnection = getActiveServerConnection();
+  const serverUrl =
+    getActiveServerUrl() ||
+    (typeof window === "undefined" ? "" : window.location.origin);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectWorkspaceSummary | null>(null);
   const [name, setName] = useState("");
@@ -107,6 +120,11 @@ export function WorkspaceSettings({
     enabled: editorOpen && !editing,
     queryFn: listDesktopWorkers,
     queryKey: ["desktop-workers"],
+  });
+  const workerLocality = useQuery({
+    enabled: editorOpen && !editing && activeConnection?.kind === "local",
+    queryFn: getWorkerLocality,
+    queryKey: ["worker-locality"],
   });
 
   const replaceWorkspace = (workspace: ProjectWorkspaceSummary) => {
@@ -189,8 +207,19 @@ export function WorkspaceSettings({
     [workers.data],
   );
   const localWorkerIds = useMemo(
-    () => new Set(desktopWorkers.data?.map(({ workerId }) => workerId) ?? []),
-    [desktopWorkers.data],
+    () =>
+      workspaceFolderPickerWorkerIds({
+        connectionKind: activeConnection?.kind ?? null,
+        desktopWorkers: desktopWorkers.data ?? [],
+        serverUrl,
+        workerManagement: workerLocality.data ?? [],
+      }),
+    [
+      activeConnection?.kind,
+      desktopWorkers.data,
+      serverUrl,
+      workerLocality.data,
+    ],
   );
   useEffect(() => {
     if (storageKind !== "attached" || workerId) return;
@@ -371,7 +400,7 @@ export function WorkspaceSettings({
                           setRepositoryReviewWorkspaceId(workspace.id)
                         }
                       >
-                        <ListTree className="size-3.5" /> Repositories
+                        <ListTree className="size-3.5" /> Import more
                       </Button>
                     ) : null}
                     <Button
@@ -507,7 +536,7 @@ export function WorkspaceSettings({
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent>
-          <form className="grid gap-5" onSubmit={submit}>
+          <form className="grid min-w-0 gap-5" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle>
                 {editing ? "Rename workspace" : "New workspace"}
@@ -529,33 +558,33 @@ export function WorkspaceSettings({
             {!editing ? (
               <div className="grid gap-3">
                 <span className="text-sm font-medium">Storage</span>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <Button
-                    className="h-auto justify-start px-3 py-3 text-left"
+                    className="h-auto min-w-0 items-start justify-start whitespace-normal px-3 py-3 text-left"
                     onClick={() => setStorageKind("managed")}
                     type="button"
                     variant={storageKind === "managed" ? "default" : "outline"}
                   >
-                    <span>
+                    <span className="min-w-0">
                       <span className="block font-medium">
                         Managed by Cantrip
                       </span>
-                      <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                      <span className="mt-1 block break-words text-xs font-normal text-muted-foreground">
                         Available independently on every compatible worker.
                       </span>
                     </span>
                   </Button>
                   <Button
-                    className="h-auto justify-start px-3 py-3 text-left"
+                    className="h-auto min-w-0 items-start justify-start whitespace-normal px-3 py-3 text-left"
                     onClick={() => setStorageKind("attached")}
                     type="button"
                     variant={storageKind === "attached" ? "default" : "outline"}
                   >
-                    <span>
+                    <span className="min-w-0">
                       <span className="block font-medium">
                         Use an existing folder
                       </span>
-                      <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                      <span className="mt-1 block break-words text-xs font-normal text-muted-foreground">
                         Attach a user-owned directory on one home worker.
                       </span>
                     </span>
@@ -674,6 +703,7 @@ export function WorkspaceSettings({
         workspace={repositoryReviewWorkspace}
         workspaces={workspaces.data ?? []}
         workerOnline={repositoryReviewWorker?.online === true}
+        refreshOnOpen
       />
     </>
   );

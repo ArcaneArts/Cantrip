@@ -12,7 +12,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -318,15 +318,40 @@ export function workspaceRepositoryCandidateCanImport(
   );
 }
 
+export function workspaceRepositoryCandidateIsVisible(
+  resolved: ResolvedWorkspaceRepositoryCandidate,
+): boolean {
+  return (
+    resolved.candidate.importState !== "imported" &&
+    resolved.candidate.conflict === null
+  );
+}
+
+export function defaultWorkspaceRepositorySelection(
+  candidates: readonly ResolvedWorkspaceRepositoryCandidate[],
+): Set<string> {
+  return new Set(
+    candidates
+      .filter(
+        (resolved) =>
+          resolved.candidate.classification === "github-accessible" &&
+          workspaceRepositoryCandidateCanImport(resolved),
+      )
+      .map(({ candidate }) => candidate.id),
+  );
+}
+
 export function WorkspaceRepositoryDiscoveryReview({
   open,
   onOpenChange,
+  refreshOnOpen = false,
   workspace,
   workspaces,
   workerOnline,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
+  refreshOnOpen?: boolean;
   workspace: ProjectWorkspaceSummary | null;
   workspaces: ProjectWorkspaceSummary[];
   workerOnline: boolean;
@@ -334,6 +359,8 @@ export function WorkspaceRepositoryDiscoveryReview({
   const queryClient = useQueryClient();
   const workspaceId = workspace?.id ?? "";
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selectionScope = useRef<string | null>(null);
+  const refreshedWorkspace = useRef<string | null>(null);
   const discovery = useQuery({
     enabled: open && workspace?.storage.kind === "attached",
     queryFn: () => getWorkspaceRepositoryDiscovery(workspaceId),
@@ -387,6 +414,10 @@ export function WorkspaceRepositoryDiscoveryReview({
       [],
     [metadata.data, snapshot?.candidates],
   );
+  const visibleCandidates = useMemo(
+    () => candidates.filter(workspaceRepositoryCandidateIsVisible),
+    [candidates],
+  );
   const busy =
     snapshot?.job.state === "queued" || snapshot?.job.state === "running";
   const activeImports =
@@ -396,28 +427,56 @@ export function WorkspaceRepositoryDiscoveryReview({
   const selectableIds = useMemo(
     () =>
       new Set(
-        candidates
+        visibleCandidates
           .filter(workspaceRepositoryCandidateCanImport)
           .map(({ candidate }) => candidate.id),
       ),
-    [candidates],
+    [visibleCandidates],
   );
-  const selectedCandidates = candidates.filter(({ candidate }) =>
+  const selectedCandidates = visibleCandidates.filter(({ candidate }) =>
     selected.has(candidate.id),
   );
+  const defaultSelection = useMemo(
+    () => defaultWorkspaceRepositorySelection(visibleCandidates),
+    [visibleCandidates],
+  );
+  const allSelected =
+    selectableIds.size > 0 &&
+    [...selectableIds].every((candidateId) => selected.has(candidateId));
   const workspaceNames = useMemo(
     () => new Map(workspaces.map((item) => [item.id, item.name])),
     [workspaces],
   );
   useEffect(() => {
+    if (!open || !snapshot) {
+      selectionScope.current = null;
+      setSelected(new Set());
+      return;
+    }
+    const scope = `${workspaceId}:${snapshot.job.id}:${snapshot.job.stateRevision}`;
+    if (selectionScope.current !== scope) {
+      if (!metadata.isSuccess) return;
+      selectionScope.current = scope;
+      setSelected(defaultSelection);
+      return;
+    }
     setSelected(
       (current) =>
         new Set(
           [...current].filter((candidateId) => selectableIds.has(candidateId)),
         ),
     );
-  }, [selectableIds]);
-  useEffect(() => setSelected(new Set()), [workspaceId, snapshot?.job.id]);
+  }, [
+    defaultSelection,
+    metadata.isSuccess,
+    open,
+    selectableIds,
+    snapshot,
+    workspaceId,
+  ]);
+  useEffect(() => {
+    if (!open) refreshedWorkspace.current = null;
+  }, [open]);
   const importRepositories = useMutation({
     mutationFn: async () => {
       if (!snapshot || selectedCandidates.length === 0) {
@@ -444,8 +503,31 @@ export function WorkspaceRepositoryDiscoveryReview({
         ["workspace-repository-discovery", workspaceId],
         next,
       );
+      onOpenChange(false);
     },
   });
+  useEffect(() => {
+    if (
+      !open ||
+      !refreshOnOpen ||
+      !workspaceId ||
+      !snapshot ||
+      !workerOnline ||
+      refreshedWorkspace.current === workspaceId
+    ) {
+      return;
+    }
+    refreshedWorkspace.current = workspaceId;
+    if (!busy && !activeImports) rescan.mutate();
+  }, [
+    activeImports,
+    busy,
+    open,
+    refreshOnOpen,
+    snapshot,
+    workerOnline,
+    workspaceId,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -497,9 +579,9 @@ export function WorkspaceRepositoryDiscoveryReview({
                 </p>
               </div>
             </div>
-          ) : snapshot && candidates.length ? (
+          ) : snapshot && visibleCandidates.length ? (
             <ul className="divide-y">
-              {candidates.map((candidate) => (
+              {visibleCandidates.map((candidate) => (
                 <CandidateRow
                   checked={selected.has(candidate.candidate.id)}
                   disabled={
@@ -529,7 +611,11 @@ export function WorkspaceRepositoryDiscoveryReview({
           ) : snapshot ? (
             <div className="grid min-h-40 place-items-center px-6 text-center">
               <div>
-                <p className="text-sm font-medium">No Git repositories found</p>
+                <p className="text-sm font-medium">
+                  {candidates.length
+                    ? "No new Git repositories found"
+                    : "No Git repositories found"}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   The scan searched the workspace root through depth{" "}
                   {snapshot.job.depth}.
@@ -542,6 +628,7 @@ export function WorkspaceRepositoryDiscoveryReview({
         {snapshot?.job.state === "succeeded" ? (
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>{snapshot.candidates.length} repositories found</span>
+            <span>{visibleCandidates.length} available to import</span>
             {snapshot.job.counts?.collapsedRepositories ? (
               <span>
                 {snapshot.job.counts.collapsedRepositories} nested checkouts
@@ -581,6 +668,22 @@ export function WorkspaceRepositoryDiscoveryReview({
           </p>
         ) : null}
         <DialogFooter>
+          <Button
+            disabled={
+              busy ||
+              activeImports ||
+              importRepositories.isPending ||
+              selectableIds.size === 0 ||
+              !workerOnline
+            }
+            onClick={() =>
+              setSelected(allSelected ? new Set() : new Set(selectableIds))
+            }
+            type="button"
+            variant="outline"
+          >
+            {allSelected ? "Select none" : "Select all"}
+          </Button>
           <Button
             disabled={!workspace || busy || activeImports || !workerOnline}
             onClick={() => rescan.mutate()}
