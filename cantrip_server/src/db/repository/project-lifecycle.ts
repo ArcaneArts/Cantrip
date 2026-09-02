@@ -30,6 +30,7 @@ export interface ProjectRemovalContext {
   replicas: Array<{
     cwd: string;
     id: string;
+    ownershipKind: ProjectReplicaSummary["ownershipKind"];
     workerId: string;
   }>;
   remoteSurfaces: Array<{ id: string; workerId: string }>;
@@ -448,6 +449,7 @@ export class ProjectLifecycleRepository {
       .select({
         cwd: schema.projectSources.absolutePath,
         id: schema.projectSources.id,
+        ownershipKind: schema.projectSources.ownershipKind,
         workerId: schema.projectSources.workerId,
       })
       .from(schema.projectSources)

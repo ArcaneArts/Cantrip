@@ -772,7 +772,7 @@ describe("managed folder project lifecycle", () => {
     });
   });
 
-  it("upgrades an attached local Git source without changing its path or ownership", async () => {
+  it("upgrades an attached local Git source and preserves its user-owned checkout during deletion", async () => {
     const ready = await importLocalGitProject();
     expect(ready).toMatchObject({
       originKind: "managed-folder",
@@ -893,17 +893,23 @@ describe("managed folder project lifecycle", () => {
     });
 
     const commandCount = commands.length;
-    expect(
-      await app.inject({
-        method: "DELETE",
-        url: `/api/projects/${ready.id}`,
-        payload: { deleteLocalFiles: false },
-      }),
-    ).toMatchObject({ statusCode: 204 });
+    connectedWorkers.delete("folder-worker");
+    const removal = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${ready.id}`,
+      payload: { deleteLocalFiles: true },
+    });
+    connectedWorkers.add("folder-worker");
+    expect(removal).toMatchObject({ statusCode: 204 });
     expect(
       commands
         .slice(commandCount)
         .some(({ command }) => command.type === "project.folder.delete"),
+    ).toBe(false);
+    expect(
+      commands
+        .slice(commandCount)
+        .some(({ command }) => command.type === "project.files.delete"),
     ).toBe(false);
   });
 
