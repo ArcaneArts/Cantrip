@@ -189,14 +189,26 @@ export function useChatTurnPromptOverlay({
 }
 
 export function ChatTurnPromptOverlay({
+  eliteModeEnabled,
   message,
   visible,
 }: {
+  eliteModeEnabled: boolean;
   message: ChatMessage | null;
   visible: boolean;
 }) {
   if (!message || !visible) return null;
   const summary = chatTurnPromptSummary(message);
+  const promptCard = (
+    <div className="w-full rounded-xl border border-primary/35 bg-background/75 px-4 py-2 shadow-xl ring-1 ring-primary/10 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Current prompt
+      </p>
+      <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-foreground/90">
+        {summary}
+      </p>
+    </div>
+  );
 
   return (
     <div
@@ -204,22 +216,19 @@ export function ChatTurnPromptOverlay({
       className="pointer-events-none absolute inset-x-0 top-0 z-30 px-4 pt-2 sm:px-8 md:px-10"
       data-chat-turn-prompt-overlay=""
     >
-      <EliteReveal
-        className="mx-auto max-w-5xl"
-        config={CHAT_TURN_PROMPT_GLITCH_CONFIG}
-        contentKind="box"
-        key={`${message.id}:${summary}`}
-        replayKey={0}
-      >
-        <div className="w-full rounded-xl border border-primary/35 bg-background/75 px-4 py-2 shadow-xl ring-1 ring-primary/10 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Current prompt
-          </p>
-          <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-foreground/90">
-            {summary}
-          </p>
-        </div>
-      </EliteReveal>
+      {eliteModeEnabled ? (
+        <EliteReveal
+          className="mx-auto max-w-5xl"
+          config={CHAT_TURN_PROMPT_GLITCH_CONFIG}
+          contentKind="box"
+          key={`${message.id}:${summary}`}
+          replayKey={0}
+        >
+          {promptCard}
+        </EliteReveal>
+      ) : (
+        <div className="mx-auto max-w-5xl">{promptCard}</div>
+      )}
     </div>
   );
 }

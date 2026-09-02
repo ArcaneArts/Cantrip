@@ -263,6 +263,7 @@ export function ChatTranscriptView({
         </div>
       ) : null}
       <ChatTurnPromptOverlay
+        eliteModeEnabled={settings?.preferences.eliteMode ?? false}
         message={turnPromptOverlay.message}
         visible={turnPromptOverlay.visible}
       />
