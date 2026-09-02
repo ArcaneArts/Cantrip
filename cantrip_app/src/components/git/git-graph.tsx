@@ -24,6 +24,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+import { GitContentSurface } from "./git-content-surface";
 import {
   applyGitGraphCommitOverlay,
   buildGitGraphDisplayModel,
@@ -378,9 +379,10 @@ export function GitRepositoryGraphView({
 
   const analysis = metrics.data?.analysis ?? snapshot.data.analysis;
   return (
-    <div
-      className="relative flex min-h-0 flex-1 overflow-hidden"
-      data-slot="git-graph"
+    <GitContentSurface
+      className="relative flex overflow-hidden"
+      dataSlot="git-graph"
+      guttered={false}
     >
       <RepositoryGraphSurface
         ariaLabel={`Repository graph for revision ${snapshot.data.revision?.slice(0, 8) ?? "unborn HEAD"}`}
@@ -640,6 +642,6 @@ export function GitRepositoryGraphView({
           : ""}
         {snapshot.data.truncated ? " · analysis capped" : ""}
       </div>
-    </div>
+    </GitContentSurface>
   );
 }

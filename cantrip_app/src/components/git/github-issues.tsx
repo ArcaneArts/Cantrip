@@ -32,6 +32,7 @@ import {
   getGithubIssue,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { GitContentSurface } from "./git-content-surface";
 import { GithubIssueCreateDialog } from "./github-issue-create-dialog";
 import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
 import { GithubPullRequestDialog } from "./github-pull-request-dialog";
@@ -315,7 +316,7 @@ export function GithubIssuesView({
   }, [hasNextPage, isFetchingNextPage, onLoadMore]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <GitContentSurface className="flex flex-col" guttered>
       <div className="flex h-9 shrink-0 items-center justify-end px-3">
         <Button
           size="sm"
@@ -478,6 +479,6 @@ export function GithubIssuesView({
           }}
         />
       ) : null}
-    </div>
+    </GitContentSurface>
   );
 }

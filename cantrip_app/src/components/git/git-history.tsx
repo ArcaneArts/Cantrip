@@ -107,6 +107,7 @@ import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
 import { GitWorkbenchToolbar } from "./git-workbench-toolbar";
 import { GitHistoryMobileDrawer } from "./git-history-mobile-drawer";
+import { GitContentSurface } from "./git-content-surface";
 import {
   GitRepositoryGraphView,
   type GitRepositoryGraphStatus,
@@ -908,11 +909,7 @@ export function GitHistoryView({
   );
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col"
-      data-content-gutter="wide"
-      data-slot="git-history"
-    >
+    <div className="flex min-h-0 flex-1 flex-col" data-slot="git-history">
       <div className="relative flex h-10 shrink-0 items-center gap-2 px-3">
         {showSectionTabs ? (
           <ProjectOverviewNavigation
@@ -1120,7 +1117,11 @@ export function GitHistoryView({
           onSelectWorktree={onSelectWorktree}
         />
       ) : (
-        <div className="relative flex min-h-0 flex-1">
+        <GitContentSurface
+          className="relative flex"
+          dataSlot="git-history-content"
+          guttered
+        >
           <div className="min-h-0 min-w-0 flex-1 overflow-auto">
             {!selectedWorktree ? (
               <div className="grid min-h-64 place-items-center text-sm text-muted-foreground">
@@ -1511,7 +1512,7 @@ export function GitHistoryView({
               {activeDrawer ? renderDrawerContent(activeDrawer) : null}
             </ResizablePanel>
           )}
-        </div>
+        </GitContentSurface>
       )}
 
       <GitCommitActionDialog
