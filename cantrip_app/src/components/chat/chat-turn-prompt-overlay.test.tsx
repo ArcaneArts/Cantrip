@@ -91,6 +91,7 @@ describe("chat turn prompt overlay", () => {
   it("does not retain a hidden prompt for a fade-out transition", () => {
     const markup = renderToStaticMarkup(
       <ChatTurnPromptOverlay
+        eliteModeEnabled
         message={message("Keep this request in view")}
         visible={false}
       />,
@@ -99,9 +100,13 @@ describe("chat turn prompt overlay", () => {
     expect(markup).toBe("");
   });
 
-  it("renders the visible prompt as a blurred primary-outlined glitch card", () => {
+  it("renders the visible prompt as a blurred primary-outlined glitch card in Elite Mode", () => {
     const markup = renderToStaticMarkup(
-      <ChatTurnPromptOverlay message={message("Original prompt")} visible />,
+      <ChatTurnPromptOverlay
+        eliteModeEnabled
+        message={message("Original prompt")}
+        visible
+      />,
     );
 
     expect(markup).toContain("data-chat-turn-prompt-overlay");
@@ -110,6 +115,21 @@ describe("chat turn prompt overlay", () => {
     expect(markup).toContain("bg-background/75");
     expect(markup).toContain("backdrop-blur-2xl");
     expect(markup).not.toContain("transition-");
+  });
+
+  it("renders the current prompt without glitch effects outside Elite Mode", () => {
+    const markup = renderToStaticMarkup(
+      <ChatTurnPromptOverlay
+        eliteModeEnabled={false}
+        message={message("Original prompt")}
+        visible
+      />,
+    );
+
+    expect(markup).toContain("data-chat-turn-prompt-overlay");
+    expect(markup).toContain("Original prompt");
+    expect(markup).toContain("mx-auto max-w-5xl");
+    expect(markup).not.toContain("data-elite-reveal");
   });
 
   it("uses a short box-oriented glitch without staggered delay", () => {
