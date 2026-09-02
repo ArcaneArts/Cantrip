@@ -241,6 +241,18 @@ export const workspaceRepositoryDiscoveryStartSchema = z
   })
   .strict();
 
+export const workspaceRepositoryMutationConflictCodeSchema = z.enum([
+  "repository-discovery-stale",
+  "repository-candidates-stale",
+]);
+
+export const workspaceRepositoryMutationConflictSchema = z
+  .object({
+    code: workspaceRepositoryMutationConflictCodeSchema,
+    error: z.string().min(1).max(500),
+  })
+  .strict();
+
 export const workspaceRepositoryImportCandidateCreateSchema = z
   .object({
     candidateId: z.string().uuid(),
@@ -411,6 +423,12 @@ export type WorkspaceRepositoryDiscoverySnapshot = z.infer<
 >;
 export type WorkspaceRepositoryDiscoveryStart = z.infer<
   typeof workspaceRepositoryDiscoveryStartSchema
+>;
+export type WorkspaceRepositoryMutationConflictCode = z.infer<
+  typeof workspaceRepositoryMutationConflictCodeSchema
+>;
+export type WorkspaceRepositoryMutationConflict = z.infer<
+  typeof workspaceRepositoryMutationConflictSchema
 >;
 export type WorkspaceRepositoryImportCandidateCreate = z.infer<
   typeof workspaceRepositoryImportCandidateCreateSchema
