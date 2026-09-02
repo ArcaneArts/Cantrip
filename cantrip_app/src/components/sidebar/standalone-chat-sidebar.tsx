@@ -6,7 +6,6 @@ import {
   Loader2,
   MessageSquare,
   Plus,
-  Settings,
   WifiOff,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -53,7 +52,6 @@ export interface StandaloneChatSidebarProps {
   onFork(chat: StandaloneChatSummary): void;
   onNewChat(): void;
   onOpenArchived(): void;
-  onOpenSettings(): void;
   onRename(chat: StandaloneChatSummary, title: string): void;
   onSelect(chat: StandaloneChatSummary): void;
   onSwitchIde(): void;
@@ -74,7 +72,6 @@ export function StandaloneChatSidebar({
   onFork,
   onNewChat,
   onOpenArchived,
-  onOpenSettings,
   onRename,
   onSelect,
   onSwitchIde,
@@ -210,7 +207,7 @@ export function StandaloneChatSidebar({
         )}
       </nav>
 
-      <div className="space-y-1 border-t p-3">
+      <div className="border-t p-3">
         <Button
           className={cn("w-full justify-start", archivedSelected && "bg-muted")}
           variant="ghost"
@@ -222,13 +219,6 @@ export function StandaloneChatSidebar({
               {archivedCount}
             </span>
           ) : null}
-        </Button>
-        <Button
-          className="w-full justify-start"
-          variant="ghost"
-          onClick={onOpenSettings}
-        >
-          <Settings className="size-4" /> Settings
         </Button>
       </div>
 

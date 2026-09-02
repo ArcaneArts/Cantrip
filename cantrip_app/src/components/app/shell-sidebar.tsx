@@ -351,13 +351,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   setShowSettings(false);
                   setShowServerAdmin(false);
                 }}
-                onOpenSettings={() => {
-                  setDesktopSidebarDrawerOpen(false);
-                  setSettingsSection("general");
-                  setShowSettings(true);
-                  setShowArchivedStandaloneChats(false);
-                  setShowServerAdmin(false);
-                }}
                 onRename={(chat, title) =>
                   renameStandaloneChat.mutate({ chatId: chat.id, title })
                 }
@@ -569,24 +562,24 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   onOpenAdmin={openServerAdmin}
                   workerName={onlineWorker?.name ?? "Worker offline"}
                 />
-                {appMode === "ide" ? (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-8"
-                    onClick={() => {
-                      setDesktopSidebarDrawerOpen(false);
-                      setSettingsSection("general");
-                      setShowSettings(true);
-                      setShowServerAdmin(false);
-                      setShowImporter(false);
-                      setShowProjectSettings(false);
-                    }}
-                  >
-                    <Settings className="size-4" />
-                    <span className="sr-only">Open settings</span>
-                  </Button>
-                ) : null}
+                <Button
+                  aria-label="Open settings"
+                  size="icon"
+                  variant="ghost"
+                  className="size-8"
+                  onClick={() => {
+                    setDesktopSidebarDrawerOpen(false);
+                    setSettingsSection("general");
+                    setShowSettings(true);
+                    setShowArchivedStandaloneChats(false);
+                    setShowServerAdmin(false);
+                    setShowImporter(false);
+                    setShowProjectSettings(false);
+                  }}
+                >
+                  <Settings className="size-4" />
+                  <span className="sr-only">Open settings</span>
+                </Button>
               </div>
             </div>
           </aside>

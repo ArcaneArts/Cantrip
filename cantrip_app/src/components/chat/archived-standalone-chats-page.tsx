@@ -50,7 +50,10 @@ export function ArchivedStandaloneChatsPage({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
+      <div
+        className="w-full px-4 py-6 sm:px-6 sm:py-10"
+        data-content-gutter="standard"
+      >
         <div className="mb-6">
           <h1 className="text-xl font-semibold tracking-tight">
             Archived chats
