@@ -569,8 +569,8 @@ describe("managed folder project lifecycle", () => {
       git: true,
       github: true,
       worktrees: false,
-      replicas: false,
-      relocation: false,
+      replicas: true,
+      relocation: true,
     });
     expect(ready.source?.sourceKind).toBe("git");
     expect(ready.github).toMatchObject({
@@ -586,7 +586,7 @@ describe("managed folder project lifecycle", () => {
   });
 
   it("attaches an existing worker folder without taking deletion ownership", async () => {
-    const existingPath = path.join(dataDirectory, "outside-managed-root");
+    const existingPath = protectedRoutingHandle("outside-managed-root");
     const response = await app.inject({
       method: "POST",
       url: "/api/projects/from-folder",
