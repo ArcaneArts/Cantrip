@@ -74,6 +74,7 @@ function discoveryJob() {
     stateRevision: 1,
     attempt: 0,
     depth: 3,
+    diagnosticCode: null,
     truncated: false,
     counts: null,
     error: null,
