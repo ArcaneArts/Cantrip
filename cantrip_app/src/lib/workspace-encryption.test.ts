@@ -39,6 +39,7 @@ class MemoryWorkspaceApi implements ProjectWorkspaceWireApi {
     {
       id: "workspace:default:owner-a",
       nameProtection: { state: "system-default" },
+      storage: { kind: "system" },
       position: 0,
       isDefault: true,
       projectIds: [],
@@ -65,6 +66,7 @@ class MemoryWorkspaceApi implements ProjectWorkspaceWireApi {
     const row: ProjectWorkspaceWireSummary = {
       id: input.id,
       nameProtection: input.nameProtection,
+      storage: input.storage,
       position: this.rows.length,
       isDefault: false,
       projectIds: [],
@@ -130,9 +132,9 @@ describe("workspace encryption adapter", () => {
   it("seals the system default before the first create", async () => {
     const { adapter, api } = fixture();
 
-    await expect(adapter.create({ name: "Default" })).rejects.toMatchObject({
-      status: 409,
-    });
+    await expect(
+      adapter.create({ name: "Default", storage: { kind: "managed" } }),
+    ).rejects.toMatchObject({ status: 409 });
     expect(api.rows).toHaveLength(1);
     expect(api.rows[0]?.nameProtection.state).toBe("encrypted");
   });
@@ -145,10 +147,14 @@ describe("workspace encryption adapter", () => {
     await adapter.list();
     expect(api.writes).toBe(writesAfterBootstrap);
 
-    const created = await adapter.create({ name: "Team" });
-    await expect(adapter.create({ name: "  TEAM " })).rejects.toMatchObject({
-      status: 409,
+    const created = await adapter.create({
+      name: "Team",
+      storage: { kind: "managed" },
     });
+    await expect(
+      adapter.create({ name: "  TEAM ", storage: { kind: "managed" } }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(created.storage).toEqual({ kind: "managed" });
     api.rows.find(({ id }) => id === created.id)!.projectIds.push("project-1");
     const renamed = await adapter.update(created.id, { name: "Research" });
     expect(renamed.name).toBe("Research");
@@ -160,11 +166,27 @@ describe("workspace encryption adapter", () => {
     expect(JSON.stringify(api.rows)).not.toContain("Research");
   });
 
+  it("routes attached creation through the verified attachment flow", async () => {
+    const { adapter, api } = fixture();
+
+    await expect(
+      adapter.create({
+        name: "Existing repositories",
+        storage: {
+          kind: "attached",
+          workerId: "worker-1",
+          rootPath: "/workspace/repositories",
+        },
+      }),
+    ).rejects.toThrow(/verified root attachment/iu);
+    expect(api.writes).toBe(0);
+  });
+
   it("fails authentication when envelopes are swapped between row IDs", async () => {
     const { adapter, api } = fixture();
     await adapter.list();
-    await adapter.create({ name: "Alpha" });
-    await adapter.create({ name: "Beta" });
+    await adapter.create({ name: "Alpha", storage: { kind: "managed" } });
+    await adapter.create({ name: "Beta", storage: { kind: "managed" } });
     const left = api.rows[1]!;
     const right = api.rows[2]!;
     if (
@@ -198,7 +220,9 @@ describe("workspace encryption adapter", () => {
       service: new ClientEncryptionService(),
       session,
     });
-    await expect(adapter.create({ name: "Blocked" })).rejects.toMatchObject({
+    await expect(
+      adapter.create({ name: "Blocked", storage: { kind: "managed" } }),
+    ).rejects.toMatchObject({
       code: "locked",
       message: expect.stringMatching(/sign in once/iu),
     });
@@ -231,9 +255,9 @@ describe("workspace encryption adapter", () => {
       session,
     });
 
-    await expect(adapter.create({ name: "Recovered" })).resolves.toMatchObject({
-      name: "Recovered",
-    });
+    await expect(
+      adapter.create({ name: "Recovered", storage: { kind: "managed" } }),
+    ).resolves.toMatchObject({ name: "Recovered" });
     expect(preparations).toBe(1);
     expect(service.getSnapshot()).toMatchObject({ status: "ready", identity });
   });

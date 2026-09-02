@@ -2,6 +2,7 @@ import type {
   ProjectSummary,
   ProjectWorkspaceSummary,
 } from "@cantrip/protocol";
+import { projectWorkspaceStorageCanBeDefault } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FolderGit2,
@@ -89,7 +90,10 @@ export function WorkspaceSettings({
     mutationFn: () =>
       editing
         ? updateProjectWorkspace(editing.id, { name: name.trim() })
-        : createProjectWorkspace({ name: name.trim() }),
+        : createProjectWorkspace({
+            name: name.trim(),
+            storage: { kind: "managed" },
+          }),
     onSuccess: (workspace) => {
       replaceWorkspace(workspace);
       setEditorOpen(false);
@@ -216,7 +220,10 @@ export function WorkspaceSettings({
                     >
                       <ShieldCheck className="size-3.5" /> Policies
                     </Button>
-                    {!workspace.isDefault ? (
+                    {!workspace.isDefault &&
+                    projectWorkspaceStorageCanBeDefault(
+                      workspace.storage.kind,
+                    ) ? (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -237,7 +244,8 @@ export function WorkspaceSettings({
                       <Pencil className="size-3.5" />
                       <span className="sr-only">Rename {workspace.name}</span>
                     </Button>
-                    {!workspace.isDefault ? (
+                    {!workspace.isDefault &&
+                    workspace.storage.kind !== "system" ? (
                       <Button
                         size="icon"
                         variant="ghost"

@@ -143,6 +143,42 @@ describe("project workspace migration", () => {
       `);
 
       await applyMigrations(database, 179, 179);
+      await database.exec(`
+        UPDATE project_workspaces
+        SET is_default = false
+        WHERE id = 'workspace:default:user-1';
+
+        UPDATE project_workspaces
+        SET is_default = true
+        WHERE id = 'workspace-custom-a';
+
+        INSERT INTO workers (
+          id, owner_id, name, platform, architecture, started_at, last_seen_at
+        ) VALUES (
+          'worker-1', 'user-1', 'Worker 1', 'linux', 'x64', now(), now()
+        );
+
+        INSERT INTO project_sources (
+          id, project_id, worker_id, absolute_path, display_path,
+          repository_fingerprint
+        ) VALUES (
+          'source-1', 'project-custom', 'worker-1',
+          'ctrr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'ctrr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+        );
+      `);
+
+      const pathsBeforeStorageProfiles = await database.query<{
+        absolute_path: string;
+        id: string;
+      }>(`
+        SELECT id, absolute_path
+        FROM project_sources
+        ORDER BY id
+      `);
+
+      await applyMigrations(database, 180, 180);
 
       const memberships = await database.query<{
         project_id: string;
@@ -167,6 +203,38 @@ describe("project workspace migration", () => {
         },
       ]);
 
+      const storageProfiles = await database.query<{
+        kind: string;
+        workspace_id: string;
+      }>(`
+        SELECT workspace_id, kind
+        FROM project_workspace_storage_profiles
+        ORDER BY workspace_id
+      `);
+      expect(storageProfiles.rows).toEqual([
+        { workspace_id: "workspace-custom-a", kind: "legacy" },
+        { workspace_id: "workspace-custom-b", kind: "legacy" },
+        { workspace_id: "workspace:default:user-1", kind: "system" },
+      ]);
+      expect(
+        (
+          await database.query<{ id: string }>(`
+            SELECT id
+            FROM project_workspaces
+            WHERE is_default = true
+          `)
+        ).rows,
+      ).toEqual([{ id: "workspace-custom-a" }]);
+      expect(
+        (
+          await database.query<{ absolute_path: string; id: string }>(`
+            SELECT id, absolute_path
+            FROM project_sources
+            ORDER BY id
+          `)
+        ).rows,
+      ).toEqual(pathsBeforeStorageProfiles.rows);
+
       await expect(
         database.exec(`
           INSERT INTO project_workspace_memberships (workspace_id, project_id)
@@ -175,9 +243,68 @@ describe("project workspace migration", () => {
       ).rejects.toThrow();
       await expect(
         database.exec(`
+          INSERT INTO project_workspace_storage_profiles (
+            workspace_id, kind, worker_id
+          ) VALUES (
+            'workspace-custom-a', 'managed', 'missing-worker'
+          ) ON CONFLICT (workspace_id) DO UPDATE
+          SET kind = excluded.kind, worker_id = excluded.worker_id;
+        `),
+      ).rejects.toThrow();
+      await expect(
+        database.exec(`
           DELETE FROM project_workspaces WHERE id = 'workspace-custom-a';
         `),
       ).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("allows account deletion to cascade through attached profiles", async () => {
+    const database = new PGlite();
+    try {
+      await applyMigrations(database, 0, 180);
+      await database.exec(`
+        INSERT INTO users (id, kind, display_name)
+        VALUES ('cascade-owner', 'anonymous', 'Cascade Owner');
+
+        INSERT INTO workers (
+          id, owner_id, name, platform, architecture, started_at, last_seen_at
+        ) VALUES (
+          'cascade-worker', 'cascade-owner', 'Cascade Worker',
+          'linux', 'x64', now(), now()
+        );
+
+        INSERT INTO project_workspaces (
+          id, owner_id, name_envelope, name_blind_index,
+          name_format_version, name_key_revision, position, is_default
+        ) VALUES (
+          'cascade-workspace', 'cascade-owner', '{}'::jsonb,
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 1, 1, false
+        );
+
+        INSERT INTO project_workspace_storage_profiles (
+          workspace_id, kind, worker_id,
+          protected_root_path_handle, protected_display_handle
+        ) VALUES (
+          'cascade-workspace', 'attached', 'cascade-worker',
+          'ctrr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'ctrr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        );
+
+        DELETE FROM users WHERE id = 'cascade-owner';
+      `);
+
+      expect(
+        (
+          await database.query<{ count: string }>(`
+            SELECT count(*)::text AS count
+            FROM project_workspace_storage_profiles
+            WHERE workspace_id = 'cascade-workspace'
+          `)
+        ).rows,
+      ).toEqual([{ count: "0" }]);
     } finally {
       await database.close();
     }

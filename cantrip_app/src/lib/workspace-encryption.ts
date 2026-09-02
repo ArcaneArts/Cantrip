@@ -288,6 +288,7 @@ export class ProjectWorkspaceEncryptionAdapter {
       return projectWorkspaceSummarySchema.parse({
         id: workspace.id,
         name: decoder.decode(plaintext),
+        storage: workspace.storage,
         position: workspace.position,
         isDefault: workspace.isDefault,
         projectIds: workspace.projectIds,
@@ -357,6 +358,11 @@ export class ProjectWorkspaceEncryptionAdapter {
     input: ProjectWorkspaceCreate,
   ): Promise<ProjectWorkspaceSummary> {
     const parsed = projectWorkspaceCreateSchema.parse(input);
+    if (parsed.storage.kind !== "managed") {
+      throw new Error(
+        "Attached workspaces must be created through verified root attachment.",
+      );
+    }
     await this.identity();
     await this.sealSystemDefault(await this.api.list());
     const id = globalThis.crypto.randomUUID();
@@ -364,6 +370,7 @@ export class ProjectWorkspaceEncryptionAdapter {
       await this.api.create({
         id,
         nameProtection: await this.encryptName(id, parsed.name),
+        storage: { kind: "managed" },
       }),
     );
   }

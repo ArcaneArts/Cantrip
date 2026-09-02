@@ -41,6 +41,7 @@ import type {
   ProjectReplicaMaterialization,
   ProjectReplicaOwnershipKind,
   ProjectReplicaPlacementMode,
+  ProjectWorkspaceStorageKind,
   ProjectRootKind,
   ProjectSourceKind,
   RemoteSurfaceCapabilities,
@@ -1968,6 +1969,54 @@ export const projectWorkspaces = pgTable(
       sql`(${table.id} = ('workspace:default:' || ${table.ownerId}) AND ${table.nameEnvelope} IS NULL AND ${table.nameBlindIndex} IS NULL AND ${table.nameFormatVersion} IS NULL AND ${table.nameKeyRevision} IS NULL) OR (${table.nameEnvelope} IS NOT NULL AND ${table.nameBlindIndex} IS NOT NULL AND ${table.nameFormatVersion} = 1 AND ${table.nameKeyRevision} >= 1)`,
     ),
     check("project_workspaces_revision_check", sql`${table.revision} >= 1`),
+  ],
+);
+
+export const projectWorkspaceStorageProfiles = pgTable(
+  "project_workspace_storage_profiles",
+  {
+    workspaceId: text("workspace_id")
+      .primaryKey()
+      .references(() => projectWorkspaces.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<ProjectWorkspaceStorageKind>().notNull(),
+    workerId: text("worker_id").references(() => workers.id),
+    protectedRootPathHandle: text("protected_root_path_handle"),
+    protectedDisplayHandle: text("protected_display_handle"),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_workspace_storage_profiles_worker_root_unique")
+      .on(table.workerId, table.protectedRootPathHandle)
+      .where(sql`${table.kind} = 'attached'`),
+    index("project_workspace_storage_profiles_worker_index")
+      .on(table.workerId)
+      .where(sql`${table.workerId} IS NOT NULL`),
+    check(
+      "project_workspace_storage_profiles_kind_check",
+      sql`${table.kind} IN ('system', 'legacy', 'managed', 'attached')`,
+    ),
+    check(
+      "project_workspace_storage_profiles_binding_check",
+      sql`(${table.kind} = 'attached' AND ${table.workerId} IS NOT NULL AND ${table.protectedRootPathHandle} IS NOT NULL AND ${table.protectedDisplayHandle} IS NOT NULL) OR (${table.kind} <> 'attached' AND ${table.workerId} IS NULL AND ${table.protectedRootPathHandle} IS NULL AND ${table.protectedDisplayHandle} IS NULL)`,
+    ),
+    check(
+      "project_workspace_storage_profiles_root_handle_check",
+      sql`${table.protectedRootPathHandle} IS NULL OR ${table.protectedRootPathHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "project_workspace_storage_profiles_display_handle_check",
+      sql`${table.protectedDisplayHandle} IS NULL OR ${table.protectedDisplayHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "project_workspace_storage_profiles_revision_check",
+      sql`${table.revision} >= 1`,
+    ),
   ],
 );
 

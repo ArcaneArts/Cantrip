@@ -179,6 +179,7 @@ import {
   projectReplicaJobSummarySchema,
   projectReplicaListSchema,
   projectSummarySchema,
+  projectWorkspaceStorageCanBeDefault,
   projectWorkspaceCreateSchema,
   projectWorkspaceSummarySchema,
   projectWorkspaceUpdateSchema,
@@ -3583,8 +3584,41 @@ describe("Cantrip protocol", () => {
 
   it("validates project workspace names and immutable assignments", () => {
     expect(
-      projectWorkspaceCreateSchema.parse({ name: "  Personal  " }),
-    ).toEqual({ name: "Personal" });
+      projectWorkspaceCreateSchema.parse({
+        name: "  Personal  ",
+        storage: { kind: "managed" },
+      }),
+    ).toEqual({ name: "Personal", storage: { kind: "managed" } });
+    expect(
+      projectWorkspaceCreateSchema.parse({
+        name: "Attached",
+        storage: {
+          kind: "attached",
+          workerId: "worker-1",
+          rootPath: "  /workspace/repositories  ",
+        },
+      }),
+    ).toEqual({
+      name: "Attached",
+      storage: {
+        kind: "attached",
+        workerId: "worker-1",
+        rootPath: "/workspace/repositories",
+      },
+    });
+    expect(() =>
+      projectWorkspaceCreateSchema.parse({ name: "Missing storage" }),
+    ).toThrow();
+    expect(() =>
+      projectWorkspaceCreateSchema.parse({
+        name: "Legacy",
+        storage: { kind: "legacy" },
+      }),
+    ).toThrow();
+    expect(projectWorkspaceStorageCanBeDefault("system")).toBe(true);
+    expect(projectWorkspaceStorageCanBeDefault("legacy")).toBe(true);
+    expect(projectWorkspaceStorageCanBeDefault("managed")).toBe(true);
+    expect(projectWorkspaceStorageCanBeDefault("attached")).toBe(false);
     expect(() =>
       projectWorkspaceUpdateSchema.parse({ projectIds: ["project-1"] }),
     ).toThrow();
@@ -3605,6 +3639,7 @@ describe("Cantrip protocol", () => {
       projectWorkspaceSummarySchema.parse({
         id: "workspace-1",
         name: "Personal",
+        storage: { kind: "managed" },
         position: 0,
         isDefault: false,
         projectIds: [""],

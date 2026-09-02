@@ -2460,6 +2460,7 @@ describe("local server foundation", () => {
     const defaultWorkspace = initialWorkspaces.workspaces[0]!;
     expect(defaultWorkspace).toMatchObject({
       nameProtection: { state: "system-default" },
+      storage: { kind: "system" },
       isDefault: true,
       projectIds: [project.id],
     });
@@ -2531,12 +2532,14 @@ describe("local server foundation", () => {
           payload: {
             id: "c41a00ec-7438-42a8-929b-5048ca426c8c",
             nameProtection: workspaceNameProtection(2),
+            storage: { kind: "managed" },
           },
         })
       ).json(),
     );
     expect(personalWorkspace).toMatchObject({
       nameProtection: { state: "encrypted" },
+      storage: { kind: "managed" },
       isDefault: false,
       projectIds: [],
     });
@@ -2615,6 +2618,7 @@ describe("local server foundation", () => {
           payload: {
             id: "28b33bd0-413e-42cb-985d-b516124dd4cc",
             nameProtection: workspaceNameProtection(4),
+            storage: { kind: "managed" },
           },
         })
       ).json(),
