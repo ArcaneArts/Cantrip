@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FolderGit2,
   FolderOpen,
+  ListTree,
   Layers3,
   Loader2,
   Pencil,
@@ -43,6 +44,7 @@ import {
 } from "@/lib/workspace-encryption";
 import { errorMessage } from "@/lib/error-message";
 import { PolicyAssignmentControls } from "./policy-assignment-controls";
+import { WorkspaceRepositoryDiscoveryReview } from "./workspace-repository-discovery-review";
 
 function message(error: unknown): string {
   return errorMessage(error, "Workspace update failed.");
@@ -99,6 +101,8 @@ export function WorkspaceSettings({
   const [policyWorkspaceId, setPolicyWorkspaceId] = useState<string | null>(
     null,
   );
+  const [repositoryReviewWorkspaceId, setRepositoryReviewWorkspaceId] =
+    useState<string | null>(null);
   const desktopWorkers = useQuery({
     enabled: editorOpen && !editing,
     queryFn: listDesktopWorkers,
@@ -129,6 +133,9 @@ export function WorkspaceSettings({
           }),
     onSuccess: (workspace) => {
       replaceWorkspace(workspace);
+      if (!editing && workspace.storage.kind === "attached") {
+        setRepositoryReviewWorkspaceId(workspace.id);
+      }
       setEditorOpen(false);
       setEditing(null);
       setName("");
@@ -196,6 +203,17 @@ export function WorkspaceSettings({
   const selectedWorker = attachableWorkers.find(
     (worker) => worker.workerId === workerId,
   );
+  const repositoryReviewWorkspace =
+    (workspaces.data ?? []).find(
+      ({ id }) => id === repositoryReviewWorkspaceId,
+    ) ?? null;
+  const repositoryReviewStorage = repositoryReviewWorkspace?.storage;
+  const repositoryReviewWorker =
+    repositoryReviewStorage?.kind === "attached"
+      ? (workers.data ?? []).find(
+          ({ workerId }) => workerId === repositoryReviewStorage.workerId,
+        )
+      : undefined;
   const attachedPathTargets = useMemo(
     () =>
       (workspaces.data ?? []).flatMap((workspace) => {
@@ -345,6 +363,17 @@ export function WorkspaceSettings({
                     ) : null}
                   </div>
                   <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+                    {workspace.storage.kind === "attached" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setRepositoryReviewWorkspaceId(workspace.id)
+                        }
+                      >
+                        <ListTree className="size-3.5" /> Repositories
+                      </Button>
+                    ) : null}
                     <Button
                       size="sm"
                       variant={
@@ -636,6 +665,15 @@ export function WorkspaceSettings({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <WorkspaceRepositoryDiscoveryReview
+        open={Boolean(repositoryReviewWorkspaceId)}
+        onOpenChange={(open) => {
+          if (!open) setRepositoryReviewWorkspaceId(null);
+        }}
+        workspace={repositoryReviewWorkspace}
+        workerOnline={repositoryReviewWorker?.online === true}
+      />
     </>
   );
 }
