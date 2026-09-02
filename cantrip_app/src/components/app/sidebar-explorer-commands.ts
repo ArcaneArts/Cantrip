@@ -20,6 +20,7 @@ import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-lan
 import { confirmExplorerDiscard } from "@/components/explorer/explorer-lifecycle";
 import type { ExplorerFileMutationAuthorization } from "@/components/sidebar/project-sidebar-file-tree";
 import {
+  createExplorerDirectory,
   deleteExplorerEntry,
   renameExplorerEntry,
   updateExplorerViewState,
@@ -562,6 +563,23 @@ export function createSidebarExplorerCommands({
     }
     await refreshSidebarExplorerEntries(explorer);
   };
+  const createSidebarFolder = async (
+    explorer: ExplorerSummary,
+    parentPath: string,
+    authorization: ExplorerFileMutationAuthorization,
+  ) => {
+    if (!authorization.isCurrent()) {
+      throw new Error(
+        "Explorer authorization changed. Try creating the folder again.",
+      );
+    }
+    const created = await createExplorerDirectory(explorer.id, {
+      path: parentPath,
+    });
+    if (!authorization.isCurrent()) return created;
+    await refreshSidebarExplorerEntries(explorer);
+    return created;
+  };
   const deleteSidebarFileEntry = async (
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
@@ -614,6 +632,24 @@ export function createSidebarExplorerCommands({
       project,
       localFolder,
       entry.path,
+      worktree,
+    ).catch((error: unknown) => setPopoutError(errorText(error)));
+  };
+  const openSidebarRootNative = (
+    explorer: ExplorerSummary,
+    localFolder: boolean,
+  ) => {
+    const project = (projects ?? []).find(
+      (candidate) => candidate.id === explorer.projectId,
+    );
+    if (!project?.source) return;
+    const worktree = worktrees?.find(
+      (candidate) => candidate.id === explorer.worktreeId,
+    );
+    void revealProjectInNativeFileManager(
+      project,
+      localFolder,
+      "",
       worktree,
     ).catch((error: unknown) => setPopoutError(errorText(error)));
   };
@@ -700,11 +736,13 @@ export function createSidebarExplorerCommands({
   return {
     activateSidebarFilePreview,
     closeSidebarFilePreview,
+    createSidebarFolder,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
     openSidebarFilePreviewPath,
     openSidebarFolderGraph,
     openSidebarFolderNative,
+    openSidebarRootNative,
     openSidebarFolderTerminal,
     pinSidebarFile,
     pinSidebarFilePath,

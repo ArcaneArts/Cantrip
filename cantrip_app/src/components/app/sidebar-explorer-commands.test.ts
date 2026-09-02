@@ -150,6 +150,14 @@ describe("sidebar Explorer ownership commands", () => {
       "src",
       worktree,
     );
+
+    commands.openSidebarRootNative(previewOwner, true);
+    expect(revealProjectInNativeFileManager).toHaveBeenLastCalledWith(
+      project,
+      true,
+      "",
+      worktree,
+    );
   });
 
   it("does not send an immediate second preview click into the owner being pinned", () => {

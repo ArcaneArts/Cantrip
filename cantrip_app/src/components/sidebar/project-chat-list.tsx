@@ -274,7 +274,7 @@ export function ProjectOverviewTab({
   const folderBlocked = preparing && folderSetupJob?.state === "blocked";
   const revealLocalFolder = useRef(false);
   return (
-    <div className="group mb-1">
+    <div className="group mb-1 flex min-h-full flex-col">
       <div
         title={
           failed
@@ -403,9 +403,11 @@ export function ProjectChatList({
   overviewSelected,
   projectViews,
   onFilePin,
+  onFileCreateFolder,
   onFileDelete,
   onFileOpenGraph,
   onFileOpenNative,
+  onFileOpenNativeRoot,
   onFileOpenTerminal,
   onFilePreview,
   onFileRename,
@@ -468,6 +470,11 @@ export function ProjectChatList({
   overviewSelected: boolean;
   projectViews: ProjectViewSummary[];
   onFilePin(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  onFileCreateFolder(
+    explorer: ExplorerSummary,
+    parentPath: string,
+    authorization: ExplorerFileMutationAuthorization,
+  ): Promise<ExplorerEntry>;
   onFileDelete(
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
@@ -479,6 +486,7 @@ export function ProjectChatList({
     entry: ExplorerEntry,
     localFolder: boolean,
   ): void;
+  onFileOpenNativeRoot(explorer: ExplorerSummary, localFolder: boolean): void;
   onFileOpenTerminal(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFilePreview(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFileRename(
@@ -834,7 +842,7 @@ export function ProjectChatList({
                   <div
                     ref={sidebarDrop.setNodeRef}
                     className={cn(
-                      "min-h-8 rounded-md transition-colors",
+                      "flex min-h-8 flex-1 flex-col rounded-md transition-colors",
                       sidebarDrop.isOver && "bg-muted/40",
                     )}
                   >
@@ -1138,6 +1146,20 @@ export function ProjectChatList({
                       error={fileTreeError}
                       explorer={fileExplorer}
                       loading={fileTreeLoading}
+                      onCreateFolder={(parentPath, authorization) => {
+                        if (!fileExplorer) {
+                          return Promise.reject(
+                            new Error(
+                              "The project file explorer is unavailable.",
+                            ),
+                          );
+                        }
+                        return onFileCreateFolder(
+                          fileExplorer,
+                          parentPath,
+                          authorization,
+                        );
+                      }}
                       onDelete={(entry, authorization) => {
                         if (!fileExplorer) {
                           return Promise.reject(
@@ -1157,6 +1179,12 @@ export function ProjectChatList({
                         fileRevealLabel && fileExplorer
                           ? (entry, localFolder) =>
                               onFileOpenNative(fileExplorer, entry, localFolder)
+                          : undefined
+                      }
+                      onOpenNativeRoot={
+                        fileRevealLabel && fileExplorer
+                          ? (localFolder) =>
+                              onFileOpenNativeRoot(fileExplorer, localFolder)
                           : undefined
                       }
                       onOpenTerminal={

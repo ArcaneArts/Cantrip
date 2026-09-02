@@ -15,6 +15,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  createExplorerDirectory,
   deleteExplorerEntry,
   listExplorerDirectoryCommits,
   listExplorerDirectory,
@@ -41,6 +42,24 @@ afterEach(async () => {
 });
 
 describe("project explorer", () => {
+  it("creates collision-safe root and nested folders", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(root);
+    await mkdir(path.join(root, "New Folder"));
+    await mkdir(path.join(root, "src"));
+
+    await expect(createExplorerDirectory(root, "")).resolves.toMatchObject({
+      kind: "directory",
+      name: "New Folder 2",
+      path: "New Folder 2",
+    });
+    await expect(createExplorerDirectory(root, "src")).resolves.toMatchObject({
+      kind: "directory",
+      name: "New Folder",
+      path: "src/New Folder",
+    });
+  });
+
   it("lists folders and reads supported UTF-8 text files", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
     directories.push(root);
@@ -248,6 +267,9 @@ describe("project explorer", () => {
     ).rejects.toThrow("cannot follow links outside");
     await expect(
       deleteExplorerEntry(root, "linked-directory/shared.txt"),
+    ).rejects.toThrow("cannot follow links outside");
+    await expect(
+      createExplorerDirectory(root, "linked-directory"),
     ).rejects.toThrow("cannot follow links outside");
     await expect(
       deleteExplorerEntry(root, "linked-directory"),

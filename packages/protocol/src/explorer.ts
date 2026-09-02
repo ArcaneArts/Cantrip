@@ -292,6 +292,12 @@ export const explorerEntryRenameSchema = z
   })
   .strict();
 
+export const explorerDirectoryCreateSchema = z
+  .object({
+    path: z.string().max(8_192),
+  })
+  .strict();
+
 export const explorerEntryDeleteSchema = z
   .object({ path: explorerFileWriteSchema.shape.path })
   .strict();
@@ -305,6 +311,9 @@ export const explorerEntryMutationResultSchema = z
 
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
 export type ExplorerEntryName = z.infer<typeof explorerEntryNameSchema>;
+export type ExplorerDirectoryCreate = z.infer<
+  typeof explorerDirectoryCreateSchema
+>;
 export type ExplorerEntryRename = z.infer<typeof explorerEntryRenameSchema>;
 export type ExplorerEntryDelete = z.infer<typeof explorerEntryDeleteSchema>;
 export type ExplorerEntryMutationResult = z.infer<
