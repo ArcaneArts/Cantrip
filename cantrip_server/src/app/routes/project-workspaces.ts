@@ -5,6 +5,7 @@ import {
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
+  workspaceRepositoryMutationConflictSchema,
   workspaceRepositoryDiscoverySnapshotSchema,
   workspaceRepositoryDiscoveryStartSchema,
   workspaceRepositoryImportStartSchema,
@@ -208,10 +209,13 @@ export function installProjectWorkspaceRoutes(
           input.data,
         );
         if (!job) {
-          return reply.code(409).send({
-            error:
-              "Workspace repository discovery is already running or changed.",
-          });
+          return reply.code(409).send(
+            workspaceRepositoryMutationConflictSchema.parse({
+              code: "repository-discovery-stale",
+              error:
+                "Workspace repository discovery is already running or changed.",
+            }),
+          );
         }
         const snapshot =
           await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
@@ -250,9 +254,13 @@ export function installProjectWorkspaceRoutes(
             input.data,
           );
         if (!snapshot) {
-          return reply.code(409).send({
-            error: "Repository discovery changed before the import was queued.",
-          });
+          return reply.code(409).send(
+            workspaceRepositoryMutationConflictSchema.parse({
+              code: "repository-candidates-stale",
+              error:
+                "Repository discovery changed before the import was queued.",
+            }),
+          );
         }
         publishWorkspaceRepositoryDiscoveryChange({
           job: snapshot.job,

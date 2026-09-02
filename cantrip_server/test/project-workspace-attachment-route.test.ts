@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import {
   encryptedAttachedProjectWorkspaceCreateResultSchema,
+  workspaceRepositoryMutationConflictSchema,
   workspaceRepositoryDiscoverySnapshotSchema,
   type ProjectWorkspaceWireSummary,
 } from "@cantrip/protocol";
@@ -254,6 +255,36 @@ describe("attached project workspace route", () => {
     await app.close();
   });
 
+  it("returns a structured conflict when a manual rescan is stale", async () => {
+    const app = Fastify();
+    const queue = vi.fn().mockResolvedValue(null);
+    installProjectWorkspaceRoutes(app, {
+      applicationOwnerId: () => "owner-one",
+      bridge: { request: vi.fn() },
+      repository: {
+        workspaceRepositoryDiscoveryJobs: { queue },
+      },
+      publishWorkspaceRepositoryDiscoveryChange: vi.fn(),
+      queueWorkspaceRepositoryDiscoveryJobs: vi.fn(),
+      serverId: "server-one",
+    } as never);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/repository-discovery`,
+      payload: { expectedStateRevision: 7 },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(
+      workspaceRepositoryMutationConflictSchema.parse(response.json()),
+    ).toEqual({
+      code: "repository-discovery-stale",
+      error: "Workspace repository discovery is already running or changed.",
+    });
+    await app.close();
+  });
+
   it("queues an explicit revision-fenced repository import batch", async () => {
     const app = Fastify();
     const job = { ...discoveryJob(), state: "succeeded" as const };
@@ -302,6 +333,48 @@ describe("attached project workspace route", () => {
       ownerId: "owner-one",
     });
     expect(queueWorkspaceRepositoryDiscoveryJobs).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it("returns a structured conflict for a stale repository candidate batch", async () => {
+    const app = Fastify();
+    const queueImports = vi.fn().mockResolvedValue(null);
+    installProjectWorkspaceRoutes(app, {
+      applicationOwnerId: () => "owner-one",
+      bridge: { request: vi.fn() },
+      repository: {
+        workspaceRepositoryDiscoveryJobs: { queueImports },
+      },
+      publishWorkspaceRepositoryDiscoveryChange: vi.fn(),
+      queueWorkspaceRepositoryDiscoveryJobs: vi.fn(),
+      serverId: "server-one",
+    } as never);
+    const candidateId = "fe47e031-8924-44c0-9b51-677fc23397ca";
+    const projectId = "95ed0d89-a1d5-48ac-a1b7-67a2037f8373";
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/repository-imports`,
+      payload: {
+        expectedStateRevision: 7,
+        candidates: [
+          {
+            candidateId,
+            projectId,
+            nameProtection: protectedProjectFields(projectId).nameProtection,
+            repositoryBlindIndex: null,
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(
+      workspaceRepositoryMutationConflictSchema.parse(response.json()),
+    ).toEqual({
+      code: "repository-candidates-stale",
+      error: "Repository discovery changed before the import was queued.",
+    });
     await app.close();
   });
 });
