@@ -37,6 +37,8 @@ describe("archived standalone Chat page", () => {
     expect(markup).toContain("Research notes");
     expect(markup).toContain("4 messages");
     expect(markup).toContain("Restore");
+    expect(markup).toContain('data-content-gutter="standard"');
+    expect(markup).not.toContain("max-w-4xl");
     expect(markup).not.toContain('role="dialog"');
   });
 

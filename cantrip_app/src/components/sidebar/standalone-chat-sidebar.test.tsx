@@ -63,7 +63,6 @@ describe("standalone Chat sidebar", () => {
           onFork={() => undefined}
           onNewChat={() => undefined}
           onOpenArchived={() => undefined}
-          onOpenSettings={() => undefined}
           onRename={() => undefined}
           onSelect={onSelect}
           onSwitchIde={() => undefined}
@@ -105,7 +104,6 @@ describe("standalone Chat sidebar", () => {
         onFork={() => undefined}
         onNewChat={() => undefined}
         onOpenArchived={() => undefined}
-        onOpenSettings={() => undefined}
         onRename={() => undefined}
         onSelect={() => undefined}
         onSwitchIde={() => undefined}
@@ -120,7 +118,7 @@ describe("standalone Chat sidebar", () => {
     expect(markup).toContain("Agent turn finished");
     expect(markup).toContain("Archived");
     expect(markup).toContain(">2</span>");
-    expect(markup).toContain("Settings");
+    expect(markup).not.toContain("Settings");
     expect(markup).not.toContain("Project files");
     expect(markup).not.toContain("Worktree");
     expect(markup).not.toContain("Terminal");
@@ -140,7 +138,6 @@ describe("standalone Chat sidebar", () => {
         onFork={() => undefined}
         onNewChat={() => undefined}
         onOpenArchived={() => undefined}
-        onOpenSettings={() => undefined}
         onRename={() => undefined}
         onSelect={() => undefined}
         onSwitchIde={() => undefined}
@@ -164,7 +161,6 @@ describe("standalone Chat sidebar", () => {
         onFork={() => undefined}
         onNewChat={() => undefined}
         onOpenArchived={() => undefined}
-        onOpenSettings={() => undefined}
         onRename={() => undefined}
         onSelect={() => undefined}
         onSwitchIde={() => undefined}
