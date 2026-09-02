@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { describe, expect, it } from "vitest";
@@ -63,6 +64,90 @@ async function fixture() {
 }
 
 describe("workspace repository discovery jobs", () => {
+  it("deletes only the empty attached workspace and its discovery metadata", async () => {
+    const { client, database, repository } = await fixture();
+    try {
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        workspaceId,
+      );
+      const claimed =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      await repository.workspaceRepositoryDiscoveryJobs.complete(
+        claimed!.job.id,
+        claimed!.commandId,
+        {
+          attempt: claimed!.job.attempt,
+          candidates: [
+            {
+              pathHandle: `ctrr_${"c".repeat(43)}`,
+              displayHandle: `ctrr_${"d".repeat(43)}`,
+              originUrlHandle: null,
+              github: null,
+              repositoryFingerprint: "e".repeat(64),
+              classification: "local-git",
+              diagnosticCode: null,
+            },
+          ],
+          counts: {
+            candidates: 1,
+            collapsedRepositories: 0,
+            rejectedRepositories: 0,
+            scannedDirectories: 1,
+            scannedEntries: 1,
+            skippedSymlinks: 0,
+            unreadableDirectories: 0,
+          },
+          truncated: false,
+        },
+      );
+
+      await expect(
+        repository.deleteProjectWorkspace(LOCAL_USER_ID, workspaceId),
+      ).resolves.toBe(true);
+      const workspaces =
+        await repository.listProjectWorkspaceWire(LOCAL_USER_ID);
+      expect(workspaces.workspaces.some(({ id }) => id === workspaceId)).toBe(
+        false,
+      );
+      expect(
+        await database
+          .select()
+          .from(schema.projectWorkspaceStorageProfiles)
+          .where(
+            eq(schema.projectWorkspaceStorageProfiles.workspaceId, workspaceId),
+          ),
+      ).toEqual([]);
+      expect(
+        await database
+          .select()
+          .from(schema.workspaceRepositoryDiscoveryJobs)
+          .where(
+            eq(
+              schema.workspaceRepositoryDiscoveryJobs.workspaceId,
+              workspaceId,
+            ),
+          ),
+      ).toEqual([]);
+      expect(
+        await database
+          .select()
+          .from(schema.workspaceRepositoryCandidates)
+          .where(
+            eq(schema.workspaceRepositoryCandidates.workspaceId, workspaceId),
+          ),
+      ).toEqual([]);
+      expect(
+        await database
+          .select({ id: schema.workers.id })
+          .from(schema.workers)
+          .where(eq(schema.workers.id, workerId)),
+      ).toEqual([{ id: workerId }]);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("recovers an interrupted scan and fences its stale completion", async () => {
     const { client, repository } = await fixture();
     try {
