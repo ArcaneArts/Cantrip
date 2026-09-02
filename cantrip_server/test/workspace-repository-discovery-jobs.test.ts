@@ -63,6 +63,65 @@ async function fixture() {
 }
 
 describe("workspace repository discovery jobs", () => {
+  it("recovers an interrupted scan and fences its stale completion", async () => {
+    const { client, repository } = await fixture();
+    try {
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        workspaceId,
+      );
+      const interrupted =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      expect(interrupted?.job).toMatchObject({
+        attempt: 1,
+        state: "running",
+        stateRevision: 2,
+      });
+
+      await expect(
+        repository.workspaceRepositoryDiscoveryJobs.recoverInterrupted(true),
+      ).resolves.toBe(1);
+      expect(
+        (
+          await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+            LOCAL_USER_ID,
+            workspaceId,
+          )
+        )?.job,
+      ).toMatchObject({ state: "queued", stateRevision: 3 });
+
+      const replacement =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      expect(replacement?.job).toMatchObject({
+        attempt: 2,
+        state: "running",
+        stateRevision: 4,
+      });
+      await expect(
+        repository.workspaceRepositoryDiscoveryJobs.complete(
+          interrupted!.job.id,
+          interrupted!.commandId,
+          {
+            attempt: interrupted!.job.attempt,
+            candidates: [],
+            counts: {
+              candidates: 0,
+              collapsedRepositories: 0,
+              rejectedRepositories: 0,
+              scannedDirectories: 0,
+              scannedEntries: 0,
+              skippedSymlinks: 0,
+              unreadableDirectories: 0,
+            },
+            truncated: false,
+          },
+        ),
+      ).rejects.toThrow(/no longer current/iu);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("fences attempts and atomically replaces durable candidates", async () => {
     const { client, repository } = await fixture();
     try {
@@ -692,6 +751,118 @@ describe("workspace repository discovery jobs", () => {
         conflict: { projectId: firstProjectId, workspaceId },
       });
       expect(await database.select().from(schema.projects)).toHaveLength(1);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("recovers an interrupted import and fences its stale completion", async () => {
+    const { client, repository } = await fixture();
+    try {
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        workspaceId,
+      );
+      const discovery =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      const completed =
+        await repository.workspaceRepositoryDiscoveryJobs.complete(
+          discovery!.job.id,
+          discovery!.commandId,
+          {
+            attempt: discovery!.job.attempt,
+            candidates: [
+              {
+                pathHandle: `ctrr_${"c".repeat(43)}`,
+                displayHandle: `ctrr_${"d".repeat(43)}`,
+                repositoryFingerprint: "1".repeat(64),
+                classification: "local-git",
+                diagnosticCode: null,
+              },
+            ],
+            counts: {
+              candidates: 1,
+              collapsedRepositories: 0,
+              rejectedRepositories: 0,
+              scannedDirectories: 1,
+              scannedEntries: 1,
+              skippedSymlinks: 0,
+              unreadableDirectories: 0,
+            },
+            truncated: false,
+          },
+        );
+      const projectId = "09dd9169-04ca-41c1-a473-250b5716bf7c";
+      await repository.workspaceRepositoryDiscoveryJobs.queueImports(
+        LOCAL_USER_ID,
+        workspaceId,
+        {
+          expectedStateRevision: completed.job.stateRevision,
+          candidates: [
+            {
+              candidateId: completed.candidates[0]!.id,
+              projectId,
+              nameProtection: protectedProjectFields(projectId).nameProtection,
+              repositoryBlindIndex: null,
+            },
+          ],
+        },
+      );
+      const interrupted =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+      expect(interrupted).toMatchObject({ attempt: 1, projectId });
+
+      await expect(
+        repository.workspaceRepositoryDiscoveryJobs.recoverInterruptedImports(
+          true,
+        ),
+      ).resolves.toBe(1);
+      expect(
+        (
+          await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+            LOCAL_USER_ID,
+            workspaceId,
+          )
+        )?.candidates[0],
+      ).toMatchObject({ importAttempt: 1, importState: "queued", projectId });
+
+      const staleResult = {
+        candidateId: interrupted!.candidateId,
+        attempt: interrupted!.attempt,
+        path: `ctrr_${"c".repeat(43)}`,
+        displayPath: `ctrr_${"d".repeat(43)}`,
+        originUrl: null,
+        github: null,
+        repositoryFingerprint: "1".repeat(64),
+        classification: "local-git" as const,
+        diagnosticCode: null,
+        branch: null,
+        head: null,
+      };
+      await expect(
+        repository.workspaceRepositoryDiscoveryJobs.completeImport(
+          interrupted!,
+          staleResult,
+        ),
+      ).rejects.toThrow(/no longer current/iu);
+
+      const replacement =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNextImport();
+      expect(replacement).toMatchObject({ attempt: 2, projectId });
+      await expect(
+        repository.workspaceRepositoryDiscoveryJobs.completeImport(
+          replacement!,
+          { ...staleResult, attempt: replacement!.attempt },
+        ),
+      ).resolves.toMatchObject({ state: "succeeded" });
+      expect(
+        (
+          await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+            LOCAL_USER_ID,
+            workspaceId,
+          )
+        )?.candidates[0],
+      ).toMatchObject({ importAttempt: 2, importState: "imported", projectId });
     } finally {
       await client.close();
     }

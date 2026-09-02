@@ -49,6 +49,26 @@ const counts = {
 };
 
 describe("workspace repository discovery executor", () => {
+  it("recovers interrupted scans and imports together after restart", async () => {
+    const recoverInterrupted = vi.fn().mockResolvedValue(2);
+    const recoverInterruptedImports = vi.fn().mockResolvedValue(3);
+    const repository = {
+      workspaceRepositoryDiscoveryJobs: {
+        recoverInterrupted,
+        recoverInterruptedImports,
+      },
+    } as unknown as ServerRepository;
+    const executor = new WorkspaceRepositoryDiscoveryJobExecutor(
+      repository,
+      {} as WorkerCommandBus,
+      { error: vi.fn(), warn: vi.fn() },
+    );
+
+    await expect(executor.recoverAfterRestart(false)).resolves.toBe(5);
+    expect(recoverInterrupted).toHaveBeenCalledWith(false);
+    expect(recoverInterruptedImports).toHaveBeenCalledWith(false);
+  });
+
   it("dispatches protected roots and commits only the active result", async () => {
     const active = job();
     const succeeded = {
