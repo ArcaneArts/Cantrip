@@ -19,6 +19,7 @@ import {
   StyledContextMenuContent,
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
+import { useShiftKeyHeld } from "@/components/ui/native-folder-reveal-icon";
 
 export function ExplorerFileBrowser({
   explorer,
@@ -43,6 +44,7 @@ export function ExplorerFileBrowser({
   replayKey: number;
   revealedPath?: string | null;
 }) {
+  const shiftKeyHeld = useShiftKeyHeld();
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -136,6 +138,7 @@ export function ExplorerFileBrowser({
                 explorerId={explorer.id}
                 gitStatus={gitStatus}
                 key={entry.path}
+                localFolderModifier={shiftKeyHeld}
                 onOpenFile={onOpenFile}
                 onReveal={onRevealFolder}
                 revealLabel={revealLabel}
@@ -154,6 +157,7 @@ export function ExplorerFileBrowser({
                 depth={0}
                 entry={entry}
                 key={entry.path}
+                localFolderModifier={shiftKeyHeld}
                 onOpen={() => onOpenFile(entry)}
                 onReveal={
                   onRevealFolder

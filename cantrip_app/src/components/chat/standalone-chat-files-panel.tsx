@@ -33,6 +33,10 @@ import { MonacoFileEditor } from "@/components/explorer/monaco-file-editor";
 import { StructuredFileVisual } from "@/components/explorer/structured-file-visual";
 import { Button } from "@/components/ui/button";
 import {
+  NativeFolderRevealIcon,
+  useShiftKeyHeld,
+} from "@/components/ui/native-folder-reveal-icon";
+import {
   StyledContextMenuContent,
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
@@ -90,6 +94,7 @@ function ChatFileRow({
   entry,
   expanded,
   local,
+  localFolderModifier,
   onDelete,
   onDownload,
   onOpen,
@@ -103,6 +108,7 @@ function ChatFileRow({
   entry: ExplorerEntry;
   expanded: boolean;
   local: boolean;
+  localFolderModifier: boolean;
   onDelete(entry: ExplorerEntry): void;
   onDownload(entry: ExplorerEntry): void;
   onOpen(entry: ExplorerEntry): void;
@@ -191,12 +197,18 @@ function ChatFileRow({
         <StyledContextMenuContent className="min-w-48">
           {revealLabel ? (
             <StyledContextMenuItem
+              onClick={(event) => {
+                preferLocalRevealRef.current = event.shiftKey;
+              }}
               onSelect={() => {
                 onReveal(entry, preferLocalRevealRef.current);
                 preferLocalRevealRef.current = false;
               }}
             >
-              <FolderOpen className="size-4" />
+              <NativeFolderRevealIcon
+                className="size-4"
+                localFolder={localFolderModifier}
+              />
               {revealLabel}
             </StyledContextMenuItem>
           ) : null}
@@ -230,6 +242,7 @@ function ChatFileDirectory({
   enabled,
   expandedPaths,
   local,
+  localFolderModifier,
   onDelete,
   onDownload,
   onOpen,
@@ -246,6 +259,7 @@ function ChatFileDirectory({
   enabled: boolean;
   expandedPaths: ReadonlySet<string>;
   local: boolean;
+  localFolderModifier: boolean;
   onDelete(entry: ExplorerEntry): void;
   onDownload(entry: ExplorerEntry): void;
   onOpen(entry: ExplorerEntry): void;
@@ -294,6 +308,7 @@ function ChatFileDirectory({
               entry={entry}
               expanded={expanded}
               local={local}
+              localFolderModifier={localFolderModifier}
               onDelete={onDelete}
               onDownload={onDownload}
               onOpen={(selected) => {
@@ -314,6 +329,7 @@ function ChatFileDirectory({
                   enabled={expanded}
                   expandedPaths={expandedPaths}
                   local={local}
+                  localFolderModifier={localFolderModifier}
                   onDelete={onDelete}
                   onDownload={onDownload}
                   onOpen={onOpen}
@@ -651,6 +667,7 @@ export function StandaloneChatFilesPanel({
   desktopRuntime: boolean;
   requestedPath: string | null;
 }) {
+  const shiftKeyHeld = useShiftKeyHeld();
   const queryClient = useQueryClient();
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
   const desktopWorkers = useQuery({
@@ -811,6 +828,7 @@ export function StandaloneChatFilesPanel({
               enabled
               expandedPaths={expandedPaths}
               local={local}
+              localFolderModifier={shiftKeyHeld}
               onDelete={(entry) => remove.mutate(entry)}
               onDownload={(entry) =>
                 download.mutate({

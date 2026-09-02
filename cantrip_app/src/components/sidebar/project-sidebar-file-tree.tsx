@@ -33,6 +33,10 @@ import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
+  NativeFolderRevealIcon,
+  useShiftKeyHeld,
+} from "@/components/ui/native-folder-reveal-icon";
+import {
   StyledContextMenuContent,
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
@@ -71,12 +75,14 @@ function entryIcon(entry: ExplorerEntry, expanded: boolean) {
 function SidebarFilesContextMenu({
   children,
   createPending,
+  localFolderModifier,
   onCreateFolder,
   onOpenNative,
   revealLabel,
 }: {
   children: ReactElement;
   createPending: boolean;
+  localFolderModifier: boolean;
   onCreateFolder?(): void;
   onOpenNative?(localFolder: boolean): void;
   revealLabel?: string;
@@ -100,7 +106,10 @@ function SidebarFilesContextMenu({
                 onOpenNative(localFolder);
               }}
             >
-              <FolderOpen className="size-4" />
+              <NativeFolderRevealIcon
+                className="size-4"
+                localFolder={localFolderModifier}
+              />
               Open in {revealLabel}
             </StyledContextMenuItem>
           ) : null}
@@ -130,6 +139,7 @@ function SidebarFileRow({
   entry,
   editing,
   expanded = false,
+  localFolderModifier,
   onDelete,
   onCreateFolder,
   onOpenGraph,
@@ -150,6 +160,7 @@ function SidebarFileRow({
   entry: ExplorerEntry;
   editing: boolean;
   expanded?: boolean;
+  localFolderModifier: boolean;
   onDelete(): void;
   onCreateFolder?(): void;
   onOpenGraph?(): void;
@@ -295,7 +306,10 @@ function SidebarFileRow({
                 onOpenNative(localFolder);
               }}
             >
-              <FolderOpen className="size-4" />
+              <NativeFolderRevealIcon
+                className="size-4"
+                localFolder={localFolderModifier}
+              />
               {entry.kind === "directory" ? "Open" : "Show"} in {revealLabel}
             </StyledContextMenuItem>
           ) : null}
@@ -349,6 +363,7 @@ function SidebarDirectoryNode({
   entry,
   expandedPaths,
   explorerId,
+  localFolderModifier,
   onCreateFolder,
   onDelete,
   onOpenGraph,
@@ -376,6 +391,7 @@ function SidebarDirectoryNode({
   entry: ExplorerEntry;
   expandedPaths: ReadonlySet<string>;
   explorerId: string;
+  localFolderModifier: boolean;
   onCreateFolder(parentPath: string): void;
   onDelete(entry: ExplorerEntry): void;
   onOpenGraph?(entry: ExplorerEntry): void;
@@ -417,6 +433,7 @@ function SidebarDirectoryNode({
         editing={editingPath === entry.path}
         entry={entry}
         expanded={expanded}
+        localFolderModifier={localFolderModifier}
         onCreateFolder={() => onCreateFolder(entry.path)}
         onDelete={() => onDelete(entry)}
         onOpenGraph={onOpenGraph ? () => onOpenGraph(entry) : undefined}
@@ -471,6 +488,7 @@ function SidebarDirectoryNode({
                   expandedPaths={expandedPaths}
                   explorerId={explorerId}
                   key={child.path}
+                  localFolderModifier={localFolderModifier}
                   onCreateFolder={onCreateFolder}
                   editingPath={editingPath}
                   onDelete={onDelete}
@@ -499,6 +517,7 @@ function SidebarDirectoryNode({
                   editing={editingPath === child.path}
                   entry={child}
                   key={child.path}
+                  localFolderModifier={localFolderModifier}
                   onDelete={() => onDelete(child)}
                   onOpenNative={
                     onOpenNative
@@ -581,6 +600,7 @@ export function ProjectSidebarFileTree({
   workerId: string | null;
   workerOnline: boolean;
 }) {
+  const shiftKeyHeld = useShiftKeyHeld();
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
     () => new Set(sidebarFileAncestorPaths(activePath)),
   );
@@ -903,6 +923,7 @@ export function ProjectSidebarFileTree({
           <>
             <SidebarFilesContextMenu
               createPending={createPending}
+              localFolderModifier={shiftKeyHeld}
               onCreateFolder={() => createFolder("")}
               onOpenNative={onOpenNativeRoot}
               revealLabel={revealLabel}
@@ -923,6 +944,7 @@ export function ProjectSidebarFileTree({
                       expandedPaths={expandedPaths}
                       explorerId={explorer.id}
                       key={entry.path}
+                      localFolderModifier={shiftKeyHeld}
                       onCreateFolder={createFolder}
                       onDelete={setDeleteTarget}
                       onOpenGraph={onOpenGraph}
@@ -950,6 +972,7 @@ export function ProjectSidebarFileTree({
                       editing={renameTarget?.path === entry.path}
                       entry={entry}
                       key={entry.path}
+                      localFolderModifier={shiftKeyHeld}
                       onDelete={() => setDeleteTarget(entry)}
                       onOpenNative={
                         onOpenNative
