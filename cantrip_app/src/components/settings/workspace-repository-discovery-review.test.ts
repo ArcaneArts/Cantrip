@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   workspaceRepositoryCandidateCanImport,
+  workspaceRepositoryCandidateClassificationLabel,
+  workspaceRepositoryCandidateDiagnosticLabel,
   workspaceRepositoryCandidateGithub,
   workspaceRepositoryCandidateName,
   type ResolvedWorkspaceRepositoryCandidate,
@@ -75,5 +77,26 @@ describe("workspace repository import review", () => {
       workspaceId: "workspace-two",
     };
     expect(workspaceRepositoryCandidateCanImport(candidate)).toBe(false);
+  });
+
+  it("labels unsupported checkout types and keeps them out of imports", () => {
+    const bare = resolved({
+      classification: "unsupported",
+      diagnosticCode: "bare-repository",
+    });
+    expect(workspaceRepositoryCandidateCanImport(bare)).toBe(false);
+    expect(
+      workspaceRepositoryCandidateClassificationLabel(
+        bare.candidate.classification,
+      ),
+    ).toBe("Unsupported checkout");
+    expect(
+      workspaceRepositoryCandidateDiagnosticLabel(
+        bare.candidate.diagnosticCode,
+      ),
+    ).toBe("Bare repositories cannot be imported automatically.");
+    expect(workspaceRepositoryCandidateDiagnosticLabel("linked-worktree")).toBe(
+      "Non-primary linked worktrees cannot be imported automatically.",
+    );
   });
 });

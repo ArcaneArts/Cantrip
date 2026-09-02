@@ -149,6 +149,64 @@ describe("workspace repository discovery contracts", () => {
         truncated: false,
       }),
     ).toThrow(/classification metadata/iu);
+
+    expect(
+      workspaceRepositoryDiscoveryWorkerResultSchema.parse({
+        jobId: candidate.jobId,
+        attempt: 1,
+        candidates: [
+          {
+            path: handle,
+            displayPath: handle,
+            originUrl: null,
+            github: null,
+            repositoryFingerprint: candidate.repositoryFingerprint,
+            classification: "unsupported",
+            diagnosticCode: "bare-repository",
+          },
+        ],
+        counts: {
+          candidates: 1,
+          collapsedRepositories: 0,
+          rejectedRepositories: 1,
+          scannedDirectories: 1,
+          scannedEntries: 1,
+          skippedSymlinks: 0,
+          unreadableDirectories: 0,
+        },
+        truncated: false,
+      }).candidates[0],
+    ).toMatchObject({
+      classification: "unsupported",
+      diagnosticCode: "bare-repository",
+    });
+    expect(() =>
+      workspaceRepositoryDiscoveryWorkerResultSchema.parse({
+        jobId: candidate.jobId,
+        attempt: 1,
+        candidates: [
+          {
+            path: handle,
+            displayPath: handle,
+            originUrl: null,
+            github: null,
+            repositoryFingerprint: candidate.repositoryFingerprint,
+            classification: "unsupported",
+            diagnosticCode: null,
+          },
+        ],
+        counts: {
+          candidates: 1,
+          collapsedRepositories: 0,
+          rejectedRepositories: 1,
+          scannedDirectories: 1,
+          scannedEntries: 1,
+          skippedSymlinks: 0,
+          unreadableDirectories: 0,
+        },
+        truncated: false,
+      }),
+    ).toThrow(/classification metadata/iu);
   });
 
   it("defines protected, revision-fenced repository imports", () => {

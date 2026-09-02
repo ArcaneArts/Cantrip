@@ -187,6 +187,74 @@ describe("workspace repository discovery jobs", () => {
     }
   });
 
+  it("persists unsupported checkouts for review but refuses to import them", async () => {
+    const { client, repository } = await fixture();
+    try {
+      await repository.workspaceRepositoryDiscoveryJobs.queue(
+        LOCAL_USER_ID,
+        workspaceId,
+      );
+      const claimed =
+        await repository.workspaceRepositoryDiscoveryJobs.claimNext();
+      const completed =
+        await repository.workspaceRepositoryDiscoveryJobs.complete(
+          claimed!.job.id,
+          claimed!.commandId,
+          {
+            attempt: claimed!.job.attempt,
+            candidates: [
+              {
+                pathHandle: `ctrr_${"c".repeat(43)}`,
+                displayHandle: `ctrr_${"d".repeat(43)}`,
+                repositoryFingerprint: "e".repeat(64),
+                classification: "unsupported",
+                diagnosticCode: "bare-repository",
+              },
+            ],
+            counts: {
+              candidates: 1,
+              collapsedRepositories: 0,
+              rejectedRepositories: 1,
+              scannedDirectories: 1,
+              scannedEntries: 1,
+              skippedSymlinks: 0,
+              unreadableDirectories: 0,
+            },
+            truncated: false,
+          },
+        );
+      expect(completed.candidates).toEqual([
+        expect.objectContaining({
+          classification: "unsupported",
+          diagnosticCode: "bare-repository",
+          importState: "pending",
+        }),
+      ]);
+
+      const projectId = "09dd9169-04ca-41c1-a473-250b5716bf7c";
+      await expect(
+        repository.workspaceRepositoryDiscoveryJobs.queueImports(
+          LOCAL_USER_ID,
+          workspaceId,
+          {
+            expectedStateRevision: completed.job.stateRevision,
+            candidates: [
+              {
+                candidateId: completed.candidates[0]!.id,
+                projectId,
+                nameProtection:
+                  protectedProjectFields(projectId).nameProtection,
+                repositoryBlindIndex: null,
+              },
+            ],
+          },
+        ),
+      ).rejects.toBeInstanceOf(WorkspaceRepositoryDiscoveryInvariantError);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("requeues retryable worker failures and rejects non-attached workspaces", async () => {
     const { client, database, repository } = await fixture();
     try {

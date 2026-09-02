@@ -88,7 +88,7 @@ export async function resolveWorkspaceRepositoryCandidate(
   };
 }
 
-function classificationLabel(
+export function workspaceRepositoryCandidateClassificationLabel(
   classification: WorkspaceRepositoryCandidateSummary["classification"],
 ): string {
   switch (classification) {
@@ -100,10 +100,12 @@ function classificationLabel(
       return "Local Git";
     case "unclassified":
       return "Classifying";
+    case "unsupported":
+      return "Unsupported checkout";
   }
 }
 
-function diagnosticLabel(
+export function workspaceRepositoryCandidateDiagnosticLabel(
   code: WorkspaceRepositoryCandidateSummary["diagnosticCode"],
 ): string | null {
   switch (code) {
@@ -119,6 +121,10 @@ function diagnosticLabel(
       return "GitHub returned an invalid repository identity.";
     case "github-identity-mismatch":
       return "GitHub returned a different repository than the Git origin.";
+    case "bare-repository":
+      return "Bare repositories cannot be imported automatically.";
+    case "linked-worktree":
+      return "Non-primary linked worktrees cannot be imported automatically.";
     case null:
       return null;
   }
@@ -163,7 +169,9 @@ function CandidateRow({
   workspaceName: string | null;
 }) {
   const { candidate } = resolved;
-  const diagnostic = diagnosticLabel(candidate.diagnosticCode);
+  const diagnostic = workspaceRepositoryCandidateDiagnosticLabel(
+    candidate.diagnosticCode,
+  );
   const conflict = candidate.conflict;
   const status =
     conflict && candidate.importState !== "imported"
@@ -240,7 +248,9 @@ function CandidateRow({
               : "outline"
           }
         >
-          {classificationLabel(candidate.classification)}
+          {workspaceRepositoryCandidateClassificationLabel(
+            candidate.classification,
+          )}
         </Badge>
         {status ? <Badge variant="outline">{status}</Badge> : null}
       </div>
@@ -301,7 +311,7 @@ export function workspaceRepositoryCandidateCanImport(
   return (
     !candidate.conflict &&
     ["pending", "failed", "blocked"].includes(candidate.importState) &&
-    candidate.classification !== "unclassified" &&
+    !["unclassified", "unsupported"].includes(candidate.classification) &&
     Boolean(resolved.displayPath) &&
     (candidate.classification !== "github-accessible" ||
       workspaceRepositoryCandidateGithub(resolved) !== null)
@@ -536,6 +546,12 @@ export function WorkspaceRepositoryDiscoveryReview({
               <span>
                 {snapshot.job.counts.collapsedRepositories} nested checkouts
                 collapsed
+              </span>
+            ) : null}
+            {snapshot.job.counts?.rejectedRepositories ? (
+              <span>
+                {snapshot.job.counts.rejectedRepositories} unsupported or
+                invalid checkouts rejected
               </span>
             ) : null}
             {snapshot.job.truncated ? (
