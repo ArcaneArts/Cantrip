@@ -133,6 +133,7 @@ export function installRepositoryOperationRoutes(
                 provider: runtime.provider,
               })),
               mcpServers,
+              routingPurpose: "repository" as const,
             },
             { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
           );
@@ -213,6 +214,7 @@ export function installRepositoryOperationRoutes(
             repository: null,
             agentRuntimes: [],
             mcpServers: [],
+            routingPurpose: "repository" as const,
             ...wireRequest,
           },
           { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },

@@ -245,6 +245,7 @@ const unavailableStandaloneChatCapabilities = {
 const unavailableManagedFolderCapabilities = {
   create: false,
   attachExisting: false,
+  attachWorkspaceRoot: false,
   convertToGithub: false,
   remove: false,
   workspaceScopedRoots: false,

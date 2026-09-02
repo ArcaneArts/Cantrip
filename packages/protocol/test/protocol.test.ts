@@ -1687,6 +1687,7 @@ describe("Cantrip protocol", () => {
     expect(heartbeat.managedFolders).toEqual({
       create: false,
       attachExisting: false,
+      attachWorkspaceRoot: false,
       convertToGithub: false,
       remove: false,
       workspaceScopedRoots: false,

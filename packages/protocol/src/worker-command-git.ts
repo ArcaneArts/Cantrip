@@ -376,6 +376,9 @@ export const workerGitCommandSchemas = [
         .max(20)
         .default([]),
       mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
+      routingPurpose: z
+        .enum(["repository", "workspace-root-attachment"])
+        .default("repository"),
     })
     .extend(repositoryOperationWireRequestSchema.shape)
     .strict(),

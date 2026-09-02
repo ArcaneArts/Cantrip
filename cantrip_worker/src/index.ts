@@ -94,6 +94,8 @@ import {
   repositoryOperationOutcomeContentSchema,
   repositoryOperationRequestContentSchema,
   repositoryOperationWireResponseSchema,
+  workspaceRootAttachArgumentsSchema,
+  type WorkspaceRootAttachment,
   type RepositoryOperationOutcomeContent,
 } from "@cantrip/protocol/repository-operation";
 import {
@@ -191,6 +193,7 @@ import { GithubClient } from "./github.js";
 import { githubOperationRequiresCheckout } from "./github-operation-scope.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
+import { attachWorkspaceRoot } from "./workspace-root-attachment.js";
 import { ChatScratchManager } from "./chat-scratch.js";
 import { ChatScratchFileManager } from "./chat-scratch-files.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
@@ -2757,8 +2760,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (command.access !== repositoryOperationAccess(request.type)) {
           throw new Error("Repository operation access metadata is invalid.");
         }
+        const attachesWorkspaceRoot = request.type === "workspace.root.attach";
+        if (
+          attachesWorkspaceRoot !==
+          (command.routingPurpose === "workspace-root-attachment")
+        ) {
+          throw new Error("Repository operation routing purpose is invalid.");
+        }
         let outcome: RepositoryOperationOutcomeContent;
         let agentExecution = null;
+        let workspaceRootAttachment: WorkspaceRootAttachment | null = null;
         try {
           const isAgentRequest = request.type === "git.agent.generate";
           if (command.agent !== isAgentRequest) {
@@ -2904,6 +2915,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     : await routingRegistry.resolveMetadata(values),
               }),
             };
+          } else if (request.type === "workspace.root.attach") {
+            workspaceRootAttachment = await attachWorkspaceRoot(
+              workspaceRootAttachArgumentsSchema.parse(request.arguments)
+                .rootPath,
+              routingRegistry,
+            );
+            outcome = { ok: true, result: workspaceRootAttachment };
           } else {
             const scope: RepositoryManagedOperationScope = {
               ownerId: workerEncryption.ownerId(),
@@ -3061,6 +3079,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             service: workerEncryption,
           }),
           agentExecution,
+          ...(workspaceRootAttachment ? { workspaceRootAttachment } : {}),
         });
       }
       case "git.history":

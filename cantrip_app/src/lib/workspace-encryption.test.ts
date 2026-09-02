@@ -1,4 +1,5 @@
 import type {
+  EncryptedProjectWorkspaceName,
   EncryptedProjectWorkspaceCreate,
   EncryptedProjectWorkspaceUpdate,
   ProjectSummary,
@@ -49,6 +50,25 @@ class MemoryWorkspaceApi implements ProjectWorkspaceWireApi {
     },
   ];
   writes = 0;
+
+  async createAttached(input: {
+    id: string;
+    nameProtection: EncryptedProjectWorkspaceName;
+    rootPath: string;
+    workerId: string;
+  }): Promise<ProjectWorkspaceWireSummary> {
+    const suffix = input.rootPath.includes("other") ? "b" : "a";
+    return this.create({
+      id: input.id,
+      nameProtection: input.nameProtection,
+      storage: {
+        kind: "attached",
+        workerId: input.workerId,
+        rootPathHandle: `ctrr_${suffix.repeat(43)}`,
+        displayHandle: `ctrr_${suffix.repeat(43)}`,
+      },
+    });
+  }
 
   async create(
     input: EncryptedProjectWorkspaceCreate,
@@ -169,17 +189,20 @@ describe("workspace encryption adapter", () => {
   it("routes attached creation through the verified attachment flow", async () => {
     const { adapter, api } = fixture();
 
-    await expect(
-      adapter.create({
-        name: "Existing repositories",
-        storage: {
-          kind: "attached",
-          workerId: "worker-1",
-          rootPath: "/workspace/repositories",
-        },
-      }),
-    ).rejects.toThrow(/verified root attachment/iu);
-    expect(api.writes).toBe(0);
+    const created = await adapter.create({
+      name: "Existing repositories",
+      storage: {
+        kind: "attached",
+        workerId: "worker-1",
+        rootPath: "/workspace/repositories",
+      },
+    });
+
+    expect(created).toMatchObject({
+      name: "Existing repositories",
+      storage: { kind: "attached", workerId: "worker-1" },
+    });
+    expect(api.rows).toHaveLength(2);
   });
 
   it("fails authentication when envelopes are swapped between row IDs", async () => {

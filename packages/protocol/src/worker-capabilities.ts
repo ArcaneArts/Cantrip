@@ -28,6 +28,7 @@ export const unavailableProjectReplicaCapabilities =
 export const managedFolderCapabilitiesSchema = z.object({
   create: z.boolean(),
   attachExisting: z.boolean().default(false),
+  attachWorkspaceRoot: z.boolean().default(false),
   convertToGithub: z.boolean().default(false),
   remove: z.boolean(),
   workspaceScopedRoots: z.boolean().default(false),
@@ -37,6 +38,7 @@ export const unavailableManagedFolderCapabilities =
   managedFolderCapabilitiesSchema.parse({
     create: false,
     attachExisting: false,
+    attachWorkspaceRoot: false,
     convertToGithub: false,
     remove: false,
     workspaceScopedRoots: false,

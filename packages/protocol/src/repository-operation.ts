@@ -14,6 +14,17 @@ export const repositoryRoutingHandleSchema = z
   .string()
   .regex(/^ctrr_[A-Za-z0-9_-]{43}$/u);
 
+export const workspaceRootAttachmentSchema = z
+  .object({
+    rootPathHandle: repositoryRoutingHandleSchema,
+    displayHandle: repositoryRoutingHandleSchema,
+  })
+  .strict();
+
+export const workspaceRootAttachArgumentsSchema = z
+  .object({ rootPath: z.string().trim().min(1).max(8_192) })
+  .strict();
+
 export const REPOSITORY_METADATA_FIELDS = [
   "branch",
   "canonicalPath",
@@ -135,6 +146,7 @@ export const repositoryOperationTypeSchema = z.enum([
   "worktree.status",
   "repository.metadata.register",
   "repository.metadata.resolve",
+  "workspace.root.attach",
   "github.auth.status",
   "github.repositories.cached",
   "github.repositories.list",
@@ -229,6 +241,7 @@ const repositoryOperationAccessByType = {
   "worktree.status": "read",
   "repository.metadata.register": "write",
   "repository.metadata.resolve": "read",
+  "workspace.root.attach": "write",
   "github.auth.status": "read",
   "github.repositories.cached": "read",
   "github.repositories.list": "read",
@@ -332,6 +345,7 @@ export const repositoryOperationWireResponseSchema = z
     agentExecution: repositoryOperationAgentExecutionSchema
       .nullable()
       .default(null),
+    workspaceRootAttachment: workspaceRootAttachmentSchema.optional(),
   })
   .strict();
 
@@ -357,4 +371,7 @@ export type RepositoryMetadataValues = z.infer<
 >;
 export type RepositoryMetadataResult = z.infer<
   typeof repositoryMetadataResultSchema
+>;
+export type WorkspaceRootAttachment = z.infer<
+  typeof workspaceRootAttachmentSchema
 >;

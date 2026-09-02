@@ -1,28 +1,43 @@
 import {
+  encryptedAttachedProjectWorkspaceCreateResultSchema,
+  encryptedAttachedProjectWorkspaceCreateSchema,
   encryptedProjectWorkspaceCreateSchema,
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
 } from "@cantrip/protocol";
+import { repositoryOperationWireResponseSchema } from "@cantrip/protocol/repository-operation";
 import type { FastifyInstance } from "fastify";
 
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
+import { sendWorkerRequestFailure } from "../../http/worker-request-failures.js";
+import type { WorkerCommandBus } from "../../workers/bridge.js";
+import { FINITE_WORKER_COMMAND_TIMEOUT_MS } from "../shared/constants.js";
 
 export interface ProjectWorkspaceRouteDependencies {
   applicationOwnerId: () => string;
+  bridge: Pick<WorkerCommandBus, "request">;
   repository: Pick<
     ServerRepository,
     | "createEncryptedProjectWorkspace"
+    | "createVerifiedAttachedProjectWorkspace"
     | "deleteProjectWorkspace"
+    | "getWorker"
     | "listProjectWorkspaceWire"
     | "updateEncryptedProjectWorkspace"
   >;
+  serverId: string;
 }
 
 export function installProjectWorkspaceRoutes(
   app: FastifyInstance,
-  { applicationOwnerId, repository }: ProjectWorkspaceRouteDependencies,
+  {
+    applicationOwnerId,
+    bridge,
+    repository,
+    serverId,
+  }: ProjectWorkspaceRouteDependencies,
 ): void {
   app.get("/api/workspaces", async (_request, reply) => {
     return reply.send(
@@ -48,6 +63,86 @@ export function installProjectWorkspaceRoutes(
             ),
           ),
         );
+    } catch (error) {
+      return reply.code(409).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/workspaces/attached", async (request, reply) => {
+    const input = encryptedAttachedProjectWorkspaceCreateSchema.safeParse(
+      request.body,
+    );
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const ownerId = applicationOwnerId();
+    const worker = await repository.getWorker(
+      ownerId,
+      input.data.storage.workerId,
+    );
+    if (!worker) return reply.code(404).send({ error: "Worker not found." });
+    if (!worker.managedFolders.attachWorkspaceRoot) {
+      return reply.code(409).send({
+        code: "workspace-root-capability-unavailable",
+        error: "This worker does not support attached workspace roots.",
+      });
+    }
+    let operation;
+    try {
+      operation = repositoryOperationWireResponseSchema.parse(
+        await bridge.request(
+          worker.workerId,
+          {
+            type: "repository.operation",
+            serverId,
+            projectId: input.data.id,
+            worktreeId: worker.workerId,
+            cwd: ".",
+            sourcePath: ".",
+            repository: null,
+            agentRuntimes: [],
+            mcpServers: [],
+            operationId: input.data.operationId,
+            protectedRequest: input.data.protectedRequest,
+            access: "write",
+            agent: false,
+            routingPurpose: "workspace-root-attachment",
+          },
+          { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+        ),
+      );
+    } catch (error) {
+      return sendWorkerRequestFailure(reply, error);
+    }
+
+    if (!operation.workspaceRootAttachment) {
+      return reply.send(
+        encryptedAttachedProjectWorkspaceCreateResultSchema.parse({
+          workspace: null,
+          operation,
+        }),
+      );
+    }
+
+    try {
+      const workspace = await repository.createVerifiedAttachedProjectWorkspace(
+        ownerId,
+        {
+          id: input.data.id,
+          nameProtection: input.data.nameProtection,
+          storage: {
+            kind: "attached",
+            workerId: worker.workerId,
+            ...operation.workspaceRootAttachment,
+          },
+        },
+      );
+      return reply.code(201).send(
+        encryptedAttachedProjectWorkspaceCreateResultSchema.parse({
+          workspace,
+          operation,
+        }),
+      );
     } catch (error) {
       return reply.code(409).send({ error: errorMessage(error) });
     }
