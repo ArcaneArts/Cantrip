@@ -194,6 +194,7 @@ import { githubOperationRequiresCheckout } from "./github-operation-scope.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
 import { attachWorkspaceRoot } from "./workspace-root-attachment.js";
+import { discoverWorkspaceRepositories } from "./workspace-repository-discovery.js";
 import { ChatScratchManager } from "./chat-scratch.js";
 import { ChatScratchFileManager } from "./chat-scratch-files.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
@@ -2264,6 +2265,39 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return github.cloneRepository(command.repository.nameWithOwner);
       case "project.folder.materialize":
         return managedFolders.materialize(command);
+      case "workspace.repositories.discover": {
+        const result = await discoverWorkspaceRepositories(
+          command.rootPath,
+          { maxDepth: command.depth },
+          (progress) => {
+            emit({
+              type: "workspace.repositories.discovery-progress",
+              jobId: command.jobId,
+              attempt: command.attempt,
+              progress,
+            });
+          },
+        );
+        return {
+          jobId: command.jobId,
+          attempt: command.attempt,
+          candidates: result.candidates.map((candidate) => ({
+            path: candidate.canonicalPath,
+            displayPath: candidate.relativePath,
+            repositoryFingerprint: candidate.repositoryFingerprint,
+          })),
+          counts: {
+            candidates: result.candidates.length,
+            collapsedRepositories: result.collapsedRepositories,
+            rejectedRepositories: result.rejectedRepositories,
+            scannedDirectories: result.scannedDirectories,
+            scannedEntries: result.scannedEntries,
+            skippedSymlinks: result.skippedSymlinks,
+            unreadableDirectories: result.unreadableDirectories,
+          },
+          truncated: result.truncated,
+        };
+      }
       case "project.folder.delete": {
         await runConfigurationRuntimes.stopProject(command.projectId);
         return managedFolders.delete(

@@ -17,6 +17,7 @@ import type { ProjectFolderSetupJobExecutor } from "../../project-folders/execut
 import type { ProjectGithubConversionJobExecutor } from "../../project-github-conversions/executor.js";
 import type { ProjectReplicaJobExecutor } from "../../project-replicas/executor.js";
 import type { StandaloneChatRootJobExecutor } from "../../standalone-chats/root-job-executor.js";
+import type { WorkspaceRepositoryDiscoveryJobExecutor } from "../../workspace-repository-discovery/executor.js";
 import { BufferedWorkerSocket } from "../../workers/buffered-socket.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { authenticateWorkerRequest } from "../../workers/credentials.js";
@@ -86,6 +87,10 @@ export interface InternalWorkerWebsocketRouteDependencies {
     WorkflowExecutor,
     "queueAvailableRuns" | "recoverWorktreeLeases"
   >;
+  workspaceRepositoryDiscoveryJobExecutor: Pick<
+    WorkspaceRepositoryDiscoveryJobExecutor,
+    "workerConnected"
+  >;
 }
 
 /** Registers the authenticated worker command-channel WebSocket route. */
@@ -115,6 +120,7 @@ export function installInternalWorkerWebsocketRoute(
     standaloneChatRootJobExecutor,
     synchronizeTerminalServicesForWorker,
     workflowExecutor,
+    workspaceRepositoryDiscoveryJobExecutor,
   }: InternalWorkerWebsocketRouteDependencies,
 ): void {
   app.get<{
@@ -361,6 +367,14 @@ export function installInternalWorkerWebsocketRoute(
             app.log.error(
               { err: error, workerId },
               "Could not resume project folder setup jobs",
+            );
+          });
+        void workspaceRepositoryDiscoveryJobExecutor
+          .workerConnected(workerId)
+          .catch((error) => {
+            app.log.error(
+              { err: error, workerId },
+              "Could not resume workspace repository discovery jobs",
             );
           });
         void standaloneChatRootJobExecutor

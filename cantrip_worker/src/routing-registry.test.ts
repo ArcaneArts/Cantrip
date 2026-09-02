@@ -64,6 +64,24 @@ describe("WorkerRoutingRegistry", () => {
     )) as { path: string; displayPath: string };
     expect(protectedScratch.path).toMatch(/^ctrr_/u);
     expect(protectedScratch.displayPath).toMatch(/^ctrr_/u);
+    const protectedDiscovery = (await registry.protectResult(
+      "workspace.repositories.discover",
+      {
+        candidates: [
+          {
+            path: "/Users/example/private-repository",
+            displayPath: "private-repository",
+            repositoryFingerprint: "a".repeat(64),
+          },
+        ],
+      },
+    )) as { candidates: Array<{ path: string; displayPath: string }> };
+    expect(protectedDiscovery.candidates[0]).toEqual(
+      expect.objectContaining({
+        path: protectedResult.worktree.path,
+        displayPath: expect.stringMatching(/^ctrr_/u),
+      }),
+    );
     const protectedObservation = (await registry.protectResult(
       "worktree.observation.configure",
       {
@@ -129,6 +147,17 @@ describe("WorkerRoutingRegistry", () => {
     expect(command).toEqual({
       type: "git.status",
       cwd: "/Users/example/private-repository",
+    });
+    expect(
+      await restarted.resolveCommand({
+        type: "workspace.repositories.discover",
+        jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
+        attempt: 1,
+        rootPath: protectedDiscovery.candidates[0]!.path,
+        depth: 3,
+      }),
+    ).toMatchObject({
+      rootPath: "/Users/example/private-repository",
     });
     expect(await restarted.resolveMetadata(protectedIdentity)).toEqual({
       nameWithOwner: "ArcaneArts/Private",

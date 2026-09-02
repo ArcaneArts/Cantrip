@@ -6,6 +6,7 @@ import {
   gitManagedOperationResponseSchema,
   gitStatusSchema,
   inferenceProgressSnapshotSchema,
+  workspaceRepositoryDiscoveryProgressSchema,
 } from "@cantrip/protocol";
 import type {
   AppLiveResyncReason,
@@ -20,6 +21,7 @@ import type {
   InferenceProgressSnapshot,
   WorkerObservationEnvelope,
   WorkerObservationEventIdentity,
+  WorkspaceRepositoryDiscoverySnapshot,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { chatMessageOpaqueSummarySchema } from "@cantrip/protocol/communication-content";
@@ -131,6 +133,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId
         ? [["project-folder-setup", projectId], ["projects"]]
         : [["project-folder-setup"], ["projects"]];
+    case "workspace-repository-discovery-job":
+      return event.entityId
+        ? [["workspace-repository-discovery", event.entityId]]
+        : [["workspace-repository-discovery"]];
     case "project-github-conversion-job":
       return projectId
         ? [
@@ -432,6 +438,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["desktop-worker-enrollment-status"],
         ["projects"],
         ["project-workspaces"],
+        ["workspace-repository-discovery"],
         ["tunnels"],
         ["workflows"],
       ];
@@ -795,6 +802,7 @@ export class AppLiveQueryBridge {
       this.#applyInferenceProgressEvent(event) ||
       this.#applyCodeGraphStatusEvent(event) ||
       this.#applyProviderAuthEvent(event) ||
+      this.#applyWorkspaceRepositoryDiscoveryProgressEvent(event) ||
       this.#applyGitOperationEvent(event) ||
       this.#applyGitConflictEvent(event) ||
       worktreeStatus.applied;
@@ -1513,6 +1521,37 @@ export class AppLiveQueryBridge {
       const oldest = this.#providerAuthRevisions.keys().next().value;
       if (oldest !== undefined) this.#providerAuthRevisions.delete(oldest);
     }
+    return true;
+  }
+
+  #applyWorkspaceRepositoryDiscoveryProgressEvent(
+    event: AppLiveEvent,
+  ): boolean {
+    if (
+      event.resource !== "workspace-repository-discovery-job" ||
+      event.action !== "status" ||
+      event.scope.kind !== "current-user" ||
+      !event.entityId
+    ) {
+      return false;
+    }
+    const payload =
+      event.payload && typeof event.payload === "object"
+        ? Reflect.get(event.payload, "progress")
+        : null;
+    const progress =
+      workspaceRepositoryDiscoveryProgressSchema.safeParse(payload);
+    if (!progress.success) return false;
+    this.#queryClient.setQueryData<WorkspaceRepositoryDiscoverySnapshot>(
+      ["workspace-repository-discovery", event.entityId],
+      (current) =>
+        current
+          ? {
+              ...current,
+              progress: progress.data,
+            }
+          : current,
+    );
     return true;
   }
 

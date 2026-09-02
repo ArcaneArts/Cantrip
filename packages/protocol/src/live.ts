@@ -173,6 +173,7 @@ export const appLiveResourceSchema = z.enum([
   "project-automation",
   "project-token-usage",
   "project-folder-setup-job",
+  "workspace-repository-discovery-job",
   "project-github-conversion-job",
   "project-replica-job",
   "project-tab-layout",

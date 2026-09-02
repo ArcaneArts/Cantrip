@@ -386,11 +386,13 @@ export async function buildApp({
     projectFolderSetupJobExecutor,
     projectGithubConversionJobExecutor,
     projectReplicaJobExecutor,
+    workspaceRepositoryDiscoveryJobExecutor,
     publishChatImportChange,
     publishChatRelocationChange,
     publishProjectFolderSetupChange,
     publishProjectGithubConversionChange,
     publishProjectReplicaJobChange,
+    publishWorkspaceRepositoryDiscoveryChange,
     publishStandaloneChatRootJobChange,
     publishWorkflowRunChange,
     standaloneChatRootJobExecutor,
@@ -525,6 +527,11 @@ export async function buildApp({
   await projectFolderSetupJobExecutor.recoverAfterRestart(!coordinator);
   projectFolderSetupJobExecutor.queueAvailable();
   projectFolderSetupJobExecutor.startRecoverySweep();
+  await workspaceRepositoryDiscoveryJobExecutor.recoverAfterRestart(
+    !coordinator,
+  );
+  workspaceRepositoryDiscoveryJobExecutor.queueAvailable();
+  workspaceRepositoryDiscoveryJobExecutor.startRecoverySweep();
   await standaloneChatRootJobExecutor.recoverAfterRestart(!coordinator);
   standaloneChatRootJobExecutor.queueAvailable();
   standaloneChatRootJobExecutor.startRecoverySweep();
@@ -1002,6 +1009,7 @@ export async function buildApp({
     publishProjectFolderSetupChange,
     publishProjectGithubConversionChange,
     publishProjectReplicaJobChange,
+    publishWorkspaceRepositoryDiscoveryChange,
     publishStandaloneChatRootJobChange,
     publishWorkflowDefinitionChange,
     publishWorkflowRunChange,
@@ -1012,6 +1020,8 @@ export async function buildApp({
     queueProjectGithubConversionJobs: () =>
       projectGithubConversionJobExecutor.queueAvailable(),
     queueProjectReplicaJobs: () => projectReplicaJobExecutor.queueAvailable(),
+    queueWorkspaceRepositoryDiscoveryJobs: () =>
+      workspaceRepositoryDiscoveryJobExecutor.queueAvailable(),
     recordLiveWorktreeStatus,
     repository,
     requireProjectRelocation,
@@ -1323,6 +1333,7 @@ export async function buildApp({
     projectFolderSetupJobExecutor,
     projectGithubConversionJobExecutor,
     projectReplicaJobExecutor,
+    workspaceRepositoryDiscoveryJobExecutor,
     providerCredentialMigrations,
     publishLiveInvalidation,
     reconcileRunConfigurationRuntimesForWorker,
@@ -1373,6 +1384,7 @@ export async function buildApp({
     interactiveSurfaceRuntime.close();
     projectReplicaJobExecutor.stop();
     projectFolderSetupJobExecutor.stop();
+    workspaceRepositoryDiscoveryJobExecutor.stop();
     standaloneChatRootJobExecutor.stop();
     projectGithubConversionJobExecutor.stop();
     chatRelocationJobExecutor.stop();
@@ -1409,6 +1421,7 @@ export async function buildApp({
     await taskRouteRuntime.waitForActiveTaskScheduleTick();
     await projectReplicaJobExecutor.drain();
     await projectFolderSetupJobExecutor.drain();
+    await workspaceRepositoryDiscoveryJobExecutor.drain();
     await standaloneChatRootJobExecutor.drain();
     await projectGithubConversionJobExecutor.drain();
     await chatRelocationJobExecutor.drain();

@@ -16,6 +16,7 @@ interface RoutingRegistryFile {
 const protectedResultTypes = new Set([
   "project.clone",
   "project.folder.materialize",
+  "workspace.repositories.discover",
   "chat.scratch.provision",
   "chat.scratch.resolve",
   "chat.scratch.archive",

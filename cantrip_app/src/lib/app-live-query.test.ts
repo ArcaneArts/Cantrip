@@ -10,6 +10,7 @@ import type {
   GitConflictList,
   GitManagedOperationResponse,
   GitStatus,
+  WorkspaceRepositoryDiscoverySnapshot,
 } from "@cantrip/protocol";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -810,6 +811,18 @@ describe("application live query bridge", () => {
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["project-replica-jobs", "project-one"]);
     expect(
+      appLiveEventQueryKeys(
+        event({
+          entityId: "workspace-one",
+          resource: "workspace-repository-discovery-job",
+          scope: { kind: "current-user" },
+        }),
+      ),
+    ).toEqual([["workspace-repository-discovery", "workspace-one"]]);
+    expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
+      "workspace-repository-discovery",
+    ]);
+    expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["project-github-conversion", "project-one"]);
     expect(
@@ -1446,6 +1459,65 @@ describe("application live query bridge", () => {
     expect(queryClient.getQueryData<GitStatus>(queryKey)?.files).toHaveLength(
       1,
     );
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("applies workspace repository discovery progress without polling", () => {
+    const workspaceId = "workspace-one";
+    const queryKey = ["workspace-repository-discovery", workspaceId] as const;
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const snapshot: WorkspaceRepositoryDiscoverySnapshot = {
+      job: {
+        id: "00000000-0000-4000-8000-000000000001",
+        workspaceId,
+        workerId: "worker-one",
+        state: "running",
+        stateRevision: 2,
+        attempt: 1,
+        depth: 3,
+        truncated: false,
+        counts: null,
+        error: null,
+        createdAt: "2026-08-09T12:00:00.000Z",
+        updatedAt: "2026-08-09T12:00:01.000Z",
+        startedAt: "2026-08-09T12:00:01.000Z",
+        completedAt: null,
+      },
+      candidates: [],
+      progress: null,
+    };
+    queryClient.setQueryData(queryKey, snapshot);
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const progress = {
+      counts: {
+        candidates: 2,
+        collapsedRepositories: 1,
+        rejectedRepositories: 3,
+        scannedDirectories: 8,
+        scannedEntries: 21,
+        skippedSymlinks: 1,
+        unreadableDirectories: 2,
+      },
+      truncated: false,
+    };
+
+    bridge.handleEvent({
+      ...event({
+        entityId: workspaceId,
+        resource: "workspace-repository-discovery-job",
+        scope: { kind: "current-user" },
+      }),
+      action: "status",
+      payload: { progress },
+    });
+
+    expect(
+      queryClient.getQueryData<WorkspaceRepositoryDiscoverySnapshot>(queryKey)
+        ?.progress,
+    ).toEqual(progress);
     expect(invalidate).not.toHaveBeenCalled();
   });
 

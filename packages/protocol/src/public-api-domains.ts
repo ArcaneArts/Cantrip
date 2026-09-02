@@ -121,12 +121,15 @@ export {
   workspaceRepositoryDiscoveryErrorCodeSchema,
   workspaceRepositoryDiscoveryErrorSchema,
   workspaceRepositoryDiscoveryCountsSchema,
+  workspaceRepositoryDiscoveryProgressSchema,
   workspaceRepositoryDiscoveryJobSummarySchema,
   workspaceRepositoryCandidateClassificationSchema,
   workspaceRepositoryCandidateImportStateSchema,
   workspaceRepositoryCandidateSummarySchema,
   workspaceRepositoryDiscoverySnapshotSchema,
   workspaceRepositoryDiscoveryStartSchema,
+  workspaceRepositoryDiscoveryCommandSchema,
+  workspaceRepositoryDiscoveryWorkerResultSchema,
 } from "./workspace-repository-discovery.js";
 
 export type {
@@ -134,12 +137,15 @@ export type {
   WorkspaceRepositoryDiscoveryErrorCode,
   WorkspaceRepositoryDiscoveryError,
   WorkspaceRepositoryDiscoveryCounts,
+  WorkspaceRepositoryDiscoveryProgress,
   WorkspaceRepositoryDiscoveryJobSummary,
   WorkspaceRepositoryCandidateClassification,
   WorkspaceRepositoryCandidateImportState,
   WorkspaceRepositoryCandidateSummary,
   WorkspaceRepositoryDiscoverySnapshot,
   WorkspaceRepositoryDiscoveryStart,
+  WorkspaceRepositoryDiscoveryCommand,
+  WorkspaceRepositoryDiscoveryWorkerResult,
 } from "./workspace-repository-discovery.js";
 
 export type {
