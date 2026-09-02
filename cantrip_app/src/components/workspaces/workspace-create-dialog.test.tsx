@@ -59,6 +59,12 @@ const worker = {
   },
 } as WorkerSummary;
 
+const remoteWorker = {
+  ...worker,
+  workerId: "worker-two",
+  name: "Remote machine",
+} as WorkerSummary;
+
 const attachedWorkspace = {
   id: "workspace-attached",
   name: "Existing repositories",
@@ -187,6 +193,88 @@ describe("workspace create dialog", () => {
     ).toMatchObject({
       "data-open": "true",
       "data-workspace-id": attachedWorkspace.id,
+    });
+
+    await act(async () => renderer.unmount());
+    queryClient.clear();
+  });
+
+  it("hides the native picker for a remote worker and accepts its absolute path", async () => {
+    listDesktopWorkers.mockResolvedValue([
+      {
+        workerId: worker.workerId,
+        name: worker.name,
+        running: true,
+        serverUrl: "http://127.0.0.1:4310",
+      },
+    ]);
+    const remoteWorkspace = {
+      ...attachedWorkspace,
+      storage: {
+        ...attachedWorkspace.storage,
+        workerId: remoteWorker.workerId,
+      },
+    } as ProjectWorkspaceSummary;
+    const onCreate = vi.fn().mockResolvedValue(remoteWorkspace);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <WorkspaceCreateDialog
+            onCreate={onCreate}
+            onOpenChange={vi.fn()}
+            open
+            workers={[worker, remoteWorker]}
+            workspaces={[]}
+          />
+        </QueryClientProvider>,
+      );
+    });
+
+    const buttons = () => renderer.root.findAllByType("button");
+    await act(async () => {
+      buttons()
+        .find((button) => nodeText(button).includes("Use an existing folder"))!
+        .props.onClick();
+    });
+    await act(async () => undefined);
+    expect(
+      buttons().some((button) => nodeText(button).includes("Browse")),
+    ).toBe(true);
+
+    await act(async () => {
+      renderer.root.findByType("select").props.onChange({
+        target: { value: remoteWorker.workerId },
+      });
+    });
+    expect(
+      buttons().some((button) => nodeText(button).includes("Browse")),
+    ).toBe(false);
+
+    await act(async () => {
+      renderer.root
+        .findByProps({ placeholder: "Personal Projects" })
+        .props.onChange({ target: { value: "Remote repositories" } });
+      renderer.root
+        .findByProps({ placeholder: "/path/on/the/selected/worker" })
+        .props.onChange({ target: { value: "/srv/remote-repositories" } });
+    });
+    await act(async () => {
+      await renderer.root.findByType("form").props.onSubmit({
+        preventDefault: vi.fn(),
+      });
+    });
+
+    expect(onCreate).toHaveBeenCalledWith({
+      name: "Remote repositories",
+      storage: {
+        kind: "attached",
+        workerId: remoteWorker.workerId,
+        rootPath: "/srv/remote-repositories",
+      },
     });
 
     await act(async () => renderer.unmount());
