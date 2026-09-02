@@ -1,7 +1,10 @@
 import type { AgentScope, ChatMessage } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { continuationPrompt } from "../src/chats/execution-helpers.js";
+import {
+  canFailOverRoute,
+  continuationPrompt,
+} from "../src/chats/execution-helpers.js";
 
 const rootScope: AgentScope = {
   agentThreadId: "root-thread",
@@ -73,5 +76,17 @@ describe("chat continuation projection", () => {
     expect(prompt).toContain("Root result");
     expect(prompt).toContain("Continue root work");
     expect(prompt).not.toContain("PRIVATE CHILD RESULT");
+  });
+});
+
+describe("chat route failover", () => {
+  it("treats model capacity as a route-local failure", () => {
+    expect(
+      canFailOverRoute(
+        new Error(
+          "Selected model is at capacity. Please try a different model.",
+        ),
+      ),
+    ).toBe(true);
   });
 });

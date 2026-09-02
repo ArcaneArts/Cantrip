@@ -58,6 +58,7 @@ const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("activity"),
     activityType: z.string().min(1).max(100),
+    reasonCode: z.string().min(1).max(100).nullable().optional(),
     turnId: z.string().min(1).nullable(),
     agentRuntime: z
       .object({

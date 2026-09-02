@@ -10,6 +10,7 @@ import {
   activityGroupSummary,
   activityLabel,
   latestActivityLabel,
+  noticeRetryLabel,
 } from "./activity";
 
 describe("rich Codex activity", () => {
@@ -182,6 +183,52 @@ describe("rich Codex activity", () => {
     expect(markup).toContain("Error code");
     expect(markup).toContain("-32602");
     expect(markup).toContain("should not be retried unchanged");
+  });
+
+  it("shows Codex reconnects and truthful Cantrip capacity countdowns", () => {
+    const reconnecting: AgentActivity = {
+      type: "notice",
+      id: "codex-reconnect",
+      status: "running",
+      level: "error",
+      message: "stream disconnected",
+      details: null,
+      willRetry: true,
+      reasonCode: "stream",
+      retry: {
+        owner: "codex",
+        attempt: null,
+        maxAttempts: null,
+        nextAttemptAtMs: null,
+      },
+    };
+    const capacityRetry: AgentActivity = {
+      type: "notice",
+      id: "capacity-retry",
+      status: "running",
+      level: "warning",
+      message: "Model at capacity",
+      details: null,
+      willRetry: true,
+      reasonCode: "serverOverloaded",
+      retry: {
+        owner: "cantrip",
+        attempt: 1,
+        maxAttempts: 3,
+        nextAttemptAtMs: 20_000,
+      },
+    };
+
+    expect(noticeRetryLabel(reconnecting, 10_000)).toBe(
+      "Codex is reconnecting.",
+    );
+    expect(noticeRetryLabel(capacityRetry, 10_000)).toBe(
+      "Retrying in 10s · attempt 1 of 3",
+    );
+    const markup = renderToStaticMarkup(<Activity activity={capacityRetry} />);
+    expect(markup).toContain("Model at capacity");
+    expect(markup).toContain("attempt 1 of 3");
+    expect(markup).toContain('role="status"');
   });
 
   it("keeps failed command output collapsed", () => {

@@ -4191,6 +4191,35 @@ describe("Cantrip protocol", () => {
     ).toBe("worktree");
   });
 
+  it("validates durable model-capacity retry notices", () => {
+    expect(
+      agentActivitySchema.parse({
+        type: "notice",
+        id: "capacity-retry-1",
+        status: "running",
+        level: "warning",
+        message: "Model at capacity",
+        details: null,
+        willRetry: true,
+        reasonCode: "serverOverloaded",
+        retry: {
+          owner: "cantrip",
+          attempt: 1,
+          maxAttempts: 3,
+          nextAttemptAtMs: 20_000,
+        },
+      }),
+    ).toMatchObject({
+      reasonCode: "serverOverloaded",
+      retry: {
+        owner: "cantrip",
+        attempt: 1,
+        maxAttempts: 3,
+        nextAttemptAtMs: 20_000,
+      },
+    });
+  });
+
   it("validates protected trajectory captures and instruction provenance", () => {
     const activity = agentActivitySchema.parse({
       type: "instructionContext",

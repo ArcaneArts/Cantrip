@@ -809,6 +809,7 @@ export function createChatTurnRuntime({
             );
           };
           let attemptActivity = false;
+          let terminalReasonCode: string | null = null;
           const canResume = runtimeCanResumeContext(execution, runtime);
           const threadId = canResume ? execution.threadId : null;
           const finals = createStreamedFinalTracker();
@@ -1061,6 +1062,20 @@ export function createChatTurnRuntime({
                   runAsOwner(ownerId, async () => {
                     const observedAt = new Date();
                     const sourceEvent = observationIdentity(event);
+                    if (
+                      event.type === "agent.activity" &&
+                      event.activity.type === "notice" &&
+                      event.activity.reasonCode
+                    ) {
+                      terminalReasonCode = event.activity.reasonCode;
+                    } else if (
+                      (event.type === "agent.protected-message" ||
+                        event.type === "agent.protected-task-message") &&
+                      event.telemetry.kind === "activity" &&
+                      event.telemetry.reasonCode
+                    ) {
+                      terminalReasonCode = event.telemetry.reasonCode;
+                    }
                     behaviorTracker.markActivity(observedAt);
                     attemptActivity = true;
                     anyActivity = true;
@@ -1878,8 +1893,8 @@ export function createChatTurnRuntime({
                 ? "cancelled"
                 : "failed";
             const canRetry =
-              !attemptActivity &&
-              canFailOverRoute(error) &&
+              (terminalReasonCode === "serverOverloaded" ||
+                (!attemptActivity && canFailOverRoute(error))) &&
               index < runtimes.length - 1;
             await recordRuntimeTokenUsage(
               tokenUsageSourceKey,
@@ -1931,6 +1946,11 @@ export function createChatTurnRuntime({
               quotaFollowupsScheduled = true;
             }
             if (!canRetry) throw error;
+            cancelChatTurnOutcomeRecovery(
+              execution.workerId,
+              execution.chatId,
+              userMessage.id,
+            );
             routeCooldowns.set(
               runtimeCooldownKey(runtime),
               Date.now() + ROUTE_FAILURE_COOLDOWN_MS,
@@ -1941,7 +1961,10 @@ export function createChatTurnRuntime({
                 subsystem: "chat-execution",
                 operation: "turn",
                 status: "retrying",
-                reasonCode: "route-failed-before-activity",
+                reasonCode:
+                  terminalReasonCode === "serverOverloaded"
+                    ? "model-capacity"
+                    : "route-failed-before-activity",
                 chatId: execution.chatId,
                 err: encryptedTaskMessages
                   ? new Error("Encrypted Task route failed.")
@@ -1956,7 +1979,9 @@ export function createChatTurnRuntime({
                 durationMs: Date.now() - attemptStartedAtMs,
                 attempt: index + 1,
               },
-              "Provider route failed before activity; trying the next route",
+              terminalReasonCode === "serverOverloaded"
+                ? "Provider route remained at capacity; trying the next route"
+                : "Provider route failed before activity; trying the next route",
             );
           }
         }

@@ -21,12 +21,15 @@ import {
   changedLinesPreview,
   changedFiles,
   chatTurnRollbackBoundary,
+  cantripCapacityRetryDelayMs,
   codexChatApprovalPolicy,
   codexChatThreadSecurityParams,
   codexResultForAgentInteraction,
   CodexAppServer,
+  CodexTurnFailureError,
   CodexExternalThreadChangeCoalescer,
   codexEndpointFromLine,
+  codexErrorReasonCode,
   codexReasoningEffortParams,
   codexStartupExitMessage,
   codexMcpConfigOverride,
@@ -865,15 +868,31 @@ describe("Codex rich event normalization", () => {
         level: "error",
         message: "The provider rejected the request.",
         details: "Request id req-1",
+        reasonCode: "serverOverloaded",
         willRetry: true,
         correlation: { ...correlation, itemId: null },
       }),
     ).toMatchObject({
       type: "notice",
-      status: "failed",
+      status: "running",
+      reasonCode: "serverOverloaded",
       willRetry: true,
       correlation: { diagnosticId: "runtime-session:12" },
     });
+  });
+
+  it("normalizes Codex failure reasons and bounds capacity retries", () => {
+    expect(codexErrorReasonCode("serverOverloaded")).toBe("serverOverloaded");
+    expect(
+      codexErrorReasonCode({
+        httpConnectionFailed: { httpStatusCode: 503 },
+      }),
+    ).toBe("httpConnectionFailed");
+    expect(codexErrorReasonCode({ first: true, second: true })).toBeNull();
+    expect(cantripCapacityRetryDelayMs(1)).toBe(10_000);
+    expect(cantripCapacityRetryDelayMs(2)).toBe(20_000);
+    expect(cantripCapacityRetryDelayMs(3)).toBe(40_000);
+    expect(cantripCapacityRetryDelayMs(4)).toBeNull();
   });
 
   it("keeps model final-answer items provisional until the turn completes", () => {
@@ -2226,6 +2245,182 @@ describe("Codex goals", () => {
 });
 
 describe("Codex runtime compatibility enforcement", () => {
+  it("retries terminal model-capacity failures on the same Codex thread", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new CodexAppServer(
+        "/definitely/missing/codex",
+        "/private/tmp/cantrip-runtime-test",
+        "/private/tmp/cantrip-runtime-test/home",
+        unprobedCodexRuntimeReport,
+      );
+      const activities: Parameters<
+        NonNullable<Parameters<CodexAppServer["runTurn"]>[0]["onActivity"]>
+      >[0][] = [];
+      const attempts: Array<Parameters<CodexAppServer["runTurn"]>[0]> = [];
+      const runTurnAttempt = vi.fn(
+        async (options: Parameters<CodexAppServer["runTurn"]>[0]) => {
+          attempts.push(options);
+          if (attempts.length === 1) {
+            options.onThreadLoaded?.("thread-capacity");
+            throw new CodexTurnFailureError(
+              "Selected model is at capacity.",
+              "serverOverloaded",
+              "thread-capacity",
+              "turn-capacity",
+            );
+          }
+          return {
+            threadId: "thread-capacity",
+            turnId: "turn-success",
+            text: "Ready",
+            status: "completed" as const,
+          };
+        },
+      );
+      Object.defineProperty(runtime, "runTurnAttempt", {
+        value: runTurnAttempt,
+      });
+
+      const resultPromise = runtime.runTurn({
+        chatId: "chat-1",
+        captureProtectedDiagnostics: false,
+        clientMessageId: "message-1",
+        cwd: "/private/tmp/cantrip-runtime-test",
+        executionProfile: "ide",
+        isPrimary: true,
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-5.6-sol",
+          reasoningEffort: null,
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+        planMode: "default",
+        prompt: "Inspect the project",
+        skillNames: [],
+        threadId: null,
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
+        automationPaused: false,
+        permissionProfileId: ":workspace",
+        policyContext: null,
+        rootKind: "git-worktree",
+        subagentDefaults: null,
+        subagentProtocolVersion: undefined,
+        onActivity: (activity) => activities.push(activity),
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(runTurnAttempt).toHaveBeenCalledTimes(1);
+      expect(activities.at(-1)).toMatchObject({
+        type: "notice",
+        status: "running",
+        reasonCode: "serverOverloaded",
+        retry: {
+          owner: "cantrip",
+          attempt: 1,
+          maxAttempts: 3,
+        },
+        willRetry: true,
+      });
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(resultPromise).resolves.toMatchObject({
+        turnId: "turn-success",
+        status: "completed",
+      });
+      expect(runTurnAttempt).toHaveBeenCalledTimes(2);
+      expect(attempts[1]?.threadId).toBe("thread-capacity");
+      expect(activities.at(-1)).toMatchObject({
+        type: "notice",
+        status: "completed",
+        retry: { attempt: 1, nextAttemptAtMs: null },
+        willRetry: null,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("interrupts a pending model-capacity backoff", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new CodexAppServer(
+        "/definitely/missing/codex",
+        "/private/tmp/cantrip-runtime-test",
+        "/private/tmp/cantrip-runtime-test/home",
+        unprobedCodexRuntimeReport,
+      );
+      Object.defineProperty(runtime, "runTurnAttempt", {
+        value: vi.fn(
+          async (options: Parameters<CodexAppServer["runTurn"]>[0]) => {
+            options.onThreadLoaded?.("thread-capacity");
+            throw new CodexTurnFailureError(
+              "Selected model is at capacity.",
+              "serverOverloaded",
+              "thread-capacity",
+              "turn-capacity",
+            );
+          },
+        ),
+      });
+
+      const resultPromise = runtime.runTurn({
+        chatId: "chat-1",
+        captureProtectedDiagnostics: false,
+        clientMessageId: "message-1",
+        cwd: "/private/tmp/cantrip-runtime-test",
+        executionProfile: "ide",
+        isPrimary: true,
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-5.6-sol",
+          reasoningEffort: null,
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+        planMode: "default",
+        prompt: "Inspect the project",
+        skillNames: [],
+        threadId: null,
+        worktreeMode: "agent-managed",
+        worktreePolicy: "required-for-writes",
+        automationPaused: false,
+        permissionProfileId: ":workspace",
+        policyContext: null,
+        rootKind: "git-worktree",
+        subagentDefaults: null,
+        subagentProtocolVersion: undefined,
+      });
+      const rejection = expect(resultPromise).rejects.toThrow(
+        "Codex turn was interrupted.",
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await expect(
+        runtime.interruptChat("chat-1", "thread-capacity"),
+      ).resolves.toEqual({ interrupted: true });
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns a clear error before starting an unavailable runtime", async () => {
     const runtime = new CodexAppServer(
       "/definitely/missing/codex",
