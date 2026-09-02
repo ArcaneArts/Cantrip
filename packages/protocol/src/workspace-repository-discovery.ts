@@ -36,6 +36,13 @@ export const workspaceRepositoryDiscoveryCountsSchema = z
   })
   .strict();
 
+export const workspaceRepositoryDiscoveryProgressSchema = z
+  .object({
+    counts: workspaceRepositoryDiscoveryCountsSchema,
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export const workspaceRepositoryDiscoveryJobSummarySchema = z
   .object({
     id: z.string().uuid(),
@@ -91,6 +98,9 @@ export const workspaceRepositoryDiscoverySnapshotSchema = z
   .object({
     job: workspaceRepositoryDiscoveryJobSummarySchema,
     candidates: z.array(workspaceRepositoryCandidateSummarySchema),
+    progress: workspaceRepositoryDiscoveryProgressSchema
+      .nullable()
+      .default(null),
   })
   .strict();
 
@@ -98,6 +108,36 @@ export const workspaceRepositoryDiscoveryStartSchema = z
   .object({
     expectedStateRevision: z.number().int().positive().optional(),
     depth: z.number().int().min(0).max(16).default(3),
+  })
+  .strict();
+
+export const workspaceRepositoryDiscoveryCommandSchema = z
+  .object({
+    type: z.literal("workspace.repositories.discover"),
+    jobId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    rootPath: repositoryRoutingHandleSchema,
+    depth: z.number().int().min(0).max(16),
+  })
+  .strict();
+
+export const workspaceRepositoryDiscoveryWorkerResultSchema = z
+  .object({
+    jobId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    candidates: z
+      .array(
+        z
+          .object({
+            path: repositoryRoutingHandleSchema,
+            displayPath: repositoryRoutingHandleSchema,
+            repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+          })
+          .strict(),
+      )
+      .max(500),
+    counts: workspaceRepositoryDiscoveryCountsSchema,
+    truncated: z.boolean(),
   })
   .strict();
 
@@ -112,6 +152,9 @@ export type WorkspaceRepositoryDiscoveryError = z.infer<
 >;
 export type WorkspaceRepositoryDiscoveryCounts = z.infer<
   typeof workspaceRepositoryDiscoveryCountsSchema
+>;
+export type WorkspaceRepositoryDiscoveryProgress = z.infer<
+  typeof workspaceRepositoryDiscoveryProgressSchema
 >;
 export type WorkspaceRepositoryDiscoveryJobSummary = z.infer<
   typeof workspaceRepositoryDiscoveryJobSummarySchema
@@ -130,4 +173,10 @@ export type WorkspaceRepositoryDiscoverySnapshot = z.infer<
 >;
 export type WorkspaceRepositoryDiscoveryStart = z.infer<
   typeof workspaceRepositoryDiscoveryStartSchema
+>;
+export type WorkspaceRepositoryDiscoveryCommand = z.infer<
+  typeof workspaceRepositoryDiscoveryCommandSchema
+>;
+export type WorkspaceRepositoryDiscoveryWorkerResult = z.infer<
+  typeof workspaceRepositoryDiscoveryWorkerResultSchema
 >;

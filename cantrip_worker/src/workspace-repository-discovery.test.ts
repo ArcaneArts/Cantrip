@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import type { WorkspaceRepositoryDiscoveryProgress } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { discoverWorkspaceRepositories } from "./workspace-repository-discovery.js";
@@ -55,7 +56,10 @@ describe("discoverWorkspaceRepositories", () => {
     await initializeRepository(tooDeepRepository);
     await initializeRepository(nestedRepository);
 
-    const result = await discoverWorkspaceRepositories(root);
+    const progress: WorkspaceRepositoryDiscoveryProgress[] = [];
+    const result = await discoverWorkspaceRepositories(root, {}, (update) =>
+      progress.push(update),
+    );
 
     expect(result.candidates.map(({ relativePath }) => relativePath)).toEqual([
       "one/two/repository",
@@ -69,6 +73,14 @@ describe("discoverWorkspaceRepositories", () => {
       ]),
     );
     expect(result.truncated).toBe(true);
+    expect(progress[0]?.counts).toMatchObject({
+      candidates: 0,
+      scannedDirectories: 0,
+    });
+    expect(progress.at(-1)).toMatchObject({
+      counts: { candidates: 2 },
+      truncated: true,
+    });
   });
 
   it("does not follow directory symlinks outside the attached root", async () => {
@@ -152,7 +164,10 @@ describe("discoverWorkspaceRepositories", () => {
 
     await expect(
       discoverWorkspaceRepositories("relative/workspace"),
-    ).rejects.toThrow(/absolute root/iu);
+    ).rejects.toMatchObject({
+      code: "root-unavailable",
+      message: expect.stringMatching(/absolute root/iu),
+    });
     await expect(discoverWorkspaceRepositories(root)).resolves.toMatchObject({
       candidates: [],
     });

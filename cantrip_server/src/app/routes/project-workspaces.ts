@@ -5,6 +5,9 @@ import {
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
+  workspaceRepositoryDiscoverySnapshotSchema,
+  workspaceRepositoryDiscoveryStartSchema,
+  type WorkspaceRepositoryDiscoveryJobSummary,
 } from "@cantrip/protocol";
 import { repositoryOperationWireResponseSchema } from "@cantrip/protocol/repository-operation";
 import type { FastifyInstance } from "fastify";
@@ -26,7 +29,13 @@ export interface ProjectWorkspaceRouteDependencies {
     | "getWorker"
     | "listProjectWorkspaceWire"
     | "updateEncryptedProjectWorkspace"
+    | "workspaceRepositoryDiscoveryJobs"
   >;
+  publishWorkspaceRepositoryDiscoveryChange: (change: {
+    job: WorkspaceRepositoryDiscoveryJobSummary;
+    ownerId: string;
+  }) => void;
+  queueWorkspaceRepositoryDiscoveryJobs: () => void;
   serverId: string;
 }
 
@@ -35,6 +44,8 @@ export function installProjectWorkspaceRoutes(
   {
     applicationOwnerId,
     bridge,
+    publishWorkspaceRepositoryDiscoveryChange,
+    queueWorkspaceRepositoryDiscoveryJobs,
     repository,
     serverId,
   }: ProjectWorkspaceRouteDependencies,
@@ -137,6 +148,21 @@ export function installProjectWorkspaceRoutes(
           },
         },
       );
+      try {
+        const job = await repository.workspaceRepositoryDiscoveryJobs.queue(
+          ownerId,
+          workspace.id,
+        );
+        if (job) {
+          publishWorkspaceRepositoryDiscoveryChange({ job, ownerId });
+          queueWorkspaceRepositoryDiscoveryJobs();
+        }
+      } catch (error) {
+        app.log.warn(
+          { err: error, workspaceId: workspace.id },
+          "Could not start attached workspace repository discovery",
+        );
+      }
       return reply.code(201).send(
         encryptedAttachedProjectWorkspaceCreateResultSchema.parse({
           workspace,
@@ -147,6 +173,63 @@ export function installProjectWorkspaceRoutes(
       return reply.code(409).send({ error: errorMessage(error) });
     }
   });
+
+  app.get<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId/repository-discovery",
+    async (request, reply) => {
+      const snapshot =
+        await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+          applicationOwnerId(),
+          request.params.workspaceId,
+        );
+      return snapshot
+        ? reply.send(workspaceRepositoryDiscoverySnapshotSchema.parse(snapshot))
+        : reply.code(404).send({
+            error: "Workspace repository discovery has not started.",
+          });
+    },
+  );
+
+  app.post<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId/repository-discovery",
+    async (request, reply) => {
+      const input = workspaceRepositoryDiscoveryStartSchema.safeParse(
+        request.body ?? {},
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      try {
+        const job = await repository.workspaceRepositoryDiscoveryJobs.queue(
+          ownerId,
+          request.params.workspaceId,
+          input.data,
+        );
+        if (!job) {
+          return reply.code(409).send({
+            error:
+              "Workspace repository discovery is already running or changed.",
+          });
+        }
+        const snapshot =
+          await repository.workspaceRepositoryDiscoveryJobs.getSnapshot(
+            ownerId,
+            request.params.workspaceId,
+          );
+        if (!snapshot) {
+          throw new Error("Queued workspace repository discovery disappeared.");
+        }
+        publishWorkspaceRepositoryDiscoveryChange({ job, ownerId });
+        queueWorkspaceRepositoryDiscoveryJobs();
+        return reply
+          .code(202)
+          .send(workspaceRepositoryDiscoverySnapshotSchema.parse(snapshot));
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   app.patch<{ Params: { workspaceId: string } }>(
     "/api/workspaces/:workspaceId",

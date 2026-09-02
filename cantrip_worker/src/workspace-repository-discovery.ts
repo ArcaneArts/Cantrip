@@ -4,7 +4,13 @@ import { lstat, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import type { WorkspaceRepositoryDiscoveryProgress } from "@cantrip/protocol";
+
 const execFileAsync = promisify(execFile);
+
+export type WorkspaceRepositoryDiscoveryProgressHandler = (
+  progress: WorkspaceRepositoryDiscoveryProgress,
+) => void;
 
 export interface WorkspaceRepositoryDiscoveryLimits {
   durationMs: number;
@@ -49,6 +55,10 @@ const DEFAULT_LIMITS: WorkspaceRepositoryDiscoveryLimits = {
   maxGitOutputBytes: 1_024 * 1_024,
   perGitCommandTimeoutMs: 5_000,
 };
+
+function rootUnavailable(message: string): Error {
+  return Object.assign(new Error(message), { code: "root-unavailable" });
+}
 
 function boundedInteger(value: number, minimum: number): number {
   if (!Number.isFinite(value)) return minimum;
@@ -153,19 +163,24 @@ async function inspectRepositoryRoot(
 export async function discoverWorkspaceRepositories(
   requestedRoot: string,
   overrides: Partial<WorkspaceRepositoryDiscoveryLimits> = {},
+  onProgress: WorkspaceRepositoryDiscoveryProgressHandler = () => undefined,
 ): Promise<WorkspaceRepositoryDiscoveryResult> {
   if (!path.isAbsolute(requestedRoot)) {
-    throw new Error(
+    throw rootUnavailable(
       "Workspace repository discovery requires an absolute root.",
     );
   }
   const requestedMetadata = await lstat(requestedRoot).catch(() => null);
   if (!requestedMetadata?.isDirectory() || requestedMetadata.isSymbolicLink()) {
-    throw new Error(
+    throw rootUnavailable(
       "Workspace repository discovery root is not an accessible directory.",
     );
   }
-  const canonicalRoot = await realpath(requestedRoot);
+  const canonicalRoot = await realpath(requestedRoot).catch(() => {
+    throw rootUnavailable(
+      "Workspace repository discovery root could not be resolved.",
+    );
+  });
   const limits: WorkspaceRepositoryDiscoveryLimits = {
     durationMs: boundedInteger(
       overrides.durationMs ?? DEFAULT_LIMITS.durationMs,
@@ -207,6 +222,25 @@ export async function discoverWorkspaceRepositories(
   let skippedSymlinks = 0;
   let truncated = false;
   let unreadableDirectories = 0;
+  let lastProgressAt = 0;
+  const reportProgress = (force = false): void => {
+    const now = Date.now();
+    if (!force && now - lastProgressAt < 250) return;
+    lastProgressAt = now;
+    onProgress({
+      counts: {
+        candidates: candidates.length,
+        collapsedRepositories,
+        rejectedRepositories,
+        scannedDirectories,
+        scannedEntries,
+        skippedSymlinks,
+        unreadableDirectories,
+      },
+      truncated,
+    });
+  };
+  reportProgress(true);
 
   scan: while (queueIndex < queue.length) {
     if (remainingDurationMs() <= 0) {
@@ -215,6 +249,7 @@ export async function discoverWorkspaceRepositories(
     }
     const directory = queue[queueIndex++]!;
     scannedDirectories += 1;
+    reportProgress();
     let entries;
     try {
       entries = await readdir(directory.canonicalPath, {
@@ -265,6 +300,7 @@ export async function discoverWorkspaceRepositories(
         rejectedRepositories += 1;
       }
       // A Git marker is a traversal boundary even when the checkout is invalid.
+      reportProgress();
       continue;
     }
 
@@ -310,11 +346,13 @@ export async function discoverWorkspaceRepositories(
         continue;
       }
     }
+    reportProgress();
   }
 
   candidates.sort((left, right) =>
     left.relativePath.localeCompare(right.relativePath),
   );
+  reportProgress(true);
   return {
     candidates,
     canonicalRoot,

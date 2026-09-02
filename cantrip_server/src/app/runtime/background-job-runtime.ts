@@ -29,6 +29,10 @@ import {
 } from "../../standalone-chats/root-job-executor.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
 import {
+  WorkspaceRepositoryDiscoveryJobExecutor,
+  type WorkspaceRepositoryDiscoveryLiveChange,
+} from "../../workspace-repository-discovery/executor.js";
+import {
   WorkflowExecutor,
   type WorkflowRunLiveChange,
 } from "../../workflows/executor.js";
@@ -270,6 +274,55 @@ export function createBackgroundJobRuntime({
     app.log,
     publishProjectFolderSetupChange,
   );
+  const publishWorkspaceRepositoryDiscoveryChange = (
+    change: WorkspaceRepositoryDiscoveryLiveChange,
+  ): void => {
+    if (!change.progress) {
+      const context = {
+        event: "workspace.repository-discovery.transitioned",
+        subsystem: "workspace-repository-discovery",
+        operation: "discover",
+        status: change.job.state,
+        runId: change.job.id,
+        workspaceId: change.job.workspaceId,
+        workerId: change.job.workerId,
+        attempt: change.job.attempt,
+      };
+      if (change.job.state === "failed") {
+        app.log.error(context, "Workspace repository discovery failed");
+      } else if (change.job.state === "blocked") {
+        app.log.warn(context, "Workspace repository discovery blocked");
+      } else if (change.job.state === "succeeded") {
+        app.log.info(context, "Workspace repository discovery completed");
+      } else {
+        app.log.debug(context, "Workspace repository discovery transitioned");
+      }
+    }
+    if (!livePublishingEnabled()) return;
+    try {
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "current-user" },
+        resource: "workspace-repository-discovery-job",
+        action: change.progress ? "status" : "invalidated",
+        entityId: change.job.workspaceId,
+        revision: change.job.stateRevision,
+        payload: change.progress ? { progress: change.progress } : null,
+      });
+    } catch (error) {
+      app.log.error(
+        { err: error, workspaceRepositoryDiscoveryJobId: change.job.id },
+        "Could not publish workspace repository discovery change",
+      );
+    }
+  };
+  const workspaceRepositoryDiscoveryJobExecutor =
+    new WorkspaceRepositoryDiscoveryJobExecutor(
+      repository,
+      bridge,
+      app.log,
+      publishWorkspaceRepositoryDiscoveryChange,
+    );
   const publishStandaloneChatRootJobChange = (
     change: StandaloneChatRootJobLiveChange,
   ): void => {
@@ -527,6 +580,7 @@ export function createBackgroundJobRuntime({
     projectFolderSetupJobExecutor,
     projectGithubConversionJobExecutor,
     projectReplicaJobExecutor,
+    publishWorkspaceRepositoryDiscoveryChange,
     publishChatImportChange,
     publishChatRelocationChange,
     publishProjectFolderSetupChange,
@@ -536,6 +590,7 @@ export function createBackgroundJobRuntime({
     publishWorkflowRunChange,
     standaloneChatRootJobExecutor,
     workflowExecutor,
+    workspaceRepositoryDiscoveryJobExecutor,
     worktreeCoordinator,
   };
 }

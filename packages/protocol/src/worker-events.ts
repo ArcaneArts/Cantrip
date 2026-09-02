@@ -47,6 +47,7 @@ import {
   workerLogStreamSubscriptionIdSchema,
   workerLogStreamBatchSchema,
 } from "./worker-runtime-support.js";
+import { workspaceRepositoryDiscoveryProgressSchema } from "./workspace-repository-discovery.js";
 
 const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
   z.object({
@@ -183,6 +184,14 @@ export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const workerEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("workspace.repositories.discovery-progress"),
+      jobId: z.string().uuid(),
+      attempt: z.number().int().positive(),
+      progress: workspaceRepositoryDiscoveryProgressSchema,
+    })
+    .strict(),
   z.object({
     type: z.literal("project.replica.progress"),
     jobId: z.string().uuid(),

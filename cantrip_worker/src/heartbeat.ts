@@ -64,6 +64,7 @@ export function createHeartbeat(
       create: true,
       attachExisting: true,
       attachWorkspaceRoot: true,
+      discoverWorkspaceRepositories: true,
       convertToGithub: true,
       remove: true,
       workspaceScopedRoots: true,

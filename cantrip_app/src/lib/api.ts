@@ -273,6 +273,8 @@ import {
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
+  workspaceRepositoryDiscoverySnapshotSchema,
+  workspaceRepositoryDiscoveryStartSchema,
   projectTabLayoutWireSummarySchema,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
@@ -497,6 +499,7 @@ import type {
   ProjectReplicaProvisionCreate,
   ProjectReplicaRemoveCreate,
   ProjectReplicaSynchronizeCreate,
+  WorkspaceRepositoryDiscoveryStart,
   ExecutionPlacementResolveRequest,
   ExecutionTarget,
   ExecutionTargetResolveRequest,
@@ -2495,6 +2498,26 @@ export async function deleteProjectWorkspace(workspaceId: string) {
   await request(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
     method: "DELETE",
   });
+}
+
+export async function getWorkspaceRepositoryDiscovery(workspaceId: string) {
+  return workspaceRepositoryDiscoverySnapshotSchema.parse(
+    await request(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/repository-discovery`,
+    ),
+  );
+}
+
+export async function startWorkspaceRepositoryDiscovery(
+  workspaceId: string,
+  input: Partial<WorkspaceRepositoryDiscoveryStart> = {},
+) {
+  return workspaceRepositoryDiscoverySnapshotSchema.parse(
+    await post(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/repository-discovery`,
+      workspaceRepositoryDiscoveryStartSchema.parse(input),
+    ),
+  );
 }
 
 type RepositoryResultSchema<T> = { parse(value: unknown): T };

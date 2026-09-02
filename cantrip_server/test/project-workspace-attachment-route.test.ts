@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import {
   encryptedAttachedProjectWorkspaceCreateResultSchema,
+  workspaceRepositoryDiscoverySnapshotSchema,
   type ProjectWorkspaceWireSummary,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
@@ -61,6 +62,26 @@ function requestPayload() {
   };
 }
 
+function discoveryJob() {
+  const timestamp = "2026-09-02T12:00:00.000Z";
+  return {
+    id: "72b3b25e-dd0f-4a12-bef5-1a77cc064219",
+    workspaceId,
+    workerId: "worker-one",
+    state: "queued" as const,
+    stateRevision: 1,
+    attempt: 0,
+    depth: 3,
+    truncated: false,
+    counts: null,
+    error: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    startedAt: null,
+    completedAt: null,
+  };
+}
+
 describe("attached project workspace route", () => {
   it("persists only the protected binding returned by the selected worker", async () => {
     const app = Fastify();
@@ -73,6 +94,9 @@ describe("attached project workspace route", () => {
     const createVerifiedAttachedProjectWorkspace = vi
       .fn()
       .mockResolvedValue(workspace());
+    const queue = vi.fn().mockResolvedValue(discoveryJob());
+    const publishWorkspaceRepositoryDiscoveryChange = vi.fn();
+    const queueWorkspaceRepositoryDiscoveryJobs = vi.fn();
     installProjectWorkspaceRoutes(app, {
       applicationOwnerId: () => "owner-one",
       bridge: { isConnected: () => true, request },
@@ -86,7 +110,10 @@ describe("attached project workspace route", () => {
         }),
         listProjectWorkspaceWire: vi.fn(),
         updateEncryptedProjectWorkspace: vi.fn(),
+        workspaceRepositoryDiscoveryJobs: { queue },
       },
+      publishWorkspaceRepositoryDiscoveryChange,
+      queueWorkspaceRepositoryDiscoveryJobs,
       serverId: "server-one",
     } as never);
 
@@ -122,6 +149,12 @@ describe("attached project workspace route", () => {
       }),
     );
     expect(JSON.stringify(request.mock.calls)).not.toContain("/private/");
+    expect(queue).toHaveBeenCalledWith("owner-one", workspaceId);
+    expect(publishWorkspaceRepositoryDiscoveryChange).toHaveBeenCalledWith({
+      job: discoveryJob(),
+      ownerId: "owner-one",
+    });
+    expect(queueWorkspaceRepositoryDiscoveryJobs).toHaveBeenCalledOnce();
     await app.close();
   });
 
@@ -164,6 +197,59 @@ describe("attached project workspace route", () => {
         .workspace,
     ).toBeNull();
     expect(createVerifiedAttachedProjectWorkspace).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("serves durable state and queues optimistic manual rescans", async () => {
+    const app = Fastify();
+    const job = discoveryJob();
+    const snapshot = workspaceRepositoryDiscoverySnapshotSchema.parse({
+      job,
+      candidates: [],
+    });
+    const queue = vi.fn().mockResolvedValue({ ...job, stateRevision: 2 });
+    const getSnapshot = vi.fn().mockResolvedValue({
+      job: { ...job, stateRevision: 2 },
+      candidates: [],
+    });
+    const publishWorkspaceRepositoryDiscoveryChange = vi.fn();
+    const queueWorkspaceRepositoryDiscoveryJobs = vi.fn();
+    installProjectWorkspaceRoutes(app, {
+      applicationOwnerId: () => "owner-one",
+      bridge: { request: vi.fn() },
+      repository: {
+        workspaceRepositoryDiscoveryJobs: { getSnapshot, queue },
+      },
+      publishWorkspaceRepositoryDiscoveryChange,
+      queueWorkspaceRepositoryDiscoveryJobs,
+      serverId: "server-one",
+    } as never);
+
+    getSnapshot.mockResolvedValueOnce(snapshot);
+    const getResponse = await app.inject({
+      method: "GET",
+      url: `/api/workspaces/${workspaceId}/repository-discovery`,
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(
+      workspaceRepositoryDiscoverySnapshotSchema.parse(getResponse.json()),
+    ).toEqual(snapshot);
+
+    const rescanResponse = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/repository-discovery`,
+      payload: { expectedStateRevision: 1 },
+    });
+    expect(rescanResponse.statusCode).toBe(202);
+    expect(queue).toHaveBeenCalledWith("owner-one", workspaceId, {
+      expectedStateRevision: 1,
+      depth: 3,
+    });
+    expect(publishWorkspaceRepositoryDiscoveryChange).toHaveBeenCalledWith({
+      job: { ...job, stateRevision: 2 },
+      ownerId: "owner-one",
+    });
+    expect(queueWorkspaceRepositoryDiscoveryJobs).toHaveBeenCalledOnce();
     await app.close();
   });
 });
