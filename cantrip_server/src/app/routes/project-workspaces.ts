@@ -17,17 +17,25 @@ import type { FastifyInstance } from "fastify";
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import { sendWorkerRequestFailure } from "../../http/worker-request-failures.js";
+import type { ProjectShareTunnelBroker } from "../../project-shares/tunnel.js";
+import type { WorkerLinkService } from "../../worker-links/service.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
+import type { ProjectWorktreeCoordinator } from "../../worktrees/coordinator.js";
 import { FINITE_WORKER_COMMAND_TIMEOUT_MS } from "../shared/constants.js";
+import { removeProjectPreservingFiles } from "./project-preserving-removal.js";
 
 export interface ProjectWorkspaceRouteDependencies {
   applicationOwnerId: () => string;
-  bridge: Pick<WorkerCommandBus, "request">;
+  bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
+  projectShareTunnel: Pick<ProjectShareTunnelBroker, "revokeProject">;
   repository: Pick<
     ServerRepository,
     | "createEncryptedProjectWorkspace"
     | "createVerifiedAttachedProjectWorkspace"
     | "deleteProjectWorkspace"
+    | "deleteProject"
+    | "getProjectRemovalContext"
+    | "getProjectWorkspaceDeletionPlan"
     | "getWorker"
     | "listProjectWorkspaceWire"
     | "updateEncryptedProjectWorkspace"
@@ -38,7 +46,13 @@ export interface ProjectWorkspaceRouteDependencies {
     ownerId: string;
   }) => void;
   queueWorkspaceRepositoryDiscoveryJobs: () => void;
+  retireRunConfigurationRuntimes: (
+    ownerId: string,
+    projectId: string,
+  ) => Promise<void>;
   serverId: string;
+  workerLinks: Pick<WorkerLinkService, "revokeResource">;
+  worktreeCoordinator: Pick<ProjectWorktreeCoordinator, "serialize">;
 }
 
 export function installProjectWorkspaceRoutes(
@@ -48,8 +62,12 @@ export function installProjectWorkspaceRoutes(
     bridge,
     publishWorkspaceRepositoryDiscoveryChange,
     queueWorkspaceRepositoryDiscoveryJobs,
+    projectShareTunnel,
     repository,
+    retireRunConfigurationRuntimes,
     serverId,
+    workerLinks,
+    worktreeCoordinator,
   }: ProjectWorkspaceRouteDependencies,
 ): void {
   app.get("/api/workspaces", async (_request, reply) => {
@@ -303,13 +321,56 @@ export function installProjectWorkspaceRoutes(
   app.delete<{ Params: { workspaceId: string } }>(
     "/api/workspaces/:workspaceId",
     async (request, reply) => {
+      const ownerId = applicationOwnerId();
       try {
+        const plan = await repository.getProjectWorkspaceDeletionPlan(
+          ownerId,
+          request.params.workspaceId,
+        );
+        if (!plan) {
+          return reply.code(404).send({ error: "Workspace not found." });
+        }
+        await Promise.all(
+          plan.projectIds.map(async (projectId) => {
+            const context = await repository.getProjectRemovalContext(
+              ownerId,
+              projectId,
+            );
+            if (!context) return;
+            await removeProjectPreservingFiles(
+              {
+                bridge,
+                projectShareTunnel,
+                repository,
+                retireRunConfigurationRuntimes,
+                workerLinks,
+                worktreeCoordinator,
+              },
+              ownerId,
+              projectId,
+              context,
+              (stage, error) => {
+                request.log.warn(
+                  {
+                    err: error,
+                    projectId,
+                    stage,
+                    workspaceId: request.params.workspaceId,
+                  },
+                  "Workspace project runtime cleanup failed; preserving files and continuing record removal",
+                );
+              },
+            );
+          }),
+        );
         return (await repository.deleteProjectWorkspace(
-          applicationOwnerId(),
+          ownerId,
           request.params.workspaceId,
         ))
           ? reply.code(204).send()
-          : reply.code(404).send({ error: "Workspace not found." });
+          : reply.code(409).send({
+              error: "Workspace changed before it could be deleted.",
+            });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }

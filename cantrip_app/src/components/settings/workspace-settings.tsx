@@ -84,6 +84,16 @@ export function promoteDefaultWorkspace(
   );
 }
 
+export function workspaceDeletionDescription(
+  workspace: ProjectWorkspaceSummary,
+): string {
+  const projectCount = workspace.projectIds.length;
+  const removal = projectCount
+    ? `This removes the workspace and its ${projectCount} ${projectCount === 1 ? "project" : "projects"} from Cantrip. `
+    : "This removes the workspace from Cantrip. ";
+  return `${removal}Repository, worktree, and attached-folder files remain untouched.`;
+}
+
 export function WorkspaceSettings({
   onOpenPolicySettings,
 }: {
@@ -178,10 +188,19 @@ export function WorkspaceSettings({
   const remove = useMutation({
     mutationFn: deleteProjectWorkspace,
     onSuccess: (_value, workspaceId) => {
+      const deletedProjectIds = new Set(
+        queryClient
+          .getQueryData<ProjectWorkspaceSummary[]>(["project-workspaces"])
+          ?.find(({ id }) => id === workspaceId)?.projectIds ?? [],
+      );
       queryClient.setQueryData<ProjectWorkspaceSummary[]>(
         ["project-workspaces"],
         (current = []) => current.filter(({ id }) => id !== workspaceId),
       );
+      queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
+        current.filter(({ id }) => !deletedProjectIds.has(id)),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
       void queryClient.invalidateQueries({ queryKey: ["effective-policies"] });
       setPolicyWorkspaceId((current) =>
         current === workspaceId ? null : current,
@@ -673,8 +692,7 @@ export function WorkspaceSettings({
           <DialogHeader>
             <DialogTitle>Delete {deleteTarget?.name}?</DialogTitle>
             <DialogDescription>
-              Only an empty workspace can be deleted. Projects are never moved
-              or deleted with a workspace.
+              {deleteTarget ? workspaceDeletionDescription(deleteTarget) : null}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

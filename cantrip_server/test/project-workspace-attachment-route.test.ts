@@ -378,4 +378,92 @@ describe("attached project workspace route", () => {
     });
     await app.close();
   });
+
+  it("removes workspace projects from Cantrip without deleting worker files", async () => {
+    const app = Fastify();
+    const projectId = "95ed0d89-a1d5-48ac-a1b7-67a2037f8373";
+    const request = vi.fn().mockRejectedValue(new Error("worker unavailable"));
+    const deleteProject = vi.fn().mockResolvedValue(true);
+    const deleteProjectWorkspace = vi.fn().mockResolvedValue(true);
+    const retireRunConfigurationRuntimes = vi
+      .fn()
+      .mockRejectedValue(new Error("runtime worker unavailable"));
+    const revokeResource = vi.fn().mockResolvedValue(1);
+    const revokeProject = vi.fn().mockResolvedValue(false);
+    const serialize = vi.fn(
+      async (_projectId: string, operation: () => Promise<unknown>) =>
+        operation(),
+    );
+    installProjectWorkspaceRoutes(app, {
+      applicationOwnerId: () => "owner-one",
+      bridge: { isConnected: () => true, request },
+      projectShareTunnel: { revokeProject },
+      repository: {
+        deleteProject,
+        deleteProjectWorkspace,
+        getProjectRemovalContext: vi.fn().mockResolvedValue({
+          convertedManagedFolderSource: null,
+          folderManagement: null,
+          originKind: "github",
+          preferredWorkerId: "worker-one",
+          replicas: [
+            {
+              cwd: "/existing/repository",
+              id: "replica-one",
+              ownershipKind: "user",
+              workerId: "worker-one",
+            },
+          ],
+          remoteSurfaces: [{ id: "surface-one", workerId: "worker-one" }],
+          setupStatus: "ready",
+          terminals: [{ id: "terminal-one", workerId: "worker-one" }],
+          workspaceStorage: {
+            kind: "attached",
+            workspaceId,
+            workerId: "worker-one",
+          },
+        }),
+        getProjectWorkspaceDeletionPlan: vi
+          .fn()
+          .mockResolvedValue({ projectIds: [projectId] }),
+      },
+      publishWorkspaceRepositoryDiscoveryChange: vi.fn(),
+      queueWorkspaceRepositoryDiscoveryJobs: vi.fn(),
+      retireRunConfigurationRuntimes,
+      serverId: "server-one",
+      workerLinks: { revokeResource },
+      worktreeCoordinator: { serialize },
+    } as never);
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/workspaces/${workspaceId}`,
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(revokeProject).toHaveBeenCalledWith(projectId, "owner-one");
+    expect(revokeResource).toHaveBeenCalledWith(
+      "owner-one",
+      "terminal",
+      "terminal-one",
+      "resource-deleted",
+    );
+    expect(retireRunConfigurationRuntimes).toHaveBeenCalledWith(
+      "owner-one",
+      projectId,
+    );
+    expect(deleteProject).toHaveBeenCalledWith("owner-one", projectId);
+    expect(deleteProjectWorkspace).toHaveBeenCalledWith(
+      "owner-one",
+      workspaceId,
+    );
+    expect(
+      request.mock.calls.some(
+        ([, command]) =>
+          command.type === "project.files.delete" ||
+          command.type === "project.folder.delete",
+      ),
+    ).toBe(false);
+    await app.close();
+  });
 });
