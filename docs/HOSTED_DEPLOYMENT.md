@@ -397,14 +397,13 @@ local single instance) resets process-transient surface, tunnel, chat-execution,
 and Task-operation state left by a full deployment stop. A server joining an
 already-live cluster preserves peer-owned transient state. Durable
 project/folder/repository-discovery and chat import/relocation/root background
-jobs recover through their own fenced executors. Legacy workflow tables remain
-in the schema and can still affect storage accounting and conservative
-active-work checks, but current source has no workflow repository or executor,
-attempt heartbeat, worktree-lease recovery, queued-run dispatch, worker workflow
-command/event variants, or live workflow publication. During a rolling server
-upgrade, start new replicas before retiring old ones; do not introduce a newly
-started older server into the upgraded cluster because older startup code cannot
-honor the peer-preservation rule.
+jobs recover through their own fenced executors. The durable-workflow runtime
+and persistence are removed; current source has no workflow repository or
+executor, attempt heartbeat, worktree-lease recovery, queued-run dispatch,
+worker workflow command/event variants, or live workflow publication. During a
+rolling server upgrade, start new replicas before retiring old ones; do not
+introduce a newly started older server into the upgraded cluster because older
+startup code cannot honor the peer-preservation rule.
 
 Project automations do not use Redis pub/sub as a job queue. The owning worker
 polls its schedule metadata and requests each due dispatch; the server claims

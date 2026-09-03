@@ -4,8 +4,12 @@
 > workflow cutover. The entire public durable-workflow product was later
 > removed: the current app has no workflow UI/client, and the server registers
 > no public workflow routes. The scheduler, executor, repositories, worker
-> handlers, and focused runtime tests were removed afterward. Only legacy
-> database/protocol/encryption shapes remain. Everything below is historical.
+> handlers, persistence schema, and focused runtime tests were removed
+> afterward. Migration `0191` deletes legacy workflow rows/tables and related
+> interaction, tunnel, branch-lease, and accounting references. Only historical
+> migrations and implementation records remain; the subsequent protocol
+> cleanup removed the dedicated shared types and crypto helpers. Everything
+> below is historical.
 > Use the [retired workflow boundary](WORKFLOW_ORCHESTRATION.md) and
 > [legacy-data operations](WORKFLOW_OPERATIONS.md) for the current
 > boundary.
@@ -33,9 +37,9 @@ worker/worktree routing, triggers, audit state, recovery, and UI. See
 
 ## Recovery and security evidence
 
-This matrix points to then-existing focused tests instead of duplicating them in
-the final documentation pass. Several workflow UI/API suites named here were
-removed with the public feature.
+This matrix points to tests that existed at the time instead of duplicating
+them in the final documentation pass. All workflow-specific UI, API, scheduler,
+executor, persistence, and worker suites named here were later removed.
 
 | Requirement                      | Evidence                                                                                                                                                                                         | Result                                                                             |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
@@ -77,9 +81,10 @@ removed with the public feature.
 - PGlite is the supported local database. Public/multi-instance deployment and
   PostgreSQL disaster-recovery exercises remain part of the future hosted
   control-plane phase.
-- Workflow migrations are forward-only. Schema downgrade requires restoring a
-  matching pre-upgrade database backup; see
-  [Workflow operations](WORKFLOW_OPERATIONS.md#upgrade-and-data-handling).
+- Migration
+  [`0191_wakeful_vector.sql`](../cantrip_server/drizzle/0191_wakeful_vector.sql)
+  later removes workflow persistence and legacy rows. A pre-removal backup
+  requires matching historical application code for inspection.
 
 ## Final validation
 

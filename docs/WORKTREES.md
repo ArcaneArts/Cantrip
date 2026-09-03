@@ -16,9 +16,9 @@ worker control. See
 A worker-managed folder project is intentionally outside this worktree model.
 It has one UUID-derived execution root on one owning worker. Agents may write
 there directly according to their permission profile, while worktrees, Git
-observation, replicas, and relocation stay unavailable. Legacy workflow records
-may remain in the database but cannot execute. Running `git init` does not opt
-the project into this guide; only explicit conversion to a GitHub repository does. See
+observation, replicas, and relocation stay unavailable. Running `git init` does
+not opt the project into this guide; only explicit conversion to a GitHub
+repository does. See
 [FOLDERS.md](FOLDERS.md).
 
 ## User model

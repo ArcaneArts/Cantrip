@@ -18,11 +18,12 @@ selection.
   the authoritative layout.
 - Each app window locally remembers the active member of each group. Switching
   one window does not change another window's active member.
-- Worker-backed runtimes remain attached only while their surface is selected.
-  An inactive Remote Desktop tab, for example, does not connect merely because
-  another member of its group is visible.
+- Remote Desktop and other selected-only surfaces attach only while selected.
+  Interactive and chat-console Terminal views are the exception: the client
+  parks their Xterm/addon/WorkerLink ownership while inactive, subject to the
+  12-view retention cap. Run terminals have their own lifecycle.
 
-Migration `0037_project_tab_groups.sql` backfills existing surfaces as ordered
+Migration `0037_freezing_captain_stacy.sql` backfills existing surfaces as ordered
 singleton groups from their legacy positions. Linked consoles are excluded.
 The legacy entity position columns remain readable for migration compatibility,
 but they are no longer a navigation or mutation authority.

@@ -167,10 +167,11 @@ caches live outside version directories so rollback never adopts a partially
 installed executable tree. All path resolution rejects symlinks, traversal,
 unexpected ownership, and roots outside worker storage.
 
-On POSIX hosts the runtime and state roots are private to the worker account.
-On Windows the worker applies the narrowest practical ACL for its service or
-interactive account. Browser profiles receive a stricter boundary than
-disposable package and search caches.
+POSIX roots are chmod `0700` and ownership-checked. On Windows the current
+implementation validates directory/non-symlink confinement and relies on the
+worker account and storage ACLs; it does not install an explicit ACL. Browser
+profiles receive a stricter logical boundary than disposable package and search
+caches.
 
 ## 6. Artifact production and manifest
 
@@ -195,9 +196,11 @@ interface ManagedRuntimeArtifact {
   version: string;
   platform: "darwin" | "win32" | "linux";
   architecture: "arm64" | "x64";
+  archiveFormat: "tar.gz" | "zip";
   downloadUrl: string;
   sha256: string;
   signature: string;
+  signingKeyId: string;
   compressedBytes: number;
   extractedBytes: number;
   licenseManifest: string;
@@ -518,12 +521,12 @@ components:
 ```text
 Web Search — SearXNG
 Version: <version>
-Status: Installing | Ready | Degraded | Failed | Unsupported
+Status: Checking | Installing | Updating | Ready | Degraded | Failed | Unsupported
 Managed by Cantrip · Portable worker runtime
 
 Web Browser — Playwright + Chromium
 Version: <version>
-Status: Installing | Ready | Degraded | Failed | Unsupported
+Status: Checking | Installing | Updating | Ready | Degraded | Failed | Unsupported
 Managed by Cantrip · Portable worker runtime
 ```
 

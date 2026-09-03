@@ -7,9 +7,11 @@
 > `66ab97645`. The remaining scheduler, executor, workflow repositories, worker
 > commands/events, and focused runtime tests were removed in commit
 > `87adc1841`. Former durable-workflow paths remain unregistered and receive
-> ordinary not-found responses. Only residual protocol/encryption schemas and
-> database tables remain, together with accounting and conservative
-> lifecycle-blocker reads. The decision below is historical; see
+> ordinary not-found responses. Migration `0191` in `b6bc0df2a` then removed
+> workflow persistence and related interaction, tunnel, branch-lease, and
+> accounting residue. Commit `ecf7131a9` then removed the dedicated shared
+> protocol/encryption residue. Only historical migrations and implementation
+> records remain. The decision below is historical; see
 > `docs/WORKFLOW_ORCHESTRATION.md` for the current boundary.
 
 ## Context

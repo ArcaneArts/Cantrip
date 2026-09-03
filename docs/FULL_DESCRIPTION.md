@@ -27,8 +27,8 @@ The product is split into three main runtime roles:
   Server.
 - **Server:** authoritative control plane. It owns users, workspaces, projects,
   tabs, chat transcripts, model/provider configuration, encrypted credentials,
-  scheduling, worker enrollment, routing, audit/telemetry, and inert legacy
-  durable-workflow records retained for schema compatibility.
+  scheduling, worker enrollment, routing, and audit/telemetry. The retired
+  durable-workflow persistence has been removed.
 - **Worker:** execution/data plane running near project files. It owns managed
   folders, repository checkouts, worktrees, Git processes, PTYs, Codex
   processes, Cantrip Code, browser automation, desktop capture/input, and local
@@ -197,8 +197,7 @@ PGlite for local operation or PostgreSQL for hosted operation. It owns:
 - providers, logical models, route/account priority, and opaque
   endpoint-encrypted OAuth credential envelopes;
 - quota, token, behavior, audit, and operations telemetry;
-- schedules and project automations, plus inert legacy durable-workflow tables
-  retained for schema compatibility and conservative lifecycle checks;
+- schedules and project automations;
 - GitHub-facing metadata and user-authorized control-plane actions;
 - update metadata and the packaged local-stack update flow.
 
@@ -855,9 +854,7 @@ resources remain visible rather than silently moving.
   producing two active writers.
 
 Managed-folder Agents write directly when their permission profile allows it.
-This is an explicit no-Git operating mode, not an emulated worktree. Legacy
-workflow rows may retain recorded folder placement, but no current component
-executes them.
+This is an explicit no-Git operating mode, not an emulated worktree.
 
 ## Models, providers, authentication, and routing
 
@@ -970,11 +967,12 @@ public server API. Its authoring, catalog, trigger, and run-management UI/client
 code and all public workflow routes have been removed; former paths receive the
 ordinary not-found response.
 
-Endpoint-encrypted workflow tables and shared protocol/encryption schemas remain
-as inert compatibility artifacts. The server scheduler, executor, workflow
-repositories, and worker handlers are removed, so old rows are not recovered,
-scheduled, executed, or drained. A few update, conversion, worktree, replica,
-and storage-accounting checks still notice legacy rows. See
+The server scheduler, executor, workflow repositories, worker handlers, and
+database tables are removed. Migration `0191` deletes workflow-linked rows from
+shared tables and drops the workflow tables during upgrade. The subsequent
+protocol cleanup removes the dedicated workflow contracts, crypto helpers, and
+live scope. Project automations independently retain the `workflow-content`
+component key for their protected payloads. See
 [WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md) and
 [WORKFLOW_OPERATIONS.md](WORKFLOW_OPERATIONS.md).
 
@@ -1104,8 +1102,7 @@ origin, and a pairing code—not the user's password or a reusable session.
 - providers/models/routes/account priorities;
 - worker enrollment, project source/root kinds, replica/worktree metadata,
   placement, leases;
-- project automations and inert legacy workflow
-  definitions/runs/triggers/gates;
+- project automations;
 - policies, bootstrap state, and workspace/project policy assignments;
 - telemetry, audit, and update metadata.
 
@@ -1150,8 +1147,8 @@ does not fabricate filesystem or live-process state.
 - The same logical branch cannot be mutated concurrently on two replicas.
 - Provider failover stops once side effects may have occurred.
 - Pending approvals recover fail-closed.
-- Legacy workflow rows remain endpoint-protected but have no current execution
-  or management path.
+- The retired durable-workflow subsystem has no current execution, management,
+  or persistence path.
 - Offline workers/resources remain visible and explain why they cannot run.
 - Managed folders never relocate or replicate, and Git-only operations remain
   capability-guarded even if the user runs `git init` inside one.
@@ -1166,8 +1163,7 @@ The pnpm workspace is organized approximately as follows:
 
 - **cantrip_app/** — React/Vite UI, Tauri desktop shell, Capacitor mobile shell.
 - **cantrip_server/** — Fastify control plane, database schema/migrations,
-  authentication, provider routing, projects/chats, and inert legacy workflow
-  schema.
+  authentication, provider routing, and projects/chats.
 - **cantrip_worker/** — repository/Git/PTY/Codex/Code/Browser/Desktop execution.
 - **cantrip_cli/** — Rust command-line client for project-context operations.
 - **cantrip_site/** — React/Vite marketing/splash site.

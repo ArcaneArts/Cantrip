@@ -559,8 +559,7 @@ Direct-created deletion requires:
 - matching project/worker ownership marker and placement record;
 - matching canonical path, Git common directory, repository fingerprint, and
   origin;
-- no active chats, terminals, views, execution lanes, replica jobs, or
-  unreleased legacy workflow-worktree lease row;
+- no active chats, terminals, views, execution lanes, or replica jobs;
 - a clean worktree, including ignored-file safety under the existing policy;
 - no unpublished HEAD; and
 - no additional Git worktrees.

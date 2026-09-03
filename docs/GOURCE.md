@@ -1,11 +1,16 @@
-# Repository Graph Visualization Plan
+# Repository Graph Visualization Plan (historical)
 
 ## Status
 
-This document describes the planned Cantrip repository graph feature. The
-working name in the product is **Graph**. The filename preserves the original
-Gource-inspired discussion, but the feature is not intended to embed, fork, or
-reproduce Gource.
+Graph is implemented. Shared protocol contracts, server routes, worker
+analysis/caching, a Canvas 2D renderer, the Git Graph tab, Explorer-scoped
+graphs, commit overlays, progressive metrics/blame, and live invalidation are
+present in current source. The filename preserves the original Gource-inspired
+discussion; the feature does not embed, fork, or reproduce Gource.
+
+The proposal language below is retained as the design and delivery record.
+Implementation landed across PRs #577, #578, #583, and #589, with later
+follow-ups.
 
 The following decisions are settled:
 
@@ -396,7 +401,7 @@ rest of the Git and Explorer surfaces.
 Reduced-motion preferences should disable inertial or decorative transitions
 while preserving navigation and metric changes.
 
-## Proposed delivery milestones
+## Historical delivery milestones
 
 Each milestone should be an independently mergeable worktree and pull request.
 
@@ -459,17 +464,14 @@ Each milestone should be an independently mergeable worktree and pull request.
 - Progressive metrics do not reset the user's camera, scoped path, or selected
   node.
 
-## Open implementation decisions
+## Implemented choices
 
-The following choices can be finalized during the corresponding milestone
-without changing the architecture:
+The implementation resolved the proposal's remaining decisions as follows:
 
-- the concrete Canvas/WebGL rendering library;
-- whether an Explorer-scoped graph opens as a transient project tab or another
-  existing reusable surface type;
-- whether the default tree includes untracked working-tree files or begins
-  strictly from committed `HEAD`;
-- whether historical metrics use current-branch ancestry or all refs by
-  default;
-- the first-release level of rename-aware metric aggregation; and
-- whether exact blame metrics are eager, lazy per subtree, or lazy per file.
+- Canvas 2D renders through `RepositoryGraphRenderingAdapter`;
+- Explorer graphs are embedded in the existing Explorer surface;
+- snapshots use the committed revision and `git ls-tree`, excluding untracked
+  files;
+- historical metrics use `current-branch` scope;
+- the current contract reports `renameAware: false`; and
+- blame is fetched lazily when a blame color dimension is selected.

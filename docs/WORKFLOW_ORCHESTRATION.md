@@ -18,39 +18,30 @@ This retirement does not affect either of the current automation surfaces:
 
 Neither surface uses the retired durable workflow runtime.
 
-## What remains in source
+## What remains
 
-The following are compatibility artifacts, not an executable subsystem:
+Only historical records remain:
 
-- database tables and historical migrations for definitions, revisions, runs,
-  nodes, attempts, gates, triggers, deliveries, events, and workflow worktree
-  leases;
-- shared protocol and `workflow-content` encryption schemas;
-- protocol `workflow-run` live-scope/resource names, although `/api/live` does
-  not authorize that scope and no durable-workflow publisher remains;
-- account-storage classification for legacy rows; and
-- conservative lifecycle checks that still notice legacy active run or
-  worktree-lease markers before an update, conversion, replica removal, or
-  worktree removal.
+- pre-removal database migrations followed by the removal migration;
+- historical documentation, ADRs, and implementation records; and
+- Git history.
 
-There is no supported API for creating, listing, starting, resuming,
-controlling, or deleting these legacy records. Existing rows are not recovered,
-scheduled, dispatched, or drained. The generic interaction route now rejects a
-request that is not associated with an active chat.
+There is no supported API for creating, listing, starting, resuming, or
+controlling durable workflows. Current source has no dedicated workflow
+protocol module, crypto helper, live scope, persistence, or account-usage
+category. The `workflow-content` component name still protects the independent
+project-automation feature; that name does not restore the retired graph
+workflow domain.
 
-## Compatibility boundary
+## Persistence removal
 
-The residual schema is intentionally inert. It prevents an older database from
-failing immediately on columns and relationships still referenced by storage
-accounting and conservative deletion checks, but it does not promise backward
-execution compatibility. Operators should not mark old runs or leases active:
-because there is no workflow runtime to advance them, active legacy markers can
-continue to block the guarded operation that detects them.
-
-Cantrip does not currently ship a workflow-data cleanup command. Back up the
-database before any manual intervention and treat direct edits as unsupported.
-A future schema migration, rather than an application route, is the appropriate
-place to remove or transform these tables.
+Migration `0191_wakeful_vector.sql` deletes workflow-linked interaction,
+tunnel, branch-lease, and storage-accounting rows, removes workflow-only
+columns and constraints from shared tables, and drops every durable-workflow
+table. A fresh schema is workflow-free, and an upgraded database does not
+retain dormant definitions, runs, gates, events, triggers, or leases. Restore a
+pre-removal backup only with application code from the same historical schema;
+current code neither preserves nor interprets that data.
 
 ## Source anchors
 
@@ -60,16 +51,14 @@ place to remove or transform these tables.
   owns current project and chat background jobs only.
 - [`agent-interactions.ts`](../cantrip_server/src/app/routes/agent-interactions.ts)
   accepts responses only for active chat-backed interactions.
-- [`schema.ts`](../cantrip_server/src/db/schema.ts) retains the legacy workflow
-  tables.
-- [`worktree-lifecycle.ts`](../cantrip_server/src/db/repository/worktree-lifecycle.ts),
-  [`project-replica-jobs.ts`](../cantrip_server/src/db/project-replica-jobs.ts),
-  and
-  [`project-github-conversion-jobs.ts`](../cantrip_server/src/db/project-github-conversion-jobs.ts)
-  contain conservative legacy-row blockers.
-- [`workflows.ts`](../packages/protocol/src/workflows.ts) and
-  [`workflow-content.ts`](../packages/crypto/src/workflow-content.ts) retain
-  historical wire and ciphertext contracts without making them public routes.
+- [`0191_wakeful_vector.sql`](../cantrip_server/drizzle/0191_wakeful_vector.sql)
+  removes persisted workflow data and shared-table residue during upgrade.
+- [`workflow-removal-migration.test.ts`](../cantrip_server/test/workflow-removal-migration.test.ts)
+  verifies both upgrade cleanup and a workflow-free fresh schema.
+- [`project-automation-content.ts`](../packages/crypto/src/project-automation-content.ts)
+  owns the current project-automation encryption helper.
+- [`live.ts`](../packages/protocol/src/live.ts) defines only current-user,
+  project, and chat subscription scopes.
 
 For historical implementation evidence, see
 [WORKFLOW_IMPLEMENTATION_AUDIT.md](WORKFLOW_IMPLEMENTATION_AUDIT.md) and

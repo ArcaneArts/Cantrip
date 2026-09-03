@@ -1,6 +1,6 @@
 # Standalone Chat mode
 
-- Status: Finalized implementation contract
+- Status: Implemented product contract
 - Last updated: 2026-08-25
 - Related contracts: [Codex-native customization](CODEX_NATIVE_CUSTOMIZATION.md),
   [encryption](ENCRYPTION.md), [multi-worker placement](MULTI_WORKER_ARCHITECTURE.md),
@@ -269,9 +269,8 @@ available to the runtime.
 
 ### Shared composition boundary
 
-The current `ChatTranscript` should move out of `App.tsx` and accept one
-cohesive capability profile rather than a growing list of unrelated booleans.
-For example:
+`ChatTranscript` is split into controller and view components and accepts one
+cohesive capability profile:
 
 ```text
 ChatSurfaceCapabilities
@@ -286,10 +285,11 @@ ChatSurfaceCapabilities
   scratchFiles: boolean
 ```
 
-IDE and Chat wrappers compose the same transcript, composer, queue,
-attachments, interactions, and context meter with different capability
-profiles. Capabilities are presentation aids only; server and worker contracts
-must independently reject forbidden standalone operations.
+`global-content-host.tsx` composes the same transcript, composer, queue,
+attachments, interactions, and context meter for standalone, project, and Task
+contexts with different capability profiles. Capabilities are presentation aids
+only; server and worker contracts independently reject forbidden standalone
+operations.
 
 ## Chat files surface
 
@@ -299,14 +299,10 @@ Every standalone conversation shows a **Files** button in the top-right
 conversation header. It opens a right-side panel containing a lazy file tree
 rooted exclusively at that Chat's scratch folder.
 
-Selecting a file opens the existing lightweight preview path:
-
-- text and source files use the minimal Monaco editor with optimistic,
-  conflict-safe saves;
-- supported structured files use the existing visual viewer;
-- images and other supported media use the existing preview viewer; and
-- unsupported or oversized files show metadata and the available actions
-  without loading unbounded content.
+Selecting a file leaves the tree in the Files panel and opens the content in a
+deterministically named Tauri file window on desktop or a full-screen overlay
+on browser and Capacitor. Text/source editing, structured visualization, media
+preview, size limits, and conflict-safe saves are handled in that file surface.
 
 This is not Cantrip Code and does not start or embed an OpenVSCode server. The
 panel reuses Explorer read/write/preview primitives where safe, but all API and
@@ -341,8 +337,9 @@ bounded size, entry-count, path-depth, compression, rate, and concurrency
 limits. ZIP creation rejects symlinks and path traversal and should stream from
 temporary worker-owned staging that is removed after completion or failure.
 
-Chat Markdown file links that resolve inside the scratch root open this panel
-and select the file. They never resolve arbitrary absolute worker paths.
+Chat Markdown file links that resolve inside the scratch root use the same
+desktop file-window or browser/Capacitor overlay behavior. They never resolve
+arbitrary absolute worker paths.
 
 ## Persistence model
 
@@ -618,8 +615,7 @@ implicit consent.
 
 ## API and protocol surface
 
-The final route names may follow the server's established conventions, but the
-capability boundary is:
+The implemented route boundary is:
 
 ```text
 GET    /api/chats?context=standalone
@@ -627,14 +623,14 @@ POST   /api/chats
 GET    /api/chats/archived?context=standalone
 POST   /api/chats/:chatId/restore
 DELETE /api/chats/:chatId/permanent
+DELETE /api/chats/:chatId
 
-GET    /api/chats/:chatId/files
-GET    /api/chats/:chatId/files/content
-PUT    /api/chats/:chatId/files/content
-DELETE /api/chats/:chatId/files
-POST   /api/chats/:chatId/files/download
-POST   /api/chats/:chatId/files/archive
+POST   /api/chats/:chatId/files/operation
 ```
+
+The protected file-operation route accepts `list`, `read`, `write`, `remove`,
+`download`, and `archive` intents. `DELETE /api/chats/:chatId` performs the
+normal archive operation; permanent deletion remains a separate route.
 
 Shared message, attachment, queue, steering, pause, interrupt, retry, fork,
 model, reasoning, permission, draft, and archive operations continue under the
@@ -872,8 +868,9 @@ The feature is complete when:
    or imported item safely defaulted to IDE.
 7. Chat and IDE have independent default permission settings, and Chat can
    override the inherited default model/reasoning configuration.
-8. The Files panel provides bounded scratch browsing, preview/edit, deletion,
-   reveal, and remote-only download/ZIP operations without starting Code.
+8. The Files panel provides bounded scratch browsing and file actions, while a
+   desktop file window or browser/Capacitor overlay provides preview/edit,
+   without starting Code.
 9. Archive preserves scratch files throughout the 90-day recovery period, and
    permanent purge safely cleans online or later-reconnected workers without
    continuous polling.

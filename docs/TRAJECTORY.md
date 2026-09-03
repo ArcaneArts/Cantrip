@@ -123,9 +123,8 @@ selection may be remembered per chat for the current application session after
 the user explicitly changes it, but there is no server preference and a fresh
 application session begins on Trajectory.
 
-The existing panel currently replaces all child content with an inactive
-placeholder when the chat stops. Move that gate into State. The shell and tabs
-must remain present while idle so the last completed turn stays inspectable in
+The shell and tabs remain mounted while the chat is idle. Only State applies
+the inactive placeholder gate, so the last completed turn stays inspectable in
 Trajectory.
 
 ### Normal chat target selection
@@ -755,7 +754,8 @@ require `git diff --check`.
 - Every completed **Worked for** group with trajectory data can open Inspect on
   that exact historical turn.
 - The graph is a one-root-turn, per-agent time-track visualization, not a
-  causal graph. Each agent track combines Input/Model/Tools colors.
+  causal graph. Each agent track combines Input, Model, Tools, and Changes
+  colors.
 - Root is pinned first; descendants retain first-appearance order; nested
   labels are indented; and the graph scrolls internally after five tracks.
 - Clicking the graph places a visible playhead and scrolls to the deterministic
@@ -787,9 +787,8 @@ require `git diff --check`.
   credential redaction, encryption, and omission metadata are mandatory.
 - Historical and imported messages cannot be retroactively given precise
   timing. Estimated visualization must remain visibly distinct.
-- The completed `ActivityGroup` header is currently one disclosure button; it
-  must be structurally refactored to add a second action without nesting
-  interactive controls.
+- Completed `ActivityGroup` headers expose sibling disclosure and
+  **View turn trajectory** buttons without nesting interactive controls.
 - Streaming output can trigger frequent message replacements. Incremental
   projection and stable selection are necessary to avoid the replay/flicker
   class of bugs seen elsewhere in frequently updating chat UI.

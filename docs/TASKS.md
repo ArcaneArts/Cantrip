@@ -2,8 +2,9 @@
 
 ## Status
 
-This document is the implementation plan and product contract for Cantrip
-Tasks. It replaces the earlier immediate-execution Task design.
+This document is the shipped product contract for Cantrip Tasks. The
+implementation sequence is retained as delivery history. It replaces the
+earlier immediate-execution Task design.
 
 Tasks already support two execution modes:
 
@@ -91,11 +92,12 @@ Each Task Worker contains:
 Every Task Worker can run Direct Tasks. The Plan + Goal setting determines
 whether it can additionally run Plan + Goal Tasks.
 
-Maximum concurrency must be a positive integer. Changing it affects future
-claims immediately. Lowering it below the number of active claims does not
-interrupt Tasks; it prevents new claims until usage falls below the new limit.
-New Task Workers default to a maximum concurrency of `1` and Direct-only
-eligibility; the user may raise concurrency or enable Plan + Goal explicitly.
+Maximum concurrency must be an integer from `1` through `64`. Changing it
+affects future claims immediately. Lowering it below the number of active claims
+does not interrupt Tasks; it prevents new claims until usage falls below the
+new limit. New Task Workers default to a maximum concurrency of `1` and
+Direct-only eligibility; the user may raise concurrency or enable Plan + Goal
+explicitly.
 
 Task Workers referenced by Tasks or historical executions must be disabled or
 soft-deleted rather than removed destructively.
@@ -598,10 +600,10 @@ structured `task.scheduler.unstarted-leases-requeued` and
 encrypted phase record could not be reconciled automatically and therefore
 requires investigation from its Needs Attention row.
 
-## Implementation sequence
+## Delivery history
 
-Implement this feature in independently reviewable milestones while preserving
-the complete contract:
+The feature was delivered in independently reviewable milestones while
+preserving the complete contract:
 
 1. **Protocol and persistence:** Task Worker schemas, Task scheduling fields,
    dispatch cycles, Project pause state, migrations, and compatibility parsing.

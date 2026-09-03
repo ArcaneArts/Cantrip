@@ -466,7 +466,9 @@ flowchart LR
 
 ### Protocol surfaces
 
-The shared protocol needs discriminated schemas for:
+The shared protocol defines discriminated schemas across
+`run-configuration-definitions.ts`, `run-configuration-operations.ts`,
+`run-configuration-runtime.ts`, and `run-configuration-secrets.ts` for:
 
 - configuration summary, complete authoring document, revision, diagnostics,
   and provider capabilities;
@@ -478,9 +480,9 @@ The shared protocol needs discriminated schemas for:
 - Codex-environment source status; and
 - secret references and write-only value mutations.
 
-The server repository needs migrations for durable runtime and terminal
-binding state. Definition contents stay worker-owned files rather than
-database rows.
+The server schema and migrations `0156` through `0158` persist durable runtime,
+terminal-binding, and secret-operation state. Definition contents stay
+worker-owned files rather than database rows.
 
 ## Managed MCP and CLI contract
 
