@@ -8,6 +8,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  ChevronRight,
   ExternalLink,
   Loader2,
   MessageSquare,
@@ -33,6 +34,10 @@ import {
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { GitContentSurface } from "./git-content-surface";
+import {
+  GitMobileInspectorClose,
+  gitMobileInspectorClassName,
+} from "./git-mobile-inspector";
 import { GithubIssueCreateDialog } from "./github-issue-create-dialog";
 import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
 import { GithubPullRequestDialog } from "./github-pull-request-dialog";
@@ -44,6 +49,58 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 
 function errorText(error: unknown): string {
   return errorMessage(error, "GitHub request failed.");
+}
+
+export function GithubIssueMobileCard({
+  issue,
+  onSelect,
+}: {
+  issue: GithubIssueList["issues"][number];
+  onSelect(): void;
+}) {
+  return (
+    <button
+      type="button"
+      data-high-contrast-row
+      onClick={onSelect}
+      className="grid min-h-20 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 overflow-hidden px-4 py-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+    >
+      <span className="min-w-0">
+        <span className="line-clamp-2 text-sm font-medium leading-5">
+          {issue.title}
+        </span>
+        {issue.labels.length ? (
+          <span className="mt-2 flex min-w-0 flex-wrap gap-1">
+            {issue.labels.slice(0, 3).map((label) => (
+              <span
+                key={label.name}
+                className="max-w-28 truncate rounded-full border px-1.5 py-0.5 text-[9px]"
+                style={{ borderColor: `#${label.color}80` }}
+              >
+                {label.name}
+              </span>
+            ))}
+            {issue.labels.length > 3 ? (
+              <span className="text-[10px] text-muted-foreground">
+                +{issue.labels.length - 3}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
+      </span>
+      <ChevronRight className="mt-0.5 size-4 text-muted-foreground" />
+      <span className="col-span-2 flex min-w-0 items-center gap-2 overflow-hidden text-[10px] text-muted-foreground">
+        <span className="shrink-0 font-mono">#{issue.number}</span>
+        <span className="min-w-0 truncate">@{issue.author}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          <MessageSquare className="size-3" /> {issue.commentCount}
+        </span>
+        <span className="shrink-0">
+          {dateFormatter.format(new Date(issue.updatedAt))}
+        </span>
+      </span>
+    </button>
+  );
 }
 
 function IssueDialog({
@@ -97,14 +154,18 @@ function IssueDialog({
         onOpenChange(open);
       }}
     >
-      <DialogContent className="flex max-h-[calc(100svh-2rem)] max-w-3xl flex-col overflow-hidden p-0">
+      <DialogContent
+        className={`${gitMobileInspectorClassName} flex flex-col md:max-w-3xl`}
+        showClose={false}
+      >
+        <GitMobileInspectorClose label="Back to issues" />
         {issue.isLoading ? (
           <div className="grid min-h-80 place-items-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
           </div>
         ) : issue.isError || !issue.data ? (
-          <div className="p-6">
-            <DialogHeader>
+          <div className="p-4 pt-[max(4rem,env(safe-area-inset-top))] md:p-6">
+            <DialogHeader className="pr-0 md:pr-8">
               <DialogTitle>
                 {`${kind === "pull-request" ? "Pull request" : "Issue"} could not be loaded`}
               </DialogTitle>
@@ -113,7 +174,7 @@ function IssueDialog({
           </div>
         ) : (
           <>
-            <DialogHeader className="shrink-0 border-b px-6 py-5 pr-12">
+            <DialogHeader className="shrink-0 border-b pb-4 pl-14 pr-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-6 md:py-5 md:pr-12">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge
                   variant={
@@ -155,7 +216,7 @@ function IssueDialog({
               ) : null}
             </DialogHeader>
 
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto px-4 py-5 md:px-6">
               <section>
                 <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Description
@@ -225,7 +286,7 @@ function IssueDialog({
               </section>
             </div>
 
-            <DialogFooter className="shrink-0 border-t px-6 py-4 sm:justify-between">
+            <DialogFooter className="shrink-0 border-t bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:justify-between md:px-6 md:py-4">
               <Button variant="outline" asChild>
                 <a href={issue.data.url} target="_blank" rel="noreferrer">
                   <ExternalLink className="size-4" />
@@ -363,56 +424,67 @@ export function GithubIssuesView({
             </div>
           </div>
         ) : (
-          <div className="min-w-[680px] py-2 text-xs">
-            <div
-              data-slot="table-header-surface"
-              className="sticky top-0 z-10 grid h-7 grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
-            >
-              <span>{kind === "pull-request" ? "PR" : "Issue"}</span>
-              <span>Title</span>
-              <span>Author</span>
-              <span>Comments</span>
-              <span className="text-right">Updated</span>
+          <>
+            <div className="divide-y py-2 md:hidden">
+              {issues.issues.map((issue) => (
+                <GithubIssueMobileCard
+                  key={issue.number}
+                  issue={issue}
+                  onSelect={() => setSelectedIssue(issue.number)}
+                />
+              ))}
             </div>
-            {issues.issues.map((issue) => (
-              <button
-                key={issue.number}
-                type="button"
-                data-high-contrast-row
-                onClick={() => setSelectedIssue(issue.number)}
-                className="grid h-10 w-full grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center px-4 text-left odd:bg-muted/[0.035] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            <div className="hidden min-w-[680px] py-2 text-xs md:block">
+              <div
+                data-slot="table-header-surface"
+                className="sticky top-0 z-10 grid h-7 grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
               >
-                <span className="font-mono text-muted-foreground">
-                  #{issue.number}
-                </span>
-                <span className="flex min-w-0 items-center gap-2 pr-4">
-                  <span className="truncate font-medium">{issue.title}</span>
-                  {issue.labels.slice(0, 2).map((label) => (
-                    <span
-                      key={label.name}
-                      className="max-w-24 truncate rounded-full border px-1.5 py-0.5 text-[9px]"
-                      style={{ borderColor: `#${label.color}80` }}
-                    >
-                      {label.name}
-                    </span>
-                  ))}
-                </span>
-                <span className="truncate text-muted-foreground">
-                  @{issue.author}
-                </span>
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <MessageSquare className="size-3" />
-                  {issue.commentCount}
-                </span>
-                <span className="text-right text-[10px] text-muted-foreground">
-                  {dateFormatter.format(new Date(issue.updatedAt))}
-                </span>
-              </button>
-            ))}
+                <span>{kind === "pull-request" ? "PR" : "Issue"}</span>
+                <span>Title</span>
+                <span>Author</span>
+                <span>Comments</span>
+                <span className="text-right">Updated</span>
+              </div>
+              {issues.issues.map((issue) => (
+                <button
+                  key={issue.number}
+                  type="button"
+                  data-high-contrast-row
+                  onClick={() => setSelectedIssue(issue.number)}
+                  className="grid h-10 w-full grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center px-4 text-left odd:bg-muted/[0.035] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  <span className="font-mono text-muted-foreground">
+                    #{issue.number}
+                  </span>
+                  <span className="flex min-w-0 items-center gap-2 pr-4">
+                    <span className="truncate font-medium">{issue.title}</span>
+                    {issue.labels.slice(0, 2).map((label) => (
+                      <span
+                        key={label.name}
+                        className="max-w-24 truncate rounded-full border px-1.5 py-0.5 text-[9px]"
+                        style={{ borderColor: `#${label.color}80` }}
+                      >
+                        {label.name}
+                      </span>
+                    ))}
+                  </span>
+                  <span className="truncate text-muted-foreground">
+                    @{issue.author}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <MessageSquare className="size-3" />
+                    {issue.commentCount}
+                  </span>
+                  <span className="text-right text-[10px] text-muted-foreground">
+                    {dateFormatter.format(new Date(issue.updatedAt))}
+                  </span>
+                </button>
+              ))}
+            </div>
             {hasNextPage || isFetchingNextPage ? (
               <div
                 ref={loadMoreRef}
-                className="grid h-12 place-items-center text-muted-foreground"
+                className="grid h-12 place-items-center text-xs text-muted-foreground"
               >
                 {isFetchingNextPage ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -421,7 +493,7 @@ export function GithubIssuesView({
                 )}
               </div>
             ) : null}
-          </div>
+          </>
         )}
       </div>
 
