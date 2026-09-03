@@ -22,6 +22,7 @@ import type {
   ExternalChatTranscript,
   GitHistory,
   GitManagedOperationResponse,
+  GithubInboxList,
   GithubPullRequestDetail,
   ProjectSummary,
   ProviderModelCatalogEntry,
@@ -57,8 +58,8 @@ describe("protocol public surface compatibility", () => {
   it("keeps the root runtime export surface stable", () => {
     const exportNames = Object.keys(protocol).sort();
 
-    expect(exportNames).toHaveLength(1_843);
-    expect(stableFingerprint(exportNames)).toBe("dba808e6e6d610ca:60451");
+    expect(exportNames).toHaveLength(1_850);
+    expect(stableFingerprint(exportNames)).toBe("93f4f3983ccaa574:60648");
   });
 
   it("keeps worker discriminators stable and ordered", () => {
@@ -72,8 +73,8 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(269);
-    expect(stableFingerprint(commandTypes)).toBe("c41fe1d7b4b3599b:6880");
+    expect(commandTypes).toHaveLength(270);
+    expect(stableFingerprint(commandTypes)).toBe("5e4bdb706f60de8c:6900");
     expect(eventTypes).toHaveLength(25);
     expect(stableFingerprint(eventTypes)).toBe("4a9b26ee148990aa:702");
     expect(notificationTypes).toHaveLength(14);
@@ -92,6 +93,7 @@ describe("protocol public surface compatibility", () => {
     expectTypeOf<ExecutionTarget>().not.toBeNever();
     expectTypeOf<TunnelSummary>().not.toBeNever();
     expectTypeOf<GithubPullRequestDetail>().not.toBeNever();
+    expectTypeOf<GithubInboxList>().not.toBeNever();
     expectTypeOf<GitHistory>().not.toBeNever();
     expectTypeOf<GitManagedOperationResponse>().not.toBeNever();
     expectTypeOf<WorktreeInventory>().not.toBeNever();

@@ -38,6 +38,8 @@ import {
   projectReplicaSynchronizeResultSchema,
   worktreePolicySchema,
   type GithubAuthStatus,
+  type GithubInboxList,
+  type GithubInboxView,
   type GithubIssueCreate,
   type GithubIssueDetail,
   type GithubIssueKind,
@@ -88,6 +90,7 @@ import {
   deriveManagedRepositoryTarget,
   ensureManagedWorkspaceDirectory,
 } from "./project-workspace-storage.js";
+import { loadGithubInbox } from "./github-inbox.js";
 import {
   canonicalProjectSourcePath,
   normalizeProjectSourcePath,
@@ -1337,6 +1340,32 @@ export class GithubClient {
       total: issues.length,
       issues,
       nextPage: values.length === limit ? page + 1 : null,
+    });
+  }
+
+  async listInbox(
+    nameWithOwner: string,
+    kind: "issue" | "pull-request",
+    state: "open" | "closed",
+    view: GithubInboxView,
+    cursor: string | null = null,
+    limit = 50,
+  ): Promise<GithubInboxList> {
+    repositorySegments(nameWithOwner);
+    const auth = await this.authStatus();
+    if (!auth.authenticated || !auth.login) {
+      throw new Error("GitHub authentication is unavailable on this worker.");
+    }
+    return loadGithubInbox({
+      api: (pathname, args) => this.api(pathname, args),
+      apiRepositoryPath: this.repositoryApiPath(nameWithOwner),
+      cursor,
+      kind,
+      limit,
+      repository: nameWithOwner,
+      state,
+      view,
+      viewerLogin: auth.login,
     });
   }
 

@@ -159,6 +159,7 @@ import {
   gitTagActionPreviewSchema,
   gitTagListSchema,
   githubReleaseCreateSchema,
+  githubInboxListSchema,
   githubIssueCreateSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutPreparedSchema,
@@ -3737,6 +3738,51 @@ describe("Cantrip protocol", () => {
         state: "closed",
       }),
     ).toMatchObject({ kind: "pull-request", state: "closed" });
+    expect(
+      workerCommandSchema.parse({
+        type: "github.inbox.list",
+        repository: "ArcaneArts/Cantrip",
+        kind: "pull-request",
+        state: "open",
+        view: "needs-review",
+      }),
+    ).toMatchObject({ cursor: null, limit: 50, view: "needs-review" });
+    expect(
+      githubInboxListSchema.parse({
+        kind: "pull-request",
+        state: "open",
+        view: "failed-checks",
+        total: 1,
+        nextCursor: null,
+        viewerLogin: "octocat",
+        activityAvailable: true,
+        items: [
+          {
+            number: 42,
+            title: "Repair CI",
+            state: "open",
+            url: "https://github.com/ArcaneArts/Cantrip/pull/42",
+            author: "author",
+            commentCount: 2,
+            labels: [],
+            createdAt: "2026-09-01T12:00:00.000Z",
+            updatedAt: "2026-09-02T12:00:00.000Z",
+            closedAt: null,
+            kind: "pull-request",
+            assignees: ["octocat"],
+            attention: ["unread", "failed-checks"],
+            pullRequest: {
+              draft: false,
+              headRef: "fix/ci",
+              baseRef: "main",
+              mergeable: "mergeable",
+              reviewDecision: "approved",
+              checksState: "failure",
+            },
+          },
+        ],
+      }).items[0],
+    ).toMatchObject({ number: 42, attention: ["unread", "failed-checks"] });
     expect(() =>
       workerCommandSchema.parse({
         type: "github.issues.list",

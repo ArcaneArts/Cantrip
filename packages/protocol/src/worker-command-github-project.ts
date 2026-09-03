@@ -28,6 +28,7 @@ import {
   githubRepositoryCreateSchema,
   githubIssueStateSchema,
   githubIssueKindSchema,
+  githubInboxViewSchema,
   githubIssueCreateSchema,
   githubIssueCommentCreateSchema,
   githubPullRequestCreateSchema,
@@ -95,6 +96,15 @@ export const workerGithubProjectCommandSchemas = [
     state: githubIssueStateSchema,
     page: z.number().int().positive().default(1),
     limit: z.number().int().min(1).max(100).default(100),
+  }),
+  z.object({
+    type: z.literal("github.inbox.list"),
+    repository: workerRepositoryNameSchema,
+    kind: githubIssueKindSchema.default("issue"),
+    state: githubIssueStateSchema,
+    view: githubInboxViewSchema.default("all"),
+    cursor: z.string().min(1).max(2_000).nullable().default(null),
+    limit: z.number().int().min(1).max(100).default(50),
   }),
   z.object({
     type: z.literal("github.issue.get"),

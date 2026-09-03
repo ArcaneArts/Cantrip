@@ -2174,6 +2174,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.page,
           command.limit,
         );
+      case "github.inbox.list":
+        return github.listInbox(
+          command.repository,
+          command.kind,
+          command.state,
+          command.view,
+          command.cursor,
+          command.limit,
+        );
       case "github.pull-requests.list":
         return github.listPullRequests(
           command.repository,

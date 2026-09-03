@@ -4,8 +4,9 @@ import type {
   GitRef,
   GitMergeRebaseAction,
   GitStatus,
+  GithubInboxList,
+  GithubInboxView,
   GithubIssueKind,
-  GithubIssueList,
   GithubIssueState,
   ProjectSummary,
   ProjectWorktreeCreate,
@@ -37,7 +38,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createProjectWorktree,
-  getGithubIssues,
+  getGithubInbox,
   getProjectWorktreeHistory,
   getProjectWorktreeGitOperation,
   lockProjectWorktree,
@@ -105,6 +106,7 @@ import {
 } from "./git-history-drawer";
 import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
+import { githubInboxViewIsAvailable } from "./github-inbox";
 import { GitWorkbenchToolbar } from "./git-workbench-toolbar";
 import { GitHistoryMobileDrawer } from "./git-history-mobile-drawer";
 import { GitContentSurface } from "./git-content-surface";
@@ -512,6 +514,9 @@ export function GitHistoryView({
   const [compareLeft, setCompareLeft] = useState<string | null>(null);
   const [compareRight, setCompareRight] = useState<string | null>(null);
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
+  const [issueInboxView, setIssueInboxView] = useState<GithubInboxView>("all");
+  const [pullRequestInboxView, setPullRequestInboxView] =
+    useState<GithubInboxView>("all");
   const [issueRefreshEpoch, setIssueRefreshEpoch] = useState(0);
   const [graphRefreshEpoch, setGraphRefreshEpoch] = useState(0);
   const [graphRevision, setGraphRevision] = useState<string | null>(null);
@@ -582,20 +587,32 @@ export function GitHistoryView({
   });
   const issueKind: GithubIssueKind =
     section === "prs" ? "pull-request" : "issue";
+  const selectedInboxView =
+    issueKind === "pull-request" ? pullRequestInboxView : issueInboxView;
+  const inboxView = githubInboxViewIsAvailable(
+    selectedInboxView,
+    issueKind,
+    issueState,
+  )
+    ? selectedInboxView
+    : "all";
+  const setInboxView =
+    issueKind === "pull-request" ? setPullRequestInboxView : setIssueInboxView;
   const githubAvailable = projectHasGithubCapability(project);
   const issues = useInfiniteQuery({
     enabled: (section === "issues" || section === "prs") && githubAvailable,
-    initialPageParam: 1,
+    initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
-      getGithubIssues(project.id, issueKind, issueState, pageParam),
+      getGithubInbox(project.id, issueKind, issueState, inboxView, pageParam),
     queryKey: [
-      "github-issues",
+      "github-inbox",
       project.id,
       issueKind,
       issueState,
+      inboxView,
       issueRefreshEpoch,
     ],
-    getNextPageParam: (page) => page.nextPage ?? undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
   const refreshIssues = useCallback(
     () => setIssueRefreshEpoch((epoch) => epoch + 1),
@@ -713,17 +730,21 @@ export function GitHistoryView({
   const graphAreaWidth = Math.min(260, Math.max(160, graphWidth + 126));
   const historyColumns = `${graphAreaWidth}px minmax(320px, 1fr) 150px 82px`;
   const firstPage = history.data?.pages[0];
-  const loadedIssues = useMemo<GithubIssueList | undefined>(() => {
+  const loadedIssues = useMemo<GithubInboxList | undefined>(() => {
     if (!issues.data) return undefined;
-    const values = issues.data.pages.flatMap((page) => page.issues);
+    const values = issues.data.pages.flatMap((page) => page.items);
+    const first = issues.data.pages[0];
     return {
       kind: issueKind,
       state: issueState,
-      total: values.length,
-      issues: values,
-      nextPage: issues.data.pages.at(-1)?.nextPage ?? null,
+      view: inboxView,
+      total: first ? first.total : values.length,
+      items: values,
+      nextCursor: issues.data.pages.at(-1)?.nextCursor ?? null,
+      viewerLogin: first?.viewerLogin ?? "unknown",
+      activityAvailable: first?.activityAvailable ?? false,
     };
-  }, [issueKind, issueState, issues.data]);
+  }, [inboxView, issueKind, issueState, issues.data]);
   const issuesRefreshing =
     issues.isFetching && !issues.isFetchingNextPage && !issues.isLoading;
 
@@ -1114,18 +1135,21 @@ export function GitHistoryView({
         />
       ) : section !== "history" ? (
         <GithubIssuesView
-          key={issueKind}
+          key={`${issueKind}:${inboxView}`}
           error={issues.error}
           hasNextPage={issues.hasNextPage}
           isFetchingNextPage={issues.isFetchingNextPage}
           isLoading={issues.isLoading}
-          issues={loadedIssues}
+          inbox={loadedIssues}
           kind={issueKind}
           project={project}
+          state={issueState}
           status={status}
           worktreeId={worktreeId}
           onLoadMore={() => void issues.fetchNextPage()}
+          onViewChange={setInboxView}
           onSelectWorktree={onSelectWorktree}
+          view={inboxView}
         />
       ) : (
         <GitContentSurface

@@ -416,6 +416,34 @@ Manual QA:
    apply refuses to overwrite the new remote commit.
 5. Verify an ordinary ahead-only branch pushes without the destructive dialog.
 
+## GitHub issue and pull request inboxes
+
+Issues and pull requests use worker-authenticated GitHub inbox queries rather
+than deriving collaboration state from local Git. Built-in saved views cover
+assignment, mentions and unread activity, staleness, requested reviews, failed
+checks, merge conflicts, and approved pull requests that are ready to merge.
+Notification access is best effort because some fine-grained GitHub tokens do
+not expose it; when unavailable, the activity view continues to use GitHub's
+mention search without blocking the rest of the inbox.
+
+Pull request rows expose head and base branches, draft state, review decision,
+check state, and mergeability before the inspector is opened. All inbox
+pagination uses GitHub GraphQL cursors and remains bounded to 100 items per
+response.
+
+Manual QA:
+
+1. Open the Issues and PRs tabs and confirm each saved view returns the same
+   scope as GitHub for the authenticated worker user.
+2. Confirm assigned, mentioned, unread, stale, review-requested, failed-check,
+   conflicting, and approved-ready indicators appear on matching rows.
+3. Open PRs in draft, approved, changes-requested, pending-check, failed-check,
+   and conflicting states and verify their branch and status summaries.
+4. Use a token without notification access and confirm Mentions & unread shows
+   mention-search results and an availability note instead of failing.
+5. Disconnect the worker and confirm inbox reads fail without falling back to
+   another worker or exposing GitHub credentials to the app or server.
+
 ## GitHub pull request creation
 
 Open a project's Issues tab in **Pull requests** mode and choose **Pull

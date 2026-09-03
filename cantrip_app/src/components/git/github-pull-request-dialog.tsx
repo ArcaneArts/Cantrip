@@ -730,9 +730,14 @@ export function GithubPullRequestDialog({
       ),
     onSuccess: async (updated) => {
       queryClient.setQueryData(detailKey, updated);
-      await queryClient.invalidateQueries({
-        queryKey: ["github-issues", projectId, "pull-request"],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["github-issues", projectId, "pull-request"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["github-inbox", projectId, "pull-request"],
+        }),
+      ]);
     },
   });
   const checkout = useMutation({
@@ -980,6 +985,9 @@ export function GithubPullRequestDialog({
             queryClient.setQueryData(detailKey, updated);
             void queryClient.invalidateQueries({
               queryKey: ["github-issues", projectId, "pull-request"],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ["github-inbox", projectId, "pull-request"],
             });
           }}
         />
