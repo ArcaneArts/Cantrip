@@ -1,7 +1,7 @@
 import {
   clearSensitiveBytes,
-  decryptWorkflowContent,
-  encryptWorkflowContent,
+  decryptProjectAutomationContent,
+  encryptProjectAutomationContent,
 } from "@cantrip/crypto";
 import {
   encryptedProjectAutomationCreateSchema,
@@ -62,7 +62,7 @@ async function protectField<T>(input: {
   schema: { parse(value: unknown): T };
   context: ReturnType<typeof encryptionContext>;
 }) {
-  return encryptWorkflowContent({
+  return encryptProjectAutomationContent({
     ownerId: input.context.ownerId,
     context: {
       recordKind: "project-automation",
@@ -173,7 +173,7 @@ export async function openProjectAutomationWire(
   const context = encryptionContext(options);
   try {
     const [name, prompt, condition] = await Promise.all([
-      decryptWorkflowContent({
+      decryptProjectAutomationContent({
         ownerId: context.ownerId,
         context: {
           recordKind: "project-automation",
@@ -185,7 +185,7 @@ export async function openProjectAutomationWire(
         encrypted: automation.content.protectedName,
         schema: projectAutomationProtectedNameSchema,
       }),
-      decryptWorkflowContent({
+      decryptProjectAutomationContent({
         ownerId: context.ownerId,
         context: {
           recordKind: "project-automation",
@@ -197,7 +197,7 @@ export async function openProjectAutomationWire(
         encrypted: automation.content.protectedPrompt,
         schema: projectAutomationProtectedPromptSchema,
       }),
-      decryptWorkflowContent({
+      decryptProjectAutomationContent({
         ownerId: context.ownerId,
         context: {
           recordKind: "project-automation",

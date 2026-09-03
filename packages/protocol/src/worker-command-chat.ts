@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { boundedJsonObjectSchema } from "./bounded-json.js";
 import {
   chatPlanOpaqueStateSchema,
   chatMessageOpaqueContentSchema,
@@ -22,7 +23,6 @@ import {
   protectedWorkflowGateDecisionRequestSchema,
   protectedWorkflowNodeExecutionRequestSchema,
   protectedWorkflowTriggerPrepareRequestSchema,
-  workflowJsonObjectSchema,
   workflowRepositoryDocumentSchema,
 } from "./workflows.js";
 import { NATIVE_SUBAGENT_PROTOCOL_VERSION } from "./runtime-capabilities.js";
@@ -250,7 +250,7 @@ export const workerChatCommandSchemas = [
     cwd: z.string().trim().min(1).max(8_192),
     prompt: z.string().trim().min(1).max(100_000),
     developerInstructions: z.string().trim().min(1).max(100_000),
-    outputSchema: workflowJsonObjectSchema,
+    outputSchema: boundedJsonObjectSchema,
     timeoutMs: z
       .number()
       .int()

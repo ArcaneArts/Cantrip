@@ -1,20 +1,20 @@
 import { z } from "zod";
 
 import {
+  boundedJsonObjectSchemaWithLimits,
+  type JsonObject,
+} from "./bounded-json.js";
+import {
   endpointContentContextSchema,
   endpointContentOpaqueSchema,
 } from "./endpoint-content.js";
-import {
-  type WorkflowJsonObject,
-  workflowJsonObjectSchemaWithLimits,
-} from "./workflows.js";
 
 export const CODE_SETTINGS_PROFILE_ID = "default";
 export const CODE_SETTINGS_OPERATION = "code-settings.record";
 
 export const codeSettingsProfileIdSchema = z.literal(CODE_SETTINGS_PROFILE_ID);
 
-const codeSettingsJsonObjectSchema = workflowJsonObjectSchemaWithLimits({
+const codeSettingsJsonObjectSchema = boundedJsonObjectSchemaWithLimits({
   maxBytes: 1_000_000,
   maxStringLength: 100_000,
 });
@@ -198,7 +198,7 @@ export function codeSettingsContentContext(input: {
 }
 
 export type CodeSettingsPayload = z.infer<typeof codeSettingsPayloadSchema>;
-export type CodeSettingsJsonObject = WorkflowJsonObject;
+export type CodeSettingsJsonObject = JsonObject;
 export type ProtectedCodeSettingsRecord = z.infer<
   typeof protectedCodeSettingsRecordSchema
 >;

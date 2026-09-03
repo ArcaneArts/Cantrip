@@ -1,7 +1,7 @@
 import { z } from "zod";
+import { boundedJsonObjectSchema } from "./bounded-json.js";
 import { chatMessageOpaqueContentSchema } from "./communication-content.js";
 import { taskOperationRelayRequestSchema } from "./tasks.js";
-import { workflowJsonObjectSchema } from "./workflows.js";
 import {
   agentMessagePhaseSchema,
   codexEventCorrelationSchema,
@@ -23,7 +23,7 @@ export const agentTurnResultModeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("visible") }),
   z.object({
     kind: z.literal("structured"),
-    outputSchema: workflowJsonObjectSchema,
+    outputSchema: boundedJsonObjectSchema,
   }),
   z.object({
     kind: z.literal("task-encrypted"),

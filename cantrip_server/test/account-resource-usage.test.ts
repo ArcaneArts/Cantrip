@@ -43,6 +43,12 @@ describe("account resource usage storage accounting", () => {
         expect(entry.ownerResolution).toBeTruthy();
       }
     }
+    const categoryFor = (table: AnyPgTable) =>
+      STORAGE_ACCOUNTING_MANIFEST.find((entry) => entry.table === table)
+        ?.category;
+    expect(categoryFor(schema.taskDispatchCycles)).toBe("conversations");
+    expect(categoryFor(schema.projectAutomations)).toBe("projects");
+    expect(categoryFor(schema.projectAutomationRuns)).toBe("projects");
   });
 
   it("reconciles a precise current projection and one snapshot per hour", async () => {

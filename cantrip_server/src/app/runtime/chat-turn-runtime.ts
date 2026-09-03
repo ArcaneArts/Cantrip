@@ -25,7 +25,7 @@ import {
   type TaskMessageOpaqueContent,
   type TaskOperationRelayRequest,
 } from "@cantrip/protocol/tasks";
-import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
+import type { JsonObject } from "@cantrip/protocol/bounded-json";
 import { cantripVersion } from "@cantrip/version";
 import type { FastifyInstance } from "fastify";
 
@@ -111,7 +111,7 @@ export interface ChatTurnOptions {
   runtimes?: ModelRuntime[];
   preflightWorkerCommandTimeoutMs?: number | null;
   structuredResult?: {
-    outputSchema?: WorkflowJsonObject;
+    outputSchema?: JsonObject;
     taskOperation?: TaskOperationRelayRequest;
     afterCompleted?(input: {
       attribution: ChatExecutionAttribution;

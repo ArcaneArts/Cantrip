@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { workflowMeasuredUsageSchema } from "./workflows.js";
+import { measuredAgentUsageSchema } from "./agent-usage.js";
 
 import {
   encryptedPayloadEnvelopeSchema,
@@ -368,7 +368,7 @@ export const repositoryOperationAgentExecutionSchema = z
   .object({
     routeId: z.string().min(1).max(200),
     turnId: z.string().min(1).max(200),
-    measuredUsage: workflowMeasuredUsageSchema,
+    measuredUsage: measuredAgentUsageSchema,
   })
   .strict();
 
