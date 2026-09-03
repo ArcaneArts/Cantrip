@@ -26,6 +26,10 @@ import {
 import { errorMessage } from "@/lib/error-message";
 
 import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
+import {
+  GitMobileInspectorClose,
+  gitMobileInspectorClassName,
+} from "./git-mobile-inspector";
 
 export function parsePullRequestCsv(value: string): string[] {
   return [
@@ -165,8 +169,12 @@ export function GithubPullRequestCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        className={`${gitMobileInspectorClassName} overflow-x-hidden overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(4rem,env(safe-area-inset-top))] md:max-h-[92vh] md:max-w-2xl md:p-6`}
+        showClose={false}
+      >
+        <GitMobileInspectorClose label="Back to pull requests" />
+        <DialogHeader className="pr-0 md:pr-8">
           <DialogTitle>Create pull request</DialogTitle>
           <DialogDescription>
             GitHub receives the selected worktree branch only after the worker

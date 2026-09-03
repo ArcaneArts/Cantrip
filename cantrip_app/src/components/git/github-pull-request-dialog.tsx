@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
   Clock3,
   ExternalLink,
@@ -44,6 +45,10 @@ import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
 import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
+import {
+  GitMobileInspectorClose,
+  gitMobileInspectorClassName,
+} from "./git-mobile-inspector";
 import { GithubPullRequestLifecycleDialog } from "./github-pull-request-lifecycle-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -310,7 +315,7 @@ function Overview({
       </section>
 
       {detail.state === "open" && !detail.merged ? (
-        <section>
+        <section className="sticky bottom-0 z-10 -mx-5 border-t bg-background/95 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
           <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Comment or review
             <textarea
@@ -368,7 +373,7 @@ function Overview({
   );
 }
 
-function Files({
+export function PullRequestFiles({
   detail,
   error,
   onAction,
@@ -382,19 +387,36 @@ function Files({
   const [selectedPath, setSelectedPath] = useState<string | null>(
     detail.files[0]?.path ?? null,
   );
+  const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [commentTarget, setCommentTarget] = useState<{
     line: number;
     path: string;
     side: "LEFT" | "RIGHT";
   } | null>(null);
   const [commentBody, setCommentBody] = useState("");
-  const selected =
-    detail.files.find((file) => file.path === selectedPath) ?? detail.files[0];
+  const selected = selectedPath
+    ? (detail.files.find((file) => file.path === selectedPath) ??
+      detail.files[0])
+    : undefined;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <button
+        type="button"
+        className="flex h-11 shrink-0 items-center gap-2 border-b px-3 text-left text-xs md:hidden"
+        onClick={() => setFilePickerOpen(true)}
+      >
+        <FileDiff className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate font-mono">
+          {selected?.path ?? "Choose a changed file"}
+        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">
+          {detail.files.length} files
+        </span>
+        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+      </button>
       {commentTarget ? (
         <form
-          className="flex shrink-0 items-start gap-2 border-b bg-muted/20 p-3"
+          className="flex shrink-0 flex-col items-stretch gap-2 border-b bg-muted/20 p-3 md:flex-row md:items-start"
           onSubmit={async (event) => {
             event.preventDefault();
             if (!commentBody.trim()) return;
@@ -437,28 +459,30 @@ function Files({
               </p>
             ) : null}
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setCommentTarget(null);
-              setCommentBody("");
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={pending || !commentBody.trim()}
-          >
-            <Send className="size-3.5" /> Comment
-          </Button>
+          <div className="flex shrink-0 justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setCommentTarget(null);
+                setCommentBody("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={pending || !commentBody.trim()}
+            >
+              <Send className="size-3.5" /> Comment
+            </Button>
+          </div>
         </form>
       ) : null}
       <div className="flex min-h-0 flex-1">
-        <div className="w-72 shrink-0 overflow-y-auto border-r">
+        <div className="hidden w-72 shrink-0 overflow-y-auto border-r md:block">
           {detail.filesTruncated ? (
             <TruncatedNotice>
               Showing the first 100 changed files.
@@ -490,7 +514,7 @@ function Files({
             loading={false}
             newLabel={selected.path}
             oldLabel={selected.previousPath ?? selected.path}
-            onClose={() => setSelectedPath(null)}
+            onClose={() => setFilePickerOpen(true)}
             onCommentLine={(line, side) => {
               setCommentTarget({ line, side, path: selected.path });
               setCommentBody("");
@@ -508,6 +532,46 @@ function Files({
           </div>
         )}
       </div>
+      <Dialog open={filePickerOpen} onOpenChange={setFilePickerOpen}>
+        <DialogContent className="fixed inset-x-0 bottom-0 top-auto flex max-h-[75svh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-b-none rounded-t-2xl border-x-0 border-b-0 p-0 md:hidden">
+          <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" />
+          <DialogHeader className="shrink-0 border-b px-4 pb-3 pt-2 pr-12">
+            <DialogTitle className="text-base">Changed files</DialogTitle>
+            <DialogDescription>
+              Choose a file to review its changes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+            {detail.filesTruncated ? (
+              <TruncatedNotice>
+                Showing the first 100 changed files.
+              </TruncatedNotice>
+            ) : null}
+            {detail.files.map((file) => (
+              <button
+                key={file.path}
+                type="button"
+                onClick={() => {
+                  setSelectedPath(file.path);
+                  setFilePickerOpen(false);
+                }}
+                className={cn(
+                  "flex min-h-12 w-full items-center gap-2 border-b border-border/50 px-4 py-2 text-left text-xs hover:bg-muted/50",
+                  selected?.path === file.path && "bg-muted",
+                )}
+              >
+                <FileDiff className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate font-mono">
+                  {file.path}
+                </span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">
+                  +{file.additions} −{file.deletions}
+                </span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -526,18 +590,18 @@ function Commits({ detail }: { detail: GithubPullRequestDetail }) {
           href={commit.url}
           target="_blank"
           rel="noreferrer"
-          className="grid min-h-11 grid-cols-[90px_minmax(240px,1fr)_160px_150px] items-center gap-3 px-4 text-xs odd:bg-muted/[0.035] hover:bg-muted/40"
+          className="grid min-h-20 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-border/50 px-4 py-3 text-xs odd:bg-muted/[0.035] hover:bg-muted/40 md:min-h-11 md:grid-cols-[90px_minmax(240px,1fr)_160px_150px] md:gap-y-0 md:border-0 md:py-0"
         >
-          <span className="flex items-center gap-2 font-mono text-muted-foreground">
+          <span className="col-span-2 row-start-2 flex items-center gap-2 font-mono text-muted-foreground md:col-span-1 md:row-auto">
             <GitCommitHorizontal className="size-3.5" /> {commit.shortSha}
           </span>
-          <span className="truncate font-medium">
+          <span className="col-start-1 row-start-1 truncate font-medium md:col-auto md:row-auto">
             {commit.message.split("\n", 1)[0]}
           </span>
-          <span className="truncate text-muted-foreground">
+          <span className="col-span-2 row-start-3 truncate text-muted-foreground md:col-span-1 md:row-auto">
             {commit.author}
           </span>
-          <span className="text-right text-muted-foreground">
+          <span className="col-start-2 row-start-1 whitespace-nowrap text-right text-[10px] text-muted-foreground md:col-auto md:row-auto md:text-xs">
             {commit.authoredAt
               ? dateFormatter.format(new Date(commit.authoredAt))
               : "Unknown date"}
@@ -705,13 +769,17 @@ export function GithubPullRequestDialog({
   return (
     <>
       <Dialog open={pullRequestNumber !== null} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-[min(90svh,900px)] w-[min(96vw,1200px)] max-w-none flex-col overflow-hidden p-0">
+        <DialogContent
+          className={`${gitMobileInspectorClassName} flex flex-col md:h-[min(90svh,900px)] md:w-[min(96vw,1200px)]`}
+          showClose={false}
+        >
+          <GitMobileInspectorClose label="Back to pull requests" />
           {detail.isLoading ? (
             <div className="grid flex-1 place-items-center text-muted-foreground">
               <Loader2 className="size-5 animate-spin" />
             </div>
           ) : detail.isError || !detail.data ? (
-            <DialogHeader className="p-6 pr-12">
+            <DialogHeader className="p-4 pl-14 pt-[max(1rem,env(safe-area-inset-top))] md:p-6 md:pr-12">
               <DialogTitle>Pull request could not be loaded</DialogTitle>
               <DialogDescription>
                 {detail.error instanceof Error
@@ -721,7 +789,7 @@ export function GithubPullRequestDialog({
             </DialogHeader>
           ) : (
             <>
-              <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
+              <DialogHeader className="shrink-0 border-b pb-4 pl-14 pr-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-5 md:py-4 md:pr-12">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={detail.data.merged ? "default" : "secondary"}>
                     {detail.data.merged
@@ -737,9 +805,9 @@ export function GithubPullRequestDialog({
                     {detail.data.headRef} → {detail.data.baseRef}
                   </span>
                 </div>
-                <div className="mt-1 flex items-start gap-3">
+                <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start">
                   <div className="min-w-0 flex-1">
-                    <DialogTitle className="truncate text-left text-lg">
+                    <DialogTitle className="line-clamp-2 text-left text-lg md:truncate">
                       {detail.data.title}
                     </DialogTitle>
                     <DialogDescription className="text-left">
@@ -747,7 +815,7 @@ export function GithubPullRequestDialog({
                       · {detail.data.changedFileCount} files
                     </DialogDescription>
                   </div>
-                  <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                  <div className="flex shrink-0 flex-wrap justify-start gap-1.5 md:justify-end">
                     <Button
                       size="sm"
                       variant="outline"
@@ -827,7 +895,7 @@ export function GithubPullRequestDialog({
                   </p>
                 ) : null}
               </DialogHeader>
-              <div className="flex h-9 shrink-0 items-end gap-1 border-b px-3">
+              <div className="flex h-9 min-w-0 shrink-0 items-end gap-1 overflow-x-auto overflow-y-hidden border-b px-3 overscroll-x-contain">
                 {(
                   ["overview", "files", "commits", "checks"] as PullRequestTab[]
                 ).map((value) => (
@@ -861,7 +929,7 @@ export function GithubPullRequestDialog({
                   />
                 ) : null}
                 {tab === "files" ? (
-                  <Files
+                  <PullRequestFiles
                     detail={detail.data}
                     error={action.error}
                     pending={action.isPending}

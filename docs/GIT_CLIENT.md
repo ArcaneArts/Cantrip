@@ -568,6 +568,34 @@ Manual QA:
 6. Disconnect the selected worker and confirm no fallback worker is used and
    no partial server worktree record is created.
 
+## Responsive Git surfaces
+
+At narrow viewport widths, issue and pull-request lists use stacked cards
+instead of desktop table columns, and History uses compact commit and WIP rows
+that keep the graph bounded inside the viewport. Issue creation, pull-request
+creation, and issue or pull-request inspection fill the mobile viewport and
+provide a large back control while retaining the bounded desktop dialogs at
+wider widths.
+
+Pull-request Files keeps its desktop file rail, but replaces it on mobile with
+a bottom file-selector sheet. The selected diff owns any necessary code-level
+horizontal scrolling without widening the page. Review controls and Working
+Changes commit controls remain outside their primary scrolling regions and
+respect the mobile safe area.
+
+Manual QA:
+
+1. At a viewport narrower than 768 pixels, open Issues and Pull requests and
+   confirm cards fit without horizontal page scrolling.
+2. Open and create an issue or pull request, then use the top-left back control
+   and confirm the full-screen inspector returns to its list.
+3. Open a pull request's Files tab, switch files through the bottom sheet, and
+   confirm the diff returns to that selector from its back control.
+4. Inspect PR commits and a busy multi-lane History view. Confirm metadata
+   remains readable and neither list widens the page.
+5. Scroll a long PR overview and a long Working Changes list. Confirm review
+   and commit controls remain reachable above the device safe area.
+
 ## File history, blame, and revision comparison
 
 The History tab's File inspector accepts a safe repository-relative path and

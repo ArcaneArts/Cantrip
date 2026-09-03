@@ -611,7 +611,7 @@ export function GitChangesPanel({
             </section>
           </div>
 
-          <form className="grid min-w-0 shrink-0 gap-2 border-t p-3">
+          <form className="sticky bottom-0 z-10 grid min-w-0 shrink-0 gap-2 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:pb-3">
             <div className="flex flex-wrap gap-1">
               <Button
                 type="button"

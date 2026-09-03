@@ -20,6 +20,11 @@ import { Input } from "@/components/ui/input";
 import { createGithubIssue } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 
+import {
+  GitMobileInspectorClose,
+  gitMobileInspectorClassName,
+} from "./git-mobile-inspector";
+
 const emptyDraft = { body: "", title: "" };
 
 export function GithubIssueCreateDialog({
@@ -57,8 +62,12 @@ export function GithubIssueCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        className={`${gitMobileInspectorClassName} overflow-x-hidden overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(4rem,env(safe-area-inset-top))] md:max-h-[92vh] md:max-w-2xl md:p-6`}
+        showClose={false}
+      >
+        <GitMobileInspectorClose label="Back to issues" />
+        <DialogHeader className="pr-0 md:pr-8">
           <DialogTitle>Create issue</DialogTitle>
           <DialogDescription>
             Add a new issue to this project&apos;s GitHub repository.
