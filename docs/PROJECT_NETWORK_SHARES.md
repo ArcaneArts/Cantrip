@@ -85,8 +85,10 @@ worker.
 
 ## Security and lifecycle invariants
 
-- The user's login password remains the only user-managed secret. No recovery
-  key or local encryption password is introduced.
+- Network shares introduce no new user-managed secret. Account/password modes
+  keep their existing login custody, while anonymous mode keeps its existing
+  recovery artifact. Share credentials and data-plane keys are generated and
+  are not user-retained.
 - Project roots, capability paths, usernames, passwords, realms, and
   data-plane keys exist only in client/worker-opened protected content.
 - Worker WebDAV and desktop mount endpoints bind to `127.0.0.1`, never a LAN or

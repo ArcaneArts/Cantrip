@@ -670,9 +670,10 @@ obtain the component key, or bypass the gate with a plaintext fallback.
 
 The server stores:
 
-- the normal login password hash;
-- a different encryption salt and versioned KDF parameters;
-- the password-wrapped Account Master Key;
+- the normal login password hash for password/account users;
+- an independent encryption salt and versioned KDF parameters for those
+  password wrappers;
+- the password-wrapped Account Master Key when password-based custody exists;
 - client and worker public keys;
 - separately wrapped client master-key and worker component-key grants;
 - ciphertext, encryption versions, key revisions, and necessary plaintext
@@ -1295,11 +1296,12 @@ no user development database is connected to or reset.
 
 Terminal interaction and Explorer operations reuse the independently scoped
 `surface-private-state` component key, but use a distinct ephemeral stream
-contract rather than a persistent state envelope. This adds no password,
-recovery secret, local encryption password, or server-held decryptor. The
-normal account password unlocks the client Account Master Key at login, and an
-authorized worker restores its existing scoped grant after restart without
-asking the user to enter that password again.
+contract rather than a persistent state envelope. This adds no feature-specific
+credential or server-held decryptor. Account/password clients unlock through
+their existing password-derived wrapper, while anonymous clients use their
+existing device custody or recovery artifact. An authorized worker restores
+its existing scoped grant after restart without asking the user to repeat the
+client unlock step.
 
 The bounded [wire contract](../packages/protocol/src/surface-stream.ts) carries
 only an operation ID, monotonic sequence, key revision, and AES-256-GCM
@@ -1989,10 +1991,11 @@ revision fingerprints, leases, and placement relationships remain plaintext.
 
 The primary app path for stateless Git, History, GitHub Issues, pull-request,
 review, lifecycle, and release operations now uses the independently scoped
-`repository-content` component. It adds no recovery secret, local encryption
-password, or repeated prompt: the normal account password unlocks the Account
-Master Key during login, and the app grants the assigned worker only this
-component through its existing persistent public/private-key custody.
+`repository-content` component. It adds no feature-specific credential or
+repeated prompt: normal login/startup unlocks the existing account-encryption
+custody through either the account-password path or anonymous device/recovery
+path, and the app grants the assigned worker only this component through its
+existing persistent public/private-key custody.
 
 The client encrypts the allowlisted operation type and all arguments before
 calling one generic worktree route. The assigned worker authenticates and
@@ -2201,9 +2204,10 @@ remaining-work ledger is closed: every inventoried server-bound content class
 is endpoint-protected, reduced to deliberately bounded operational metadata,
 retained as a one-way authentication validator, kept worker-local, or explicitly
 classified as public control-plane state. A database or backup attacker without
-the user's login password or an authorized client/worker private key cannot open
-the protected data classes. No recovery secret, local encryption password, or
-second user-managed credential is introduced.
+the corresponding account password, an authorized client/worker private key,
+or the anonymous recovery artifact cannot open the protected data classes. No
+feature-specific local password or second prompt is introduced; anonymous
+recovery remains part of existing account custody.
 
 ## Post-closure review and remaining-work ledger
 

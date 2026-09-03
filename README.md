@@ -199,7 +199,7 @@ WorkerLink carrier directly between the app and worker, with relay fallback.
 
 The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects and durable conversation history, tracks worker presence, persists worktree observations plus project-wide logical branch leases, reconciles per-account logical storage and meters server-carried bandwidth, and authorizes operations on the correct worker checkout. It stores ChatGPT and Grok OAuth bundles only as opaque endpoint-encrypted envelopes. Authorized workers decrypt, refresh, and reseal them locally; the server authorizes revision-fenced envelope fetch/reseal and global sign-out.
 
-Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
+Local development uses embedded PGlite. Browser development stores it under `.cantrip/browser-dev/`; default desktop development uses `.cantrip/dev/`, and named desktop profiles use `.cantrip/dev-profiles/<name>/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
 ### `cantrip_worker`
 
@@ -302,7 +302,7 @@ fallback. See the [managed MCP guide](docs/MCP.md) and
 ### Reusable Agent Policies
 
 Policies are owner-scoped Markdown instruction documents stored by Cantrip
-Server. Root **Settings → Policies** can create a blank policy or copy the
+Server. Root **Settings → Policy** can create a blank policy or copy the
 packaged Manual Change Protocol template, then search, edit, enable/disable,
 mark/unmark Mandatory, and keyboard- or pointer-sort the resulting policies.
 Nonmandatory policies can be assigned from Workspace or Project Settings; a
@@ -527,10 +527,11 @@ guide](docs/LIVE_TRANSPORT.md).
 ### Remote Desktop tabs
 
 Choose **Remote Desktop** from a project's add-tab menu. There is no setup
-dialog: the server resolves the project's source worker, asks that worker to
-verify screen capture, persists a tab named `Remote Desktop`, and opens it.
-Hostnames, ports, display names, and passwords are not part of the managed
-desktop API.
+dialog when only one compatible worker is available. In a multi-worker project,
+the add-tab submenu offers **Automatic** or an explicit worker. The server
+persists that exact resolved worker, asks it to verify screen capture, creates a
+tab named `Remote Desktop`, and opens it. Hostnames, ports, display names, and
+passwords are not part of the managed desktop API.
 
 The worker captures its current display and injects explicit pointer,
 keyboard, and clipboard actions. Encoded frames and input use the same scoped
@@ -684,10 +685,10 @@ pnpm bundle                  # native service/client archives for this platform
 pnpm package:all             # alias for pnpm bundle
 ```
 
-macOS packages set `CFBundleVersion` from `GITHUB_RUN_NUMBER` in CI and the
-current Git commit count locally so Launch Services can distinguish successive
-builds. Set `CANTRIP_APP_BUILD_VERSION` to a positive numeric build version when
-packaging needs an explicit reproducible override.
+macOS packages set `CFBundleVersion` from the current Git commit count so
+Launch Services can distinguish successive builds. Set
+`CANTRIP_APP_BUILD_VERSION` to a positive one-to-three-component numeric build
+version when packaging needs an explicit reproducible override.
 
 Standalone service directories include a platform-matched Node.js runtime, compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. Worker packages also include the native `cantrip` CLI. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, create a short-lived worker link code while signed into the server, put it in the worker environment for its first start, then remove it after enrollment. The worker persists its unique credential in its data directory and initiates every connection through `CANTRIP_SERVER_URL`; no inbound worker port is exposed. The shared `CANTRIP_WORKER_TOKEN` path is limited to explicit loopback `pnpm dev` and embedded Tauri bootstraps.
 

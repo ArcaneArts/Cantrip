@@ -90,7 +90,7 @@ ciphertext.
 
 ## Creation, editing, and templates
 
-Root **Settings → Policies** is the authoring surface. It supports:
+Root **Settings → Policy** is the authoring surface. It supports:
 
 - creating a blank Policy;
 - copying a packaged template;

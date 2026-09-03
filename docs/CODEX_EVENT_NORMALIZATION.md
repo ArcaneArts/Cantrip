@@ -75,10 +75,12 @@ timing `exact`.
 
 ## Durability and recovery
 
-The server stores normalized events as typed chat-message content with stable
-idempotency keys. Repeated lifecycle notifications update the same record, and
-repeated `thread/read` synchronization does not duplicate records. Commentary
-and final messages remain separate transcript entries.
+For ordinary encrypted Chat and Task turns, the worker normalizes typed content
+and seals it before transport. The server idempotently stores or updates the
+opaque protected message envelope and public routing/classification fields;
+repeated lifecycle notifications update the same row, and repeated
+`thread/read` synchronization does not duplicate records. Commentary and final
+messages remain separate transcript entries.
 
 After a server restart, stored normalized records render without a worker. For
 Codex console turns, `thread/read` reconstructs every supported item that the
