@@ -194,6 +194,7 @@ export const codeWorkbenchAgentStatusSchema = z.enum([
 export const codeWorkbenchActiveEditorSchema = z.object({
   uri: z.string().min(1).max(16_384),
   relativePath: z.string().max(8_192).nullable(),
+  topologyReconciled: z.boolean().optional(),
   selection: z.object({
     startLine: z.number().int().nonnegative(),
     startCharacter: z.number().int().nonnegative(),

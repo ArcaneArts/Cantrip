@@ -9,7 +9,10 @@ const {
   themeNameForAppearance,
 } = require("./protocol.js");
 const { forceColorTheme } = require("./theme.js");
-const { WorkspaceFileNavigator } = require("./navigation.js");
+const {
+  editorTopologyReconciled,
+  WorkspaceFileNavigator,
+} = require("./navigation.js");
 const {
   configureWorkbenchPresentation,
   setWorkbenchPresentation,
@@ -81,6 +84,7 @@ function activeEditorState() {
   return {
     uri: editor.document.uri.toString(),
     relativePath: relativePath(editor.document.uri),
+    topologyReconciled: editorTopologyReconciled(vscode, editor.document.uri),
     selection: {
       startLine: selection.start.line,
       startCharacter: selection.start.character,
@@ -212,6 +216,10 @@ class WorkbenchCoordinator {
         }
       }),
     );
+    if (vscode.window.tabGroups) {
+      watch(vscode.window.tabGroups.onDidChangeTabs);
+      watch(vscode.window.tabGroups.onDidChangeTabGroups);
+    }
     this.registerCommands();
     this.reconnect(true);
     await configureWorkbenchPresentation(configuration(), vscode.commands);

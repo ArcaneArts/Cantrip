@@ -5,6 +5,7 @@ const test = require("node:test");
 
 const {
   closeUnrelatedEditors,
+  editorTopologyReconciled,
   openWorkspaceFile,
   WorkspaceFileNavigator,
 } = require("../src/navigation.js");
@@ -86,6 +87,32 @@ function fixture({
   };
   return { calls, rootUri, vscode };
 }
+
+test("acknowledges reconciled topology only for the sole active selected tab", () => {
+  const { vscode } = fixture();
+  const selected = vscode.window.activeTextEditor.document.uri;
+
+  assert.equal(editorTopologyReconciled(vscode, selected), true);
+  vscode.window.tabGroups.all[0].tabs.push({
+    input: { uri: uri("file:///repo/src/other.ts") },
+    isActive: false,
+  });
+  assert.equal(editorTopologyReconciled(vscode, selected), false);
+  vscode.window.tabGroups.all[0].tabs.pop();
+  vscode.window.tabGroups.all.push({
+    isActive: false,
+    tabs: [],
+  });
+  assert.equal(editorTopologyReconciled(vscode, selected), false);
+  vscode.window.tabGroups.all.pop();
+  vscode.window.tabGroups.all[0].isActive = false;
+  assert.equal(editorTopologyReconciled(vscode, selected), false);
+  vscode.window.tabGroups.all[0].isActive = true;
+  assert.equal(
+    editorTopologyReconciled(vscode, uri("file:///repo/src/other.ts")),
+    false,
+  );
+});
 
 test("opens and confirms the exact requested workspace file", async () => {
   const { calls, rootUri, vscode } = fixture();

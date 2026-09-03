@@ -41,6 +41,17 @@ function tabResource(tab) {
     : null;
 }
 
+function editorTopologyReconciled(vscode, selectedUri) {
+  const groups = vscode.window.tabGroups?.all ?? [];
+  if (groups.length !== 1 || !groups[0]?.isActive) return false;
+  const tabs = groups[0].tabs ?? [];
+  return (
+    tabs.length === 1 &&
+    tabs[0]?.isActive === true &&
+    tabResource(tabs[0]) === selectedUri.toString()
+  );
+}
+
 async function bounded(operation, timeoutMs, timeoutMessage) {
   let timeout;
   try {
@@ -210,6 +221,7 @@ class WorkspaceFileNavigator {
 
 module.exports = {
   closeUnrelatedEditors,
+  editorTopologyReconciled,
   openWorkspaceFile,
   parseWorkspaceRoot,
   WorkspaceFileNavigator,
