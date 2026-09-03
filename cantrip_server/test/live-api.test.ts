@@ -79,7 +79,7 @@ const liveTestHeartbeat = {
   },
   startedAt: new Date().toISOString(),
 };
-const opaqueWorkflowContent = () => ({
+const opaqueAutomationContent = () => ({
   formatVersion: 1 as const,
   keyRevision: 1,
   envelope: {
@@ -192,11 +192,6 @@ const workerBridge: WorkerCommandBus = {
           },
           metadata: providerCredentialMetadataFixture(),
           portableAuth: false,
-        };
-      case "workflow.trigger.prepare.protected":
-        return {
-          status: "accepted",
-          protectedRunInput: opaqueWorkflowContent(),
         };
       default:
         throw new Error(`Unexpected worker command ${command.type}.`);
@@ -363,7 +358,7 @@ describe.sequential("application live WebSocket", () => {
           .some(
             (message) =>
               message.type === "event" &&
-              message.resource === "worker" &&
+              message.resource === "worker-availability" &&
               message.scope.kind === "current-user",
           ),
       ).toBe(true),
@@ -727,7 +722,6 @@ describe.sequential("application live WebSocket", () => {
     for (const [requestId, scope] of [
       ["missing-project", { kind: "project", projectId: "missing-project" }],
       ["missing-chat", { kind: "chat", chatId: "missing-chat" }],
-      ["missing-workflow-run", { kind: "workflow-run", runId: "missing-run" }],
     ] as const) {
       clientSocket.send(
         JSON.stringify({
@@ -816,9 +810,9 @@ describe.sequential("application live WebSocket", () => {
         },
         enabled: true,
         content: {
-          protectedName: opaqueWorkflowContent(),
-          protectedPrompt: opaqueWorkflowContent(),
-          protectedCondition: opaqueWorkflowContent(),
+          protectedName: opaqueAutomationContent(),
+          protectedPrompt: opaqueAutomationContent(),
+          protectedCondition: opaqueAutomationContent(),
         },
       }),
     });

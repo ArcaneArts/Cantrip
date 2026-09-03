@@ -19,7 +19,6 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "../../workers/bridge.js";
-import type { WorkflowExecutor } from "../../workflows/executor.js";
 
 export interface AgentInteractionRouteDependencies {
   applicationOwnerId: () => string;
@@ -36,10 +35,6 @@ export interface AgentInteractionRouteDependencies {
   runtimeForContext: (
     context: ChatExecutionContext,
   ) => Promise<ModelRuntime | null>;
-  workflowExecutor: Pick<
-    WorkflowExecutor,
-    "finishInteractionResponse" | "respondToEncryptedInteraction"
-  >;
 }
 
 /** Registers agent interaction inspection and response routes. */
@@ -52,13 +47,11 @@ export function installAgentInteractionRoutes(
     resolveLiveAgentInteractionRequest,
     resolveLiveEncryptedAgentInteractionRequest,
     runtimeForContext,
-    workflowExecutor,
   }: AgentInteractionRouteDependencies,
 ): void {
   app.get<{
     Querystring: {
       chatId?: string;
-      workflowRunId?: string;
       limit?: string;
       status?: string;
     };
@@ -130,49 +123,9 @@ export function installAgentInteractionRoutes(
           return reply.send(agentInteractionRequestWireSchema.parse(replay));
         }
         if (!existing.provenance.chatId) {
-          if (!protectedInput || !("protectedPayload" in existing)) {
-            return reply.code(409).send({
-              error:
-                "Protected workflow interactions require an encrypted response.",
-            });
-          }
-          if (
-            !existing.provenance.workflowRunId ||
-            !existing.provenance.workflowNodeId
-          ) {
-            return reply.code(409).send({
-              error: "The interaction has no active execution provenance.",
-            });
-          }
-          try {
-            await workflowExecutor.respondToEncryptedInteraction(
-              applicationOwnerId(),
-              existing,
-              {
-                classification: protectedInput.classification,
-                protectedResponse: protectedInput.protectedResponse,
-              },
-            );
-          } catch (error) {
-            return sendWorkerConflictFailure(
-              reply,
-              error,
-              `The workflow runtime no longer accepts this interaction: ${errorMessage(error)}`,
-            );
-          }
-          try {
-            const interaction =
-              await resolveLiveEncryptedAgentInteractionRequest(
-                applicationOwnerId(),
-                request.params.requestId,
-                protectedInput,
-              );
-            return reply.send(
-              agentInteractionRequestWireSchema.parse(interaction),
-            );
-          } finally {
-            workflowExecutor.finishInteractionResponse(existing.requestKey);
-          }
+          return reply.code(409).send({
+            error: "The interaction is not associated with an active chat.",
+          });
         }
         const context = await repository.getChatExecutionContext(
           applicationOwnerId(),

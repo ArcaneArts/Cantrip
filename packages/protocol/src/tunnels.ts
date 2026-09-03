@@ -15,7 +15,6 @@ export const tunnelOriginSchema = z.enum([
   "browser",
   "project-share",
   "code",
-  "workflow",
   "system",
 ]);
 
@@ -81,7 +80,7 @@ export const tunnelDestinationEndpointSchema = z.discriminatedUnion("kind", [
 
 export const tunnelManagedResourceSchema = z
   .object({
-    kind: z.enum(["browser", "code", "project-share", "workflow", "system"]),
+    kind: z.enum(["browser", "code", "project-share", "system"]),
     id: tunnelResourceIdSchema,
   })
   .strict();

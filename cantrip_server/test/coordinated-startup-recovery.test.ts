@@ -64,10 +64,6 @@ describe("coordinated startup recovery", () => {
       database.repository,
       "resetInterruptedChatExecutions",
     );
-    const recoverWorkflows = vi.spyOn(
-      database.repository.workflowRuns,
-      "recoverInterruptedAttempts",
-    );
     const app = await buildApp({
       config,
       coordinator,
@@ -78,7 +74,6 @@ describe("coordinated startup recovery", () => {
     expect(resetSurfaces).toHaveBeenCalledOnce();
     expect(resetTunnels).toHaveBeenCalledOnce();
     expect(resetChats).toHaveBeenCalledOnce();
-    expect(recoverWorkflows).toHaveBeenCalledOnce();
     await app.close();
   });
 
@@ -102,14 +97,6 @@ describe("coordinated startup recovery", () => {
       database.repository,
       "resetInterruptedChatExecutions",
     );
-    const recoverWorkflows = vi.spyOn(
-      database.repository.workflowRuns,
-      "recoverInterruptedAttempts",
-    );
-    const recoverWorktrees = vi.spyOn(
-      database.repository.workflowRuns,
-      "listRecoverableWorktreeLeases",
-    );
 
     const app = await buildApp({
       config,
@@ -121,8 +108,6 @@ describe("coordinated startup recovery", () => {
     expect(resetSurfaces).not.toHaveBeenCalled();
     expect(resetTunnels).not.toHaveBeenCalled();
     expect(resetChats).not.toHaveBeenCalled();
-    expect(recoverWorkflows).not.toHaveBeenCalled();
-    expect(recoverWorktrees).toHaveBeenCalledOnce();
     await app.close();
     await peer.close();
   });

@@ -11,7 +11,6 @@ import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import { serverLogger } from "../../logger.js";
 import { authenticateWorkerRequest } from "../../workers/credentials.js";
-import type { WorkflowExecutor } from "../../workflows/executor.js";
 
 export interface InternalWorkerHttpControlRouteDependencies {
   codeTunnel: Pick<CodeTunnelBroker, "revokeSharedWorkerSecurity">;
@@ -33,10 +32,6 @@ export interface InternalWorkerHttpControlRouteDependencies {
     workerId: string,
   ) => void;
   serverId: string;
-  workflowExecutor: Pick<
-    WorkflowExecutor,
-    "queueAvailableRuns" | "recoverWorktreeLeases"
-  >;
 }
 
 /** Registers authenticated worker encryption bootstrap and heartbeat routes. */
@@ -50,7 +45,6 @@ export function installInternalWorkerHttpControlRoutes(
     resumePendingWorktreeTransitionsForWorker,
     scheduleWorkerOfflineInvalidation,
     serverId,
-    workflowExecutor,
   }: InternalWorkerHttpControlRouteDependencies,
 ): void {
   app.post(
@@ -216,17 +210,6 @@ export function installInternalWorkerHttpControlRoutes(
         workerAuth.ownerId,
         heartbeat.data.workerId,
       );
-      void workflowExecutor
-        .recoverWorktreeLeases(heartbeat.data.workerId)
-        .catch((error) => {
-          app.log.error(
-            { err: error, workerId: heartbeat.data.workerId },
-            "Could not recover workflow worktree leases",
-          );
-        });
-      void workflowExecutor.queueAvailableRuns().catch((error) => {
-        app.log.error({ err: error }, "Could not dispatch queued workflows");
-      });
       return reply.code(202).send(worker);
     },
   );

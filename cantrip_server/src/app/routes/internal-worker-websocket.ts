@@ -21,7 +21,6 @@ import type { WorkspaceRepositoryDiscoveryJobExecutor } from "../../workspace-re
 import { BufferedWorkerSocket } from "../../workers/buffered-socket.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { authenticateWorkerRequest } from "../../workers/credentials.js";
-import type { WorkflowExecutor } from "../../workflows/executor.js";
 import type { ApplicationOwnerContext } from "../http/owner-context.js";
 import type { RequestLimits } from "../http/request-limits.js";
 import {
@@ -83,10 +82,6 @@ export interface InternalWorkerWebsocketRouteDependencies {
     "workerConnected"
   >;
   synchronizeTerminalServicesForWorker: (workerId: string) => Promise<void>;
-  workflowExecutor: Pick<
-    WorkflowExecutor,
-    "queueAvailableRuns" | "recoverWorktreeLeases"
-  >;
   workspaceRepositoryDiscoveryJobExecutor: Pick<
     WorkspaceRepositoryDiscoveryJobExecutor,
     "workerConnected"
@@ -119,7 +114,6 @@ export function installInternalWorkerWebsocketRoute(
     serverControlPlaneGeneration,
     standaloneChatRootJobExecutor,
     synchronizeTerminalServicesForWorker,
-    workflowExecutor,
     workspaceRepositoryDiscoveryJobExecutor,
   }: InternalWorkerWebsocketRouteDependencies,
 ): void {
@@ -424,15 +418,6 @@ export function installInternalWorkerWebsocketRoute(
           workerAuth.ownerId,
           workerId,
         );
-        void workflowExecutor.recoverWorktreeLeases(workerId).catch((error) => {
-          app.log.error(
-            { err: error, workerId },
-            "Could not recover workflow worktree leases",
-          );
-        });
-        void workflowExecutor.queueAvailableRuns().catch((error) => {
-          app.log.error({ err: error }, "Could not dispatch queued workflows");
-        });
       } finally {
         clearTimeout(authenticationTimeout);
         workerSocket.disposePending();

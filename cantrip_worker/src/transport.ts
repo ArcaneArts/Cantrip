@@ -149,10 +149,7 @@ const HIGH_VOLUME_COMMANDS = new Set<WorkerCommand["type"]>([
 
 function commandLevel(command: WorkerCommand): "debug" | "info" | "trace" {
   if (HIGH_VOLUME_COMMANDS.has(command.type)) return "trace";
-  return command.type === "chat.turn" ||
-    command.type === "workflow.node.execute"
-    ? "info"
-    : "debug";
+  return command.type === "chat.turn" ? "info" : "debug";
 }
 
 function commandCompletionLogContext(
@@ -1166,10 +1163,7 @@ export class WorkerConnection {
         durationMs: Math.round(performance.now() - startedAt),
         error: workerLogError(error),
       };
-      if (
-        request.command.type === "chat.turn" ||
-        request.command.type === "workflow.node.execute"
-      ) {
+      if (request.command.type === "chat.turn") {
         workerLogger.event("error", "Worker command failed", failureContext);
       } else {
         workerLogger.rateLimited(

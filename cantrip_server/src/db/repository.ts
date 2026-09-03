@@ -113,9 +113,6 @@ import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { TaskRepository } from "./tasks.js";
 import { TaskSchedulingRepository } from "./task-scheduling.js";
 import { TaskDispatchRepository } from "./task-dispatch.js";
-import { WorkflowRunRepository } from "./workflow-runs.js";
-import { WorkflowRepository } from "./workflows.js";
-import { WorkflowTriggerRepository } from "./workflow-triggers.js";
 import { ProjectTabLayoutRepository } from "./tab-layouts.js";
 import { WorkspaceRepositoryDiscoveryJobRepository } from "./workspace-repository-discovery-jobs.js";
 import { ProjectExecutionRepositoryFacade } from "./repository-facade-project-execution.js";
@@ -309,9 +306,6 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly standaloneChatRootJobs: StandaloneChatRootJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
-  readonly workflows: WorkflowRepository;
-  readonly workflowRuns: WorkflowRunRepository;
-  readonly workflowTriggers: WorkflowTriggerRepository;
 
   constructor(database: RepositoryDatabase, secretVault: SecretVault) {
     super();
@@ -632,9 +626,6 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       listProjectReplicas: (ownerId, projectId) =>
         this.listProjectReplicas(ownerId, projectId),
     });
-    this.workflows = new WorkflowRepository(database);
-    this.workflowRuns = new WorkflowRunRepository(database);
-    this.workflowTriggers = new WorkflowTriggerRepository(database);
     this.tabLayouts = new ProjectTabLayoutRepository(database);
   }
 

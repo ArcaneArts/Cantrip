@@ -8,10 +8,8 @@ export const DEFAULT_UPLOAD_LIMIT_BYTES = 25 * 1_024 * 1_024;
 export const DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES = 8 * 1_024 * 1_024;
 export const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
 export const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
-export const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 export const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
-export const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
 export const TASK_SCHEDULE_POLL_MS = 1_000;
 export const PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS = 10_000;
 export const PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT = 4_096;

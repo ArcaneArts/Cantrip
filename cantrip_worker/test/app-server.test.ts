@@ -36,7 +36,7 @@ import {
   codexModelProviderName,
   codexNativeSubagentConfigOverride,
   codexThreadPermissionParams,
-  codexWorkflowTurnPolicy,
+  codexAgentOperationTurnPolicy,
   codexWorktreeTurnPolicy,
   codexWorkspaceContext,
   commandTelemetryFromCompletion,
@@ -61,12 +61,11 @@ import {
   parseCodexRpcMessage,
   parseCodexSkills,
   parsePermissionProfileList,
-  parseWorkflowStructuredResult,
+  parseStructuredAgentResult,
   planQuestionId,
   flushStagedAgentMessage,
   stageAgentMessage,
-  workflowMeasuredUsage,
-  workflowDeveloperInstructions,
+  measuredAgentUsage,
   workspaceSnapshotFromPorcelainRecords,
   workspaceHasGitMetadata,
 } from "../src/codex/app-server.js";
@@ -1575,31 +1574,10 @@ describe("Codex permission profile params", () => {
   });
 });
 
-describe("Codex workflow node policy", () => {
-  it("makes direct folder write semantics explicit to the agent", () => {
-    expect(
-      workflowDeveloperInstructions({
-        developerInstructions: "Return the requested JSON.",
-        rootKind: "folder-root",
-      }),
-    ).toContain("Writes modify the shared folder immediately");
-    expect(
-      workflowDeveloperInstructions({
-        developerInstructions: "Return the requested JSON.",
-        rootKind: "folder-root",
-      }),
-    ).toContain("no Git checkpoint will be created");
-    expect(
-      workflowDeveloperInstructions({
-        developerInstructions: "Return the requested JSON.",
-        rootKind: "git-worktree",
-      }),
-    ).toBe("Return the requested JSON.");
-  });
-
+describe("Codex agent operation policy", () => {
   it("maps node mutation and network requirements into scoped sandboxes", () => {
     expect(
-      codexWorkflowTurnPolicy(
+      codexAgentOperationTurnPolicy(
         {
           cwd: "/workspace/project",
           mutationMode: "read-only",
@@ -1612,7 +1590,7 @@ describe("Codex workflow node policy", () => {
       sandboxPolicy: { type: "readOnly", networkAccess: false },
     });
     expect(
-      codexWorkflowTurnPolicy(
+      codexAgentOperationTurnPolicy(
         {
           cwd: "/workspace/project/../project",
           mutationMode: "write",
@@ -1634,7 +1612,7 @@ describe("Codex workflow node policy", () => {
 
   it("fails closed for restricted network without named profiles", () => {
     expect(() =>
-      codexWorkflowTurnPolicy(
+      codexAgentOperationTurnPolicy(
         {
           cwd: "/workspace/project",
           mutationMode: "read-only",
@@ -1645,7 +1623,7 @@ describe("Codex workflow node policy", () => {
       ),
     ).toThrow(/requires a supported Codex permission profile/u);
     expect(
-      codexWorkflowTurnPolicy(
+      codexAgentOperationTurnPolicy(
         {
           cwd: "/workspace/project",
           mutationMode: "read-only",
@@ -1658,15 +1636,15 @@ describe("Codex workflow node policy", () => {
   });
 
   it("parses bounded structured output and reports unavailable cost honestly", () => {
-    expect(parseWorkflowStructuredResult("plain text", {})).toBe("plain text");
+    expect(parseStructuredAgentResult("plain text", {})).toBe("plain text");
     expect(
-      parseWorkflowStructuredResult('{"approved":true}', { type: "object" }),
+      parseStructuredAgentResult('{"approved":true}', { type: "object" }),
     ).toEqual({ approved: true });
     expect(() =>
-      parseWorkflowStructuredResult("not json", { type: "object" }),
+      parseStructuredAgentResult("not json", { type: "object" }),
     ).toThrow();
     expect(
-      workflowMeasuredUsage(
+      measuredAgentUsage(
         {
           totalTokens: 15,
           inputTokens: 10,
@@ -2466,30 +2444,24 @@ describe("Codex runtime compatibility enforcement", () => {
     ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.153\.0/u);
   });
 
-  it("uses the dedicated workflow entry point for unavailable runtimes", async () => {
+  it("uses the dedicated agent operation entry point for unavailable runtimes", async () => {
     const runtime = new CodexAppServer(
       "/definitely/missing/codex",
-      "/private/tmp/cantrip-workflow-runtime-test",
-      "/private/tmp/cantrip-workflow-runtime-test/home",
+      "/private/tmp/cantrip-operation-runtime-test",
+      "/private/tmp/cantrip-operation-runtime-test/home",
       unprobedCodexRuntimeReport,
     );
 
     await expect(
-      runtime.runWorkflowNode({
-        workflowRunId: "run-1",
-        runNodeId: "run-node-1",
-        attemptId: "attempt-1",
-        idempotencyKey: "execute-1",
-        worktreeId: null,
-        cwd: "/private/tmp/cantrip-workflow-runtime-test",
-        threadId: null,
+      runtime.runAgentOperation({
+        operationId: "execute-1",
+        cwd: "/private/tmp/cantrip-operation-runtime-test",
         prompt: "Inspect the project",
         developerInstructions: null,
         skillNames: [],
         outputSchema: {},
         mutationMode: "read-only",
         networkAccess: "none",
-        approvalMode: "interactive",
         permissionProfileId: null,
         timeoutMs: 60_000,
         model: {
@@ -2505,6 +2477,7 @@ describe("Codex runtime compatibility enforcement", () => {
           baseUrl: "https://api.openai.com/v1",
           apiKey: null,
         },
+        mcpServers: [],
       }),
     ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.153\.0/u);
   });
