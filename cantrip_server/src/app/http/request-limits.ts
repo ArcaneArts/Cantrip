@@ -75,7 +75,9 @@ export function createRequestLimits(config: ServerConfig): RequestLimits {
           category = "websocket-handshake";
         }
         if (category === "api" && config.deploymentMode === "local") return;
-        const retryAfter = limiter.consume(key);
+        const limiterKey =
+          category === "api" ? `${key}:${request.method}:${route}` : key;
+        const retryAfter = limiter.consume(limiterKey);
         if (retryAfter === null) {
           if (category === "upload") {
             const release = accountUploads.acquire(key);
@@ -98,10 +100,18 @@ export function createRequestLimits(config: ServerConfig): RequestLimits {
           },
           "Request rate limit reached",
         );
+        const retryUnit = retryAfter === 1 ? "second" : "seconds";
         return reply
           .header("retry-after", String(retryAfter))
           .code(429)
-          .send({ error: "Request rate limit reached. Retry shortly." });
+          .send({
+            code: `${category}-rate-limited`,
+            error:
+              category === "api"
+                ? `Cantrip server request limit reached for this operation. Retry after ${retryAfter} ${retryUnit}.`
+                : `Request rate limit reached. Retry after ${retryAfter} ${retryUnit}.`,
+            retryAfterSeconds: retryAfter,
+          });
       });
 
       app.addHook("onResponse", async (request) => {

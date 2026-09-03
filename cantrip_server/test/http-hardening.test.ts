@@ -329,6 +329,27 @@ describe("public HTTP hardening", () => {
       });
       expect(apiLimited.statusCode).toBe(429);
       expect(apiLimited.headers["retry-after"]).toBeDefined();
+      expect(apiLimited.json()).toMatchObject({
+        code: "api-rate-limited",
+        error: expect.stringMatching(
+          /Cantrip server request limit reached.*Retry after \d+ seconds?\./u,
+        ),
+        retryAfterSeconds: expect.any(Number),
+      });
+
+      const repositoryOperation = {
+        method: "POST" as const,
+        url: "/api/projects/project/worktrees/worktree/repository-operation",
+        payload: {},
+      };
+      expect((await app.inject(repositoryOperation)).statusCode).toBe(400);
+      expect((await app.inject(repositoryOperation)).statusCode).toBe(400);
+      const repositoryOperationLimited = await app.inject(repositoryOperation);
+      expect(repositoryOperationLimited.statusCode).toBe(429);
+      expect(repositoryOperationLimited.json()).toMatchObject({
+        code: "api-rate-limited",
+        retryAfterSeconds: expect.any(Number),
+      });
 
       const invalidPairing = {
         method: "POST" as const,
