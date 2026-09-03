@@ -13,6 +13,7 @@ import type { ProjectWorkspaceResources } from "@/components/app/project-workspa
 import { useAppLiveScope } from "@/lib/app-live-react";
 import {
   buildProjectSurfaceIndex,
+  omitProjectSurfaceTabs,
   projectSurfaceIsFile,
   projectSurfaceTabId,
 } from "@/lib/project-surface";
@@ -169,10 +170,14 @@ export function useActiveProjectWorkspace({
   return { activeProjectWorkspace, visibleProjects } as const;
 }
 
+const noOmittedTabKeys: ReadonlySet<string> = new Set();
+
 export function useProjectSurfaceSelection({
+  omittedTabKeys = noOmittedTabKeys,
   resources,
   selectedTabKey,
 }: {
+  omittedTabKeys?: ReadonlySet<string>;
   resources: Pick<
     ProjectWorkspaceResources,
     | "browsers"
@@ -200,26 +205,26 @@ export function useProjectSurfaceSelection({
       resources.worktrees.data,
     ],
   );
-  const projectSurfaceIndex = useMemo(
-    () =>
-      buildProjectSurfaceIndex(resources.tabLayout.data, {
-        browsers: resources.browsers.data ?? [],
-        chats: resources.chats.data ?? [],
-        codeTabs: resources.codeTabs.data ?? [],
-        explorers: resources.explorers.data ?? [],
-        projectViews: resources.projectViews.data ?? [],
-        terminals: displayTerminals,
-      }),
-    [
-      resources.browsers.data,
-      resources.chats.data,
-      resources.codeTabs.data,
-      resources.explorers.data,
-      resources.projectViews.data,
-      resources.tabLayout.data,
-      displayTerminals,
-    ],
-  );
+  const projectSurfaceIndex = useMemo(() => {
+    const index = buildProjectSurfaceIndex(resources.tabLayout.data, {
+      browsers: resources.browsers.data ?? [],
+      chats: resources.chats.data ?? [],
+      codeTabs: resources.codeTabs.data ?? [],
+      explorers: resources.explorers.data ?? [],
+      projectViews: resources.projectViews.data ?? [],
+      terminals: displayTerminals,
+    });
+    return omitProjectSurfaceTabs(index, omittedTabKeys);
+  }, [
+    omittedTabKeys,
+    resources.browsers.data,
+    resources.chats.data,
+    resources.codeTabs.data,
+    resources.explorers.data,
+    resources.projectViews.data,
+    resources.tabLayout.data,
+    displayTerminals,
+  ]);
   return {
     displayTerminals,
     projectSurfaceIndex,

@@ -52,6 +52,31 @@ export function restoreOptimisticTabLayoutCache(
   queryClient.setQueryData(snapshot.queryKey, snapshot.previous);
 }
 
+export function removeProjectTabFromLayout(
+  layout: ProjectTabLayoutSummary,
+  tabKey: string,
+): ProjectTabLayoutSummary {
+  let removed = false;
+  const groups = layout.groups.flatMap((group) => {
+    const members = group.members.filter((member) => member.tabKey !== tabKey);
+    if (members.length === group.members.length) return [group];
+    removed = true;
+    if (members.length === 0) return [];
+    return [
+      {
+        ...group,
+        ...(members.length === 1 ? { title: members[0]!.title } : {}),
+        anchorTabKey:
+          group.anchorTabKey === tabKey
+            ? members[0]!.tabKey
+            : group.anchorTabKey,
+        members,
+      },
+    ];
+  });
+  return removed ? { ...layout, groups: positionedGroups(groups) } : layout;
+}
+
 export function applyOptimisticTabLayoutCommand(
   layout: ProjectTabLayoutSummary,
   command: TabLayoutCommand,

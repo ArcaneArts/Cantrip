@@ -6,14 +6,20 @@ import type {
   ProjectViewSummary,
   TerminalSummary,
 } from "@cantrip/protocol";
-import { useMutation, type QueryClient } from "@tanstack/react-query";
-import type { Dispatch, SetStateAction } from "react";
+import {
+  useMutation,
+  type QueryClient,
+  type UseMutationResult,
+} from "@tanstack/react-query";
+import { useRef, type Dispatch, type SetStateAction } from "react";
 
 import type { PendingTerminalInput } from "@/components/app/surface-creation-operations";
-import {
-  confirmExplorerDiscard,
-  deleteExplorerAfterPreparation,
-} from "@/components/explorer/explorer-lifecycle";
+import type {
+  ProjectSurfaceCloseCoordinator,
+  ProjectSurfaceCloseInput,
+  StoredProjectSurfaceKind,
+} from "@/components/app/project-surface-close";
+import { confirmExplorerDiscard } from "@/components/explorer/explorer-lifecycle";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
 import {
   acknowledgeChatCompletion,
@@ -32,6 +38,81 @@ import {
   updateCodeTab,
 } from "@/lib/api";
 import { operateRunConfigurationRuntime } from "@/lib/run-configuration-api";
+
+function withImmediateClose<TData, TError, TVariables, TContext>(
+  mutation: UseMutationResult<TData, TError, TVariables, TContext>,
+  begin: (variables: TVariables) => void,
+): UseMutationResult<TData, TError, TVariables, TContext> {
+  return {
+    ...mutation,
+    mutate: (variables, options) => {
+      begin(variables);
+      mutation.mutate(variables, options);
+    },
+    mutateAsync: (variables, options) => {
+      begin(variables);
+      return mutation.mutateAsync(variables, options);
+    },
+  };
+}
+
+function useImmediateProjectSurfaceDelete<TData, TVariables>({
+  getProjectId,
+  getTabId,
+  kind,
+  mutationFn,
+  onBegin,
+  onError,
+  onSuccess,
+  selectedProjectId,
+  surfaceClose,
+}: {
+  getProjectId?: (variables: TVariables) => string | null;
+  getTabId: (variables: TVariables) => string;
+  kind: StoredProjectSurfaceKind;
+  mutationFn: (variables: TVariables) => Promise<TData>;
+  onBegin?: (variables: TVariables) => void;
+  onError?: (error: Error, variables: TVariables) => void;
+  onSuccess?: (
+    data: TData,
+    variables: TVariables,
+    projectId: string | null,
+  ) => Promise<void> | void;
+  selectedProjectId: string | null;
+  surfaceClose: ProjectSurfaceCloseCoordinator;
+}): UseMutationResult<TData, Error, TVariables> {
+  const pending = useRef(new Map<string, ProjectSurfaceCloseInput>());
+  const mutation = useMutation<TData, Error, TVariables>({
+    mutationFn,
+    onError: (error, variables) => {
+      const tabId = getTabId(variables);
+      const input = pending.current.get(tabId);
+      pending.current.delete(tabId);
+      if (input) surfaceClose.rollback(input);
+      onError?.(error, variables);
+    },
+    onSuccess: async (data, variables) => {
+      const tabId = getTabId(variables);
+      const input = pending.current.get(tabId);
+      pending.current.delete(tabId);
+      if (input) surfaceClose.commit(input);
+      await onSuccess?.(data, variables, input?.projectId ?? selectedProjectId);
+    },
+  });
+  return withImmediateClose(mutation, (variables) => {
+    onBegin?.(variables);
+    const projectId = getProjectId?.(variables) ?? selectedProjectId;
+    if (!projectId) return;
+    const tabId = getTabId(variables);
+    const input = {
+      kind,
+      projectId,
+      tabId,
+    } satisfies ProjectSurfaceCloseInput;
+    pending.current.set(tabId, input);
+    surfaceClose.begin(input);
+  });
+}
 
 export function useChatRenameAndForkOperations({
   openCreatedTab,
@@ -98,16 +179,20 @@ export function useChatDeleteOperation({
   setChatConsoleOpen,
   setProjectTaskChatIds,
   setTaskChatViewIds,
+  surfaceClose,
 }: {
   queryClient: QueryClient;
   selectedProjectId: string | null;
   setChatConsoleOpen: (chatId: string, open: boolean) => void;
   setProjectTaskChatIds: Dispatch<SetStateAction<ReadonlyMap<string, string>>>;
   setTaskChatViewIds: Dispatch<SetStateAction<ReadonlySet<string>>>;
+  surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
-  return useMutation({
+  return useImmediateProjectSurfaceDelete({
+    getTabId: (tabId: string) => tabId,
+    kind: "chat",
     mutationFn: deleteChat,
-    onSuccess: async (_value, deletedId) => {
+    onSuccess: async (_value, deletedId, projectId) => {
       setChatConsoleOpen(deletedId, false);
       setTaskChatViewIds((current) => {
         if (!current.has(deletedId)) return current;
@@ -122,16 +207,16 @@ export function useChatDeleteOperation({
         if (next.size === current.size) return current;
         return next;
       });
+      await queryClient.invalidateQueries({ queryKey: ["chats", projectId] });
       await queryClient.invalidateQueries({
-        queryKey: ["chats", selectedProjectId],
+        queryKey: ["project-tab-layout", projectId],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["archived-chats", selectedProjectId],
+        queryKey: ["archived-chats", projectId],
       });
     },
+    selectedProjectId,
+    surfaceClose,
   });
 }
 
@@ -140,12 +225,14 @@ export function useTerminalSurfaceOperations({
   selectedProjectId,
   setPendingTerminalInputs,
   setTerminalServiceTerminalId,
+  surfaceClose,
   terminalServiceTerminalId,
 }: {
   queryClient: QueryClient;
   selectedProjectId: string | null;
   setPendingTerminalInputs: Dispatch<SetStateAction<PendingTerminalInput[]>>;
   setTerminalServiceTerminalId: (terminalId: string | null) => void;
+  surfaceClose: ProjectSurfaceCloseCoordinator;
   terminalServiceTerminalId: string | null;
 }) {
   const renameTerminalMutation = useMutation({
@@ -165,9 +252,11 @@ export function useTerminalSurfaceOperations({
           ),
       ),
   });
-  const deleteTerminalMutation = useMutation({
+  const deleteTerminalMutation = useImmediateProjectSurfaceDelete({
+    getTabId: (tabId: string) => tabId,
+    kind: "terminal",
     mutationFn: deleteTerminal,
-    onSuccess: async (_value, deletedId) => {
+    onSuccess: async (_value, deletedId, projectId) => {
       if (terminalServiceTerminalId === deletedId) {
         setTerminalServiceTerminalId(null);
       }
@@ -175,14 +264,19 @@ export function useTerminalSurfaceOperations({
         current.filter(({ terminalId }) => terminalId !== deletedId),
       );
       await queryClient.invalidateQueries({
-        queryKey: ["terminals", selectedProjectId],
+        queryKey: ["terminals", projectId],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
+        queryKey: ["project-tab-layout", projectId],
       });
     },
+    selectedProjectId,
+    surfaceClose,
   });
-  const stopAndDeleteRunTerminalMutation = useMutation({
+  const stopAndDeleteRunTerminalMutation = useImmediateProjectSurfaceDelete({
+    getProjectId: (terminal: TerminalSummary) => terminal.projectId,
+    getTabId: (terminal: TerminalSummary) => terminal.id,
+    kind: "terminal",
     mutationFn: async (terminal: TerminalSummary) => {
       if (
         terminal.kind !== "run-configuration" ||
@@ -211,6 +305,8 @@ export function useTerminalSurfaceOperations({
         }),
       ]);
     },
+    selectedProjectId,
+    surfaceClose,
   });
   return {
     deleteTerminalMutation,
@@ -223,11 +319,22 @@ export function useExplorerSurfaceOperations({
   explorerLifecycleRef,
   queryClient,
   selectedProjectId,
+  surfaceClose,
 }: {
   explorerLifecycleRef: { current: Map<string, ExplorerLifecycleActions> };
   queryClient: QueryClient;
   selectedProjectId: string | null;
+  surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
+  const preparedCloseActions = useRef(
+    new Map<
+      string,
+      {
+        actions: ExplorerLifecycleActions | undefined;
+        preparation: Promise<void>;
+      }
+    >(),
+  );
   const renameExplorerMutation = useMutation({
     mutationFn: ({
       explorerId,
@@ -245,21 +352,37 @@ export function useExplorerSurfaceOperations({
           ),
       ),
   });
-  const deleteExplorerMutation = useMutation({
-    mutationFn: (explorerId: string) =>
-      deleteExplorerAfterPreparation(
-        explorerLifecycleRef.current.get(explorerId),
-        () => deleteExplorer(explorerId),
-      ),
-    onSuccess: async (_value, deletedId) => {
-      explorerLifecycleRef.current.delete(deletedId);
-      await queryClient.invalidateQueries({
-        queryKey: ["explorers", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
+  const deleteExplorerMutation = useImmediateProjectSurfaceDelete({
+    getTabId: (explorerId: string) => explorerId,
+    kind: "explorer",
+    mutationFn: async (explorerId: string) => {
+      const prepared = preparedCloseActions.current.get(explorerId);
+      await prepared?.preparation;
+      return deleteExplorer(explorerId);
+    },
+    onBegin: (explorerId) => {
+      const actions = explorerLifecycleRef.current.get(explorerId);
+      preparedCloseActions.current.set(explorerId, {
+        actions,
+        preparation: actions?.prepareClose() ?? Promise.resolve(),
       });
     },
+    onError: (_error, deletedId) => {
+      preparedCloseActions.current.get(deletedId)?.actions?.cancelClose();
+      preparedCloseActions.current.delete(deletedId);
+    },
+    onSuccess: async (_value, deletedId, projectId) => {
+      preparedCloseActions.current.delete(deletedId);
+      explorerLifecycleRef.current.delete(deletedId);
+      await queryClient.invalidateQueries({
+        queryKey: ["explorers", projectId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", projectId],
+      });
+    },
+    selectedProjectId,
+    surfaceClose,
   });
   const requestDeleteExplorer = (explorerId: string) => {
     const lifecycle = explorerLifecycleRef.current.get(explorerId);
@@ -284,9 +407,11 @@ export function useExplorerSurfaceOperations({
 export function useBrowserSurfaceOperations({
   queryClient,
   selectedProjectId,
+  surfaceClose,
 }: {
   queryClient: QueryClient;
   selectedProjectId: string | null;
+  surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
   const updateBrowserMutation = useMutation({
     mutationFn: ({
@@ -305,16 +430,20 @@ export function useBrowserSurfaceOperations({
           ),
       ),
   });
-  const deleteBrowserMutation = useMutation({
+  const deleteBrowserMutation = useImmediateProjectSurfaceDelete({
+    getTabId: (browserId: string) => browserId,
+    kind: "browser",
     mutationFn: deleteBrowser,
-    onSuccess: async () => {
+    onSuccess: async (_value, _deletedId, projectId) => {
       await queryClient.invalidateQueries({
-        queryKey: ["browsers", selectedProjectId],
+        queryKey: ["browsers", projectId],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
+        queryKey: ["project-tab-layout", projectId],
       });
     },
+    selectedProjectId,
+    surfaceClose,
   });
   return { deleteBrowserMutation, updateBrowserMutation } as const;
 }
@@ -322,9 +451,11 @@ export function useBrowserSurfaceOperations({
 export function useCodeSurfaceOperations({
   queryClient,
   selectedProjectId,
+  surfaceClose,
 }: {
   queryClient: QueryClient;
   selectedProjectId: string | null;
+  surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
   const updateCodeTabMutation = useMutation({
     mutationFn: ({ codeTabId, title }: { codeTabId: string; title: string }) =>
@@ -338,16 +469,20 @@ export function useCodeSurfaceOperations({
           ),
       ),
   });
-  const deleteCodeTabMutation = useMutation({
+  const deleteCodeTabMutation = useImmediateProjectSurfaceDelete({
+    getTabId: (codeTabId: string) => codeTabId,
+    kind: "code",
     mutationFn: deleteCodeTab,
-    onSuccess: async () => {
+    onSuccess: async (_value, _deletedId, projectId) => {
       await queryClient.invalidateQueries({
-        queryKey: ["code-tabs", selectedProjectId],
+        queryKey: ["code-tabs", projectId],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
+        queryKey: ["project-tab-layout", projectId],
       });
     },
+    selectedProjectId,
+    surfaceClose,
   });
   return { deleteCodeTabMutation, updateCodeTabMutation } as const;
 }
@@ -355,9 +490,11 @@ export function useCodeSurfaceOperations({
 export function useProjectViewSurfaceOperations({
   queryClient,
   selectedProjectId,
+  surfaceClose,
 }: {
   queryClient: QueryClient;
   selectedProjectId: string | null;
+  surfaceClose: ProjectSurfaceCloseCoordinator;
 }) {
   const renameProjectViewMutation = useMutation({
     mutationFn: ({ viewId, title }: { viewId: string; title: string }) =>
@@ -369,16 +506,20 @@ export function useProjectViewSurfaceOperations({
           current.map((view) => (view.id === renamed.id ? renamed : view)),
       ),
   });
-  const deleteProjectViewMutation = useMutation({
+  const deleteProjectViewMutation = useImmediateProjectSurfaceDelete({
+    getTabId: (viewId: string) => viewId,
+    kind: "view",
     mutationFn: deleteProjectView,
-    onSuccess: async () => {
+    onSuccess: async (_value, _deletedId, projectId) => {
       await queryClient.invalidateQueries({
-        queryKey: ["project-views", selectedProjectId],
+        queryKey: ["project-views", projectId],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
+        queryKey: ["project-tab-layout", projectId],
       });
     },
+    selectedProjectId,
+    surfaceClose,
   });
   return { deleteProjectViewMutation, renameProjectViewMutation } as const;
 }

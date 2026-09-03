@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildProjectSurfaceIndex,
+  omitProjectSurfaceTabs,
   projectSurfaceTabId,
   projectSurfaceTabKey,
 } from "./project-surface";
@@ -102,6 +103,13 @@ describe("project surfaces", () => {
       entity: { id: "issues-1" },
     });
     expect(index.unresolvedTabKeys).toEqual([]);
+
+    const closing = omitProjectSurfaceTabs(index, new Set(["chat:chat-1"]));
+    expect(
+      closing.byGroupId.get("group-1")?.map(({ tabKey }) => tabKey),
+    ).toEqual(["view:issues-1"]);
+    expect(closing.byTabKey.has("chat:chat-1")).toBe(false);
+    expect(index.byTabKey.has("chat:chat-1")).toBe(true);
   });
 
   it("does not promote linked consoles into standalone project surfaces", () => {
