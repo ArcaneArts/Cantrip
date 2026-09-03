@@ -285,10 +285,11 @@ ChatSurfaceCapabilities
   scratchFiles: boolean
 ```
 
-`global-content-host.tsx` composes the same transcript, composer, queue,
-attachments, interactions, and context meter for standalone, project, and Task
-contexts with different capability profiles. Capabilities are presentation aids
-only; server and worker contracts independently reject forbidden standalone
+`cantrip_app/src/components/app/global-content-host.tsx` composes the same
+transcript, composer, queue, attachments, interactions, and context meter for
+standalone, project, and Task contexts with different capability profiles.
+Capabilities are presentation aids only; server and worker contracts
+independently reject forbidden standalone
 operations.
 
 ## Chat files surface

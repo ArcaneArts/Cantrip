@@ -458,16 +458,16 @@ development stacks and artifacts in more detail.
 
 ### Package
 
-| Command                        | Artifact                                                                     |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| `pnpm package:server`          | Standalone server tree for the current platform.                             |
-| `pnpm package:worker`          | Standalone worker tree with Codex and Cantrip Code for the current platform. |
-| `pnpm package:services`        | Both standalone service trees.                                               |
-| `pnpm package:desktop-runtime` | Local server and worker runtime staged for Tauri.                            |
-| `pnpm package:app`             | Native Tauri installer or application bundle.                                |
-| `pnpm bundle`                  | Current-platform server, worker, and embedded desktop release artifacts.     |
-| `pnpm package:all`             | Alias for `pnpm bundle`.                                                     |
-| `pnpm release`                 | Fast-forward `release` to synchronized `main` and start release automation.  |
+| Command                        | Artifact                                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `pnpm package:server`          | Standalone server tree for the current platform.                                                 |
+| `pnpm package:worker`          | Standalone worker tree with Codex and Cantrip Code for the current platform.                     |
+| `pnpm package:services`        | Both standalone service trees.                                                                   |
+| `pnpm package:desktop-runtime` | Local server and worker runtime staged for Tauri.                                                |
+| `pnpm package:app`             | Native Tauri installer or application bundle.                                                    |
+| `pnpm bundle`                  | Current-platform server, worker, and embedded desktop release artifacts.                         |
+| `pnpm package:all`             | Alias for `pnpm bundle`.                                                                         |
+| `pnpm release`                 | Promote `release`, trigger native/App Platform releases, and deploy the production Linux Server. |
 
 ## Browser development with `pnpm dev`
 
@@ -483,12 +483,12 @@ This starts the shared protocol watcher, Cantrip server, local worker, and Vite 
 Vite hot module replacement updates the app as frontend files change. The Node server and worker also restart automatically when their source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
 
 Local database files, worker-owned repository clones, and managed project
-folders are stored under `.cantrip/dev/` and are ignored by Git.
+folders are stored under `.cantrip/browser-dev/` and are ignored by Git.
 
 Direct repository placements and the external side of managed links can live
-outside `.cantrip/dev/`. They are not included merely by backing up the worker
-data directory; preserve those paths separately when they contain dirty or
-unpushed work. See
+outside `.cantrip/browser-dev/`. They are not included merely by backing up the
+worker data directory; preserve those paths separately when they contain dirty
+or unpushed work. See
 [project repository placement](docs/PROJECT_REPOSITORY_PLACEMENT.md#backup-and-recovery).
 
 To test multiple accounts without replacing the anonymous local server, run
@@ -506,7 +506,8 @@ signaling establish a resource-scoped WorkerLink; frames and input then use the
 best available LOCAL, LAN, WAN, or RELAY carrier. The app never receives
 Chromium's debugging URL.
 Persistent browser profiles live under the worker data directory at
-`.cantrip/dev/worker/browser/profiles/` by default and are ignored by Git.
+`.cantrip/browser-dev/worker/browser/profiles/` by default and are ignored by
+Git.
 The same canvas renderer is used by Vite, Tauri, Capacitor-compatible clients,
 and desktop pop-out windows. Browser processes automatically restart against
 the same profile and last known URL after an ordinary Chromium crash. Copying a
@@ -649,7 +650,12 @@ exposes hosted-server process logs through an HTTP endpoint. See
 [docs/SERVICE_LOGS.md](docs/SERVICE_LOGS.md) for the correlation and smoke-test
 runbook.
 
-Do not run the complete `pnpm dev` and `pnpm devtop` stacks simultaneously with the default configuration because they still share the Cantrip server and worker. A separately running browser Vite process on port 5173 no longer prevents `devtop` from starting. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all processes it started.
+Do not run the complete `pnpm dev` and `pnpm devtop` stacks simultaneously with
+default configuration because both try to bind the same server and worker
+ports, even though their durable state lives in separate lanes. A separately
+running browser Vite process on port 5173 no longer prevents `devtop` from
+starting. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all
+processes it started.
 
 ## Build
 
@@ -690,9 +696,10 @@ Settings → Workers provides the supported onboarding and management surface. T
 Run `pnpm release` from a clean `main` branch to pull `origin/main` and
 fast-forward `origin/release`. That branch update starts the native release
 workflow, which builds separate Server, Worker, and Desktop artifacts for
-macOS ARM64 and Windows x64, an unsigned Android release APK, and an iOS archive
-in parallel. The iOS lane uploads its signed archive to TestFlight, while the
-APK is attached to the same versioned GitHub release as the desktop and service
+macOS ARM64 and Windows x64, a signed Android App Bundle and APK, and an iOS
+archive in parallel. The iOS lane uploads its signed archive to TestFlight,
+while `Cantrip_<version>_android.aab` and `Cantrip_<version>_android.apk` are
+attached to the same versioned GitHub release as the desktop and service
 artifacts. The macOS application and DMG are Developer ID signed, notarized,
 and stapled. Both desktop targets publish separately signed Tauri updater
 payloads; the release remains a draft until every platform artifact, signature,
@@ -700,7 +707,10 @@ the TestFlight upload, and the static `latest.json` manifest have completed.
 Release packaging runs only when that branch advances, uses
 content-addressed caches for the pinned Codex and Cantrip Code runtimes, and
 tags releases with the repository's `major.minor.commit-count` version. The
-command never force-pushes a divergent release branch. See
+command never force-pushes a divergent release branch. The same invocation
+validates and reapplies the DigitalOcean App Platform specification without
+waiting for activation, then cross-builds and deploys the same commit's Linux
+x64 Server to the production host. See
 [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the artifact flow, environment
 contract, desktop lifecycle, and current security boundary.
 
@@ -834,10 +844,11 @@ pnpm --filter @cantrip/app cap:open:android
 ```
 
 Advancing the `release` branch also runs dedicated mobile CI lanes. Android
-produces an intentionally unsigned `Cantrip_<version>_android_unsigned.apk` and
-adds it to the GitHub release. iOS archives `art.cantrip` with Apple
-Distribution signing and uploads it to App Store Connect for TestFlight
-processing. The GitHub release is not published if either mobile lane fails.
+produces signed `Cantrip_<version>_android.aab` and
+`Cantrip_<version>_android.apk` artifacts and adds both to the GitHub release.
+iOS archives `art.cantrip` with Apple Distribution signing and uploads it to
+App Store Connect for TestFlight processing. The GitHub release is not
+published if either mobile lane fails.
 See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#mobile-release-lanes) for the
 required iOS Actions secrets.
 

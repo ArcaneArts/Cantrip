@@ -70,9 +70,12 @@ The host layout is:
 - `cantrip-server.service`: long-running systemd service; and
 - `cantrip-migrate@<commit>.service`: one-shot migration unit.
 
-The installer bootstraps Ubuntu's Caddy package and the `cantrip` system user,
-opens HTTP/HTTPS in UFW, validates the Caddy configuration, and enables both
-services at boot. The application listener remains bound to loopback on port 4310. The DigitalOcean cloud firewall remains the outer network boundary.
+The installer bootstraps Ubuntu's Caddy package and the `cantrip` system user.
+If UFW is already installed, it allows OpenSSH, `80/tcp`, `443/tcp`, and
+`443/udp`; it does not install or enable UFW. It validates Caddy and enables
+Caddy and Cantrip at boot. The application listener remains bound to loopback
+on port 4310. The DigitalOcean cloud firewall remains the outer network
+boundary.
 If the newly restarted Server fails local readiness, the installer restores the
 previous application symlink and process. Database migrations are forward-only,
 so a database backup is still required before releases that alter schema.
@@ -273,9 +276,11 @@ compatibility surfaces.
 
 ## Persistence, permissions, and operations
 
-The images run as UID/GID `10001` and use read-only root filesystems. Named
-volumes are initialized with correct ownership. For bind mounts, create the
-directories first and assign them to `10001:10001`. Never mount the Docker
+The Cantrip Server and Worker images run as UID/GID `10001`, and Compose gives
+those two services read-only root filesystems. PostgreSQL, Redis, and Caddy use
+their upstream image users and filesystem settings. Named Cantrip volumes are
+initialized with correct ownership. For server or worker bind mounts, create
+the directories first and assign them to `10001:10001`. Never mount the Docker
 socket into a worker.
 
 An exact repository path is resolved inside the worker container or service

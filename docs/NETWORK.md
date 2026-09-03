@@ -725,7 +725,7 @@ In a replicated deployment:
 ```mermaid
 flowchart LR
     CLIENT["Client"] --> SERVER_A["Server instance A"]
-    SERVER_A <-->|"coordination bus"| SERVER_B["Server instance B"]
+    SERVER_A <-->|"relay coordinator"| SERVER_B["Server instance B"]
     SERVER_B --> WORKER["Worker"]
     CLIENT -.->|"authorized LOCAL / LAN / WAN data"| WORKER
 ```
@@ -734,9 +734,10 @@ The client and worker may be attached to different server instances. The
 existing server coordination abstraction locates the worker and carries
 signaling, grant installation, revocation, and relay frames when required.
 
-WorkerLink depends on a `CoordinationBus` interface rather than directly on
-Redis or direct server-to-server sockets. Changing the coordination backend
-must not change feature or peer protocols.
+WorkerLink depends on the `RelayCoordinator` interface rather than directly on
+Redis or direct server-to-server sockets. The current implementations are
+`InMemoryRelayCoordinator` and `RedisRelayCoordinator`; changing between them
+does not change feature or peer protocols.
 
 Peer candidates, signaling messages, and active route ownership are transient
 coordination state. Projects, conversations, grants that require auditability,

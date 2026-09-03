@@ -206,13 +206,14 @@ flowchart LR
 
 The app continues to talk only to the server. The server owns the logical
 project, setup job, workspace membership, conversations, tabs, policies, and
-routing metadata. The worker alone chooses,
-creates, canonicalizes, reads, executes in, shares, and deletes the physical
-folder.
-
-No API accepts a client-provided absolute path. The worker command receives the
-project UUID and display name, while the worker derives the target from its own
-configured data directory.
+routing metadata. For a new managed folder, the worker chooses and creates the
+physical path beneath its configured data directory. For an existing folder,
+the app accepts the worker-local absolute path only long enough to send it
+through the endpoint-encrypted `repository.metadata.register` operation. The
+worker validates and canonicalizes that path and returns an opaque `ctrr_...`
+routing handle; the project mutation and server persistence use only that
+handle. The worker alone dereferences, reads, executes in, shares, and deletes
+physical folders.
 
 ## Domain and protocol model
 
@@ -541,10 +542,13 @@ summary so origin kind and capabilities cannot remain stale after setup.
 
 ## Security invariants
 
-- Apps never supply or dereference worker filesystem paths.
+- Apps may collect an existing worker-local path and send it only inside the
+  endpoint-encrypted registration operation; they never dereference it or send
+  it to an ordinary project API.
 - The server authorizes project, workspace, worker, and source ownership before
   dispatching a command.
-- The worker derives folder paths from its private data root and project UUID.
+- The worker derives new managed-folder paths from its private data root and
+  project UUID; attached paths are validated and canonicalized by that worker.
 - Folder creation and deletion never follow symlinks.
 - No command can create or delete the managed folders root itself.
 - A folder source is bound to exactly one project and one worker.

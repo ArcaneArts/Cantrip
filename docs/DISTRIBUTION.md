@@ -576,5 +576,8 @@ Profiles are stored locally by the client because the active server must be
 known before server-owned settings can load. The browser keeps redundant
 local-storage and IndexedDB copies, requests persistent site storage after an
 explicit profile change, and reconciles newer changes made by another tab.
-Profiles contain only names and origins. Per-server account credentials and
-multi-account behavior are a separate follow-up milestone.
+Remote profiles contain a name, origin, and nullable last/pinned account ID.
+They never persist a password, cookie, session token, bootstrap token, or CSRF
+token. One profile is bound to one active account identity; a conflicting
+identity fails closed and returns the client to sign-in unless the binding is
+explicitly replaced.

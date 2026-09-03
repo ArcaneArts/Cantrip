@@ -140,12 +140,12 @@ Browser clients remain memory-only.
 ### Package boundary
 
 Daily archive behavior belongs in the existing `@cantrip/logging` package.
-Cantrip will not introduce a generic `cantrip_core` package for this work. The
+Cantrip does not introduce a generic `cantrip_core` package for this work. The
 repository already uses focused shared packages, and logging policy should
 remain independently testable without becoming a dependency for unrelated
 features.
 
-The package will expose environment-specific entrypoints:
+The package exposes environment-specific entrypoints:
 
 ```text
 @cantrip/logging/core       Environment-neutral logger and noise controls
@@ -155,7 +155,7 @@ The package will expose environment-specific entrypoints:
 ```
 
 `@cantrip/logging/archive` must not depend on Node, React, Tauri, or Capacitor.
-It will coordinate an injected clock and storage adapter and expose lifecycle
+It coordinates an injected clock and storage adapter and exposes lifecycle
 operations equivalent to `initialize`, `append`, `maintain`, `flush`, and
 `close`. Platform adapters own filesystem access, compression, atomic rename,
 and deletion.

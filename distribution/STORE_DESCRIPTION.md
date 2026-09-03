@@ -48,7 +48,8 @@ CONTROL YOUR OWN DEPLOYMENT
 - Self-host the Cantrip server and enroll the machines that own your code
 - Sign in on mobile with a short-lived QR handoff or your server credentials
 - Keep source files and running development processes on your workers
-- Route client traffic through your authenticated Cantrip server
+- Authorize client-worker traffic through your Cantrip server, then use the
+  available WorkerLink route
 
 Cantrip is open source and under active development.
 

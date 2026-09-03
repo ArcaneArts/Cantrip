@@ -14,11 +14,14 @@ cannot unwrap. A PostgreSQL dump, server-side envelope keyring, or copied row is
 not sufficient to recover a static API key, OAuth access token, refresh token,
 or ID token. The authorized app and workers are the only decryption endpoints.
 
-The user has one password. Login derives the independent authentication value
-used by the server and a password key-encryption key used by the app to unwrap
-the random account master key. The encryption key is not derived from the
-server's password verifier. There is no recovery secret, local encryption
-password, or second password for the user to retain.
+Password and account modes use one user password. Login derives the independent
+authentication value used by the server and a password key-encryption key used
+by the app to unwrap the random account master key. The encryption key is not
+derived from the server's password verifier, and there is no second encryption
+password. Anonymous mode instead creates a random account master key with
+device-local custody and no user password wrapper. Except for the stable
+development file vault, clients require the user to save and acknowledge an
+anonymous recovery artifact before protected data becomes usable.
 
 Workers have app-managed public/private encryption identities. The unlocked app
 wraps scoped component keys to approved worker public keys. The server stores

@@ -169,7 +169,9 @@ below, and workspace display names are the first product payload using them.
 The server registry is implemented by
 [migration 0100](../cantrip_server/drizzle/0100_giant_medusa.sql),
 [encryption-registry.ts](../cantrip_server/src/db/encryption-registry.ts), and
-the authenticated routes in [app.ts](../cantrip_server/src/app.ts). It stores:
+the authenticated routes in
+[account-security.ts](../cantrip_server/src/app/routes/account-security.ts). It
+stores:
 
 - one versioned encryption profile per owner, including the active Account
   Master Key revision, independent password KDF record, password-wrapped

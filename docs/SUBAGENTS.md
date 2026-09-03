@@ -271,10 +271,16 @@ The main transcript, subagent panel, and trajectory consume this shared projecti
 - `cantrip_worker/src/codex/app-server.ts`: launch arguments, active-turn ownership, notification routing, child recovery, interaction routing, and activity normalization.
 - `cantrip_worker/src/codex/customization.ts`: advertised native-subagent capability.
 - `cantrip_worker/src/chat-message-encryption.ts`: protected child messages, activities, and idempotency.
-- `packages/protocol/src/index.ts`: model configuration, chat/default state, worker commands, public event envelopes, and activity schemas.
+- `packages/protocol/src/model-configuration.ts`, `settings.ts`, `chats.ts`,
+  `agent-activity.ts`, `worker-commands.ts`, `worker-events.ts`, and `live.ts`:
+  model configuration, chat/default state, worker commands, public event
+  envelopes, and activity schemas.
 - `packages/protocol/src/communication-content.ts`: protected content and agent-scope classification.
 - `cantrip_server/src/db/schema.ts`: chat and user-settings migration; existing encrypted chat-message storage.
-- `cantrip_server/src/db/repository.ts`: new-chat default copying, atomic configuration updates, queued-turn snapshots, and removal of chat-to-profile reasoning side effects.
+- `cantrip_server/src/db/repository/chat-catalog.ts`, `chat-configuration.ts`,
+  and `queued-prompts.ts`: new-chat default copying, atomic configuration
+  updates, queued-turn snapshots, and removal of chat-to-profile reasoning side
+  effects.
 - `cantrip_server/src/app/routes/chat-runtime-configuration.ts`: atomic model
   configuration API and validation.
 - `cantrip_server/src/app/runtime/model-routing-runtime.ts`: paired model-route
@@ -284,7 +290,9 @@ The main transcript, subagent panel, and trajectory consume this shared projecti
 - `cantrip_app/src/lib/api.ts`: atomic model-configuration client mutation.
 - `cantrip_app/src/components/chat/model-reasoning-picker.tsx`: shared root/subagent configuration dialog.
 - `cantrip_app/src/components/settings/settings-page.tsx`: account default entry point.
-- `cantrip_app/src/App.tsx`: composer state, queued prompts, panel host, and mutually exclusive sidebar state.
+- `cantrip_app/src/components/app/application-shell.tsx`,
+  `application-shell-render.tsx`, and `global-content-host.tsx`: composer state,
+  queued prompts, panel host, and mutually exclusive sidebar state.
 - `cantrip_app/src/components/chat/activity.tsx`: subagent lifecycle and communication cards.
 - `cantrip_app/src/components/chat/agent-inspect-panel.tsx`: shell to generalize into an inspect/subagent panel host.
 - `cantrip_app/src/components/chat/trajectory-model.ts`: agent-scoped projection, segments, ordering, and filters.
