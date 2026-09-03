@@ -86,11 +86,11 @@ Severity-filtered records still advance the source cursor and are not replayed.
 
 ## Available sources
 
-| Source                      | Where it appears                                                         | Transport                                                                 |
-| --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| **Client · This device**    | Every client                                                             | An in-memory buffer; desktop and mobile also retain a local daily archive |
-| **Server · Local internal** | Tauri only, while connected to that installation's embedded local server | A fixed-source Tauri command reads the local daily server archive         |
-| **Worker · _name_**         | Every worker linked to the active account                                | Cursor polling through the authenticated server-to-worker command channel |
+| Source                      | Where it appears                                                         | Transport                                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Client · This device**    | Every client                                                             | An in-memory buffer; desktop and mobile also retain a local daily archive                                                                                                                 |
+| **Server · Local internal** | Tauri only, while connected to that installation's embedded local server | A fixed-source Tauri command reads the local daily server archive                                                                                                                         |
+| **Worker · _name_**         | Every worker linked to the active account                                | Cursor-based HTTP catch-up plus a leased authenticated WebSocket stream through the server-to-worker command/notification bridge; bounded polling fallback after repeated stream failures |
 
 The local server source is deliberately strict. It appears only when all of
 the following are true:
@@ -103,8 +103,8 @@ the following are true:
 There is no server-self-log HTTP endpoint. A browser or phone connected to a
 hosted server cannot read that server's process logs. It can read an online
 linked worker's logs because the request is owner-authorized by the server and
-routed over the worker's existing outbound command channel. The app never
-connects directly to a worker.
+routed over the worker's existing outbound command channel. For service-log
+access, the app never connects directly to a worker.
 
 When a worker is managed by the current Tauri installation, its local daily
 archive is used as a fallback. This preserves startup failures that occurred before
@@ -123,10 +123,10 @@ The Logs page provides:
 - clear, copy, and text export actions for the currently visible result; and
 - connection, fallback, truncation, retry, and offline status.
 
-Pausing freezes only the displayed boundary. Polling and bounded buffering
-continue, so resuming reveals records that arrived while paused. Clearing
-removes the matching records from this viewer session and does not modify the
-underlying service file or worker buffer.
+Pausing freezes only the displayed boundary. Live ingestion/catch-up and bounded
+buffering continue, so resuming reveals records that arrived while paused.
+Clearing removes the matching records from this viewer session and does not
+modify the underlying service file or worker buffer.
 
 The console uses fixed-height row virtualization. The UI retains at most
 10,000 records and approximately 5 MiB per source. Log contents are not saved
@@ -388,11 +388,12 @@ deletes complete files oldest-first. The local Tauri reader accepts a fixed
 source enum, not a path. Linked-worker directories are resolved only from
 workers registered to that installation.
 
-Remote worker reads use monotonically increasing cursors. The viewer polls
-while open, backs off to six seconds during failures, and resumes from the last
-cursor for each transport. Records are deduplicated by transport and cursor so
-switching between a remote stream and a local fallback does not replay the
-entire buffer.
+Remote worker reads use monotonically increasing cursors. The viewer catches up
+over HTTP, then streams from that cursor over a leased WebSocket. After three
+stream failures it uses a bounded six-second polling fallback before retrying
+the stream, and it resumes from the last cursor for each transport. Records are
+deduplicated by transport and cursor so switching between a remote stream and a
+local fallback does not replay the entire buffer.
 
 ## Redaction boundary
 

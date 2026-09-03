@@ -12,5 +12,6 @@ Build the current host artifact with:
 pnpm managed-runtime:playwright:build
 ```
 
-The worker never runs this build path and never consults a system browser or
-Playwright cache.
+The worker never runs this build path. The managed web-research runtime never
+consults a system browser or Playwright cache; user-created Browser tabs use a
+separate runtime path.

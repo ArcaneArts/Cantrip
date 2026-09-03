@@ -5,7 +5,7 @@
 
 ## Context
 
-Cantrip apps may run in a browser, Tauri, or a future Capacitor shell while the
+Cantrip apps may run in a browser, Tauri, or a Capacitor shell while the
 selected worker owns the project filesystem and Codex runtime. Attachments must
 therefore remain usable when an app cannot directly reach a worker, must never
 be copied into a project checkout, and must remain visible in server-owned chat
@@ -60,7 +60,7 @@ atomic completion rename.
 
 ## Consequences
 
-- Browser, desktop, and future mobile clients use the same attachment path.
+- Browser, desktop, and mobile clients use the same attachment path.
 - The server coordinates authorization and metadata without becoming durable
   blob storage.
 - Attachments can participate in prompt queueing, editing, steering, and normal

@@ -1,8 +1,11 @@
 # Managed web runtime operations
 
-Cantrip workers install SearXNG and Playwright/Chromium from the immutable,
-signed managed-web-runtime release channel. They never discover or invoke a
-system Python, SearXNG, Node, Playwright, Chrome, Edge, or Chromium install.
+Cantrip workers install the SearXNG and Playwright/Chromium runtimes used for
+managed web research from the immutable, signed managed-web-runtime release
+channel. That managed web-research path never discovers or invokes a system
+Python, SearXNG, Node, Playwright, Chrome, Edge, or Chromium installation.
+User-created Browser tabs are a separate worker feature and may use the system
+Chromium-family browser documented in the [root README](../README.md).
 
 ## Release procedure
 

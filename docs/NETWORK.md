@@ -35,7 +35,8 @@ The initial design makes the following decisions:
   applications. Browser and Capacitor do not have to expose operating-system
   localhost ports, but in-app consumers must use the same direct fabric.
 - VPN interfaces such as Tailscale and ZeroTier are classified as `WAN` unless
-  a future explicit deployment allowlist classifies them as LAN.
+  their interface name is listed in
+  `CANTRIP_WORKER_LINK_VPN_LAN_ALLOWLIST`.
 - `RELAY` means the ordinary authenticated Cantrip server relay. TURN is not
   part of the first implementation.
 - Cantrip ships with a default STUN service configuration for WAN discovery.
@@ -210,13 +211,10 @@ the worker through WebRTC, reporting it as `LAN` is acceptable.
 
 ### LAN
 
-The LAN round permits only candidates classified as local-network candidates:
-
-- private IPv4 interfaces;
-- IPv6 link-local or unique-local interfaces; and
-- future explicitly allowlisted LAN interfaces.
-
-It excludes server-reflexive, public-internet, VPN, and relay candidates. The
+The LAN round admits host or peer-reflexive private, link-local, mDNS, and CGNAT
+candidates on interfaces allowed by the interface policy. VPN candidates
+require the explicit `CANTRIP_WORKER_LINK_VPN_LAN_ALLOWLIST`. Server-reflexive,
+public-internet, relay, and non-allowlisted VPN candidates are excluded. The
 worker sends a bounded candidate advertisement through its authenticated server
 connection. The server releases candidates only within an authorized peer
 session. The client attempts those candidates; it never scans a subnet.

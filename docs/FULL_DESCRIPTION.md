@@ -331,9 +331,11 @@ Runtime questions are stored as explicit server records:
 
 The app resolves these records through the server; it does not write an answer
 straight into a Codex process. Resolution is idempotent and bound to a runtime
-attempt. Sensitive answers are redacted/bounded. On recovery the system fails
-closed rather than guessing that a previously pending privileged action was
-approved.
+attempt. Typed interaction content is bounded before sealing. In ordinary Chat
+and Task flows, secret and non-secret answers remain inside the protected
+response envelope; `[redacted]` applies only to the legacy visible compatibility
+path. On recovery the system fails closed rather than guessing that a previously
+pending privileged action was approved.
 
 #### Agent Inspector
 
@@ -1012,10 +1014,11 @@ Project overview can show runtime/replica health and aggregate token usage.
 ### Service logs
 
 The Logs UI combines normalized, redacted records from the client, packaged
-server, and linked workers. It supports source/level/time filters, search,
-follow/pause, clear, copy, and JSONL export. Rendering and storage are bounded
-(virtualized recent records, per-record cap, batch cap, rotating packaged logs).
-The server does not recursively fetch/log its own HTTP log stream.
+server, and linked workers. It supports source selection, text search,
+minimum-severity filtering, follow/pause, clear, copy, and plain-text export of
+the currently visible formatted rows. Rendering and storage are bounded
+(virtualized recent records, per-record cap, batch cap, rotating packaged
+logs). The server does not recursively fetch/log its own HTTP log stream.
 
 Service logs exclude chat prompts/transcripts, terminal output, command output,
 source/file contents, secrets, and auth headers. Development Tauri runs forward
