@@ -4,6 +4,7 @@ import { taskPrioritySchema } from "./task-scheduling.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import { reasoningEffortSchema } from "./providers.js";
 import { executionTargetSchema } from "./execution-targets.js";
+import { githubAgentWorkflowContextSchema } from "./github.js";
 
 const chatPlacementCreateFields = {
   worktreeId: z.string().min(1).optional(),
@@ -22,6 +23,7 @@ const chatPlacementCreateSchema = z
 export const chatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
     title: z.string().trim().min(1).max(200).default("New agent"),
+    githubAgentContext: githubAgentWorkflowContextSchema.optional(),
   })
   .strict();
 
@@ -29,6 +31,7 @@ export const encryptedChatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,
+    githubAgentContext: githubAgentWorkflowContextSchema.optional(),
   })
   .strict()
   .superRefine((input, context) => {
@@ -362,6 +365,7 @@ const chatSummaryBaseSchema = z.object({
   hasPendingPlanQuestion: z.boolean(),
   hasUnreadCompletion: z.boolean().default(false),
   automationPaused: z.boolean().default(false),
+  githubAgentContext: githubAgentWorkflowContextSchema.nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

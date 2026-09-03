@@ -40,6 +40,7 @@ import {
   githubPullRequestLifecycleApplySchema,
   githubActionsWorkflowDispatchSchema,
   githubActionsRunActionSchema,
+  githubPullRequestAgentContextRequestSchema,
   githubReleaseCreateSchema,
 } from "./github.js";
 import {
@@ -154,6 +155,13 @@ export const workerGithubProjectCommandSchemas = [
     section: z
       .enum(["all", "overview", "files", "commits", "checks"])
       .default("all"),
+  }),
+  z.object({
+    type: z.literal("github.pull-request.agent-context"),
+    cwd: z.string().min(1).max(8_192),
+    repository: workerRepositoryNameSchema,
+    number: z.number().int().positive(),
+    request: githubPullRequestAgentContextRequestSchema,
   }),
   z.object({
     type: z.literal("github.pull-request.comment"),

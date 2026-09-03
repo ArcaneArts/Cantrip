@@ -1,7 +1,9 @@
 import {
   githubIssueListFiltersSchema,
   type GithubIssueListFilters,
+  type ChatComposerDraft,
   type ChatSummary,
+  type GithubAgentWorkflowContext,
   type GitCommit,
   type GitRef,
   type GitMergeRebaseAction,
@@ -9,9 +11,11 @@ import {
   type GithubInboxList,
   type GithubInboxItem,
   type GithubInboxView,
+  type GithubIssueDetail,
   type GithubIssueKind,
   type GithubIssueState,
   type GithubIssueSummary,
+  type GithubPullRequestAgentContextRequest,
   type GithubPullRequestSummary,
   type GithubActionsRun,
   type ProjectSummary,
@@ -43,10 +47,15 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  applyProjectWorktreeBranchAction,
   createProjectWorktree,
   checkoutGithubActionsRun,
+  checkoutGithubPullRequest,
+  getChatComposerDraft,
+  getChatExecutionLanes,
   getGithubInbox,
   getGithubIssues,
+  getGithubPullRequestAgentContext,
   getGithubPullRequests,
   getProjectWorktreeHistory,
   getProjectWorktreeGitOperation,
@@ -54,7 +63,11 @@ import {
   pruneProjectWorktrees,
   reconcileProjectWorktrees,
   removeProjectWorktree,
+  releaseChatExecutionLane,
+  previewProjectWorktreeBranchAction,
   runProjectWorktreeGitAction,
+  saveChatComposerDraft,
+  startTurn,
   unlockProjectWorktree,
 } from "@/lib/api";
 import { useAppLiveStatus } from "@/lib/app-live-react";
@@ -121,6 +134,12 @@ import type {
   GithubActionsViewStatus,
 } from "./github-actions-model";
 import { githubInboxViewIsAvailable } from "./github-inbox";
+import {
+  issueAgentWorkflowDraft,
+  mergeGithubAgentDraft,
+  pullRequestAgentWorkflowDraft,
+  type GithubAgentWorkflowCleanupInput,
+} from "./github-agent-workflow";
 import { GitWorkbenchToolbar } from "./git-workbench-toolbar";
 import { GitHistoryMobileDrawer } from "./git-history-mobile-drawer";
 import { GitContentSurface } from "./git-content-surface";
@@ -468,10 +487,12 @@ export function GitHistoryView({
   contentScrolled = false,
   includeOverviewTab = false,
   onCreateChat,
+  onCreateAgentChat,
   onCreateExplorer,
   onCreateHistory,
   onCreateTerminal,
   onHeaderChange,
+  onArchiveChat,
   onOpenChat,
   onOpenGraphFile,
   onSectionChange,
@@ -490,10 +511,17 @@ export function GitHistoryView({
   contentScrolled?: boolean;
   includeOverviewTab?: boolean;
   onCreateChat(worktreeId: string, draft?: GitAgentDraft): Promise<void> | void;
+  onCreateAgentChat(input: {
+    githubAgentContext: GithubAgentWorkflowContext;
+    initialDraft: ChatComposerDraft;
+    title: string;
+    worktreeId: string;
+  }): Promise<ChatSummary>;
   onCreateExplorer(worktreeId: string): void;
   onCreateHistory(worktreeId: string): void;
   onCreateTerminal(worktreeId: string): void;
   onHeaderChange(state: GitHistoryHeaderState | null): void;
+  onArchiveChat(chatId: string): Promise<void>;
   onOpenChat(chatId: string): void;
   onOpenGraphFile(worktreeId: string, path: string): void;
   onSectionChange?(section: ProjectOverviewSection): void;
@@ -602,6 +630,249 @@ export function GitHistoryView({
     selectedWorktree?.lifecycleState === "ready" && selectedWorker?.online,
   );
   const status = statuses[worktreeId];
+  const cacheWorktree = useCallback(
+    (next: ProjectWorktreeSummary) => {
+      queryClient.setQueryData<ProjectWorktreeSummary[]>(
+        ["worktrees", project.id],
+        (current = []) => [...current.filter(({ id }) => id !== next.id), next],
+      );
+    },
+    [project.id, queryClient],
+  );
+  const openExistingAgent = useCallback(
+    async (chat: ChatSummary, prompt: string) => {
+      const current = await getChatComposerDraft(chat.id);
+      const draft: ChatComposerDraft = {
+        text: mergeGithubAgentDraft(current?.text, prompt),
+        mode: current?.mode ?? "default",
+        reasoningEffort: current?.reasoningEffort ?? chat.reasoningEffort,
+      };
+      await saveChatComposerDraft(chat.id, draft);
+      queryClient.setQueryData(["chat-composer-draft", chat.id], draft);
+      if (!current?.text.trim() && chat.modelId) {
+        try {
+          await startTurn(chat.id, draft.text, {
+            modelId: chat.modelId,
+            reasoningEffort: draft.reasoningEffort,
+            customSubagentModel: chat.customSubagentModel ?? false,
+            subagentModelId: chat.subagentModelId ?? null,
+            subagentReasoningEffort: chat.subagentReasoningEffort ?? null,
+          });
+          await saveChatComposerDraft(chat.id, null);
+          queryClient.setQueryData(["chat-composer-draft", chat.id], null);
+        } catch {
+          // Preserve the task in the composer when the turn cannot start.
+        }
+      }
+      onOpenChat(chat.id);
+    },
+    [onOpenChat, queryClient],
+  );
+  const startIssueAgentWorkflow = useCallback(
+    async (issue: GithubIssueDetail) => {
+      const existing = chats.find(
+        ({ githubAgentContext }) =>
+          githubAgentContext?.kind === "issue" &&
+          githubAgentContext.number === issue.number,
+      );
+      if (existing) {
+        onOpenChat(existing.id);
+        return;
+      }
+      if (!status?.head) {
+        throw new Error(
+          "The selected worktree does not have an exact starting commit.",
+        );
+      }
+      const initialDraft = issueAgentWorkflowDraft(issue, status.head);
+      let target = worktrees.find(
+        ({ branch }) => branch === initialDraft.branch,
+      );
+      if (!target) {
+        const branchExists = status.branches.some(
+          (branch) =>
+            branch.kind === "local" && branch.name === initialDraft.branch,
+        );
+        target = await createProjectWorktree(project.id, {
+          name: initialDraft.worktreeName,
+          mode: branchExists
+            ? { type: "existingBranch", branch: initialDraft.branch }
+            : {
+                type: "newBranch",
+                branch: initialDraft.branch,
+                startPoint: status.head,
+              },
+        });
+        cacheWorktree(target);
+      }
+      if (target.lifecycleState !== "ready" || !target.head) {
+        throw new Error("The issue worktree is not ready.");
+      }
+      const draft = issueAgentWorkflowDraft(issue, target.head);
+      await onCreateAgentChat({
+        githubAgentContext: {
+          kind: "issue",
+          number: issue.number,
+          intent: "start-work",
+          headSha: target.head,
+        },
+        initialDraft: {
+          text: draft.prompt,
+          mode: "default",
+          reasoningEffort: null,
+        },
+        title: draft.title,
+        worktreeId: target.id,
+      });
+    },
+    [
+      cacheWorktree,
+      chats,
+      onCreateAgentChat,
+      onOpenChat,
+      project.id,
+      status?.head,
+      worktrees,
+    ],
+  );
+  const startPullRequestAgentWorkflow = useCallback(
+    async (
+      pullRequestNumber: number,
+      intent: GithubPullRequestAgentContextRequest["intent"],
+    ) => {
+      const context = await getGithubPullRequestAgentContext(
+        project.id,
+        worktreeId,
+        pullRequestNumber,
+        { intent },
+      );
+      const draft = pullRequestAgentWorkflowDraft(context);
+      const existing = chats.find(
+        ({ githubAgentContext }) =>
+          githubAgentContext?.kind === "pull-request" &&
+          githubAgentContext.number === pullRequestNumber &&
+          githubAgentContext.headSha === context.pullRequest.headSha,
+      );
+      if (existing) {
+        await openExistingAgent(existing, draft.prompt);
+        return;
+      }
+      const checkout = await checkoutGithubPullRequest(
+        project.id,
+        worktreeId,
+        pullRequestNumber,
+        context.pullRequest.headSha,
+      );
+      cacheWorktree(checkout.worktree);
+      await onCreateAgentChat({
+        githubAgentContext: {
+          kind: "pull-request",
+          number: pullRequestNumber,
+          intent,
+          headSha: context.pullRequest.headSha,
+        },
+        initialDraft: {
+          text: draft.prompt,
+          mode: "default",
+          reasoningEffort: null,
+        },
+        title: draft.title,
+        worktreeId: checkout.worktree.id,
+      });
+    },
+    [
+      cacheWorktree,
+      chats,
+      onCreateAgentChat,
+      openExistingAgent,
+      project.id,
+      worktreeId,
+    ],
+  );
+  const cleanupPullRequestAgentWorkflow = useCallback(
+    async ({
+      chatIds,
+      deleteBranches,
+      worktrees: cleanupWorktrees,
+    }: GithubAgentWorkflowCleanupInput) => {
+      const cleanupWorktreeIds = new Set(cleanupWorktrees.map(({ id }) => id));
+      for (const chatId of chatIds) {
+        const lanes = await getChatExecutionLanes(chatId);
+        for (const lane of lanes) {
+          if (
+            cleanupWorktreeIds.has(lane.worktreeId) &&
+            lane.state !== "released"
+          ) {
+            await releaseChatExecutionLane(chatId, lane.id, {
+              allowDirty: false,
+              returnToPrimary: true,
+            });
+          }
+        }
+      }
+      for (const chatId of chatIds) await onArchiveChat(chatId);
+      for (const cleanupWorktree of cleanupWorktrees) {
+        const target = worktrees.find(({ id }) => id === cleanupWorktree.id);
+        if (target && !target.isPrimary) {
+          await removeProjectWorktree(project.id, target.id, {
+            allowExternal: false,
+            force: false,
+          });
+        }
+      }
+      if (deleteBranches) {
+        const primary = worktrees.find(({ isPrimary }) => isPrimary);
+        if (!primary) {
+          throw new Error("The project Primary worktree is unavailable.");
+        }
+        const branches = [
+          ...new Set(
+            cleanupWorktrees.flatMap(({ branch }) => (branch ? [branch] : [])),
+          ),
+        ];
+        for (const branch of branches) {
+          const action = {
+            type: "deleteLocal",
+            name: branch,
+            force: true,
+          } as const;
+          const preview = await previewProjectWorktreeBranchAction(
+            project.id,
+            primary.id,
+            action,
+          );
+          await applyProjectWorktreeBranchAction(
+            project.id,
+            primary.id,
+            action,
+            preview.token,
+          );
+        }
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["chats", project.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-tab-layout", project.id],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["worktrees", project.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["worktree-status", project.id],
+        }),
+      ]);
+      const primary = worktrees.find(({ isPrimary }) => isPrimary);
+      if (cleanupWorktreeIds.has(worktreeId) && primary) {
+        onSelectWorktree(primary.id);
+      }
+    },
+    [
+      onArchiveChat,
+      onSelectWorktree,
+      project.id,
+      queryClient,
+      worktreeId,
+      worktrees,
+    ],
+  );
   const operation = useQuery({
     enabled: section === "history" && selectedAvailable,
     queryKey: ["git-operation", project.id, worktreeId],
@@ -1267,6 +1538,7 @@ export function GitHistoryView({
       ) : section !== "history" ? (
         <GithubIssuesView
           key={`${issueKind}:${inboxView}`}
+          chats={chats}
           error={issues.error}
           hasNextPage={issues.hasNextPage}
           isFetchingNextPage={issues.isFetchingNextPage}
@@ -1279,7 +1551,11 @@ export function GitHistoryView({
           status={status}
           state={issueState}
           worktreeId={worktreeId}
+          worktrees={worktrees}
+          onCleanupAgentWorkflow={cleanupPullRequestAgentWorkflow}
           onLoadMore={() => void issues.fetchNextPage()}
+          onStartIssueAgent={startIssueAgentWorkflow}
+          onStartPullRequestAgent={startPullRequestAgentWorkflow}
           onViewChange={setInboxView}
           onFiltersChange={setIssueFilters}
           onSelectWorktree={onSelectWorktree}

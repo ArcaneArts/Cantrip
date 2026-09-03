@@ -1,10 +1,12 @@
 import type {
+  ChatSummary,
   GithubPullRequestCheck,
   GithubPullRequestChecks,
   GithubPullRequestCommits,
   GithubPullRequestFile,
   GithubPullRequestFiles,
   GithubPullRequestLifecycleAction,
+  GithubPullRequestAgentContextRequest,
   GithubPullRequestOverview,
   GithubPullRequestReviewAction,
   ProjectWorktreeSummary,
@@ -12,6 +14,8 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  Archive,
+  Bot,
   CheckCircle2,
   ChevronDown,
   CircleDot,
@@ -35,6 +39,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -60,6 +65,7 @@ import {
   parseGithubActionsUrl,
   type GithubActionsTarget,
 } from "./github-actions-model";
+import type { GithubAgentWorkflowCleanupInput } from "./github-agent-workflow";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -820,25 +826,136 @@ function Checks({
   );
 }
 
+function GithubAgentCleanupDialog({
+  chatIds,
+  onCleanup,
+  onOpenChange,
+  open,
+  worktrees,
+}: {
+  chatIds: string[];
+  onCleanup(input: GithubAgentWorkflowCleanupInput): Promise<void>;
+  onOpenChange(open: boolean): void;
+  open: boolean;
+  worktrees: Array<{ id: string; branch: string | null }>;
+}) {
+  const [deleteBranches, setDeleteBranches] = useState(false);
+  const branches = [
+    ...new Set(worktrees.flatMap(({ branch }) => (branch ? [branch] : []))),
+  ];
+  const cleanup = useMutation({
+    mutationFn: () =>
+      onCleanup({
+        chatIds,
+        deleteBranches,
+        worktrees,
+      }),
+    onSuccess: () => onOpenChange(false),
+  });
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && cleanup.isPending) return;
+        if (!next) setDeleteBranches(false);
+        onOpenChange(next);
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Clean up merged pull request</DialogTitle>
+          <DialogDescription>
+            Archive the linked agent {chatIds.length === 1 ? "chat" : "chats"}
+            {worktrees.length > 0
+              ? ` and remove ${worktrees.length === 1 ? "its clean worktree" : `${worktrees.length} clean worktrees`}`
+              : ""}
+            . Dirty worktrees are preserved and will make cleanup stop with an
+            error.
+          </DialogDescription>
+        </DialogHeader>
+        {branches.length > 0 ? (
+          <label className="flex items-start gap-3 rounded-lg border p-3 text-sm">
+            <input
+              checked={deleteBranches}
+              className="mt-0.5 size-4 accent-primary"
+              disabled={cleanup.isPending}
+              type="checkbox"
+              onChange={(event) => setDeleteBranches(event.target.checked)}
+            />
+            <span>
+              <span className="block font-medium">
+                Delete local {branches.length === 1 ? "branch" : "branches"}
+              </span>
+              <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
+                {branches.join(", ")}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                This is optional and uses Cantrip&apos;s reviewed branch
+                operation.
+              </span>
+            </span>
+          </label>
+        ) : null}
+        {cleanup.isError ? (
+          <p className="text-sm text-destructive">
+            {cleanup.error instanceof Error
+              ? cleanup.error.message
+              : "Cleanup failed."}
+          </p>
+        ) : null}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={cleanup.isPending}
+            onClick={() => onOpenChange(false)}
+          >
+            Keep for now
+          </Button>
+          <Button disabled={cleanup.isPending} onClick={() => cleanup.mutate()}>
+            {cleanup.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Archive className="size-4" />
+            )}
+            Archive and clean up
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function GithubPullRequestDialog({
+  chats,
+  onCleanupAgentWorkflow,
   onCheckedOut,
   onOpenActionsRun,
   onOpenChange,
+  onStartAgent,
   projectId,
   pullRequestNumber,
   worktreeId,
+  worktrees,
 }: {
+  chats: ChatSummary[];
+  onCleanupAgentWorkflow(input: GithubAgentWorkflowCleanupInput): Promise<void>;
   onCheckedOut(worktreeId: string): void;
   onOpenActionsRun(target: GithubActionsTarget): void;
   onOpenChange(open: boolean): void;
+  onStartAgent(
+    pullRequestNumber: number,
+    intent: GithubPullRequestAgentContextRequest["intent"],
+  ): Promise<void>;
   projectId: string;
   pullRequestNumber: number | null;
   worktreeId: string;
+  worktrees: ProjectWorktreeSummary[];
 }) {
   const [tab, setTab] = useState<PullRequestTab>("overview");
   const [lifecycleAction, setLifecycleAction] =
     useState<GithubPullRequestLifecycleAction | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   const queryClient = useQueryClient();
   const pullRequestKey = [
     "github-pull-request",
@@ -916,12 +1033,30 @@ export function GithubPullRequestDialog({
         pullRequestNumber,
       }),
   });
+  const startAgent = useMutation({
+    mutationFn: (intent: GithubPullRequestAgentContextRequest["intent"]) =>
+      onStartAgent(pullRequestNumber!, intent),
+  });
   useEffect(() => {
     setTab("overview");
     setLifecycleAction(null);
     setAgentOpen(false);
+    setCleanupOpen(false);
+    startAgent.reset();
     failedCheckSummary.reset();
   }, [pullRequestNumber]);
+
+  const relatedChats = chats.filter(
+    ({ githubAgentContext }) =>
+      githubAgentContext?.kind === "pull-request" &&
+      githubAgentContext.number === pullRequestNumber,
+  );
+  const relatedWorktrees = worktrees.filter(
+    ({ branch, id, isPrimary }) =>
+      !isPrimary &&
+      (relatedChats.some(({ activeWorktreeId }) => activeWorktreeId === id) ||
+        branch?.startsWith(`cantrip/pr/${pullRequestNumber}-`)),
+  );
 
   return (
     <>
@@ -959,6 +1094,50 @@ export function GithubPullRequestDialog({
                   </DialogDescription>
                 </div>
                 <div className="flex shrink-0 flex-wrap justify-start gap-1.5 md:justify-end">
+                  {!overview.data.merged ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={startAgent.isPending}
+                      onClick={() => startAgent.mutate("address-review")}
+                    >
+                      {startAgent.isPending &&
+                      startAgent.variables === "address-review" ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Bot className="size-3.5" />
+                      )}
+                      Address review
+                    </Button>
+                  ) : null}
+                  {!overview.data.merged &&
+                  (overview.data.checksState === "failure" ||
+                    checks.data?.checks.some(isFailedPullRequestCheck)) ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={startAgent.isPending}
+                      onClick={() => startAgent.mutate("fix-checks")}
+                    >
+                      {startAgent.isPending &&
+                      startAgent.variables === "fix-checks" ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="size-3.5" />
+                      )}
+                      Fix checks
+                    </Button>
+                  ) : null}
+                  {overview.data.merged &&
+                  (relatedChats.length > 0 || relatedWorktrees.length > 0) ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCleanupOpen(true)}
+                    >
+                      <Archive className="size-3.5" /> Cleanup
+                    </Button>
+                  ) : null}
                   <Button
                     size="sm"
                     variant="outline"
@@ -1033,6 +1212,13 @@ export function GithubPullRequestDialog({
                   {checkout.error instanceof Error
                     ? checkout.error.message
                     : "Pull request checkout failed."}
+                </p>
+              ) : null}
+              {startAgent.error ? (
+                <p className="mt-2 text-left text-xs text-destructive">
+                  {startAgent.error instanceof Error
+                    ? startAgent.error.message
+                    : "The agent workflow could not be started."}
                 </p>
               ) : null}
             </DialogHeader>
@@ -1178,9 +1364,22 @@ export function GithubPullRequestDialog({
             void queryClient.invalidateQueries({
               queryKey: ["github-inbox", projectId, "pull-request"],
             });
+            if (
+              updated.merged &&
+              (relatedChats.length || relatedWorktrees.length)
+            ) {
+              setCleanupOpen(true);
+            }
           }}
         />
       ) : null}
+      <GithubAgentCleanupDialog
+        chatIds={relatedChats.map(({ id }) => id)}
+        onCleanup={onCleanupAgentWorkflow}
+        onOpenChange={setCleanupOpen}
+        open={cleanupOpen}
+        worktrees={relatedWorktrees.map(({ id, branch }) => ({ id, branch }))}
+      />
     </>
   );
 }

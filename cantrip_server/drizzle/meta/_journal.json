@@ -1324,6 +1324,13 @@
       "when": 1788375598535,
       "tag": "0188_parallel_thor_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1788438655311,
+      "tag": "0189_little_jack_flag",
+      "breakpoints": true
     }
   ]
 }

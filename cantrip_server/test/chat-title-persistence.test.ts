@@ -19,7 +19,7 @@ import { LOCAL_USER_ID } from "../src/db/repository.js";
 
 import { protectedProjectFields } from "./private-label-fixture.js";
 
-it("persists chat titles only as authenticated ciphertext", async () => {
+it("persists private chat titles and GitHub agent bindings", async () => {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-chat-title-persistence-"),
   );
@@ -58,6 +58,12 @@ it("persists chat titles only as authenticated ciphertext", async () => {
 
   const database = await connectDatabase(config);
   try {
+    await database.repository.ensureLocalIdentity();
+    await database.repository.ensureDefaultModelConfiguration(
+      LOCAL_USER_ID,
+      config.agentModel,
+      config.ollamaBaseUrl,
+    );
     await database.repository.recordWorker(LOCAL_USER_ID, {
       workerId: "chat-title-worker",
       name: "Chat Title Worker",
@@ -77,6 +83,7 @@ it("persists chat titles only as authenticated ciphertext", async () => {
       {
         workerId: "chat-title-worker",
         ...protectedProjectFields(),
+        repositoryBlindIndex: "A".repeat(43),
         repositoryId: "chat-title-repository",
         nameWithOwner: "ArcaneArts/Cantrip",
         url: "https://github.com/ArcaneArts/Cantrip",
@@ -100,10 +107,22 @@ it("persists chat titles only as authenticated ciphertext", async () => {
       {
         id: chatId,
         titleProtection,
-        worktreeMode: "agent-managed",
+        worktreeMode: "pinned",
+        githubAgentContext: {
+          kind: "pull-request",
+          number: 1650,
+          intent: "address-review",
+          headSha: "a".repeat(40),
+        },
       },
     );
     expect(JSON.stringify(chat)).not.toContain(sentinel);
+    expect(chat?.githubAgentContext).toEqual({
+      kind: "pull-request",
+      number: 1650,
+      intent: "address-review",
+      headSha: "a".repeat(40),
+    });
   } finally {
     await database.close();
   }
@@ -117,6 +136,10 @@ it("persists chat titles only as authenticated ciphertext", async () => {
     expect(rows.rows).toHaveLength(1);
     expect(JSON.stringify(rows.rows)).not.toContain(sentinel);
     expect(rows.rows[0]?.record).toContain("protected_label");
+    expect(rows.rows[0]?.record).toContain('"github_item_number":1650');
+    expect(rows.rows[0]?.record).toContain(
+      '"github_agent_intent":"address-review"',
+    );
 
     const columns = await scan.query<{ column_name: string }>(`
       SELECT column_name
@@ -133,4 +156,4 @@ it("persists chat titles only as authenticated ciphertext", async () => {
     await scan.close();
     await rm(dataDirectory, { recursive: true, force: true });
   }
-});
+}, 20_000);

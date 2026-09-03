@@ -618,6 +618,15 @@ export function GlobalContentHost({
                 });
                 openCreatedTab(chat.projectId, "chat", chat.id);
               }}
+              onCreateAgentChat={(input) =>
+                newChat.mutateAsync({
+                  projectId: displayedGitProject.id,
+                  startInitialDraft: true,
+                  worktreeMode: "pinned",
+                  ...input,
+                })
+              }
+              onArchiveChat={(chatId) => deleteChatMutation.mutateAsync(chatId)}
               onCreateTerminal={(worktreeId) =>
                 newTerminal.mutate({
                   projectId: displayedGitProject.id,

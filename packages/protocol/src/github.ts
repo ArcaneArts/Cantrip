@@ -52,6 +52,35 @@ export const githubRepositoryCreateSchema = z.object({
 
 export const githubIssueStateSchema = z.enum(["open", "closed"]);
 export const githubIssueKindSchema = z.enum(["issue", "pull-request"]);
+export const githubAgentWorkflowIntentSchema = z.enum([
+  "start-work",
+  "address-review",
+  "fix-checks",
+]);
+export const githubAgentWorkflowContextSchema = z
+  .object({
+    kind: githubIssueKindSchema,
+    number: z.number().int().positive(),
+    intent: githubAgentWorkflowIntentSchema,
+    headSha: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.kind === "issue" && value.intent !== "start-work") {
+      context.addIssue({
+        code: "custom",
+        message: "Issues only support the start-work agent workflow.",
+        path: ["intent"],
+      });
+    }
+    if (value.kind === "pull-request" && value.intent === "start-work") {
+      context.addIssue({
+        code: "custom",
+        message: "Pull requests support review and failed-check workflows.",
+        path: ["intent"],
+      });
+    }
+  });
 export const githubInboxViewSchema = z.enum([
   "all",
   "needs-review",
@@ -724,6 +753,32 @@ export const githubActionsRunCheckoutPreparedSchema = z.object({
   remote: z.string().trim().min(1).max(255),
 });
 
+export const githubPullRequestAgentContextRequestSchema = z
+  .object({
+    intent: z.enum(["address-review", "fix-checks"]),
+  })
+  .strict();
+
+export const githubPullRequestFailedCheckEvidenceSchema = z
+  .object({
+    checkId: z.string().min(1),
+    name: z.string().min(1).max(1_000),
+    url: z.url().nullable(),
+    summary: z.string().max(100_000).nullable(),
+    logExcerpt: z.string().max(100_000).nullable(),
+    logUnavailableReason: z.string().max(2_000).nullable(),
+  })
+  .strict();
+
+export const githubPullRequestAgentContextSchema = z
+  .object({
+    intent: githubPullRequestAgentContextRequestSchema.shape.intent,
+    pullRequest: githubPullRequestDetailSchema,
+    activeReviewThreads: z.array(githubPullRequestReviewThreadSchema).max(100),
+    failedChecks: z.array(githubPullRequestFailedCheckEvidenceSchema).max(20),
+  })
+  .strict();
+
 export const githubReleaseSummarySchema = z.object({
   id: z.number().int().positive(),
   tagName: z.string().min(1).max(1_000),
@@ -767,6 +822,14 @@ export type GithubRepositoryCreate = z.infer<
 export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
 
 export type GithubIssueKind = z.infer<typeof githubIssueKindSchema>;
+
+export type GithubAgentWorkflowIntent = z.infer<
+  typeof githubAgentWorkflowIntentSchema
+>;
+
+export type GithubAgentWorkflowContext = z.infer<
+  typeof githubAgentWorkflowContextSchema
+>;
 
 export type GithubInboxView = z.infer<typeof githubInboxViewSchema>;
 
@@ -910,6 +973,18 @@ export type GithubActionsMutationResult = z.infer<
 
 export type GithubActionsRunCheckoutPrepared = z.infer<
   typeof githubActionsRunCheckoutPreparedSchema
+>;
+
+export type GithubPullRequestAgentContextRequest = z.infer<
+  typeof githubPullRequestAgentContextRequestSchema
+>;
+
+export type GithubPullRequestFailedCheckEvidence = z.infer<
+  typeof githubPullRequestFailedCheckEvidenceSchema
+>;
+
+export type GithubPullRequestAgentContext = z.infer<
+  typeof githubPullRequestAgentContextSchema
 >;
 
 export type GithubReleaseSummary = z.infer<typeof githubReleaseSummarySchema>;

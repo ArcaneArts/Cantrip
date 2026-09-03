@@ -23,6 +23,18 @@ export const ARCHIVED_CHAT_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 export function toChatWireSummary(
   chat: typeof schema.chats.$inferSelect,
 ): ChatWireSummary {
+  const githubAgentContext =
+    chat.githubItemKind &&
+    chat.githubItemNumber &&
+    chat.githubAgentIntent &&
+    chat.githubHeadSha
+      ? {
+          kind: chat.githubItemKind,
+          number: chat.githubItemNumber,
+          intent: chat.githubAgentIntent,
+          headSha: chat.githubHeadSha,
+        }
+      : null;
   return chatWireSummarySchema.parse({
     id: chat.id,
     contextKind: chat.contextKind,
@@ -46,6 +58,7 @@ export function toChatWireSummary(
     hasPendingPlanQuestion: chat.hasPendingPlanQuestion,
     hasUnreadCompletion: chat.hasUnreadCompletion,
     automationPaused: chat.automationPaused,
+    githubAgentContext,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   });
