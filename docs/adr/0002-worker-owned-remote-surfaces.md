@@ -13,7 +13,7 @@
 ## Context
 
 Cantrip needs interactive Browser and remote-desktop tabs in Tauri, ordinary
-web clients, and future Capacitor clients. An iframe cannot display arbitrary
+web clients, and Capacitor clients. An iframe cannot display arbitrary
 sites because sites may prohibit framing and because a proxy cannot safely or
 faithfully rewrite the modern web. A child Tauri webview displays arbitrary
 sites, but it is an operating-system-native sibling surface. React menus,
@@ -118,7 +118,7 @@ The worker uses a cross-platform native desktop-control library to capture
 compressed frames and perform pointer, keyboard, and explicit clipboard
 actions. These messages use the same versioned Remote Surface envelopes as the
 Browser adapter. There is no desktop listener and no directly reachable worker
-port. Main, popout, browser, Tauri, and future Capacitor clients therefore use
+port. Main, popout, browser, Tauri, and Capacitor clients therefore use
 one canvas renderer and the same app-to-server-to-worker path.
 
 Desktop capture and input are separate backends. A native XCap-based capture

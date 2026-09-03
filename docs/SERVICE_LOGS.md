@@ -7,19 +7,20 @@ and linked worker processes without granting filesystem or terminal access.
 ## Operational record contract
 
 Server, worker, and deliberate client events use one structured logging path.
-Each event is normalized and sanitized once, then the same safe record is sent
-to the component console, bounded service buffer, and daily JSONL archive where
-that component has one. Settings → Logs reads those records through the
-authorized transports below. Console output may be formatted for humans, but
-it represents the same timestamp, level, message, and context as the service
-record; there is no separate raw console event.
+Each event is normalized and sanitized once. Console formatting uses that
+sanitized event, while bounded service buffers and daily JSONL archives store a
+minimized projection whose message is the stable `event` identifier and whose
+context is restricted to allowlisted operational fields. Settings → Logs reads
+the minimized records through the authorized transports below.
 
 Operational context uses a small shared vocabulary when the fields apply:
 `event`, `subsystem`, `operation`, `status`, `reasonCode`, `durationMs`,
 `requestId`, `workerId`, `projectId`, `chatId`, `turnId`, `automationId`,
-`runId`, `surfaceId`, `attempt`, and `counts`. Errors are reduced to safe
-`name`, `message`, and optional `code` metadata. Stack traces, causes, and
-arbitrary thrown-object fields are excluded from remotely readable records.
+`runId`, `surfaceId`, `attempt`, and `counts`. Console-side error normalization
+retains a sanitized name, message, and optional code; remotely readable records
+retain only `errorClass` and optional `errorCode`. Stack traces, causes, and
+arbitrary thrown-object fields remain excluded; thrown error messages are not
+retained in remotely readable records.
 
 Levels have consistent meanings:
 
@@ -65,20 +66,20 @@ provider messages are deliberately absent. Apply the same method to surfaces
 
 ## Coverage by subsystem
 
-| Area                | Representative lifecycle metadata                                                                                             |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Server runtime      | startup class, database/Redis readiness, migrations, shutdown, ownership and lease transitions                                |
-| Worker channel      | authentication outcome, connect/replacement/disconnect, reconnect grace, command type and duration                            |
-| Chat and Codex      | queue/placement, model route, thread create/resume, attempts, pause/resume/steer/interrupt, compaction and failover           |
-| Providers           | catalog/cache health, model counts, account availability, quota exhaustion, credential refresh outcome and fallback           |
-| Project automations | claim/fence, schedule sync, dispatch, skip/block, completion, and recovery                                                    |
-| Terminal            | create/attach/detach/reconnect/replace/exit; never input, output, resize data, or commands                                    |
-| Browser             | Chromium/CDP/target/navigation/crash/restart and transport state; never page data or cookies                                  |
-| Remote Desktop      | discovery counts, target ID, capture/WebRTC lifecycle, drop summaries and rejected-input reason; never frames or input values |
-| Explorer and Git    | operation kind, safe revision/branch metadata, duration, result/file/conflict counts; never contents or diffs                 |
-| Code and CLI        | process/profile/session/bridge readiness, transport, command family and result; never raw arguments or protocol               |
-| Client              | boot/hydration, session/server switch, API route/status, live reconnect, rollback and surface readiness/fallback              |
-| Tauri               | embedded child startup/exit, updater phase, tray/autostart/window/pop-out and Pro Mode lifecycle                              |
+| Area                | Representative lifecycle metadata                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Server runtime      | startup class, database/Redis readiness, migrations, shutdown, ownership and lease transitions                                                          |
+| Worker channel      | authentication outcome, connect/replacement/disconnect, reconnect grace, command type and duration                                                      |
+| Chat and Codex      | queue/placement, model route, thread create/resume, attempts, pause/resume/steer/interrupt, compaction and failover                                     |
+| Providers           | catalog/cache health, model counts, account availability, quota exhaustion, credential refresh outcome and fallback                                     |
+| Project automations | claim/fence, schedule sync, dispatch, skip/block, completion, and recovery                                                                              |
+| Terminal            | create/attach/detach/reconnect/replace/exit; never input, output, resize data, or commands                                                              |
+| Browser             | Chromium/CDP/target/navigation/crash/restart and transport state; never page data or cookies                                                            |
+| Remote Desktop      | discovery counts, target kind, capture/WorkerLink lifecycle, drop summaries and rejected-input reason; never frames, target IDs/labels, or input values |
+| Explorer and Git    | operation kind, safe revision/branch metadata, duration, result/file/conflict counts; never contents or diffs                                           |
+| Code and CLI        | process/profile/session/bridge readiness, transport, command family and result; never raw arguments or protocol                                         |
+| Client              | boot/hydration, session/server switch, API route/status, live reconnect, rollback and surface readiness/fallback                                        |
+| Tauri               | embedded child startup/exit, updater phase, tray/autostart/window/pop-out and Pro Mode lifecycle                                                        |
 
 Routine successes may be `debug`; state changes and uncommon lifecycle events
 are `info`; recoveries/fallbacks are `warn`; terminal failures are `error`.
@@ -209,24 +210,24 @@ not count against its 100 MiB budget.
 At component launch, the archive performs these operations in order:
 
 1. Create the component's log directory if it does not exist.
-2. Open the newest non-full part for the current UTC day, or create part 1.
-3. Recover or remove stale temporary compression artifacts.
-4. Compress inactive parts created more than 48 hours ago.
-5. Recalculate the combined size of compressed and uncompressed managed files.
-6. Delete complete files oldest-first while the archive exceeds 100 MiB.
-7. Schedule the next UTC day boundary.
+2. Recover or remove stale temporary compression artifacts.
+3. Adopt configured legacy log files into the managed part naming scheme.
+4. Select the newest non-full part for the current UTC day, or designate part 1
+   as the first append target.
+5. Run compression and quota maintenance over inactive managed parts.
+6. Schedule the next UTC day boundary.
 
-At a UTC day change, the writer flushes and closes the previous part, opens or
-resumes the current day's part, runs the same compression and quota pass, and
+At a UTC day change, the archive stops appending to the previous part, selects
+the current day's append target, runs the same compression and quota pass, and
 schedules the next boundary. Every append also performs a cheap UTC-day check
-so sleep, clock changes, delayed timers, or process suspension cannot leave a
-writer attached to yesterday's file.
+so sleep, clock changes, delayed timers, or process suspension cannot leave the
+archive writing to yesterday's file.
 
 The coordinator tracks archive bytes during normal writes. Crossing 100 MiB
 triggers quota maintenance immediately instead of allowing an oversized
 archive to remain until the next launch or day boundary. The active part is
-never deleted while open; it is first finalized and replaced when it must
-become eligible for oldest-first deletion.
+skipped during quota deletion; normal 10 MiB part rotation or UTC rollover later
+makes it inactive.
 
 Mobile applications cannot execute while suspended. They run the same check
 when returning to the foreground and before their next persisted write.
@@ -444,12 +445,12 @@ development does not receive a local-server-log security exception.
 
 ### Development files and parity
 
-The `server`, `worker`, and `desktop` terminal lanes and their JSONL records are
-fed by the same normalized event. Human console formatting may omit noisy
-context fields or add color, but timestamp, component, level, message, and safe
-context originate from one sanitized record. Incidental webview `console.*`
-calls are captured as client diagnostics; deliberate application events use
-the structured client logger so their context remains searchable.
+The `server`, `worker`, and `desktop` terminal lanes format the sanitized event,
+while their JSONL archives retain its minimized projection. Timestamp,
+component, level, and stable event identity correspond, but human messages and
+non-allowlisted context remain console-only. Incidental webview `console.*`
+calls are captured as client diagnostics; deliberate application events use the
+structured client logger so their allowlisted context remains searchable.
 
 To compare a lane with Settings → Logs, select its source and filter by an event
 or correlation ID. Ordinary HTTP access logs belong to Fastify's server lane;
@@ -457,16 +458,16 @@ they are not duplicated into the client source.
 
 ## Verification matrix
 
-| Guarantee                                                                       | Primary automated checks                                                         |
-| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| One sanitized record fans to console and service sinks                          | logging core/formatter tests plus server and client logger tests                 |
-| Secret, OAuth, cookie, signed-URL, nested-error, and control-sequence redaction | logging records, client relay, and Tauri `local_logs` tests                      |
-| Repetition summaries and deterministic sampling                                 | logging core tests                                                               |
-| Bounded records/buffers, filtered cursors, truncation, and daily archives       | logging archive/record and Tauri `local_logs` tests                              |
-| Remote reads remain owner-authorized and server-routed                          | server worker-log API tests                                                      |
-| Hosted clients cannot expose server logs                                        | log viewer model and local bridge tests                                          |
-| Local worker fallback and viewer retention/deduplication                        | log viewer model tests                                                           |
-| Surface, provider, automation, and reconnect lifecycle                          | focused server, worker, app, and Tauri subsystem suites plus the inventory above |
+| Guarantee                                                                                   | Primary automated checks                                                         |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| One sanitized event feeds console formatting and a minimized projection feeds service sinks | logging core/formatter tests plus server and client logger tests                 |
+| Secret, OAuth, cookie, signed-URL, nested-error, and control-sequence redaction             | logging records, client relay, and Tauri `local_logs` tests                      |
+| Repetition summaries and deterministic sampling                                             | logging core tests                                                               |
+| Bounded records/buffers, filtered cursors, truncation, and daily archives                   | logging archive/record and Tauri `local_logs` tests                              |
+| Remote reads remain owner-authorized and server-routed                                      | server worker-log API tests                                                      |
+| Hosted clients cannot expose server logs                                                    | log viewer model and local bridge tests                                          |
+| Local worker fallback and viewer retention/deduplication                                    | log viewer model tests                                                           |
+| Surface, provider, automation, and reconnect lifecycle                                      | focused server, worker, app, and Tauri subsystem suites plus the inventory above |
 
 For a release candidate, run the logging, protocol, server, worker, app, and
 Tauri suites. Then perform one `pnpm devtop` smoke pass: complete or interrupt a
@@ -497,6 +498,7 @@ source, repeated failures collapse, and no user payload appears in an export.
   periodic `reasonCode: repeated-event` summaries. Identical unsummarized
   records from a hot loop are a logging defect; report the event/subsystem, not
   the sensitive payload that triggered it.
-- **Exporting for support:** pause if needed, filter to the relevant IDs and
-  time range, then export. Records are sanitized before the viewer, but safe
-  project/worker/chat IDs may still be operationally private.
+- **Exporting for support:** pause if needed, search for the relevant IDs,
+  choose the minimum level, then export the currently visible rows. Records are
+  sanitized before the viewer, but safe project/worker/chat IDs may still be
+  operationally private.

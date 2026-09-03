@@ -37,7 +37,10 @@ LOCAL, LAN, or WAN, with server RELAY as the final route.
   History, Issues, and Browser.
 - Host the editor process on the worker that owns the selected project files.
 - Bind each Code tab to a specific project, worker, and worktree.
-- Keep settings, extensions, editor state, and workspace state on the worker.
+- Keep plaintext settings, extensions, editor runtime state, and workspace
+  state on the worker; synchronize the canonical global settings document
+  through the server only as endpoint-encrypted ciphertext and revision
+  metadata.
 - Allow Codex and the editor to operate on the same saved filesystem without
   introducing a second conversation or agent control plane.
 - Synchronize Cantrip themes, external agent edits, dirty-buffer state, active
@@ -47,9 +50,10 @@ LOCAL, LAN, or WAN, with server RELAY as the final route.
   exact WorkerLink tunnel grant using LOCAL, LAN, WAN, or RELAY.
 - Keep upstream merges repeatable and reviewable with pinned revisions,
   scripted imports, a minimal ordered patch set, and compatibility checks.
-- Compile Cantrip Code during Cantrip builds and bundle it into the matching
-  worker artifact. No production worker downloads or builds the editor on first
-  use.
+- Compile Cantrip Code during `pnpm dev`/`pnpm devtop` preparation and worker
+  packaging, and bundle it into the matching worker artifact. The generic
+  `pnpm build` workspace build does not compile Cantrip Code. No production
+  worker downloads or builds the editor on first use.
 
 ## 3. Non-goals
 
@@ -189,9 +193,17 @@ platform and architecture. It does not contain editor builds for every target.
 
 ```text
 cantrip-worker-darwin-arm64/
-├── bin/cantrip-worker
+├── start.sh
+├── start.cmd
+├── package.json
+├── dist/
+├── node_modules/
+├── runtime/
+│   └── node | node.exe
+├── bin/                         # Cantrip CLI and bundled Codex runtime
 └── resources/
     └── cantrip-code/
+        ├── cantrip-code.manifest.json
         ├── bin/
         ├── out/
         ├── extensions/
@@ -256,9 +268,11 @@ entrypoint, and workbench compatibility metadata. Startup and packaging reject
 only conditions that prevent the editor from running correctly; they do not
 inventory or hash the distribution's files.
 
-`pnpm code:dev` may run the editor-specific watch workflow when actively
-developing the fork. Clean CI and release builds always compile from the pinned
-source and verify that the working tree does not influence the artifact.
+`pnpm code:dev` verifies and starts the already-built cached distribution for
+the current target on `127.0.0.1:9888`; it neither rebuilds nor watches source.
+CI and release builds compile from the pinned upstream source together with the
+repository's current product overrides, ordered patch series, and bundled
+extension tree.
 
 ## 9. Runtime architecture
 
@@ -296,7 +310,9 @@ When an Explorer editor owner opens:
 4. The worker verifies the embedded Cantrip Code distribution and creates or
    reuses the generated `.code-workspace` file.
 5. The unlocked client supplies the transport's protected tunnel record and
-   random data-plane key; the server persists only ciphertext and routing IDs.
+   random data-plane key; the server persists the ciphertext plus required
+   routing, lifecycle, stable-error, connection/counter, and timestamp metadata,
+   but no usable plaintext data-plane key.
 6. The worker exposes one loopback transport endpoint. Requests beneath
    `/sessions/<opaque-grant>/code/` are dispatched only to the session on the
    server-controlled allowlist for that grant.
@@ -466,8 +482,10 @@ an application-origin path alone is not authority.
 
 ## 11. Worker-owned state
 
-The packaged editor is immutable. Mutable editor state remains in the worker's
-data directory:
+The packaged editor is immutable. Plaintext settings and worker-local mutable
+editor state remain in the worker's data directory; the server separately
+retains only the encrypted canonical global settings record and revision
+metadata:
 
 ```text
 worker-data/
@@ -859,9 +877,13 @@ asks their owning app view to obtain a fresh credential.
 The worker persists only non-secret session identity and reconstructs compatible
 sessions as offline after restart. A new authorized attachment lazily relaunches
 the immutable editor with its existing profile and generated workspace. Active
-tunnel streams prevent eviction; after the last stream closes, the editor stays
-warm for `CANTRIP_CODE_IDLE_TIMEOUT_MS` and is then reclaimed without deleting
-profile, extension, or workspace state. Every editor runs beneath a detached
+tunnel streams prevent logical-session eviction. After the last stream closes,
+a workbench session becomes eligible for retirement after
+`CANTRIP_CODE_IDLE_TIMEOUT_MS`; retirement removes its generated session and
+workspace-descriptor artifacts while preserving profile and extension state. An
+empty, non-retained profile process follows a separate 30-minute idle timeout.
+The explicitly prewarmed default profile remains warm for the worker's lifetime
+and is not reclaimed by session eviction. Every editor runs beneath a detached
 process guard that terminates the complete editor process group if its worker
 parent disappears, including abrupt supervisor or desktop-shell termination.
 
