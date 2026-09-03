@@ -96,13 +96,6 @@ describe("application live protocol", () => {
       appLiveClientMessageSchema.parse({
         type: "subscribe",
         requestId: "request-1",
-        scopes: [{ kind: "workflow-run", runId: "run-1" }],
-      }),
-    ).toThrow();
-    expect(() =>
-      appLiveClientMessageSchema.parse({
-        type: "subscribe",
-        requestId: "request-1",
         scopes: Array.from({ length: 129 }, (_, index) => ({
           kind: "project",
           projectId: `project-${index}`,
@@ -284,19 +277,6 @@ describe("application live protocol", () => {
         retryable: false,
       }).code,
     ).toBe("unauthorized-scope");
-    expect(() =>
-      appLiveServerMessageSchema.parse({
-        type: "event",
-        cursor: 13,
-        scope: projectScope,
-        resource: "workflow-run",
-        action: "updated",
-        entityId: "run-1",
-        revision: 1,
-        payload: null,
-        occurredAt: "2026-08-09T12:00:00.000Z",
-      }),
-    ).toThrow();
     expect(() =>
       appLiveServerMessageSchema.parse({
         type: "event",

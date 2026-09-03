@@ -2627,8 +2627,8 @@ async function encryptionLedgerClosureAudit() {
       failures.push(`${dataClass}: plaintext is not explicitly classified`);
     }
   }
-  if (rows.length !== 47) {
-    failures.push(`ledger: expected 47 classified rows, found ${rows.length}`);
+  if (rows.length !== 39) {
+    failures.push(`ledger: expected 39 classified rows, found ${rows.length}`);
   }
   if (failures.length > 0) {
     throw new Error(`Encryption ledger is not closed:\n${failures.join("\n")}`);

@@ -108,16 +108,24 @@ export function promoteReleaseBranch({
 }
 
 export function verifyInstallationCompatibility({ root = scriptRoot } = {}) {
-  const result = spawnSync(
-    process.execPath,
-    ["scripts/installation-update-compatibility.mjs"],
-    { cwd: root, encoding: "utf8", stdio: "inherit" },
-  );
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      "Installation compatibility verification failed; release was not promoted.",
-    );
+  for (const [script, label] of [
+    [
+      "scripts/installation-update-compatibility.mjs",
+      "Installation compatibility",
+    ],
+    ["scripts/verify-workflow-removal.mjs", "Workflow removal"],
+  ]) {
+    const result = spawnSync(process.execPath, [script], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: "inherit",
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      throw new Error(
+        `${label} verification failed; release was not promoted.`,
+      );
+    }
   }
 }
 

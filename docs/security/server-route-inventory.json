@@ -12121,9 +12121,9 @@
   },
   "encryptionLedgerClosure": {
     "status": "closed",
-    "rowCount": 47,
+    "rowCount": 39,
     "classifications": {
-      "endpointProtected": 40,
+      "endpointProtected": 32,
       "minimizedOperationalMetadata": 2,
       "hashedAuthenticationMaterial": 1,
       "plaintextControlPlane": 4
