@@ -1,5 +1,6 @@
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import type { ExecutionTarget } from "@cantrip/protocol";
-import { LayoutDashboard, Plus } from "lucide-react";
+import { LayoutDashboard, MoreHorizontal, Plus, X } from "lucide-react";
 
 import { performMobileNavigationHaptic } from "@/components/mobile/mobile-navigation-haptics";
 import {
@@ -8,6 +9,11 @@ import {
   type ProjectSurfacePlacementContext,
 } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
+import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
+import {
+  StyledContextMenuContent,
+  StyledContextMenuItem,
+} from "@/components/ui/styled-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +21,7 @@ export function MobileBottomNavigation({
   activeTabKey,
   creatingKinds,
   onCreate,
+  onClose,
   onOverview,
   onSelect,
   overviewSelected,
@@ -24,6 +31,7 @@ export function MobileBottomNavigation({
   activeTabKey: string | null;
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
+  onClose(surface: ProjectSurface): void;
   onOverview(): void;
   onSelect(tabKey: string): void;
   overviewSelected: boolean;
@@ -67,35 +75,71 @@ export function MobileBottomNavigation({
             const label =
               surface.kind === "explorer" ? "Explorer" : surface.title;
             return (
-              <button
-                aria-current={active ? "page" : undefined}
-                aria-label={`Open ${label}`}
-                className={cn(
-                  "flex touch-manipulation flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
-                  evenlyDivided
-                    ? "min-w-0 flex-1"
-                    : "min-w-[4.5rem] max-w-28 shrink-0 px-2",
-                  active && "text-foreground",
-                )}
-                key={surface.tabKey}
-                onClick={() => onSelect(surface.tabKey)}
-                onPointerDown={() =>
-                  void performMobileNavigationHaptic("press")
-                }
-                type="button"
-              >
-                <ProjectSurfaceIcon
-                  className="size-4"
-                  filled={active}
-                  kind={
-                    surface.kind === "chat" &&
-                    surface.entity.experience === "task"
-                      ? "task"
-                      : surface.kind
-                  }
-                />
-                <span className="max-w-full truncate">{label}</span>
-              </button>
+              <ContextMenu.Root key={surface.tabKey}>
+                <ContextMenu.Trigger asChild>
+                  <div
+                    className={cn(
+                      "group relative flex items-stretch",
+                      evenlyDivided
+                        ? "min-w-0 flex-1"
+                        : "min-w-[4.5rem] max-w-28 shrink-0",
+                    )}
+                    data-mobile-surface-tab={surface.tabKey}
+                  >
+                    <button
+                      aria-current={active ? "page" : undefined}
+                      aria-label={`Open ${label}`}
+                      className={cn(
+                        "flex w-full min-w-0 touch-manipulation flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+                        !evenlyDivided && "px-2",
+                        active && "text-foreground",
+                      )}
+                      onClick={() => onSelect(surface.tabKey)}
+                      onPointerDown={() =>
+                        void performMobileNavigationHaptic("press")
+                      }
+                      type="button"
+                    >
+                      <ProjectSurfaceIcon
+                        className="size-4"
+                        filled={active}
+                        kind={
+                          surface.kind === "chat" &&
+                          surface.entity.experience === "task"
+                            ? "task"
+                            : surface.kind
+                        }
+                      />
+                      <span className="max-w-full truncate">{label}</span>
+                    </button>
+                    <SurfaceActionsMenu
+                      align="center"
+                      deleteIcon={<X className="size-4" />}
+                      deleteLabel="Close"
+                      deleteTone="default"
+                      onDelete={() => onClose(surface)}
+                      title={label}
+                      trigger={
+                        <button
+                          aria-label={`Actions for ${label}`}
+                          className="absolute right-0.5 top-0.5 grid size-5 place-items-center rounded text-muted-foreground opacity-0 outline-none hover:bg-background/70 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          type="button"
+                        >
+                          <MoreHorizontal className="size-3" />
+                        </button>
+                      }
+                    />
+                  </div>
+                </ContextMenu.Trigger>
+                <ContextMenu.Portal>
+                  <StyledContextMenuContent className="min-w-40">
+                    <StyledContextMenuItem onSelect={() => onClose(surface)}>
+                      <X className="size-4" /> Close
+                    </StyledContextMenuItem>
+                  </StyledContextMenuContent>
+                </ContextMenu.Portal>
+              </ContextMenu.Root>
             );
           })}
           <ProjectSurfaceCreateMenu
