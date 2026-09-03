@@ -65,6 +65,7 @@ interface CodeSession {
   sessionId: string;
   startedAt: string | null;
   status: CodeRuntimeStatus["status"];
+  startupNavigationCandidate: string | null;
   themeMode: CodeThemeMode;
   workspacePath: string;
   workspaceIncarnation: string;
@@ -729,6 +730,7 @@ export class CodeSupervisor {
           sessionId: command.sessionId,
           startedAt: null,
           status: "starting",
+          startupNavigationCandidate: initialFile,
           themeMode: "follow-cantrip",
           workspaceIncarnation,
           workspacePath,
@@ -745,6 +747,7 @@ export class CodeSupervisor {
 
       session.appearance = command.appearance;
       if (initialFile) session.initialFile = initialFile;
+      session.startupNavigationCandidate = initialFile;
       session.themeMode = "follow-cantrip";
       session.profileId = command.profileId;
       session.presentation = command.presentation;
@@ -891,12 +894,27 @@ export class CodeSupervisor {
         requestedPath,
       );
       this.#assertCurrentOperation(sessionId, generation, session);
+      const startupNavigationCandidate = session.startupNavigationCandidate;
+      session.startupNavigationCandidate = null;
       session.initialFile = relativePath;
       this.#touch(session);
       if (session.presentation === "workbench") {
         await this.#persistState();
       }
       this.#assertCurrentOperation(sessionId, generation, session);
+      const expectedFileUri = pathToFileURL(
+        path.resolve(session.workspaceRootPath, relativePath),
+      ).href;
+      if (
+        startupNavigationCandidate === relativePath &&
+        this.#bridge.acknowledgesActiveFile(
+          sessionId,
+          relativePath,
+          expectedFileUri,
+        )
+      ) {
+        return { relativePath };
+      }
       const result = await this.#bridge.openFile(
         sessionId,
         relativePath,
@@ -2400,6 +2418,7 @@ export class CodeSupervisor {
               ? candidate.startedAt
               : null,
           status: "offline",
+          startupNavigationCandidate: null,
           themeMode: "follow-cantrip",
           workspaceIncarnation,
           workspacePath,

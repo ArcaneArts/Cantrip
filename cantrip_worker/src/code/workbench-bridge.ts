@@ -1,5 +1,7 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type {
   CodeAgentTurnNotificationResult,
@@ -147,6 +149,34 @@ function scheduleLiveness(
   }, intervalMs);
   timer.unref();
   return () => clearInterval(timer);
+}
+
+export function equivalentFileUri(
+  left: string,
+  right: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  try {
+    const leftUrl = new URL(left);
+    const rightUrl = new URL(right);
+    if (
+      leftUrl.protocol !== "file:" ||
+      rightUrl.protocol !== "file:" ||
+      leftUrl.search ||
+      rightUrl.search ||
+      leftUrl.hash ||
+      rightUrl.hash
+    ) {
+      return false;
+    }
+    const windows = platform === "win32";
+    const flavor = windows ? path.win32 : path.posix;
+    const leftPath = fileURLToPath(leftUrl, { windows });
+    const rightPath = fileURLToPath(rightUrl, { windows });
+    return flavor.relative(leftPath, rightPath) === "";
+  } catch {
+    return false;
+  }
 }
 
 function boundedDuration(
@@ -478,6 +508,22 @@ export class CodeWorkbenchBridge {
           git: state.git ? { ...state.git } : null,
         }
       : { ...DEFAULT_WORKBENCH_STATE };
+  }
+
+  acknowledgesActiveFile(
+    sessionId: string,
+    relativePath: string,
+    expectedFileUri: string,
+  ): boolean {
+    const session = this.#sessions.get(sessionId);
+    const connection = session ? this.#authoritativeSocket(session) : null;
+    const activeEditor = connection?.workbench?.activeEditor;
+    return Boolean(
+      activeEditor &&
+      activeEditor.relativePath === relativePath &&
+      activeEditor.topologyReconciled === true &&
+      equivalentFileUri(activeEditor.uri, expectedFileUri),
+    );
   }
 
   async waitUntilConnected(

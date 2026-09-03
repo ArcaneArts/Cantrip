@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CodeWorkbenchBridge } from "../src/code/workbench-bridge.js";
+import {
+  CodeWorkbenchBridge,
+  equivalentFileUri,
+} from "../src/code/workbench-bridge.js";
 import { subscribeWorkerLogs } from "../src/logger.js";
 
 const bridges: CodeWorkbenchBridge[] = [];
@@ -95,9 +98,11 @@ function waitForClose(socket: WebSocket): Promise<void> {
 function publishState(
   socket: WebSocket,
   options: {
+    activeUri?: string;
     activePath?: string;
     dirtyPaths?: string[];
     policy?: "always" | "ask" | "never";
+    topologyReconciled?: boolean;
   } = {},
 ) {
   const dirtyPaths = options.dirtyPaths ?? [];
@@ -112,8 +117,9 @@ function publishState(
       })),
       activeEditor: options.activePath
         ? {
-            uri: `file:///repo/${options.activePath}`,
+            uri: options.activeUri ?? `file:///repo/${options.activePath}`,
             relativePath: options.activePath,
+            topologyReconciled: options.topologyReconciled ?? false,
             selection: {
               startLine: 0,
               startCharacter: 0,
@@ -131,6 +137,136 @@ function publishState(
 }
 
 describe("Cantrip workbench bridge", () => {
+  it("compares canonical POSIX, Windows drive, and UNC file identities", () => {
+    expect(
+      equivalentFileUri(
+        "file:///repo/src/example%20file.ts",
+        "file:///repo/src/example file.ts",
+        "linux",
+      ),
+    ).toBe(true);
+    expect(
+      equivalentFileUri(
+        "file:///C:/Users/example/Cantrip/src/index.ts",
+        "file:///c%3A/Users/example/Cantrip/src/index.ts",
+        "win32",
+      ),
+    ).toBe(true);
+    expect(
+      equivalentFileUri(
+        "file://SERVER/share/Cantrip/src/index.ts",
+        "file://server/share/Cantrip/src/index.ts",
+        "win32",
+      ),
+    ).toBe(true);
+    expect(
+      equivalentFileUri(
+        "file:///repo/src/index.ts?stale=1",
+        "file:///repo/src/index.ts",
+        "linux",
+      ),
+    ).toBe(false);
+    expect(
+      equivalentFileUri(
+        "file:///repo/src/index.ts",
+        "file:///repo/src/other.ts",
+        "linux",
+      ),
+    ).toBe(false);
+  });
+
+  it("acknowledges an exact active file only from the current authenticated authority", async () => {
+    const bridge = new CodeWorkbenchBridge();
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register("initial-navigation", "initial-secret");
+
+    expect(
+      bridge.acknowledgesActiveFile(
+        "initial-navigation",
+        "src/start.ts",
+        "file:///repo/src/start.ts",
+      ),
+    ).toBe(false);
+
+    const first = await openSocket(url);
+    respond(first, await nextRequest(first));
+    publishState(first, {
+      activePath: "src/start.ts",
+      topologyReconciled: true,
+    });
+    await vi.waitFor(() =>
+      expect(
+        bridge.acknowledgesActiveFile(
+          "initial-navigation",
+          "src/start.ts",
+          "file:///repo/src/start.ts",
+        ),
+      ).toBe(true),
+    );
+    expect(
+      bridge.acknowledgesActiveFile(
+        "initial-navigation",
+        "src/other.ts",
+        "file:///repo/src/start.ts",
+      ),
+    ).toBe(false);
+    expect(
+      bridge.acknowledgesActiveFile(
+        "initial-navigation",
+        "src/start.ts",
+        "file:///other/src/start.ts",
+      ),
+    ).toBe(false);
+    publishState(first, { activePath: "src/start.ts" });
+    await vi.waitFor(() =>
+      expect(
+        bridge.state("initial-navigation").activeEditor?.topologyReconciled,
+      ).toBe(false),
+    );
+    expect(
+      bridge.acknowledgesActiveFile(
+        "initial-navigation",
+        "src/start.ts",
+        "file:///repo/src/start.ts",
+      ),
+    ).toBe(false);
+
+    const second = await openSocket(url);
+    respond(second, await nextRequest(second));
+    publishState(first, {
+      activePath: "src/start.ts",
+      topologyReconciled: true,
+    });
+    expect(
+      bridge.acknowledgesActiveFile(
+        "initial-navigation",
+        "src/start.ts",
+        "file:///repo/src/start.ts",
+      ),
+    ).toBe(false);
+    publishState(second, {
+      activePath: "src/start.ts",
+      activeUri: "file:///other/src/start.ts",
+      topologyReconciled: true,
+    });
+    await vi.waitFor(() =>
+      expect(bridge.state("initial-navigation").activeEditor?.uri).toBe(
+        "file:///other/src/start.ts",
+      ),
+    );
+    expect(
+      bridge.acknowledgesActiveFile(
+        "initial-navigation",
+        "src/start.ts",
+        "file:///repo/src/start.ts",
+      ),
+    ).toBe(false);
+
+    first.close();
+    second.close();
+  });
+
   it("proactively retires only a silent authority and preserves its authenticated session", async () => {
     let sweep: (() => Promise<void>) | null = null;
     const disposeScheduler = vi.fn();

@@ -325,6 +325,7 @@ interface BridgeRequest {
 
 async function openControlledBridge(url: string) {
   const socket = new WebSocket(url);
+  const requests: BridgeRequest[] = [];
   const opened = new Promise<void>((resolve, reject) => {
     socket.once("open", () => resolve());
     socket.once("error", reject);
@@ -350,6 +351,7 @@ async function openControlledBridge(url: string) {
   };
   socket.on("message", (data) => {
     const request = JSON.parse(data.toString()) as BridgeRequest;
+    requests.push(request);
     if (!receivedInitialTheme) {
       receivedInitialTheme = true;
       respond(request);
@@ -368,6 +370,7 @@ async function openControlledBridge(url: string) {
         nextRequest = resolve;
       }),
     respond,
+    requests,
     socket,
   };
 }
@@ -2076,6 +2079,107 @@ describe("Cantrip Code supervisor", () => {
       supervisor.openFile("editor", "../outside.ts"),
     ).rejects.toThrow("safe worktree-relative file path");
     socket.close();
+  });
+
+  it("deduplicates an exact authenticated initial navigation and preserves the acknowledged fallback", async () => {
+    const { repository, supervisor } = await fixture();
+    const canonicalRepository = await realpath(repository);
+    await writeFile(path.join(repository, "first.ts"), "export {}\n");
+    await writeFile(path.join(repository, "second.ts"), "export {}\n");
+    await supervisor.open({
+      ...openCommand("initial-navigation", repository, "primary"),
+      initialFile: "first.ts",
+    });
+    const target = supervisor.proxyTarget("initial-navigation");
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, unknown> };
+    const bridge = await openControlledBridge(
+      workspace.settings["cantrip.bridgeUrl"] as string,
+    );
+    const publishActiveEditor = (relativePath: string, uri: string) => {
+      bridge.socket.send(
+        JSON.stringify({
+          type: "state",
+          dirtyEditors: [],
+          activeEditor: {
+            uri,
+            relativePath,
+            topologyReconciled: true,
+            selection: {
+              startLine: 0,
+              startCharacter: 0,
+              endLine: 0,
+              endCharacter: 0,
+            },
+          },
+          git: null,
+          conflicts: [],
+          savePolicy: "always",
+          agentStatus: "idle",
+        }),
+      );
+    };
+
+    publishActiveEditor(
+      "first.ts",
+      pathToFileURL(path.join(canonicalRepository, "first.ts")).href,
+    );
+    await vi.waitFor(() =>
+      expect(
+        supervisor.status("initial-navigation").workbench.activeEditor,
+      ).toMatchObject({ relativePath: "first.ts" }),
+    );
+    await expect(
+      supervisor.openFile("initial-navigation", "first.ts"),
+    ).resolves.toEqual({ relativePath: "first.ts" });
+    expect(
+      bridge.requests.filter((request) => request.method === "openFile"),
+    ).toHaveLength(0);
+
+    await expect(
+      supervisor.openFile("initial-navigation", "first.ts"),
+    ).resolves.toEqual({ relativePath: "first.ts" });
+    expect(
+      bridge.requests.filter((request) => request.method === "openFile"),
+    ).toHaveLength(1);
+
+    await supervisor.open({
+      ...openCommand("initial-navigation", repository, "primary"),
+      initialFile: "second.ts",
+    });
+
+    publishActiveEditor(
+      "second.ts",
+      pathToFileURL(path.join(canonicalRepository, "elsewhere.ts")).href,
+    );
+    await vi.waitFor(() =>
+      expect(
+        supervisor.status("initial-navigation").workbench.activeEditor?.uri,
+      ).toBe(
+        pathToFileURL(path.join(canonicalRepository, "elsewhere.ts")).href,
+      ),
+    );
+    await expect(
+      supervisor.openFile("initial-navigation", "second.ts"),
+    ).resolves.toEqual({ relativePath: "second.ts" });
+    expect(
+      bridge.requests.filter((request) => request.method === "openFile"),
+    ).toEqual([
+      expect.objectContaining({
+        params: {
+          expectedWorkspaceRootUri: pathToFileURL(canonicalRepository).href,
+          path: "first.ts",
+        },
+      }),
+      expect.objectContaining({
+        params: {
+          expectedWorkspaceRootUri: pathToFileURL(canonicalRepository).href,
+          path: "second.ts",
+        },
+      }),
+    ]);
+    bridge.socket.close();
   });
 
   it("persists workbench navigation without rewriting its workspace", async () => {

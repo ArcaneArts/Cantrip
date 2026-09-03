@@ -108,9 +108,9 @@ merged and the result has been observed on `main`.
 ### Cycle 4 — worker-authorized initial file payload
 
 - Branch: `codex/code-fix-initial-file-payload`
-- Pull request: pending
-- Merge commit: pending
-- Status: implementation verified locally; pull request pending
+- Pull request: #1649
+- Merge commit: `ffeae013c933fcd5ad01ec2386839b7e875a421f`
+- Status: merged
 - Behavior: a worker-authorized initial file is translated into OpenVSCode's
   supported `openFile` startup payload when each Tauri or browser attachment URL
   is created, allowing file loading to overlap workbench boot without another
@@ -161,6 +161,53 @@ merged and the result has been observed on `main`.
 - Manual verification: compare the initial file paint and bridge-open timing on
   both local-direct Tauri and browser-relay routes after all cycles land.
 
+### Cycle 5 — authenticated one-shot initial-navigation acknowledgement
+
+- Branch: `codex/code-fix-initial-navigation-ack`
+- Pull request: pending
+- Merge commit: pending
+- Status: implementation verified locally; pull request pending
+- Behavior: the existing bridge `openFile` fallback is skipped only once, for
+  the startup-payload candidate, and only when the current authoritative
+  authenticated extension socket reports the exact requested file with a
+  reconciled one-group, one-tab editor topology. Missing, stale, mismatched, or
+  superseded state keeps the existing acknowledged bridge command. Subsequent
+  navigation always uses that command and cannot be deduplicated against the
+  extension's debounced state.
+- Subsystem: workbench extension state publication, worker bridge authority and
+  file-URI comparison, and supervisor startup-candidate lifecycle.
+- Tests run:
+  - Complete bundled workbench extension suite passed: 60 tests.
+  - Focused worker bridge and supervisor suite passed: 2 files, 81 tests.
+  - Complete worker suite passed with four workers: 153 files passed, 1
+    skipped; 1,020 tests passed, 2 skipped.
+  - Worker typecheck passed.
+  - Worker build passed.
+  - Protocol typecheck passed. Protocol tests retained the pre-existing
+    public-surface compatibility count mismatch (expected 1,843 exports;
+    current clean baseline exposes 1,845): 404 tests passed and the duplicated
+    source/built compatibility assertions failed.
+  - App typecheck passed against the extended optional workbench state.
+  - Cantrip Code upstream/source verification passed.
+  - Prettier and `git diff --check` passed.
+- Verified result: extension tests prove only the sole active selected tab is
+  topology-reconciled. Worker tests prove authority rotation, missing topology,
+  relative-path mismatch, URI mismatch, query rejection, POSIX encoding,
+  Windows drive canonicalization, and UNC authority canonicalization cannot
+  create a false acknowledgement. Supervisor coverage proves the exact initial
+  state avoids the duplicate RPC once, the candidate is consumed, and both a
+  later identical navigation and mismatched URI retain the existing
+  acknowledged fallback.
+- Remaining work: complete worker/protocol/app regression validation, Code
+  documentation reconciliation, final independent audit, and manual launch
+  traces.
+- Known risks: the acknowledgement depends on extension state arriving before
+  the app's existing fallback request. If it does not, behavior remains correct
+  and takes the established bridge path; no wait or retry was added.
+- Manual verification: compare worker bridge request traces for cold local and
+  browser launches, confirming zero duplicate `openFile` only when the initial
+  file is already active and isolated.
+
 ## Required completion matrix
 
 | Requirement                                     | Status      | Evidence                  |
@@ -170,6 +217,6 @@ merged and the result has been observed on `main`.
 | Ordinary inactive editors remain dormant        | Complete    | Cycle 1 / PR #1642        |
 | Sidebar tree remains mounted during pin         | Complete    | Cycle 2 / PR #1643        |
 | Bridge connects before presentation setup       | Complete    | Cycle 3 / PR #1644        |
-| Authorized initial-file startup payload         | In progress | Cycle 4                   |
-| Authenticated acknowledgement and safe fallback | Pending     | Future cycle              |
+| Authorized initial-file startup payload         | Complete    | Cycle 4 / PR #1649        |
+| Authenticated acknowledgement and safe fallback | In progress | Cycle 5                   |
 | Tauri/browser and full regression validation    | Pending     | Final audit               |
