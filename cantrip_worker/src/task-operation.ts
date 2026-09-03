@@ -24,7 +24,7 @@ import {
   type ChatRelocationContextPayload,
   type NormalizedAgentMessage,
 } from "@cantrip/protocol";
-import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
+import type { JsonObject } from "@cantrip/protocol/bounded-json";
 import {
   taskFinalizerOutputJsonSchema,
   taskFinalizerResultSchema,
@@ -822,7 +822,7 @@ export async function executeEncryptedTaskOperation(input: {
   ownerId: string;
   request: TaskOperationRelayRequest;
   run(input: {
-    outputSchema?: WorkflowJsonObject;
+    outputSchema?: JsonObject;
     prompt: string;
   }): Promise<AgentTurnResult>;
 }): Promise<AgentTurnResult> {

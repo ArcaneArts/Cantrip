@@ -94,6 +94,7 @@ import type {
 } from "@cantrip/protocol/task-scheduling";
 import type { ModelConfiguration } from "@cantrip/protocol/model-configuration";
 import type { ProjectAutomationSchedule } from "@cantrip/protocol/automations";
+import type { ProjectAutomationContentOpaque } from "@cantrip/protocol/project-automation-content";
 import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 import type {
   EncryptedPolicyBodyContent,
@@ -4865,14 +4866,14 @@ export const projectAutomations = pgTable(
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
     protectedName: jsonb("protected_name")
-      .$type<WorkflowContentOpaque>()
+      .$type<ProjectAutomationContentOpaque>()
       .notNull(),
     protectedPrompt: jsonb("protected_prompt")
-      .$type<WorkflowContentOpaque>()
+      .$type<ProjectAutomationContentOpaque>()
       .notNull(),
     schedule: jsonb("schedule").$type<ProjectAutomationSchedule>().notNull(),
     protectedCondition: jsonb("protected_condition")
-      .$type<WorkflowContentOpaque>()
+      .$type<ProjectAutomationContentOpaque>()
       .notNull(),
     enabled: boolean("enabled").notNull().default(true),
     revision: integer("revision").notNull().default(1),

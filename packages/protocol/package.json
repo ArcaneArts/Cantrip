@@ -16,6 +16,14 @@
       "types": "./src/workflows.ts",
       "import": "./dist/workflows.js"
     },
+    "./bounded-json": {
+      "types": "./src/bounded-json.ts",
+      "import": "./dist/bounded-json.js"
+    },
+    "./agent-usage": {
+      "types": "./src/agent-usage.ts",
+      "import": "./dist/agent-usage.js"
+    },
     "./automations": {
       "types": "./src/automations.ts",
       "import": "./dist/automations.js"
@@ -115,6 +123,10 @@
     "./workflow-content": {
       "types": "./src/workflow-content.ts",
       "import": "./dist/workflow-content.js"
+    },
+    "./project-automation-content": {
+      "types": "./src/project-automation-content.ts",
+      "import": "./dist/project-automation-content.js"
     },
     "./encryption": {
       "types": "./src/encryption.ts",

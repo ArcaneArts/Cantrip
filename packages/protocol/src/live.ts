@@ -5,7 +5,7 @@ import {
   encodeJsonMessage,
   type JsonMessageDecodeResult,
 } from "./json-message.js";
-import { workflowJsonObjectSchemaWithLimits } from "./workflows.js";
+import { boundedJsonObjectSchemaWithLimits } from "./bounded-json.js";
 import { clientNotificationOpaqueSchema } from "./client-control-content.js";
 
 export const appLiveProtocolVersionSchema = z.literal(1);
@@ -225,7 +225,7 @@ export const appLiveEventActionSchema = z.enum([
 // the surrounding message while remaining below the live hub's 1 MiB queue
 // threshold.
 const MAX_LIVE_EVENT_PAYLOAD_BYTES = 768 * 1_024;
-const liveEventJsonObjectSchema = workflowJsonObjectSchemaWithLimits({
+const liveEventJsonObjectSchema = boundedJsonObjectSchemaWithLimits({
   maxBytes: MAX_LIVE_EVENT_PAYLOAD_BYTES,
   maxStringLength: 300_000,
 });

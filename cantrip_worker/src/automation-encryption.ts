@@ -1,4 +1,7 @@
-import { clearSensitiveBytes, decryptWorkflowContent } from "@cantrip/crypto";
+import {
+  clearSensitiveBytes,
+  decryptProjectAutomationContent,
+} from "@cantrip/crypto";
 import {
   projectAutomationOpaqueContentSchema,
   projectAutomationProtectedConditionSchema,
@@ -34,7 +37,7 @@ export async function protectProjectAutomationDispatch(input: {
   const ownerId = input.service.ownerId();
   try {
     const [name, prompt, condition] = await Promise.all([
-      decryptWorkflowContent({
+      decryptProjectAutomationContent({
         ownerId,
         context: {
           recordKind: "project-automation",
@@ -46,7 +49,7 @@ export async function protectProjectAutomationDispatch(input: {
         encrypted: content.protectedName,
         schema: projectAutomationProtectedNameSchema,
       }),
-      decryptWorkflowContent({
+      decryptProjectAutomationContent({
         ownerId,
         context: {
           recordKind: "project-automation",
@@ -58,7 +61,7 @@ export async function protectProjectAutomationDispatch(input: {
         encrypted: content.protectedPrompt,
         schema: projectAutomationProtectedPromptSchema,
       }),
-      decryptWorkflowContent({
+      decryptProjectAutomationContent({
         ownerId,
         context: {
           recordKind: "project-automation",

@@ -1,7 +1,7 @@
 import { Cron } from "croner";
 import { z } from "zod";
 
-import { workflowContentOpaqueSchema } from "./workflow-content.js";
+import { projectAutomationContentOpaqueSchema } from "./project-automation-content.js";
 
 const idSchema = z.string().trim().min(1);
 const timestampSchema = z.string().datetime();
@@ -144,9 +144,9 @@ export const projectAutomationProtectedConditionSchema = z
 
 export const projectAutomationOpaqueContentSchema = z
   .object({
-    protectedName: workflowContentOpaqueSchema,
-    protectedPrompt: workflowContentOpaqueSchema,
-    protectedCondition: workflowContentOpaqueSchema,
+    protectedName: projectAutomationContentOpaqueSchema,
+    protectedPrompt: projectAutomationContentOpaqueSchema,
+    protectedCondition: projectAutomationContentOpaqueSchema,
   })
   .strict();
 

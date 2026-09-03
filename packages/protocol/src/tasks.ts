@@ -12,7 +12,7 @@ import {
   encryptionKeyBytesSchema,
   encryptionKeyRevisionSchema,
 } from "./encryption.js";
-import type { WorkflowJsonObject } from "./workflows.js";
+import type { JsonObject } from "./bounded-json.js";
 
 export const TASK_MARKDOWN_LIMIT = 100_000;
 export const TASK_QUESTION_LIMIT = 12;
@@ -364,7 +364,7 @@ export const taskContinuationStartSchema = taskOperationStartSchema.extend({
   additionalDirection: z.string().max(TASK_ADDITIONAL_DIRECTION_LIMIT),
 });
 
-export const taskPlannerOutputJsonSchema: WorkflowJsonObject = {
+export const taskPlannerOutputJsonSchema: JsonObject = {
   type: "object",
   additionalProperties: false,
   required: ["planMarkdown", "questions"],
@@ -436,7 +436,7 @@ export const taskPlannerOutputJsonSchema: WorkflowJsonObject = {
   },
 };
 
-export const taskFinalizerOutputJsonSchema: WorkflowJsonObject = {
+export const taskFinalizerOutputJsonSchema: JsonObject = {
   type: "object",
   additionalProperties: false,
   required: ["finalPlanMarkdown", "goalPrompt"],
