@@ -168,6 +168,7 @@ import {
 
 export type SettingsSection =
   | "general"
+  | "appearance"
   | "usage"
   | "code"
   | "elite"
@@ -186,18 +187,9 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
     {
       id: "general",
       label: "General",
-      description: "Appearance and permissions",
+      description: "Permissions and behavior",
       icon: SlidersHorizontal,
       searchItems: [
-        {
-          id: "appearance",
-          label: "Appearance",
-          description:
-            "Theme, contrast, content gutters, Elite Mode, and macOS Pro Mode.",
-          keywords: [
-            "light dark brightness opacity transparency gutter width spacing",
-          ],
-        },
         {
           id: "agent-permissions",
           label: "Default agent permissions",
@@ -225,6 +217,23 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           label: "Anonymous recovery",
           description: "Export the recovery file for local encrypted data.",
           keywords: ["encryption key backup restore"],
+        },
+      ],
+    },
+    {
+      id: "appearance",
+      label: "Appearance",
+      description: "Theme and visual presentation",
+      icon: Palette,
+      searchItems: [
+        {
+          id: "appearance",
+          label: "Appearance",
+          description:
+            "Theme, contrast, content gutters, Elite Mode, and macOS Pro Mode.",
+          keywords: [
+            "light dark brightness opacity transparency gutter width spacing",
+          ],
         },
       ],
     },
@@ -1665,13 +1674,14 @@ export function SettingsPage({
   const hasSearchResults =
     section === "models"
       ? providersMatch || modelsMatch
-      : appearanceMatches ||
-        permissionDefaultsMatch ||
-        agentNamingMatches ||
-        chatDisplayMatches ||
-        desktopStreamingMatches ||
-        encryptionRecoveryMatches ||
-        desktopUpdateMatches;
+      : section === "appearance"
+        ? appearanceMatches
+        : permissionDefaultsMatch ||
+          agentNamingMatches ||
+          chatDisplayMatches ||
+          desktopStreamingMatches ||
+          encryptionRecoveryMatches ||
+          desktopUpdateMatches;
 
   useEffect(() => {
     setSection(initialSection);
@@ -1712,7 +1722,7 @@ export function SettingsPage({
           className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "code" ? "overflow-hidden" : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
         >
           <div
-            className={`${section === "general" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
+            className={`${section === "general" || section === "appearance" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
           >
             {settings.isError ? (
               <p className="text-sm text-destructive">
@@ -1722,7 +1732,7 @@ export function SettingsPage({
 
             {hasSearchResults ? (
               <div className="min-w-0 divide-y overflow-hidden border-y">
-                {section === "general" && appearanceMatches ? (
+                {section === "appearance" && appearanceMatches ? (
                   <section>
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
                       <div className="flex min-w-0 items-center gap-2.5">
