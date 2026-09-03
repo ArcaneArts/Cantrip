@@ -136,6 +136,7 @@ export function GlobalContentHost({
     createWorkspaceMutation,
     creatingSurfaceKinds,
     currentRelocation,
+    deleteSurface,
     deleteChatMutation,
     desktopRuntime,
     displayTerminals,
@@ -1206,6 +1207,7 @@ export function GlobalContentHost({
           onCreate={(kind, target) =>
             createProjectSurface(selectedProject.id, kind, undefined, target)
           }
+          onClose={deleteSurface}
           onOverview={returnToCompactProjectOverview}
           onSelect={selectTopTab}
           overviewSelected={workspaceSelection.destination === "overview"}
