@@ -578,6 +578,152 @@ export const githubPullRequestDetailSchema =
     checksTruncated: githubPullRequestChecksSchema.shape.checksTruncated,
   });
 
+export const githubActionsStatusSchema = z.enum([
+  "queued",
+  "in-progress",
+  "completed",
+  "waiting",
+  "requested",
+  "pending",
+]);
+
+export const githubActionsWorkflowSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1).max(1_000),
+  path: z.string().min(1).max(8_192),
+  state: z.string().min(1).max(100),
+  url: z.url(),
+  badgeUrl: z.url().nullable(),
+});
+
+export const githubActionsRunSchema = z.object({
+  id: z.number().int().positive(),
+  workflowId: z.number().int().positive(),
+  name: z.string().min(1).max(1_000),
+  displayTitle: z.string().min(1).max(10_000),
+  event: z.string().min(1).max(100),
+  status: githubActionsStatusSchema,
+  conclusion: z.string().min(1).max(100).nullable(),
+  headBranch: z.string().min(1).max(1_000).nullable(),
+  headSha: z.string().regex(/^[0-9a-f]{40}$/u),
+  pullRequestNumber: z.number().int().positive().nullable(),
+  runNumber: z.number().int().positive(),
+  runAttempt: z.number().int().positive(),
+  actor: z.string().min(1).max(100),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  url: z.url(),
+});
+
+export const githubActionsRunnerSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1).max(1_000),
+  os: z.string().min(1).max(100),
+  status: z.enum(["online", "offline"]),
+  busy: z.boolean(),
+  labels: z.array(z.string().min(1).max(100)).max(100),
+});
+
+export const githubActionsOverviewSchema = z.object({
+  workflows: z.array(githubActionsWorkflowSchema).max(100),
+  workflowsTruncated: z.boolean(),
+  runs: z.array(githubActionsRunSchema).max(100),
+  totalRunCount: z.number().int().nonnegative(),
+  nextPage: z.number().int().positive().nullable(),
+  runners: z.array(githubActionsRunnerSchema).max(100),
+  runnerAccess: z.enum(["available", "unavailable"]),
+  warnings: z.array(z.string().min(1).max(2_000)).max(20),
+});
+
+export const githubActionsStepSchema = z.object({
+  number: z.number().int().nonnegative(),
+  name: z.string().min(1).max(1_000),
+  status: githubActionsStatusSchema,
+  conclusion: z.string().min(1).max(100).nullable(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+});
+
+export const githubActionsJobSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1).max(1_000),
+  status: githubActionsStatusSchema,
+  conclusion: z.string().min(1).max(100).nullable(),
+  url: z.url(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  runnerName: z.string().min(1).max(1_000).nullable(),
+  runnerGroupName: z.string().min(1).max(1_000).nullable(),
+  steps: z.array(githubActionsStepSchema).max(100),
+  stepsTruncated: z.boolean(),
+});
+
+export const githubActionsArtifactSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1).max(1_000),
+  sizeInBytes: z.number().int().nonnegative(),
+  expired: z.boolean(),
+  createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  url: z.url(),
+  testReport: z.boolean(),
+});
+
+export const githubActionsRunDetailSchema = z.object({
+  run: githubActionsRunSchema,
+  jobs: z.array(githubActionsJobSchema).max(100),
+  jobsTruncated: z.boolean(),
+  artifacts: z.array(githubActionsArtifactSchema).max(100),
+  artifactsTruncated: z.boolean(),
+  warnings: z.array(z.string().min(1).max(2_000)).max(20),
+});
+
+export const githubActionsRunLogsSchema = z.object({
+  runId: z.number().int().positive(),
+  jobId: z.number().int().positive().nullable(),
+  available: z.boolean(),
+  text: z.string().max(1_000_000),
+  truncated: z.boolean(),
+  updatedAt: z.string().datetime(),
+});
+
+export const githubActionsWorkflowDispatchSchema = z
+  .object({
+    workflowId: z.number().int().positive(),
+    ref: z.string().trim().min(1).max(1_000),
+    inputs: z
+      .record(
+        z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]{0,99}$/u),
+        z.string().max(10_000),
+      )
+      .default({}),
+  })
+  .refine((value) => Object.keys(value.inputs).length <= 50, {
+    message: "A workflow dispatch can contain at most 50 inputs.",
+    path: ["inputs"],
+  });
+
+export const githubActionsRunActionSchema = z.object({
+  runId: z.number().int().positive(),
+  action: z.enum(["cancel", "rerun", "rerun-failed"]),
+});
+
+export const githubActionsMutationResultSchema = z.object({
+  accepted: z.literal(true),
+  runId: z.number().int().positive().nullable(),
+  workflowId: z.number().int().positive().nullable(),
+  action: z.enum(["dispatch", "cancel", "rerun", "rerun-failed"]),
+  acceptedAt: z.string().datetime(),
+});
+
+export const githubActionsRunCheckoutPreparedSchema = z.object({
+  run: githubActionsRunSchema,
+  branch: z.string().trim().min(1).max(255),
+  name: z.string().trim().min(1).max(200),
+  headSha: z.string().regex(/^[0-9a-f]{40}$/u),
+  remote: z.string().trim().min(1).max(255),
+});
+
 export const githubReleaseSummarySchema = z.object({
   id: z.number().int().positive(),
   tagName: z.string().min(1).max(1_000),
@@ -726,6 +872,44 @@ export type GithubPullRequestCheckoutPrepared = z.infer<
 
 export type GithubPullRequestDetail = z.infer<
   typeof githubPullRequestDetailSchema
+>;
+
+export type GithubActionsStatus = z.infer<typeof githubActionsStatusSchema>;
+
+export type GithubActionsWorkflow = z.infer<typeof githubActionsWorkflowSchema>;
+
+export type GithubActionsRun = z.infer<typeof githubActionsRunSchema>;
+
+export type GithubActionsRunner = z.infer<typeof githubActionsRunnerSchema>;
+
+export type GithubActionsOverview = z.infer<typeof githubActionsOverviewSchema>;
+
+export type GithubActionsStep = z.infer<typeof githubActionsStepSchema>;
+
+export type GithubActionsJob = z.infer<typeof githubActionsJobSchema>;
+
+export type GithubActionsArtifact = z.infer<typeof githubActionsArtifactSchema>;
+
+export type GithubActionsRunDetail = z.infer<
+  typeof githubActionsRunDetailSchema
+>;
+
+export type GithubActionsRunLogs = z.infer<typeof githubActionsRunLogsSchema>;
+
+export type GithubActionsWorkflowDispatch = z.infer<
+  typeof githubActionsWorkflowDispatchSchema
+>;
+
+export type GithubActionsRunAction = z.infer<
+  typeof githubActionsRunActionSchema
+>;
+
+export type GithubActionsMutationResult = z.infer<
+  typeof githubActionsMutationResultSchema
+>;
+
+export type GithubActionsRunCheckoutPrepared = z.infer<
+  typeof githubActionsRunCheckoutPreparedSchema
 >;
 
 export type GithubReleaseSummary = z.infer<typeof githubReleaseSummarySchema>;

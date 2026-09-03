@@ -38,6 +38,20 @@ export type {
   GithubPullRequestLifecycleApply,
   GithubPullRequestCheckoutPrepared,
   GithubPullRequestDetail,
+  GithubActionsStatus,
+  GithubActionsWorkflow,
+  GithubActionsRun,
+  GithubActionsRunner,
+  GithubActionsOverview,
+  GithubActionsStep,
+  GithubActionsJob,
+  GithubActionsArtifact,
+  GithubActionsRunDetail,
+  GithubActionsRunLogs,
+  GithubActionsWorkflowDispatch,
+  GithubActionsRunAction,
+  GithubActionsMutationResult,
+  GithubActionsRunCheckoutPrepared,
   GithubReleaseSummary,
   GithubReleaseList,
   GithubReleaseCreate,
@@ -279,6 +293,7 @@ export {
   projectWorktreeSummarySchema,
   projectWorktreeListSchema,
   githubPullRequestCheckoutResultSchema,
+  githubActionsRunCheckoutResultSchema,
 } from "./worktrees.js";
 
 export type {
@@ -287,6 +302,7 @@ export type {
   WorktreeLifecycleState,
   ProjectWorktreeSummary,
   GithubPullRequestCheckoutResult,
+  GithubActionsRunCheckoutResult,
 } from "./worktrees.js";
 
 export {

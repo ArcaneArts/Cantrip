@@ -16,6 +16,8 @@ describe("GitHub operation scope", () => {
   it.each([
     "github.issues.list",
     "github.pull-requests.list",
+    "github.actions.overview",
+    "github.actions.run.checkout.prepare",
     "github.releases.list",
   ] as const)("requires a checkout for repository operation %s", (type) => {
     expect(githubOperationRequiresCheckout(type)).toBe(true);

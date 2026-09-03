@@ -79,6 +79,7 @@ export function useProjectChatCreationOperation({
     mutationFn: ({
       projectId,
       tabGroupId,
+      title,
       worktreeId,
       worktreeMode,
       target,
@@ -86,6 +87,7 @@ export function useProjectChatCreationOperation({
       open?: boolean;
       projectId: string;
       tabGroupId?: string;
+      title?: string;
       worktreeId?: string;
       worktreeMode?: "agent-managed" | "pinned";
       target?: ExecutionTarget;
@@ -102,7 +104,7 @@ export function useProjectChatCreationOperation({
         .map((surface) => surface.title);
       return createChat(
         projectId,
-        newAgentChatTitle(existingTitles, randomAgentNames),
+        title ?? newAgentChatTitle(existingTitles, randomAgentNames),
         worktreeId,
         worktreeMode,
         tabGroupId,

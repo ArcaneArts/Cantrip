@@ -4,6 +4,7 @@ export const projectOverviewSections = [
   "history",
   "issues",
   "prs",
+  "actions",
   "graph",
 ] as const;
 

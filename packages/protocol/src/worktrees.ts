@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { githubPullRequestSummarySchema } from "./github.js";
+import {
+  githubActionsRunSchema,
+  githubPullRequestSummarySchema,
+} from "./github.js";
 
 import { projectRootKindSchema } from "./project-foundation.js";
 
@@ -54,6 +57,12 @@ export const githubPullRequestCheckoutResultSchema = z.object({
   reused: z.boolean(),
 });
 
+export const githubActionsRunCheckoutResultSchema = z.object({
+  run: githubActionsRunSchema,
+  worktree: projectWorktreeSummarySchema,
+  reused: z.boolean(),
+});
+
 export type WorktreePolicy = z.infer<typeof worktreePolicySchema>;
 
 export type WorktreeOrigin = z.infer<typeof worktreeOriginSchema>;
@@ -68,4 +77,8 @@ export type ProjectWorktreeSummary = z.infer<
 
 export type GithubPullRequestCheckoutResult = z.infer<
   typeof githubPullRequestCheckoutResultSchema
+>;
+
+export type GithubActionsRunCheckoutResult = z.infer<
+  typeof githubActionsRunCheckoutResultSchema
 >;

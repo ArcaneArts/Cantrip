@@ -29,6 +29,18 @@ import {
   githubPullRequestDetailSchema,
   githubPullRequestLifecyclePreviewSchema,
   githubPullRequestSummarySchema,
+  githubActionsArtifactSchema,
+  githubActionsJobSchema,
+  githubActionsMutationResultSchema,
+  githubActionsOverviewSchema,
+  githubActionsRunCheckoutPreparedSchema,
+  githubActionsRunDetailSchema,
+  githubActionsRunLogsSchema,
+  githubActionsRunActionSchema,
+  githubActionsRunSchema,
+  githubActionsRunnerSchema,
+  githubActionsWorkflowDispatchSchema,
+  githubActionsWorkflowSchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
   githubRepositoryOwnerListSchema,
@@ -70,6 +82,14 @@ import {
   type GithubPullRequestReviewSubmit,
   type GithubPullRequestReviewThread,
   type GithubPullRequestSummary,
+  type GithubActionsMutationResult,
+  type GithubActionsOverview,
+  type GithubActionsRun,
+  type GithubActionsRunAction,
+  type GithubActionsRunCheckoutPrepared,
+  type GithubActionsRunDetail,
+  type GithubActionsRunLogs,
+  type GithubActionsWorkflowDispatch,
   type GithubReleaseCreate,
   type GithubReleaseList,
   type GithubReleaseSummary,
@@ -640,6 +660,99 @@ interface GithubApiRelease {
   prerelease?: unknown;
   published_at?: unknown;
   tag_name?: unknown;
+}
+
+interface GithubApiActionsWorkflow {
+  badge_url?: unknown;
+  html_url?: unknown;
+  id?: unknown;
+  name?: unknown;
+  path?: unknown;
+  state?: unknown;
+}
+
+interface GithubApiActionsWorkflowList {
+  total_count?: unknown;
+  workflows?: unknown;
+}
+
+interface GithubApiActionsRun {
+  actor?: unknown;
+  conclusion?: unknown;
+  created_at?: unknown;
+  display_title?: unknown;
+  event?: unknown;
+  head_branch?: unknown;
+  head_sha?: unknown;
+  html_url?: unknown;
+  id?: unknown;
+  name?: unknown;
+  pull_requests?: unknown;
+  run_attempt?: unknown;
+  run_number?: unknown;
+  status?: unknown;
+  updated_at?: unknown;
+  workflow_id?: unknown;
+}
+
+interface GithubApiActionsRunList {
+  total_count?: unknown;
+  workflow_runs?: unknown;
+}
+
+interface GithubApiActionsStep {
+  completed_at?: unknown;
+  conclusion?: unknown;
+  name?: unknown;
+  number?: unknown;
+  started_at?: unknown;
+  status?: unknown;
+}
+
+interface GithubApiActionsJob {
+  completed_at?: unknown;
+  conclusion?: unknown;
+  html_url?: unknown;
+  id?: unknown;
+  name?: unknown;
+  runner_group_name?: unknown;
+  runner_name?: unknown;
+  started_at?: unknown;
+  status?: unknown;
+  steps?: unknown;
+}
+
+interface GithubApiActionsJobList {
+  jobs?: unknown;
+  total_count?: unknown;
+}
+
+interface GithubApiActionsArtifact {
+  created_at?: unknown;
+  expired?: unknown;
+  expires_at?: unknown;
+  id?: unknown;
+  name?: unknown;
+  size_in_bytes?: unknown;
+}
+
+interface GithubApiActionsArtifactList {
+  artifacts?: unknown;
+  total_count?: unknown;
+}
+
+interface GithubApiActionsRunner {
+  busy?: unknown;
+  id?: unknown;
+  labels?: unknown;
+  name?: unknown;
+  os?: unknown;
+  status?: unknown;
+}
+
+interface GithubApiActionsRunnerList {
+  runners?: unknown;
+  total_count?: unknown;
 }
 
 interface RepositoryCache {
@@ -1325,6 +1438,129 @@ function parseRelease(value: GithubApiRelease): GithubReleaseSummary {
   });
 }
 
+function actionsStatus(value: unknown) {
+  const status = String(value).toLowerCase().replaceAll("_", "-");
+  return [
+    "queued",
+    "in-progress",
+    "completed",
+    "waiting",
+    "requested",
+    "pending",
+  ].includes(status)
+    ? status
+    : "pending";
+}
+
+function parseActionsWorkflow(value: GithubApiActionsWorkflow) {
+  return githubActionsWorkflowSchema.parse({
+    id: Number(value.id),
+    name: String(value.name || "Unnamed workflow"),
+    path: String(value.path || ".github/workflows"),
+    state: String(value.state || "unknown"),
+    url: String(value.html_url),
+    badgeUrl: nullableUrl(value.badge_url),
+  });
+}
+
+function parseActionsRun(value: GithubApiActionsRun): GithubActionsRun {
+  const pullRequestNumber = Array.isArray(value.pull_requests)
+    ? (value.pull_requests.flatMap((pullRequest) => {
+        if (!pullRequest || typeof pullRequest !== "object") return [];
+        const number = Number((pullRequest as { number?: unknown }).number);
+        return Number.isInteger(number) && number > 0 ? [number] : [];
+      })[0] ?? null)
+    : null;
+  const name = String(value.name || "Workflow run");
+  return githubActionsRunSchema.parse({
+    id: Number(value.id),
+    workflowId: Number(value.workflow_id),
+    name,
+    displayTitle: String(value.display_title || name),
+    event: String(value.event || "unknown"),
+    status: actionsStatus(value.status),
+    conclusion: typeof value.conclusion === "string" ? value.conclusion : null,
+    headBranch:
+      typeof value.head_branch === "string" && value.head_branch
+        ? value.head_branch
+        : null,
+    headSha: String(value.head_sha).toLowerCase(),
+    pullRequestNumber,
+    runNumber: Number(value.run_number),
+    runAttempt: Number(value.run_attempt) || 1,
+    actor: githubLogin(value.actor),
+    createdAt: String(value.created_at),
+    updatedAt: String(value.updated_at),
+    url: String(value.html_url),
+  });
+}
+
+function parseActionsJob(value: GithubApiActionsJob) {
+  const rawSteps = Array.isArray(value.steps)
+    ? (value.steps as GithubApiActionsStep[])
+    : [];
+  return githubActionsJobSchema.parse({
+    id: Number(value.id),
+    name: String(value.name || "Job"),
+    status: actionsStatus(value.status),
+    conclusion: typeof value.conclusion === "string" ? value.conclusion : null,
+    url: String(value.html_url),
+    startedAt: nullableDate(value.started_at),
+    completedAt: nullableDate(value.completed_at),
+    runnerName:
+      typeof value.runner_name === "string" && value.runner_name
+        ? value.runner_name
+        : null,
+    runnerGroupName:
+      typeof value.runner_group_name === "string" && value.runner_group_name
+        ? value.runner_group_name
+        : null,
+    steps: rawSteps.slice(0, 100).map((step) => ({
+      number: Number(step.number) || 0,
+      name: String(step.name || "Step"),
+      status: actionsStatus(step.status),
+      conclusion: typeof step.conclusion === "string" ? step.conclusion : null,
+      startedAt: nullableDate(step.started_at),
+      completedAt: nullableDate(step.completed_at),
+    })),
+    stepsTruncated: rawSteps.length > 100,
+  });
+}
+
+function parseActionsRunner(value: GithubApiActionsRunner) {
+  const labels = Array.isArray(value.labels)
+    ? value.labels.flatMap((label) => {
+        if (!label || typeof label !== "object") return [];
+        const name = (label as { name?: unknown }).name;
+        return typeof name === "string" && name ? [name] : [];
+      })
+    : [];
+  return githubActionsRunnerSchema.parse({
+    id: Number(value.id),
+    name: String(value.name || "Runner"),
+    os: String(value.os || "unknown"),
+    status: value.status === "online" ? "online" : "offline",
+    busy: value.busy === true,
+    labels: labels.slice(0, 100),
+  });
+}
+
+function actionsRunCheckoutIdentity(run: GithubActionsRun): {
+  branch: string;
+  name: string;
+} {
+  const slug = run.displayTitle
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 40);
+  return {
+    branch: `cantrip/actions/${run.runNumber}-${run.headSha.slice(0, 8)}`,
+    name: `Actions #${run.runNumber} ${slug || run.name}`.slice(0, 200),
+  };
+}
+
 export class GithubClient {
   private readonly replicaOperationQueues = new Map<string, Promise<void>>();
   private readonly placementManager: ProjectReplicaPlacementManager;
@@ -1435,6 +1671,12 @@ export class GithubClient {
     }
 
     return { items, nextCursor, total };
+  }
+
+  private async apiVoid(pathname: string, args: string[] = []): Promise<void> {
+    await execFileAsync("gh", ["api", pathname, ...args], {
+      maxBuffer: 8 * 1024 * 1024,
+    });
   }
 
   private async verifyWorktree(cwd: string): Promise<void> {
@@ -2580,6 +2822,346 @@ export class GithubClient {
       }
     }
     return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async listActionsOverview(
+    nameWithOwner: string,
+    cwd: string,
+    page = 1,
+    limit = 50,
+  ): Promise<GithubActionsOverview> {
+    await this.verifyWorktree(cwd);
+    const repositoryPath = this.repositoryApiPath(nameWithOwner);
+    const [rawWorkflows, rawRuns] = await Promise.all([
+      this.api(`${repositoryPath}/actions/workflows`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiActionsWorkflowList>,
+      this.api(`${repositoryPath}/actions/runs`, [
+        "--method",
+        "GET",
+        "-f",
+        `per_page=${limit}`,
+        "-f",
+        `page=${page}`,
+      ]) as Promise<GithubApiActionsRunList>,
+    ]);
+    const warnings: string[] = [];
+    let runners: GithubApiActionsRunner[] = [];
+    let runnerAccess: "available" | "unavailable" = "available";
+    try {
+      const rawRunners = (await this.api(`${repositoryPath}/actions/runners`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ])) as GithubApiActionsRunnerList;
+      runners = Array.isArray(rawRunners.runners)
+        ? (rawRunners.runners as GithubApiActionsRunner[])
+        : [];
+      if (Number(rawRunners.total_count) > runners.length) {
+        warnings.push(
+          "Only the first 100 repository self-hosted runners are shown.",
+        );
+      }
+    } catch {
+      runnerAccess = "unavailable";
+      warnings.push(
+        "GitHub requires repository administration access to list self-hosted runners.",
+      );
+    }
+    const workflows = Array.isArray(rawWorkflows.workflows)
+      ? (rawWorkflows.workflows as GithubApiActionsWorkflow[])
+      : [];
+    const runs = Array.isArray(rawRuns.workflow_runs)
+      ? (rawRuns.workflow_runs as GithubApiActionsRun[])
+      : [];
+    const totalRunCount = Number(rawRuns.total_count) || runs.length;
+    return githubActionsOverviewSchema.parse({
+      workflows: workflows.slice(0, 100).map(parseActionsWorkflow),
+      workflowsTruncated:
+        Number(rawWorkflows.total_count) > 100 || workflows.length > 100,
+      runs: runs.slice(0, limit).map(parseActionsRun),
+      totalRunCount,
+      nextPage: page * limit < totalRunCount ? page + 1 : null,
+      runners: runners.slice(0, 100).map(parseActionsRunner),
+      runnerAccess,
+      warnings,
+    });
+  }
+
+  async getActionsRun(
+    nameWithOwner: string,
+    cwd: string,
+    runId: number,
+  ): Promise<GithubActionsRunDetail> {
+    await this.verifyWorktree(cwd);
+    const repositoryPath = this.repositoryApiPath(nameWithOwner);
+    const rawRun = (await this.api(
+      `${repositoryPath}/actions/runs/${runId}`,
+    )) as GithubApiActionsRun;
+    const [jobsResult, artifactsResult] = await Promise.allSettled([
+      this.api(`${repositoryPath}/actions/runs/${runId}/jobs`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiActionsJobList>,
+      this.api(`${repositoryPath}/actions/runs/${runId}/artifacts`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiActionsArtifactList>,
+    ]);
+    const warnings: string[] = [];
+    const rawJobs =
+      jobsResult.status === "fulfilled" && Array.isArray(jobsResult.value.jobs)
+        ? (jobsResult.value.jobs as GithubApiActionsJob[])
+        : [];
+    const rawArtifacts =
+      artifactsResult.status === "fulfilled" &&
+      Array.isArray(artifactsResult.value.artifacts)
+        ? (artifactsResult.value.artifacts as GithubApiActionsArtifact[])
+        : [];
+    if (jobsResult.status === "rejected") {
+      warnings.push(
+        `Jobs could not be loaded: ${(jobsResult.reason as Error).message}`.slice(
+          0,
+          2_000,
+        ),
+      );
+    }
+    if (artifactsResult.status === "rejected") {
+      warnings.push(
+        `Artifacts could not be loaded: ${(artifactsResult.reason as Error).message}`.slice(
+          0,
+          2_000,
+        ),
+      );
+    }
+    return githubActionsRunDetailSchema.parse({
+      run: parseActionsRun(rawRun),
+      jobs: rawJobs.slice(0, 100).map(parseActionsJob),
+      jobsTruncated:
+        jobsResult.status === "fulfilled" &&
+        (Number(jobsResult.value.total_count) > 100 || rawJobs.length > 100),
+      artifacts: rawArtifacts.slice(0, 100).map((artifact) => {
+        const id = Number(artifact.id);
+        const name = String(artifact.name || "Artifact");
+        return githubActionsArtifactSchema.parse({
+          id,
+          name,
+          sizeInBytes: Number(artifact.size_in_bytes) || 0,
+          expired: artifact.expired === true,
+          createdAt: String(artifact.created_at),
+          expiresAt: String(artifact.expires_at),
+          url: `https://github.com/${nameWithOwner}/actions/runs/${runId}/artifacts/${id}`,
+          testReport:
+            /(?:^|[-_. ])(?:test|tests|junit|coverage|playwright|cypress|report)(?:$|[-_. ])/iu.test(
+              name,
+            ),
+        });
+      }),
+      artifactsTruncated:
+        artifactsResult.status === "fulfilled" &&
+        (Number(artifactsResult.value.total_count) > 100 ||
+          rawArtifacts.length > 100),
+      warnings,
+    });
+  }
+
+  async readActionsRunLogs(
+    nameWithOwner: string,
+    cwd: string,
+    runId: number,
+    jobId: number | null,
+  ): Promise<GithubActionsRunLogs> {
+    await this.verifyWorktree(cwd);
+    const args = [
+      "run",
+      "view",
+      String(runId),
+      "--repo",
+      nameWithOwner,
+      ...(jobId ? ["--job", String(jobId)] : []),
+      "--log",
+    ];
+    let available = true;
+    let raw = "";
+    try {
+      raw = (
+        await execFileAsync("gh", args, {
+          encoding: "utf8",
+          maxBuffer: 32 * 1024 * 1024,
+          timeout: 30_000,
+        })
+      ).stdout;
+    } catch (error) {
+      available = false;
+      const commandError = error as Error & {
+        stderr?: string;
+        stdout?: string;
+      };
+      raw =
+        [commandError.stdout, commandError.stderr]
+          .filter((value): value is string => typeof value === "string")
+          .join("\n") || commandError.message;
+    }
+    const normalized = raw.replace(
+      // eslint-disable-next-line no-control-regex
+      /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/gu,
+      "",
+    );
+    const limit = 1_000_000;
+    return githubActionsRunLogsSchema.parse({
+      runId,
+      jobId,
+      available,
+      text:
+        normalized.length > limit
+          ? normalized.slice(normalized.length - limit)
+          : normalized,
+      truncated: normalized.length > limit,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async dispatchActionsWorkflow(
+    nameWithOwner: string,
+    cwd: string,
+    input: GithubActionsWorkflowDispatch,
+  ): Promise<GithubActionsMutationResult> {
+    await this.verifyWorktree(cwd);
+    const request = githubActionsWorkflowDispatchSchema.parse(input);
+    const fields = Object.entries(request.inputs).sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+    await this.apiVoid(
+      `${this.repositoryApiPath(nameWithOwner)}/actions/workflows/${request.workflowId}/dispatches`,
+      [
+        "--method",
+        "POST",
+        "-f",
+        `ref=${request.ref}`,
+        ...fields.flatMap(([key, value]) => ["-f", `inputs[${key}]=${value}`]),
+      ],
+    );
+    return githubActionsMutationResultSchema.parse({
+      accepted: true,
+      runId: null,
+      workflowId: request.workflowId,
+      action: "dispatch",
+      acceptedAt: new Date().toISOString(),
+    });
+  }
+
+  async runActionsRunAction(
+    nameWithOwner: string,
+    cwd: string,
+    input: GithubActionsRunAction,
+  ): Promise<GithubActionsMutationResult> {
+    await this.verifyWorktree(cwd);
+    const request = githubActionsRunActionSchema.parse(input);
+    const endpoint =
+      request.action === "cancel"
+        ? "cancel"
+        : request.action === "rerun-failed"
+          ? "rerun-failed-jobs"
+          : "rerun";
+    await this.apiVoid(
+      `${this.repositoryApiPath(nameWithOwner)}/actions/runs/${request.runId}/${endpoint}`,
+      ["--method", "POST"],
+    );
+    return githubActionsMutationResultSchema.parse({
+      accepted: true,
+      runId: request.runId,
+      workflowId: null,
+      action: request.action,
+      acceptedAt: new Date().toISOString(),
+    });
+  }
+
+  async prepareActionsRunCheckout(
+    nameWithOwner: string,
+    cwd: string,
+    runId: number,
+  ): Promise<GithubActionsRunCheckoutPrepared> {
+    await this.verifyWorktree(cwd);
+    const rawRun = (await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/actions/runs/${runId}`,
+    )) as GithubApiActionsRun;
+    const run = parseActionsRun(rawRun);
+    const expectedRepository = nameWithOwner.toLowerCase();
+    const { stdout: remoteOutput } = await execFileAsync("git", [
+      "-C",
+      cwd,
+      "remote",
+    ]);
+    const remoteNames = remoteOutput
+      .split("\n")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const matches: string[] = [];
+    for (const remoteName of remoteNames) {
+      const { stdout } = await execFileAsync("git", [
+        "-C",
+        cwd,
+        "remote",
+        "get-url",
+        remoteName,
+      ]);
+      if (githubRepositoryFromRemoteUrl(stdout) === expectedRepository) {
+        matches.push(remoteName);
+      }
+    }
+    const remote = matches.includes("origin") ? "origin" : matches[0];
+    if (!remote) {
+      throw new Error(
+        `No Git remote in this project points to ${nameWithOwner}. Add the GitHub repository as a remote before creating a run worktree.`,
+      );
+    }
+    const hasCommit = async () =>
+      Boolean(await resolveGitCommit(cwd, run.headSha));
+    if (!(await hasCommit())) {
+      const refspecs = [
+        run.headSha,
+        ...(run.pullRequestNumber
+          ? [`refs/pull/${run.pullRequestNumber}/head`]
+          : []),
+        ...(run.headBranch ? [`refs/heads/${run.headBranch}`] : []),
+      ];
+      let lastError: unknown = null;
+      for (const refspec of [...new Set(refspecs)]) {
+        try {
+          await execFileAsync("git", [
+            "-C",
+            cwd,
+            "fetch",
+            "--no-tags",
+            "--",
+            remote,
+            refspec,
+          ]);
+          if (await hasCommit()) break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!(await hasCommit())) {
+        throw new Error(
+          `Git could not fetch the exact workflow run commit ${run.headSha.slice(0, 12)}: ${lastError instanceof Error ? lastError.message : "the commit is unavailable from this repository"}`,
+        );
+      }
+    }
+    return githubActionsRunCheckoutPreparedSchema.parse({
+      run,
+      ...actionsRunCheckoutIdentity(run),
+      headSha: run.headSha,
+      remote,
+    });
   }
 
   async listReleases(nameWithOwner: string): Promise<GithubReleaseList> {

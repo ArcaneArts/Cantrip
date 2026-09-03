@@ -150,6 +150,12 @@ import {
   githubPullRequestLifecyclePreviewSchema,
   githubPullRequestListSchema,
   githubPullRequestOverviewSchema,
+  githubActionsMutationResultSchema,
+  githubActionsOverviewSchema,
+  githubActionsRunCheckoutPreparedSchema,
+  githubActionsRunCheckoutResultSchema,
+  githubActionsRunDetailSchema,
+  githubActionsRunLogsSchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
   githubRepositoryCreateSchema,
@@ -481,6 +487,8 @@ import type {
   GithubPullRequestLifecycleAction,
   GithubPullRequestLifecycleApply,
   GithubPullRequestReviewAction,
+  GithubActionsRunAction,
+  GithubActionsWorkflowDispatch,
   GithubReleaseCreate,
   EncryptedGithubProjectCreate,
   GithubRepositoryCreate,
@@ -4150,6 +4158,114 @@ export async function checkoutGithubPullRequest(
   });
   return githubPullRequestCheckoutResultSchema.parse({
     pullRequest: prepared.pullRequest,
+    worktree,
+    reused: false,
+  });
+}
+
+export async function getGithubActionsOverview(
+  projectId: string,
+  worktreeId: string,
+  page = 1,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.actions.overview",
+    arguments: { page, limit: 50 },
+    resultSchema: githubActionsOverviewSchema,
+  });
+}
+
+export async function getGithubActionsRun(
+  projectId: string,
+  worktreeId: string,
+  runId: number,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.actions.run.get",
+    arguments: { runId },
+    resultSchema: githubActionsRunDetailSchema,
+  });
+}
+
+export async function getGithubActionsRunLogs(
+  projectId: string,
+  worktreeId: string,
+  runId: number,
+  jobId: number | null,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.actions.run.logs",
+    arguments: { runId, jobId },
+    resultSchema: githubActionsRunLogsSchema,
+  });
+}
+
+export async function dispatchGithubActionsWorkflow(
+  projectId: string,
+  worktreeId: string,
+  request: GithubActionsWorkflowDispatch,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.actions.workflow.dispatch",
+    arguments: { request },
+    resultSchema: githubActionsMutationResultSchema,
+  });
+}
+
+export async function runGithubActionsRunAction(
+  projectId: string,
+  worktreeId: string,
+  request: GithubActionsRunAction,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.actions.run.action",
+    arguments: { request },
+    resultSchema: githubActionsMutationResultSchema,
+  });
+}
+
+export async function checkoutGithubActionsRun(
+  projectId: string,
+  worktreeId: string,
+  runId: number,
+) {
+  const prepared = await runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.actions.run.checkout.prepare",
+    arguments: { runId },
+    resultSchema: githubActionsRunCheckoutPreparedSchema,
+  });
+  const existing = (await getProjectWorktrees(projectId)).find(
+    ({ branch }) => branch === prepared.branch,
+  );
+  if (existing) {
+    return githubActionsRunCheckoutResultSchema.parse({
+      run: prepared.run,
+      worktree: existing,
+      reused: true,
+    });
+  }
+  const worktree = await createProjectWorktree(projectId, {
+    name: prepared.name,
+    mode: {
+      type: "newBranch",
+      branch: prepared.branch,
+      startPoint: prepared.headSha,
+    },
+  });
+  return githubActionsRunCheckoutResultSchema.parse({
+    run: prepared.run,
     worktree,
     reused: false,
   });

@@ -454,6 +454,56 @@ Manual QA:
    apply refuses to overwrite the new remote commit.
 5. Verify an ordinary ahead-only branch pushes without the destructive dialog.
 
+## GitHub Actions
+
+GitHub-backed projects expose hosted CI in a dedicated **Actions** tab. This is
+GitHub Actions terminology and state, separate from Cantrip's own workflow
+automation. The tab lists repository workflows, paginated workflow runs, exact
+run attempts, jobs, steps, live status, and job logs. Active runs and logs poll
+while GitHub is still executing them, then settle to a slower repository-level
+refresh. Artifacts are linked through GitHub, with common test and coverage
+artifact names called out as test reports.
+
+The selected worktree's worker performs every GitHub request with its local
+GitHub CLI identity; tokens and log access do not move into the app or server.
+Repository self-hosted runner availability is best effort because GitHub limits
+that endpoint to identities with repository administration access. A missing
+runner permission does not block workflows or runs, and GitHub-hosted runner
+assignment remains visible on individual jobs.
+
+Manual workflow dispatch accepts a ref and declared workflow inputs. Cancel,
+rerun, and rerun-failed actions are explicit and GitHub remains authoritative
+for whether the current run allows them. A pull request check with a GitHub
+Actions URL can open the exact run and job inside Cantrip while retaining its
+external GitHub link.
+
+Failed runs offer **Fix in agent worktree**. The worker resolves and, when
+needed, fetches the exact run head SHA from the repository's matching GitHub
+remote without switching or modifying the selected checkout. Cantrip reuses or
+creates a pinned worktree on a dedicated `cantrip/actions/…` branch, creates an
+agent chat there, and prefills a prompt containing the run URL, failing commit,
+trigger, and failed jobs. The user still reviews and sends that prompt.
+
+Manual QA:
+
+1. Open Actions on a GitHub-backed project and confirm workflows, recent runs,
+   runner state, and pagination match the repository on GitHub.
+2. Open active and completed runs, inspect each job and step, and confirm active
+   status and logs update without reloading the tab.
+3. Inspect ordinary artifacts and named JUnit, coverage, Playwright, or Cypress
+   artifacts; confirm test reports are identified and links open on GitHub.
+4. Dispatch a `workflow_dispatch` workflow with a branch and input, then cancel
+   an active run and exercise rerun and rerun-failed on completed runs.
+5. From a pull request's Checks view, open a GitHub Actions check in Cantrip and
+   confirm it selects the exact run and job, including a run outside the first
+   page of recent results.
+6. Choose Fix in agent worktree on a failed run. Confirm the worktree starts at
+   the exact failing SHA and the new pinned chat opens with an unsent diagnostic
+   prompt. Repeat to confirm the existing run worktree is reused safely.
+7. Use an identity without repository administration access and confirm runner
+   status reports limited permission while workflows, runs, jobs, and logs stay
+   usable.
+
 ## GitHub issue and pull request inboxes
 
 Issues and pull requests use worker-authenticated GitHub inbox queries rather
@@ -975,6 +1025,7 @@ Manual QA:
 - [x] Conflict resolution
 - [x] Advanced history rewriting
 - [x] Full GitHub pull-request workflow
+- [x] GitHub Actions workflows, runs, logs, artifacts, and agent handoff
 - [x] File history, blame, and repository search
 - [x] Recovery tools and bisect
 - [x] Repository-system support

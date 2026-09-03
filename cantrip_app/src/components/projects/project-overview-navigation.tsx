@@ -1,5 +1,6 @@
 import {
   CircleDot,
+  CirclePlay,
   GitPullRequest,
   History,
   LayoutDashboard,
@@ -19,6 +20,7 @@ const projectOverviewTabs: readonly NavigationTab<ProjectOverviewSection>[] = [
   { id: "history", label: "History", icon: History },
   { id: "issues", label: "Issues", icon: CircleDot },
   { id: "prs", label: "PRs", icon: GitPullRequest },
+  { id: "actions", label: "Actions", icon: CirclePlay },
   { id: "graph", label: "Graph", icon: Network },
 ];
 
@@ -47,7 +49,8 @@ export function ProjectOverviewNavigation({
         tab.id !== "overview" &&
         tab.id !== "tasks" &&
         (!gitEnabled ||
-          ((tab.id === "issues" || tab.id === "prs") && !githubEnabled)),
+          ((tab.id === "issues" || tab.id === "prs" || tab.id === "actions") &&
+            !githubEnabled)),
     }));
 
   return (

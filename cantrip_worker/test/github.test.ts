@@ -40,6 +40,8 @@ afterEach(async () => {
   delete process.env.GIT_CONFIG_COUNT;
   delete process.env.GIT_CONFIG_KEY_0;
   delete process.env.GIT_CONFIG_VALUE_0;
+  delete process.env.CANTRIP_FAKE_GH_CALLS;
+  delete process.env.CANTRIP_FAKE_GH_HEAD_SHA;
   await Promise.all(
     directories
       .splice(0)
@@ -2801,6 +2803,120 @@ describe("GitHub project files", () => {
     await expect(github.cachedRepositories("another-user")).resolves.toEqual(
       [],
     );
+  });
+
+  it("reads and controls GitHub Actions through the worker-local GitHub CLI", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-actions-test-"),
+    );
+    directories.push(dataDirectory);
+    const repository = path.join(dataDirectory, "repository");
+    const binDirectory = path.join(dataDirectory, "bin");
+    const callsPath = path.join(dataDirectory, "gh-calls.jsonl");
+    await mkdir(repository);
+    await mkdir(binDirectory);
+    await execFileAsync("git", ["init", "--initial-branch=main", repository]);
+    await writeFile(path.join(repository, "README.md"), "actions\n");
+    await execFileAsync("git", ["-C", repository, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Actions fixture",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/ArcaneArts/Cantrip.git",
+    ]);
+    const headSha = (
+      await execFileAsync("git", ["-C", repository, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const { appendFileSync } = require("node:fs");',
+        "const args = process.argv.slice(2);",
+        "const headSha = process.env.CANTRIP_FAKE_GH_HEAD_SHA;",
+        "const calls = process.env.CANTRIP_FAKE_GH_CALLS;",
+        "const run = { id: 42, workflow_id: 7, name: 'CI', display_title: 'Fix the build', event: 'pull_request', status: 'completed', conclusion: 'failure', head_branch: 'feature/actions', head_sha: headSha, pull_requests: [{ number: 12 }], run_number: 18, run_attempt: 1, actor: { login: 'cantrip-test' }, created_at: '2026-08-10T00:00:00.000Z', updated_at: '2026-08-10T01:00:00.000Z', html_url: 'https://github.com/ArcaneArts/Cantrip/actions/runs/42' };",
+        "if (args[0] === 'run') { process.stdout.write('\\u001b[31mfailed test\\u001b[0m\\n'); process.exit(0); }",
+        "const endpoint = args[1];",
+        "if (args.includes('POST')) { appendFileSync(calls, JSON.stringify(args) + '\\n'); process.exit(0); }",
+        "if (endpoint.endsWith('/actions/workflows')) console.log(JSON.stringify({ total_count: 1, workflows: [{ id: 7, name: 'CI', path: '.github/workflows/ci.yml', state: 'active', html_url: 'https://github.com/ArcaneArts/Cantrip/actions/workflows/ci.yml', badge_url: null }] }));",
+        "else if (endpoint.endsWith('/actions/runs')) console.log(JSON.stringify({ total_count: 1, workflow_runs: [run] }));",
+        "else if (endpoint.endsWith('/actions/runners')) console.log(JSON.stringify({ total_count: 1, runners: [{ id: 4, name: 'build-mac', os: 'macOS', status: 'online', busy: true, labels: [{ name: 'self-hosted' }, { name: 'ARM64' }] }] }));",
+        "else if (endpoint.endsWith('/actions/runs/42/jobs')) console.log(JSON.stringify({ total_count: 1, jobs: [{ id: 9, name: 'test', status: 'completed', conclusion: 'failure', html_url: run.html_url + '/job/9', started_at: run.created_at, completed_at: run.updated_at, runner_name: 'build-mac', runner_group_name: 'Default', steps: [{ number: 1, name: 'Run tests', status: 'completed', conclusion: 'failure', started_at: run.created_at, completed_at: run.updated_at }] }] }));",
+        "else if (endpoint.endsWith('/actions/runs/42/artifacts')) console.log(JSON.stringify({ total_count: 1, artifacts: [{ id: 11, name: 'junit-test-report', size_in_bytes: 2048, expired: false, created_at: run.created_at, expires_at: '2026-09-10T00:00:00.000Z' }] }));",
+        "else if (endpoint.endsWith('/actions/runs/42')) console.log(JSON.stringify(run));",
+        "else process.exit(2);",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
+    process.env.CANTRIP_FAKE_GH_CALLS = callsPath;
+    process.env.CANTRIP_FAKE_GH_HEAD_SHA = headSha;
+
+    const github = new GithubClient(dataDirectory, "worker-actions");
+    await expect(
+      github.listActionsOverview("ArcaneArts/Cantrip", repository),
+    ).resolves.toMatchObject({
+      workflows: [{ id: 7, name: "CI" }],
+      runs: [{ id: 42, conclusion: "failure" }],
+      runners: [{ id: 4, busy: true }],
+      runnerAccess: "available",
+    });
+    await expect(
+      github.getActionsRun("ArcaneArts/Cantrip", repository, 42),
+    ).resolves.toMatchObject({
+      run: { id: 42 },
+      jobs: [{ id: 9, steps: [{ name: "Run tests" }] }],
+      artifacts: [{ id: 11, testReport: true }],
+    });
+    await expect(
+      github.readActionsRunLogs("ArcaneArts/Cantrip", repository, 42, 9),
+    ).resolves.toMatchObject({
+      runId: 42,
+      jobId: 9,
+      available: true,
+      text: "failed test\n",
+    });
+    await expect(
+      github.dispatchActionsWorkflow("ArcaneArts/Cantrip", repository, {
+        workflowId: 7,
+        ref: "main",
+        inputs: { environment: "staging" },
+      }),
+    ).resolves.toMatchObject({ accepted: true, action: "dispatch" });
+    await expect(
+      github.runActionsRunAction("ArcaneArts/Cantrip", repository, {
+        runId: 42,
+        action: "rerun-failed",
+      }),
+    ).resolves.toMatchObject({ accepted: true, action: "rerun-failed" });
+    await expect(
+      github.prepareActionsRunCheckout("ArcaneArts/Cantrip", repository, 42),
+    ).resolves.toMatchObject({
+      headSha,
+      remote: "origin",
+      branch: `cantrip/actions/18-${headSha.slice(0, 8)}`,
+    });
+
+    const calls = (await readFile(callsPath, "utf8")).trim().split("\n");
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toContain("/actions/workflows/7/dispatches");
+    expect(calls[0]).toContain("inputs[environment]=staging");
+    expect(calls[1]).toContain("/actions/runs/42/rerun-failed-jobs");
   });
 
   it("only deletes repositories inside the managed repository root", async () => {
