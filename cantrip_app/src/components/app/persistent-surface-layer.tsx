@@ -45,6 +45,7 @@ export function PersistentSurfaceLayer({
     onlineWorkerIds,
     openExplorerFileWindow,
     openExplorers,
+    openProjectExplorerFile,
     openTerminalLink,
     openTerminalLinkExternally,
     ownedTerminals,
@@ -255,6 +256,13 @@ export function PersistentSurfaceLayer({
           onLifecycleChange={handleExplorerLifecycleChange}
           onTransientLifecycleChange={handleSidebarFilePreviewLifecycleChange}
           onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
+          onOpenGraphFile={(explorer, path) =>
+            openProjectExplorerFile(
+              explorer.projectId,
+              explorer.worktreeId,
+              path,
+            )
+          }
           onRevealFolder={
             folderRevealLabel && selectedProject?.source
               ? async (explorer, entry, localFolder) => {

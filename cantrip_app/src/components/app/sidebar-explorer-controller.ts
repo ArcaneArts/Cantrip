@@ -481,6 +481,7 @@ export function createProjectExplorerFileOpening({
     worktreeId: string,
     path: string,
   ) => {
+    if (openSidebarFilePreviewPath?.(worktreeId, path)) return;
     void (async () => {
       let explorer = (explorers ?? []).find(
         (candidate) =>
@@ -569,11 +570,6 @@ export function createProjectExplorerFileOpening({
             title: "Could not open file link",
             tone: "error",
           });
-          return;
-        }
-        if (
-          openSidebarFilePreviewPath?.(chat.activeWorktreeId, resolved.path)
-        ) {
           return;
         }
         openProjectExplorerFile(
