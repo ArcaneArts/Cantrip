@@ -213,8 +213,8 @@ class WorkbenchCoordinator {
       }),
     );
     this.registerCommands();
-    await configureWorkbenchPresentation(configuration(), vscode.commands);
     this.reconnect(true);
+    await configureWorkbenchPresentation(configuration(), vscode.commands);
     void this.initializeGit();
   }
 

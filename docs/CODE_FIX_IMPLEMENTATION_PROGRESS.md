@@ -52,8 +52,8 @@ merged and the result has been observed on `main`.
 
 - Branch: `codex/code-fix-tree-continuity`
 - Pull request: #1643
-- Merge commit: pending
-- Status: pull request open; squash auto-merge pending
+- Merge commit: `14072b0507caa16bdc4b4851b3a17eef909cafed`
+- Status: merged
 - Behavior: pinning no longer promotes the whole file tree into its loading
   replacement. Existing directory rows stay mounted while the established
   path-level pin indicator reports the operation.
@@ -79,6 +79,32 @@ merged and the result has been observed on `main`.
   loading still retain their existing whole-tree loading behavior.
 - Manual verification: observe one live pin handoff after all cycles land.
 
+### Cycle 3 — early authenticated extension bridge
+
+- Branch: `codex/code-fix-early-bridge`
+- Pull request: #1644
+- Merge commit: pending
+- Status: pull request open; squash auto-merge pending
+- Behavior: the workbench extension now begins its authenticated WebSocket
+  connection immediately after command registration, before it awaits
+  presentation/layout commands. Git initialization retains its existing order.
+- Subsystem: bundled Cantrip workbench extension startup.
+- Tests run:
+  - Complete bundled workbench extension suite passed: 59 tests.
+  - Cantrip Code upstream/source verification passed.
+  - Prettier and `git diff --check` passed.
+- Verified result: the startup ordering contract proves bridge connection is
+  initiated before presentation setup is awaited. The existing bridge URL,
+  token, protocol, reconnect, socket error, and request validation code is
+  unchanged.
+- Remaining work: authorized startup payload, authenticated initial-navigation
+  acknowledgement and fallback, end-to-end regression audit, and documentation
+  reconciliation.
+- Known risks: presentation commands and bridge connection now overlap; both
+  retain their existing independent failure behavior.
+- Manual verification: compare cold launch bridge-open timing after all cycles
+  land.
+
 ## Required completion matrix
 
 | Requirement                                     | Status      | Evidence                  |
@@ -86,8 +112,8 @@ merged and the result has been observed on `main`.
 | Bounded hidden pathless Code prewarm            | Complete    | Cycle 1 / PR #1642        |
 | First and post-pin selection reuse              | In progress | Cycle 1 plus final traces |
 | Ordinary inactive editors remain dormant        | Complete    | Cycle 1 / PR #1642        |
-| Sidebar tree remains mounted during pin         | In progress | Cycle 2                   |
-| Bridge connects before presentation setup       | Pending     | Future cycle              |
+| Sidebar tree remains mounted during pin         | Complete    | Cycle 2 / PR #1643        |
+| Bridge connects before presentation setup       | In progress | Cycle 3                   |
 | Authorized initial-file startup payload         | Pending     | Future cycle              |
 | Authenticated acknowledgement and safe fallback | Pending     | Future cycle              |
 | Tauri/browser and full regression validation    | Pending     | Final audit               |
