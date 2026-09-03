@@ -1,0 +1,75 @@
+name: Collect TestFlight beta feedback
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_id:
+        description: App bundle identifier
+        required: true
+        default: art.cantrip
+        type: string
+      recipient_certificate_base64:
+        description: Base64-encoded PEM certificate used to encrypt the result
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight-feedback-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: Collect encrypted feedback
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      APPSTORE_CONNECT_BUNDLE_ID: ${{ inputs.bundle_id }}
+      APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+      APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Restore App Store Connect key
+        env:
+          APPSTORE_CONNECT_KEY: ${{ secrets.APPSTORE_CONNECT_KEY }}
+        run: |
+          key_path="$RUNNER_TEMP/AuthKey_${APPSTORE_CONNECT_KEY_ID}.p8"
+          if [[ "$APPSTORE_CONNECT_KEY" == *"BEGIN PRIVATE KEY"* ]]; then
+            printf '%s' "$APPSTORE_CONNECT_KEY" > "$key_path"
+          else
+            printf '%s' "$APPSTORE_CONNECT_KEY" | base64 --decode > "$key_path"
+          fi
+          chmod 600 "$key_path"
+          echo "APPSTORE_CONNECT_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+      - name: Collect beta feedback
+        run: >-
+          node scripts/testflight-feedback.mjs collect
+          --output "$RUNNER_TEMP/testflight-feedback"
+      - name: Encrypt collected feedback
+        env:
+          RECIPIENT_CERTIFICATE_BASE64: ${{ inputs.recipient_certificate_base64 }}
+        run: |
+          certificate="$RUNNER_TEMP/testflight-feedback-recipient.pem"
+          archive="$RUNNER_TEMP/testflight-feedback.tar.gz"
+          encrypted="$RUNNER_TEMP/testflight-feedback.cms"
+          printf '%s' "$RECIPIENT_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          tar -C "$RUNNER_TEMP" -czf "$archive" testflight-feedback
+          openssl cms -encrypt -binary -aes-256-cbc \
+            -in "$archive" -out "$encrypted" -outform DER "$certificate"
+          rm -rf "$RUNNER_TEMP/testflight-feedback"
+          rm -f "$archive" "$certificate"
+      - name: Remove App Store Connect key
+        if: always()
+        run: rm -f "$APPSTORE_CONNECT_KEY_PATH"
+      - name: Upload encrypted feedback
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-feedback-encrypted
+          path: ${{ runner.temp }}/testflight-feedback.cms
+          if-no-files-found: error
+          retention-days: 1

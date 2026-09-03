@@ -164,6 +164,16 @@ notarization and additionally requires these Actions secrets:
 - `APPSTORE_CONNECT_KEY_ID`: the App Store Connect API key ID; and
 - `APPSTORE_CONNECT_KEY`: the raw or base64-encoded `.p8` private key.
 
+TestFlight screenshot and crash feedback can be collected with the manual
+`Collect TestFlight beta feedback` workflow. It uses the App Store Connect API
+and the same three API-key secrets; Xcode command-line tools are not involved.
+The workflow requires an ephemeral recipient certificate, encrypts the complete
+result before artifact upload, and retains the encrypted artifact for one day.
+The decrypted output is private review material because it can contain tester
+screenshots, comments, and crash logs. Follow the
+[TestFlight feedback import procedure](../.github/testflight-feedback/README.md)
+before turning any report into a public issue.
+
 The Apple Development and Apple Distribution identities must belong to the
 same team. Reusing the development identity lets automatic provisioning create
 or refresh the app-specific profile without creating a new development
