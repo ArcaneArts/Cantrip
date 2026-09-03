@@ -9,6 +9,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createProjectExplorerFileOpening,
   resolveChatFileReferencePath,
   sidebarExplorerProvisioningDetails,
   sidebarFilePinCompletion,
@@ -66,6 +67,40 @@ describe("chat file reference resolution", () => {
       refreshedWorktreePath: null,
     });
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("project file opening", () => {
+  it("uses the sidebar editor preview before the desktop pop-out fallback", async () => {
+    const openSidebarFilePreviewPath = vi.fn(() => true);
+    const openCreatedTab = vi.fn();
+    const queryClient = {
+      invalidateQueries: vi.fn(),
+      setQueryData: vi.fn(),
+    };
+    const { openProjectExplorerFile } = createProjectExplorerFileOpening({
+      codeAppearance: "dark",
+      desktopRuntime: true,
+      explorers: [],
+      explorerLifecycleRef: { current: new Map() },
+      openCreatedTab,
+      openSidebarFilePreviewPath,
+      queryClient: queryClient as never,
+      selectedProject: undefined,
+      setPopoutError: vi.fn(),
+      showAppToast: vi.fn(),
+      worktrees: [],
+    });
+
+    openProjectExplorerFile("project-1", "worktree-1", "src/app.ts");
+    await Promise.resolve();
+
+    expect(openSidebarFilePreviewPath).toHaveBeenCalledWith(
+      "worktree-1",
+      "src/app.ts",
+    );
+    expect(queryClient.setQueryData).not.toHaveBeenCalled();
+    expect(openCreatedTab).not.toHaveBeenCalled();
   });
 });
 

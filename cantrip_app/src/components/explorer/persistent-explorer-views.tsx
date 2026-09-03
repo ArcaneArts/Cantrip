@@ -152,6 +152,7 @@ export function PersistentExplorerViews({
   onLifecycleChange,
   onTransientLifecycleChange,
   onOpenFile,
+  onOpenGraphFile,
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
@@ -186,6 +187,7 @@ export function PersistentExplorerViews({
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
   ): void | Promise<void>;
+  onOpenGraphFile?(explorer: ExplorerSummary, path: string): void;
   onRevealFolder?(
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
@@ -423,6 +425,7 @@ export function PersistentExplorerViews({
         onOpenFile={
           transient || prewarm || explorer.selectedPath ? undefined : onOpenFile
         }
+        onOpenGraphFile={onOpenGraphFile}
         onRevealFolder={onRevealFolder}
         revealLabel={revealLabel}
         onOpenTerminal={onOpenTerminal}

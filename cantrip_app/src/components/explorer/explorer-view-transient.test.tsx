@@ -4,11 +4,25 @@ import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
+const graphView = vi.hoisted(() => ({
+  onActivateFile: null as ((path: string) => void) | null,
+}));
+const fileBrowser = vi.hoisted(() => ({
+  onShowInGraph: null as ((path: string | null) => void) | null,
+}));
+
 vi.mock("@/components/chat/markdown", () => ({
   Markdown: () => createElement("div"),
 }));
 vi.mock("@/components/explorer/explorer-file-browser", () => ({
-  ExplorerFileBrowser: () => createElement("div"),
+  ExplorerFileBrowser: ({
+    onShowInGraph,
+  }: {
+    onShowInGraph?: (path: string | null) => void;
+  }) => {
+    fileBrowser.onShowInGraph = onShowInGraph ?? null;
+    return createElement("div");
+  },
 }));
 vi.mock("@/components/explorer/explorer-image-viewport", () => ({
   ExplorerImageViewport: () => createElement("div"),
@@ -39,7 +53,14 @@ vi.mock("@/components/explorer/use-retained-inline-workbench", () => ({
   useRetainedInlineWorkbench: () => true,
 }));
 vi.mock("@/components/git/git-graph", () => ({
-  GitRepositoryGraphView: () => createElement("div"),
+  GitRepositoryGraphView: ({
+    onActivateFile,
+  }: {
+    onActivateFile?: (path: string) => void;
+  }) => {
+    graphView.onActivateFile = onActivateFile ?? null;
+    return createElement("div", { "data-repository-graph": true });
+  },
 }));
 vi.mock("@/lib/api", () => ({
   getExplorerFile: vi.fn(),
@@ -61,6 +82,49 @@ import { ExplorerView } from "./explorer-view";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("ExplorerView transient selection", () => {
+  it("routes graph files to the workspace editor instead of the Explorer file callback", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const explorer = {
+      activeWorkerId: "worker-one",
+      fileMode: "preview",
+      id: "explorer-one",
+      projectId: "project-one",
+      selectedPath: null,
+      worktreeId: "worktree-one",
+    } as ExplorerSummary;
+    const onOpenFile = vi.fn();
+    const onOpenGraphFile = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(ExplorerView, {
+            active: true,
+            appearance: "dark",
+            explorer,
+            onOpenFile,
+            onOpenGraphFile,
+            repositoryGraphAvailable: true,
+          }),
+        ),
+      );
+    });
+
+    act(() => fileBrowser.onShowInGraph?.(null));
+    act(() => graphView.onActivateFile?.("src/app.ts"));
+
+    expect(onOpenGraphFile).toHaveBeenCalledWith(explorer, "src/app.ts");
+    expect(onOpenFile).not.toHaveBeenCalled();
+
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
+
   it("opens only the transient Code path on its first active render", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

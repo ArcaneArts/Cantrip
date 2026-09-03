@@ -287,6 +287,7 @@ export function ExplorerView({
   onLifecycleChange,
   keepInlineCodeWarm = false,
   onOpenFile,
+  onOpenGraphFile,
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
@@ -311,6 +312,7 @@ export function ExplorerView({
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
   ): void | Promise<void>;
+  onOpenGraphFile?(explorer: ExplorerSummary, path: string): void;
   onRevealFolder?(
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
@@ -1156,6 +1158,10 @@ export function ExplorerView({
   };
 
   const openGraphFile = (path: string) => {
+    if (onOpenGraphFile) {
+      onOpenGraphFile(explorer, path);
+      return;
+    }
     if (!onOpenFile) setGraphRootPath(undefined);
     openEntry(explorerFileEntryForGraphPath(path));
   };
