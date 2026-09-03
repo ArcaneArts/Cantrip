@@ -863,7 +863,7 @@ export function StandaloneChatFilesPanel({
         </div>
       )}
       {!desktopRuntime && selectedEntry ? (
-        <div className="fixed inset-0 z-[100] flex min-h-0 flex-col bg-background text-foreground">
+        <div className="mobile-safe-top fixed inset-0 z-[100] flex min-h-0 flex-col bg-background text-foreground">
           <header className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
             <span
               className="min-w-0 flex-1 truncate text-xs font-medium"

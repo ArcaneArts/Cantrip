@@ -168,6 +168,7 @@ describe("standalone Chat files panel", () => {
     expect(
       renderer.root.findByProps({ "aria-label": "Close Chat file" }),
     ).toBeTruthy();
+    expect(JSON.stringify(renderer.toJSON())).toContain("mobile-safe-top");
     expect(desktop.openDesktopStandaloneChatFile).not.toHaveBeenCalled();
 
     await act(async () =>
