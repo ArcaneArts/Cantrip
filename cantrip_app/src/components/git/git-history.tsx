@@ -864,6 +864,7 @@ export function GitHistoryView({
             worktreeName={selectedWorktree?.name ?? "Worktree"}
             status={status}
             onClose={closeDrawer}
+            onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
           />
         ) : (
           <aside className="grid place-items-center bg-background text-sm text-muted-foreground">
@@ -880,6 +881,7 @@ export function GitHistoryView({
           worktreeId={worktreeId}
           revision={drawer.revision}
           onClose={closeDrawer}
+          onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
           onNavigate={openCommitDrawer}
           onViewInGraph={showCommitInGraph}
           onAction={setCommitActionRequest}
@@ -894,6 +896,7 @@ export function GitHistoryView({
           onLeftChange={setCompareLeft}
           onRightChange={setCompareRight}
           onClose={closeDrawer}
+          onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
         />
       ) : null}
       {drawer.kind === "stashes" ? (
@@ -901,6 +904,7 @@ export function GitHistoryView({
           projectId={project.id}
           worktreeId={worktreeId}
           onClose={closeDrawer}
+          onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
         />
       ) : null}
       {drawer.kind === "branches" ? (
@@ -1755,6 +1759,7 @@ export function GitHistoryView({
         onOpenChange={setFileHistoryOpen}
         projectId={project.id}
         worktreeId={worktreeId}
+        onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
         onOpenCommit={(revision) => {
           openCommitDrawer(revision);
         }}

@@ -157,6 +157,16 @@ export const gitCommitDetailSchema = z.object({
   deletions: z.number().int().nonnegative(),
 });
 
+export const gitDiffFileSideSchema = z
+  .object({
+    kind: z.enum(["missing", "text", "image", "binary"]),
+    size: z.number().int().nonnegative().nullable(),
+    mimeType: z.string().min(1).max(200).nullable(),
+    base64: z.string().max(3_000_000).nullable(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export const gitRevisionFileDiffSchema = z.object({
   revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
   baseRevision: z
@@ -168,6 +178,8 @@ export const gitRevisionFileDiffSchema = z.object({
   patch: z.string().max(2_000_000),
   truncated: z.boolean(),
   binary: z.boolean(),
+  oldFile: gitDiffFileSideSchema.optional(),
+  newFile: gitDiffFileSideSchema.optional(),
 });
 
 export const gitRevisionCandidateSchema = z.object({
@@ -545,11 +557,17 @@ export const gitStatusSchema = z.object({
 
 export const gitDiffScopeSchema = z.enum(["unstaged", "staged"]);
 
+export const gitDiffContextLinesSchema = z.number().int().min(0).max(1_000);
+
 export const gitFileDiffSchema = z.object({
   path: gitRelativePathSchema,
+  originalPath: gitRelativePathSchema.nullable().optional(),
   scope: gitDiffScopeSchema,
   patch: z.string().max(2_000_000),
   truncated: z.boolean(),
+  binary: z.boolean().optional(),
+  oldFile: gitDiffFileSideSchema.optional(),
+  newFile: gitDiffFileSideSchema.optional(),
 });
 
 export const gitPartialPatchOperationSchema = z.enum([
@@ -712,6 +730,8 @@ export const gitStashFileDiffSchema = z.object({
   patch: z.string().max(2_000_000),
   truncated: z.boolean(),
   binary: z.boolean(),
+  oldFile: gitDiffFileSideSchema.optional(),
+  newFile: gitDiffFileSideSchema.optional(),
 });
 
 export const gitBranchCommitSummarySchema = z.object({
@@ -1221,6 +1241,7 @@ export type GitFileChange = z.infer<typeof gitFileChangeSchema>;
 export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitStatus = z.infer<typeof gitStatusSchema>;
 export type GitDiffScope = z.infer<typeof gitDiffScopeSchema>;
+export type GitDiffFileSide = z.infer<typeof gitDiffFileSideSchema>;
 export type GitFileDiff = z.infer<typeof gitFileDiffSchema>;
 export type GitPartialPatchOperation = z.infer<
   typeof gitPartialPatchOperationSchema

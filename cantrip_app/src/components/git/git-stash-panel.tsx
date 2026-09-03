@@ -189,10 +189,12 @@ function StashActions({
 
 export function GitStashPanel({
   onClose,
+  onOpenFile,
   projectId,
   worktreeId,
 }: {
   onClose(): void;
+  onOpenFile?(path: string): void;
   projectId: string;
   worktreeId: string;
 }) {
@@ -200,6 +202,7 @@ export function GitStashPanel({
   const gitResourcesLive = useAppLiveStatus() === "live";
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [diffContextLines, setDiffContextLines] = useState(3);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [message, setMessage] = useState("");
@@ -252,6 +255,7 @@ export function GitStashPanel({
       worktreeId,
       selectedHash,
       selectedPath,
+      diffContextLines,
     ],
     queryFn: () =>
       getProjectWorktreeStashFileDiff(
@@ -259,8 +263,10 @@ export function GitStashPanel({
         worktreeId,
         selectedHash!,
         selectedPath!,
+        diffContextLines,
       ),
   });
+  useEffect(() => setDiffContextLines(3), [selectedHash, selectedPath]);
   const refreshAfterMutation = (status: unknown) => {
     queryClient.setQueryData(
       ["worktree-status", projectId, worktreeId],
@@ -583,14 +589,21 @@ export function GitStashPanel({
               <GitPatchView
                 error={diff.error}
                 loading={diff.isLoading}
+                newFile={diff.data?.newFile}
                 newLabel="Stashed"
                 oldLabel="Base"
                 onClose={() => setSelectedPath(null)}
+                onContextLinesChange={setDiffContextLines}
+                onOpenFile={
+                  onOpenFile ? () => onOpenFile(selectedPath) : undefined
+                }
+                oldFile={diff.data?.oldFile}
                 patch={diff.data?.patch}
                 path={selectedPath}
                 showClose={false}
                 subtitle={`${selected.message} · ${selected.shortHash}`}
                 truncated={diff.data?.truncated ?? false}
+                binary={diff.data?.binary}
               />
             ) : (
               <div className="grid flex-1 place-items-center text-sm text-muted-foreground">

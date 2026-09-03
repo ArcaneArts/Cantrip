@@ -2,7 +2,13 @@ import type { GitFileChange } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import { buildGitChangeTree } from "./git-change-tree";
-import { parseUnifiedDiff } from "./git-diff";
+import {
+  buildSplitDiffRows,
+  hideWhitespaceOnlyChanges,
+  parseRichUnifiedDiff,
+  parseUnifiedDiff,
+  wordDiffSegments,
+} from "./git-diff";
 import {
   buildPartialPatchRequest,
   partialPatchUnavailableReason,
@@ -156,6 +162,68 @@ describe("Git changes panel helpers", () => {
         text: "Binary files a/image.png and b/image.png differ",
       },
     ]);
+  });
+
+  it("builds rich split rows with expandable gaps and word highlights", () => {
+    const rows = parseRichUnifiedDiff(
+      [
+        "@@ -10,2 +10,2 @@",
+        "-const color = 'red';",
+        "+const color = 'blue';",
+        " unchanged",
+      ].join("\n"),
+    );
+
+    expect(rows[0]).toMatchObject({ kind: "gap", oldCount: 9, newCount: 9 });
+    expect(rows[1]).toMatchObject({ kind: "hunk", hunkIndex: 0 });
+    expect(rows[2]).toMatchObject({
+      kind: "line",
+      lineKind: "delete",
+      oldNumber: 10,
+    });
+    expect(rows[2]).toHaveProperty(
+      "wordSegments",
+      expect.arrayContaining([{ changed: true, text: "red" }]),
+    );
+    expect(buildSplitDiffRows(rows)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "pair",
+          left: expect.objectContaining({ lineKind: "delete" }),
+          right: expect.objectContaining({ lineKind: "add" }),
+        }),
+      ]),
+    );
+  });
+
+  it("folds whitespace-only replacements into shared context", () => {
+    const rows = parseRichUnifiedDiff(
+      ["@@ -1 +1 @@", "-const value = 1;", "+  const   value = 1;  "].join(
+        "\n",
+      ),
+    );
+    const filtered = hideWhitespaceOnlyChanges(rows);
+
+    expect(filtered).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "line",
+          lineKind: "context",
+          oldNumber: 1,
+          newNumber: 1,
+        }),
+      ]),
+    );
+  });
+
+  it("falls back to bounded whole-line word changes for pathological input", () => {
+    const before = Array.from({ length: 250 }, () => "before").join(" ");
+    const after = Array.from({ length: 250 }, () => "after").join(" ");
+
+    expect(wordDiffSegments(before, after)).toEqual({
+      before: [{ changed: true, text: before }],
+      after: [{ changed: true, text: after }],
+    });
   });
 
   it("builds bounded whole-hunk and selected-line patch requests", () => {

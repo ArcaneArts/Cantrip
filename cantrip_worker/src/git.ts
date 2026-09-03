@@ -74,6 +74,7 @@ import {
   type GitConflictResolutionRequest,
   type GitConflictResolutionResult,
   type GitConflictStage,
+  type GitDiffFileSide,
   type GitManagedOperationContext,
   type GitManagedOperationAction,
   type GitManagedOperationPreview,
@@ -135,11 +136,13 @@ import {
   type GitTagList,
   type GitTagMutationResult,
   type GitTagSummary,
+  explorerMediaTypeForPath,
 } from "@cantrip/protocol";
 
 const execFileAsync = promisify(execFile);
 const GIT_BUFFER = 16 * 1024 * 1024;
 const DIFF_CHARACTER_LIMIT = 2_000_000;
+const DIFF_IMAGE_BYTES_LIMIT = 2 * 1_024 * 1_024;
 const COMMIT_MESSAGE_CHARACTER_LIMIT = 1_000_000;
 const COMMIT_FILE_LIMIT = 100_000;
 const BRANCH_LIMIT = 20_000;
@@ -148,6 +151,135 @@ const REMOTE_TIMEOUT_MS = 30_000;
 const FORCE_PUSH_COMMIT_LIMIT = 100;
 const COMMIT_SIGNATURE_CACHE_LIMIT = 256;
 const COMMIT_SIGNATURE_CACHE_TTL_MS = 10 * 60_000;
+
+function missingDiffFileSide(): GitDiffFileSide {
+  return {
+    kind: "missing",
+    size: null,
+    mimeType: null,
+    base64: null,
+    truncated: false,
+  };
+}
+
+function diffImageMimeType(filePath: string): string | null {
+  const media = explorerMediaTypeForPath(filePath);
+  return media?.kind === "image" && media.mimeType !== "image/svg+xml"
+    ? media.mimeType
+    : null;
+}
+
+function patchContainsBinaryChange(patch: string): boolean {
+  return (
+    patch.includes("GIT binary patch") ||
+    patch.split("\n").some((line) => line.startsWith("Binary files "))
+  );
+}
+
+async function readObjectDiffFileSide(
+  cwd: string,
+  objectPath: string | null,
+  filePath: string,
+  binary: boolean,
+): Promise<GitDiffFileSide> {
+  if (
+    !objectPath ||
+    !(await gitSucceeds(cwd, ["cat-file", "-e", objectPath]))
+  ) {
+    return missingDiffFileSide();
+  }
+  const size = Number.parseInt(
+    await gitOutput(cwd, ["cat-file", "-s", objectPath]),
+    10,
+  );
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new Error("Git returned an invalid diff file size.");
+  }
+  const mimeType = diffImageMimeType(filePath);
+  if (!mimeType) {
+    return {
+      kind: binary ? "binary" : "text",
+      size,
+      mimeType: null,
+      base64: null,
+      truncated: false,
+    };
+  }
+  if (size > DIFF_IMAGE_BYTES_LIMIT) {
+    return {
+      kind: "image",
+      size,
+      mimeType,
+      base64: null,
+      truncated: true,
+    };
+  }
+  return {
+    kind: "image",
+    size,
+    mimeType,
+    base64: (await gitBuffer(cwd, ["show", objectPath])).toString("base64"),
+    truncated: false,
+  };
+}
+
+async function readWorkingDiffFileSide(
+  cwd: string,
+  filePath: string,
+  binary: boolean,
+): Promise<GitDiffFileSide> {
+  const root = await realpath(cwd);
+  const absolute = path.resolve(root, filePath);
+  if (absolute === root || !absolute.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Invalid Git diff path.");
+  }
+  const metadata = await lstat(absolute).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    },
+  );
+  if (!metadata) return missingDiffFileSide();
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    return {
+      kind: "binary",
+      size: metadata.size,
+      mimeType: null,
+      base64: null,
+      truncated: false,
+    };
+  }
+  const mimeType = diffImageMimeType(filePath);
+  if (!mimeType) {
+    return {
+      kind: binary ? "binary" : "text",
+      size: metadata.size,
+      mimeType: null,
+      base64: null,
+      truncated: false,
+    };
+  }
+  if (metadata.size > DIFF_IMAGE_BYTES_LIMIT) {
+    return {
+      kind: "image",
+      size: metadata.size,
+      mimeType,
+      base64: null,
+      truncated: true,
+    };
+  }
+  const canonical = await realpath(absolute);
+  if (canonical === root || !canonical.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Git diff image escapes the selected worktree.");
+  }
+  return {
+    kind: "image",
+    size: metadata.size,
+    mimeType,
+    base64: (await readFile(canonical)).toString("base64"),
+    truncated: false,
+  };
+}
 
 interface CommitSignatureCacheEntry {
   expiresAt: number;
@@ -1647,6 +1779,7 @@ export async function readGitRevisionFileDiff(
   revision: string,
   baseRevision: string | null,
   filePath: string,
+  contextLines = 3,
 ): Promise<GitRevisionFileDiff> {
   if (!safeGitPath(filePath)) throw new Error("Invalid Git diff path.");
   const hash = await resolveCommit(cwd, revision);
@@ -1658,7 +1791,7 @@ export async function readGitRevisionFileDiff(
     "--no-color",
     "--no-ext-diff",
     "--no-textconv",
-    "--unified=3",
+    `--unified=${contextLines}`,
     "-M",
     "-C",
   ];
@@ -1686,6 +1819,15 @@ export async function readGitRevisionFileDiff(
   const result = await gitDiffOutput(cwd, arguments_, false);
   const truncated =
     result.truncated || result.output.length > DIFF_CHARACTER_LIMIT;
+  const [oldFile, newFile] = await Promise.all([
+    readObjectDiffFileSide(
+      cwd,
+      baseHash ? `${baseHash}:${file.originalPath ?? file.path}` : null,
+      file.originalPath ?? file.path,
+      file.binary,
+    ),
+    readObjectDiffFileSide(cwd, `${hash}:${file.path}`, file.path, file.binary),
+  ]);
   return gitRevisionFileDiffSchema.parse({
     revision: hash,
     baseRevision: baseHash,
@@ -1694,6 +1836,8 @@ export async function readGitRevisionFileDiff(
     patch: result.output.slice(0, DIFF_CHARACTER_LIMIT),
     truncated,
     binary: file.binary,
+    oldFile,
+    newFile,
   });
 }
 
@@ -1797,6 +1941,7 @@ export async function readGitFileDiff(
   cwd: string,
   filePath: string,
   scope: GitDiffScope,
+  contextLines = 3,
 ): Promise<GitFileDiff> {
   if (!safeGitPath(filePath)) throw new Error("Invalid Git diff path.");
   const status = await readGitStatus(cwd);
@@ -1811,7 +1956,7 @@ export async function readGitFileDiff(
     "--no-color",
     "--no-ext-diff",
     "--no-textconv",
-    "--unified=3",
+    `--unified=${contextLines}`,
     "-M",
   ];
   const untracked = change.indexStatus === "?" && change.worktreeStatus === "?";
@@ -1835,11 +1980,32 @@ export async function readGitFileDiff(
         );
   const truncated =
     result.truncated || result.output.length > DIFF_CHARACTER_LIMIT;
+  const binary = patchContainsBinaryChange(result.output);
+  const oldPath = change.originalPath ?? filePath;
+  const [oldFile, newFile] = await Promise.all([
+    readObjectDiffFileSide(
+      cwd,
+      scope === "staged"
+        ? `${status.head ?? "HEAD"}:${oldPath}`
+        : untracked
+          ? null
+          : `:${oldPath}`,
+      oldPath,
+      binary,
+    ),
+    scope === "staged"
+      ? readObjectDiffFileSide(cwd, `:${filePath}`, filePath, binary)
+      : readWorkingDiffFileSide(cwd, filePath, binary),
+  ]);
   return gitFileDiffSchema.parse({
     path: filePath,
+    originalPath: change.originalPath,
     scope,
     patch: result.output.slice(0, DIFF_CHARACTER_LIMIT),
     truncated,
+    binary,
+    oldFile,
+    newFile,
   });
 }
 
@@ -2369,6 +2535,7 @@ export async function readGitStashFileDiff(
   cwd: string,
   hash: string,
   filePath: string,
+  contextLines = 3,
 ): Promise<GitStashFileDiff> {
   if (!safeGitPath(filePath)) throw new Error("Invalid stash diff path.");
   const list = await readGitStashes(cwd);
@@ -2388,7 +2555,7 @@ export async function readGitStashFileDiff(
       "--no-color",
       "--no-ext-diff",
       "--no-textconv",
-      "--unified=3",
+      `--unified=${contextLines}`,
       base,
       target,
       "--",
@@ -2398,12 +2565,18 @@ export async function readGitStashFileDiff(
   );
   const truncated =
     result.truncated || result.output.length > DIFF_CHARACTER_LIMIT;
+  const [oldFile, newFile] = await Promise.all([
+    readObjectDiffFileSide(cwd, `${base}:${filePath}`, filePath, file.binary),
+    readObjectDiffFileSide(cwd, `${target}:${filePath}`, filePath, file.binary),
+  ]);
   return gitStashFileDiffSchema.parse({
     hash,
     path: filePath,
     patch: result.output.slice(0, DIFF_CHARACTER_LIMIT),
     truncated,
     binary: file.binary,
+    oldFile,
+    newFile,
   });
 }
 

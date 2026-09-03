@@ -179,6 +179,7 @@ export function installProjectWorktreeGitStashRoutes(
               cwd: context.worktree.path,
               hash: request.params.hash,
               path: filePath.data,
+              contextLines: 3,
             }),
           ),
         );

@@ -7,6 +7,8 @@ export function GitFileDiffView({
   error,
   loading,
   onClose,
+  onContextLinesChange,
+  onOpenFile,
   path,
   projectId,
   scope,
@@ -16,6 +18,8 @@ export function GitFileDiffView({
   error: unknown;
   loading: boolean;
   onClose(): void;
+  onContextLinesChange?(contextLines: number): void;
+  onOpenFile?(): void;
   path: string;
   projectId: string;
   scope: "unstaged" | "staged";
@@ -27,6 +31,8 @@ export function GitFileDiffView({
       error={error}
       loading={loading}
       onClose={onClose}
+      onContextLinesChange={onContextLinesChange}
+      onOpenFile={onOpenFile}
       path={path}
       projectId={projectId}
       scope={scope}

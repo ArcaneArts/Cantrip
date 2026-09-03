@@ -37,17 +37,20 @@ export function flattenFileHistoryPages(pages: GitFileHistory[] | undefined) {
 export function GitFileHistoryDialog({
   onOpenChange,
   onOpenCommit,
+  onOpenFile,
   open,
   projectId,
   worktreeId,
 }: {
   onOpenChange(open: boolean): void;
   onOpenCommit(revision: string): void;
+  onOpenFile?(path: string): void;
   open: boolean;
   projectId: string;
   worktreeId: string;
 }) {
   const [tab, setTab] = useState<FileToolTab>("history");
+  const [diffContextLines, setDiffContextLines] = useState(3);
   const [path, setPath] = useState("");
   const [revision, setRevision] = useState("HEAD");
   const [selection, setSelection] = useState<{
@@ -85,13 +88,22 @@ export function GitFileHistoryDialog({
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
   const compare = useMutation({
-    mutationFn: ({ base, target }: { base: string; target: string }) =>
+    mutationFn: ({
+      base,
+      contextLines,
+      target,
+    }: {
+      base: string;
+      contextLines: number;
+      target: string;
+    }) =>
       getProjectWorktreeRevisionDiff(
         projectId,
         worktreeId,
         target,
         base,
         selection!.path,
+        contextLines,
       ),
   });
   const commits = useMemo(
@@ -107,6 +119,7 @@ export function GitFileHistoryDialog({
     const nextRevision = revision.trim();
     if (!nextPath || !nextRevision) return;
     setSelection({ path: nextPath, revision: nextRevision });
+    setDiffContextLines(3);
     compare.reset();
   };
 
@@ -306,7 +319,11 @@ export function GitFileHistoryDialog({
                 className="h-8"
                 disabled={!left.trim() || !right.trim() || compare.isPending}
                 onClick={() =>
-                  compare.mutate({ base: left.trim(), target: right.trim() })
+                  compare.mutate({
+                    base: left.trim(),
+                    contextLines: diffContextLines,
+                    target: right.trim(),
+                  })
                 }
               >
                 {compare.isPending ? (
@@ -320,15 +337,29 @@ export function GitFileHistoryDialog({
             <GitPatchView
               error={compare.error}
               loading={compare.isPending}
+              newFile={compare.data?.newFile}
               newLabel={right}
               oldLabel={left}
               onClose={() => compare.reset()}
+              onContextLinesChange={(contextLines) => {
+                setDiffContextLines(contextLines);
+                compare.mutate({
+                  base: left.trim(),
+                  contextLines,
+                  target: right.trim(),
+                });
+              }}
+              onOpenFile={
+                onOpenFile ? () => onOpenFile(selection.path) : undefined
+              }
+              oldFile={compare.data?.oldFile}
               originalPath={compare.data?.originalPath}
               patch={compare.data?.patch}
               path={selection.path}
               showClose={false}
               subtitle={`${left} → ${right}`}
               truncated={compare.data?.truncated ?? false}
+              binary={compare.data?.binary}
             />
           </div>
         )}
