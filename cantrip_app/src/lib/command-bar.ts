@@ -15,6 +15,19 @@ export type DoubleShiftKeyResult = {
 
 export type CommandBarScope = "folder" | "github" | "new-project";
 
+type CommandBarResultList = Pick<HTMLDivElement, "querySelector" | "scrollTop">;
+
+export function resetCommandBarResultNavigation(
+  list: CommandBarResultList,
+): string {
+  list.scrollTop = 0;
+  return (
+    list
+      .querySelector<HTMLElement>('[cmdk-item]:not([aria-disabled="true"])')
+      ?.getAttribute("data-value") ?? ""
+  );
+}
+
 /**
  * Advances the app command-bar gesture. Any intervening key cancels the
  * sequence, so ordinary capitalization does not count as a double Shift.

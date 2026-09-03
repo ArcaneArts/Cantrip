@@ -26,7 +26,7 @@ import {
   SquareTerminal,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   Command,
@@ -57,6 +57,7 @@ import {
 import {
   advanceDoubleShiftGesture,
   commandBarScopesAfterBackspace,
+  resetCommandBarResultNavigation,
   type CommandBarScope,
 } from "@/lib/command-bar";
 import { errorMessage } from "@/lib/error-message";
@@ -215,6 +216,7 @@ export function AppCommandBar({
 }) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
+  const [selectedCommandValue, setSelectedCommandValue] = useState("");
   const [debouncedFileQuery, setDebouncedFileQuery] = useState("");
   const [scopes, setScopes] = useState<CommandBarScope[]>([]);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
@@ -227,6 +229,7 @@ export function AppCommandBar({
     string | null
   >(null);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const commandListRef = useRef<HTMLDivElement | null>(null);
   const lastShiftAtRef = useRef<number | null>(null);
   const actions = useMemo(() => availableAppActions(context), [context]);
   const activeScope = scopes.at(-1) ?? null;
@@ -342,6 +345,7 @@ export function AppCommandBar({
   useEffect(() => {
     if (!open) return;
     setQuery("");
+    setSelectedCommandValue("");
     setScopes([]);
     setOperationError(null);
   }, [open]);
@@ -357,6 +361,26 @@ export function AppCommandBar({
     );
     return () => window.clearTimeout(timeout);
   }, [fileSearchQuery, open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const list = commandListRef.current;
+    if (!list) return;
+    setSelectedCommandValue(resetCommandBarResultNavigation(list));
+    const frame = window.requestAnimationFrame(() => {
+      if (commandListRef.current === list) list.scrollTop = 0;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    activeScope,
+    cachedRepositories.dataUpdatedAt,
+    github.dataUpdatedAt,
+    open,
+    projectFiles.dataUpdatedAt,
+    projectScriptCommands.dataUpdatedAt,
+    query,
+    repositories.dataUpdatedAt,
+  ]);
 
   const rememberProject = (project: ProjectSummary, workspaceId: string) => {
     queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
@@ -534,7 +558,11 @@ export function AppCommandBar({
         <DialogDescription className="sr-only">
           Search available actions, create a project, or switch projects.
         </DialogDescription>
-        <Command loop>
+        <Command
+          loop
+          value={selectedCommandValue}
+          onValueChange={setSelectedCommandValue}
+        >
           <div className="flex min-h-16 shrink-0 items-center gap-2 border-b px-5 py-2">
             <Search className="size-5 shrink-0 text-muted-foreground" />
             {scopes.map((scope, index) => (
@@ -581,7 +609,10 @@ export function AppCommandBar({
               </kbd>
             ) : null}
           </div>
-          <CommandList className="min-h-32 flex-1 overscroll-contain overflow-y-auto p-2">
+          <CommandList
+            ref={commandListRef}
+            className="min-h-32 flex-1 overscroll-contain overflow-y-auto p-2"
+          >
             {showEmpty ? <CommandEmpty>{emptyMessage}</CommandEmpty> : null}
             {activeScope === null ? (
               <>
