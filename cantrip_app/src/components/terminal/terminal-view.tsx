@@ -708,6 +708,10 @@ export function TerminalView({
     }
     requestAnimationFrame(() => xtermRef.current?.focus());
   };
+  const dismissMobileKeyboard = () => {
+    xtermRef.current?.blur();
+    setTerminalFocused(false);
+  };
   return (
     <div
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
@@ -797,6 +801,7 @@ export function TerminalView({
         <MobileTerminalCommandBar
           bottomInset={mobileKeyboard.bottomInset}
           disabled={state !== "ready"}
+          onDismiss={dismissMobileKeyboard}
           onKey={runMobileTerminalKey}
         />
       ) : null}

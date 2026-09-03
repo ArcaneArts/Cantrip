@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,10 +8,18 @@ import {
 } from "./mobile-terminal-command-bar";
 import { measureMobileTerminalViewport } from "./use-mobile-terminal-keyboard";
 
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
 describe("mobile terminal command bar", () => {
   it("renders accessible terminal actions above the keyboard", () => {
     const markup = renderToStaticMarkup(
-      <MobileTerminalCommandBar bottomInset={312} onKey={vi.fn()} />,
+      <MobileTerminalCommandBar
+        bottomInset={312}
+        onDismiss={vi.fn()}
+        onKey={vi.fn()}
+      />,
     );
 
     expect(markup).toContain('role="toolbar"');
@@ -21,7 +30,33 @@ describe("mobile terminal command bar", () => {
     expect(markup).toContain('aria-label="Arrow up"');
     expect(markup).toContain('aria-label="Arrow down"');
     expect(markup).toContain('aria-label="Arrow right"');
+    expect(markup).toContain('aria-label="Dismiss keyboard"');
+    expect(markup).toContain("border-t");
+    expect(markup).not.toContain("shadow-[");
     expect(markup).toContain("bottom:312px");
+  });
+
+  it("offers a working keyboard dismiss action", () => {
+    const onDismiss = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    act(() => {
+      renderer = TestRenderer.create(
+        <MobileTerminalCommandBar
+          bottomInset={0}
+          onDismiss={onDismiss}
+          onKey={vi.fn()}
+        />,
+      );
+    });
+    act(() =>
+      renderer.root
+        .findByProps({ "aria-label": "Dismiss keyboard" })
+        .props.onClick(),
+    );
+
+    expect(onDismiss).toHaveBeenCalledOnce();
+    act(() => renderer.unmount());
   });
 
   it("encodes normal, application-mode, and shifted terminal keys", () => {
