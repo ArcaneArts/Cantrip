@@ -44,7 +44,6 @@ import {
   SquareTerminal,
   Trash2,
   Unlock,
-  Workflow,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -82,7 +81,6 @@ import { cn } from "@/lib/utils";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { codeGraphSettingsRefreshIntervalMs } from "@/lib/codegraph-refresh";
 import { updateProjectWorktreePolicy } from "@/lib/project-encryption";
-import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { ProjectArchiveSettings } from "./project-archive-settings";
 import { ProjectReplicaSettings } from "./project-replica-settings";
@@ -103,7 +101,6 @@ export type ProjectSettingsSection =
   | "general"
   | "archive"
   | "automations"
-  | "workflows"
   | "replicas"
   | "worktrees"
   | "tunnels"
@@ -168,20 +165,6 @@ export const projectSettingsSections: readonly SettingsNavigationSection<Project
           label: "Project automations",
           description: "Create and manage recurring project work.",
           keywords: ["schedule cron heartbeat"],
-        },
-      ],
-    },
-    {
-      id: "workflows",
-      label: "Workflows",
-      description: "Reusable task graphs",
-      icon: Workflow,
-      searchItems: [
-        {
-          id: "project-workflows",
-          label: "Project workflows",
-          description: "Build and run reusable multi-step workflows.",
-          keywords: ["nodes execution task graph"],
         },
       ],
     },
@@ -540,7 +523,6 @@ export function ProjectSettingsPage({
   desktopRuntime,
   explorers,
   initialSection = "general",
-  initialWorkflowId,
   mobileSectionOpen,
   onCreateChat,
   onCreateCode,
@@ -564,7 +546,6 @@ export function ProjectSettingsPage({
   desktopRuntime: boolean;
   explorers: ExplorerSummary[];
   initialSection?: ProjectSettingsSection;
-  initialWorkflowId?: string | null;
   mobileSectionOpen?: boolean;
   onCreateChat(worktreeId: string): void;
   onCreateCode(worktreeId: string): void;
@@ -743,21 +724,6 @@ export function ProjectSettingsPage({
             projectId={project.id}
             onRestoreChat={onRestoreChat}
           />
-        ) : null}
-        {section === "workflows" ? (
-          <div
-            className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
-            data-content-gutter="standard"
-          >
-            <WorkflowCenter
-              chats={chats}
-              directFolder={!project.capabilities.git}
-              initialWorkflowId={initialWorkflowId}
-              projectId={project.id}
-              worker={projectWorker ?? null}
-              onOpenHistory={onCreateHistory}
-            />
-          </div>
         ) : null}
         {section === "replicas" ? (
           <ProjectReplicaSettings project={project} workers={workers} />

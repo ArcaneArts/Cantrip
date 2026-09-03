@@ -222,7 +222,6 @@ export function GlobalContentHost({
     selectedTabGroup,
     selectedTerminal,
     selectedWorker,
-    selectedWorkflowIntentId,
     setAgentInspectOpen,
     setChatRelocationOpen,
     setGitHistoryHeader,
@@ -360,7 +359,6 @@ export function GlobalContentHost({
                     }),
                   );
               }}
-              onOpenWorkflow={() => undefined}
               onOpenRelocation={() => undefined}
               onToast={showAppToast}
               onRename={(title) =>
@@ -410,7 +408,6 @@ export function GlobalContentHost({
         <ProjectSettingsPage
           desktopRuntime={desktopRuntime && projectRevealLabel !== null}
           initialSection={projectSettingsSection}
-          initialWorkflowId={selectedWorkflowIntentId}
           mobileSectionOpen={mobileSettingsSectionOpen}
           project={selectedProject}
           chats={chats.data ?? []}
@@ -767,9 +764,6 @@ export function GlobalContentHost({
               onOpenFile={(reference) =>
                 openChatFileLink(selectedChat, reference)
               }
-              onOpenWorkflow={(workflowId) =>
-                openProjectSettings(selectedChat.projectId, workflowId)
-              }
               onOpenRelocation={() => setChatRelocationOpen(true)}
               onToast={showAppToast}
               onRename={(title) =>
@@ -1010,12 +1004,6 @@ export function GlobalContentHost({
                       }
                       onOpenFile={(reference) =>
                         openChatFileLink(activeProjectTaskChat, reference)
-                      }
-                      onOpenWorkflow={(workflowId) =>
-                        openProjectSettings(
-                          activeProjectTaskChat.projectId,
-                          workflowId,
-                        )
                       }
                       onOpenRelocation={() => setChatRelocationOpen(true)}
                       onToast={showAppToast}

@@ -442,16 +442,12 @@ export function ChatTranscriptView({
               id="slash-command-menu"
               ref={commandListRef}
               role="listbox"
-              aria-label="Commands, workflows, and skills"
+              aria-label="Commands and skills"
               className="chat-composer-surface absolute inset-x-0 bottom-[calc(100%+0.5rem)] max-h-72 overflow-y-auto rounded-xl border p-1.5 shadow-2xl"
             >
               {slashSuggestions.map((suggestion, index) => (
                 <button
-                  key={`${suggestion.kind}:${
-                    suggestion.kind === "saved-command"
-                      ? suggestion.trigger.id
-                      : suggestion.invocation
-                  }`}
+                  key={`${suggestion.kind}:${suggestion.invocation}`}
                   id={`slash-command-${index}`}
                   data-command-index={index}
                   role="option"

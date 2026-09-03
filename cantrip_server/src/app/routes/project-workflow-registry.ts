@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 
-import { installRemovedWorkflowGenerationRoute } from "./api-meta-and-removed-routes.js";
 import { installChatRelocationRoutes } from "./chat-relocations.js";
 import { installGithubRepositoryCatalogRoutes } from "./github-repository-catalog.js";
 import { installProjectAutomationRoutes } from "./project-automations.js";
@@ -33,10 +32,6 @@ import { installProjectWorktreeGitStashRoutes } from "./project-worktree-git-sta
 import { installProjectWorktreePullRequestRoutes } from "./project-worktree-pull-requests.js";
 import { installProjectWorktreeStatusRoute } from "./project-worktree-status.js";
 import { installProjectWorktreeRoutes } from "./project-worktrees.js";
-import { installWorkflowDefinitionRoutes } from "./workflow-definitions.js";
-import { installWorkflowRunRoutes } from "./workflow-runs.js";
-import { installWorkflowTriggerDeliveryRoutes } from "./workflow-trigger-delivery.js";
-import { installWorkflowTriggerManagementRoutes } from "./workflow-trigger-management.js";
 
 export type ProjectWorkflowRouteDependencies = Parameters<
   typeof installGithubRepositoryCatalogRoutes
@@ -47,12 +42,8 @@ export type ProjectWorkflowRouteDependencies = Parameters<
   Parameters<typeof installProjectAutomationRoutes>[1] &
   Parameters<typeof installProjectMcpServerRoutes>[1] &
   Parameters<typeof installProjectWorkspaceRoutes>[1] &
-  Parameters<typeof installWorkflowTriggerManagementRoutes>[1] &
-  Parameters<typeof installWorkflowTriggerDeliveryRoutes>[1] &
   Parameters<typeof installProjectWorktreePullRequestRoutes>[1] &
   Parameters<typeof installProjectWorktreeGitInspectionAndRecoveryRoutes>[1] &
-  Parameters<typeof installWorkflowDefinitionRoutes>[1] &
-  Parameters<typeof installWorkflowRunRoutes>[1] &
   Parameters<typeof installProjectNetworkShareRoutes>[1] &
   Parameters<typeof installProjectPreferenceRoutes>[1] &
   Parameters<typeof installProjectWorktreeRoutes>[1] &
@@ -75,7 +66,7 @@ export type ProjectWorkflowRouteDependencies = Parameters<
   Parameters<typeof installProjectGithubImportRoute>[1] &
   Parameters<typeof installProjectChatCatalogRoutes>[1];
 
-/** Registers the contiguous project, workflow, worktree, and Git tranche. */
+/** Registers the contiguous project, worktree, and Git tranche. */
 export function installProjectWorkflowRoutes(
   app: FastifyInstance,
   dependencies: ProjectWorkflowRouteDependencies,
@@ -94,19 +85,9 @@ export function installProjectWorkflowRoutes(
 
   installProjectWorkspaceRoutes(app, dependencies);
 
-  installWorkflowTriggerManagementRoutes(app, dependencies);
-
-  installWorkflowTriggerDeliveryRoutes(app, dependencies);
-
-  installRemovedWorkflowGenerationRoute(app);
-
   installProjectWorktreePullRequestRoutes(app, dependencies);
 
   installProjectWorktreeGitInspectionAndRecoveryRoutes(app, dependencies);
-
-  installWorkflowDefinitionRoutes(app, dependencies);
-
-  installWorkflowRunRoutes(app, dependencies);
 
   installProjectNetworkShareRoutes(app, dependencies);
 

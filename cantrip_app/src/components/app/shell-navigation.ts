@@ -208,9 +208,6 @@ export function useShellNavigationState(
   const [settingsPolicyId, setSettingsPolicyId] = useState<string | null>(null);
   const [projectSettingsSection, setProjectSettingsSection] =
     useState<ProjectSettingsSection>("general");
-  const [selectedWorkflowIntentId, setSelectedWorkflowIntentId] = useState<
-    string | null
-  >(null);
 
   return {
     appMode,
@@ -221,14 +218,12 @@ export function useShellNavigationState(
     projectSettingsSection,
     selectedProjectId,
     selectedStandaloneChatId,
-    selectedWorkflowIntentId,
     setAppMode,
     setProjectOverviewSection,
     setProjectOverviewWorktreeId,
     setProjectSettingsSection,
     setSelectedProjectId,
     setSelectedStandaloneChatId,
-    setSelectedWorkflowIntentId,
     setSettingsPolicyId,
     setSettingsSection,
     setShowArchivedStandaloneChats,
@@ -451,7 +446,6 @@ export function useProjectSelectionReconciliation({
     | "appMode"
     | "selectedProjectId"
     | "setSelectedProjectId"
-    | "setSelectedWorkflowIntentId"
     | "setShowImporter"
     | "setShowProjectSettings"
     | "setShowSettings"
@@ -470,7 +464,6 @@ export function useProjectSelectionReconciliation({
     appMode,
     selectedProjectId,
     setSelectedProjectId,
-    setSelectedWorkflowIntentId,
     setShowImporter,
     setShowProjectSettings,
     setShowSettings,
@@ -503,7 +496,6 @@ export function useProjectSelectionReconciliation({
       setShowProjectSettings(false);
     } else if (compactShell) {
       setShowProjectSettings(false);
-      setSelectedWorkflowIntentId(null);
     }
     setSelectedProjectId(action.projectId);
     setWorkspaceSelection(emptyWorkspaceSelection(action.projectId));
@@ -516,7 +508,6 @@ export function useProjectSelectionReconciliation({
     selectedProjectId,
     setPendingSurfaceSelection,
     setSelectedProjectId,
-    setSelectedWorkflowIntentId,
     setShowImporter,
     setShowProjectSettings,
     setShowSettings,
@@ -652,7 +643,6 @@ export function createShellNavigationCommands({
     | "setProjectOverviewWorktreeId"
     | "setSelectedProjectId"
     | "setSelectedStandaloneChatId"
-    | "setSelectedWorkflowIntentId"
     | "setSettingsSection"
     | "setShowArchivedStandaloneChats"
     | "setShowImporter"
@@ -688,7 +678,6 @@ export function createShellNavigationCommands({
     setProjectOverviewWorktreeId,
     setSelectedProjectId,
     setSelectedStandaloneChatId,
-    setSelectedWorkflowIntentId,
     setSettingsSection,
     setShowArchivedStandaloneChats,
     setShowImporter,
@@ -844,7 +833,6 @@ export function createShellNavigationCommands({
     setShowArchivedStandaloneChats(false);
     setShowServerAdmin(false);
     setShowProjectSettings(false);
-    setSelectedWorkflowIntentId(null);
   };
   const openCompactRootSettings = (section: SettingsSection = "general") => {
     setSelectedProjectId(null);
@@ -867,7 +855,6 @@ export function createShellNavigationCommands({
   };
   const returnToCompactProjectOverview = () => {
     setShowProjectSettings(false);
-    setSelectedWorkflowIntentId(null);
     setWorkspaceSelection((current) =>
       selectWorkspaceOverview(current, selectedProjectId),
     );
@@ -911,7 +898,6 @@ export function createShellProjectNavigationCommands({
     | "setProjectOverviewSection"
     | "setProjectSettingsSection"
     | "setSelectedProjectId"
-    | "setSelectedWorkflowIntentId"
     | "setShowImporter"
     | "setShowProjectSettings"
     | "setShowServerAdmin"
@@ -941,7 +927,6 @@ export function createShellProjectNavigationCommands({
     setProjectOverviewSection,
     setProjectSettingsSection,
     setSelectedProjectId,
-    setSelectedWorkflowIntentId,
     setShowImporter,
     setShowProjectSettings,
     setShowServerAdmin,
@@ -1026,7 +1011,6 @@ export function createShellProjectNavigationCommands({
     setShowSettings(false);
     setShowServerAdmin(false);
     setShowProjectSettings(false);
-    setSelectedWorkflowIntentId(null);
     void persistAppDestination({
       lastAppMode: "ide",
       lastIdeProjectId: projectId,
@@ -1052,7 +1036,6 @@ export function createShellProjectNavigationCommands({
     setShowSettings(false);
     setShowServerAdmin(false);
     setShowProjectSettings(false);
-    setSelectedWorkflowIntentId(null);
     void persistAppDestination({
       lastAppMode: "ide",
       lastIdeProjectId: projectId,
@@ -1069,8 +1052,7 @@ export function createShellProjectNavigationCommands({
   };
   const openProjectSettings = (
     projectId: string,
-    workflowId: string | null = null,
-    section: ProjectSettingsSection = workflowId ? "workflows" : "general",
+    section: ProjectSettingsSection = "general",
   ) => {
     setAppMode("ide");
     setDesktopSidebarDrawerOpen(false);
@@ -1080,7 +1062,6 @@ export function createShellProjectNavigationCommands({
     setShowServerAdmin(false);
     setShowProjectSettings(true);
     setProjectSettingsSection(section);
-    setSelectedWorkflowIntentId(workflowId);
     void persistAppDestination({
       lastAppMode: "ide",
       lastIdeProjectId: projectId,
@@ -1097,10 +1078,7 @@ export function createShellProjectNavigationCommands({
       openCreatedTab(tunnel.projectId, "code", tunnel.managedBy.id);
       return;
     }
-    openProjectSettings(
-      tunnel.projectId,
-      tunnel.managedBy.kind === "workflow" ? tunnel.managedBy.id : null,
-    );
+    openProjectSettings(tunnel.projectId);
   };
 
   return {

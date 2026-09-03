@@ -56,7 +56,6 @@ export interface AppLiveQueryBridgeStats {
   receivedEventCount: number;
 }
 
-const MAX_TRACKED_WORKFLOW_SEQUENCES = 4_096;
 const MAX_TRACKED_CODEGRAPH_REVISIONS = 4_096;
 const MAX_TRACKED_PROVIDER_AUTH_REVISIONS = 4_096;
 const DEFERRED_INVALIDATION_MS = 100;
@@ -391,25 +390,6 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         ["tunnels"],
         ...(projectId ? [["project-tunnels", projectId]] : []),
       ];
-    case "workflow-definition":
-      return projectId
-        ? [["workflow-repository", projectId]]
-        : [
-            ["workflows"],
-            ...(event.entityId ? [["workflow", event.entityId]] : []),
-          ];
-    case "workflow-run":
-    case "workflow-node":
-    case "workflow-gate":
-      if (event.scope.kind === "workflow-run") {
-        return [
-          ["workflow-run", event.scope.runId],
-          ["workflow-interactions", event.scope.runId],
-        ];
-      }
-      return projectId ? [["workflow-runs", projectId]] : [];
-    case "workflow-trigger":
-      return projectId ? [["workflow-triggers", projectId]] : [];
     case "customization":
       return event.scope.kind === "chat"
         ? [
@@ -420,6 +400,8 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             ["settings-skills"],
             ...(projectId ? [["settings-skills", projectId]] : []),
           ];
+    default:
+      return [];
   }
 }
 
@@ -448,7 +430,6 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["project-workspaces"],
         ["workspace-repository-discovery"],
         ["tunnels"],
-        ["workflows"],
       ];
     case "project":
       return [
@@ -486,9 +467,6 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["project-views", scope.projectId],
         ["project-repository-stats", scope.projectId],
         ["project-tunnels", scope.projectId],
-        ["workflow-repository", scope.projectId],
-        ["workflow-runs", scope.projectId],
-        ["workflow-triggers", scope.projectId],
       ];
     case "chat":
       return [
@@ -506,11 +484,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["skills", scope.chatId],
         ["chat-customizations", scope.chatId, "inventory"],
       ];
-    case "workflow-run":
-      return [
-        ["workflow-run", scope.runId],
-        ["workflow-interactions", scope.runId],
-      ];
+    default:
+      return [];
   }
 }
 
@@ -715,7 +690,6 @@ export class AppLiveQueryBridge {
     string,
     { queryKey: QueryKey; workerId: string }
   >();
-  readonly #workflowRunSequences = new Map<string, number>();
   #coalescedInvalidationCount = 0;
   #coalescedFlushTimer: ReturnType<typeof setTimeout> | null = null;
   #directlyAppliedEventCount = 0;
@@ -803,7 +777,6 @@ export class AppLiveQueryBridge {
 
   handleEvent(event: AppLiveEvent): void {
     this.#receivedEventCount += 1;
-    if (!this.#acceptWorkflowEvent(event)) return;
     const worktreeStatus = this.#applyWorktreeStatusEvent(event);
     const directlyApplied =
       this.#applyChatMessageEvent(event) ||
@@ -831,17 +804,7 @@ export class AppLiveQueryBridge {
         ].includes(String(key[0]))
       );
     });
-    this.#enqueueInvalidations(
-      queryKeys,
-      [
-        "customization",
-        "workflow-definition",
-        "workflow-gate",
-        "workflow-node",
-        "workflow-run",
-        "workflow-trigger",
-      ].includes(event.resource),
-    );
+    this.#enqueueInvalidations(queryKeys, event.resource === "customization");
   }
 
   async #applyDirectChatObservation(
@@ -1116,34 +1079,6 @@ export class AppLiveQueryBridge {
       this.#removeProvisionalMessage(state.chatId, state.messageId);
       this.#provisionalMessages.delete(key);
     }
-  }
-
-  #acceptWorkflowEvent(event: AppLiveEvent): boolean {
-    if (
-      !["workflow-gate", "workflow-node", "workflow-run"].includes(
-        event.resource,
-      ) ||
-      event.revision === null ||
-      !event.entityId
-    ) {
-      return true;
-    }
-    const scopeKey =
-      event.scope.kind === "workflow-run"
-        ? `workflow-run:${event.scope.runId}`
-        : event.scope.kind === "project"
-          ? `project:${event.scope.projectId}`
-          : null;
-    if (!scopeKey) return true;
-    const key = `${scopeKey}:${event.entityId}`;
-    const latest = this.#workflowRunSequences.get(key);
-    if (latest !== undefined && event.revision <= latest) return false;
-    this.#workflowRunSequences.set(key, event.revision);
-    if (this.#workflowRunSequences.size > MAX_TRACKED_WORKFLOW_SEQUENCES) {
-      const oldest = this.#workflowRunSequences.keys().next().value;
-      if (oldest !== undefined) this.#workflowRunSequences.delete(oldest);
-    }
-    return true;
   }
 
   #applyChatMessageEvent(event: AppLiveEvent): boolean {
@@ -1630,20 +1565,8 @@ export class AppLiveQueryBridge {
         }
       }
     }
-    for (const scope of scopes) {
-      if (scope.kind === "current-user") {
-        this.#providerAuthRevisions.clear();
-      }
-      const prefix =
-        scope.kind === "workflow-run"
-          ? `workflow-run:${scope.runId}:`
-          : scope.kind === "project"
-            ? `project:${scope.projectId}:`
-            : null;
-      if (!prefix) continue;
-      for (const key of this.#workflowRunSequences.keys()) {
-        if (key.startsWith(prefix)) this.#workflowRunSequences.delete(key);
-      }
+    if (scopes.some(({ kind }) => kind === "current-user")) {
+      this.#providerAuthRevisions.clear();
     }
     const keys = uniqueQueryKeys(scopes.flatMap(appLiveScopeQueryKeys));
     await Promise.all(

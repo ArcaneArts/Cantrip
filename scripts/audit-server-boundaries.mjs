@@ -91,6 +91,8 @@ const repositoryFiles = [
   "encryption-registry.ts",
   "project-automations.ts",
   "repository.ts",
+  "repository-facade-identity-model.ts",
+  "repository-facade-project-execution.ts",
   "tab-layouts.ts",
   "workflow-runs.ts",
   "workflow-triggers.ts",
@@ -119,15 +121,15 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
   applicationRoutes:
-    "7201e4017e116b25c080119821c248327f7cd37b800b19793798b5e3f4683266",
+    "0e99c956028a15d3f895c4ae0427899cddf68391c5e362b9b20ee4de70b04e16",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
-    "80c1b1ba37b9a45e90eb42afd3a754b8e222442e8420cb4f82f8c5e350b09f7b",
+    "b9e36d56fc85b2ab701bf63cb89390ddbfff4ab43535e190d83c84a4d96e52dd",
   workerCommands:
-    "705ac88e7a25c9474a6c810a6b746b02b1d67ab84b8873c50abd0e6296463214",
+    "30b631278fc5e0f35b8f0b751f5d945c17e14b81fb9295cf7baeaca2ecad9833",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -166,6 +168,7 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   tunnelAttachmentDirectLeases: "minimized-operational-metadata",
   mcpServers: "endpoint-protected",
   projectWorkspaces: "endpoint-protected",
+  projectWorkspaceStorageProfiles: "endpoint-protected",
   projectWorkspaceMemberships: "intentionally-public-control-plane",
   projectPolicyAssignments: "intentionally-public-control-plane",
   workspacePolicyAssignments: "intentionally-public-control-plane",
@@ -176,6 +179,8 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   projectFolderSetupJobs: "minimized-operational-metadata",
   projectGithubConversionJobs: "minimized-operational-metadata",
   projectReplicaJobs: "minimized-operational-metadata",
+  workspaceRepositoryDiscoveryJobs: "minimized-operational-metadata",
+  workspaceRepositoryCandidates: "endpoint-protected",
   gitOperations: "endpoint-protected",
   // New Run configuration persistence is deliberately limited to stable
   // identities, revisions, generations, lifecycle state, timestamps, and a
@@ -892,7 +897,6 @@ function routeBoundary(path) {
   ) {
     return "public-authentication";
   }
-  if (path.startsWith("/api/workflow-hooks/")) return "external-credential";
   if (
     path.endsWith("/connect") &&
     path.startsWith("/api/tunnel-attachments/")
@@ -907,7 +911,6 @@ function ownerEvidence(path, text) {
   if (path === "/api" || path === "/api/bootstrap" || path === "/version")
     return "public";
   if (path.startsWith("/api/auth/")) return "session-boundary";
-  if (path.startsWith("/api/workflow-hooks/")) return "webhook-credential";
   if (
     path.endsWith("/connect") &&
     path.startsWith("/api/tunnel-attachments/")
@@ -1725,7 +1728,7 @@ function repositoryOperationRouteBoundaryAudit(
     "openWorkerRepositoryOperationContent",
     "protectWorkerRepositoryOperationContent",
     "cwd: command.cwd",
-    "repository: command.repository",
+    "command.repository ??",
     "repositoryManagedOperations.get",
     "repositoryManagedOperations.put",
     'request.type === "git.operation.current"',
@@ -1818,25 +1821,32 @@ function methodBody(sourceText, methodName) {
 }
 
 async function taskRepositoryBoundaryAudit() {
-  const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
+  const messageWritesPath = resolve(
+    serverSourcePath,
+    "db/repository/message-writes.ts",
+  );
+  const queuedPromptsPath = resolve(
+    serverSourcePath,
+    "db/repository/queued-prompts.ts",
+  );
   const automationPath = resolve(serverSourcePath, "db/project-automations.ts");
-  const [repositoryText, automationText] = await Promise.all([
-    readFile(repositoryPath, "utf8"),
-    readFile(automationPath, "utf8"),
-  ]);
+  const [messageWritesText, queuedPromptsText, automationText] =
+    await Promise.all([
+      readFile(messageWritesPath, "utf8"),
+      readFile(queuedPromptsPath, "utf8"),
+      readFile(automationPath, "utf8"),
+    ]);
   const agentOnly = [
-    "appendMessage",
-    "createQueuedPrompt",
-    "updateQueuedPrompt",
+    ["appendMessage", messageWritesText],
+    ["createQueuedPrompt", queuedPromptsText],
+    ["updateQueuedPrompt", queuedPromptsText],
   ];
-  for (const method of agentOnly) {
-    if (
-      !/experience\s*!==\s*"agent"/u.test(methodBody(repositoryText, method))
-    ) {
+  for (const [method, sourceText] of agentOnly) {
+    if (!/experience\s*!==\s*"agent"/u.test(methodBody(sourceText, method))) {
       throw new Error(`${method} no longer rejects encrypted Task chats.`);
     }
   }
-  const appendTaskMessage = methodBody(repositoryText, "appendTaskMessage");
+  const appendTaskMessage = methodBody(messageWritesText, "appendTaskMessage");
   if (
     !/experience\s*!==\s*"task"/u.test(appendTaskMessage) ||
     !/content:\s*null/u.test(appendTaskMessage) ||
@@ -1941,7 +1951,7 @@ async function projectAutomationContentBoundaryAudit() {
   }
   if (!clientSettingsText.includes("ensureChatWorkerEncryption")) {
     failures.push(
-      "Project automation mutations no longer ensure the worker workflow-content grant.",
+      "Project automation mutations no longer ensure the worker content grant.",
     );
   }
   for (const marker of [
@@ -1956,7 +1966,7 @@ async function projectAutomationContentBoundaryAudit() {
   }
   for (const marker of [
     "protectProjectAutomationDispatch",
-    "decryptWorkflowContent",
+    "decryptProjectAutomationContent",
     "evaluateProjectAutomationCondition",
     "protectChatTurn",
   ]) {
@@ -2915,7 +2925,7 @@ async function workspaceNameRepositoryBoundaryAudit() {
   const paths = {
     schema: resolve(serverSourcePath, "db/schema.ts"),
     repository: resolve(serverSourcePath, "db/repository.ts"),
-    protocol: protocolPath,
+    protocol: resolve(repositoryRoot, "packages/protocol/src/projects.ts"),
     client: resolve(
       repositoryRoot,
       "cantrip_app/src/lib/workspace-encryption.ts",
@@ -3024,8 +3034,12 @@ async function workspaceNameRepositoryBoundaryAudit() {
 async function tunnelConfigurationBoundaryAudit() {
   const paths = {
     schema: resolve(serverSourcePath, "db/schema.ts"),
-    repository: resolve(serverSourcePath, "db/repository.ts"),
-    protocol: protocolPath,
+    repository: resolve(serverSourcePath, "db/repository/tunnels.ts"),
+    protocol: resolve(repositoryRoot, "packages/protocol/src/tunnels.ts"),
+    browserProtocol: resolve(
+      repositoryRoot,
+      "packages/protocol/src/browser-surfaces.ts",
+    ),
     tunnelProtocol: tunnelDataPlaneProtocolPath,
     client: resolve(
       repositoryRoot,
@@ -3065,6 +3079,7 @@ async function tunnelConfigurationBoundaryAudit() {
     application: await readApplicationSourceText(),
   };
   const failures = [];
+  const routeProtocolText = `${texts.protocol}\n${texts.browserProtocol}`;
   const tunnelTable = tableInitializer(texts.schema, "tunnels");
   const attachmentTable = tableInitializer(texts.schema, "tunnelAttachments");
 
@@ -3109,7 +3124,7 @@ async function tunnelConfigurationBoundaryAudit() {
     "browserTunnelWireRequestSchema",
   ]) {
     if (
-      !texts.protocol.includes(marker) ||
+      !routeProtocolText.includes(marker) ||
       !texts.application.includes(marker)
     ) {
       failures.push(`tunnel routes: missing opaque contract ${marker}`);
@@ -3352,6 +3367,22 @@ async function durableJobStatusBoundaryAudit() {
   const paths = {
     schema: schemaPath,
     protocol: protocolPath,
+    protocolProjects: resolve(
+      repositoryRoot,
+      "packages/protocol/src/projects.ts",
+    ),
+    protocolProjectProvisioning: resolve(
+      repositoryRoot,
+      "packages/protocol/src/project-provisioning.ts",
+    ),
+    protocolChatRelocation: resolve(
+      repositoryRoot,
+      "packages/protocol/src/chat-relocation.ts",
+    ),
+    protocolExternalChatImports: resolve(
+      repositoryRoot,
+      "packages/protocol/src/external-chat-imports.ts",
+    ),
     repository: resolve(serverSourcePath, "db/repository.ts"),
     migration: resolve(
       repositoryRoot,
@@ -3366,6 +3397,13 @@ async function durableJobStatusBoundaryAudit() {
       ]),
     ),
   );
+  const protocolText = [
+    texts.protocol,
+    texts.protocolProjects,
+    texts.protocolProjectProvisioning,
+    texts.protocolChatRelocation,
+    texts.protocolExternalChatImports,
+  ].join("\n");
   const failures = [];
   const durableJobs = [
     ["projectFolderSetupJobs", "project_folder_setup_jobs", false],
@@ -3405,7 +3443,7 @@ async function durableJobStatusBoundaryAudit() {
     "chatRelocationProgressSchema",
     "chatImportProgressSchema",
   ]) {
-    const initializer = declarationInitializer(texts.protocol, schemaName, "(");
+    const initializer = declarationInitializer(protocolText, schemaName, "(");
     if (/\bmessage\s*:/u.test(initializer)) {
       failures.push(`${schemaName}: free-form message returned`);
     }
@@ -3415,11 +3453,11 @@ async function durableJobStatusBoundaryAudit() {
     "chatRelocationJobErrorSchema",
     "chatImportJobErrorSchema",
   ]) {
-    const declaration = texts.protocol.slice(
-      texts.protocol.indexOf(`export const ${schemaName}`),
-      texts.protocol.indexOf(
+    const declaration = protocolText.slice(
+      protocolText.indexOf(`export const ${schemaName}`),
+      protocolText.indexOf(
         ";",
-        texts.protocol.indexOf(`export const ${schemaName}`),
+        protocolText.indexOf(`export const ${schemaName}`),
       ) + 1,
     );
     if (!/omit\(\{\s*message:\s*true,?\s*\}\)/u.test(declaration)) {
@@ -3741,7 +3779,7 @@ async function attachmentContentRepositoryBoundaryAudit() {
     resolve(serverSourcePath, "chat-relocations/executor.ts"),
     resolve(serverSourcePath, "chats/execution-helpers.ts"),
     resolve(serverSourcePath, "workflows/generation-helpers.ts"),
-    protocolPath,
+    resolve(repositoryRoot, "packages/protocol/src/worker-command-surfaces.ts"),
     resolve(repositoryRoot, "cantrip_worker/src/index.ts"),
   ];
   const [
@@ -3885,19 +3923,28 @@ async function attachmentContentRepositoryBoundaryAudit() {
 
 async function privateDisplayLabelRepositoryBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
-  const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
-  const tabLayoutsPath = resolve(serverSourcePath, "db/tab-layouts.ts");
+  const persistencePaths = [
+    resolve(serverSourcePath, "db/repository.ts"),
+    resolve(serverSourcePath, "db/tab-layouts.ts"),
+    resolve(serverSourcePath, "db/repository/projects.ts"),
+    resolve(serverSourcePath, "db/repository/chat-mappers.ts"),
+    resolve(serverSourcePath, "db/repository/code-surfaces.ts"),
+    resolve(serverSourcePath, "db/repository/browsers.ts"),
+    resolve(serverSourcePath, "db/repository/remote-surfaces.ts"),
+    resolve(serverSourcePath, "db/repository/project-views.ts"),
+  ];
   const secondaryPaths = [
     resolve(serverSourcePath, "db/chat-import-jobs.ts"),
     resolve(serverSourcePath, "db/chat-relocation-jobs.ts"),
     resolve(serverSourcePath, "db/project-automations.ts"),
   ];
-  const [schemaText, repositoryText, tabLayoutsText, ...secondaryTexts] =
-    await Promise.all(
-      [schemaPath, repositoryPath, tabLayoutsPath, ...secondaryPaths].map(
-        (path) => readFile(path, "utf8"),
-      ),
-    );
+  const [schemaText, ...remainingTexts] = await Promise.all(
+    [schemaPath, ...persistencePaths, ...secondaryPaths].map((path) =>
+      readFile(path, "utf8"),
+    ),
+  );
+  const persistenceTexts = remainingTexts.slice(0, persistencePaths.length);
+  const secondaryTexts = remainingTexts.slice(persistencePaths.length);
   const failures = [];
   for (const [table, legacyField] of privateDisplayLabelTables) {
     const initializer = tableInitializer(schemaText, table);
@@ -3912,7 +3959,7 @@ async function privateDisplayLabelRepositoryBoundaryAudit() {
       failures.push(`${table}: legacy plaintext ${legacyField} field returned`);
     }
   }
-  const persistenceText = `${repositoryText}\n${tabLayoutsText}`;
+  const persistenceText = persistenceTexts.join("\n");
   for (const [table, legacyField] of privateDisplayLabelTables) {
     if (
       new RegExp(
@@ -3983,31 +4030,91 @@ function literalValuesInInitializer(sourceText, declarationName, opener) {
 }
 
 const referencedWorkerCommandSchemas = [
-  "codeTransportRouteAuthorizeCommandSchema",
-  "codeTransportRouteRevokeCommandSchema",
-  "codeTransportRevokeCommandSchema",
+  ["code-surfaces.ts", "codeTransportRouteAuthorizeCommandSchema"],
+  ["code-surfaces.ts", "codeTransportRouteRevokeCommandSchema"],
+  ["code-surfaces.ts", "codeTransportRevokeCommandSchema"],
+  ["direct-data-plane.ts", "directCapabilityPrepareCommandSchema"],
+  ["direct-data-plane.ts", "directCapabilityRenewCommandSchema"],
+  ["direct-data-plane.ts", "directCapabilityRevokeCommandSchema"],
+  ["worker-link.ts", "workerLinkGrantInstallCommandSchema"],
+  ["worker-link.ts", "workerLinkGrantRenewCommandSchema"],
+  ["worker-link.ts", "workerLinkGrantRevokeCommandSchema"],
+  ["worker-link.ts", "workerLinkIdentityResolveCommandSchema"],
+  ["worker-link.ts", "workerLinkPeerSessionInstallCommandSchema"],
+  ["worker-link.ts", "workerLinkPeerSessionRenewCommandSchema"],
+  ["worker-link.ts", "workerLinkPeerSessionRevokeCommandSchema"],
+  ["worker-link.ts", "workerLinkPeerSignalCommandSchema"],
+  ["worker-link.ts", "workerLinkSessionInstallCommandSchema"],
+  ["worker-link.ts", "workerLinkSessionRenewCommandSchema"],
+  ["worker-link.ts", "workerLinkSessionRouteCommandSchema"],
+  ["worker-link.ts", "workerLinkSessionRevokeCommandSchema"],
+  [
+    "workspace-repository-discovery.ts",
+    "workspaceRepositoryDiscoveryCommandSchema",
+  ],
+  [
+    "workspace-repository-discovery.ts",
+    "workspaceRepositoryImportValidateCommandSchema",
+  ],
 ];
 
-function workerCommandLiteralValues(sourceText) {
+async function workerCommandLiteralValues() {
+  const protocolSourcePath = resolve(repositoryRoot, "packages/protocol/src");
+  const commandPaths = (await readdir(protocolSourcePath))
+    .filter((file) => /^worker-command-.+\.ts$/u.test(file))
+    .map((file) => resolve(protocolSourcePath, file));
+  const referencedSourceFiles = [
+    ...new Set(
+      referencedWorkerCommandSchemas.map(([sourceFile]) => sourceFile),
+    ),
+  ];
+  const [workerCommandSchemaText, commandTexts, referencedSourceTexts] =
+    await Promise.all([
+      readFile(resolve(protocolSourcePath, "worker-commands.ts"), "utf8"),
+      Promise.all(commandPaths.map((path) => readFile(path, "utf8"))),
+      Promise.all(
+        referencedSourceFiles.map((sourceFile) =>
+          readFile(resolve(protocolSourcePath, sourceFile), "utf8"),
+        ),
+      ),
+    ]);
+  const commandText = commandTexts.join("\n");
+  const referencedSourceTextByFile = new Map(
+    referencedSourceFiles.map((sourceFile, index) => [
+      sourceFile,
+      referencedSourceTexts[index],
+    ]),
+  );
   const workerCommandInitializer = declarationInitializer(
-    sourceText,
+    workerCommandSchemaText,
     "workerCommandSchema",
     "[",
   );
-  for (const schemaName of referencedWorkerCommandSchemas) {
-    if (
-      !new RegExp(`\\b${schemaName}\\b`, "u").test(workerCommandInitializer)
-    ) {
+  if (!workerCommandInitializer.includes("...worker")) {
+    throw new Error("Audited worker command module arrays are not composed.");
+  }
+  for (const [, schemaName] of referencedWorkerCommandSchemas) {
+    if (!new RegExp(`\\b${schemaName}\\b`, "u").test(commandText)) {
       throw new Error(
-        `Audited worker command schema ${schemaName} is not in workerCommandSchema.`,
+        `Audited worker command schema ${schemaName} is not in a worker command module.`,
       );
     }
   }
   return [
-    ...literalValuesInInitializer(sourceText, "workerCommandSchema", "["),
-    ...referencedWorkerCommandSchemas.flatMap((schemaName) =>
-      literalValuesInInitializer(sourceText, schemaName, "("),
-    ),
+    ...new Set([
+      ...[
+        ...commandText.matchAll(
+          /^ {2,6}(?=\S)[^\n]*\btype:\s*z\.literal\(["']([^"']+)["']\)/gmu,
+        ),
+      ].map((match) => match[1]),
+      ...referencedWorkerCommandSchemas.flatMap(([sourceFile, schemaName]) =>
+        literalValuesInInitializer(
+          referencedSourceTextByFile.get(sourceFile),
+          schemaName,
+          "(",
+        ),
+      ),
+    ]),
   ];
 }
 
@@ -4440,26 +4547,41 @@ function declarationInitializer(sourceText, declarationName, opener) {
   return sourceText.slice(start, end + 1);
 }
 
-function surfaceStreamProtocolBoundaryAudit(protocolText, streamProtocolText) {
+async function surfaceStreamProtocolBoundaryAudit(streamProtocolText) {
+  const [terminalProtocolText, workerCommands, workerEvents] =
+    await Promise.all([
+      readFile(
+        resolve(repositoryRoot, "packages/protocol/src/terminals.ts"),
+        "utf8",
+      ),
+      Promise.all([
+        resolve(
+          repositoryRoot,
+          "packages/protocol/src/worker-command-worktree-code.ts",
+        ),
+        resolve(
+          repositoryRoot,
+          "packages/protocol/src/worker-command-surfaces.ts",
+        ),
+      ]).then(async (paths) =>
+        (await Promise.all(paths.map((path) => readFile(path, "utf8")))).join(
+          "\n",
+        ),
+      ),
+      readFile(
+        resolve(repositoryRoot, "packages/protocol/src/worker-events.ts"),
+        "utf8",
+      ),
+    ]);
   const failures = [];
   const terminalClient = declarationInitializer(
-    protocolText,
+    terminalProtocolText,
     "terminalClientMessageSchema",
     "(",
   );
   const terminalServer = declarationInitializer(
-    protocolText,
+    terminalProtocolText,
     "terminalServerMessageSchema",
-    "(",
-  );
-  const workerCommands = declarationInitializer(
-    protocolText,
-    "workerCommandSchema",
-    "(",
-  );
-  const workerEvents = declarationInitializer(
-    protocolText,
-    "workerEventSchema",
     "(",
   );
   for (const [name, initializer, type] of [
@@ -4633,18 +4755,36 @@ function remoteSurfaceStreamProtocolBoundaryAudit(
   };
 }
 
-async function surfacePrivateStateRepositoryBoundaryAudit(protocolText) {
+async function surfacePrivateStateRepositoryBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
-  const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
+  const protocolPaths = [
+    resolve(repositoryRoot, "packages/protocol/src/remote-surfaces.ts"),
+    resolve(repositoryRoot, "packages/protocol/src/browser-surfaces.ts"),
+    resolve(
+      repositoryRoot,
+      "packages/protocol/src/worker-command-github-project.ts",
+    ),
+    resolve(repositoryRoot, "packages/protocol/src/worker-command-surfaces.ts"),
+  ];
+  const repositoryPaths = [
+    resolve(serverSourcePath, "db/repository/terminals.ts"),
+    resolve(serverSourcePath, "db/repository/explorers.ts"),
+    resolve(serverSourcePath, "db/repository/browsers.ts"),
+    resolve(serverSourcePath, "db/repository/remote-surfaces.ts"),
+  ];
   const workerManagerPath = resolve(
     repositoryRoot,
     "cantrip_worker/src/remote-surface-manager.ts",
   );
-  const [schemaText, repositoryText, workerManagerText] = await Promise.all([
-    readFile(schemaPath, "utf8"),
-    readFile(repositoryPath, "utf8"),
-    readFile(workerManagerPath, "utf8"),
-  ]);
+  const [schemaText, protocolTexts, repositoryTexts, workerManagerText] =
+    await Promise.all([
+      readFile(schemaPath, "utf8"),
+      Promise.all(protocolPaths.map((path) => readFile(path, "utf8"))),
+      Promise.all(repositoryPaths.map((path) => readFile(path, "utf8"))),
+      readFile(workerManagerPath, "utf8"),
+    ]);
+  const protocolText = protocolTexts.join("\n");
+  const repositoryText = repositoryTexts.join("\n");
   const failures = [];
   for (const [table, legacyFields] of surfacePrivateStateTables) {
     const initializer = tableInitializer(schemaText, table);
@@ -4879,7 +5019,6 @@ async function buildInventory() {
     taskDependencies,
     taskRepositoryGuards,
     projectAutomationContent,
-    workflowCatalogContent,
     policyDependencies,
     policyRepository,
     providerSecretRepository,
@@ -4916,7 +5055,6 @@ async function buildInventory() {
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
     projectAutomationContentBoundaryAudit(),
-    workflowCatalogContentBoundaryAudit(),
     policyProductionDependencyAudit(),
     policyRepositoryBoundaryAudit(),
     providerSecretRepositoryBoundaryAudit(),
@@ -4937,9 +5075,8 @@ async function buildInventory() {
   ]);
   const sourceText = combineApplicationSources(applicationSources);
   const surfacePrivateStateRepository =
-    await surfacePrivateStateRepositoryBoundaryAudit(protocolText);
-  const surfaceStreamProtocol = surfaceStreamProtocolBoundaryAudit(
-    protocolText,
+    await surfacePrivateStateRepositoryBoundaryAudit();
+  const surfaceStreamProtocol = await surfaceStreamProtocolBoundaryAudit(
     surfaceStreamProtocolText,
   );
   const remoteSurfaceStreamProtocol = remoteSurfaceStreamProtocolBoundaryAudit(
@@ -4970,17 +5107,27 @@ async function buildInventory() {
   const routeKeys = parsedRoutes.map(
     ({ method, path, transport }) => `${transport} ${method} ${path}`,
   );
-  const workerCommands = workerCommandLiteralValues(protocolText).sort();
+  const workerCommands = (await workerCommandLiteralValues()).sort();
   const liveResources = enumValues(
     liveProtocolText,
     "appLiveResourceSchema",
   ).sort();
+  const [cliProtocolText, agentProtocolText] = await Promise.all([
+    readFile(
+      resolve(repositoryRoot, "packages/protocol/src/cantrip-cli.ts"),
+      "utf8",
+    ),
+    readFile(
+      resolve(repositoryRoot, "packages/protocol/src/cantrip-mcp.ts"),
+      "utf8",
+    ),
+  ]);
   const cliCommands = enumValues(
-    protocolText,
+    cliProtocolText,
     "cantripCliCommandNameSchema",
   ).sort();
   const agentOperations = enumValues(
-    protocolText,
+    agentProtocolText,
     "cantripAgentOperationNameSchema",
   ).sort();
   const clientControlCommands = literalValuesInInitializer(
@@ -5247,10 +5394,6 @@ async function buildInventory() {
     projectAutomationContentE2eeBoundary: {
       status: "enforced",
       ...projectAutomationContent,
-    },
-    workflowCatalogContentE2eeBoundary: {
-      status: "definition-and-noninteractive-runtime-boundary-enforced",
-      ...workflowCatalogContent,
     },
     policyE2eeBoundary: {
       status: "enforced",

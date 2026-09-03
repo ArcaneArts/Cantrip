@@ -43,6 +43,30 @@ afterAll(async () => {
 });
 
 describe("public HTTP hardening", () => {
+  it("does not register the removed durable workflow API", async () => {
+    const config = await testConfig();
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      for (const [method, url] of [
+        ["GET", "/api/workflows"],
+        ["POST", "/api/workflows"],
+        ["GET", "/api/workflows/workflow-one"],
+        ["POST", "/api/workflow-runs"],
+        ["GET", "/api/workflow-runs/run-one"],
+        ["POST", "/api/workflow-triggers"],
+        ["POST", "/api/workflow-hooks/trigger-one"],
+        ["POST", "/api/chats/chat-one/workflow-generation"],
+        ["GET", "/api/projects/project-one/workflow-repository"],
+      ] as const) {
+        const response = await app.inject({ method, url });
+        expect(response.statusCode, `${method} ${url}`).toBe(404);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it("advertises and measures retained legacy feature transports", async () => {
     const config = await testConfig();
     const database = await connectDatabase(config);

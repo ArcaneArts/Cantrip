@@ -700,7 +700,6 @@ import { createBoundedResource } from "@/lib/bounded-resource-creation";
 import { recoverStaleProjectShareState } from "@/lib/project-share-recovery";
 
 export { CantripApiError };
-export * from "@/lib/workflow-api";
 
 export async function getSystemHealth() {
   return systemHealthSchema.parse(await request("/api/health"));

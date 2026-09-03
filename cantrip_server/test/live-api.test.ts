@@ -18,13 +18,6 @@ import type {
   WorkerNotification,
 } from "@cantrip/protocol";
 import { encryptedProjectAutomationCreateSchema } from "@cantrip/protocol/automations";
-import {
-  encryptedWorkflowAutomationTriggerCreateSchema,
-  encryptedWorkflowDefinitionCreateSchema,
-  workflowAutomationTriggerWireSchema,
-  workflowDefinitionWireDetailSchema,
-  workflowTriggerDeliveryWireResultSchema,
-} from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
@@ -85,14 +78,6 @@ const liveTestHeartbeat = {
     maxSessions: 1,
   },
   startedAt: new Date().toISOString(),
-};
-const preauthorized = {
-  filesystem: "read-only" as const,
-  network: "none" as const,
-  approvalMode: "preauthorized" as const,
-  skills: [],
-  mcpServers: [],
-  nativeSubagents: false,
 };
 const opaqueWorkflowContent = () => ({
   formatVersion: 1 as const,
@@ -931,134 +916,6 @@ describe.sequential("application live WebSocket", () => {
         payload: persistedMessage,
         revision: persistedMessage.sequence,
       }),
-    );
-
-    const workflowEventStart = messages.length;
-    const workflowRevisionId = randomUUID();
-    const workflowResponse = await app.inject({
-      method: "POST",
-      url: "/api/workflows",
-      payload: encryptedWorkflowDefinitionCreateSchema.parse({
-        id: randomUUID(),
-        scope: "project",
-        projectId,
-        source: "manual",
-        trustState: "trusted",
-        slugBlindIndex: randomBytes(32).toString("base64url"),
-        content: {
-          protectedSlug: opaqueWorkflowContent(),
-          protectedName: opaqueWorkflowContent(),
-          protectedDescription: opaqueWorkflowContent(),
-          protectedProvenance: opaqueWorkflowContent(),
-        },
-        revision: {
-          id: workflowRevisionId,
-          source: "manual",
-          trustState: "trusted",
-          contentBlindIndex: randomBytes(32).toString("base64url"),
-          content: {
-            protectedProvenance: opaqueWorkflowContent(),
-            protectedContentHash: opaqueWorkflowContent(),
-            protectedDefinition: opaqueWorkflowContent(),
-          },
-          manifest: {
-            version: 1,
-            nodes: [
-              {
-                id: randomUUID(),
-                type: "agent",
-                mutationMode: "read-only",
-                modelRouteId: null,
-                permissionProfileId: null,
-              },
-            ],
-            edges: [],
-          },
-        },
-      }),
-    });
-    expect(workflowResponse.statusCode).toBe(201);
-    const workflow = workflowDefinitionWireDetailSchema.parse(
-      workflowResponse.json(),
-    );
-    await vi.waitFor(() =>
-      expect(
-        messages
-          .slice(workflowEventStart)
-          .some(
-            (message) =>
-              message.type === "event" &&
-              message.resource === "workflow-definition" &&
-              message.entityId === workflow.workflow.id &&
-              message.scope.kind === "current-user",
-          ),
-      ).toBe(true),
-    );
-
-    const triggerEventStart = messages.length;
-    const triggerResponse = await app.inject({
-      method: "POST",
-      url: "/api/workflow-triggers",
-      payload: encryptedWorkflowAutomationTriggerCreateSchema.parse({
-        id: randomUUID(),
-        workflowRevisionId,
-        projectId,
-        type: "api",
-        enabled: true,
-        permissionManifest: preauthorized,
-        selectedModelRouteId: null,
-        selectedPermissionProfileId: null,
-        protectedName: opaqueWorkflowContent(),
-        protectedConfiguration: opaqueWorkflowContent(),
-        protectedInput: opaqueWorkflowContent(),
-        publicConfiguration: { type: "api", minimumIntervalSeconds: 60 },
-        credentialHash: null,
-      }),
-    });
-    expect(triggerResponse.statusCode).toBe(201);
-    const trigger = workflowAutomationTriggerWireSchema.parse(
-      triggerResponse.json(),
-    );
-    await vi.waitFor(() =>
-      expect(
-        messages
-          .slice(triggerEventStart)
-          .some(
-            (message) =>
-              message.type === "event" &&
-              message.resource === "workflow-trigger" &&
-              message.entityId === trigger.id &&
-              message.scope.kind === "project" &&
-              message.scope.projectId === projectId,
-          ),
-      ).toBe(true),
-    );
-
-    const deliveryEventStart = messages.length;
-    const deliveryResponse = await app.inject({
-      method: "POST",
-      url: `/api/workflow-triggers/${trigger.id}/deliver`,
-      payload: {
-        idempotencyKey: "live-trigger-delivery",
-        protectedPayload: opaqueWorkflowContent(),
-      },
-    });
-    expect(deliveryResponse.statusCode).toBe(201);
-    expect(
-      workflowTriggerDeliveryWireResultSchema.parse(deliveryResponse.json())
-        .delivery.status,
-    ).toBe("accepted");
-    await vi.waitFor(() =>
-      expect(
-        messages
-          .slice(deliveryEventStart)
-          .some(
-            (message) =>
-              message.type === "event" &&
-              message.resource === "workflow-trigger" &&
-              message.entityId === trigger.id,
-          ),
-      ).toBe(true),
     );
 
     const provider = await database.repository.createModelProvider(

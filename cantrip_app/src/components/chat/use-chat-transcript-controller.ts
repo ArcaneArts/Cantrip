@@ -142,9 +142,6 @@ import {
   getSkills,
   getTask,
   getWorkers,
-  getWorkflows,
-  getWorkflowAutomationTriggers,
-  invokeSavedWorkflowCommand,
   interruptChat,
   loadChatAttachmentContent,
   retryChatTurn,
@@ -187,7 +184,6 @@ export function useChatTranscriptController({
   onFilesOpenChange = () => undefined,
   onInspectOpenChange,
   onOpenFile,
-  onOpenWorkflow,
   onRename,
   onOpenRelocation,
   onToast,
@@ -211,7 +207,6 @@ export function useChatTranscriptController({
   onFilesOpenChange?(open: boolean): void;
   onInspectOpenChange(open: boolean): void;
   onOpenFile(path: string): void;
-  onOpenWorkflow(workflowId: string): void;
   onRename(title: string): void;
   onOpenRelocation(): void;
   onToast(toast: AppToastInput): void;
@@ -775,30 +770,6 @@ export function useChatTranscriptController({
     retry: false,
     staleTime: 30_000,
   });
-  const commandWorkflows = useQuery({
-    enabled: capabilities.projectCommands && slashCommandQuery(draft) !== null,
-    queryFn: () => getWorkflows({ limit: 500 }),
-    queryKey: ["workflows"],
-    retry: false,
-    staleTime: 30_000,
-  });
-  const commandTriggers = useQuery({
-    enabled: Boolean(
-      capabilities.projectCommands &&
-      projectId &&
-      slashCommandQuery(draft) !== null,
-    ),
-    queryFn: () =>
-      getWorkflowAutomationTriggers({
-        projectId: projectId!,
-        enabled: true,
-        type: "saved-command",
-        limit: 500,
-      }),
-    queryKey: ["workflow-triggers", projectId, "saved-command", true],
-    retry: false,
-    staleTime: 30_000,
-  });
   const githubReferences = useQuery({
     enabled: Boolean(
       capabilities.projectReferences &&
@@ -889,19 +860,10 @@ export function useChatTranscriptController({
       slashQuery === null ||
       (!capabilities.projectCommands && !capabilities.skillPicker)
         ? []
-        : filterCommandPalette(
-            slashQuery,
-            skills.data ?? [],
-            commandWorkflows.data ?? [],
-            projectId ?? "",
-            commandTriggers.data ?? [],
-          ),
+        : filterCommandPalette(slashQuery, skills.data ?? []),
     [
       capabilities.projectCommands,
       capabilities.skillPicker,
-      projectId,
-      commandTriggers.data,
-      commandWorkflows.data,
       skills.data,
       slashQuery,
     ],
@@ -1754,38 +1716,6 @@ export function useChatTranscriptController({
     }
     setSlashMenuDismissed(true);
     setCommandNotice(null);
-    if (suggestion.kind === "workflow") {
-      setDraft("");
-      setSelectedGithubReferences([]);
-      void clearPersistedComposerDraft();
-      onOpenWorkflow(suggestion.workflow.id);
-      return;
-    }
-    if (suggestion.kind === "saved-command") {
-      setDraft("");
-      setSelectedGithubReferences([]);
-      void clearPersistedComposerDraft();
-      try {
-        const result = await invokeSavedWorkflowCommand(suggestion.trigger.id, {
-          idempotencyKey: `saved-command-${crypto.randomUUID()}`,
-          structuredInput: {},
-        });
-        setCommandNotice(
-          `Started ${suggestion.label} as run ${result.run.run.id.slice(0, 8)}.`,
-        );
-        void queryClient.invalidateQueries({
-          queryKey: ["workflow-runs", projectId],
-        });
-        onOpenWorkflow(suggestion.trigger.workflowId);
-      } catch (error) {
-        onToast({
-          message: errorText(error),
-          title: "Command failed",
-          tone: "error",
-        });
-      }
-      return;
-    }
     const text = `$${suggestion.skill.name} `;
     setDraft(text);
     setComposerCaret(text.length);
