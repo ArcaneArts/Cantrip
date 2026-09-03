@@ -86,6 +86,23 @@ describe("repository graph model", () => {
     }
     const evenScene = buildRepositoryGraphScene(evenlySized);
     const enlargedScene = buildRepositoryGraphScene(enlarged);
+    for (
+      let leftIndex = 0;
+      leftIndex < enlargedScene.nodes.length;
+      leftIndex += 1
+    ) {
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < enlargedScene.nodes.length;
+        rightIndex += 1
+      ) {
+        const left = enlargedScene.nodes[leftIndex]!;
+        const right = enlargedScene.nodes[rightIndex]!;
+        expect(
+          Math.hypot(left.x - right.x, left.y - right.y),
+        ).toBeGreaterThanOrEqual(left.radius + right.radius);
+      }
+    }
     const maximumDistanceFromRoot = (
       scene: ReturnType<typeof buildRepositoryGraphScene>,
     ) =>
