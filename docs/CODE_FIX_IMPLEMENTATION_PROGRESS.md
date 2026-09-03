@@ -11,8 +11,8 @@ merged and the result has been observed on `main`.
 
 - Branch: `codex/code-fix-bounded-prewarm`
 - Pull request: #1642
-- Merge commit: pending
-- Status: pull request open; squash auto-merge pending
+- Merge commit: `442f348b31dc55950bd6ff3c819a00c610730817`
+- Status: merged
 - Behavior: explicit members of the existing two-Explorer sidebar preview pool
   may start a hidden, pathless Code workbench; ordinary inactive tabs remain
   dormant; activation reuses the keyed editor, attachment, and iframe.
@@ -48,14 +48,45 @@ merged and the result has been observed on `main`.
 - Manual verification: first-click and post-pin launch traces remain required
   after all implementation cycles land.
 
+### Cycle 2 — sidebar tree continuity during pinning
+
+- Branch: `codex/code-fix-tree-continuity`
+- Pull request: #1643
+- Merge commit: pending
+- Status: pull request open; squash auto-merge pending
+- Behavior: pinning no longer promotes the whole file tree into its loading
+  replacement. Existing directory rows stay mounted while the established
+  path-level pin indicator reports the operation.
+- Subsystem: IDE shell-to-sidebar file-tree state mapping and sidebar file-tree
+  continuity tests.
+- Tests run:
+  - Required workspace package builds passed for `@cantrip/version`,
+    `@cantrip/logging`, `@cantrip/protocol`, `@cantrip/crypto`, and
+    `@cantrip/glitch`.
+  - Focused shell sidebar and project file-tree suite passed: 2 files, 20 tests.
+  - App typecheck passed.
+  - App production build passed.
+  - Prettier and `git diff --check` passed.
+- Verified result: shell composition coverage proves pending pin and successor
+  creation states keep `fileTreeLoading` false while a valid Explorer exists,
+  the exact pin path is forwarded, and genuine initial creation/query loading
+  still reports loading. Component coverage proves the current row instance
+  survives while path-level progress is active.
+- Remaining work: early extension bridge connection, authorized startup
+  payload, authenticated initial-navigation acknowledgement and fallback,
+  end-to-end regression audit, and documentation reconciliation.
+- Known risks: none identified; actual Explorer creation and initial directory
+  loading still retain their existing whole-tree loading behavior.
+- Manual verification: observe one live pin handoff after all cycles land.
+
 ## Required completion matrix
 
 | Requirement                                     | Status      | Evidence                  |
 | ----------------------------------------------- | ----------- | ------------------------- |
-| Bounded hidden pathless Code prewarm            | In progress | Cycle 1                   |
+| Bounded hidden pathless Code prewarm            | Complete    | Cycle 1 / PR #1642        |
 | First and post-pin selection reuse              | In progress | Cycle 1 plus final traces |
-| Ordinary inactive editors remain dormant        | In progress | Cycle 1 regression tests  |
-| Sidebar tree remains mounted during pin         | Pending     | Future cycle              |
+| Ordinary inactive editors remain dormant        | Complete    | Cycle 1 / PR #1642        |
+| Sidebar tree remains mounted during pin         | In progress | Cycle 2                   |
 | Bridge connects before presentation setup       | Pending     | Future cycle              |
 | Authorized initial-file startup payload         | Pending     | Future cycle              |
 | Authenticated acknowledgement and safe fallback | Pending     | Future cycle              |

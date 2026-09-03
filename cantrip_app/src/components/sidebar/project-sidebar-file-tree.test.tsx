@@ -516,6 +516,26 @@ describe("project sidebar file tree encryption gate", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("keeps existing rows mounted while the path-level pin indicator is active", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ pinningPath: "src/example.ts" }));
+    });
+    const mountedRow = renderer.root.findByProps({ role: "treeitem" });
+    expect(
+      renderer.root.findAll(
+        (candidate) =>
+          typeof candidate.props.className === "string" &&
+          candidate.props.className.includes("animate-spin"),
+      ),
+    ).not.toHaveLength(0);
+
+    await act(async () => renderer.update(tree({ pinningPath: null })));
+
+    expect(renderer.root.findByProps({ role: "treeitem" })).toBe(mountedRow);
+    await act(async () => renderer.unmount());
+  });
+
   it("rejects a stale delete confirmation after the binding changes", async () => {
     const onDelete = vi.fn(async () => undefined);
     let renderer!: TestRenderer.ReactTestRenderer;
