@@ -3228,6 +3228,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.limit,
           command.cursor,
           command.revisions,
+          command.options,
         );
       case "git.graph.snapshot":
         return readGitGraphSnapshot(

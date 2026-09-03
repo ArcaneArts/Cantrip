@@ -5,6 +5,7 @@ import {
   ChevronRight,
   File,
   FileCode2,
+  FileClock,
   FileText,
   Folder,
   FolderOpen,
@@ -54,6 +55,7 @@ export function ExplorerEntryRow({
   expanded = false,
   localFolderModifier,
   onOpen,
+  onOpenHistory,
   onReveal,
   revealLabel,
   onShowInGraph,
@@ -67,6 +69,7 @@ export function ExplorerEntryRow({
   expanded?: boolean;
   localFolderModifier: boolean;
   onOpen(): void;
+  onOpenHistory?(): void;
   onReveal?(localFolder: boolean): void;
   revealLabel?: string;
   onShowInGraph?(): void;
@@ -172,6 +175,7 @@ export function ExplorerEntryRow({
   );
   if (
     !onShowInGraph &&
+    !onOpenHistory &&
     !onReveal &&
     (entry.kind !== "directory" || !onOpenTerminal)
   )
@@ -181,6 +185,12 @@ export function ExplorerEntryRow({
       <ContextMenu.Trigger asChild>{row}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <StyledContextMenuContent className="min-w-44">
+          {entry.kind === "file" && onOpenHistory ? (
+            <StyledContextMenuItem onSelect={onOpenHistory}>
+              <FileClock className="size-4" />
+              Open File History
+            </StyledContextMenuItem>
+          ) : null}
           {onShowInGraph ? (
             <StyledContextMenuItem onSelect={onShowInGraph}>
               <Network className="size-4" />

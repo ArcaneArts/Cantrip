@@ -3454,6 +3454,93 @@ describe("Git history", () => {
     ).toEqual(["Feature", "First"]);
   });
 
+  it("filters history and supports first-parent and hide-merges traversal", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-history-filter-"),
+    );
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(directory, "main.txt"), "base\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Base"]);
+    await execFileAsync("git", ["-C", directory, "switch", "-c", "feature"]);
+    await writeFile(path.join(directory, "feature.txt"), "feature\n");
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-m",
+      "Feature work",
+    ]);
+    await execFileAsync("git", ["-C", directory, "switch", "main"]);
+    await writeFile(path.join(directory, "main.txt"), "main\n");
+    await execFileAsync("git", ["-C", directory, "commit", "-am", "Main work"]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "merge",
+      "--no-ff",
+      "feature",
+      "-m",
+      "Merge feature",
+    ]);
+
+    const filters = {
+      message: null,
+      author: null,
+      hash: null,
+      dateFrom: null,
+      dateTo: null,
+      path: null,
+      branch: null,
+      tag: null,
+    };
+    const firstParent = await readGitHistory(directory, 20, 0, [], {
+      filters,
+      firstParent: true,
+      hideMerges: false,
+    });
+    expect(firstParent.commits.map(({ subject }) => subject)).not.toContain(
+      "Feature work",
+    );
+
+    const noMerges = await readGitHistory(directory, 20, 0, [], {
+      filters,
+      firstParent: false,
+      hideMerges: true,
+    });
+    expect(noMerges.commits.map(({ subject }) => subject)).not.toContain(
+      "Merge feature",
+    );
+
+    const byPath = await readGitHistory(directory, 20, 0, [], {
+      filters: { ...filters, path: "feature.txt" },
+      firstParent: false,
+      hideMerges: false,
+    });
+    expect(byPath.commits.map(({ subject }) => subject)).toContain(
+      "Feature work",
+    );
+    expect(byPath.commits.map(({ subject }) => subject)).not.toContain(
+      "Main work",
+    );
+  });
+
   it("includes explicitly supplied detached worktree revisions", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
     directories.push(directory);

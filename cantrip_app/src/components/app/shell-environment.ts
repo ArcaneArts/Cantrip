@@ -16,6 +16,7 @@ import {
   shouldUseSidebarDrawer,
   useNarrowViewport,
 } from "@/lib/use-compact-layout";
+import { parseGitHistoryRoute } from "@/lib/git-history-navigation";
 
 export function useShellEnvironment() {
   const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
@@ -56,10 +57,18 @@ export function useShellEnvironment() {
         : null,
     [desktopRuntime],
   );
+  const gitHistoryTarget = useMemo(
+    () => parseGitHistoryRoute(window.location.search),
+    [],
+  );
+  const hasGitHistoryTarget = Boolean(
+    gitHistoryTarget.projectId && gitHistoryTarget.worktreeId,
+  );
   const popoutProjectId =
     popoutTarget?.projectId ??
     projectOverviewPopoutTarget?.projectId ??
     explorerFileTarget?.projectId ??
+    (hasGitHistoryTarget ? gitHistoryTarget.projectId : null) ??
     null;
   const isPopout =
     popoutTarget !== null ||
@@ -77,6 +86,7 @@ export function useShellEnvironment() {
     desktopSidebarDrawer: sidebarDrawer,
     explorerFileTarget,
     folderRevealLabel,
+    gitHistoryTarget: hasGitHistoryTarget ? gitHistoryTarget : null,
     isPopout,
     narrowViewport,
     overlayTitlebar,

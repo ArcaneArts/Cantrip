@@ -467,6 +467,7 @@ import type {
   GitBranchAction,
   GitCommitAction,
   GitCommitSearchQuery,
+  GitHistoryOptions,
   GitConflictResolutionRequest,
   GitManagedOperationAction,
   GitLfsAction,
@@ -3103,12 +3104,13 @@ export async function getProjectWorktreeHistory(
   projectId: string,
   worktreeId: string,
   cursor = 0,
+  options?: GitHistoryOptions,
 ) {
   return runProtectedRepositoryOperation({
     projectId,
     worktreeId,
     type: "git.history",
-    arguments: { cursor, limit: 100, revisions: [] },
+    arguments: { cursor, limit: 100, revisions: [], options },
     resultSchema: gitHistorySchema,
   });
 }
@@ -3980,11 +3982,15 @@ export async function removeProjectWorktree(
   );
 }
 
-export async function getGitHistory(projectId: string, cursor = 0) {
+export async function getGitHistory(
+  projectId: string,
+  cursor = 0,
+  options?: GitHistoryOptions,
+) {
   return runProtectedRepositoryOperation({
     projectId,
     type: "git.history",
-    arguments: { cursor, limit: 100, revisions: [] },
+    arguments: { cursor, limit: 100, revisions: [], options },
     resultSchema: gitHistorySchema,
   });
 }

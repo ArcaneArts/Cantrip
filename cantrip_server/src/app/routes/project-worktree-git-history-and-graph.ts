@@ -7,6 +7,7 @@ import {
   gitGraphRequestSchema,
   gitGraphSnapshotSchema,
   gitHistorySchema,
+  gitHistoryOptionsSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
@@ -114,6 +115,7 @@ export function installProjectWorktreeGitHistoryAndGraphRoutes(
           cursor,
           limit,
           revisions,
+          options: gitHistoryOptionsSchema.parse({}),
         });
         return reply.send(gitHistorySchema.parse(history));
       } catch (error) {

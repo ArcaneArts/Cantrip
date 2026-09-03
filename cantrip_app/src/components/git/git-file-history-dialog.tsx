@@ -1,7 +1,7 @@
 import type { GitFileHistory } from "@cantrip/protocol";
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { FileClock, GitCommitHorizontal, Loader2, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ContentEmpty, ContentLoading } from "@/components/ui/content-state";
@@ -35,6 +35,7 @@ export function flattenFileHistoryPages(pages: GitFileHistory[] | undefined) {
 }
 
 export function GitFileHistoryDialog({
+  initialPath,
   onOpenChange,
   onOpenCommit,
   onOpenFile,
@@ -42,6 +43,7 @@ export function GitFileHistoryDialog({
   projectId,
   worktreeId,
 }: {
+  initialPath?: string | null;
   onOpenChange(open: boolean): void;
   onOpenCommit(revision: string): void;
   onOpenFile?(path: string): void;
@@ -110,6 +112,13 @@ export function GitFileHistoryDialog({
     () => flattenFileHistoryPages(history.data?.pages),
     [history.data?.pages],
   );
+  useEffect(() => {
+    if (!open || !initialPath) return;
+    setPath(initialPath);
+    setRevision("HEAD");
+    setSelection({ path: initialPath, revision: "HEAD" });
+    setTab("history");
+  }, [initialPath, open]);
   const blameRanges = useMemo(
     () => blame.data?.pages.flatMap(({ ranges }) => ranges) ?? [],
     [blame.data?.pages],

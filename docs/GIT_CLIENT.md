@@ -98,6 +98,45 @@ Manual QA:
 6. Compare unrelated histories directly, then confirm merge-base mode reports
    the missing common ancestor intentionally.
 
+## History investigation navigation
+
+History keeps active message, author, path, branch, tag, hash, and date filters
+visible as removable chips. Commit authors and branch/tag decorations apply a
+filter directly; changed paths expose the same action from the commit
+inspector. **First parent** follows the selected worktree's mainline from HEAD,
+while **Hide merges** keeps the selected revision scope and omits merge commits.
+Advanced Search can still preview results or promote the complete query into
+the persistent History view.
+
+Commit checkboxes enable multi-selection. Exactly two selected commits can be
+sent to Compare, any loaded selection can be reviewed as an ordered
+cherry-pick, and a contiguous first-parent selection ending at HEAD can be
+loaded into the reviewed interactive-rebase workflow as a squash plan. Commit
+menus copy the full SHA and, for GitHub-backed projects, open the canonical
+commit page.
+
+The active commit inspector, A/B comparison and comparison mode, File History
+path, filters, and traversal modes are represented in the browser URL. A
+reload or copied URL restores that investigation in the same project and
+worktree. Explorer file context menus and the open editor header provide
+**Open File History**, which navigates to History and inspects that path
+without asking the user to retype it.
+
+Manual QA:
+
+1. Apply filters from an author, local/remote branch, tag, and changed path;
+   remove each chip and confirm pagination/counts follow the active filters.
+2. Toggle First parent and Hide merges separately and together on a repository
+   with a merged feature branch.
+3. Select two commits for Compare and several commits for Cherry-pick. Confirm
+   Squash is available only for a contiguous range ending at HEAD and still
+   requires the normal operation review.
+4. Copy a URL for an inspector and a merge-base comparison, reload it, and
+   confirm the same project, worktree, endpoints, and mode return.
+5. Open File History from both an Explorer row and an already-open editor file.
+6. Copy a full SHA and open a commit on GitHub from both a row context menu and
+   the commit inspector menu.
+
 ## Hunk and selected-line staging
 
 Open **Working changes** and select a staged or unstaged text file. Changed

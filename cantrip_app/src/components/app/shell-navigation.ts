@@ -110,13 +110,20 @@ function shellDestinationVisibilityDispatcher(
 export function useShellNavigationState(
   environment: Pick<
     ShellEnvironment,
-    "isPopout" | "popoutProjectId" | "projectOverviewPopoutTarget"
+    | "gitHistoryTarget"
+    | "isPopout"
+    | "popoutProjectId"
+    | "projectOverviewPopoutTarget"
   >,
 ) {
-  const { isPopout, popoutProjectId, projectOverviewPopoutTarget } =
-    environment;
+  const {
+    gitHistoryTarget,
+    isPopout,
+    popoutProjectId,
+    projectOverviewPopoutTarget,
+  } = environment;
   const [appMode, setAppMode] = useState<AppMode | null>(
-    isPopout ? "ide" : null,
+    isPopout || gitHistoryTarget ? "ide" : null,
   );
   const [selectedStandaloneChatId, setSelectedStandaloneChatId] = useState<
     string | null
@@ -129,23 +136,32 @@ export function useShellNavigationState(
     setStandaloneFilesOpen(false);
     setStandaloneFilePath(null);
   }, [selectedStandaloneChatId]);
-  const startupNavigationResolvedRef = useRef(isPopout);
+  const startupNavigationResolvedRef = useRef(
+    isPopout || Boolean(gitHistoryTarget),
+  );
   const destinationWriteRef = useRef<Promise<void>>(Promise.resolve());
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutProjectId,
   );
   const [projectOverviewSection, setProjectOverviewSection] =
     useState<ProjectOverviewSection>(
-      () => projectOverviewPopoutTarget?.section ?? "overview",
+      () =>
+        projectOverviewPopoutTarget?.section ??
+        (gitHistoryTarget ? "history" : "overview"),
     );
   const [projectOverviewWorktreeId, setProjectOverviewWorktreeId] = useState<
     string | null
-  >(() => projectOverviewPopoutTarget?.worktreeId ?? null);
+  >(
+    () =>
+      projectOverviewPopoutTarget?.worktreeId ??
+      gitHistoryTarget?.worktreeId ??
+      null,
+  );
   useEffect(() => {
-    if (projectOverviewPopoutTarget) return;
+    if (projectOverviewPopoutTarget || gitHistoryTarget) return;
     setProjectOverviewSection("overview");
     setProjectOverviewWorktreeId(null);
-  }, [projectOverviewPopoutTarget, selectedProjectId]);
+  }, [gitHistoryTarget, projectOverviewPopoutTarget, selectedProjectId]);
   const [destination, setDestination] = useState<ShellDestination>({
     kind: "workspace",
   });

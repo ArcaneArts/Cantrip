@@ -7,6 +7,7 @@ import {
   CircleAlert,
   Eye,
   ExternalLink,
+  FileClock,
   Info,
   Loader2,
   ListTodo,
@@ -282,6 +283,18 @@ function ExplorerHeaderActions({
                 <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-400" />
               ) : null}
               <span className="sr-only">Save file</span>
+            </TooltipButton>
+          ) : null}
+          {header.openFileHistory ? (
+            <TooltipButton
+              className="size-8"
+              onClick={header.openFileHistory}
+              size="icon"
+              tooltip="Open File History"
+              variant="ghost"
+            >
+              <FileClock className="size-4" />
+              <span className="sr-only">Open File History</span>
             </TooltipButton>
           ) : null}
         </>

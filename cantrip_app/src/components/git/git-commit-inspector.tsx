@@ -1,6 +1,7 @@
 import type {
   GitCommitDetail,
   GitCommitFile,
+  GitHistoryFilter,
   GitSignature,
 } from "@cantrip/protocol";
 import { useQuery } from "@tanstack/react-query";
@@ -12,6 +13,7 @@ import {
   File,
   FilePlus2,
   FileX2,
+  Filter,
   GitBranch,
   GitCommitHorizontal,
   KeyRound,
@@ -146,11 +148,13 @@ function PersonSummary({
   email,
   label,
   name,
+  onFilter,
 }: {
   date: string;
   email: string;
   label: string;
   name: string;
+  onFilter?(): void;
 }) {
   return (
     <div className="min-w-0">
@@ -158,7 +162,18 @@ function PersonSummary({
         {label}
       </p>
       <p className="truncate text-xs font-medium" title={`${name} <${email}>`}>
-        {name}{" "}
+        {onFilter ? (
+          <button
+            type="button"
+            className="hover:underline"
+            onClick={onFilter}
+            title={`Filter History by ${name}`}
+          >
+            {name}
+          </button>
+        ) : (
+          name
+        )}{" "}
         <span className="font-normal text-muted-foreground">{email}</span>
       </p>
       <p className="text-[10px] text-muted-foreground">
@@ -178,6 +193,7 @@ function FileIcon({ file }: { file: GitCommitFile }) {
 function CommitOverview({
   commit,
   onNavigate,
+  onFilter,
   onParentChange,
   parentIndex,
   selectedPath,
@@ -188,6 +204,7 @@ function CommitOverview({
 }: {
   commit: GitCommitDetail;
   onNavigate(revision: string): void;
+  onFilter(filters: Partial<GitHistoryFilter>): void;
   onParentChange(index: number): void;
   parentIndex: number;
   selectedPath: string | null;
@@ -201,14 +218,37 @@ function CommitOverview({
       <div className="grid gap-4 p-4">
         {commit.refs.length ? (
           <div className="flex flex-wrap gap-1">
-            {commit.refs.map((gitRef) => (
-              <span
-                key={`${gitRef.kind}:${gitRef.name}`}
-                className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px]"
-              >
-                <GitBranch className="size-3" /> {gitRef.name}
-              </span>
-            ))}
+            {commit.refs.map((gitRef) => {
+              const content = (
+                <>
+                  <GitBranch className="size-3" /> {gitRef.name}
+                </>
+              );
+              return gitRef.kind === "head" ? (
+                <span
+                  key={`${gitRef.kind}:${gitRef.name}`}
+                  className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px]"
+                >
+                  {content}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  key={`${gitRef.kind}:${gitRef.name}`}
+                  className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] hover:bg-muted/80"
+                  onClick={() =>
+                    onFilter(
+                      gitRef.kind === "tag"
+                        ? { tag: gitRef.name, branch: null }
+                        : { branch: gitRef.name, tag: null },
+                    )
+                  }
+                  title={`Filter History by ${gitRef.kind} ${gitRef.name}`}
+                >
+                  {content}
+                </button>
+              );
+            })}
           </div>
         ) : null}
 
@@ -225,7 +265,11 @@ function CommitOverview({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <PersonSummary label="Author" {...commit.author} />
+          <PersonSummary
+            label="Author"
+            {...commit.author}
+            onFilter={() => onFilter({ author: commit.author.name })}
+          />
           <PersonSummary label="Committer" {...commit.committer} />
         </div>
         {signature ? (
@@ -317,18 +361,20 @@ function CommitOverview({
           ) : null}
           <div className="grid gap-0.5">
             {commit.files.map((file) => (
-              <button
+              <div
                 key={`${file.originalPath ?? ""}:${file.path}`}
-                type="button"
                 data-high-contrast-row
                 className={cn(
-                  "grid min-h-8 grid-cols-[1fr_auto] items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-muted/55",
+                  "grid min-h-8 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-1 text-left text-xs hover:bg-muted/55",
                   selectedPath === file.path && "bg-muted",
                 )}
-                onClick={() => setSelectedPath(file.path)}
-                title={`Open ${file.path} patch`}
               >
-                <span className="flex min-w-0 items-center gap-2">
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-2 rounded px-1 py-1 text-left"
+                  onClick={() => setSelectedPath(file.path)}
+                  title={`Open ${file.path} patch`}
+                >
                   <span className="shrink-0 text-muted-foreground">
                     <FileIcon file={file} />
                   </span>
@@ -342,7 +388,7 @@ function CommitOverview({
                       {file.binary ? " · binary" : ""}
                     </span>
                   </span>
-                </span>
+                </button>
                 <span className="flex items-center gap-2 font-mono text-[10px]">
                   {file.additions === null ? null : (
                     <span className="text-emerald-600 dark:text-emerald-400">
@@ -354,9 +400,20 @@ function CommitOverview({
                       −{file.deletions}
                     </span>
                   )}
+                  <button
+                    type="button"
+                    className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => onFilter({ path: file.path })}
+                    title={`Filter History to ${file.path}`}
+                  >
+                    <Filter className="size-3" />
+                    <span className="sr-only">
+                      Filter History to {file.path}
+                    </span>
+                  </button>
                   <ChevronRight className="size-3 text-muted-foreground" />
                 </span>
-              </button>
+              </div>
             ))}
           </div>
         </div>
@@ -367,9 +424,11 @@ function CommitOverview({
 
 export function GitCommitInspector({
   currentHead,
+  githubUrl,
   onAction,
   onClose,
   onNavigate,
+  onFilter,
   onOpenFile,
   onViewInGraph,
   projectId,
@@ -380,8 +439,10 @@ export function GitCommitInspector({
   onAction(request: CommitActionRequest): void;
   onClose(): void;
   onNavigate(revision: string): void;
+  onFilter(filters: Partial<GitHistoryFilter>): void;
   onOpenFile?(path: string): void;
   onViewInGraph?(revision: string): void;
+  githubUrl?: string | null;
   projectId: string;
   revision: string;
   worktreeId: string;
@@ -461,6 +522,7 @@ export function GitCommitInspector({
           </div>
           {detail.data ? (
             <GitCommitActionsDropdown
+              githubUrl={githubUrl}
               target={{
                 hash: detail.data.hash,
                 shortHash: detail.data.shortHash,
@@ -497,6 +559,7 @@ export function GitCommitInspector({
           <CommitOverview
             commit={detail.data}
             onNavigate={onNavigate}
+            onFilter={onFilter}
             onParentChange={(index) => {
               setParentIndex(index);
               setSelectedPath(null);
