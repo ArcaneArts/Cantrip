@@ -1355,11 +1355,10 @@ export function createAgentOperationRuntime({
           (blockers.activeChatIds.length ||
             blockers.activeLeaseChatIds.length ||
             blockers.boundCodeTabIds.length ||
-            blockers.runningTerminalIds.length ||
-            blockers.workflowLeaseIds.length)
+            blockers.runningTerminalIds.length)
         ) {
           throw new Error(
-            "The worktree is still used by a chat, workflow lease, Code tab, or terminal. Retarget or delete bound Code tabs before removal.",
+            "The worktree is still used by a chat, Code tab, or terminal. Retarget or delete bound Code tabs before removal.",
           );
         }
         const status = worktreeStatusResultSchema.parse(

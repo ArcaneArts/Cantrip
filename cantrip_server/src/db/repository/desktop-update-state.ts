@@ -15,7 +15,6 @@ export class DesktopUpdateStateRepository {
       activeChats,
       queuedPrompts,
       terminalServices,
-      workflowRuns,
       projectReplicaJobs,
       chatRelocationJobs,
       chatImportJobs,
@@ -64,21 +63,6 @@ export class DesktopUpdateStateRepository {
           ),
         )
         .where(eq(schema.terminals.serviceEnabled, true)),
-      this.database
-        .select({ count })
-        .from(schema.workflowRuns)
-        .where(
-          and(
-            eq(schema.workflowRuns.ownerId, ownerId),
-            inArray(schema.workflowRuns.status, [
-              "queued",
-              "running",
-              "waiting",
-              "cancelling",
-              "recovering",
-            ]),
-          ),
-        ),
       this.database
         .select({ count })
         .from(schema.projectReplicaJobs)
@@ -172,7 +156,6 @@ export class DesktopUpdateStateRepository {
     const value = (rows: Array<{ count: number }>) =>
       Math.min(maximum, rows[0]?.count ?? 0);
     const backgroundJobs =
-      value(workflowRuns) +
       value(projectReplicaJobs) +
       value(chatRelocationJobs) +
       value(chatImportJobs) +

@@ -170,7 +170,7 @@
     "total": 470,
     "websocket": 7,
     "workerCredentialRoutes": 13,
-    "durableTables": 100,
+    "durableTables": 86,
     "agentOperations": 44,
     "workerCommands": 273,
     "liveResources": 48,
@@ -610,76 +610,6 @@
       "exportName": "workers",
       "tableName": "workers",
       "classification": "intentionally-public-control-plane"
-    },
-    {
-      "exportName": "workflowApprovalGates",
-      "tableName": "workflow_approval_gates",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowAutomationTriggers",
-      "tableName": "workflow_automation_triggers",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowDefinitions",
-      "tableName": "workflow_definitions",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowNodeAttempts",
-      "tableName": "workflow_node_attempts",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowRevisionEdges",
-      "tableName": "workflow_revision_edges",
-      "classification": "intentionally-public-control-plane"
-    },
-    {
-      "exportName": "workflowRevisionNodes",
-      "tableName": "workflow_revision_nodes",
-      "classification": "intentionally-public-control-plane"
-    },
-    {
-      "exportName": "workflowRevisions",
-      "tableName": "workflow_revisions",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowRunEvents",
-      "tableName": "workflow_run_events",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowRunNodeDependencies",
-      "tableName": "workflow_run_node_dependencies",
-      "classification": "intentionally-public-control-plane"
-    },
-    {
-      "exportName": "workflowRunNodeItems",
-      "tableName": "workflow_run_node_items",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowRunNodes",
-      "tableName": "workflow_run_nodes",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowRuns",
-      "tableName": "workflow_runs",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowTriggerDeliveries",
-      "tableName": "workflow_trigger_deliveries",
-      "classification": "endpoint-protected"
-    },
-    {
-      "exportName": "workflowWorktreeLeases",
-      "tableName": "workflow_worktree_leases",
-      "classification": "minimized-operational-metadata"
     },
     {
       "exportName": "workspacePolicyAssignments",
@@ -4991,7 +4921,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-worktrees.ts",
-      "line": 307,
+      "line": 306,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/prune",

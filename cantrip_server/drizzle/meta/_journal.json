@@ -1338,6 +1338,13 @@
       "when": 1788445357913,
       "tag": "0190_curly_wrecker",
       "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1788451420461,
+      "tag": "0191_wakeful_vector",
+      "breakpoints": true
     }
   ]
 }

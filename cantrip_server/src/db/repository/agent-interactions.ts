@@ -50,8 +50,8 @@ function agentInteractionRequestBase(
       turnId: request.turnId,
       itemId: request.itemId,
       executionLaneId: request.executionLaneId,
-      workflowRunId: request.workflowRunId,
-      workflowNodeId: request.workflowNodeId,
+      workflowRunId: null,
+      workflowNodeId: null,
       workerId: request.workerId,
     },
     status: request.status,
@@ -301,8 +301,6 @@ export class AgentInteractionRepository {
         threadId: input.provenance.threadId,
         turnId: input.provenance.turnId,
         itemId: input.provenance.itemId,
-        workflowRunId: input.provenance.workflowRunId,
-        workflowNodeId: input.provenance.workflowNodeId,
         kind: input.payload.kind,
         status: expiredAtCreation ? "expired" : "pending",
         payload: input.payload,
@@ -383,8 +381,6 @@ export class AgentInteractionRepository {
         threadId: input.provenance.threadId,
         turnId: input.provenance.turnId,
         itemId: input.provenance.itemId,
-        workflowRunId: input.provenance.workflowRunId,
-        workflowNodeId: input.provenance.workflowNodeId,
         kind: input.classification.kind,
         status: expiredAtCreation ? "expired" : "pending",
         protectedPayload: input.protectedPayload,
@@ -438,14 +434,10 @@ export class AgentInteractionRepository {
     query: AgentInteractionRequestQuery,
   ): Promise<AgentInteractionRequestWire[]> {
     await this.collaborators.expireAgentInteractionRequests();
+    if (query.workflowRunId) return [];
     const conditions = [eq(schema.agentInteractionRequests.ownerId, ownerId)];
     if (query.chatId) {
       conditions.push(eq(schema.agentInteractionRequests.chatId, query.chatId));
-    }
-    if (query.workflowRunId) {
-      conditions.push(
-        eq(schema.agentInteractionRequests.workflowRunId, query.workflowRunId),
-      );
     }
     if (query.status) {
       conditions.push(eq(schema.agentInteractionRequests.status, query.status));

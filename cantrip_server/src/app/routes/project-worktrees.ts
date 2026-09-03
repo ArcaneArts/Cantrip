@@ -244,11 +244,10 @@ export function installProjectWorktreeRoutes(
               (blockers.activeChatIds.length > 0 ||
                 blockers.activeLeaseChatIds.length > 0 ||
                 blockers.boundCodeTabIds.length > 0 ||
-                blockers.runningTerminalIds.length > 0 ||
-                blockers.workflowLeaseIds.length > 0)
+                blockers.runningTerminalIds.length > 0)
             ) {
               throw new Error(
-                "Stop active chats and terminals, release chat and workflow leases, and retarget or delete bound Code tabs before removal.",
+                "Stop active chats and terminals, release chat leases, and retarget or delete bound Code tabs before removal.",
               );
             }
             await retireRunConfigurationRuntimes(
