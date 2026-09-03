@@ -115,6 +115,7 @@ import { GitChangesPanel } from "./git-changes-panel";
 import { GitBranchPanel } from "./git-branch-panel";
 import { GitCommitInspector } from "./git-commit-inspector";
 import {
+  eligibleCommitActionWorktrees,
   GitCommitActionDialog,
   type CommitActionRequest,
 } from "./git-commit-action-dialog";
@@ -646,6 +647,9 @@ export function GitHistoryView({
   const [graphStatus, setGraphStatus] =
     useState<GitRepositoryGraphStatus | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createInput, setCreateInput] = useState<ProjectWorktreeCreate | null>(
+    null,
+  );
   const [pruneOpen, setPruneOpen] = useState(false);
   const [allowExternalPrune, setAllowExternalPrune] = useState(false);
   const [removeTarget, setRemoveTarget] =
@@ -746,6 +750,13 @@ export function GitHistoryView({
     return () => window.removeEventListener("popstate", restoreRoute);
   }, [project.id, worktreeId]);
   const selectedWorktree = worktrees.find(({ id }) => id === worktreeId);
+  const commitActionWorktrees = useMemo(
+    () => eligibleCommitActionWorktrees(worktreeId, worktrees),
+    [worktreeId, worktrees],
+  );
+  const alternateCommitActionWorktree = commitActionWorktrees.find(
+    ({ id }) => id !== worktreeId,
+  );
   const selectedWorker = workers.find(
     ({ workerId }) => workerId === selectedWorktree?.workerId,
   );
@@ -818,6 +829,7 @@ export function GitHistoryView({
         );
         target = await createProjectWorktree(project.id, {
           name: initialDraft.worktreeName,
+          sourceWorktreeId: worktreeId,
           mode: branchExists
             ? { type: "existingBranch", branch: initialDraft.branch }
             : {
@@ -1385,9 +1397,11 @@ export function GitHistoryView({
             projectId={project.id}
             worktreeId={worktreeId}
             worktreeName={selectedWorktree?.name ?? "Worktree"}
+            worktrees={worktrees}
             status={status}
             onClose={closeDrawer}
             onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
+            onSelectWorktree={onSelectWorktree}
           />
         ) : (
           <aside className="grid place-items-center bg-background text-sm text-muted-foreground">
@@ -1441,7 +1455,13 @@ export function GitHistoryView({
         <GitBranchPanel
           projectId={project.id}
           worktreeId={worktreeId}
+          worktrees={worktrees}
           onClose={closeDrawer}
+          onCreateWorktree={(input) => {
+            setCreateInput(input);
+            setCreateOpen(true);
+          }}
+          onSelectWorktree={onSelectWorktree}
           onOperation={(action) => {
             setOperationPreset(action);
             openToolDrawer("operations");
@@ -1504,7 +1524,10 @@ export function GitHistoryView({
                   actions={{
                     disabled: gitAction.isPending,
                     pending: gitAction.isPending,
-                    onCreate: () => setCreateOpen(true),
+                    onCreate: () => {
+                      setCreateInput(null);
+                      setCreateOpen(true);
+                    },
                     onSelect: onSelectWorktree,
                   }}
                 />
@@ -1715,6 +1738,33 @@ export function GitHistoryView({
           >
             <GitCommitVertical className="size-3.5" /> Cherry-pick
           </Button>
+          {alternateCommitActionWorktree ? (
+            <Button
+              className="h-7 gap-1 px-2 text-[10px]"
+              onClick={() => {
+                const target = selectedCommits.at(-1)!;
+                setCommitActionRequest({
+                  kind: "cherryPick",
+                  target: {
+                    hash: target.hash,
+                    shortHash: `${selectedCommits.length} commits`,
+                    subject: selectedCommits
+                      .map(({ subject }) => subject)
+                      .join(", "),
+                    parents: target.parents,
+                    isHead: target.hash === status?.head,
+                  },
+                  revisions: selectedCommits.map(({ hash }) => hash),
+                  targetWorktreeId: alternateCommitActionWorktree.id,
+                });
+              }}
+              size="sm"
+              title={`Copy the selected commits into ${alternateCommitActionWorktree.name}`}
+              variant="outline"
+            >
+              <GitFork className="size-3.5" /> Copy to worktree
+            </Button>
+          ) : null}
           <Button
             className="h-7 gap-1 px-2 text-[10px]"
             disabled={!selectedSquashAction}
@@ -1866,7 +1916,10 @@ export function GitHistoryView({
                     <button
                       type="button"
                       className="ml-auto rounded p-1 hover:bg-background/70 hover:text-foreground"
-                      onClick={() => setCreateOpen(true)}
+                      onClick={() => {
+                        setCreateInput(null);
+                        setCreateOpen(true);
+                      }}
                       title="Create worktree"
                     >
                       <Plus className="size-3" />
@@ -2319,21 +2372,27 @@ export function GitHistoryView({
       <GitCommitActionDialog
         projectId={project.id}
         worktreeId={worktreeId}
+        worktrees={worktrees}
         request={commitActionRequest}
         onOpenChange={(open) => !open && setCommitActionRequest(null)}
-        onConflict={() => {
+        onConflict={(targetWorktreeId) => {
+          if (targetWorktreeId !== worktreeId) {
+            onSelectWorktree(targetWorktreeId);
+          }
           openToolDrawer("changes");
         }}
       />
 
       <WorktreeCreateDialog
+        initialInput={createInput}
         open={createOpen}
         pending={createWorktree.isPending}
         projectId={project.id}
-        sourceWorktreeId={
-          worktrees.find(({ isPrimary }) => isPrimary)?.id ?? null
-        }
-        onOpenChange={setCreateOpen}
+        sourceWorktreeId={worktreeId}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setCreateInput(null);
+        }}
         onSubmit={(input) =>
           createWorktree.mutateAsync(input).then(() => undefined)
         }

@@ -773,6 +773,7 @@ export function WorktreeControl({
 }
 
 export function WorktreeCreateDialog({
+  initialInput = null,
   open,
   pending,
   projectId,
@@ -780,6 +781,7 @@ export function WorktreeCreateDialog({
   onOpenChange,
   onSubmit,
 }: {
+  initialInput?: ProjectWorktreeCreate | null;
   open: boolean;
   pending: boolean;
   projectId: string | null;
@@ -808,14 +810,28 @@ export function WorktreeCreateDialog({
     branchInventory.data?.branches ?? [],
   );
   useEffect(() => {
-    if (!open) {
+    if (open && initialInput) {
+      setName(initialInput.name);
+      setIntent(initialInput.mode.type);
+      setBranch(
+        initialInput.mode.type === "detached" ? "" : initialInput.mode.branch,
+      );
+      setBaseRevision(
+        initialInput.mode.type === "newBranch"
+          ? (initialInput.mode.startPoint ?? "")
+          : initialInput.mode.type === "detached"
+            ? initialInput.mode.revision
+            : "",
+      );
+      setError(null);
+    } else if (!open) {
       setName("");
       setBranch("");
       setBaseRevision("");
       setIntent("newBranch");
       setError(null);
     }
-  }, [open]);
+  }, [initialInput, open]);
   const valid =
     name.trim() &&
     (intent === "detached" ? baseRevision.trim() : branch.trim());
@@ -834,7 +850,11 @@ export function WorktreeCreateDialog({
           : { type: "detached", revision: baseRevision.trim() };
     try {
       setError(null);
-      await onSubmit({ name: name.trim(), mode });
+      await onSubmit({
+        name: name.trim(),
+        mode,
+        ...(sourceWorktreeId ? { sourceWorktreeId } : {}),
+      });
       onOpenChange(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));

@@ -39,6 +39,8 @@ import {
   gitConflictResolutionRequestSchema,
   gitConflictResolutionApplySchema,
   gitCommitActionApplySchema,
+  gitWorktreeChangesMoveRequestSchema,
+  gitWorktreeChangesMoveApplySchema,
   gitActionSchema,
   gitForcePushApplySchema,
 } from "./git-actions.js";
@@ -310,6 +312,19 @@ export const workerGitCommandSchemas = [
     })
     .extend(gitCommitActionApplySchema.shape),
   z.object({
+    type: z.literal("git.worktree.changes.preview"),
+    cwd: z.string().min(1).max(8_192),
+    sourceCwd: z.string().min(1).max(8_192),
+    request: gitWorktreeChangesMoveRequestSchema,
+  }),
+  z
+    .object({
+      type: z.literal("git.worktree.changes.apply"),
+      cwd: z.string().min(1).max(8_192),
+      sourceCwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitWorktreeChangesMoveApplySchema.shape),
+  z.object({
     type: z.literal("git.operation.preview"),
     cwd: z.string().min(1).max(8_192),
     action: gitManagedOperationActionSchema,
@@ -379,6 +394,14 @@ export const workerGitCommandSchemas = [
       serverId: z.string().min(1).max(2_000),
       projectId: z.string().min(1).max(200),
       worktreeId: z.string().min(1).max(200),
+      peerWorktree: z
+        .object({
+          id: z.string().min(1).max(200),
+          cwd: z.string().min(1).max(8_192),
+        })
+        .strict()
+        .nullable()
+        .optional(),
       cwd: z.string().min(1).max(8_192),
       sourcePath: z.string().min(1).max(8_192),
       repository: workerRepositoryNameSchema.nullable(),

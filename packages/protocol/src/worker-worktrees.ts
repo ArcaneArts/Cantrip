@@ -234,6 +234,7 @@ export const worktreeObservationConfigurationResultSchema = z.object({
 export const projectWorktreeCreateSchema = z.object({
   name: z.string().trim().min(1).max(200),
   mode: worktreeCreateModeSchema,
+  sourceWorktreeId: z.string().min(1).max(200).optional(),
 });
 
 export const projectWorktreeLockSchema = z.object({

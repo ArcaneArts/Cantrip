@@ -30,6 +30,7 @@ import {
   gitManagedOperationResponseSchema,
   gitManagedOperationWorkerStateSchema,
   gitStashMutationResultSchema,
+  gitWorktreeChangesMoveResultSchema,
   providerQuotaSnapshotSchema,
   mentionedSkillNames,
   managedWebRuntimeActionResultSchema,
@@ -301,6 +302,7 @@ import {
   applyGitRemoteAction,
   applyGitRecoveryAction,
   applyGitStashAction,
+  applyGitWorktreeChangesMove,
   applyGitSubmoduleAction,
   applyGitTagAction,
   controlGitManagedOperation,
@@ -314,6 +316,7 @@ import {
   previewGitRemoteAction,
   previewGitRecoveryAction,
   previewGitStashAction,
+  previewGitWorktreeChangesMove,
   previewGitSubmoduleAction,
   previewGitTagAction,
   previewGitManagedOperation,
@@ -3128,6 +3131,26 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   "This checkout does not have a GitHub origin available to the worker.",
                 );
               }
+              const isWorktreeChangesMove =
+                request.type === "git.worktree.changes.preview" ||
+                request.type === "git.worktree.changes.apply";
+              if (isWorktreeChangesMove) {
+                if (
+                  !command.peerWorktree ||
+                  request.arguments.request === null ||
+                  typeof request.arguments.request !== "object" ||
+                  (request.arguments.request as { sourceWorktreeId?: unknown })
+                    .sourceWorktreeId !== command.peerWorktree.id
+                ) {
+                  throw new Error(
+                    "The protected source worktree does not match the routed peer worktree.",
+                  );
+                }
+              } else if (command.peerWorktree) {
+                throw new Error(
+                  "A peer worktree is only valid for a worktree changes move.",
+                );
+              }
               const trustedCommand = workerCommandSchema.parse({
                 ...request.arguments,
                 type: request.type,
@@ -3135,6 +3158,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 sourcePath: command.sourcePath,
                 worktreePath: command.cwd,
                 repository,
+                ...(isWorktreeChangesMove
+                  ? { sourceCwd: command.peerWorktree!.cwd }
+                  : {}),
                 ...(["git.operation.control", "git.operation.amend"].includes(
                   request.type,
                 )
@@ -3179,6 +3205,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 result = parsed;
               } else if (request.type === "git.stash.action.apply") {
                 const parsed = gitStashMutationResultSchema.parse(result);
+                const state = stashManagedOperationState(parsed);
+                if (state) {
+                  stored = managedOperationRecord({
+                    id: requestContext.operationId,
+                    scope,
+                    state,
+                  });
+                  await repositoryManagedOperations.put(scope, stored);
+                }
+                result = parsed;
+              } else if (request.type === "git.worktree.changes.apply") {
+                const parsed = gitWorktreeChangesMoveResultSchema.parse(result);
                 const state = stashManagedOperationState(parsed);
                 if (state) {
                   stored = managedOperationRecord({
@@ -3347,6 +3385,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return previewGitStashAction(command.cwd, command.action);
       case "git.stash.action.apply":
         return applyGitStashAction(command.cwd, command.action, command.token);
+      case "git.worktree.changes.preview":
+        return previewGitWorktreeChangesMove(
+          command.cwd,
+          command.sourceCwd,
+          command.request,
+        );
+      case "git.worktree.changes.apply":
+        return applyGitWorktreeChangesMove(
+          command.cwd,
+          command.sourceCwd,
+          command.request,
+          command.token,
+        );
       case "git.branch.list":
         return readGitBranches(command.cwd);
       case "git.branch.action.preview":

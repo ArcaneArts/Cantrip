@@ -43,6 +43,7 @@ export interface ProjectWorktreeCreateRequest {
   mode: WorktreeCreateMode;
   name: string;
   origin: ProjectWorktreeSummary["origin"];
+  sourceWorktreeId?: string;
   worktreeId?: string;
 }
 
@@ -674,9 +675,23 @@ export class ProjectWorktreeCoordinator {
     projectId: string,
     input: ProjectWorktreeCreateRequest,
   ): Promise<ProjectWorktreeSummary | null> {
-    const source = await this.repository.getProjectSource(ownerId, projectId, {
-      isWorkerAvailable: (workerId) => this.bridge.isConnected(workerId),
-    });
+    const requestedSource = input.sourceWorktreeId
+      ? await this.repository.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          input.sourceWorktreeId,
+        )
+      : null;
+    const source = requestedSource
+      ? {
+          cwd: requestedSource.sourcePath,
+          workerId: requestedSource.workerId,
+        }
+      : input.sourceWorktreeId
+        ? null
+        : await this.repository.getProjectSource(ownerId, projectId, {
+            isWorkerAvailable: (workerId) => this.bridge.isConnected(workerId),
+          });
     if (!source) {
       throw new WorktreeCreateMutationError(
         "notStarted",

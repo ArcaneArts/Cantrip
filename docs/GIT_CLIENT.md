@@ -110,10 +110,10 @@ the persistent History view.
 
 Commit checkboxes enable multi-selection. Exactly two selected commits can be
 sent to Compare, any loaded selection can be reviewed as an ordered
-cherry-pick, and a contiguous first-parent selection ending at HEAD can be
-loaded into the reviewed interactive-rebase workflow as a squash plan. Commit
-menus copy the full SHA and, for GitHub-backed projects, open the canonical
-commit page.
+cherry-pick into the current or another compatible worktree, and a contiguous
+first-parent selection ending at HEAD can be loaded into the reviewed
+interactive-rebase workflow as a squash plan. Commit menus copy the full SHA
+and, for GitHub-backed projects, open the canonical commit page.
 
 The active commit inspector, A/B comparison and comparison mode, File History
 path, filters, and traversal modes are represented in the browser URL. A
@@ -128,9 +128,11 @@ Manual QA:
    remove each chip and confirm pagination/counts follow the active filters.
 2. Toggle First parent and Hide merges separately and together on a repository
    with a merged feature branch.
-3. Select two commits for Compare and several commits for Cherry-pick. Confirm
-   Squash is available only for a contiguous range ending at HEAD and still
-   requires the normal operation review.
+3. Select two commits for Compare and several commits for Cherry-pick. Send
+   the selection to another worktree and confirm the preview and resulting
+   history belong to that destination. Confirm Squash is available only for a
+   contiguous range ending at HEAD and still requires the normal operation
+   review.
 4. Copy a URL for an inspector and a merge-base comparison, reload it, and
    confirm the same project, worktree, endpoints, and mode return.
 5. Open File History from both an Explorer row and an already-open editor file.
@@ -224,7 +226,18 @@ fresh authoritative preview token. Git refs, HEAD, index, or working-copy
 changes invalidate stale confirmations. Local deletion is merged-only unless
 the user explicitly chooses force deletion, while remote deletion and pruning
 always receive destructive confirmation. A branch checked out in another
-worktree cannot be switched to, renamed, or deleted from the selected lane.
+worktree offers **Open owning worktree** in place of **Switch here** and cannot
+be renamed or deleted from the selected lane. Every branch row can seed the
+worktree dialog. Cantrip either checks out an available local branch, derives a
+local branch from a remote ref, or creates a new branch from an already-owned
+ref without attempting to steal it from its existing checkout.
+
+The Branches header also offers reviewed bulk cleanup. It discovers local
+branches merged into the Primary worktree, their removable Cantrip worktrees,
+and stale managed metadata. Users choose individual candidates. Removal stays
+non-force, branch deletion stays merged-only, and every operation rechecks
+live state; dirty, locked, active, leased, external, or newly unmerged work is
+left intact and reported per item.
 
 Manual QA:
 
@@ -234,14 +247,58 @@ Manual QA:
    updates ahead/behind and remote availability without a full page reload.
 3. Rename a current and an inactive local branch. Confirm an upstream is not
    silently renamed and the review warns about that distinction.
-4. Attempt to switch, rename, or delete a branch checked out in another
-   worktree and confirm Cantrip identifies its owning lane and refuses.
+4. Open a branch checked out in another worktree and confirm **Open owning
+   worktree** selects that lane. Create a separate worktree from an unowned
+   local branch, a remote-only branch, and an already-owned branch.
 5. Delete a merged local branch, then review an unmerged branch and confirm
    force deletion requires a separate explicit choice.
 6. Delete a remote branch and run fetch-plus-prune, confirming each review
    names the exact remote/ref scope before it runs.
 7. Change a ref after opening a preview and confirm apply rejects the stale
    token. Disconnect the worker and confirm no operation falls back to Primary.
+8. Merge two branches into Primary, leave one worktree dirty, and run bulk
+   cleanup. Confirm the clean worktree and its branch are removed, the dirty
+   lane is preserved with an error, and stale managed metadata is pruned.
+
+## Moving work between worktrees
+
+Working Changes can move a complete dirty patch into another clean worktree on
+the same project source and worker. The reviewed preview includes staged,
+unstaged, renamed, deleted, and untracked paths. The server resolves both
+worktree IDs and sends only their trusted worker paths; the app never supplies
+a filesystem path, and cross-source or cross-worker transfers are rejected.
+
+The worker verifies both paths share one Git common directory, both worktrees
+have no active Git operation, the destination is clean, and the source still
+matches the preview token. That token covers both HEADs, both status snapshots,
+the complete working patch, the exact staged-index patch, and hashes for
+changed and untracked content. Apply creates a source recovery stash and a
+destination checkpoint before transferring the indexed stash. A clean move
+removes the temporary recovery objects. A conflict leaves the destination in
+Cantrip's existing resolvable stash workflow and retains the source stash;
+another failure restores both sides before returning an error.
+
+Issues and pull requests use the same source-aware worktree model. Starting an
+issue task creates or reuses its dedicated branch worktree from the selected
+source, and checking out a pull request creates its exact-head worktree.
+Merged pull requests expose one-click cleanup for their linked chats,
+worktrees, and optional local branches.
+
+Manual QA:
+
+1. Make staged, unstaged, renamed, deleted, and untracked changes, move them to
+   another clean worktree, and confirm both content and index state move while
+   the source becomes clean.
+2. Change only the staged snapshot after preview and confirm apply rejects the
+   stale token. Repeat after changing either HEAD and the destination status.
+3. Move a conflicting patch and confirm the destination opens Working Changes
+   with the conflict while the recovery stash remains available.
+4. Attempt a move to a dirty, different-source, different-worker, or active-
+   operation worktree and confirm it is refused without mutating either side.
+5. Start work from a branch, issue, and pull request and confirm each new lane
+   is created from the currently selected project source.
+6. Merge a pull request with a linked agent lane and use its cleanup action.
+   Confirm dirty work is preserved and clean chats/worktrees are removed.
 
 ## Remotes, tags, and GitHub releases
 

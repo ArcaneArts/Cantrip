@@ -82,6 +82,27 @@ export function installRepositoryOperationRoutes(
       if (!context) {
         return reply.code(404).send({ error: "Worktree not found." });
       }
+      const peerContext = input.data.peerWorktreeId
+        ? await repository.getProjectWorktreeContext(
+            ownerId,
+            request.params.projectId,
+            input.data.peerWorktreeId,
+          )
+        : null;
+      if (input.data.peerWorktreeId && !peerContext) {
+        return reply.code(404).send({ error: "Peer worktree not found." });
+      }
+      if (
+        peerContext &&
+        (peerContext.worktree.id === context.worktree.id ||
+          peerContext.projectSourceId !== context.projectSourceId ||
+          peerContext.workerId !== context.workerId)
+      ) {
+        return reply.code(409).send({
+          error:
+            "Peer repository operations require two distinct worktrees from the same project source and worker.",
+        });
+      }
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Project worker is offline." });
       }
@@ -120,6 +141,12 @@ export function installRepositoryOperationRoutes(
               projectId: request.params.projectId,
               worktreeId: request.params.worktreeId,
               cwd: context.worktree.path,
+              peerWorktree: peerContext
+                ? {
+                    id: peerContext.worktree.id,
+                    cwd: peerContext.worktree.path,
+                  }
+                : null,
               sourcePath: context.sourcePath,
               repository:
                 githubContext?.workerId === context.workerId

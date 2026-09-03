@@ -105,6 +105,7 @@ export function installProjectWorktreeRoutes(
             mode: input.data.mode,
             name: input.data.name,
             origin: "user",
+            sourceWorktreeId: input.data.sourceWorktreeId,
           },
         );
         return created

@@ -1,4 +1,9 @@
-import type { GitAction, GitFileChange, GitStatus } from "@cantrip/protocol";
+import type {
+  GitAction,
+  GitFileChange,
+  GitStatus,
+  ProjectWorktreeSummary,
+} from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
@@ -10,6 +15,7 @@ import {
   GitBranchPlus,
   Loader2,
   Minus,
+  MoveRight,
   Plus,
   Sparkles,
   Trash2,
@@ -41,6 +47,7 @@ import {
   GitForcePushDialog,
   gitPushRequiresLease,
 } from "./git-force-push-dialog";
+import { GitWorktreeChangesMoveDialog } from "./git-worktree-changes-move-dialog";
 
 type ChangeScope = "unstaged" | "staged";
 
@@ -258,17 +265,21 @@ function ChangeTree({
 export function GitChangesPanel({
   onClose,
   onOpenFile,
+  onSelectWorktree,
   projectId,
   status,
   worktreeId,
   worktreeName,
+  worktrees,
 }: {
   onClose(): void;
   onOpenFile?(path: string): void;
+  onSelectWorktree?(worktreeId: string): void;
   projectId: string;
   status: GitStatus;
   worktreeId: string;
   worktreeName: string;
+  worktrees?: readonly ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
   const [diffContextLines, setDiffContextLines] = useState(3);
@@ -280,6 +291,7 @@ export function GitChangesPanel({
   const [newBranchName, setNewBranchName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [forcePushOpen, setForcePushOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [selected, setSelected] = useState<SelectedChange | null>(null);
   const action = useMutation({
     mutationFn: (input: GitAction) =>
@@ -341,6 +353,7 @@ export function GitChangesPanel({
     (branch) => branch.kind === "remote",
   );
   const busy = action.isPending;
+  const sourceWorktree = worktrees?.find(({ id }) => id === worktreeId);
   const diff = useQuery({
     enabled: selected !== null,
     queryKey: [
@@ -453,6 +466,17 @@ export function GitChangesPanel({
                   : " · no upstream"}
               </p>
             </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8 shrink-0"
+              disabled={busy || !sourceWorktree || status.files.length === 0}
+              onClick={() => setMoveOpen(true)}
+              title="Move changes to another worktree"
+            >
+              <MoveRight className="size-4" />
+              <span className="sr-only">Move changes to another worktree</span>
+            </Button>
             <Button
               size="icon"
               variant="ghost"
@@ -740,6 +764,20 @@ export function GitChangesPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {sourceWorktree && worktrees ? (
+        <GitWorktreeChangesMoveDialog
+          open={moveOpen}
+          projectId={projectId}
+          source={sourceWorktree}
+          worktrees={worktrees}
+          onOpenChange={setMoveOpen}
+          onMoved={(targetWorktreeId) => {
+            setSelected(null);
+            onSelectWorktree?.(targetWorktreeId);
+          }}
+        />
+      ) : null}
 
       <Dialog open={newBranchOpen} onOpenChange={setNewBranchOpen}>
         <DialogContent>

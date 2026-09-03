@@ -1,10 +1,41 @@
+import type { ProjectWorktreeSummary } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
   commitActionFromEditor,
+  eligibleCommitActionWorktrees,
   type CommitActionEditor,
   type CommitActionRequest,
 } from "./git-commit-action-dialog";
+
+function worktree(
+  id: string,
+  overrides: Partial<ProjectWorktreeSummary> = {},
+): ProjectWorktreeSummary {
+  return {
+    id,
+    projectSourceId: "source-one",
+    projectId: "project-one",
+    rootKind: "git-worktree",
+    workerId: "worker-one",
+    name: id,
+    path: `/tmp/${id}`,
+    displayPath: `/tmp/${id}`,
+    isPrimary: id === "primary",
+    isDefault: id === "primary",
+    origin: "cantrip",
+    lifecycleState: "ready",
+    branch: id,
+    head: "a".repeat(40),
+    detached: false,
+    locked: false,
+    lockReason: null,
+    lastScannedAt: null,
+    createdAt: "2026-08-10T12:00:00.000Z",
+    updatedAt: "2026-08-10T12:00:00.000Z",
+    ...overrides,
+  };
+}
 
 const hash = "1".repeat(40);
 const target = {
@@ -60,5 +91,17 @@ describe("commit action dialog", () => {
         { ...editor, message: "  Revised message  " },
       ),
     ).toEqual({ type: "amend", message: "Revised message" });
+  });
+
+  it("offers only ready worktrees from the same source and worker", () => {
+    expect(
+      eligibleCommitActionWorktrees("current", [
+        worktree("other"),
+        worktree("different-source", { projectSourceId: "source-two" }),
+        worktree("different-worker", { workerId: "worker-two" }),
+        worktree("creating", { lifecycleState: "creating" }),
+        worktree("current"),
+      ]).map(({ id }) => id),
+    ).toEqual(["current", "other"]);
   });
 });
