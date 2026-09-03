@@ -14,7 +14,7 @@ coding agents. It turns the open-source Codex CLI runtime into a persistent,
 multi-surface application rather than treating an agent as a disposable terminal
 process. A project can have agent chats, real terminals, a lazy file explorer
 and editor, an embedded VS Code-derived workbench, browser and remote-desktop
-sessions, tunnels, automations, and durable graph workflows. GitHub-backed
+sessions, tunnels, and project automations. GitHub-backed
 projects additionally provide managed worktrees and replicas. Attached local
 Git projects provide Git, matching source attachment, and relocation; verified
 GitHub remotes also enable collaboration surfaces. The same server-owned state
@@ -27,7 +27,8 @@ The product is split into three main runtime roles:
   Server.
 - **Server:** authoritative control plane. It owns users, workspaces, projects,
   tabs, chat transcripts, model/provider configuration, encrypted credentials,
-  scheduling, workflow state, worker enrollment, routing, and audit/telemetry.
+  scheduling, worker enrollment, routing, audit/telemetry, and inert legacy
+  durable-workflow records retained for schema compatibility.
 - **Worker:** execution/data plane running near project files. It owns managed
   folders, repository checkouts, worktrees, Git processes, PTYs, Codex
   processes, Cantrip Code, browser automation, desktop capture/input, and local
@@ -193,18 +194,19 @@ PGlite for local operation or PostgreSQL for hosted operation. It owns:
   worktree metadata, branch leases, and relocation state;
 - chat transcripts, normalized Codex events, pending interactions, queues,
   goals, plans, and lifecycle state;
-- providers, logical models, route/account priority, encrypted OAuth credentials,
-  and access leases;
+- providers, logical models, route/account priority, and opaque
+  endpoint-encrypted OAuth credential envelopes;
 - quota, token, behavior, audit, and operations telemetry;
-- schedules, automations, workflow definitions/runs, claims, budgets, and gates;
+- schedules and project automations, plus inert legacy durable-workflow tables
+  retained for schema compatibility and conservative lifecycle checks;
 - GitHub-facing metadata and user-authorized control-plane actions;
 - update metadata and the packaged local-stack update flow.
 
 In a multi-server deployment, PostgreSQL remains authoritative and Redis carries
 ephemeral routing, live invalidations, worker command/response correlation, and
 binary/live-plane coordination. Redis is not the durable job queue or backup.
-Server instances use leases/fencing for schedulers and workflow claims; WebSocket
-stickiness can help efficiency but is not required for correctness.
+Server instances use leases/fencing for current schedulers and background jobs;
+WebSocket stickiness can help efficiency but is not required for correctness.
 
 ### Worker
 
@@ -431,8 +433,7 @@ states:
 - The implementation dashboard shows Goal status, elapsed time and token use,
   cooperative pause/resume/stop controls, active execution-root/worker state,
   available Git branch/dirty state, live Inspector activity, immutable plan,
-  generated objective, available Task-associated GitHub pull requests, and
-  advisory workflow warnings.
+  generated objective and available Task-associated GitHub pull requests.
 
 Task state is server-authoritative and tenant-scoped. Row versions prevent
 cross-window draft/plan overwrites; operation and Goal-start keys prevent
@@ -462,18 +463,18 @@ optimistically.
 
 ### Policies
 
-Policies are reusable, owner-scoped Agent instructions stored by Cantrip Server
-rather than copied into repository files. Each policy has a stable CLI key,
-name, compact Agent-visible summary, full Markdown body, Enabled and Mandatory
-flags, global sort position, optional packaged-template provenance, and
-optimistic row version.
+Policies are reusable, owner-scoped Agent instructions stored as protected rows
+by Cantrip Server rather than copied into repository files. Each Policy has an
+encrypted semantic key, name, summary, and Markdown body plus public audience,
+Enabled and Mandatory flags, order, packaged-template provenance, assignments,
+and optimistic row version. A keyed blind index supports exact key lookup
+without revealing the key to the server.
 
 Root **Settings → Policies** is the only policy-authoring surface. It supports:
 
 - search and a flat, divider-based ordered list;
 - pointer and keyboard sorting;
-- blank creation or copying the packaged Manual Change Protocol and Codegraph
-  templates;
+- blank creation or copying the packaged Manual Change Protocol template;
 - Markdown edit/preview with bounded name, key, summary, and body fields;
 - enable/disable and user-controlled Mandatory scope;
 - assignment counts, template/custom provenance, reset confirmation, and
@@ -481,18 +482,18 @@ Root **Settings → Policies** is the only policy-authoring surface. It supports
 - optimistic conflict handling so another Settings window cannot silently
   overwrite a newer edit or order.
 
-The packaged template catalog is immutable server distribution data. Versioned
-Policy bootstrap copies the compact Codegraph awareness template into an
-independent editable policy, enables it, and marks it Mandatory. The Manual
-Change Protocol remains available as an opt-in template. Durable bootstrap
-markers make each default exactly-once: deleting a copy does not recreate it,
-and packaged templates remain available.
+The packaged template catalog is immutable public application data. Bootstrap
+copies every template flagged `suggestedDefault` through the unlocked client,
+which allocates IDs and encrypts the content. The current catalog has no such
+entry, so bootstrap records version 2 without creating a Policy. The Manual
+Change Protocol remains an opt-in template.
 
 Nonmandatory policies can be assigned to workspaces and projects. Effectiveness
 is:
 
 ```text
-enabled AND (mandatory OR directly assigned OR inherited from the project's workspace)
+enabled AND audience in (ide, both) AND
+(mandatory OR directly assigned OR inherited from the project's workspace)
 ```
 
 A project combines its one workspace assignment with direct and Mandatory
@@ -501,23 +502,25 @@ duplication. Disabled policies retain assignments but stop applying.
 Workspace and Project Settings expose assignment controls and inherited-source
 labels; creation and content editing link back to root Settings.
 
-Every centralized Agent turn construction path resolves the current effective
-set before dispatch. Ordinary, Plan, Goal, queued, automation-delivered, and
-automatic-continuation turns receive one application-owned context value
-containing ordered keys, names, and summaries. Bodies, IDs, revisions,
-timestamps, and assignment internals are excluded. The context is limited to
-64 effective policies and 32 KiB of UTF-8 data; overflow rejects the whole turn
-with an actionable error rather than truncating an arbitrary tail.
+For project execution, the server selects only public enablement, audience,
+assignment, Mandatory, and ordering metadata and relays opaque summary rows.
+The worker decrypts and constructs one ordered context containing keys, names,
+and summaries; bodies and administrative metadata are excluded. Standalone Chat
+instead selects every enabled `chat`/`both` Policy, and the worker decrypts and
+injects its full body. The server never constructs either semantic prompt.
+Project summary context is limited to 64 Policies and 32 KiB of UTF-8 data;
+overflow rejects the whole turn rather than truncating it.
 
 Attached Codex chats prefer the worker-owned managed MCP `policy_list` and
 `policy_read` tools. The Rust CLI exposes the same operations as
 `cantrip policy list` and `cantrip policy read <policy-key>`, including global
 `--json` output, for humans, scripts, diagnostics, and MCP fallback. MCP uses an
 expiring chat-lane binding; the CLI uses the normal thread, terminal, or
-working-directory context resolver. Both enter the authenticated worker broker,
-while the server performs the owner/project lookup. List output is body-free;
-read returns the current full Markdown only when the key is effective in that
-project. There are no policy mutation commands for Agents. See
+working-directory context resolver. Both enter the authenticated worker broker.
+The server performs an opaque owner/project selection, then the worker resolves
+the semantic key and decrypts the result. List output is body-free; read returns
+the current full Markdown only when the key is effective in that project. There
+are no policy mutation commands for Agents. See
 [MCP.md](MCP.md) for the complete managed catalog and security boundary.
 
 Policy mutations publish owner-scoped live invalidations for root lists,
@@ -751,7 +754,7 @@ metadata/signaling; it does not become an unlimited recording store.
 #### Managed tunnels
 
 Project tunnels expose an explicitly configured service from a worker through a
-server/desktop-controlled endpoint. Saved tunnel definitions, target placement,
+server-authorized WorkerLink grant. Saved tunnel definitions, target placement,
 start/stop state, local listener information, and readiness are visible in
 project/global settings. The control plane is authenticated; the binary data
 plane is bounded and tied to the specific tunnel. Tunnels do not grant a client
@@ -763,8 +766,9 @@ Desktop clients can reveal/mount a remote worker project as a normal writable
 network location:
 
 - worker hosts a scoped WebDAV share on loopback with random credentials;
-- server authorizes and coordinates the lease/transport;
-- same-machine Tauri can use a direct local path; remote use relays safely;
+- server authorizes and coordinates the lease and exact WorkerLink grant;
+- WorkerLink selects `LOCAL`, `LAN`, `WAN`, then server `RELAY` without
+  changing the stable native mount;
 - macOS mounts through its WebDAV facility;
 - Windows mounts through its network-drive APIs;
 - common OS metadata noise is filtered;
@@ -851,10 +855,9 @@ resources remain visible rather than silently moving.
   producing two active writers.
 
 Managed-folder Agents write directly when their permission profile allows it.
-Write-capable workflow nodes also share the folder directly and honor the
-workflow's configured parallelism; they do not acquire Git leases or advertise
-checkpoints. This is an explicit no-Git operating mode, not an emulated
-worktree.
+This is an explicit no-Git operating mode, not an emulated worktree. Legacy
+workflow rows may retain recorded folder placement, but no current component
+executes them.
 
 ## Models, providers, authentication, and routing
 
@@ -865,8 +868,8 @@ Supported provider families include:
 
 - **Ollama:** worker-local discovery/execution;
 - **OpenAI-compatible APIs:** for services such as OpenRouter or xAI API access;
-- **ChatGPT subscription OAuth:** portable server-owned sign-ins used through
-  compatible Codex workers;
+- **ChatGPT subscription OAuth:** portable endpoint-protected sign-ins used
+  through compatible Codex workers;
 - **SuperGrok/Grok OAuth:** one or more subscription accounts exposed through a
   worker-local compatibility proxy.
 
@@ -891,10 +894,14 @@ blindly retry a turn on another account after it may have changed the project.
 
 ### Credential handling
 
-- OAuth/API secrets are server-owned and envelope-encrypted with AES-GCM;
+- the app seals static API keys; authorized workers obtain and seal OAuth
+  credentials; the server stores only opaque envelopes;
 - credentials are tenant/account scoped;
-- workers receive short-lived access leases, not durable plaintext vault copies;
-- refresh is serialized and revisioned to avoid two writers corrupting a token;
+- an authorized worker opens static and OAuth secrets and never writes a durable
+  plaintext vault copy;
+- OAuth refresh is serialized on the worker, the refreshed credential is
+  resealed with revision checking, and its five-minute access-token lease stays
+  in worker memory;
 - normal operation avoids provider auth files on worker disk;
 - legacy worker credentials use an explicit capture/acknowledge/purge migration;
 - global sign-out revokes/clears affected leases and runtimes;
@@ -936,9 +943,7 @@ content-addressed, and deduplicated.
 Usage UI labels bars as **remaining**, so a provider reporting 95% used displays
 5% remaining rather than a misleading 95%-full availability bar.
 
-## Automations and workflows
-
-Cantrip provides two levels of unattended orchestration.
+## Project automations and retired workflow state
 
 ### Simple project automations
 
@@ -958,42 +963,20 @@ The assigned worker evaluates worker-local conditions. Disabled or false
 conditions do not enqueue the agent turn. Automation state is server-owned so it
 survives client and worker restarts.
 
-### Durable graph workflows
+### Retired durable workflow subsystem
 
-The workflow control plane orchestrates Codex turns using immutable validated
-graph revisions. It is deliberately not arbitrary executable JavaScript.
-Supported node kinds include:
+The former durable graph workflow product is not exposed by the current app or
+public server API. Its authoring, catalog, trigger, and run-management UI/client
+code and all public workflow routes have been removed; former paths receive the
+ordinary not-found response.
 
-- agent;
-- map;
-- pipeline;
-- reduce;
-- verify;
-- condition;
-- repeat-until;
-- approval gate.
-
-Definitions support:
-
-- strict DAG/graph validation and typed inputs/outputs;
-- JSON-pointer predicates such as exists, equality, comparison, and contains;
-- bounded map/pipeline concurrency and failure policies;
-- durable item/step attempt ledgers;
-- bounded repeat loops with iteration, unchanged-output, duration, progress, and
-  node-count guards;
-- durable gates with expiry and deny policy;
-- run budgets: nodes, attempts, parallelism, node duration, tokens, total time,
-  and optional cost;
-- pause/resume/cancel/retry;
-- pause that stops new scheduling but allows active turns to reach a safe finish;
-- isolated worktree execution and reviewed outcomes/checkpoints on GitHub
-  projects, or direct execution with configured concurrency on managed folders;
-- per-run history, diagnostics, input/output inspection, and gate resolution.
-
-Triggers include schedules, API calls, webhooks, saved commands, and—when the
-project has Git capability—Git/GitHub events. Unattended triggers are disabled
-until an immutable workflow revision and its permission manifest are explicitly
-reviewed/trusted. Trust never implicitly transfers to a changed revision.
+Endpoint-encrypted workflow tables and shared protocol/encryption schemas remain
+as inert compatibility artifacts. The server scheduler, executor, workflow
+repositories, and worker handlers are removed, so old rows are not recovered,
+scheduled, executed, or drained. A few update, conversion, worktree, replica,
+and storage-accounting checks still notice legacy rows. See
+[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md) and
+[WORKFLOW_OPERATIONS.md](WORKFLOW_OPERATIONS.md).
 
 ## Settings and operations
 
@@ -1029,7 +1012,6 @@ Project settings include:
 - General;
 - Archive;
 - Automations;
-- Workflows;
 - Replicas;
 - Worktrees;
 - Tunnels;
@@ -1095,10 +1077,11 @@ behind a load balancer when all instances share:
 
 Requests and app WebSockets may land on different instances. Redis routes worker
 commands/responses/notifications to the instance holding the relevant live
-connection. Scheduler/workflow/replica claims use database leases and fencing so
-only one instance commits an action. Readiness fails when routing dependencies
-are unavailable rather than pretending the node is safe. Redis loss may disrupt
-live routing but does not replace/corrupt PostgreSQL durable state.
+connection. Current scheduler, automation, and replica claims use database
+leases and fencing so only one instance commits an action. Readiness fails when
+routing dependencies are unavailable rather than pretending the node is safe.
+Redis loss may disrupt live routing but does not replace/corrupt PostgreSQL
+durable state.
 
 ### Local-first behavior
 
@@ -1121,7 +1104,8 @@ origin, and a pairing code—not the user's password or a reusable session.
 - providers/models/routes/account priorities;
 - worker enrollment, project source/root kinds, replica/worktree metadata,
   placement, leases;
-- automations, workflow definitions/runs/triggers/gates;
+- project automations and inert legacy workflow
+  definitions/runs/triggers/gates;
 - policies, bootstrap state, and workspace/project policy assignments;
 - telemetry, audit, and update metadata.
 
@@ -1166,7 +1150,8 @@ does not fabricate filesystem or live-process state.
 - The same logical branch cannot be mutated concurrently on two replicas.
 - Provider failover stops once side effects may have occurred.
 - Pending approvals recover fail-closed.
-- Unattended workflows require explicit revision/permission trust.
+- Legacy workflow rows remain endpoint-protected but have no current execution
+  or management path.
 - Offline workers/resources remain visible and explain why they cannot run.
 - Managed folders never relocate or replicate, and Git-only operations remain
   capability-guarded even if the user runs `git init` inside one.
@@ -1181,7 +1166,8 @@ The pnpm workspace is organized approximately as follows:
 
 - **cantrip_app/** — React/Vite UI, Tauri desktop shell, Capacitor mobile shell.
 - **cantrip_server/** — Fastify control plane, database schema/migrations,
-  authentication, provider vault/routing, projects/chats/workflows.
+  authentication, provider routing, projects/chats, and inert legacy workflow
+  schema.
 - **cantrip_worker/** — repository/Git/PTY/Codex/Code/Browser/Desktop execution.
 - **cantrip_cli/** — Rust command-line client for project-context operations.
 - **cantrip_site/** — React/Vite marketing/splash site.
@@ -1306,7 +1292,8 @@ inspection can still use standard shell tools.
 - **Surface:** Agent/Task, Terminal, Explorer, Code, Git, Browser, Remote
   Desktop.
 - **Cantrip Code:** bundled browser-native VS Code-derived workbench.
-- **Workflow:** durable graph orchestration above individual Codex turns.
+- **Workflow:** retired durable-graph feature; only legacy schema and records
+  remain, with no execution runtime.
 - **Automation:** simpler scheduled prompt with an optional single condition.
 - **Policy:** a server-owned reusable Agent instruction that is Mandatory or
   assigned to selected workspaces/projects.

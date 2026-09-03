@@ -2,27 +2,30 @@
 
 Project network shares let a desktop Cantrip client reveal a worker-owned
 project in Finder or Explorer without assuming the checkout exists on the
-client machine. The server authorizes the project and routes the tunnel, but it
-cannot open the project path, WebDAV credentials, or file bytes.
+client machine. The server authorizes the project and tunnel and carries bytes
+only when WorkerLink selects RELAY. It cannot open the project path, WebDAV
+credentials, or file bytes.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     CLIENT["Unlocked Tauri client"]
-    SERVER["Cantrip Server<br/>opaque control plane and relay"]
-    FORWARD["Localhost tunnel forwarder"]
+    SERVER["Cantrip Server<br/>opaque control plane and RELAY"]
+    FORWARD["Native localhost forwarder<br/>and bounded WebView bridge"]
+    LINK["Renderer WorkerLink manager<br/>LOCAL / LAN / WAN / RELAY"]
     WORKER["Assigned Cantrip Worker"]
     DAV["Authenticated loopback WebDAV"]
     TREE["Project checkout"]
     NATIVE["Finder / Explorer"]
 
     CLIENT -->|"protected tunnel record"| SERVER
-    SERVER -->|"opaque record"| WORKER
+    SERVER -->|"control and relayed WorkerLink frames"| WORKER
     WORKER --> DAV --> TREE
     NATIVE <-->|"WebDAV on 127.0.0.1"| FORWARD
-    FORWARD <-->|"endpoint-AEAD frames: direct or relay"| WORKER
-    FORWARD -. "ciphertext relay" .-> SERVER
+    FORWARD <-->|"generation-scoped bridge"| LINK
+    LINK <-->|"LOCAL / LAN / WAN endpoint-AEAD frames"| WORKER
+    LINK <-->|"RELAY ciphertext"| SERVER
 ```
 
 The unlocked client creates the tunnel ID, a random 256-bit capability path,
@@ -40,11 +43,26 @@ tunnel connection opens that listener locally on the worker and carries raw
 WebDAV TCP bytes; the old server HTTP translation endpoint and plaintext worker
 adapter no longer exist.
 
-The desktop mounts only the local forwarder's `127.0.0.1` URL. The forwarder
-uses a verified direct worker route when available and the authenticated server
-relay otherwise. Both paths carry the same AES-256-GCM data frames, so fallback
-does not change the mount URL, remount through a cloud endpoint, or downgrade
-encryption.
+The desktop mounts only the local forwarder's `127.0.0.1` URL. A bounded native
+bridge feeds the renderer-owned WorkerLink manager, which selects `LOCAL`,
+`LAN`, `WAN`, then `RELAY`. Every carrier preserves the same inner tunnel
+identity and AES-256-GCM frames, so route mobility does not change the mount
+URL, remount through a cloud endpoint, change credentials or the hard lease, or
+downgrade encryption.
+
+## Standalone Chat scratch shares
+
+Standalone Chat can reveal its worker-owned scratch root through the same
+protected WebDAV and WorkerLink path. The share is bound to the exact standalone
+chat, scratch-root identity, active worker, tunnel, and attachment. Project chats
+cannot use this endpoint, and a scratch share cannot target a project worktree.
+The selected worker must advertise standalone Chat network-share support.
+
+The native reveal flow may prefer a verified same-host scratch directory. When
+that is unavailable or not requested, it creates an expiring network share,
+starts the stable desktop tunnel, and opens the requested relative path in
+Finder or Explorer. Chat archive or deletion revokes the share when reachable;
+otherwise its bounded lease expires naturally.
 
 ## Native client boundary
 
@@ -76,7 +94,7 @@ worker.
 - The server cannot terminate WebDAV, return a cloud share URL, or request the
   legacy unprotected project-share adapter; the protocol and worker reject that
   downgrade path.
-- Every direct and relayed application-data frame is authenticated against the
+- Every application-data frame, on every WorkerLink carrier, is authenticated against the
   tunnel, attachment, endpoints, connection, direction, sequence, nonce,
   format, and key revision.
 - Workers canonicalize the project root, bound simultaneous shares, reuse only
@@ -90,8 +108,8 @@ worker.
 
 ## Implementation status
 
-Protected project-share configuration, worker-local WebDAV lifecycle,
-encrypted direct/relay transport, desktop-only macOS/Windows mounting,
-expiration, revocation, and local-folder Shift behavior are implemented. The
-remaining release responsibility is platform QA against supported Finder and
-Explorer versions.
+Protected project and standalone Chat share configuration, worker-local WebDAV
+lifecycle, encrypted WorkerLink transport, carrier mobility, desktop-only
+macOS/Windows mounting, expiration, revocation, and local-folder preference are
+implemented. The remaining release responsibility is platform QA against
+supported Finder and Explorer versions.

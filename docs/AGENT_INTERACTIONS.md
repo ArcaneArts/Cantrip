@@ -8,10 +8,11 @@ not chat messages and the browser never responds directly to Codex App Server.
 ## State and provenance
 
 Every request has a globally idempotent `requestKey`, a typed payload, and the
-project, worker, thread, turn, item, execution-lane, chat, workflow-run, and
-workflow-node provenance available at the time it was created. Chat and
-workflow fields are nullable so the same domain can serve current chat turns
-and future first-class workflow nodes without inventing hidden chats.
+project, worker, thread, turn, item, execution-lane, and chat provenance
+available at the time it was created. Nullable workflow-run and workflow-node
+columns remain as legacy provenance only. Current requests are chat-backed;
+old workflow-tagged records may remain readable, but the response route rejects
+any request that is not associated with an active chat.
 
 The durable states are:
 

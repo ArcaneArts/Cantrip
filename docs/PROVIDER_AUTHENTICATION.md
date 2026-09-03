@@ -27,13 +27,14 @@ persists its private identity so it can run unattended after approval without
 asking the user or app for the password again. Revoking the worker principal or
 its grants removes future Cantrip authorization.
 
-| Data or action                                                                                    | App                                                           | Server                                              | Authorized worker                                                                 |
-| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Static provider API key                                                                           | Encrypts on create/update; decrypts only for explicit app use | Stores an opaque `protectedApiKey` envelope         | Decrypts only while constructing a provider runtime                               |
-| OAuth access, refresh, and ID tokens                                                              | Never stores or displays                                      | Stores one opaque account-bound envelope            | Obtains through OAuth, encrypts, decrypts for runtime use, refreshes, and reseals |
-| OAuth subject identity                                                                            | Never receives                                                | Stores and enforces only a keyed blind index        | Computes the blind index and sees identity while authenticating or refreshing     |
-| Provider name, kind, URL, account label, auth state, expiry, coarse quota/plan data, and catalogs | Displays and mutates                                          | Retains as documented routing/presentation metadata | Uses the minimum runtime subset                                                   |
-| OAuth email and detailed plan/identity claims                                                     | Never stores or displays                                      | Does not persist                                    | Keeps inside the protected credential bundle                                      |
+| Data or action                                                                     | App                                               | Server                                              | Authorized worker                                                                 |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Static provider API key                                                            | Encrypts on create/update; never receives it back | Stores an opaque `protectedApiKey` envelope         | Decrypts only while constructing a provider runtime                               |
+| OAuth access, refresh, and ID tokens                                               | Never stores or displays                          | Stores one opaque account-bound envelope            | Obtains through OAuth, encrypts, decrypts for runtime use, refreshes, and reseals |
+| OAuth subject identity                                                             | Never receives                                    | Stores and enforces only a keyed blind index        | Computes the blind index and sees identity while authenticating or refreshing     |
+| Account label                                                                      | Encrypts/decrypts for presentation                | Stores an opaque `protectedLabel` envelope          | Does not require                                                                  |
+| Provider name, kind, URL, auth state, expiry, coarse quota/plan data, and catalogs | Displays and mutates                              | Retains as documented routing/presentation metadata | Uses the minimum runtime subset                                                   |
+| OAuth email and detailed plan/identity claims                                      | Never stores or displays                          | Does not persist                                    | Keeps inside the protected credential bundle                                      |
 
 ## Protected credential contexts
 
@@ -79,7 +80,7 @@ writes and a keyed subject blind index to reject an identity change.
 
 The worker keeps decrypted tokens only in memory for runtime use. ChatGPT is
 injected into the supported Codex authentication interface without creating a
-normal server-owned credential. Grok uses its worker-local loopback adapter.
+normal Codex-managed credential file. Grok uses its worker-local loopback adapter.
 Refresh runs on the authorized worker, and a successful replacement bundle is
 encrypted before upload. Secret values and complete OAuth responses must never
 be added to application events, logs, or diagnostics.

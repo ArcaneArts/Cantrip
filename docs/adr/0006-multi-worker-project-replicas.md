@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-08-11
 
+> Clarification: the app still uses the server for durable state, placement,
+> authorization, and control. Server-authorized ephemeral app-to-worker data may
+> use WorkerLink direct carriers without changing replica authority.
+
 ## Context
 
 Cantrip accounts can enroll and manage several workers, but a project still has

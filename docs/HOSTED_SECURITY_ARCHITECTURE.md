@@ -1,9 +1,10 @@
 # Hosted relay security architecture
 
 - Status: protected authentication, owner enforcement, worker enrollment,
-  secret encryption, account/worker quotas, HTTP/proxy hardening, operational
-  probes/metrics, owner-scoped security audit visibility, Redis-backed
-  multi-instance relay routing, and database-fenced scheduler claims implemented
+  account endpoint encryption, account/worker quotas, HTTP/proxy hardening,
+  operational probes/metrics, owner-scoped security audit visibility,
+  Redis-backed multi-instance relay routing, and database-fenced scheduler
+  claims implemented
 - Route inventory: [`security/server-route-inventory.json`](security/server-route-inventory.json)
 - Regenerate: `pnpm audit:server-boundaries:write`
 - Verify: `pnpm audit:server-boundaries`
@@ -16,7 +17,9 @@ operations, editor traffic, browser input, and desktop input to an enrolled
 worker. Authentication and ownership are therefore execution boundaries, not
 presentation concerns.
 
-The server is the only rendezvous point:
+The server is the only authority and rendezvous point. WorkerLink may move
+authorized ephemeral bytes directly between an app and worker after the server
+binds the exact session and resource grant:
 
 ```mermaid
 flowchart LR
@@ -30,13 +33,15 @@ flowchart LR
     APP <-->|"authenticated HTTPS and WSS"| API
     API --> DB
     API <-->|"presence leases, routed envelopes, live fanout"| BUS
-    WORKER -->|"outbound authenticated WSS"| API
+    WORKER -->|"outbound authenticated control and relay WSS"| API
+    APP <-.->|"authorized WorkerLink LOCAL/LAN/WAN carriers"| WORKER
     WORKER --> FILES
 ```
 
-The app never receives a worker origin. The server never dereferences a worker
-filesystem path. A worker never treats a model-provider credential as a Cantrip
-enrollment credential.
+The app never treats a candidate address or worker endpoint as authority; the
+server-bound session, authenticated carrier handshake, and exact grant remain
+authoritative. The server never dereferences a worker filesystem path. A worker
+never treats a model-provider credential as a Cantrip enrollment credential.
 
 ### 1.1 Worker-owned managed MCP
 
@@ -54,8 +59,9 @@ credential, expiry, allowlist, payload limits, and concurrency limits. When an
 operation reaches `/api/internal/agent-operations`, the server derives owner and
 worker from the enrolled worker credential, loads the current chat lane, and
 independently rejects mismatched, stale, expired, or unauthorized bindings.
-Cross-worker surface operations use the existing server relay; workers never
-exchange addresses or credentials directly.
+Cross-worker surface operations remain server-routed. WorkerLink direct
+carriers connect an authorized app to its selected worker, not workers to one
+another.
 
 Codex's enabled managed-tool list is narrowed to the binding permission
 profile. Read-only profiles receive Run configuration/status/output tools but
@@ -98,10 +104,11 @@ and remains an acknowledgement for a separately protected trusted network. It
 is not authentication and can never enable anonymous hosted mode.
 
 Hosted configuration requires password or account authentication, PostgreSQL,
-explicit approved application origins, distinct HTTPS public API and Code
-surface origins, a provider-secret encryption keyring, and a bounded trusted
-proxy list containing only IP addresses, CIDRs, or named private ranges. The
-server passes that list to Fastify rather than trusting all proxies. Requests
+one explicit HTTPS public API origin, explicit approved application origins,
+and a bounded trusted-proxy list containing only IP addresses, CIDRs, or named
+private ranges. The current configuration parser also requires a hosted server
+keyring, but provider and MCP envelopes do not use that keyring. The server
+passes the proxy list to Fastify rather than trusting all proxies. Requests
 reject unconfigured, malformed, oversized, or ambiguous forwarding headers,
 require the configured HTTPS scheme and public host, and reject unapproved
 browser origins before application handlers run.
@@ -172,13 +179,12 @@ every application live resource, and every public asynchronous repository
 entry point. CI-visible verification fails when a route is added or moved
 without refreshing the inventory.
 
-At this revision the inventory contains:
-
-- 406 HTTP and 5 WebSocket routes;
-- 207 worker command variants;
-- 35 application live resource variants;
-- 354 database repository entry points; and
-- the five non-route data planes listed below.
+The generated inventory is the authoritative, revision-specific count of HTTP
+and WebSocket routes, worker command variants, application live resources,
+database repository entry points, and durable table classifications. Section 6
+describes the current runtime data planes; the generator's legacy external
+transport list is compatibility inventory rather than the complete WorkerLink
+topology. Do not copy generated counts into another long-lived contract.
 
 The same audit enforces the Task E2EE trust boundary. Production server source
 cannot import `@cantrip/crypto`, Task decryption helpers, or trusted client and
@@ -228,39 +234,39 @@ principal. Native clients and raw HTTP clients are not constrained by CORS.
 
 ### Worker control
 
-The seven `/api/internal/*` routes are a distinct machine-credential boundary:
-
-- worker heartbeat;
-- worker command WebSocket attachment;
-- one-time worker enrollment;
-- automation schedule synchronization;
-- automation dispatch reporting; and
-- agent worktree tool results; and
-- short-lived provider-account access-token leases.
+The generated `/api/internal/*` route entries form a distinct
+machine-credential boundary. They cover worker presence, enrollment and command
+attachment; worker encryption bootstrap; automation synchronization and
+dispatch reporting; managed agent-operation and CLI dispatch; Code-settings
+synchronization; and opaque provider-account credential fetch/reseal.
 
 Hosted and standalone workers authenticate with a unique credential bound to
 one owner and immutable worker ID. The server stores only its SHA-256 hash,
 checks a route-specific scope, updates last-use time, and rejects a credential
-presented for any other worker ID. Rotation or revocation closes the active
-worker socket immediately. The shared worker token remains accepted only for
+presented for any other worker ID. Provider credential routes additionally
+require an active `provider-credential` encryption grant and return or accept
+only protected envelopes. Rotation or revocation closes the active worker
+socket immediately. The shared worker token remains accepted only for
 anonymous loopback `pnpm-dev` and embedded Tauri bootstraps. An authenticated
 worker event may mutate only resources already leased or assigned to that same
 owner and worker.
 
-## 6. Non-route data planes
+## 6. Runtime transport and data-plane boundaries
 
-| Plane                 | Current binding                                                              | Required revocation boundary                       |
-| --------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- |
-| Application live hub  | Request owner plus authorized project/chat/run scope                         | Account session                                    |
-| Worker bridge         | Owner, worker ID, scope, and individual credential                           | Individual worker credential                       |
-| Cantrip Code tunnel   | Random capability token bound to owner, worker, Code tab, and editor session | Attachment, app session, worker, or editor session |
-| Project share tunnel  | Random capability token bound to owner, project, worker, and root            | Attachment, app session, worker, or project        |
-| Browser/desktop relay | Surface execution context, attachment, and worker                            | Attachment, app session, surface, or worker        |
+| Plane                         | Current binding                                                                                                                                                           | Required revocation boundary                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Application live hub          | Request owner plus authorized resource scope                                                                                                                              | Account session                                    |
+| Worker control bridge         | Owner, worker ID, scope, and individual credential                                                                                                                        | Individual worker credential                       |
+| WorkerLink session and grants | Server identity/generation, owner, account session, client instance, worker/process generation, optional attachment, exact resources, operations, lanes, count, and lease | App session, worker generation, session, or grant  |
+| Cantrip Code tunnel           | Protected attachment carried by an exact WorkerLink grant and browser adapter/root lease or native loopback                                                               | Attachment, app session, worker, or editor session |
+| Project-share/tunnel framing  | Application-encrypted root, credentials, and data key opened by the authorized worker and carried inside a WorkerLink reliable stream                                     | Attachment, app session, worker, or project        |
 
-Code and project-share capabilities live on the isolated surface origin. The
-surface origin receives neither application cookies nor arbitrary proxy
-destinations. Tokens are short-lived bearer capabilities and must never be
-logged, persisted in browser storage, or accepted for a different binding.
+Code and project-share data do not use a second public server origin. Browser
+Code is exposed only through an application-origin virtual adapter whose
+browser-local root lease and exact iframe binding are checked before requests
+enter the tunnel. Native Code and project-share clients use loopback forwards.
+Protected route material and bearer capabilities must never be logged,
+persisted in ordinary browser storage, or accepted for a different binding.
 
 ### Managed-folder authority
 
@@ -271,9 +277,11 @@ selected worker's owner/capability, and sends only the project UUID and bounded
 intent through the authenticated worker channel. Clients never provide a
 physical path.
 
-The worker derives `<worker-data>/folders/<project-UUID>`, rejects malformed
-identifiers, symlinks, and paths outside the canonical root, and deletes only
-that exact UUID directory. The source remains pinned to that worker for all
+The worker derives a workspace-specific directory beneath its managed folder
+root, rejects malformed identifiers, symlinks, and paths outside the canonical
+root, and deletes only that exact managed directory. Older installations may
+retain UUID-derived paths beneath `<worker-data>/folders/`. The source remains
+pinned to that worker for all
 filesystem-backed surfaces; stale or malicious cross-worker targets fail before
 dispatch. Git, GitHub, worktree, replica, relocation, and Git-event routes also
 enforce the persisted project capability, so a local `git init` cannot expand
@@ -357,70 +365,59 @@ The enrollment service consumes link codes transactionally and returns a raw
 credential exactly once; list APIs expose metadata but never hashes or raw
 secrets.
 
-Provider API keys and MCP static-header/environment values use versioned
-AES-256-GCM envelopes authenticated to their owner, record, and field IDs.
-`CANTRIP_SECRET_ENCRYPTION_KEYS` supplies a bounded JSON
-keyring of key IDs to canonical base64 32-byte keys, and
-`CANTRIP_ACTIVE_SECRET_ENCRYPTION_KEY_ID` selects the writer. Hosted startup
-fails without the keyring. Startup decrypts every existing envelope to detect a
-missing or incorrect key before accepting traffic, migrates legacy plaintext
-rows, clears their plaintext column, and rewraps envelopes written by older
-keys. Anonymous local deployments instead persist an ignored mode-0600 key in
-their server data directory.
+Provider API keys, provider-account labels and OAuth bundles, and complete MCP
+configurations use row-bound AES-256-GCM endpoint-encryption envelopes. The app
+seals static API keys, account labels, and user-authored MCP configurations
+before upload. Authorized workers open provider and MCP envelopes only for
+runtime use, and workers encrypt discovered MCP configurations before relay.
 
-Provider list and mutation responses expose only `hasApiKey`. MCP list and
-mutation responses expose secret key names with a fixed mask, and sending that
-mask back preserves the stored value. The server decrypts MCP values only for
-the effective runtime configuration routed to an authorized worker. Plaintext
-exists briefly in server memory when an authorized provider or MCP runtime is
-dispatched to its assigned worker. Operators must back up the keyring separately from PostgreSQL,
-retain old keys until startup has completed a rotation, and never place the
-keyring in source control, logs, or support bundles.
+The server stores and routes only protected envelopes plus the minimum
+documented metadata. Provider API-key summaries expose `hasApiKey`. MCP rows
+retain scope, enabled state, project/worker routing IDs, a keyed name blind
+index, timestamps, and `protectedConfiguration`; the server sees neither MCP
+names nor commands, URLs, headers, or environment values. Runtime dispatch
+carries the opaque envelopes to an authorized worker.
+
+`CANTRIP_SECRET_ENCRYPTION_KEYS` remains a hosted startup requirement in the
+current configuration parser, but `ServerRepository` explicitly does not use
+that `SecretVault` for provider or MCP payloads. It is not a provider/MCP
+decryption, rotation, backup, or recovery key. A PostgreSQL or server-keyring
+copy cannot open these records without an account component key held by an
+unlocked application or approved worker.
 
 ### 7.1 Portable provider OAuth accounts
 
-ChatGPT and Grok/SuperGrok credentials use the same vault but a distinct
-authenticated context:
+ChatGPT and Grok/SuperGrok access, refresh, ID, and upstream-identity values are
+sealed on an authorized worker under the `provider-credential` component. The
+envelope is authenticated to its owner, provider/account row, field, and key
+revision. The server stores the protected bundle, keyed subject blind index,
+optimistic credential revision, lifecycle state, and bounded expiry and coarse
+quota metadata; it cannot exchange, refresh, or inspect the credential.
 
-`cantrip:model-provider-account:<kind>:<ownerId>:<providerId>:<accountId>`
+The internal credential GET and PUT routes authenticate the worker's individual
+credential, derive its immutable owner and worker ID, and require an active
+`provider-credential` grant. GET returns the opaque credential envelope and
+revision, not an access token. The worker decrypts and validates provider
+identity locally, contacts the provider when refresh is required, and reseals
+the complete replacement before PUT. Expected revisions reject stale writes;
+the subject blind index rejects an upstream identity change. The worker's usable
+access lease remains memory-only for at most five minutes and never beyond
+upstream expiry.
 
-That context prevents an envelope copied between owners, providers, accounts,
-or provider kinds from decrypting. Migrations `0080_flimsy_captain_flint` and
-`0081_bizarre_skaar` add the encrypted envelope, monotonic credential revision,
-identity subject, lifecycle state, expiry, and cross-process refresh lease.
-Migration `0086_slow_jack_murdock` moves quota and catalog availability to a
-stable provider-account scope.
+Global sign-out removes the durable envelope, advances its revision, updates
+lifecycle state, and tells connected workers to close the affected runtime.
+Because the server cannot decrypt the bundle, it cannot perform provider-side
+revocation; operators must use the provider's security controls when upstream
+revocation is required.
 
-The provider access route authenticates the worker's individual credential and
-derives its immutable owner and worker ID from that credential. The repository
-loads the provider and account through the derived owner; request path IDs can
-never select another owner's credential. A valid response contains only the
-current access token, its revision and expiry, and the minimum provider identity
-metadata required by the runtime. It never contains a refresh token, ID token,
-or credential envelope. The worker caches the lease in memory for at most five
-minutes and never beyond the upstream token expiry.
-
-Refreshes are single-flight inside one server process and fenced across server
-replicas by the database refresh lease and expected credential revision. The
-complete replacement credential, including a rotated refresh token, is
-encrypted before the revision advances. A stale caller observes the newer
-revision instead of refreshing again. Permanent invalid-grant failures become
-`reauth-required`; an upstream identity change becomes `conflict`. Global
-sign-out first denies leases and aborts in-flight refreshes, atomically removes
-the durable credential, attempts bounded upstream revocation, invalidates the
-catalog, and tells every connected worker to close the affected runtime and
-discard any legacy file.
-
-The server is therefore a trusted credential broker. A database dump without
-the operator keyring does not reveal these credentials. The worker revalidates
-and discards its cached lease after at most five minutes, but an exfiltrated
-OAuth bearer token remains usable until its upstream expiry or revocation. A
-compromised live server process or active keyring can use every provider account
-it owns. Operators must protect the server and keyring accordingly, revoke
-provider accounts after a control-plane compromise, and never copy lease
-responses, OAuth capture payloads, or envelopes into logs, events, diagnostics,
-support bundles, or browser state. The full data flow, migration rules, test
-evidence, and manual verification procedure live in
+The server is therefore an opaque credential store and authorization relay,
+not a trusted credential broker. A database dump or operator server keyring
+alone does not reveal provider credentials. A compromised approved worker can
+use the component keys granted to it, and an exfiltrated bearer token remains
+usable until expiry or upstream revocation. Never copy OAuth capture payloads,
+opened credentials, protected envelopes, or lease values into logs, events,
+diagnostics, support bundles, or browser state. The full data flow and
+verification procedure live in
 [`PROVIDER_AUTHENTICATION.md`](PROVIDER_AUTHENTICATION.md).
 
 The append-only `audit_events` ledger records authentication decisions, session
@@ -461,8 +458,10 @@ the authoritative database and returns 503 while it is unavailable. `/metrics`
 exposes aggregate Prometheus text to an owner/admin session or a dedicated
 operator bearer token. Metrics include request counts and latency, database
 probe health, worker and command activity, live connections, tunnel and relay
-traffic, quota rejections, and scheduler throughput/lag. They deliberately omit
-owner IDs, resource IDs, URLs, prompts, terminal output, filenames, and secrets.
+traffic, and quota rejections. Project-automation scheduling and dispatch are
+observable through structured `automation.schedule-sync.*` and
+`automation.dispatch.*` logs. These signals deliberately omit owner IDs,
+resource IDs, URLs, prompts, terminal output, filenames, and secrets.
 
 ## 8. Application connection audit
 
@@ -476,8 +475,9 @@ All renderer connections derive from the selected server profile:
   streams through the shared WorkerLink;
 - `cantrip_app/src/lib/remote-surface-worker-link.ts` carries protected Browser
   and Remote Desktop streams over the selected WorkerLink carrier; and
-- Code and project-share attachment URLs are server-minted isolated-origin
-  capabilities.
+- Code and project-share attachments use server-authorized protected route
+  bindings. Browser Code materializes an application-origin virtual adapter;
+  native attachments materialize as loopback forwards.
 
 Switching server profiles must discard server/account-scoped caches and live
 connections. Passwords and raw session credentials must never be placed in a
@@ -526,20 +526,23 @@ Per-instance epochs and authoritative HTTP snapshots remain the reconnect
 contract; Redis pub/sub is an invalidation transport, not durable history.
 PostgreSQL remains authoritative for conversations and configuration.
 
-## 11. Scheduler fencing
+## 11. Project-automation scheduler fencing
 
-Scheduled workflow triggers and chat-targeted project automations claim each
-calendar occurrence in PostgreSQL before dispatch. Claims persist the scheduled
-time, target ownership, serving instance, opaque lease token, expiration, and a
-monotonically increasing fencing token. An unexpired claim makes other replicas
-stand down. After `CANTRIP_SCHEDULER_LEASE_TTL_MS`, another replica may recover
-the same durable occurrence with a higher fence; the former holder can no longer
-accept, fail, or otherwise finalize it.
+Chat-targeted project automations claim each calendar occurrence in PostgreSQL
+before dispatch. The owning worker polls its authorized schedule list and
+requests due occurrences. Claims persist the scheduled time, target ownership,
+serving instance, opaque lease token, expiration, and a monotonically increasing
+fencing token. An unexpired claim rejects duplicate dispatch. After
+`CANTRIP_SCHEDULER_LEASE_TTL_MS`, another server may recover the same occurrence
+with a higher fence; the former holder can no longer finalize it.
 
-Workflow deliveries and workflow runs retain stable idempotency keys across
-recovery. Project automation recovery checks both queued prompts and persisted
-chat messages before dispatch, so a crash after durable acceptance does not add
-the prompt twice. A moved chat/source fails closed because the claim records and
-revalidates the worker selected from the chat's active worktree. Offline or
-paused targets remain visible as failed/paused schedule decisions and are never
-silently sent to another worker.
+Dispatch uses `automation:<automationId>:<scheduledFor>` as its idempotency key
+and checks both queued prompts and persisted chat messages before adding work,
+so a crash after durable acceptance does not add the prompt twice. A moved
+chat/source fails closed because the server revalidates the worker from the
+chat's active worktree. If that chat has automation paused, the protected prompt
+is queued rather than started. If the owning worker is offline, the due
+occurrence remains pending until that worker resumes polling; recovery runs at
+most one missed occurrence before advancing to the next future slot. Legacy
+workflow trigger/delivery/run rows are not scheduled, executed, or recovered by
+current code.

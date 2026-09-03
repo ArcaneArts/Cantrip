@@ -16,7 +16,7 @@ record; there is no separate raw console event.
 
 Operational context uses a small shared vocabulary when the fields apply:
 `event`, `subsystem`, `operation`, `status`, `reasonCode`, `durationMs`,
-`requestId`, `workerId`, `projectId`, `chatId`, `turnId`, `workflowId`,
+`requestId`, `workerId`, `projectId`, `chatId`, `turnId`, `automationId`,
 `runId`, `surfaceId`, `attempt`, and `counts`. Errors are reduced to safe
 `name`, `message`, and optional `code` metadata. Stack traces, causes, and
 arbitrary thrown-object fields are excluded from remotely readable records.
@@ -60,26 +60,25 @@ client  chat.turn.synchronized
 Names may evolve, so filters should prefer correlation IDs. Missing completion
 plus a worker reconnect identifies a transport/runtime problem; an explicit
 `status: failed` and `reasonCode` identifies an application failure. Raw
-provider messages are deliberately absent. Apply the same method to workflows
-(`workflowId`, `runId`), surfaces (`surfaceId`, `workerId`), and project
-operations (`projectId`, `workerId`).
+provider messages are deliberately absent. Apply the same method to surfaces
+(`surfaceId`, `workerId`) and project operations (`projectId`, `workerId`).
 
 ## Coverage by subsystem
 
-| Area                      | Representative lifecycle metadata                                                                                             |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Server runtime            | startup class, database/Redis readiness, migrations, shutdown, ownership and lease transitions                                |
-| Worker channel            | authentication outcome, connect/replacement/disconnect, reconnect grace, command type and duration                            |
-| Chat and Codex            | queue/placement, model route, thread create/resume, attempts, pause/resume/steer/interrupt, compaction and failover           |
-| Providers                 | catalog/cache health, model counts, account availability, quota exhaustion, credential refresh outcome and fallback           |
-| Workflows and automations | claim/fence, schedule sync, execution transition, retry, skip/block, completion and recovery                                  |
-| Terminal                  | create/attach/detach/reconnect/replace/exit; never input, output, resize data, or commands                                    |
-| Browser                   | Chromium/CDP/target/navigation/crash/restart and transport state; never page data or cookies                                  |
-| Remote Desktop            | discovery counts, target ID, capture/WebRTC lifecycle, drop summaries and rejected-input reason; never frames or input values |
-| Explorer and Git          | operation kind, safe revision/branch metadata, duration, result/file/conflict counts; never contents or diffs                 |
-| Code and CLI              | process/profile/session/bridge readiness, transport, command family and result; never raw arguments or protocol               |
-| Client                    | boot/hydration, session/server switch, API route/status, live reconnect, rollback and surface readiness/fallback              |
-| Tauri                     | embedded child startup/exit, updater phase, tray/autostart/window/pop-out and Pro Mode lifecycle                              |
+| Area                | Representative lifecycle metadata                                                                                             |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Server runtime      | startup class, database/Redis readiness, migrations, shutdown, ownership and lease transitions                                |
+| Worker channel      | authentication outcome, connect/replacement/disconnect, reconnect grace, command type and duration                            |
+| Chat and Codex      | queue/placement, model route, thread create/resume, attempts, pause/resume/steer/interrupt, compaction and failover           |
+| Providers           | catalog/cache health, model counts, account availability, quota exhaustion, credential refresh outcome and fallback           |
+| Project automations | claim/fence, schedule sync, dispatch, skip/block, completion, and recovery                                                    |
+| Terminal            | create/attach/detach/reconnect/replace/exit; never input, output, resize data, or commands                                    |
+| Browser             | Chromium/CDP/target/navigation/crash/restart and transport state; never page data or cookies                                  |
+| Remote Desktop      | discovery counts, target ID, capture/WebRTC lifecycle, drop summaries and rejected-input reason; never frames or input values |
+| Explorer and Git    | operation kind, safe revision/branch metadata, duration, result/file/conflict counts; never contents or diffs                 |
+| Code and CLI        | process/profile/session/bridge readiness, transport, command family and result; never raw arguments or protocol               |
+| Client              | boot/hydration, session/server switch, API route/status, live reconnect, rollback and surface readiness/fallback              |
+| Tauri               | embedded child startup/exit, updater phase, tray/autostart/window/pop-out and Pro Mode lifecycle                              |
 
 Routine successes may be `debug`; state changes and uncommon lifecycle events
 are `info`; recoveries/fallbacks are `warn`; terminal failures are `error`.
@@ -466,7 +465,7 @@ they are not duplicated into the client source.
 | Remote reads remain owner-authorized and server-routed                          | server worker-log API tests                                                      |
 | Hosted clients cannot expose server logs                                        | log viewer model and local bridge tests                                          |
 | Local worker fallback and viewer retention/deduplication                        | log viewer model tests                                                           |
-| Surface, provider, workflow, and reconnect lifecycle                            | focused server, worker, app, and Tauri subsystem suites plus the inventory above |
+| Surface, provider, automation, and reconnect lifecycle                          | focused server, worker, app, and Tauri subsystem suites plus the inventory above |
 
 For a release candidate, run the logging, protocol, server, worker, app, and
 Tauri suites. Then perform one `pnpm devtop` smoke pass: complete or interrupt a

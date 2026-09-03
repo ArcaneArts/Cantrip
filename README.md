@@ -86,7 +86,7 @@ Folder-origin projects have two ownership modes:
 
 Project display names may repeat in either mode. Both modes support Agents,
 Tasks, terminals, Explorer, Code, Browser, Remote Desktop, tunnels, shares,
-scripts, policies, skills, MCP, automations, and direct write-capable workflows.
+scripts, policies, skills, MCP, and project automations.
 An attached directory that is already a Git checkout is registered as a local
 Git project and may attach matching ready sources on other workers. A verified
 GitHub remote adds collaboration features. Running `git init` after a non-Git
@@ -95,8 +95,8 @@ conversion flow instead. See [the folder-project contract](docs/FOLDERS.md).
 
 On macOS and Windows desktop builds, each project's actions menu includes
 **Reveal in Finder** or **Reveal in File Explorer**. Selecting it normally
-mounts a writable, authorized network share, using a local-direct transport
-when possible and the server relay for a remote worker. Hold **Shift** while
+mounts a writable, authorized network share over WorkerLink, which selects
+`LOCAL`, `LAN`, `WAN`, then server `RELAY`. Hold **Shift** while
 selecting the action to bypass the network share and open the physical project
 directory, but only when the desktop can prove that it owns the matching local
 worker and path. For a remote worker, the Shift shortcut is intentionally a
@@ -114,20 +114,18 @@ terminal or opens an appropriately grouped project terminal. Tabs can be
 renamed, reordered, grouped, split, popped out on desktop, or closed with the
 middle mouse button; projects themselves are never removed by middle-click.
 
-Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, reusable Agent Policies, model providers, models, and the default model. **Settings → Usage** displays reconciled logical server storage, separate server-known worker attachment estimates, current UTC-day server bandwidth, and retained history; no account limits are currently enforced. See the [account resource usage contract](docs/ACCOUNT_USAGE.md) for exact measurement, retention, privacy, and operational semantics. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers—even when the selected worker is reached remotely through the server. Filter by chat/turn, request, worker, workflow/run, project, or surface IDs to follow an operation without exposing prompts, terminal I/O, or page/desktop contents. See the [service log guide](docs/SERVICE_LOGS.md) for source availability, correlation, redaction, retention, verification, and troubleshooting. Provider support currently includes:
+Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, reusable Agent Policies, model providers, models, and the default model. **Settings → Usage** displays reconciled logical server storage, separate server-known worker attachment estimates, current UTC-day server bandwidth, and retained history; no account limits are currently enforced. See the [account resource usage contract](docs/ACCOUNT_USAGE.md) for exact measurement, retention, privacy, and operational semantics. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers—even when the selected worker is reached remotely through the server. Filter by chat/turn, request, worker, automation/job, project, or surface IDs to follow an operation without exposing prompts, terminal I/O, or page/desktop contents. See the [service log guide](docs/SERVICE_LOGS.md) for source availability, correlation, redaction, retention, verification, and troubleshooting. Provider support currently includes:
 
 - Ollama and other worker-local endpoints.
 - OpenAI-compatible APIs such as OpenRouter.
 - Z.ai GLM Coding Plan through Codex's Responses integration. Cantrip supplies
-  the documented Coding Plan endpoint and model catalog, keeps each API key in
-  the encrypted server vault, and supports ordered fallback alongside other
-  provider routes.
-- Portable ChatGPT account providers authenticated through Codex. Durable OAuth
-  credentials and refresh authority live in the encrypted server vault; workers
-  receive only short-lived access leases and account metadata.
-- Portable Grok and SuperGrok OAuth accounts, with server-owned rotating
-  credentials, subscription model discovery, and multi-account fallback routing
-  through a worker-local xAI subscription proxy.
+  the documented Coding Plan endpoint and model catalog and supports ordered
+  fallback alongside other provider routes.
+- Portable ChatGPT, Grok, and SuperGrok account providers authenticated through
+  Codex. The app seals static API keys. Authorized workers obtain and seal OAuth
+  credentials, while the server stores only opaque envelopes. Workers decrypt
+  credentials for use. For OAuth, they refresh and reseal bundles locally and
+  keep five-minute access-token leases in memory.
 
 Models are logical profiles with one or more ordered provider routes. Provider
 settings aggregate weekly usage across portable accounts while retaining each
@@ -181,8 +179,9 @@ flowchart LR
     CODEX["Codex CLI / app-server"]
     FILES["Project source folders"]
 
-    APP <-->|"HTTP + WebSocket"| SERVER
-    SERVER <-->|"authenticated worker channel"| WORKER
+    APP <-->|"HTTP + App Live + WorkerLink RELAY"| SERVER
+    SERVER <-->|"authenticated worker control + RELAY"| WORKER
+    APP <-.->|"authorized WorkerLink LOCAL / LAN / WAN"| WORKER
     WORKER <-->|"local process protocol"| CODEX
     WORKER --- FILES
 ```
@@ -198,7 +197,7 @@ WorkerLink carrier directly between the app and worker, with relay fallback.
 
 ### `cantrip_server`
 
-The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects, durable conversation history, workflow definitions, runs, and triggers, tracks worker presence, persists worktree observations plus project-wide logical branch leases, reconciles per-account logical storage and meters server-carried bandwidth, and routes every file, terminal, Git, Codex, and workflow operation to the correct worker checkout. It also keeps ChatGPT and Grok OAuth credentials in its encrypted account vault, serializes refreshes, and issues bounded access-token leases to authenticated owner-bound workers.
+The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects and durable conversation history, tracks worker presence, persists worktree observations plus project-wide logical branch leases, reconciles per-account logical storage and meters server-carried bandwidth, and authorizes operations on the correct worker checkout. It retains legacy encrypted durable-workflow tables for schema compatibility and conservative lifecycle checks, but exposes no workflow UI, API, scheduler, or executor. It stores ChatGPT and Grok OAuth bundles only as opaque endpoint-encrypted envelopes. Authorized workers decrypt, refresh, and reseal them locally; the server authorizes revision-fenced envelope fetch/reseal and global sign-out.
 
 Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
@@ -213,7 +212,7 @@ terminal services; supervises Codex runtimes; keeps the embedded Code server
 warm; runs Browser-tab Chromium sessions; and captures and controls its own
 desktop for Remote Desktop tabs. Provider URLs, repository paths, and
 Browser-tab addresses are resolved from the worker machine, which is important
-once the server and worker live on different hosts. Server-managed ChatGPT and
+once the server and worker live on different hosts. Worker-local ChatGPT and
 Grok access leases remain in memory; normal operation does not create
 worker-local `auth.json` or `grok-auth.json` credentials.
 
@@ -248,7 +247,7 @@ The account area in the main sidebar is also the server switcher. Its **Add serv
 
 Signed-in users can choose **Sign in mobile device** from the same server menu. Cantrip displays a two-minute QR grant containing the server identity, its phone-reachable origin, and an opaque one-use code. The mobile sign-in screen scans and verifies that identity, saves the server profile, consumes the code once, and receives a normal independently revocable HttpOnly session. Passwords and existing session cookies are never encoded in the QR.
 
-Standalone server and worker packages establish the deployable boundary for the hosted control plane. The server supports anonymous loopback mode, protected single-user password sessions, email/password account sessions, tenant ownership, independently revocable worker enrollment, versioned encryption of provider API keys, portable provider-account OAuth credentials, and MCP secret values at rest, fail-closed hosted HTTP/origin/proxy configuration, account/worker traffic quotas, liveness/readiness probes, protected Prometheus metrics, active-session visibility, owner-scoped append-only security audit events, Redis-backed multi-instance worker/live routing, and database-fenced scheduled automation claims that recover after a replica crash.
+Standalone server and worker packages establish the deployable boundary for the hosted control plane. The server supports anonymous loopback mode, protected single-user password sessions, email/password account sessions, tenant ownership, independently revocable worker enrollment, versioned encryption of provider API keys, portable provider-account OAuth credentials, and MCP secret values at rest, fail-closed hosted HTTP/origin/proxy configuration, account/worker traffic quotas, liveness/readiness probes, protected Prometheus metrics, active-session visibility, owner-scoped append-only security audit events, Redis-backed multi-instance worker/live routing, and database-fenced project-automation dispatch claims that recover after a server replica crash.
 
 Production Linux server/worker images, PostgreSQL/Redis Compose services,
 Caddy and Nginx proxy examples, explicit migrations, and backup/restore guidance
@@ -272,13 +271,13 @@ remains authoritative for snapshots and mutations, with bounded disconnected
 recovery polling. See the [live transport contract](docs/LIVE_TRANSPORT.md) and
 [measured audit](docs/LIVE_TRANSPORT_AUDIT.md).
 
-Network forwarding uses the separate
-[unified tunnel framework](docs/TUNNELS.md): the server owns definitions and
-authorization, a bounded binary data plane carries bytes, and explicit endpoint
-placements preserve the path to future worker-to-worker adapters without
-claiming that feature is available today.
+Network forwarding uses the [unified tunnel framework](docs/TUNNELS.md): the
+server owns definitions and authorization, `tunnel-data-plane-v1` runs inside
+WorkerLink reliable streams, and explicit endpoint placements preserve the path
+to future worker-to-worker adapters without claiming that feature is available
+today.
 
-## Codex-native customization and workflows
+## Codex-native customization and project automations
 
 Cantrip extends one agent runtime instead of maintaining Claude CLI and Codex
 backends. Codex App Server remains responsible for threads, turns, tools,
@@ -287,32 +286,20 @@ and capability-gates those native surfaces, exposes commands and skills in one
 palette, and can translate recognized external Claude/Cursor data into inert
 Codex-native records without executing imported scripts.
 
-Above that runtime, Cantrip provides a durable, data-only workflow control
-plane. Immutable revisions can compose agent, verification, reduction,
-condition, approval-gate, map, pipeline, and repeat-until nodes with explicit
-budgets, bounded concurrency, and pause/cancel/retry controls. GitHub-backed
-write nodes use isolated worktrees; managed-folder write nodes run directly in
-the owning folder, including configured parallel nodes, with no simulated Git
-lease or checkpoint. Workflows can be authored directly, generated with Codex
-assistance, saved from completed runs, or imported/exported as reviewed project
-data.
+Simple project automations can schedule a protected prompt and optionally gate
+it on one condition: a worker-side script must exit with code 0, or the
+repository must have at least a configured number of open GitHub issues. A
+false condition records a skipped run instead of dispatching the prompt.
 
-Schedule, scoped API, credentialed webhook, normalized Git/GitHub, and saved
-command triggers all create the same durable run records. Unattended execution
-requires trusted, preauthorized revisions and permission manifests; the UI
-creates triggers disabled until an operator explicitly enables them. This is a
-local/trusted-network product boundary today, not a public multi-user automation
-service or a raw GitHub HMAC webhook receiver.
-
-Simple project automations can additionally gate a scheduled prompt on one
-condition: a worker-side script must exit with code 0, or the repository must
-have at least a configured number of open GitHub issues. A false condition
-records a skipped run instead of dispatching the prompt.
-
-See the [orchestration contract](docs/WORKFLOW_ORCHESTRATION.md),
-[operator and recovery guide](docs/WORKFLOW_OPERATIONS.md),
-[implementation audit](docs/WORKFLOW_IMPLEMENTATION_AUDIT.md), and
-[architecture decision](docs/adr/0004-codex-native-workflow-control-plane.md).
+The former durable workflow product has been removed. Its app UI, public server
+APIs, server repositories/scheduler/executor, and worker handlers are absent;
+former paths now receive the ordinary not-found response. Legacy database
+tables and shared protocol/encryption types remain, but old rows are not
+recovered or executed. See the [retired workflow boundary](docs/WORKFLOW_ORCHESTRATION.md)
+and [legacy-data operations](docs/WORKFLOW_OPERATIONS.md); the
+[implementation audit](docs/WORKFLOW_IMPLEMENTATION_AUDIT.md) and
+[architecture decision](docs/adr/0004-codex-native-workflow-control-plane.md)
+are historical records.
 
 Cantrip-specific agent operations are exposed through a worker-owned managed
 MCP server. Its typed catalog covers Policies, worktrees, execution targets,
@@ -332,17 +319,19 @@ Nonmandatory policies can be assigned from Workspace or Project Settings; a
 project receives the ordered union of mandatory, workspace-inherited, and
 direct assignments without duplicates.
 
-Each owner receives one editable, enabled, mandatory Manual Change Protocol
-policy exactly once. It is a user-controlled default: it can be changed or
-deleted and is not recreated, while the immutable packaged template remains
-available for future copies. Policy rows, assignments, optimistic versions,
-and bootstrap state stay on the server and are isolated by account.
+The current packaged catalog has no `suggestedDefault` entry, so account
+bootstrap records its current version without creating a Policy. The immutable
+Manual Change Protocol template remains available for an explicit copy. Policy
+rows, assignments, optimistic versions, and bootstrap state stay on the server
+and are isolated by account.
 
-Before each Agent, Plan, Goal, queued, or automatic-continuation turn, the
-server resolves the current effective set and supplies only ordered summaries
-to Codex as bounded application context. Full bodies, assignment internals, and
-database identifiers are not injected. Agents prefer managed MCP `policy_list`
-and `policy_read`. The CLI exposes the same effective set as a fallback:
+For project execution, the server selects enabled `ide`/`both` Policies using
+public assignment, Mandatory, and ordering metadata, and the worker decrypts
+their summaries into bounded application context. Standalone Chat selects all
+enabled `chat`/`both` Policies and the worker injects their full bodies. The
+server never constructs this semantic context. Agents prefer managed MCP
+`policy_list` and `policy_read`; the CLI exposes the same effective project set
+as a fallback:
 
 ```console
 cantrip policy list
@@ -392,11 +381,10 @@ metadata remains visible while a worker is offline. See
 boundaries, and the development test matrix.
 
 Non-Git folder projects do not expose this worktree model. Their Agent, Task,
-Terminal, Explorer, Code, automation, and workflow operations all resolve to
-the one worker-owned execution root. Local Git projects expose Git plus matching
-source attachment/relocation but still reject secondary-worktree operations.
-Agent writes follow the selected permission profile, and workflow writes follow
-the graph's configured concurrency.
+Terminal, Explorer, Code, and automation operations all resolve to the one
+worker-owned execution root. Local Git projects expose Git plus matching source
+attachment/relocation but still reject secondary-worktree operations. Agent
+writes follow the selected permission profile.
 
 ## Repository layout
 
@@ -516,8 +504,8 @@ unpushed work. See
 To test multiple accounts without replacing the anonymous local server, run
 `pnpm dev:server` in another terminal. It starts an isolated, disposable
 PostgreSQL database on `127.0.0.1:54330` and an account-mode server on
-<http://127.0.0.1:4320>, with its Code surface on port `4321`. Public test
-registration is enabled. Add `http://127.0.0.1:4320` through Cantrip's server
+<http://127.0.0.1:4320>. Public test registration is enabled. Add
+`http://127.0.0.1:4320` through Cantrip's server
 switcher, then create as many test accounts as needed. The command can run
 beside `pnpm dev` or `pnpm devtop`; pressing `Ctrl+C` stops both its server and
 database, and the database is discarded.
@@ -579,11 +567,12 @@ diagnostic.
 
 The current local worker admits at most four live Remote Surface sessions and
 four simultaneous client attachments per surface. Main and popout windows each
-count as an attachment. WebSocket queues are bounded at 8 MiB: disposable
-Browser visual frames may be dropped under pressure, while congestion on a
-reliable input channel deliberately resets the connection so the client can
-reconnect instead of continuing with a corrupted byte stream. Frame payloads
-are capped at 4 MiB by the shared protocol.
+count as an attachment. WorkerLink applies independent per-lane frame, queue,
+credit, and bandwidth limits. Disposable realtime frames retain current plus
+latest state and may be dropped when superseded; congestion on reliable input
+or event traffic resets the affected stream so the client can reconnect instead
+of continuing with corrupted ordering. The older 8 MiB feature-WebSocket queue
+applies only to deprecated compatibility transport.
 
 - **Worker offline:** the surface reports a recoverable error and retries its
   server connection. Start or reconnect the assigned worker; the durable tab
@@ -591,10 +580,8 @@ are capped at 4 MiB by the shared protocol.
 - **Chromium missing:** install Chrome, Chromium, Brave, Edge, or Vivaldi on the
   worker, or set `CANTRIP_CHROMIUM_EXECUTABLE` to a worker-local executable.
   Restart the worker after changing it.
-- **TURN unavailable:** relay-only WebRTC negotiation times out and the same
-  session continues over WebSocket. Check the TURN URLs, REST shared secret,
-  firewall, and TLS certificate if WebRTC is expected; do not add host/direct
-  ICE candidates as a workaround.
+- **WAN direct unavailable:** verify the WorkerLink STUN and UDP policy. The
+  session falls back to server RELAY; WorkerLink never uses TURN.
 - **Remote Desktop unavailable:** grant the worker process screen-capture and
   input-control permissions, then restart the worker. The creation request
   probes capture before persisting a tab.

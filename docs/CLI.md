@@ -33,7 +33,7 @@ missing/ambiguous context, conflicts, or unavailable workers.
 # Inspect where this shell or Codex turn is running.
 cantrip status
 
-# Read server-owned instructions effective for the current project.
+# Read endpoint-protected instructions effective for the current project.
 cantrip policy list
 cantrip policy read manual-change-protocol
 cantrip --json policy list
@@ -127,8 +127,9 @@ Cantrip Server.
 
 Agents receive the same effective summaries as bounded application context.
 The global Cantrip developer instruction directs them to read a full policy
-when its summary requires that. Policy bodies remain server-owned and are
-fetched only through the authenticated broker/server path.
+when its summary requires that. The server routes opaque rows; the authorized
+worker resolves the semantic key and decrypts summaries or bodies before
+rendering CLI output.
 
 ## Context resolution
 

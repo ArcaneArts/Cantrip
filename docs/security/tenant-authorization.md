@@ -12,8 +12,7 @@ Fastify establishes the request principal before route handlers execute. The
 server carries its owner ID through asynchronous request work with
 `AsyncLocalStorage`, which keeps deep helpers owner-scoped without relying on a
 process-global current user. Trusted background entry points must explicitly
-enter an owner context. Examples include a validated webhook delivery and each
-candidate selected by the workflow schedule scanner.
+enter an owner context. Project-automation candidates are one current example.
 
 Worker enrollment and service credentials are a separate machine-identity
 boundary. Every hosted internal route resolves a hashed worker credential to
@@ -26,32 +25,34 @@ anonymous loopback pnpm-dev/Tauri bootstraps.
 Repository lookups include the owner alongside resource identifiers. A
 foreign identifier therefore follows the same not-found path as a random
 identifier. Collection routes return only owned rows. This applies to project
-tabs, chat data, model/provider configuration, workflows, worktrees, remote
-surfaces, and their mutations.
-
-The public workflow webhook route is an intentional exception to cookie
-authentication. It first resolves only webhook-capable trigger metadata,
-compares the resource-bound credential without exposing trigger existence, and
-then enters the trigger owner's context for delivery. Invalid trigger IDs and
-invalid credentials both return `404`.
+tabs, chat data, model/provider configuration, worktrees, remote surfaces, and
+their mutations. Durable workflow routes are no longer registered; former
+durable-workflow and webhook paths use the ordinary not-found response and have
+no authentication exception.
 
 ## Long-lived transports and capabilities
 
 - Application live sockets bind to an owner and, when present, a user session.
   Subscriptions are re-authorized by owner. Events and replay cursors are
   private per owner, so even `current-user` invalidations cannot cross tenants.
-- Logout closes live, terminal, and remote-surface sockets for the revoked
-  session. Logout-all closes every tracked socket for the account. Active live
-  sessions are revalidated during heartbeat maintenance, while terminal and
-  remote-surface sessions are periodically revalidated.
-- Cantrip Code attachment tokens are random, idle-expiring, maximum-lifetime
-  bounded, and bound to owner, authenticated user session, worker, Code tab,
-  editor session, managed tunnel, and relay attachment. The worker verifies the
-  selected editor session still belongs to the tunnel's Code tab before it
-  opens the loopback target. Revoking a login session invalidates its
-  attachments.
-- Project-share tokens remain explicit, revocable, expiring capabilities bound
-  to owner, project, worker, and canonical filesystem root.
+- Logout closes App Live and compatibility feature sockets and revokes the
+  session's WorkerLink sessions, exact grants, peer signaling, relays, LOCAL
+  capabilities, and tracked sockets. Logout-all applies the same boundary to
+  every session for the account.
+- A WorkerLink session is bound to the exact server identity and generation,
+  owner, account session, client instance, worker, and worker generation.
+  Resource grants add the exact feature resource, optional exact attachment,
+  allowed operations and lanes, channel count, and lease.
+  Candidate addresses are rendezvous data; the authenticated DTLS-bound peer
+  handshake and installed grant are authority.
+- Cantrip Code additionally binds the Code session, managed tunnel, and
+  attachment. The worker stores the installed token hash while the client gets
+  the bearer, and verifies the selected editor session before opening the
+  loopback target.
+- The server does not bind or inspect a project-share root. It binds the tenant,
+  project or standalone chat, worker, tunnel, and attachment. Root, Digest
+  credentials, and data key remain protected tunnel content; the worker opens
+  them and validates the canonical root.
 
 ## Application session boundary
 
@@ -81,3 +82,6 @@ production server source to prohibit Task decryption dependencies, assigns an
 opaque or plaintext-rejection contract to each Task-adjacent route, and checks
 the repository guards that prevent ordinary plaintext messages, queued
 prompts, and project automations from targeting Task-experience chats.
+WorkerLink tests additionally cover exact grant enforcement, authenticated peer
+signaling, relay isolation, worker-generation fencing, logout revocation, and
+cross-tenant rejection.

@@ -62,8 +62,9 @@ an isolated environment map. HTTP configuration supports static headers,
 headers sourced from worker environment variables, and an optional bearer-token
 environment variable. Secret values are not shown in server list rows.
 
-The server resolves the effective name-keyed set before dispatching chats,
-Codex consoles, workflow execution or generation, and Git agent generation.
+The server resolves the effective set by opaque `nameBlindIndex` before
+dispatching chats, Codex consoles, project automations, and Git agent
+generation.
 An effective disabled definition still shadows less-specific definitions but
 is omitted from worker dispatch. The worker also rejects disabled definitions
 defensively before decryption and omits them from Codex's native configuration,
@@ -71,8 +72,9 @@ so Codex receives no tools, resources, prompts, instructions, or server identity
 for a disabled user server. The separately synthesized managed Cantrip and
 CodeGraph MCP servers are always enabled and cannot be edited, copied, disabled,
 or removed.
-The worker translates that set to Codex's native `mcp_servers` configuration
-and supplies it through `thread/start` or `thread/resume`. When the effective
+The worker decrypts the selected configurations, translates them to Codex's
+native `mcp_servers` configuration, and supplies it through `thread/start` or
+`thread/resume`. When the effective
 set changes for an already-loaded idle thread, the worker unsubscribes and
 resumes the thread so Codex rematerializes its native MCP runtime without
 editing filesystem configuration.
@@ -82,15 +84,11 @@ panel after the configured server is present on that chat's Codex thread.
 
 ## Unified composer discovery
 
-Typing `/` at the start of an otherwise empty chat draft searches one portable
-palette containing Cantrip built-in chat commands, Codex skills discovered for
-that chat runtime, and the active project's personal and project workflows.
-Collisions stay explicit through stable invocation namespaces: built-ins use
-`/name`, workflows use `/personal/slug` or `/project/slug`, and skills use
-`$name`. Choosing a skill inserts its native mention into the draft; choosing a
-workflow opens its server-backed review and launch surface in Project Settings.
-The palette does not reinterpret a workflow as a Codex slash command or copy a
-skill into Cantrip-owned storage.
+Typing `/` at the start of an otherwise empty chat draft searches Cantrip
+built-in chat commands and Codex skills discovered for that chat runtime.
+Built-ins use `/name`; skills use `$name`. Choosing a skill inserts its native
+mention. Durable workflow entries and `/personal/...` or `/project/...`
+namespaces are no longer present.
 
 `POST /api/chats/:chatId/customizations/mcp-resource` reads one advertised MCP
 resource through Codex. Cantrip limits the normalized response to 5 MB before
@@ -143,8 +141,8 @@ the app never supplies a worker or runtime identifier directly.
 App Settings includes a Skills tab for browsing the selected worker and Codex
 provider's global skill roots. Project Settings adds its own Skills tab, with
 repository skills from `.agents/skills` shown before a separately labeled
-Global Skills inventory. This keeps project-owned workflows visibly distinct
-from Cantrip-account, worker-user, bundled, and administrator skills.
+Global Skills inventory. This keeps repository skills visibly distinct from
+Cantrip-account, worker-user, bundled, and administrator skills.
 
 The repository-root `skill_templates/` directory is Cantrip's source of truth
 for additional bundled system skills. Each child directory is a complete skill

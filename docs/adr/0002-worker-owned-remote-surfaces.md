@@ -3,6 +3,13 @@
 - Status: Accepted
 - Date: 2026-08-08
 
+> Amendment: Worker ownership and lifecycle remain accepted. Supported Browser
+> and Remote Desktop clients now use shared WorkerLink interactive/realtime
+> lanes over LOCAL where eligible, authenticated LAN/WAN WebRTC peer carriers,
+> or server RELAY. The
+> feature-specific transport below is retained as decision history and a
+> deprecated compatibility description; see ADR 0009 and `docs/NETWORK.md`.
+
 ## Context
 
 Cantrip needs interactive Browser and remote-desktop tabs in Tauri, ordinary

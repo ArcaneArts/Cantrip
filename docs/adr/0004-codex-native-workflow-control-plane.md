@@ -1,7 +1,16 @@
 # ADR 0004: Codex-native workflow control plane
 
-- Status: accepted
+- Status: superseded
 - Date: 2026-08-09
+
+> Supersession: the public durable-workflow UI and APIs were removed in commit
+> `66ab97645`. The remaining scheduler, executor, workflow repositories, worker
+> commands/events, and focused runtime tests were removed in commit
+> `87adc1841`. Former durable-workflow paths remain unregistered and receive
+> ordinary not-found responses. Only residual protocol/encryption schemas and
+> database tables remain, together with accounting and conservative
+> lifecycle-blocker reads. The decision below is historical; see
+> `docs/WORKFLOW_ORCHESTRATION.md` for the current boundary.
 
 ## Context
 

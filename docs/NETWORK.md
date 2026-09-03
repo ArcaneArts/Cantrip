@@ -5,10 +5,10 @@
 - Route priority: `LOCAL -> LAN -> WAN -> RELAY`
 - Acceptance: [NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md)
 
-Cantrip should use the server as its durable control plane without requiring the
+Cantrip uses the server as its durable control plane without requiring the
 server to relay every byte exchanged between a client and a worker. A client
 and worker remain connected to the server for authentication, authorization,
-settings, projects, conversations, workflow state, statistics, signaling, and
+settings, projects, conversations, statistics, signaling, and
 revocation. After the server authorizes a client-worker relationship, a shared
 network fabric selects the best reachable data route and carries the features
 that benefit from lower latency or reduced server bandwidth.
@@ -42,7 +42,7 @@ The initial design makes the following decisions:
   Deployments may override or disable it.
 - A valid Cantrip account session is sufficient device authorization. There is
   no additional trusted-device approval layer.
-- Direct incremental chat and worker observations are provisional. Final chat
+- WorkerLink incremental chat and worker observations are provisional. Final chat
   messages and durable state continue through the server.
 - An interrupted TCP or WebSocket stream may reconnect after route selection
   restarts. Arbitrary byte streams are not transparently resumed.
@@ -106,11 +106,10 @@ flowchart LR
 The core abstraction is one transient `WorkerLinkSession` for the exact tuple:
 
 ```text
-server identity
-+ account session
-+ client instance
-+ worker ID
-+ worker process generation
+serverId + serverGeneration
++ ownerId + accountSessionId
++ clientInstanceId
++ workerId + workerProcessGeneration
 ```
 
 Terminal, Code, Browser, Remote Desktop, tunnels, and worker observations open
@@ -118,17 +117,23 @@ logical channels on that session. They do not select routes themselves.
 
 ## WorkerLink boundary
 
-The application-facing API should express resource authorization and transport
+The application-facing API expresses resource authorization and transport
 semantics rather than network topology:
 
 ```ts
 interface WorkerLink {
   readonly workerId: string;
   readonly preferredRoute: "local" | "lan" | "wan" | "relay";
+  readonly session: WorkerLinkSession;
 
-  openStream(grant: ResourceGrant, qos: StreamQos): DuplexStream;
-  subscribe(grant: ResourceGrant, topic: string): EventSubscription;
-  sendDatagram(grant: ResourceGrant, payload: Uint8Array): boolean;
+  openStream(
+    grant: WorkerLinkResourceGrant,
+    lane: WorkerLinkQosLane,
+  ): Promise<WorkerLinkStream>;
+  openEventSubscription(
+    grant: WorkerLinkResourceGrant,
+  ): Promise<WorkerLinkStream>;
+  reprobe(reason?: WorkerLinkReprobeReason): Promise<void>;
 
   onRouteChanged(listener: (status: RouteStatus) => void): Unsubscribe;
 }
@@ -170,12 +175,26 @@ flowchart TD
     WAN -->|No| RELAY["Use prepared Cantrip<br/>server RELAY"]
     RELAY_PREP --> RELAY_READY["RELAY ready or active"]
 
-    LOCAL_ACTIVE --> CHANGE["Disconnect or network change"]
-    LAN_ACTIVE --> CHANGE
-    WAN_ACTIVE --> CHANGE
-    RELAY --> RETRY["Periodic upgrade probe"]
-    CHANGE --> START
-    RETRY --> START
+    LOCAL_ACTIVE --> CARRIER_FAILURE["Carrier failure"]
+    LAN_ACTIVE --> CARRIER_FAILURE
+    WAN_ACTIVE --> CARRIER_FAILURE
+    RELAY --> CARRIER_FAILURE
+    CARRIER_FAILURE --> RECOVER["Retry RELAY/direct carriers<br/>under current session"]
+    RECOVER -->|Carrier recovers| ROUTE_ACTIVE["Recovered carrier active"]
+    RECOVER -->|Bounded recovery fails| START
+    LOCAL_ACTIVE --> AUTHORITY["Authority replacement"]
+    LAN_ACTIVE --> AUTHORITY
+    WAN_ACTIVE --> AUTHORITY
+    RELAY --> AUTHORITY
+    AUTHORITY --> START
+    LOCAL_ACTIVE --> MOBILITY["Network change or app resume"]
+    LAN_ACTIVE --> MOBILITY
+    WAN_ACTIVE --> MOBILITY
+    RELAY --> MOBILITY
+    MOBILITY --> KEEP["Keep RELAY and healthy LOCAL;<br/>retire LAN/WAN"]
+    KEEP --> LOCAL_KEPT{"LOCAL still ready?"}
+    LOCAL_KEPT -->|Yes| LOCAL_ACTIVE
+    LOCAL_KEPT -->|No| LOCAL
 ```
 
 ### LOCAL
@@ -219,7 +238,7 @@ A successful non-relay peer connection selects `WAN`. Restrictive firewalls,
 carrier-grade NAT, symmetric NAT, or blocked UDP may make WAN direct impossible;
 that is an ordinary reason to use the server relay.
 
-Cantrip should ship a default STUN configuration so WAN discovery works without
+Cantrip ships a default STUN configuration so WAN discovery works without
 requiring every deployment to discover the setting independently. A deployment
 may replace the default, supply multiple STUN endpoints, or disable WAN direct.
 STUN supplies address discovery only; it does not relay application bytes.
@@ -236,25 +255,28 @@ WorkerLink route named `RELAY` is the ordinary Cantrip server relay.
 
 ## Route mobility and recovery
 
-Route selection restarts from `LOCAL` after:
+Carrier failure reconnects through the supported priority list. The client also
+starts a coalesced mobility reprobe after:
 
-- active-carrier failure;
 - operating-system network-change notification;
 - application resume;
-- ICE failure or sustained disconnection;
-- worker process-generation change;
-- server control-plane generation change; or
-- an explicit server-authorized reprobe.
+- an explicit authorized call to the public reprobe method.
+
+ICE or sustained carrier failure uses the normal close-and-reconnect path.
+Worker process-generation, server generation, account-session, or client
+identity changes replace the session rather than acting as routine mobility.
 
 The client coalesces bursts of browser/WebView network-interface, online,
 back-forward-cache, and hidden-to-visible lifecycle notifications plus native
 Capacitor network and app-state notifications before reprobing. A mobility
-reprobe retains an already-ready `RELAY` carrier while it retires and recreates
-the direct carriers. Only streams fixed to a retired carrier close; streams on
-surviving carriers continue, and the owning feature controller reacquires a
-grant and opens a new stream through the current priority chain. WorkerLink
-does not pretend that an arbitrary TCP or event stream survived the route
-change.
+reprobe retains an already-ready `RELAY` carrier and a healthy `LOCAL` carrier
+while it retires `LAN` and `WAN`. If LOCAL was retained, probing stops there;
+otherwise it starts at the first supported direct route—LAN for browser/mobile,
+or LOCAL then LAN/WAN where supported. Only streams fixed to a retired carrier
+close; streams on surviving carriers continue, and the owning feature
+controller reacquires a grant and opens a new stream through the current
+priority chain. WorkerLink does not pretend that an arbitrary TCP or event
+stream survived the route change.
 
 A same-session renewal with a higher route generation atomically retires the
 old carriers, installs the returned authority, and reconnects against that new
@@ -285,10 +307,10 @@ sequenceDiagram
         W-->>S: Relay worker frames through worker channel
         S-->>C: Deliver relayed worker frames
     end
-    Note over C,W: Network changes or carrier failure
+    Note over C,W: Network change, resume, or carrier failure
     C->>S: Refresh authorization if required
-    C->>W: Restart LOCAL -> LAN -> WAN probes
-    C->>S: Use RELAY while no direct route is ready
+    C->>W: Keep healthy LOCAL or reprobe the first supported direct route
+    C->>S: Keep RELAY ready while direct routes are unavailable
     S-->>C: Continue relayed delivery
 ```
 
@@ -309,25 +331,25 @@ reconnect through the current priority list. When the authority generation
 changes, all streams are retired. In either case:
 
 - non-resumable streams close and reconnect;
-- a Tauri localhost listener should retain its local port when possible;
+- a Tauri localhost listener retains its local port;
 - event subscriptions reopen automatically;
 - Remote Surface channels start a fresh transport generation;
 - provisional event state is reconciled; and
 - the client requests an authoritative HTTP snapshot if continuity is unclear.
 
-Returning from cellular to Wi-Fi therefore causes a new LAN attempt before the
-client settles on WAN or RELAY again.
+Returning from cellular to Wi-Fi causes a new LAN attempt before WAN or RELAY
+when no healthy LOCAL carrier was retained.
 
 ## Carriers and platforms
 
 The logical fabric is shared even when platform capabilities require different
 carrier implementations.
 
-| Client    | LOCAL                         | LAN/WAN                                                                                    | RELAY                   |
-| --------- | ----------------------------- | ------------------------------------------------------------------------------------------ | ----------------------- |
-| Tauri     | Authenticated loopback broker | WebRTC for renderer-owned channels plus a native peer carrier for operating-system tunnels | Server binary WebSocket |
-| Browser   | Normally unavailable          | WebRTC DataChannels                                                                        | Server WebSocket        |
-| Capacitor | Normally unavailable          | WebRTC DataChannels                                                                        | Server WebSocket        |
+| Client    | LOCAL                         | LAN/WAN                                                                                     | RELAY                   |
+| --------- | ----------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- |
+| Tauri     | Authenticated loopback broker | Renderer-owned WebRTC; native tunnels use the bounded native/WebView bridge into WorkerLink | Server binary WebSocket |
+| Browser   | Normally unavailable          | WebRTC DataChannels                                                                         | Server WebSocket        |
+| Capacitor | Normally unavailable          | WebRTC DataChannels                                                                         | Server WebSocket        |
 
 WebRTC is the common direct carrier for browser and Capacitor and also serves
 renderer-owned Tauri channels. The renderer's default `WorkerLinkManager`
@@ -372,13 +394,13 @@ source.
 
 One logical worker link carries multiple independently bounded lanes:
 
-| Lane          | Delivery                             | Priority           | Initial consumers                                 |
-| ------------- | ------------------------------------ | ------------------ | ------------------------------------------------- |
-| `events`      | Reliable, ordered, small             | Highest            | Chat progress, file changes, runtime observations |
-| `interactive` | Reliable, ordered, latency-sensitive | High               | Terminal, keyboard, pointer, clipboard control    |
-| `stream`      | Reliable, flow-controlled bytes      | Normal             | Code, WebSockets, TCP tunnels                     |
-| `realtime`    | Unordered, disposable                | High but droppable | Browser/Desktop frames and cursor images          |
-| `bulk`        | Reliable, bounded                    | Low                | Future attachments and file transfers             |
+| Lane          | Delivery                             | Scheduler weight | Initial consumers                                 |
+| ------------- | ------------------------------------ | ---------------: | ------------------------------------------------- |
+| `interactive` | Reliable, ordered, latency-sensitive |                8 | Terminal, keyboard, pointer, clipboard control    |
+| `events`      | Reliable, ordered, small             |                4 | Chat progress, file changes, runtime observations |
+| `realtime`    | Unordered, disposable                |                4 | Browser/Desktop frames and cursor images          |
+| `stream`      | Reliable, flow-controlled bytes      |                2 | Code, WebSockets, TCP tunnels                     |
+| `bulk`        | Reliable, bounded                    |                1 | Future attachments and file transfers             |
 
 ```mermaid
 flowchart LR
@@ -400,24 +422,27 @@ flowchart LR
 ```
 
 Each lane has independent queue, frame, credit, and bandwidth limits. Large
-Code responses or tunnel transfers must not delay terminal input or committed
-control acknowledgements. Realtime frames may be dropped when superseded;
-input and reliable events may not.
+Code responses or tunnel transfers must not delay terminal input or reliable
+WorkerLink event traffic. App Live control acknowledgements remain on their
+separate transport. Realtime frames may be dropped when superseded; input and
+reliable events may not.
 
-The common fabric envelope should include:
+The common fabric envelope includes:
 
 - protocol version;
-- peer session and route generation;
-- resource grant;
+- WorkerLink session ID and route generation;
+- the exact resource grant on channel `open`; subsequent frames are bound by
+  session and channel identity;
 - logical channel and connection identity;
 - QoS lane;
 - directional sequence;
 - open, accept, reject, credit, half-close, close, and data operations; and
 - payload-protection metadata.
 
-The existing tunnel data-plane envelope can initially be carried inside a
-reliable fabric stream. This preserves current Code, WebDAV, Terminal, and raw
-TCP endpoint adapters while route selection moves below them.
+The existing `tunnel-data-plane-v1` envelope is carried inside a reliable
+WorkerLink stream. This preserves the endpoint identity, encryption, and flow
+control used by Code, WebDAV, and raw TCP adapters while route selection stays
+below them.
 
 ## Authorization and identity
 
@@ -425,12 +450,11 @@ A shared peer connection is not a general worker credential. The server issues
 short-lived grants such as:
 
 ```text
-terminal:<terminalId>       interactive + stream
-code:<codeSessionId>        stream
-browser:<surfaceId>         interactive + realtime
-remote-desktop:<surfaceId>  interactive + realtime
-tunnel:<attachmentId>       stream
-observations:<projectId>    selected event topics
+terminal:<terminalId>       exact operation attachment; interactive
+tunnel:<tunnelId>           exact attachment; stream (Code, share, generic TCP)
+browser:<surfaceId>         exact attachment; interactive + realtime
+remote-desktop:<surfaceId>  exact attachment; interactive + realtime
+observations:<workerId>     exact subscription attachment and installed topics
 ```
 
 The server creates a peer session only when the client account session and the
@@ -508,7 +532,6 @@ Final and durable information continues through the server:
 - approvals and interactions;
 - settings, project, and policy changes;
 - durable Git and worktree summaries;
-- workflow state; and
 - resource lifecycle changes.
 
 ```mermaid
@@ -519,14 +542,14 @@ sequenceDiagram
     participant S as Server
 
     W->>L: Incremental inference/activity update
-    L-->>C: Provisional direct update
+    L-->>C: Provisional WorkerLink update
     W->>S: Final normalized result
     S->>S: Persist durable conversation state
     S-->>C: Committed app-live event
     C->>C: Replace provisional state with canonical record
 ```
 
-Direct and canonical events share stable operation, turn, message, and sequence
+WorkerLink and canonical events share stable operation, turn, message, and sequence
 identities so clients can deduplicate them. If the observation channel loses
 continuity, the client drops uncertain provisional state and fetches the
 authoritative server snapshot.
@@ -535,18 +558,19 @@ The supported application owns one feature-neutral observation client. It
 retains one read-only subscription per worker only while visible IDE surfaces
 or cached running work demand that worker's topics, with a short grace window
 across project switches. Because the client runs inside the shared renderer,
-browser, Capacitor, and Tauri clients inherit the same LOCAL, LAN, WAN, and
-RELAY route selection without feature branches. Each subscription renews its
-exact grant and reopens through WorkerLink after mobility, revocation, worker
-restart, or transport failure.
+browser, Capacitor, and Tauri clients inherit the same policy-filtered route
+selection without feature branches. LOCAL is normally available only to Tauri;
+browser and Capacitor normally begin with LAN, then WAN and RELAY. Each
+subscription renews its exact grant and reopens through WorkerLink after
+mobility, revocation, worker restart, or transport failure.
 
-Direct chat messages use a separate provisional query overlay. Plaintext worker
+WorkerLink chat messages use a separate provisional query overlay. Plaintext worker
 events carry the same source-event identity into their canonical encrypted
 message, while already-protected messages are matched by stable message ID and
 protected-content revision. A delayed canonical inference event cannot replace
-a newer direct sequence. The committed app-live event removes the matching
+a newer provisional WorkerLink sequence. The committed app-live event removes the matching
 provisional revision; an authoritative final removes remaining provisional
-state for that turn. Direct filesystem, worktree, Git, terminal, CodeGraph, and
+state for that turn. WorkerLink filesystem, worktree, Git, terminal, CodeGraph, and
 run-configuration notifications feed the existing query families as short,
 coalesced hints rather than introducing feature-owned listeners.
 
@@ -563,12 +587,12 @@ The worker fans eligible events to every authorized subscription while keeping
 the existing server delivery unchanged. Protocol validation excludes final
 messages, final turn outcomes, approvals and interactions, peer signaling,
 provider authentication, and other durable or authority-bearing notifications
-from the direct channel. Each subscription has its own monotonic continuity
+from the WorkerLink channel. Each subscription has its own monotonic continuity
 sequence and bounded reliable queue; overflow closes that subscription so the
 client must resubscribe and reconcile instead of displaying an undetectable
 gap.
 
-Filesystem events are normally direct invalidation hints. Workers may still
+Filesystem events are normally WorkerLink invalidation hints. Workers may still
 send compact worktree and Git summaries to the server when durable coordination
 or other clients require them.
 
@@ -664,12 +688,13 @@ Terminal             LAN
 Chat progress         LAN
 Cantrip Code          LAN
 Remote Desktop        LAN
-Generic TCP tunnel    RELAY - native peer stream unavailable
+Generic TCP tunnel    RELAY - existing reliable stream remains pinned until reconnect
 ```
 
 A channel follows the global priority list using only carriers that satisfy its
-platform and QoS requirements. A direct Remote Desktop channel may therefore
-coexist with a relayed native tunnel until that tunnel can reconnect directly.
+platform and QoS requirements. A new direct Remote Desktop channel may therefore
+coexist with an older relayed native tunnel until that reliable tunnel
+reconnects.
 
 ## Server relay and replicated servers
 
@@ -779,13 +804,14 @@ an explicitly requested, redacted local diagnostic export.
 
 ## Deployment controls
 
-Deployment configuration should cover:
+Deployment configuration covers:
 
 - enable or disable LOCAL, LAN, or WAN attempts;
 - default and override STUN URLs;
 - worker interface denylist or allowlist;
 - VPN classification overrides;
-- negotiation and upgrade-probe timeouts;
+- negotiation timeout; `upgradeProbeTimeoutMs` is currently reserved schema
+  configuration with no production consumer;
 - maximum peer sessions per client and worker;
 - per-lane connection, queue, and bandwidth limits; and
 - a server-relay-only emergency mode.
@@ -802,71 +828,26 @@ direct route eligibility. `CANTRIP_WORKER_LINK_STUN_URLS` replaces the default
 `stun:stun.cloudflare.com:3478` WAN discovery endpoint; an explicitly empty
 value disables STUN discovery. Interface allowlists and denylists are mutually
 exclusive, and VPN interfaces remain `WAN` unless named by the explicit VPN LAN
-allowlist. Negotiation/probe timeouts, client/worker peer ceilings, and bounded
-per-lane limits are deployment-controlled. The emergency
+allowlist. Negotiation timeout, client/worker peer ceilings, and bounded
+per-lane limits are deployment-controlled. The reserved upgrade-probe timeout
+does not currently drive runtime behavior. The emergency
 `CANTRIP_WORKER_LINK_RELAY_ONLY` switch overrides every direct-route setting.
 None of these WorkerLink controls permits TURN.
 
-## Implementation plan
+## Implementation status
 
-### Phase 1: Protocol and facade
+Both implementation tranches are complete. The protocol and client facade,
+worker gateway, server session/grant coordinator, LOCAL and RELAY carriers,
+renderer-owned LAN/WAN peer carrier, native/WebView tunnel bridge, feature
+adapters, scoped observation subscriptions, route mobility, relay
+consolidation, and compatibility isolation are implemented.
 
-- Add peer-session, route, grant, candidate, signaling, frame, and QoS schemas
-  to `@cantrip/protocol`.
-- Add the client `WorkerLinkManager` and feature-neutral stream/event APIs.
-- Add the worker `WorkerLinkGateway` and resource adapter registry.
-- Add the server peer-session and grant coordinator.
-- Record a follow-up ADR that generalizes ADR 0008 beyond loopback.
-
-### Phase 2: Preserve existing LOCAL and RELAY behavior
-
-- Implement `LocalCarrier` around the current direct broker.
-- Implement `RelayCarrier` around current server routes.
-- Put Terminal and generic tunnel adapters behind WorkerLink.
-- Confirm route abstraction parity before adding new reachability.
-
-### Phase 3: Cross-platform peer carrier
-
-- Extract Remote Surface WebRTC into a feature-neutral `PeerCarrier`.
-- Implement separate LAN-only and WAN-direct candidate rounds.
-- Add default STUN configuration with deployment overrides.
-- Validate WebRTC DataChannels in Tauri, supported browsers, iOS Capacitor, and
-  Android Capacitor.
-- Add network-change, suspension, and resume recovery.
-
-### Phase 4: Native tunnel forwarding
-
-- Benchmark the native Rust WebRTC, pinned peer socket, and bounded WebView
-  bridge alternatives.
-- Implement the selected native carrier beneath the common interface. Complete.
-- Route Code and generic desktop tunnels over LAN and WAN. Complete.
-- Preserve Tauri localhost listener ports across carrier reconnects. Complete.
-
-### Phase 5: Feature consolidation
-
-- Migrate Browser input, control, and frames.
-- Migrate Cantrip Code HTTP and WebSocket traffic.
-- Migrate Remote Desktop.
-- Remove feature-owned route-selection logic after parity testing.
-
-### Phase 6: Worker observations
-
-- Add scoped observation subscription grants. Complete in T2.9A.
-- Move incremental inference and activity progress to WorkerLink. Complete in
-  T2.9B.
-- Move filesystem watcher hints to WorkerLink. Complete in T2.9B.
-- Retain final server persistence and app-live reconciliation. Complete in
-  T2.9B.
-
-### Phase 7: Relay consolidation and cleanup
-
-- Route supported feature clients through `WorkerLinkRelay`. Complete in
-  T2.10A.
-- Retain independently bounded QoS queues and feature quota/metering parity.
-  Complete in T2.10A.
-- Isolate and deprecate legacy feature-specific endpoints behind a measured
-  compatibility soak. Complete in T2.10B; physical removal is separately gated.
-- Preserve the deployment-wide relay-only switch.
+Supported Terminal, Browser, Remote Desktop, Code, tunnel, project-share, and
+observation paths now use WorkerLink. The old feature-specific endpoints remain
+deprecated compatibility surfaces and are not the architecture described by
+this contract. The tranche-by-tranche evidence and remaining physical-device
+coverage are recorded in [NETWORK_PROGRESS.md](NETWORK_PROGRESS.md) and
+[NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md).
 
 ## Validation strategy
 
@@ -877,18 +858,18 @@ in [NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md).
 
 Build a repeatable network matrix for every migrated feature:
 
-| Scenario                                          | Expected route                  |
-| ------------------------------------------------- | ------------------------------- |
-| Tauri and worker on the same machine              | LOCAL                           |
-| Separate devices on the same ordinary LAN         | LAN                             |
-| Tailscale or ZeroTier path                        | WAN                             |
-| Direct public peer connectivity through STUN      | WAN                             |
-| Direct UDP blocked                                | RELAY                           |
-| Worker peer listener blocked by firewall          | RELAY                           |
-| Cellular to Wi-Fi transition                      | Reprobe, prefer LAN             |
-| Wi-Fi to cellular transition                      | Reprobe, prefer WAN, then RELAY |
-| Server replica differs from worker-owning replica | Same route semantics            |
-| Grant expires or account session ends             | Channel revoked                 |
+| Scenario                                          | Expected route                                                  |
+| ------------------------------------------------- | --------------------------------------------------------------- |
+| Tauri and worker on the same machine              | LOCAL                                                           |
+| Separate devices on the same ordinary LAN         | LAN                                                             |
+| Tailscale or ZeroTier path                        | WAN                                                             |
+| Direct public peer connectivity through STUN      | WAN                                                             |
+| Direct UDP blocked                                | RELAY                                                           |
+| Worker peer listener blocked by firewall          | RELAY                                                           |
+| Cellular to Wi-Fi transition                      | Keep healthy LOCAL; otherwise reprobe from LAN                  |
+| Wi-Fi to cellular transition                      | Keep healthy LOCAL; otherwise reprobe WAN/RELAY after LAN fails |
+| Server replica differs from worker-owning replica | Same route semantics                                            |
+| Grant expires or account session ends             | Channel revoked                                                 |
 
 The matrix must cover:
 
@@ -912,7 +893,9 @@ The matrix must cover:
 - Internet-reachable peers select `WAN` without using a relay candidate.
 - VPN paths are reported as `WAN` by default.
 - Failed direct connectivity selects the Cantrip server `RELAY` automatically.
-- Network changes restart selection in `LOCAL -> LAN -> WAN -> RELAY` order.
+- Network changes preserve RELAY and a healthy LOCAL carrier while retiring
+  LAN/WAN. A retained LOCAL stops probing; otherwise the client probes from its
+  first supported direct route.
 - Browser and Capacitor carry in-app Terminal, Code, Browser, Remote Desktop,
   and worker-observation traffic through WebRTC when a direct route succeeds.
 - Every route enforces identical server-issued resource grants.

@@ -10,13 +10,11 @@ folders, repositories, terminals, Codex runtimes, Code profiles, browser
 processes, and desktop state. The server never becomes a shared filesystem.
 
 This guide describes the supported container boundary and equivalent native
-service operation. It assumes two public HTTPS names:
-
-- `api.cantrip.example` for the API and control/data WebSockets;
-- `code.cantrip.example` for the isolated Cantrip Code surface.
-
-The application origin is separate and must appear exactly in
-`CANTRIP_APP_ORIGINS`. Do not place the API and Code surface on the same origin.
+service operation. A deployment exposes one public HTTPS origin, such as
+`api.cantrip.example`, for HTTP, AppLive, worker control, and WorkerLink relay
+traffic. Cantrip Code is a server-authorized WorkerLink resource, not a second
+public listener or `code.` origin. Each separately hosted application origin
+must appear exactly in `CANTRIP_APP_ORIGINS`.
 
 ## Production Droplet release
 
@@ -31,14 +29,17 @@ Droplet. The release workstation needs:
   Platform app;
 - authenticated Infisical CLI access to the project in `.infisical.json`;
 - OpenSSH, SCP, and tar; and
-- both production DNS names resolving to the `sshHost` in
+- the production API DNS name resolving to the `sshHost` in
   `deploy/production/deploy.json`.
 
 The Infisical environment named by that file must define the administrator,
-allowed app origins, API and Code origins, database URL, encryption keyring and
-active key ID, metrics token, and SSH private deployment key. The deployer reads
-them locally and sends only an explicit server-variable allowlist to the host.
-The SSH key is never included in the service environment. Secret values are not
+allowed application origins, API domain and public origin, database URL, the
+currently required hosted server keyring and active key ID, metrics token, and
+SSH private deployment key. The server keyring is a compatibility startup
+input at this revision; provider and MCP payloads use account endpoint
+encryption and cannot be decrypted with it. The deployer reads the values
+locally and sends only an explicit server-variable allowlist to the host. The
+SSH key is never included in the service environment. Secret values are not
 printed by the deployment script.
 
 Run a full release from synchronized `main`:
@@ -47,13 +48,14 @@ Run a full release from synchronized `main`:
 pnpm release
 ```
 
-This fast-forwards the `release` branch, updates and verifies both DigitalOcean
-App Platform static sites, cross-builds the Server bundle, writes the root-only
-environment, uploads the immutable release, runs the matching forward migration,
-switches the active symlink, and restarts Caddy and Cantrip. It waits for App
-Platform and both public HTTPS health endpoints before succeeding. If branch
-promotion already succeeded but the Droplet deployment failed, retry only the
-host phase:
+This fast-forwards the `release` branch, validates the DigitalOcean App
+Platform specification and triggers deployment of its `app` and `site`
+components, cross-builds the Server bundle, writes the root-only environment,
+uploads the immutable release, runs the matching forward migration, switches
+the active symlink, and restarts Caddy and Cantrip. App Platform activation is
+not awaited by this command; the host phase waits for the single public API
+`/readyz` endpoint before succeeding. If branch promotion already succeeded
+but the Droplet deployment failed, retry only the host phase:
 
 ```bash
 pnpm deploy:server
@@ -70,8 +72,7 @@ The host layout is:
 
 The installer bootstraps Ubuntu's Caddy package and the `cantrip` system user,
 opens HTTP/HTTPS in UFW, validates the Caddy configuration, and enables both
-services at boot. Application listeners remain bound to loopback on ports 4310
-and 4311. The DigitalOcean cloud firewall remains the outer network boundary.
+services at boot. The application listener remains bound to loopback on port 4310. The DigitalOcean cloud firewall remains the outer network boundary.
 If the newly restarted Server fails local readiness, the installer restores the
 previous application symlink and process. Database migrations are forward-only,
 so a database backup is still required before releases that alter schema.
@@ -81,7 +82,7 @@ so a database backup is still required before releases that alter schema.
 Requirements:
 
 - Docker Engine 27 or newer with Compose v2;
-- public DNS for the API and Code names;
+- public DNS for the API name;
 - ports 80 and 443 reaching the proxy host;
 - a separately hosted Cantrip web app or a native Cantrip client;
 - enough build capacity for the pinned Codex and Cantrip Code toolchains.
@@ -93,10 +94,11 @@ cp deploy/hosted.env.example deploy/hosted.env
 openssl rand -base64 32
 ```
 
-Use the value as the encryption keyring entry, set `CANTRIP_ADMIN_EMAIL` to the
-administrator who will create the first account, and set a random URL-safe
-PostgreSQL password in both `POSTGRES_PASSWORD` and `DATABASE_URL`. Then
-validate and start the control plane:
+Use the generated value for the currently required hosted server keyring, set
+`CANTRIP_ADMIN_EMAIL` to the administrator who will create the first account,
+and set a random URL-safe PostgreSQL password in both `POSTGRES_PASSWORD` and
+`DATABASE_URL`. This server key is not the account component key used to
+protect provider or MCP content. Then validate and start the control plane:
 
 ```bash
 export CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)"
@@ -106,10 +108,10 @@ docker compose --env-file deploy/hosted.env \
   -f deploy/compose.hosted.yml --profile proxy up -d --build
 ```
 
-The server's published 4310/4311 ports bind only to host loopback for
-diagnostics. The fixed internal proxy address is the only trusted forwarding
-peer. The Caddy profile obtains certificates and serves the two public names.
-Use the supplied Nginx example when TLS is managed elsewhere.
+The server's published port 4310 binds only to host loopback for diagnostics.
+The fixed internal proxy address is the only trusted forwarding peer. The
+Caddy profile obtains a certificate and serves the public API name. Use the
+supplied Nginx example when TLS is managed elsewhere.
 
 The license whitelist is enabled by default. The configured administrator can
 open **Admin** from the server selector to add or remove licensed signup email
@@ -148,11 +150,14 @@ credential revocation or loss; an ordinary upgrade keeps the worker identity.
 
 ## Migrations and rolling upgrades
 
-Cantrip migrations are forward-only. Take a verified PostgreSQL backup and keep
-the complete secret-encryption keyring before applying an upgrade. The database
-contains encrypted provider API keys, ChatGPT/Grok OAuth accounts, and MCP
-credentials; neither a database-only backup nor a keyring-only backup is
-independently useful. Run exactly one migration job against the target release:
+Cantrip migrations are forward-only. Take a verified PostgreSQL backup before
+applying an upgrade. The database contains opaque endpoint-encrypted provider
+API keys, provider-account labels and OAuth bundles, and complete MCP
+configurations. Their usable keys belong to unlocked applications and
+authorized workers; the operator server keyring cannot decrypt or rewrap these
+records. Preserve the database encryption registry with the rest of PostgreSQL,
+and preserve worker data directories when unattended worker key custody must
+survive recovery. Run exactly one migration job against the target release:
 
 ```bash
 docker compose --env-file deploy/hosted.env \
@@ -164,7 +169,7 @@ Normal server startup also applies pending migrations, which is convenient for
 one-instance installations. Multi-instance operators should use the explicit
 job, then replace server replicas gradually. Do not run an older server against
 a schema after its documented compatibility window. Rollback means restoring
-the pre-upgrade database and matching keyring, not running down migrations.
+the pre-upgrade database and matching release, not running down migrations.
 
 Workers may be upgraded independently after the server. Drain or finish active
 Codex, terminal, Code, browser, and desktop work first. A reconnect reports the
@@ -183,15 +188,17 @@ docker compose --env-file deploy/hosted.env \
   > "backups/cantrip-$(date -u +%Y%m%dT%H%M%SZ).dump"
 ```
 
-Also back up, through the operator's secret manager:
+Also back up:
 
-- every key still present in `CANTRIP_SECRET_ENCRYPTION_KEYS`;
 - the Compose configuration and exact Cantrip release identifier;
+- worker data directories whose persisted identity or local project state must
+  survive loss; and
 - Caddy data when preserving the current ACME account is important.
 
-Do not put secrets in the database backup directory. Losing the keyring makes
-encrypted provider and MCP credentials unrecoverable even when PostgreSQL is
-intact. Redis is coordination/cache state and is not authoritative backup data.
+Do not put secrets in the database backup directory. Provider and MCP recovery
+depends on account endpoint-encryption custody, not
+`CANTRIP_SECRET_ENCRYPTION_KEYS`. Redis is coordination/cache state and is not
+authoritative backup data.
 
 Test restoration on an isolated database regularly:
 
@@ -203,30 +210,32 @@ cat backups/cantrip-YYYYMMDDTHHMMSSZ.dump | \
       --clean --if-exists --no-owner'
 ```
 
-Stop Cantrip server replicas before an in-place restore. Restore into an empty or
-isolated PostgreSQL instance, supply the matching historical keyring, run the
-target release's migration command, and verify account sign-in, worker presence,
-project history, and a secret-backed provider before changing production DNS.
+Stop Cantrip server replicas before an in-place restore. Restore into an empty
+or isolated PostgreSQL instance, run the target release's migration command,
+and verify account sign-in, encryption unlock, worker presence, project
+history, and a secret-backed provider before changing production DNS.
 
 Worker volumes require their own filesystem backup policy if repository clones,
 dirty worktrees, Code profiles, or local artifacts must survive loss. For a
-worker-managed folder project, `<worker-data>/folders/<project-UUID>` is the
-authoritative source and has no Git remote fallback: back up the entire
-`folders/` tree whenever those projects matter. A server backup records project
-identity and history but cannot recreate folder contents.
+worker-managed folder project, the workspace-derived directory under the
+worker's managed folder root is the authoritative source and has no Git remote
+fallback. Back up the entire managed folder root whenever those projects
+matter. Older workers may still have UUID-derived directories beneath
+`<worker-data>/folders/`. A server backup records project identity and history
+but cannot recreate folder contents.
 
 Stop or quiesce the worker before taking a filesystem snapshot so Agents,
-workflows, terminals, Code, and shares cannot write through it. Keep the worker
+project automations, terminals, Code, and shares cannot write through it. Keep the worker
 backup paired with the PostgreSQL backup and release identifier from the same
 recovery point. Restore it only as that worker's data directory, preserving its
-credential/identity and exact UUID directory names; do not mount one restored
-volume into two workers. After restoration, verify the worker reconnects with
+credential, identity, and exact managed directory names; do not mount one
+restored volume into two workers. After restoration, verify the worker reconnects with
 the expected identity and exercise Explorer plus a file read/write in one
 managed folder before resuming unattended work.
 
 Git remotes remain the supported cross-worker source boundary for
 GitHub-backed projects, but they cannot recreate unpushed worker-local state.
-An explicitly converted folder keeps its physical UUID-derived directory, so
+An explicitly converted folder keeps its existing physical directory, so
 continue backing that path up until the project is deliberately deleted or its
 source is otherwise retired.
 
@@ -241,24 +250,26 @@ and opaque path handles; it cannot recreate repository files. See
 
 ## Reverse proxy and transport requirements
 
-Only HTTPS/WSS is supported for hosted traffic. The proxy must preserve `Host`,
-set `X-Forwarded-Proto: https`, append a syntactically valid
+Only HTTPS/WSS is supported for hosted server traffic. The proxy must preserve
+`Host`, set `X-Forwarded-Proto: https`, append a syntactically valid
 `X-Forwarded-For`, pass WebSocket upgrades, and disable response buffering for
-long-lived streams. Configure `CANTRIP_TRUSTED_PROXIES` as the smallest possible
-address or subnet containing only the proxy. Direct clients must not be able to
-reach the Node ports.
+long-lived streams. Configure `CANTRIP_TRUSTED_PROXIES` as the smallest
+possible address or subnet containing only the proxy. Direct clients must not
+be able to reach port 4310.
 
-The Code origin is intentionally isolated. Do not rewrite it below the API path
-or relax frame ancestors beyond exact application origins. The server refuses
-wildcard credentialed origins and ambiguous forwarding headers.
+Do not configure a second Code hostname, origin, upstream, or listener. Browser
+Code uses an application-origin virtual path backed by the Cantrip service
+worker, while its HTTP and WebSocket payloads travel through the authorized
+WorkerLink. Native Code and project-share clients use local loopback forwards.
 
-Remote desktop and browser streams prefer direct WebRTC, including host-only
-negotiation when no ICE service is configured. `CANTRIP_STUN_URLS` may help
-peers discover public candidates. Configure TURN fallback with
-`CANTRIP_TURN_URLS` and `CANTRIP_TURN_SHARED_SECRET`; use TLS (`turns:`) outside
-trusted networks and monitor TURN egress. Deployments that prohibit direct peer
-traffic may set `CANTRIP_WEBRTC_ICE_TRANSPORT_POLICY=relay`. WebSocket relay
-remains the compatibility fallback and also consumes server bandwidth.
+WorkerLink selects `LOCAL`, `LAN`, `WAN`, then `RELAY` for supported ephemeral
+client-to-worker traffic. LAN and WAN use authenticated WebRTC peer carriers;
+RELAY uses the server WebSocket relay and consumes hosted bandwidth. The server
+accepts `CANTRIP_WORKER_LINK_*` route and STUN overrides, but the bundled
+Compose and production lanes currently use the built-in WorkerLink defaults;
+custom overrides require explicit passthrough in the selected deployment asset.
+The older feature-specific ICE/TURN settings apply only to deprecated
+compatibility surfaces.
 
 ## Persistence, permissions, and operations
 
@@ -279,9 +290,10 @@ symlink/junction capability probe.
 
 Monitor container restarts, PostgreSQL capacity/latency, Redis availability,
 server health/readiness, worker presence, command failures, active WebSockets,
-relay bandwidth, scheduler lag, and TURN usage. Health and readiness semantics
-are documented by the server version; a live process does not imply that
-PostgreSQL, shared coordination, or a required worker is ready.
+WorkerLink route/relay behavior, project-automation schedule synchronization and
+dispatch logs, and compatibility TURN usage when enabled. Health and readiness
+semantics are documented by the server version; a live process does not imply
+that PostgreSQL, shared coordination, or a required worker is ready.
 
 Use the three operator endpoints according to their distinct contracts:
 
@@ -296,8 +308,10 @@ characters and store it in the monitoring system's secret store. The Compose
 healthcheck uses `/readyz`. The proxy may expose probes to an internal load
 balancer, but `/metrics` must never be public. Exported series cover HTTP volume
 and latency, database probes, worker/command activity, live and tunnel
-connections, relay bytes and quota rejections, and scheduler throughput/lag.
-They contain no account, project, prompt, source, or credential labels.
+connections, relay bytes, and quota rejections. Project-automation schedule
+synchronization and dispatch are reported through bounded structured server and
+worker logs. Metrics contain no account, project, prompt, source, or credential
+labels.
 Account-usage series add storage reconciliation age/duration/failures,
 bandwidth buffer/flush/drop health, history maintenance, global logical totals,
 and optional physical database size. Physical-minus-logical drift is a trend
@@ -323,7 +337,7 @@ existing request, WebSocket, upload-concurrency, and worker-command limits:
 | `CANTRIP_WORKER_REMOTE_SURFACE_LIMIT`     |         8 | Concurrent browser/desktop surfaces per worker  |
 
 Durable account usage accounting is informational and does not add account
-limits. Its tuning and retention variables are:
+limits. Its server-process tuning and retention variables are:
 
 | Variable                                        | Default | Purpose                               |
 | ----------------------------------------------- | ------: | ------------------------------------- |
@@ -335,6 +349,11 @@ limits. Its tuning and retention variables are:
 | `CANTRIP_ACCOUNT_USAGE_HOURLY_RETENTION_DAYS`   |      30 | Hourly history retention              |
 | `CANTRIP_ACCOUNT_USAGE_DAILY_RETENTION_DAYS`    |     400 | Daily history retention               |
 | `CANTRIP_ACCOUNT_USAGE_FLUSH_RETENTION_DAYS`    |       7 | Idempotent flush-ledger retention     |
+
+The bundled Compose and production lanes currently use the built-in defaults
+for these eight usage variables. A custom/native service can set them directly;
+the bundled lanes require explicit passthrough entries before an override in an
+environment or secret store reaches the server process.
 
 The exact definitions, bounds, API response semantics, and troubleshooting
 steps are in [the usage accounting guide](ACCOUNT_USAGE.md).
@@ -351,11 +370,14 @@ terminal or media frame, but unused replicas leave part of the quota idle.
 
 Set `REDIS_URL` for every replica and give each one a unique
 `CANTRIP_SERVER_INSTANCE_ID`, or omit the ID and let Cantrip generate a new UUID
-at process start. Use a shared PostgreSQL database, Redis deployment, encryption
-keyring, public origins, and proxy configuration. Configure load-balancer
-stickiness for WebSockets to reduce cross-instance media traffic, but do not
-depend on it: Redis routes worker commands, responses, notifications, binary
-frames, disconnects, and application live invalidations to the correct process.
+at process start. Use a shared PostgreSQL database and Redis deployment, and
+the same public origin, approved application origins, and proxy configuration.
+Every replica must satisfy the current hosted startup configuration, but the
+server keyring is not shared provider/MCP decryption material. Configure
+load-balancer stickiness for WebSockets to reduce cross-instance media traffic,
+but do not depend on it: Redis routes worker commands, responses,
+notifications, binary frames, disconnects, and application live invalidations
+to the correct process.
 
 Worker ownership and server instance records use TTL leases. A reconnect on a
 new process fences and closes the previous socket. A crashed process loses its
@@ -371,41 +393,27 @@ queue, event history, or backup target. PostgreSQL remains authoritative, and
 application reconnects resynchronize snapshots when their server epoch changes.
 
 Startup recovery is cluster-aware. The first coordinated server instance (or a
-local single instance) resets process-transient surface, tunnel, chat execution,
-and workflow-attempt state left by a full deployment stop. A server joining an
-already-live cluster does not run those global resets, because the records may
-belong to a healthy peer. It still scans recoverable workflow worktree leases
-and queues durable work through the normal fenced paths. This distinction makes
-rolling replacement safe: adding a replica cannot mark active chats failed,
-orphan live workflow attempts, invalidate tunnel credentials, or make peer-owned
-remote surfaces idle.
+local single instance) resets process-transient surface, tunnel, chat-execution,
+and Task-operation state left by a full deployment stop. A server joining an
+already-live cluster preserves peer-owned transient state. Durable
+project/folder/repository-discovery and chat import/relocation/root background
+jobs recover through their own fenced executors. Legacy workflow tables remain
+in the schema and can still affect storage accounting and conservative
+active-work checks, but current source has no workflow repository or executor,
+attempt heartbeat, worktree-lease recovery, queued-run dispatch, worker workflow
+command/event variants, or live workflow publication. During a rolling server
+upgrade, start new replicas before retiring old ones; do not introduce a newly
+started older server into the upgraded cluster because older startup code cannot
+honor the peer-preservation rule.
 
-Workflow attempts use their existing PostgreSQL heartbeat as a renewable
-execution lease. The dispatching server refreshes it every 30 seconds, and every
-server scans for attempts stale by at least two minutes every 30 seconds. The
-stale cutoff uses PostgreSQL time, and the recovery update compares the exact
-observed heartbeat, so application clock skew or a concurrent renewal cannot
-let a stale scanner win; a late worker completion is rejected after a successful
-recovery because the attempt is no longer active. Cantrip also sends a bounded
-best-effort interrupt when the stale runtime is still reachable. Recovered run invalidations,
-worktree recovery, and queued-run dispatch retain the owning account across all
-server replicas. The server-to-worker request deadline is the bounded node
-budget plus a short response grace, capped at 24 hours.
-
-This workflow hardening adds no wire or schema migration. Older workers continue
-to execute the same idempotent workflow command. During a rolling server upgrade,
-start new replicas before retiring old ones; do not introduce a newly started
-older server into the upgraded cluster because older startup code cannot honor
-the peer-preservation rule.
-
-Scheduled automation does not use Redis pub/sub as a job queue. Each occurrence
-is claimed durably in PostgreSQL with an instance-bound lease and fencing token.
-Set `CANTRIP_SCHEDULER_LEASE_TTL_MS` longer than normal condition evaluation and
-dispatch latency (the default is 120 seconds). A crashed replica's claim becomes
-recoverable after that interval; reducing it too aggressively can cause healthy
-dispatchers to be fenced during temporary database or worker latency. Monitor
-`cantrip_scheduler_lease_contentions_total`,
-`cantrip_scheduler_lease_recoveries_total`, dispatch failures, and maximum lag.
+Project automations do not use Redis pub/sub as a job queue. The owning worker
+polls its schedule metadata and requests each due dispatch; the server claims
+the occurrence in PostgreSQL with an instance-bound lease and fencing token. Set
+`CANTRIP_SCHEDULER_LEASE_TTL_MS` longer than normal condition evaluation and
+dispatch latency (the default is 120 seconds). After expiry, another server can
+recover the claim with a higher fence, and the former holder cannot finalize it.
+Monitor `automation.schedule-sync.*` and `automation.dispatch.*` structured log
+events.
 
 Project replica jobs and chat relocations follow the same PostgreSQL-authority
 principle without binding ownership to a particular server instance. Executors
@@ -432,9 +440,9 @@ dirty worktree, running process, or active agent to another worker implicitly.
 
 - **Server refuses to start:** run Compose `config --quiet`, then inspect the
   first configuration error. Hosted mode intentionally rejects PGlite,
-  anonymous auth, HTTP public/Code origins, missing or wildcard app origins,
-  an absent trusted-proxy list, missing encryption keys, and replica ceilings
-  smaller than configured limits.
+  anonymous auth, an HTTP or missing public API origin, missing or wildcard
+  application origins, an absent trusted-proxy list, the currently required
+  startup keyring, and replica ceilings smaller than configured limits.
 - **Readiness is 503 while health is 200:** inspect the JSON dependency details
   from `/readyz`. Verify PostgreSQL connectivity and migrations first. With
   multiple replicas, verify Redis connectivity, unique instance leases, and
@@ -452,16 +460,20 @@ dirty worktree, running process, or active agent to another worker implicitly.
   canonical root, dirty state, and exact revision are safety checks; do not
   bypass them by editing database IDs.
 - **Commands work only through one server replica:** verify every replica uses
-  the same Redis, PostgreSQL, origins, keyring, and replica ceiling. Check worker
-  presence and coordination rejection metrics; sticky routing is an
-  optimization, not a correctness requirement.
-- **Code or binary surfaces disconnect:** confirm the isolated Code origin and
-  WebSocket upgrades are proxied without buffering, capability URLs are not
-  rewritten, and relay-byte/concurrency quotas are not rejecting the stream.
-- **Scheduled work is delayed or recovered:** compare scheduler lag,
-  contention, and recovery metrics with
-  `CANTRIP_SCHEDULER_LEASE_TTL_MS`. A stale process cannot finalize after a
-  higher fencing token has recovered the occurrence.
+  the same Redis, PostgreSQL, public/application origins, proxy rules, and
+  replica ceiling. Check worker presence and coordination rejection metrics;
+  sticky routing is an optimization, not a correctness requirement.
+- **Code or binary surfaces disconnect:** verify the web app's Code service
+  worker and virtual adapter registration, the WorkerLink WebSocket upgrade,
+  current attachment/session bindings, and relay-byte/concurrency quotas.
+  There is no separate public Code origin or port to probe.
+- **Project automation is delayed or recovered:** inspect
+  `automation.schedule-sync.*` and `automation.dispatch.*` logs and the
+  automation's `nextRunAt`. Verify that the owning worker is online and still
+  owns the target chat's active worktree.
+  `CANTRIP_SCHEDULER_LEASE_TTL_MS` bounds an in-progress dispatch claim; an
+  expired claim may be recovered with a higher fence, and the stale holder
+  cannot finalize it.
 - **Replica or relocation work is replayed:** inspect the durable job attempt,
   command ID, error, target worker health, and server logs. A coordinated peer
   waits for lease expiry before replay; repeated 30-minute timeouts usually
@@ -476,13 +488,17 @@ content, or source files.
 1. Block new public traffic and preserve logs and audit events without copying
    secrets, prompts, source, or terminal contents into the incident system.
 2. Revoke affected sessions and worker credentials from a trusted account.
-3. Globally sign out or revoke affected ChatGPT/Grok accounts, rotate provider
-   API credentials, and add a new envelope key. Keep old envelope keys until all
-   rows rewrap and a verified backup completes.
-4. Restore PostgreSQL plus the matching keyring when durable state is damaged.
-5. Re-enroll workers only when their credential or identity store is lost.
-6. Validate cross-account isolation, worker routing, portable provider leases,
-   Code isolation, and TURN fallback before reopening traffic. Use the
+3. Globally sign out affected ChatGPT/Grok accounts, revoke upstream OAuth
+   sessions when required, and rotate affected static provider API keys. Revoke
+   any compromised worker or component-key grant.
+4. Restore PostgreSQL and the matching release when durable state is damaged;
+   verify that account encryption unlocks and authorized workers can reopen
+   their scoped grants.
+5. Re-enroll workers only when their credential or persisted encryption
+   identity is lost.
+6. Validate cross-account isolation, worker routing, opaque provider credential
+   fetch/reseal, browser Code adapter isolation, and WorkerLink relay fallback
+   before reopening traffic. Use the
    cross-platform provider procedure in
    [`PROVIDER_AUTHENTICATION.md`](PROVIDER_AUTHENTICATION.md) after restoring
    provider-account envelopes.

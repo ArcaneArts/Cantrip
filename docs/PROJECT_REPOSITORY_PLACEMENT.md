@@ -39,8 +39,8 @@ secondary worktree, file, or conflicting link is left untouched.
 
 Managed-link placement creates one POSIX directory symlink or Windows directory
 junction at the exact requested path. All Agents, Tasks, terminals, Explorer,
-Code, Git, CodeGraph, workflows, shares, and Run configurations continue using
-the managed checkout's canonical path. Removing the link does not make the project
+Code, Git, CodeGraph, project shares, and Run configurations continue using the
+managed checkout's canonical path. Removing the link does not make the project
 unavailable; Project Settings can repair a missing link when the original path
 is free.
 

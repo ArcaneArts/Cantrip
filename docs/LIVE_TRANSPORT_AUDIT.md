@@ -1,5 +1,11 @@
 # Application live transport audit
 
+> Historical measurement record. The durable workflow app/API, server
+> scheduler/executor, and worker handlers were later removed; old rows no
+> longer run. Workflow polling and subscription statements below describe the
+> audit-date client. Current source has no workflow publisher or subscriber,
+> and the server rejects the protocol's residual `workflow-run` scope.
+
 - Date: 2026-08-09
 - Scope: local single-server deployment
 - Result: healthy app-control traffic is event-driven; HTTP remains the
@@ -76,8 +82,9 @@ The following timers remain intentionally:
   worker is online.
 - Chats do not refetch while live. Disconnected active chats recover every
   three seconds and idle chats every ten seconds.
-- Active workflow lists and details do not refetch while live. Disconnected
-  recovery uses two-second and 1.5-second intervals, respectively.
+- At the audit date, active workflow lists/details used live invalidations with
+  disconnected recovery polling. The current app has no workflow client or
+  subscriber.
 - Pending customization imports and MCP OAuth operations apply live payloads;
   their one-second status check is only a disconnected recovery path.
 - The settings UI checks global ChatGPT and Grok provider-account status every

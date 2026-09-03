@@ -3,6 +3,13 @@
 - Status: Accepted
 - Date: 2026-08-11
 
+> Amendment: the unified tunnel identities, endpoint encryption, lifecycle,
+> and adapters remain accepted. ADRs 0009 and 0010 place the tunnel framing
+> inside WorkerLink: LOCAL, LAN, and WAN may bypass the byte relay after server
+> authorization, while RELAY is server-routed. Worker-to-worker forwarding
+> remains unexposed and would remain server-routed if implemented. Historical
+> server-always-routes language below is superseded.
+
 ## Context
 
 Cantrip already relays several network-shaped resources through the server.

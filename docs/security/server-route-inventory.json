@@ -12223,10 +12223,10 @@
     "status": "closed",
     "rowCount": 47,
     "classifications": {
-      "endpointProtected": 37,
-      "minimizedOperationalMetadata": 4,
+      "endpointProtected": 40,
+      "minimizedOperationalMetadata": 2,
       "hashedAuthenticationMaterial": 1,
-      "plaintextControlPlane": 5
+      "plaintextControlPlane": 4
     },
     "remainingWork": {
       "status": "closed",

@@ -127,7 +127,7 @@ worker ingress and client egress. Each boundary is recorded once. This makes
 the account total represent server-carried bytes without pretending that the
 two legs are one network transfer.
 
-Direct WebRTC and local-direct broker traffic bypasses the server and therefore
+Direct LOCAL, LAN, and WAN WorkerLink traffic bypasses the server and therefore
 does not enter per-account server bandwidth. Existing aggregate direct-plane
 metrics remain separate. WebSocket ping/pong transport overhead and payloads
 rejected before an account can be authenticated are also not attributed.
@@ -197,7 +197,7 @@ drops only new dimensions, reports degradation, and keeps serving traffic.
 
 ## Authenticated APIs
 
-Both endpoints are owner-scoped, return `Cache-Control: private, no-store`, and
+All three endpoints are owner-scoped, return `Cache-Control: private, no-store`, and
 derive the owner exclusively from the authenticated session. No caller can
 select an owner ID.
 
@@ -273,6 +273,30 @@ Both response families intentionally include `limits: null` and
 `enforcement: "disabled"` so later limits can be introduced without changing
 the resource shape.
 
+### `GET /api/account/live-traffic`
+
+This endpoint returns an owner-scoped, volatile view of application traffic
+observed by the current server process. It is sampled in one-second buckets over
+a five-minute window and is intended for the active-server switcher's
+live-traffic panel, not durable accounting or billing history.
+
+The response identifies the current server `instanceId`, a process-instance
+`epoch`, and an incremental `cursor`. A request may provide `epoch` and `after`
+together to retrieve only newer buckets; they are an all-or-none pair, and a
+malformed cursor returns `400`. An epoch mismatch or a syntactically valid
+cursor whose timestamp is expired or future, or whose revision is ahead of the
+server's current owner revision, sets `reset: true` and returns the current
+window so the client replaces its chart history.
+
+Each sample reports upload/download application bytes, authenticated non-WebSocket
+HTTP request count, and `client-live`/`worker-control` WebSocket message counts.
+Terminal, tunnel, and Remote Surface relay traffic can contribute bytes without
+incrementing that WebSocket message count. The endpoint excludes its own
+observation requests entirely. It also excludes transport overhead and direct
+LOCAL, LAN, or WAN WorkerLink traffic because those bytes never cross the server
+process. The response is `Cache-Control: private, no-store` and is never
+persisted or rolled up.
+
 ## Client refresh behavior
 
 Successful reconciliation and meaningful bandwidth flushes publish a
@@ -283,8 +307,10 @@ poll. A disconnected client uses a conservative one-minute fallback and
 authoritative HTTP snapshots; reconnect/resync follows the normal live-channel
 recovery barrier.
 
-Usage-observer responses are themselves metered but suppress another usage
-invalidation, preventing an observation feedback loop.
+The server-switcher live-traffic panel polls its volatile endpoint once per
+second only while the panel is visible. That request excludes itself from both
+live bytes and request counts. Durable resource-usage reads remain metered but
+suppress another usage invalidation, preventing an observation feedback loop.
 
 ## Operations and troubleshooting
 

@@ -117,7 +117,7 @@ the user and external tools, not a second execution root.
 - attaching an existing non-bare checkout with the expected GitHub origin;
 - managed clones with a directory symlink or junction at an exact path;
 - normal Primary execution through Agents, Tasks, Terminals, Explorers, Code,
-  Git, History, CodeGraph, run configurations, workflows, and project shares;
+  Git, History, CodeGraph, run configurations, and project shares;
 - per-worker placement when adding another project replica;
 - idempotent retry after server restart, worker restart, clone completion, link
   creation, or a lost completion response;
@@ -528,7 +528,7 @@ canonical source/worktree path already stored through protected routing:
 - Git operations and status observation;
 - run configuration discovery and execution;
 - Code and CodeGraph project identity;
-- workflow repository and project-share roots; and
+- project-share roots; and
 - Git common-directory and worktree reconciliation.
 
 No downstream component should branch on the requested link spelling. Only
@@ -559,8 +559,8 @@ Direct-created deletion requires:
 - matching project/worker ownership marker and placement record;
 - matching canonical path, Git common directory, repository fingerprint, and
   origin;
-- no active chats, terminals, views, execution lanes, workflow leases, or
-  replica jobs;
+- no active chats, terminals, views, execution lanes, replica jobs, or
+  unreleased legacy workflow-worktree lease row;
 - a clean worktree, including ignored-file safety under the existing policy;
 - no unpublished HEAD; and
 - no additional Git worktrees.

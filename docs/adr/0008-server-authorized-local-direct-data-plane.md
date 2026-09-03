@@ -3,6 +3,12 @@
 - Status: Accepted
 - Date: 2026-08-12
 
+> Amendment: this proof and authorization design is now the WorkerLink LOCAL
+> carrier. Supported Terminal and native tunnel paths use the shared WorkerLink
+> manager and bounded native bridge. Browser and Remote Desktop use LOCAL where
+> eligible, renderer-owned LAN/WAN peer carriers, or RELAY. Historical
+> feature-integration details below are superseded by ADRs 0009 and 0010.
+
 ## Context
 
 The Cantrip Server must remain authoritative when an app and worker happen to

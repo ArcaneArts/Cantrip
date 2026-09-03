@@ -424,23 +424,24 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   readiness rejects excess replicas.
 
 Hosted mode never permits anonymous authentication, including when
-`CANTRIP_ALLOW_INSECURE_REMOTE=true`. It also refuses missing encryption keys,
-PGlite, implicit or wildcard client origins, insecure public/Code origins, and
-an absent or invalid trusted-proxy list. Password and account modes use
+`CANTRIP_ALLOW_INSECURE_REMOTE=true`. It also refuses PGlite, a missing
+currently required startup keyring, implicit or wildcard client origins, an
+insecure or missing public API origin, and an absent or invalid trusted-proxy
+list. Password and account modes use
 revocable server-side sessions, tenant authorization, and per-worker
 enrollment. Account/worker quotas, audit visibility, operational probes,
 Prometheus metrics, and production deployment assets are implemented. Public
-horizontal hosting uses the Redis coordination layer. Scheduled workflow and
-project automation occurrences use durable database claims with instance-bound
+horizontal hosting uses the Redis coordination layer. Current
+project-automation occurrences use durable database claims with instance-bound
 lease tokens and monotonically increasing fencing tokens. Expired claims can be
 recovered by another replica without allowing the stale holder to finalize the
 occurrence. `CANTRIP_SCHEDULER_LEASE_TTL_MS` controls the recovery interval.
-The encryption keyring protects provider API keys plus MCP environment and
-static-header values. MCP configuration responses contain fixed masks rather
-than plaintext; preserve old keyring entries until startup has rewrapped every
-stored envelope with the selected active key.
-The Code surface exposes only a health endpoint and capability-scoped bearer
-attachments; it does not expose application APIs or accept Cantrip cookies.
+Provider API keys, provider-account credentials, and complete MCP configurations
+use account endpoint encryption. The server stores opaque envelopes and cannot
+decrypt or rewrap them with `CANTRIP_SECRET_ENCRYPTION_KEYS`; that keyring is a
+compatibility startup input at this revision. Code is not a second public server
+surface: browser Code uses an application-origin virtual adapter over
+WorkerLink, and native Code uses a loopback forward.
 
 ## Standalone worker
 
