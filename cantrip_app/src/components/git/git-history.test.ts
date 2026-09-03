@@ -9,6 +9,7 @@ import {
   buildHistoryDisplayRows,
   graphCurvePath,
   graphRows,
+  gitHistoryGraphGeometry,
   gitHistoryRowColumns,
 } from "./git-history";
 import { historyWorktreeState } from "./history-worktree-marker";
@@ -206,6 +207,24 @@ describe("commit graph layout", () => {
 });
 
 describe("responsive history rows", () => {
+  it("extends graph geometry through compact mobile rows", () => {
+    expect(gitHistoryGraphGeometry(true)).toEqual({
+      bottom: 65,
+      center: 32,
+      height: 64,
+      top: -1,
+    });
+  });
+
+  it("preserves the existing desktop graph geometry", () => {
+    expect(gitHistoryGraphGeometry(false)).toEqual({
+      bottom: 33,
+      center: 16,
+      height: 32,
+      top: -1,
+    });
+  });
+
   it("caps the graph and lets commit content shrink on narrow viewports", () => {
     expect(gitHistoryRowColumns(true, 144, "280px 1fr 160px 100px")).toBe(
       "64px minmax(0, 1fr) auto",
