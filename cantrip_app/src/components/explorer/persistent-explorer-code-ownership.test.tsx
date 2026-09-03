@@ -15,10 +15,12 @@ vi.mock("@/components/chat/markdown", () => ({
 vi.mock("@/components/explorer/explorer-code-editor", () => ({
   ExplorerCodeEditor: ({
     active,
+    backgroundWarmup,
     explorerId,
     path,
   }: {
     active: boolean;
+    backgroundWarmup: boolean;
     explorerId: string;
     path: string | null;
   }) => {
@@ -30,6 +32,7 @@ vi.mock("@/components/explorer/explorer-code-editor", () => ({
     }, [explorerId]);
     return createElement("div", {
       "data-active": active,
+      "data-background-warmup": backgroundWarmup,
       "data-code-owner": explorerId,
       "data-path": path,
     });
@@ -71,7 +74,7 @@ import { PersistentExplorerViews } from "./persistent-explorer-views";
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-function explorer(id: string, selectedPath: string): ExplorerSummary {
+function explorer(id: string, selectedPath: string | null): ExplorerSummary {
   return {
     activeWorkerId: "worker-one",
     fileMode: "edit",
@@ -88,6 +91,7 @@ function view(
   activeExplorer: ExplorerSummary,
   openExplorers: ExplorerSummary[],
   prewarmExplorer: ExplorerSummary | null = null,
+  prewarmSuccessorExplorer: ExplorerSummary | null = null,
 ) {
   return createElement(
     QueryClientProvider,
@@ -98,6 +102,7 @@ function view(
       gitStatuses: {},
       openExplorers,
       prewarmExplorer,
+      prewarmSuccessorExplorer,
       repositoryGraphAvailable: false,
     }),
   );
@@ -115,27 +120,65 @@ describe("Persistent Explorer Code ownership", () => {
     connections.released.length = 0;
   });
 
-  it("keeps inactive open and prewarm Explorers dormant before activation", async () => {
+  it("starts only active and bounded prewarm owners before activation", async () => {
     const queryClient = createClient();
     const first = explorer("first-explorer", "src/first.ts");
     const second = explorer("second-explorer", "src/second.ts");
-    const prewarm = explorer("prewarm-explorer", "src/prewarm.ts");
+    const prewarm = explorer("prewarm-explorer", null);
+    const successor = explorer("successor-explorer", null);
     let renderer!: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
       renderer = TestRenderer.create(
-        view(queryClient, first, [first, second], prewarm),
+        view(queryClient, first, [first, second], prewarm, successor),
       );
     });
 
-    expect(connections.created).toEqual([first.id]);
+    expect(connections.created).toEqual([first.id, prewarm.id, successor.id]);
     expect(connections.released).toEqual([]);
     expect(
       renderer.root.findAllByProps({ "data-code-owner": second.id }),
     ).toHaveLength(0);
-    expect(
-      renderer.root.findAllByProps({ "data-code-owner": prewarm.id }),
-    ).toHaveLength(0);
+    for (const owner of [prewarm, successor]) {
+      const editor = renderer.root.findByProps({
+        "data-code-owner": owner.id,
+      });
+      expect(editor.props["data-active"]).toBe(false);
+      expect(editor.props["data-background-warmup"]).toBe(true);
+      expect(editor.props["data-path"]).toBeNull();
+    }
+
+    await act(async () => renderer.unmount());
+    queryClient.clear();
+  });
+
+  it("promotes a prewarmed owner without replacing its editor", async () => {
+    const queryClient = createClient();
+    const first = explorer("first-explorer", "src/first.ts");
+    const prewarm = explorer("prewarm-explorer", null);
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        view(queryClient, first, [first], prewarm),
+      );
+    });
+    const mountedEditor = renderer.root.findByProps({
+      "data-code-owner": prewarm.id,
+    });
+    const promoted = explorer(prewarm.id, "src/promoted.ts");
+
+    await act(async () => {
+      renderer.update(view(queryClient, promoted, [first], promoted));
+    });
+
+    expect(renderer.root.findByProps({ "data-code-owner": prewarm.id })).toBe(
+      mountedEditor,
+    );
+    expect(connections.created).toEqual([first.id, prewarm.id]);
+    expect(connections.released).toEqual([]);
+    expect(mountedEditor.props["data-active"]).toBe(true);
+    expect(mountedEditor.props["data-path"]).toBe("src/promoted.ts");
 
     await act(async () => renderer.unmount());
     queryClient.clear();

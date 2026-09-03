@@ -291,6 +291,7 @@ export function ExplorerView({
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
+  prewarmInlineCode = false,
   repositoryGraphAvailable,
   transientFile,
   workerOnline = true,
@@ -320,6 +321,7 @@ export function ExplorerView({
   ): void | Promise<void>;
   revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  prewarmInlineCode?: boolean;
   repositoryGraphAvailable: boolean;
   transientFile?: TransientExplorerFile;
   workerOnline?: boolean;
@@ -389,8 +391,9 @@ export function ExplorerView({
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
   // Layout-backed tabs own an already-open workbench until the tab closes.
+  // Only the controller's bounded sidebar pool may seed a hidden workbench.
   const retainInlineWorkbench = useRetainedInlineWorkbench(
-    active,
+    active || prewarmInlineCode,
     [
       explorer.id,
       explorer.projectId,
@@ -1222,6 +1225,7 @@ export function ExplorerView({
             onLifecycleChange={handleCodeEditorLifecycleChange}
             onReady={onInlineCodeReady}
             path={codeEditorPath}
+            prewarm={prewarmInlineCode}
             retained={retainInlineWorkbench}
             visible={codeEditorVisibleOnSurface}
             workerOnline={workerOnline}

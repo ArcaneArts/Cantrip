@@ -429,6 +429,7 @@ export function PersistentExplorerViews({
         onRevealFolder={onRevealFolder}
         revealLabel={revealLabel}
         onOpenTerminal={onOpenTerminal}
+        prewarmInlineCode={prewarm}
         repositoryGraphAvailable={transient ? false : repositoryGraphAvailable}
         transientFile={explorerTransientFile}
         workerOnline={

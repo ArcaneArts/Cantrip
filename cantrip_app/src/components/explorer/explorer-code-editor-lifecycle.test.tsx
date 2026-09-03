@@ -267,6 +267,7 @@ function editor(
   options: {
     active?: boolean;
     appearance?: CodeAppearance;
+    backgroundWarmup?: boolean;
     explorerId?: string;
     onLifecycleChange?(
       actions: ExplorerCodeEditorLifecycleActions | null,
@@ -280,6 +281,7 @@ function editor(
   return createElement(TestExplorerCodeEditor, {
     active: options.active ?? true,
     appearance: options.appearance ?? "dark",
+    backgroundWarmup: options.backgroundWarmup ?? false,
     explorerId: options.explorerId ?? "explorer-1",
     onLifecycleChange: options.onLifecycleChange,
     onReady: options.onReady,
@@ -1102,7 +1104,18 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
   });
 
   it("prewarms without a path, then reuses the attachment and frame for two files", async () => {
-    const { frameWindow, renderer } = await mount(null);
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        editor(null, { active: false, backgroundWarmup: true }),
+        {
+          createNodeMock: (element) =>
+            element.type === "iframe" ? { contentWindow: frameWindow } : null,
+        },
+      );
+    });
+    await settle();
     const initialFrame = renderer.root.findByType("iframe");
     const initialFrameUrl = initialFrame.props.src;
 
@@ -1125,7 +1138,8 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
 
     expect(
       desktopCode.setDirectCodeAttachmentPresentation,
-    ).toHaveBeenCalledOnce();
+    ).not.toHaveBeenCalled();
+    expect(desktopCode.setDirectCodeAttachmentTheme).not.toHaveBeenCalled();
     expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
     for (const operation of [
       api.createProtectedExplorerCodeAttachment,
@@ -1143,7 +1157,11 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
       operation.mockClear();
     }
 
-    await act(async () => renderer.update(editor("src/first.ts")));
+    await act(async () =>
+      renderer.update(
+        editor("src/first.ts", { active: true, backgroundWarmup: false }),
+      ),
+    );
     await settle();
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(1);
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenLastCalledWith(
@@ -1152,7 +1170,11 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
       expect.any(Object),
     );
 
-    await act(async () => renderer.update(editor("src/second.ts")));
+    await act(async () =>
+      renderer.update(
+        editor("src/second.ts", { active: true, backgroundWarmup: false }),
+      ),
+    );
     await settle();
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2);
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenLastCalledWith(
@@ -1173,7 +1195,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     ).not.toHaveBeenCalled();
     expect(
       desktopCode.setDirectCodeAttachmentPresentation,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledOnce();
     expect(desktopCode.setDirectCodeAttachmentTheme).not.toHaveBeenCalled();
     expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
     expect(
@@ -1204,11 +1226,13 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
         workbenchReadyAtRequest: true,
       }),
     ]);
-    expect(
-      logging.event.mock.calls.filter(
-        ([, , context]) => context.event === "code.editor.launch.completed",
-      ),
-    ).toHaveLength(3);
+    const launchCompletions = logging.event.mock.calls.filter(
+      ([, , context]) => context.event === "code.editor.launch.completed",
+    );
+    expect(launchCompletions).toHaveLength(3);
+    expect(launchCompletions[0]?.[2]).toEqual(
+      expect.objectContaining({ prewarmed: true }),
+    );
 
     await act(async () => renderer.unmount());
   });
