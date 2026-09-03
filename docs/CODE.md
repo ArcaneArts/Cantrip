@@ -570,6 +570,14 @@ Conversation history and agent execution remain owned by the server and worker.
 The extension reports editor context and coordinates filesystem safety; it does
 not send model requests or become an alternative route to Codex.
 
+The extension starts its authenticated bridge connection immediately after
+registering its commands. Presentation and layout initialization proceeds
+independently, so it cannot serialize bridge availability behind nonessential
+workbench chrome. Active-editor state includes the exact URI, workspace-relative
+path, selection, and a topology proof only when one active group contains one
+active tab for that resource. The worker accepts that state only from the current
+authoritative authenticated socket.
+
 ## 14. Saved-file and agent coordination
 
 Codex and Cantrip Code operate on the same selected worktree, so saved edits and
@@ -763,13 +771,33 @@ path is added to lifecycle telemetry.
 Explorer owns one inline workbench for each exact Explorer/worktree security
 identity. The identity includes the logical server, owner/account,
 authentication and encryption revision, worker, Explorer, and worktree. The
-client prewarms this actual sidebar workbench without selecting a file, retains
-its attachment and iframe when the sidebar is hidden, and reveals the same
-frame for later file selections. The idle retention deadline is 30 minutes;
-explicit close, bounded expiry, or any identity change retires it. Online worker
-transitions wake bounded recovery automatically. Pop-outs and durable Code tabs
-remain separate renderer owners and do not create a competing hidden prewarm
-for the inline Explorer surface.
+client gives prewarm permission only to the existing two-owner sidebar preview
+pool. Each explicit owner may start its actual workbench without selecting a
+file, retain its attachment and iframe while hidden, and reveal the same frame
+for its first selection. Pinning preserves the promoted live owner and starts
+the bounded successor in the vacated pool slot. Ordinary inactive, pinned, and
+durable Code tabs do not inherit this permission and remain dormant until
+activated. The idle retention deadline is 30 minutes; explicit close, bounded
+expiry, or any identity change retires an owner. Online worker transitions wake
+bounded recovery automatically. Pop-outs remain separate renderer owners and
+do not create a competing hidden prewarm for the inline Explorer surface.
+
+When a session has an initial file, the worker first resolves its canonical
+real path, verifies that it is a regular file inside the authorized workspace,
+and then freezes that file into the attachment's OpenVSCode startup URL. Raw
+renderer workspace and startup selectors are rejected. OpenVSCode may therefore
+load the file while the workbench starts on both native-direct and browser-relay
+routes. The first matching navigation may omit the later bridge `openFile`
+command only when the current authenticated extension socket reports the same
+relative path and equivalent canonical file URI with a reconciled one-group,
+one-tab topology. That startup candidate is consumed once. Missing or
+mismatched state and every later navigation retain the existing acknowledged
+bridge command.
+
+The sidebar keeps populated file-tree rows and expansion state mounted during a
+pin handoff; only the existing path-level pin indicator changes. A whole-tree
+loading replacement remains reserved for genuine initial Explorer or directory
+loading.
 
 The workbench bridge carries a generation and uses bounded ping/ack liveness.
 A stale bridge reconnects beneath the retained profile, session, attachment,

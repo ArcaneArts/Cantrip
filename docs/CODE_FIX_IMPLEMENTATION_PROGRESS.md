@@ -36,6 +36,23 @@ merged and the result has been observed on `main`.
     failure was observed during the clean-baseline audit and does not touch this
     cycle's files.
   - Prettier and `git diff --check` passed.
+- Recorded validation commands:
+
+  ```sh
+  pnpm --filter @cantrip/version build
+  pnpm --filter @cantrip/logging build
+  pnpm --filter @cantrip/protocol build
+  pnpm --filter @cantrip/crypto build
+  pnpm --filter @cantrip/glitch build
+  pnpm --filter @cantrip/app exec vitest run src/components/app/sidebar-explorer-controller.test.ts src/components/explorer/explorer-code-editor-lifecycle.test.tsx src/components/explorer/explorer-code-editor.test.ts src/components/explorer/persistent-explorer-code-ownership.test.tsx src/components/explorer/persistent-explorer-views.test.ts src/components/explorer/retained-explorer-code-editor.test.tsx src/lib/desktop-explorer-window-broker.test.ts src/lib/sidebar-file-tabs.test.ts
+  pnpm --filter @cantrip/app typecheck
+  pnpm --filter @cantrip/app build
+  pnpm --filter @cantrip/app exec vitest run --maxWorkers=4
+  pnpm check
+  pnpm prettier --check docs/CODE_FIX_IMPLEMENTATION_PROGRESS.md cantrip_app/src/components/explorer
+  git diff --check
+  ```
+
 - Verified result: component tests prove both explicit pool owners start hidden
   and pathless, an unrelated inactive open tab does not start, promotion reuses
   the keyed editor, and the ready attachment and iframe survive the first two
@@ -67,6 +84,21 @@ merged and the result has been observed on `main`.
   - App typecheck passed.
   - App production build passed.
   - Prettier and `git diff --check` passed.
+- Recorded validation commands:
+
+  ```sh
+  pnpm --filter @cantrip/version build
+  pnpm --filter @cantrip/logging build
+  pnpm --filter @cantrip/protocol build
+  pnpm --filter @cantrip/crypto build
+  pnpm --filter @cantrip/glitch build
+  pnpm --filter @cantrip/app exec vitest run src/components/app/shell-sidebar.test.tsx src/components/sidebar/project-sidebar-file-tree.test.tsx
+  pnpm --filter @cantrip/app typecheck
+  pnpm --filter @cantrip/app build
+  pnpm prettier --check docs/CODE_FIX_IMPLEMENTATION_PROGRESS.md cantrip_app/src/components/app/shell-sidebar.tsx cantrip_app/src/components/app/shell-sidebar.test.tsx cantrip_app/src/components/sidebar/project-sidebar-file-tree.test.tsx
+  git diff --check
+  ```
+
 - Verified result: shell composition coverage proves pending pin and successor
   creation states keep `fileTreeLoading` false while a valid Explorer exists,
   the exact pin path is forwarded, and genuine initial creation/query loading
@@ -93,6 +125,15 @@ merged and the result has been observed on `main`.
   - Complete bundled workbench extension suite passed: 59 tests.
   - Cantrip Code upstream/source verification passed.
   - Prettier and `git diff --check` passed.
+- Recorded validation commands:
+
+  ```sh
+  pnpm code:extension:test
+  pnpm code:source:verify
+  pnpm prettier --check cantrip_code/extensions/cantrip-workbench/src/extension.js cantrip_code/extensions/cantrip-workbench/test/startup.test.cjs docs/CODE_FIX_IMPLEMENTATION_PROGRESS.md
+  git diff --check
+  ```
+
 - Verified result: the startup ordering contract proves bridge connection is
   initiated before presentation setup is awaited. The existing bridge URL,
   token, protocol, reconnect, socket error, and request validation code is
@@ -142,6 +183,22 @@ merged and the result has been observed on `main`.
     clean primary checkout and is unrelated to this cycle's optional runtime
     field.
   - Prettier and `git diff --check` passed.
+- Recorded validation commands:
+
+  ```sh
+  pnpm --filter @cantrip/worker exec vitest run test/code-direct-endpoint.test.ts test/code-protected-transport.test.ts test/code-proxy-utils.test.ts test/code-supervisor.test.ts --maxWorkers=4
+  pnpm --filter @cantrip/app exec vitest run src/lib/browser-code-tunnel.test.ts src/lib/code-startup-url.test.ts src/lib/desktop-code.test.ts --maxWorkers=4
+  pnpm --filter @cantrip/worker exec vitest run --maxWorkers=4
+  pnpm --filter @cantrip/worker typecheck
+  pnpm --filter @cantrip/worker build
+  pnpm --filter @cantrip/app typecheck
+  pnpm --filter @cantrip/glitch build
+  pnpm --filter @cantrip/app build
+  pnpm --filter @cantrip/protocol test
+  pnpm prettier --check cantrip_app/src/lib cantrip_worker/src/code cantrip_worker/test packages/protocol/src/code-surfaces.ts docs/CODE_FIX_IMPLEMENTATION_PROGRESS.md
+  git diff --check
+  ```
+
 - Verified result: tests prove Tauri direct/shared and browser shared attachment
   URLs contain the authorized `vscode-remote` initial file, the browser root
   lease remains present while the payload crosses the service-worker adapter,
@@ -164,9 +221,9 @@ merged and the result has been observed on `main`.
 ### Cycle 5 — authenticated one-shot initial-navigation acknowledgement
 
 - Branch: `codex/code-fix-initial-navigation-ack`
-- Pull request: pending
-- Merge commit: pending
-- Status: implementation verified locally; pull request pending
+- Pull request: #1652
+- Merge commit: `d565ea4ca42ca6058c086e932004ec32e93e1e0d`
+- Status: merged
 - Behavior: the existing bridge `openFile` fallback is skipped only once, for
   the startup-payload candidate, and only when the current authoritative
   authenticated extension socket reports the exact requested file with a
@@ -190,6 +247,22 @@ merged and the result has been observed on `main`.
   - App typecheck passed against the extended optional workbench state.
   - Cantrip Code upstream/source verification passed.
   - Prettier and `git diff --check` passed.
+- Recorded validation commands:
+
+  ```sh
+  pnpm code:extension:test
+  pnpm --filter @cantrip/worker exec vitest run test/code-supervisor.test.ts test/code-workbench-bridge.test.ts --maxWorkers=4
+  pnpm --filter @cantrip/worker exec vitest run --maxWorkers=4
+  pnpm --filter @cantrip/worker typecheck
+  pnpm --filter @cantrip/worker build
+  pnpm --filter @cantrip/protocol typecheck
+  pnpm --filter @cantrip/protocol test
+  pnpm --filter @cantrip/app typecheck
+  pnpm code:source:verify
+  pnpm prettier --check cantrip_code/extensions/cantrip-workbench cantrip_worker/src/code cantrip_worker/test packages/protocol/src/code-surfaces.ts docs/CODE_FIX_IMPLEMENTATION_PROGRESS.md
+  git diff --check
+  ```
+
 - Verified result: extension tests prove only the sole active selected tab is
   topology-reconciled. Worker tests prove authority rotation, missing topology,
   relative-path mismatch, URI mismatch, query rejection, POSIX encoding,
@@ -198,9 +271,8 @@ merged and the result has been observed on `main`.
   state avoids the duplicate RPC once, the candidate is consumed, and both a
   later identical navigation and mismatched URI retain the existing
   acknowledged fallback.
-- Remaining work: complete worker/protocol/app regression validation, Code
-  documentation reconciliation, final independent audit, and manual launch
-  traces.
+- Remaining work: complete regression validation, Code documentation
+  reconciliation, and final independent audit.
 - Known risks: the acknowledgement depends on extension state arriving before
   the app's existing fallback request. If it does not, behavior remains correct
   and takes the established bridge path; no wait or retry was added.
@@ -208,15 +280,130 @@ merged and the result has been observed on `main`.
   browser launches, confirming zero duplicate `openFile` only when the initial
   file is already active and isolated.
 
+### Cycle 6 — regression and documentation reconciliation
+
+- Branch: `codex/code-fix-final-audit`
+- Pull request: pending
+- Merge commit: pending
+- Status: implementation and documentation verified locally; pull request
+  pending
+- Behavior: reconciled the authoritative Code lifecycle documentation with the
+  merged bounded-prewarm, file-tree continuity, early bridge, authorized startup
+  payload, and one-shot acknowledgement behavior. Historical dormancy guidance
+  now distinguishes ordinary inactive editors from the explicit two-owner
+  sidebar preview pool.
+- Subsystem: Code architecture, diagnosis, historical lifecycle record, and
+  delivery ledger.
+- Tests run:
+  - Focused app Code lifecycle and transport suite passed: 10 files, 191 tests.
+  - Complete worker suite passed with four workers: 153 files passed, 1
+    skipped; 1,024 tests passed, 2 skipped.
+  - Complete bundled workbench extension suite passed: 60 tests.
+  - Complete protocol suite passed: 55 files, 406 tests.
+  - Focused single-worker server Code lifecycle suite passed: 6 files, 97 tests.
+  - App, worker, server, and protocol typechecks passed.
+  - App, worker, and server production builds passed.
+  - Cantrip Code upstream/source verification passed: 9,205 pristine upstream
+    files and 11 patches.
+  - The complete app suite executed 1,966 tests: 1,961 passed, 3 skipped, and 2
+    unrelated tests failed. Both failures reproduced on the clean merged
+    baseline before this documentation-only cycle: Settings search does not
+    return `project-membership`, and a GitHub pull-request mobile presentation
+    fixture omits `reviewThreads`.
+  - The complete server suite executed 950 tests: 794 passed, 103 skipped, and
+    53 failed on the clean merged baseline. Failures are outside this goal and
+    include managed-folder fixture/schema drift plus broad timeout contention;
+    the isolated Code transport, attachment, migration, and settings suite is
+    green as recorded above.
+  - Repository `pnpm check` reached the pre-existing application decomposition
+    gate and stopped because `chat-turn-runtime.ts` and `task-routes.ts` exceed
+    their 1,999-line budgets. Neither file is changed by this goal.
+- Exact validation commands:
+
+  ```sh
+  pnpm --filter @cantrip/version build
+  pnpm --filter @cantrip/logging build
+  pnpm --filter @cantrip/protocol build
+  pnpm --filter @cantrip/crypto build
+  pnpm --filter @cantrip/glitch build
+  pnpm --filter @cantrip/app exec vitest run src/components/app/shell-sidebar.test.tsx src/components/explorer/explorer-code-editor-lifecycle.test.tsx src/components/explorer/explorer-code-editor.test.ts src/components/explorer/persistent-explorer-code-ownership.test.tsx src/components/explorer/retained-explorer-code-editor.test.tsx src/components/sidebar/project-sidebar-file-tree.test.tsx src/lib/browser-code-tunnel.test.ts src/lib/code-startup-url.test.ts src/lib/desktop-code.test.ts src/lib/desktop-explorer-window-broker.test.ts --maxWorkers=4
+  pnpm --filter @cantrip/app exec vitest run --maxWorkers=4
+  pnpm --filter @cantrip/worker exec vitest run --maxWorkers=4
+  pnpm code:extension:test
+  pnpm --filter @cantrip/protocol test
+  pnpm --filter @cantrip/server exec vitest run test/code-tunnel.test.ts test/code-migration.test.ts test/code-settings-api.test.ts test/code-settings-persistence.test.ts test/shared-code-coordinator-gate.test.ts test/shared-code-transport.test.ts --maxWorkers=1
+  pnpm --filter @cantrip/server test
+  pnpm --filter @cantrip/app typecheck
+  pnpm --filter @cantrip/worker typecheck
+  pnpm --filter @cantrip/server typecheck
+  pnpm --filter @cantrip/protocol typecheck
+  pnpm --filter @cantrip/app build
+  pnpm --filter @cantrip/worker build
+  pnpm --filter @cantrip/server build
+  pnpm code:source:verify
+  pnpm check
+  pnpm --filter @cantrip/app exec vitest run src/components/settings/settings-page.test.tsx src/components/git/github-pull-request-dialog.test.ts
+  pnpm prettier --check docs/CODE.md docs/CODE_FIX.md docs/CODE_EDITOR_SIMPLIFICATION_PROGRESS.md docs/CODE_FIX_IMPLEMENTATION_PROGRESS.md
+  git diff --check
+  ```
+
+- Verified result: merged source and deterministic regression coverage prove
+  that, after bounded prewarm completes, first selection and post-pin selection
+  reuse the existing attachment, iframe, session, and workbench; ordinary
+  inactive editors stay dormant; pinning retains the file tree; initial startup
+  navigation remains canonical and authenticated; and uncertain acknowledgement
+  state fails closed to the existing bridge command.
+- Remaining work: merge this documentation/audit cycle, record its merge in a
+  final ledger-only cycle, and complete one final independent review.
+- Known risks: a click that occurs before background prewarm finishes still
+  waits for only the remaining real startup work. This is intentional and is
+  not hidden with a delay or fake-ready state.
+- Manual verification:
+  - An isolated macOS Tauri development profile used the built Cycle 6 app,
+    its development file vault, and a two-file local repository fixture. Client
+    boot rendered in 267 ms. Both bounded preview owners reached an authenticated
+    LOCAL attachment and ready workbench before selection.
+  - Selecting `first.ts` reused the first owner's exact Explorer, editor,
+    attachment, and session with both readiness flags true. The trace contained
+    only the file-open phase (342 ms; 355 ms total), with no new route,
+    transport, frame, or workbench phase.
+  - Pinning that preview kept both file-tree rows visible and kept the same live
+    editor, attachment, and session. The successor was available in 7 ms, the
+    surface was pinned in 28 ms, the destination was ready in 48 ms, and the
+    handoff cleared in 54 ms. The replacement pool owner then completed its
+    bounded prewarm.
+  - Selecting `second.ts` reused the already-ready second preview owner's exact
+    Explorer, editor, attachment, and session. Its only launch phase was
+    file-open (214 ms; 226 ms total), again without lifecycle recreation.
+  - A fresh browser client connected through an isolated server and worker on
+    port 4320. The two active prewarms completed through relay in 2,058 ms and
+    2,249 ms. Selecting `first.ts` reused the first exact owner and completed in
+    196 ms; after pinning, selecting `second.ts` reused the second exact owner
+    and completed in 256 ms. Both selections began with attachment and
+    workbench readiness true and created no new route, transport, or workbench.
+  - The browser pin trace kept both tree rows mounted and preserved the first
+    editor. Its successor became available at 60 ms, the destination was ready
+    at 233 ms, and the handoff cleared at 254 ms.
+  - A browser reload followed by selection before workbench readiness exercised
+    the safe fallback: selection arrived 387 ms into prewarm, the same attachment
+    continued to readiness, and the worker logged exactly one
+    `code.direct.file-opened` for that session. The file rendered without a
+    timeout, retry chain, or attachment replacement. The authenticated
+    startup-ack branch remains deterministic-test evidence because this real
+    selection correctly took the fallback before an acknowledgement existed.
+  - UI automation wall time is not used as product latency evidence because it
+    includes tool observation waits; the durations above are the structured
+    lifecycle-event durations emitted by the app.
+
 ## Required completion matrix
 
-| Requirement                                     | Status      | Evidence                  |
-| ----------------------------------------------- | ----------- | ------------------------- |
-| Bounded hidden pathless Code prewarm            | Complete    | Cycle 1 / PR #1642        |
-| First and post-pin selection reuse              | In progress | Cycle 1 plus final traces |
-| Ordinary inactive editors remain dormant        | Complete    | Cycle 1 / PR #1642        |
-| Sidebar tree remains mounted during pin         | Complete    | Cycle 2 / PR #1643        |
-| Bridge connects before presentation setup       | Complete    | Cycle 3 / PR #1644        |
-| Authorized initial-file startup payload         | Complete    | Cycle 4 / PR #1649        |
-| Authenticated acknowledgement and safe fallback | In progress | Cycle 5                   |
-| Tauri/browser and full regression validation    | Pending     | Final audit               |
+| Requirement                                     | Status   | Evidence           |
+| ----------------------------------------------- | -------- | ------------------ |
+| Bounded hidden pathless Code prewarm            | Complete | Cycle 1 / PR #1642 |
+| First and post-pin selection reuse              | Complete | Cycles 1 and 6     |
+| Ordinary inactive editors remain dormant        | Complete | Cycle 1 / PR #1642 |
+| Sidebar tree remains mounted during pin         | Complete | Cycle 2 / PR #1643 |
+| Bridge connects before presentation setup       | Complete | Cycle 3 / PR #1644 |
+| Authorized initial-file startup payload         | Complete | Cycle 4 / PR #1649 |
+| Authenticated acknowledgement and safe fallback | Complete | Cycle 5 / PR #1652 |
+| Tauri/browser and full regression validation    | Complete | Cycle 6            |
