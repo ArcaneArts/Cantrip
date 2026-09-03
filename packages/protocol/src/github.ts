@@ -74,6 +74,68 @@ export const githubInboxAttentionSchema = z.enum([
   "stale",
 ]);
 
+export const githubListCursorSchema = z
+  .string()
+  .min(1)
+  .max(2_000)
+  .nullable()
+  .default(null);
+
+const githubLoginFilterSchema = z
+  .string()
+  .trim()
+  .max(100)
+  .regex(/^(?:@me|[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))$/u)
+  .nullable()
+  .default(null);
+
+export const githubIssueListViewSchema = z.enum([
+  "all",
+  "assigned-to-me",
+  "review-requested",
+  "recently-updated",
+]);
+
+export const githubPullRequestReviewDecisionSchema = z.enum([
+  "approved",
+  "changes-requested",
+  "review-required",
+  "none",
+]);
+
+export const githubPullRequestMergeabilitySchema = z.enum([
+  "mergeable",
+  "conflicting",
+  "unknown",
+]);
+
+export const githubPullRequestChecksStateSchema = z.enum([
+  "success",
+  "failure",
+  "pending",
+  "neutral",
+  "none",
+  "unknown",
+]);
+
+export const githubIssueListFiltersSchema = z.object({
+  search: z.string().trim().max(256).default(""),
+  labels: z.array(z.string().trim().min(1).max(100)).max(20).default([]),
+  author: githubLoginFilterSchema,
+  assignee: githubLoginFilterSchema,
+  milestone: z.string().trim().min(1).max(100).nullable().default(null),
+  view: githubIssueListViewSchema.default("all"),
+  draft: z.boolean().nullable().default(null),
+  reviewDecision: githubPullRequestReviewDecisionSchema
+    .nullable()
+    .default(null),
+  mergeability: githubPullRequestMergeabilitySchema.nullable().default(null),
+  checksState: githubPullRequestChecksStateSchema
+    .exclude(["neutral", "none", "unknown"])
+    .nullable()
+    .default(null),
+});
+
 export const githubIssueLabelSchema = z.object({
   name: z.string().min(1),
   color: z.string().regex(/^[0-9a-fA-F]{6}$/),
@@ -87,17 +149,19 @@ export const githubIssueSummarySchema = z.object({
   author: z.string().min(1),
   commentCount: z.number().int().nonnegative(),
   labels: z.array(githubIssueLabelSchema),
+  assignees: z.array(z.string().min(1)).max(100).default([]),
+  milestone: z.string().min(1).max(1_000).nullable().default(null),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   closedAt: z.string().datetime().nullable(),
 });
 
 export const githubIssueListSchema = z.object({
-  kind: githubIssueKindSchema.default("issue"),
+  kind: z.literal("issue").default("issue"),
   state: githubIssueStateSchema,
-  total: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative().nullable(),
   issues: z.array(githubIssueSummarySchema),
-  nextPage: z.number().int().positive().nullable().default(null),
+  nextCursor: githubListCursorSchema,
 });
 
 export const githubIssueCommentSchema = z.object({
@@ -176,13 +240,18 @@ export const githubPullRequestSummarySchema = githubIssueSummarySchema.extend({
   headSha: z.string().regex(/^[0-9a-f]{40}$/u),
   baseRef: z.string().min(1),
   baseSha: z.string().regex(/^[0-9a-f]{40}$/u),
+  mergeable: z.boolean().nullable().default(null),
+  reviewDecision: githubPullRequestReviewDecisionSchema
+    .or(z.literal("reviewed"))
+    .default("none"),
+  checksState: githubPullRequestChecksStateSchema.default("unknown"),
 });
 
 export const githubPullRequestListSchema = z.object({
   state: githubIssueStateSchema,
-  total: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative().nullable(),
   pullRequests: z.array(githubPullRequestSummarySchema),
-  nextPage: z.number().int().positive().nullable().default(null),
+  nextCursor: githubListCursorSchema,
 });
 
 export const githubInboxPullRequestStateSchema = z.object({
@@ -412,13 +481,14 @@ export const githubPullRequestLifecyclePreviewSchema = z.object({
   baseSha: z.string().regex(/^[0-9a-f]{40}$/u),
   mergeable: z.boolean().nullable(),
   mergeableState: z.string().min(1).max(100),
-  checksState: z.enum(["success", "failure", "pending", "neutral", "none"]),
+  checksState: githubPullRequestChecksStateSchema,
   reviewDecision: z.enum([
     "approved",
     "changes-requested",
     "review-required",
     "reviewed",
     "none",
+    "unknown",
   ]),
   destructive: z.boolean(),
   confirmationPhrase: z.string().min(1).max(100).nullable(),
@@ -440,7 +510,19 @@ export const githubPullRequestCheckoutPreparedSchema = z.object({
   remote: z.string().trim().min(1).max(255),
 });
 
-export const githubPullRequestDetailSchema =
+export const githubPullRequestDataWarningSchema = z.object({
+  section: z.enum([
+    "conversation",
+    "reviews",
+    "review-threads",
+    "files",
+    "commits",
+    "checks",
+  ]),
+  message: z.string().min(1).max(1_000),
+});
+
+export const githubPullRequestOverviewSchema =
   githubPullRequestSummarySchema.extend({
     comments: z.array(githubIssueCommentSchema).max(100),
     commentsTruncated: z.boolean(),
@@ -453,22 +535,47 @@ export const githubPullRequestDetailSchema =
       "review-required",
       "reviewed",
       "none",
+      "unknown",
     ]),
-    checksState: z.enum(["success", "failure", "pending", "neutral", "none"]),
+    checksState: githubPullRequestChecksStateSchema,
     additions: z.number().int().nonnegative(),
     deletions: z.number().int().nonnegative(),
     changedFileCount: z.number().int().nonnegative(),
     commitCount: z.number().int().nonnegative(),
-    commits: z.array(githubPullRequestCommitSchema).max(100),
-    commitsTruncated: z.boolean(),
-    files: z.array(githubPullRequestFileSchema).max(100),
-    filesTruncated: z.boolean(),
-    checks: z.array(githubPullRequestCheckSchema).max(200),
-    checksTruncated: z.boolean(),
     reviews: z.array(githubPullRequestReviewSchema).max(100),
     reviewsTruncated: z.boolean(),
     reviewThreads: z.array(githubPullRequestReviewThreadSchema).max(100),
     reviewThreadsTruncated: z.boolean(),
+    warnings: z.array(githubPullRequestDataWarningSchema).max(20).default([]),
+  });
+
+export const githubPullRequestFilesSchema = z.object({
+  files: z.array(githubPullRequestFileSchema).max(100),
+  filesTruncated: z.boolean(),
+  warnings: z.array(githubPullRequestDataWarningSchema).max(20).default([]),
+});
+
+export const githubPullRequestCommitsSchema = z.object({
+  commits: z.array(githubPullRequestCommitSchema).max(100),
+  commitsTruncated: z.boolean(),
+  warnings: z.array(githubPullRequestDataWarningSchema).max(20).default([]),
+});
+
+export const githubPullRequestChecksSchema = z.object({
+  checks: z.array(githubPullRequestCheckSchema).max(200),
+  checksTruncated: z.boolean(),
+  checksState: githubPullRequestChecksStateSchema,
+  warnings: z.array(githubPullRequestDataWarningSchema).max(20).default([]),
+});
+
+export const githubPullRequestDetailSchema =
+  githubPullRequestOverviewSchema.extend({
+    commits: githubPullRequestCommitsSchema.shape.commits,
+    commitsTruncated: githubPullRequestCommitsSchema.shape.commitsTruncated,
+    files: githubPullRequestFilesSchema.shape.files,
+    filesTruncated: githubPullRequestFilesSchema.shape.filesTruncated,
+    checks: githubPullRequestChecksSchema.shape.checks,
+    checksTruncated: githubPullRequestChecksSchema.shape.checksTruncated,
   });
 
 export const githubReleaseSummarySchema = z.object({
@@ -523,6 +630,10 @@ export type GithubInboxItem = z.infer<typeof githubInboxItemSchema>;
 
 export type GithubInboxList = z.infer<typeof githubInboxListSchema>;
 
+export type GithubIssueListFilters = z.infer<
+  typeof githubIssueListFiltersSchema
+>;
+
 export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
 
 export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
@@ -541,6 +652,22 @@ export type GithubPullRequestCreate = z.infer<
 
 export type GithubPullRequestSummary = z.infer<
   typeof githubPullRequestSummarySchema
+>;
+
+export type GithubPullRequestOverview = z.infer<
+  typeof githubPullRequestOverviewSchema
+>;
+
+export type GithubPullRequestFiles = z.infer<
+  typeof githubPullRequestFilesSchema
+>;
+
+export type GithubPullRequestCommits = z.infer<
+  typeof githubPullRequestCommitsSchema
+>;
+
+export type GithubPullRequestChecks = z.infer<
+  typeof githubPullRequestChecksSchema
 >;
 
 export type GithubPullRequestCreateResult = z.infer<

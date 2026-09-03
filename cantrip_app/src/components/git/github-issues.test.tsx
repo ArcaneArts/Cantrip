@@ -17,6 +17,8 @@ const issue = {
     { name: "ux", color: "a855f7" },
     { name: "priority", color: "f59e0b" },
   ],
+  assignees: [],
+  milestone: null,
   createdAt: "2026-09-01T12:00:00.000Z",
   updatedAt: "2026-09-03T12:00:00.000Z",
   closedAt: null,

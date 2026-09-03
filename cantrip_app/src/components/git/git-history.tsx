@@ -1,17 +1,22 @@
-import type {
-  ChatSummary,
-  GitCommit,
-  GitRef,
-  GitMergeRebaseAction,
-  GitStatus,
-  GithubInboxList,
-  GithubInboxView,
-  GithubIssueKind,
-  GithubIssueState,
-  ProjectSummary,
-  ProjectWorktreeCreate,
-  ProjectWorktreeSummary,
-  WorkerSummary,
+import {
+  githubIssueListFiltersSchema,
+  type GithubIssueListFilters,
+  type ChatSummary,
+  type GitCommit,
+  type GitRef,
+  type GitMergeRebaseAction,
+  type GitStatus,
+  type GithubInboxList,
+  type GithubInboxItem,
+  type GithubInboxView,
+  type GithubIssueKind,
+  type GithubIssueState,
+  type GithubIssueSummary,
+  type GithubPullRequestSummary,
+  type ProjectSummary,
+  type ProjectWorktreeCreate,
+  type ProjectWorktreeSummary,
+  type WorkerSummary,
 } from "@cantrip/protocol";
 import {
   useInfiniteQuery,
@@ -39,6 +44,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createProjectWorktree,
   getGithubInbox,
+  getGithubIssues,
+  getGithubPullRequests,
   getProjectWorktreeHistory,
   getProjectWorktreeGitOperation,
   lockProjectWorktree,
@@ -119,6 +126,8 @@ const gitIssueStateTabs: readonly NavigationTab<GithubIssueState>[] = [
   { id: "open", label: "Open", icon: CircleDot },
   { id: "closed", label: "Closed", icon: CircleCheck },
 ];
+
+const defaultGithubListFilters = githubIssueListFiltersSchema.parse({});
 
 const laneColors = [
   "#22d3ee",
@@ -517,6 +526,12 @@ export function GitHistoryView({
   const [issueInboxView, setIssueInboxView] = useState<GithubInboxView>("all");
   const [pullRequestInboxView, setPullRequestInboxView] =
     useState<GithubInboxView>("all");
+  const [githubFilters, setGithubFilters] = useState<
+    Record<GithubIssueKind, GithubIssueListFilters>
+  >({
+    issue: defaultGithubListFilters,
+    "pull-request": defaultGithubListFilters,
+  });
   const [issueRefreshEpoch, setIssueRefreshEpoch] = useState(0);
   const [graphRefreshEpoch, setGraphRefreshEpoch] = useState(0);
   const [graphRevision, setGraphRevision] = useState<string | null>(null);
@@ -598,18 +613,65 @@ export function GitHistoryView({
     : "all";
   const setInboxView =
     issueKind === "pull-request" ? setPullRequestInboxView : setIssueInboxView;
+  const issueFilters = githubFilters[issueKind];
+  const setIssueFilters = useCallback(
+    (filters: GithubIssueListFilters) => {
+      setGithubFilters((current) => ({ ...current, [issueKind]: filters }));
+      setInboxView("all");
+    },
+    [issueKind, setInboxView],
+  );
+  const useInbox = inboxView !== "all";
   const githubAvailable = projectHasGithubCapability(project);
   const issues = useInfiniteQuery({
     enabled: (section === "issues" || section === "prs") && githubAvailable,
     initialPageParam: null as string | null,
-    queryFn: ({ pageParam }) =>
-      getGithubInbox(project.id, issueKind, issueState, inboxView, pageParam),
+    queryFn: async ({ pageParam }) => {
+      if (useInbox) {
+        const page = await getGithubInbox(
+          project.id,
+          issueKind,
+          issueState,
+          inboxView,
+          pageParam,
+        );
+        return {
+          inbox: page,
+          items: page.items as Array<
+            GithubInboxItem | GithubIssueSummary | GithubPullRequestSummary
+          >,
+          nextCursor: page.nextCursor,
+          total: page.total,
+        };
+      }
+      const page =
+        issueKind === "pull-request"
+          ? await getGithubPullRequests(
+              project.id,
+              issueState,
+              pageParam,
+              issueFilters,
+            )
+          : await getGithubIssues(
+              project.id,
+              issueState,
+              pageParam,
+              issueFilters,
+            );
+      return {
+        inbox: null,
+        items: "pullRequests" in page ? page.pullRequests : page.issues,
+        nextCursor: page.nextCursor,
+        total: page.total,
+      };
+    },
     queryKey: [
       "github-inbox",
       project.id,
       issueKind,
       issueState,
       inboxView,
+      issueFilters,
       issueRefreshEpoch,
     ],
     getNextPageParam: (page) => page.nextCursor ?? undefined,
@@ -730,21 +792,24 @@ export function GitHistoryView({
   const graphAreaWidth = Math.min(260, Math.max(160, graphWidth + 126));
   const historyColumns = `${graphAreaWidth}px minmax(320px, 1fr) 150px 82px`;
   const firstPage = history.data?.pages[0];
-  const loadedIssues = useMemo<GithubInboxList | undefined>(() => {
-    if (!issues.data) return undefined;
-    const values = issues.data.pages.flatMap((page) => page.items);
-    const first = issues.data.pages[0];
+  const loadedInbox = useMemo<GithubInboxList | undefined>(() => {
+    const pages = issues.data?.pages;
+    const first = pages?.[0]?.inbox;
+    if (!first) return undefined;
     return {
-      kind: issueKind,
-      state: issueState,
-      view: inboxView,
-      total: first ? first.total : values.length,
-      items: values,
-      nextCursor: issues.data.pages.at(-1)?.nextCursor ?? null,
-      viewerLogin: first?.viewerLogin ?? "unknown",
-      activityAvailable: first?.activityAvailable ?? false,
+      ...first,
+      items: pages.flatMap((page) => page.inbox?.items ?? []),
+      nextCursor: pages.at(-1)?.nextCursor ?? null,
     };
-  }, [inboxView, issueKind, issueState, issues.data]);
+  }, [issues.data]);
+  const loadedGithubItems = useMemo<
+    | Array<GithubInboxItem | GithubIssueSummary | GithubPullRequestSummary>
+    | undefined
+  >(() => {
+    if (!issues.data) return undefined;
+    return issues.data.pages.flatMap((page) => page.items);
+  }, [issues.data]);
+  const githubTotal = issues.data?.pages[0]?.total ?? null;
   const issuesRefreshing =
     issues.isFetching && !issues.isFetchingNextPage && !issues.isLoading;
 
@@ -771,7 +836,7 @@ export function GitHistoryView({
           : section === "graph"
             ? (graphStatus?.isFetching ?? false)
             : issuesRefreshing,
-      issueCount: loadedIssues?.total ?? null,
+      issueCount: githubTotal,
       issueState,
       isGitActionPending: gitAction.isPending,
       section,
@@ -802,7 +867,7 @@ export function GitHistoryView({
     graphStatus?.nodeCount,
     issueState,
     issuesRefreshing,
-    loadedIssues?.total,
+    githubTotal,
     onHeaderChange,
     project.id,
     queryClient,
@@ -1144,14 +1209,17 @@ export function GitHistoryView({
           hasNextPage={issues.hasNextPage}
           isFetchingNextPage={issues.isFetchingNextPage}
           isLoading={issues.isLoading}
-          inbox={loadedIssues}
+          filters={issueFilters}
+          inbox={loadedInbox}
+          items={loadedGithubItems}
           kind={issueKind}
           project={project}
-          state={issueState}
           status={status}
+          state={issueState}
           worktreeId={worktreeId}
           onLoadMore={() => void issues.fetchNextPage()}
           onViewChange={setInboxView}
+          onFiltersChange={setIssueFilters}
           onSelectWorktree={onSelectWorktree}
           view={inboxView}
         />

@@ -136,6 +136,7 @@ import {
   getChatRuntimeSelection,
   getCodeGraphWorktreeStatus,
   getGithubIssues,
+  getGithubPullRequests,
   getAgentInteractionRequests,
   getQueuedPrompts,
   getSkills,
@@ -807,14 +808,29 @@ export function useChatTranscriptController({
     ),
     queryFn: async () => {
       const lists = await Promise.all([
-        getGithubIssues(projectId!, "issue", "open"),
-        getGithubIssues(projectId!, "issue", "closed"),
-        getGithubIssues(projectId!, "pull-request", "open"),
-        getGithubIssues(projectId!, "pull-request", "closed"),
+        getGithubIssues(projectId!, "open"),
+        getGithubIssues(projectId!, "closed"),
+        getGithubPullRequests(projectId!, "open"),
+        getGithubPullRequests(projectId!, "closed"),
       ]);
-      return lists.flatMap((list) =>
-        list.issues.map((issue) => ({ ...issue, kind: list.kind })),
-      );
+      return [
+        ...lists[0].issues.map((issue) => ({
+          ...issue,
+          kind: "issue" as const,
+        })),
+        ...lists[1].issues.map((issue) => ({
+          ...issue,
+          kind: "issue" as const,
+        })),
+        ...lists[2].pullRequests.map((issue) => ({
+          ...issue,
+          kind: "pull-request" as const,
+        })),
+        ...lists[3].pullRequests.map((issue) => ({
+          ...issue,
+          kind: "pull-request" as const,
+        })),
+      ];
     },
     queryKey: ["github-references", projectId],
     retry: false,

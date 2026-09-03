@@ -17,8 +17,13 @@ import {
   githubAuthStatusSchema,
   githubIssueCreateSchema,
   githubIssueDetailSchema,
+  githubIssueListFiltersSchema,
   githubIssueListSchema,
+  githubPullRequestChecksSchema,
+  githubPullRequestCommitsSchema,
+  githubPullRequestFilesSchema,
   githubPullRequestListSchema,
+  githubPullRequestOverviewSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestDetailSchema,
@@ -42,20 +47,24 @@ import {
   type GithubInboxView,
   type GithubIssueCreate,
   type GithubIssueDetail,
-  type GithubIssueKind,
+  type GithubIssueListFilters,
   type GithubIssueList,
   type GithubIssueState,
   type GithubIssueSummary,
   type GithubPullRequestCreate,
   type GithubPullRequestCreateResult,
   type GithubPullRequestCheckoutPrepared,
-  type GithubPullRequestDetail,
   type GithubPullRequestCheck,
+  type GithubPullRequestChecks,
+  type GithubPullRequestCommits,
+  type GithubPullRequestDetail,
+  type GithubPullRequestFiles,
   type GithubPullRequestInlineCommentCreate,
   type GithubPullRequestLifecycleAction,
   type GithubPullRequestLifecycleApply,
   type GithubPullRequestLifecyclePreview,
   type GithubPullRequestList,
+  type GithubPullRequestOverview,
   type GithubPullRequestReview,
   type GithubPullRequestReviewComment,
   type GithubPullRequestReviewSubmit,
@@ -419,12 +428,14 @@ interface GithubApiOrganization {
 }
 
 interface GithubApiIssue {
+  assignees?: unknown;
   body?: unknown;
   closed_at?: unknown;
   comments?: unknown;
   created_at?: unknown;
   html_url?: unknown;
   labels?: unknown;
+  milestone?: unknown;
   number?: unknown;
   pull_request?: unknown;
   state?: unknown;
@@ -456,6 +467,85 @@ interface GithubApiPullRequest extends GithubApiIssue {
   merged_at?: unknown;
   requested_reviewers?: unknown;
 }
+
+interface GithubGraphqlConnection<T> {
+  nodes?: T[] | null;
+  totalCount?: number;
+}
+
+interface GithubGraphqlIssueNode {
+  __typename?: unknown;
+  assignees?: GithubGraphqlConnection<{ login?: unknown }>;
+  author?: { login?: unknown } | null;
+  baseRefName?: unknown;
+  baseRefOid?: unknown;
+  body?: unknown;
+  closedAt?: unknown;
+  comments?: { totalCount?: unknown };
+  commits?: GithubGraphqlConnection<{
+    commit?: { statusCheckRollup?: { state?: unknown } | null };
+  }>;
+  createdAt?: unknown;
+  headRefName?: unknown;
+  headRefOid?: unknown;
+  isDraft?: unknown;
+  labels?: GithubGraphqlConnection<{ color?: unknown; name?: unknown }>;
+  mergeable?: unknown;
+  merged?: unknown;
+  milestone?: { title?: unknown } | null;
+  number?: unknown;
+  reviewDecision?: unknown;
+  state?: unknown;
+  title?: unknown;
+  updatedAt?: unknown;
+  url?: unknown;
+}
+
+interface GithubGraphqlSearchResponse {
+  data?: {
+    search?: {
+      issueCount?: unknown;
+      nodes?: GithubGraphqlIssueNode[] | null;
+      pageInfo?: {
+        endCursor?: unknown;
+        hasNextPage?: unknown;
+      };
+    };
+  };
+}
+
+const GITHUB_LIST_SEARCH_QUERY = `
+  query CantripGithubList($search: String!, $first: Int!, $after: String) {
+    search(type: ISSUE, query: $search, first: $first, after: $after) {
+      issueCount
+      pageInfo { endCursor hasNextPage }
+      nodes {
+        __typename
+        ... on Issue {
+          number title state url createdAt updatedAt closedAt
+          author { login }
+          comments { totalCount }
+          labels(first: 20) { nodes { name color } }
+          assignees(first: 20) { nodes { login } }
+          milestone { title }
+        }
+        ... on PullRequest {
+          number title body state url createdAt updatedAt closedAt
+          author { login }
+          comments { totalCount }
+          labels(first: 20) { nodes { name color } }
+          assignees(first: 20) { nodes { login } }
+          milestone { title }
+          isDraft merged mergeable reviewDecision
+          headRefName headRefOid baseRefName baseRefOid
+          commits(last: 1) {
+            nodes { commit { statusCheckRollup { state } } }
+          }
+        }
+      }
+    }
+  }
+`;
 
 interface GithubApiPullRequestCommit {
   author?: unknown;
@@ -681,6 +771,16 @@ function parseIssue(value: GithubApiIssue): GithubIssueSummary {
     author: githubLogin(value.user),
     commentCount: Number(value.comments) || 0,
     labels,
+    assignees: Array.isArray(value.assignees)
+      ? value.assignees.map(githubLogin)
+      : [],
+    milestone:
+      value.milestone &&
+      typeof value.milestone === "object" &&
+      "title" in value.milestone &&
+      typeof value.milestone.title === "string"
+        ? value.milestone.title
+        : null,
     createdAt: String(value.created_at),
     updatedAt: String(value.updated_at),
     closedAt: typeof value.closed_at === "string" ? value.closed_at : null,
@@ -721,7 +821,191 @@ function parsePullRequest(
     headSha: head.sha,
     baseRef: base.ref,
     baseSha: base.sha,
+    mergeable: typeof value.mergeable === "boolean" ? value.mergeable : null,
+    reviewDecision: "none",
+    checksState: "unknown",
   });
+}
+
+function graphqlConnectionNodes<T>(
+  connection: GithubGraphqlConnection<T> | null | undefined,
+): T[] {
+  return Array.isArray(connection?.nodes) ? connection.nodes : [];
+}
+
+function graphqlLogin(value: unknown): string {
+  return value &&
+    typeof value === "object" &&
+    "login" in value &&
+    typeof value.login === "string"
+    ? value.login
+    : "ghost";
+}
+
+function parseGraphqlLabels(value: GithubGraphqlIssueNode) {
+  return graphqlConnectionNodes(value.labels).flatMap((label) =>
+    typeof label.name === "string" && typeof label.color === "string"
+      ? [{ name: label.name, color: label.color }]
+      : [],
+  );
+}
+
+function parseGraphqlIssue(value: GithubGraphqlIssueNode): GithubIssueSummary {
+  return {
+    number: Number(value.number),
+    title: String(value.title),
+    state: value.state === "OPEN" ? "open" : "closed",
+    url: String(value.url),
+    author: graphqlLogin(value.author),
+    commentCount: Number(value.comments?.totalCount) || 0,
+    labels: parseGraphqlLabels(value),
+    assignees: graphqlConnectionNodes(value.assignees).map(graphqlLogin),
+    milestone:
+      value.milestone && typeof value.milestone.title === "string"
+        ? value.milestone.title
+        : null,
+    createdAt: String(value.createdAt),
+    updatedAt: String(value.updatedAt),
+    closedAt: typeof value.closedAt === "string" ? value.closedAt : null,
+  };
+}
+
+function graphqlChecksState(
+  value: GithubGraphqlIssueNode,
+): GithubPullRequestSummary["checksState"] {
+  const state = graphqlConnectionNodes(value.commits)[0]?.commit
+    ?.statusCheckRollup?.state;
+  switch (state) {
+    case "SUCCESS":
+      return "success";
+    case "ERROR":
+    case "FAILURE":
+      return "failure";
+    case "EXPECTED":
+    case "PENDING":
+      return "pending";
+    case undefined:
+    case null:
+      return "none";
+    default:
+      return "unknown";
+  }
+}
+
+function graphqlReviewDecision(
+  value: unknown,
+): GithubPullRequestSummary["reviewDecision"] {
+  switch (value) {
+    case "APPROVED":
+      return "approved";
+    case "CHANGES_REQUESTED":
+      return "changes-requested";
+    case "REVIEW_REQUIRED":
+      return "review-required";
+    case null:
+    case undefined:
+      return "none";
+    default:
+      return "reviewed";
+  }
+}
+
+function parseGraphqlPullRequest(
+  value: GithubGraphqlIssueNode,
+): GithubPullRequestSummary {
+  return githubPullRequestSummarySchema.parse({
+    ...parseGraphqlIssue(value),
+    body: typeof value.body === "string" ? value.body : null,
+    draft: value.isDraft === true,
+    merged: value.merged === true,
+    headRef: String(value.headRefName ?? "unknown"),
+    headSha: String(value.headRefOid ?? ""),
+    baseRef: String(value.baseRefName ?? "unknown"),
+    baseSha: String(value.baseRefOid ?? ""),
+    mergeable:
+      value.mergeable === "MERGEABLE"
+        ? true
+        : value.mergeable === "CONFLICTING"
+          ? false
+          : null,
+    reviewDecision: graphqlReviewDecision(value.reviewDecision),
+    checksState: graphqlChecksState(value),
+  });
+}
+
+function quoteGithubSearchValue(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+export function githubListSearchQuery(
+  nameWithOwner: string,
+  kind: "issue" | "pull-request",
+  state: GithubIssueState,
+  input: GithubIssueListFilters,
+  now = new Date(),
+): string {
+  repositorySegments(nameWithOwner);
+  const filters = githubIssueListFiltersSchema.parse(input);
+  if (
+    kind === "issue" &&
+    (filters.view === "review-requested" ||
+      filters.draft !== null ||
+      filters.reviewDecision !== null ||
+      filters.mergeability !== null ||
+      filters.checksState !== null)
+  ) {
+    throw new Error("Pull request filters cannot be applied to issues.");
+  }
+  const terms = [
+    `repo:${nameWithOwner}`,
+    kind === "pull-request" ? "is:pr" : "is:issue",
+    `is:${state}`,
+  ];
+  if (filters.search) terms.push(quoteGithubSearchValue(filters.search));
+  for (const label of filters.labels) {
+    terms.push(`label:${quoteGithubSearchValue(label)}`);
+  }
+  if (filters.author) terms.push(`author:${filters.author}`);
+  if (filters.assignee) terms.push(`assignee:${filters.assignee}`);
+  if (filters.milestone) {
+    terms.push(`milestone:${quoteGithubSearchValue(filters.milestone)}`);
+  }
+  if (filters.view === "assigned-to-me") terms.push("assignee:@me");
+  if (filters.view === "review-requested") {
+    terms.push("review-requested:@me");
+  }
+  if (filters.view === "recently-updated") {
+    const threshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1_000)
+      .toISOString()
+      .slice(0, 10);
+    terms.push(`updated:>=${threshold}`);
+  }
+  if (kind === "pull-request") {
+    if (filters.draft === true) terms.push("is:draft");
+    if (filters.draft === false) terms.push("-is:draft");
+    if (filters.reviewDecision) {
+      const decision = {
+        approved: "approved",
+        "changes-requested": "changes_requested",
+        "review-required": "required",
+        none: "none",
+      }[filters.reviewDecision];
+      terms.push(`review:${decision}`);
+    }
+    if (filters.checksState) terms.push(`status:${filters.checksState}`);
+  }
+  terms.push("sort:updated-desc");
+  return terms.join(" ");
+}
+
+function matchesMergeability(
+  pullRequest: GithubPullRequestSummary,
+  filter: GithubIssueListFilters["mergeability"],
+): boolean {
+  if (filter === null) return true;
+  if (filter === "mergeable") return pullRequest.mergeable === true;
+  if (filter === "conflicting") return pullRequest.mergeable === false;
+  return pullRequest.mergeable === null;
 }
 
 function boundedText(value: unknown, limit: number): string {
@@ -974,6 +1258,26 @@ function deriveChecksState(
   return "neutral";
 }
 
+function pullRequestDataWarning(
+  section:
+    | "conversation"
+    | "reviews"
+    | "review-threads"
+    | "files"
+    | "commits"
+    | "checks",
+  error: unknown,
+) {
+  const message =
+    error instanceof Error && error.message
+      ? error.message
+      : "GitHub request failed.";
+  return {
+    section,
+    message: message.slice(0, 1_000),
+  };
+}
+
 function pullRequestLifecycleToken(
   detail: GithubPullRequestDetail,
   action: GithubPullRequestLifecycleAction,
@@ -1053,6 +1357,84 @@ export class GithubClient {
       maxBuffer: 32 * 1024 * 1024,
     });
     return JSON.parse(stdout);
+  }
+
+  private async listSearchPage(
+    nameWithOwner: string,
+    kind: "issue" | "pull-request",
+    state: GithubIssueState,
+    cursor: string | null,
+    limit: number,
+    input: GithubIssueListFilters,
+  ): Promise<{
+    items: Array<GithubIssueSummary | GithubPullRequestSummary>;
+    nextCursor: string | null;
+    total: number | null;
+  }> {
+    const filters = githubIssueListFiltersSchema.parse(input);
+    const searchQuery = githubListSearchQuery(
+      nameWithOwner,
+      kind,
+      state,
+      filters,
+    );
+    const items: Array<GithubIssueSummary | GithubPullRequestSummary> = [];
+    let currentCursor = cursor;
+    let nextCursor: string | null = null;
+    let total: number | null = null;
+    const needsMergeabilityScan =
+      kind === "pull-request" && filters.mergeability !== null;
+
+    for (let scan = 0; scan < (needsMergeabilityScan ? 10 : 1); scan += 1) {
+      const remaining = limit - items.length;
+      if (remaining <= 0) break;
+      const args = [
+        "-f",
+        `query=${GITHUB_LIST_SEARCH_QUERY}`,
+        "-f",
+        `search=${searchQuery}`,
+        "-F",
+        `first=${remaining}`,
+      ];
+      if (currentCursor) args.push("-f", `after=${currentCursor}`);
+      const response = (await this.api(
+        "graphql",
+        args,
+      )) as GithubGraphqlSearchResponse;
+      const search = response.data?.search;
+      if (!search || !search.pageInfo || !Array.isArray(search.nodes)) {
+        throw new Error("GitHub returned an invalid issue search response.");
+      }
+      if (!needsMergeabilityScan) {
+        const issueCount = Number(search.issueCount);
+        total = Number.isFinite(issueCount) ? issueCount : null;
+      }
+      const parsed = search.nodes.flatMap((node) => {
+        if (kind === "issue" && node.__typename === "Issue") {
+          return [parseGraphqlIssue(node)];
+        }
+        if (kind === "pull-request" && node.__typename === "PullRequest") {
+          const pullRequest = parseGraphqlPullRequest(node);
+          return matchesMergeability(pullRequest, filters.mergeability)
+            ? [pullRequest]
+            : [];
+        }
+        return [];
+      });
+      items.push(...parsed);
+      const hasNextPage = search.pageInfo.hasNextPage === true;
+      const endCursor = search.pageInfo.endCursor;
+      if (hasNextPage && typeof endCursor !== "string") {
+        throw new Error("GitHub omitted the next issue search cursor.");
+      }
+      nextCursor = hasNextPage ? (endCursor as string) : null;
+      if (!hasNextPage || !needsMergeabilityScan || items.length >= limit) {
+        break;
+      }
+      currentCursor = nextCursor;
+    }
+
+    return { items, nextCursor, total };
   }
 
   private async verifyWorktree(cwd: string): Promise<void> {
@@ -1305,41 +1687,25 @@ export class GithubClient {
 
   async listIssues(
     nameWithOwner: string,
-    kind: GithubIssueKind,
     state: GithubIssueState,
-    page = 1,
+    cursor: string | null = null,
     limit = 100,
+    filters: GithubIssueListFilters = githubIssueListFiltersSchema.parse({}),
   ): Promise<GithubIssueList> {
-    const values = (await this.api(
-      `${this.repositoryApiPath(nameWithOwner)}/issues`,
-      [
-        "--method",
-        "GET",
-        "-f",
-        `per_page=${limit}`,
-        "-f",
-        `page=${page}`,
-        "-f",
-        `state=${state}`,
-        "-f",
-        "sort=updated",
-        "-f",
-        "direction=desc",
-      ],
-    )) as GithubApiIssue[];
-    const issues = values
-      .filter((issue) =>
-        kind === "pull-request"
-          ? Boolean(issue.pull_request)
-          : !issue.pull_request,
-      )
-      .map(parseIssue);
-    return githubIssueListSchema.parse({
-      kind,
+    const page = await this.listSearchPage(
+      nameWithOwner,
+      "issue",
       state,
-      total: issues.length,
-      issues,
-      nextPage: values.length === limit ? page + 1 : null,
+      cursor,
+      limit,
+      filters,
+    );
+    return githubIssueListSchema.parse({
+      kind: "issue",
+      state,
+      total: page.total,
+      issues: page.items,
+      nextCursor: page.nextCursor,
     });
   }
 
@@ -1372,32 +1738,23 @@ export class GithubClient {
   async listPullRequests(
     nameWithOwner: string,
     state: GithubIssueState,
-    page = 1,
+    cursor: string | null = null,
     limit = 100,
+    filters: GithubIssueListFilters = githubIssueListFiltersSchema.parse({}),
   ): Promise<GithubPullRequestList> {
-    const values = (await this.api(
-      `${this.repositoryApiPath(nameWithOwner)}/pulls`,
-      [
-        "--method",
-        "GET",
-        "-f",
-        `per_page=${limit}`,
-        "-f",
-        `page=${page}`,
-        "-f",
-        `state=${state}`,
-        "-f",
-        "sort=updated",
-        "-f",
-        "direction=desc",
-      ],
-    )) as GithubApiPullRequest[];
-    const pullRequests = values.map(parsePullRequest);
+    const page = await this.listSearchPage(
+      nameWithOwner,
+      "pull-request",
+      state,
+      cursor,
+      limit,
+      filters,
+    );
     return githubPullRequestListSchema.parse({
       state,
-      total: pullRequests.length,
-      pullRequests,
-      nextPage: values.length === limit ? page + 1 : null,
+      total: page.total,
+      pullRequests: page.items,
+      nextCursor: page.nextCursor,
     });
   }
 
@@ -1613,11 +1970,11 @@ export class GithubClient {
     });
   }
 
-  async getPullRequest(
+  async getPullRequestOverview(
     nameWithOwner: string,
     cwd: string,
     pullRequestNumber: number,
-  ): Promise<GithubPullRequestDetail> {
+  ): Promise<GithubPullRequestOverview> {
     await this.verifyWorktree(cwd);
     const repositoryPath = this.repositoryApiPath(nameWithOwner);
     const pullRequestPath = `${repositoryPath}/pulls/${pullRequestNumber}`;
@@ -1626,71 +1983,55 @@ export class GithubClient {
     )) as GithubApiPullRequest;
     const summary = parsePullRequest(rawPullRequest);
     const issuePath = `${repositoryPath}/issues/${pullRequestNumber}`;
-    const [
-      rawComments,
-      rawCommits,
-      rawFiles,
-      rawCheckRuns,
-      rawStatuses,
-      rawReviews,
-      rawReviewComments,
-    ] = await Promise.all([
-      this.api(`${issuePath}/comments`, [
-        "--method",
-        "GET",
-        "-f",
-        "per_page=100",
-      ]) as Promise<GithubApiIssueComment[]>,
-      this.api(`${pullRequestPath}/commits`, [
-        "--method",
-        "GET",
-        "-f",
-        "per_page=100",
-      ]) as Promise<GithubApiPullRequestCommit[]>,
-      this.api(`${pullRequestPath}/files`, [
-        "--method",
-        "GET",
-        "-f",
-        "per_page=100",
-      ]) as Promise<GithubApiPullRequestFile[]>,
-      this.api(`${repositoryPath}/commits/${summary.headSha}/check-runs`, [
-        "--method",
-        "GET",
-        "-f",
-        "per_page=100",
-      ]) as Promise<GithubApiCheckRuns>,
-      this.api(`${repositoryPath}/commits/${summary.headSha}/status`, [
-        "--method",
-        "GET",
-        "-f",
-        "per_page=100",
-      ]) as Promise<GithubApiCombinedStatus>,
-      this.api(`${pullRequestPath}/reviews`, [
-        "--method",
-        "GET",
-        "-f",
-        "per_page=100",
-      ]) as Promise<GithubApiPullRequestReview[]>,
-      this.api(`${pullRequestPath}/comments`, [
-        "--method",
-        "GET",
-        "-f",
-        "per_page=100",
-      ]) as Promise<GithubApiPullRequestReviewComment[]>,
-    ]);
-    const commits = rawCommits.slice(0, 100).map(parsePullRequestCommit);
-    const files = rawFiles.slice(0, 100).map(parsePullRequestFile);
-    const checkRuns = Array.isArray(rawCheckRuns.check_runs)
-      ? (rawCheckRuns.check_runs as GithubApiCheckRun[])
-          .slice(0, 100)
-          .map(parseCheckRun)
-      : [];
-    const statuses = Array.isArray(rawStatuses.statuses)
-      ? (rawStatuses.statuses as GithubApiCommitStatus[])
-          .slice(0, 100)
-          .map(parseCommitStatus)
-      : [];
-    const checks = [...checkRuns, ...statuses].slice(0, 200);
+    const [commentsResult, reviewsResult, reviewCommentsResult] =
+      await Promise.allSettled([
+        this.api(`${issuePath}/comments`, [
+          "--method",
+          "GET",
+          "-f",
+          "per_page=100",
+        ]) as Promise<GithubApiIssueComment[]>,
+        this.api(`${pullRequestPath}/reviews`, [
+          "--method",
+          "GET",
+          "-f",
+          "per_page=100",
+        ]) as Promise<GithubApiPullRequestReview[]>,
+        this.api(`${pullRequestPath}/comments`, [
+          "--method",
+          "GET",
+          "-f",
+          "per_page=100",
+        ]) as Promise<GithubApiPullRequestReviewComment[]>,
+      ]);
+    const warnings: GithubPullRequestOverview["warnings"] = [];
+    const rawComments =
+      commentsResult.status === "fulfilled" &&
+      Array.isArray(commentsResult.value)
+        ? commentsResult.value
+        : [];
+    if (commentsResult.status === "rejected") {
+      warnings.push(
+        pullRequestDataWarning("conversation", commentsResult.reason),
+      );
+    }
+    const rawReviews =
+      reviewsResult.status === "fulfilled" && Array.isArray(reviewsResult.value)
+        ? reviewsResult.value
+        : [];
+    if (reviewsResult.status === "rejected") {
+      warnings.push(pullRequestDataWarning("reviews", reviewsResult.reason));
+    }
+    const rawReviewComments =
+      reviewCommentsResult.status === "fulfilled" &&
+      Array.isArray(reviewCommentsResult.value)
+        ? reviewCommentsResult.value
+        : [];
+    if (reviewCommentsResult.status === "rejected") {
+      warnings.push(
+        pullRequestDataWarning("review-threads", reviewCommentsResult.reason),
+      );
+    }
     const reviews = rawReviews.slice(0, 100).map(parsePullRequestReview);
     const reviewComments = rawReviewComments
       .slice(0, 100)
@@ -1705,10 +2046,7 @@ export class GithubClient {
           ),
         ]
       : [];
-    const commitCount = Number(rawPullRequest.commits) || commits.length;
-    const changedFileCount =
-      Number(rawPullRequest.changed_files) || files.length;
-    return githubPullRequestDetailSchema.parse({
+    return githubPullRequestOverviewSchema.parse({
       ...summary,
       comments: rawComments.slice(0, 100).map(parseIssueComment),
       commentsTruncated: summary.commentCount > rawComments.length,
@@ -1721,26 +2059,201 @@ export class GithubClient {
         typeof rawPullRequest.mergeable_state === "string"
           ? rawPullRequest.mergeable_state
           : "unknown",
-      reviewDecision: deriveReviewDecision(reviews, requestedReviewers),
-      checksState: deriveChecksState(checks),
+      reviewDecision:
+        reviewsResult.status === "fulfilled"
+          ? deriveReviewDecision(reviews, requestedReviewers)
+          : "unknown",
+      checksState: "unknown",
       additions: Number(rawPullRequest.additions) || 0,
       deletions: Number(rawPullRequest.deletions) || 0,
-      changedFileCount,
-      commitCount,
-      commits,
-      commitsTruncated: commitCount > commits.length,
-      files,
-      filesTruncated: changedFileCount > files.length,
-      checks,
-      checksTruncated:
-        Number(rawCheckRuns.total_count) > checkRuns.length ||
-        (Array.isArray(rawStatuses.statuses) &&
-          rawStatuses.statuses.length >= 100),
+      changedFileCount: Number(rawPullRequest.changed_files) || 0,
+      commitCount: Number(rawPullRequest.commits) || 0,
       reviews,
       reviewsTruncated: rawReviews.length >= 100,
       reviewThreads,
       reviewThreadsTruncated:
         rawReviewComments.length >= 100 || reviewThreads.length >= 100,
+      warnings,
+    });
+  }
+
+  async getPullRequestFiles(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+  ): Promise<GithubPullRequestFiles> {
+    await this.verifyWorktree(cwd);
+    const values = await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/files`,
+      ["--method", "GET", "-f", "per_page=100"],
+    );
+    if (!Array.isArray(values)) {
+      throw new Error(
+        "GitHub returned an invalid pull request files response.",
+      );
+    }
+    return githubPullRequestFilesSchema.parse({
+      files: (values as GithubApiPullRequestFile[])
+        .slice(0, 100)
+        .map(parsePullRequestFile),
+      filesTruncated: values.length >= 100,
+      warnings: [],
+    });
+  }
+
+  async getPullRequestCommits(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+  ): Promise<GithubPullRequestCommits> {
+    await this.verifyWorktree(cwd);
+    const values = await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/commits`,
+      ["--method", "GET", "-f", "per_page=100"],
+    );
+    if (!Array.isArray(values)) {
+      throw new Error(
+        "GitHub returned an invalid pull request commits response.",
+      );
+    }
+    return githubPullRequestCommitsSchema.parse({
+      commits: (values as GithubApiPullRequestCommit[])
+        .slice(0, 100)
+        .map(parsePullRequestCommit),
+      commitsTruncated: values.length >= 100,
+      warnings: [],
+    });
+  }
+
+  async getPullRequestChecks(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+  ): Promise<GithubPullRequestChecks> {
+    await this.verifyWorktree(cwd);
+    const repositoryPath = this.repositoryApiPath(nameWithOwner);
+    const pullRequest = parsePullRequest(
+      (await this.api(
+        `${repositoryPath}/pulls/${pullRequestNumber}`,
+      )) as GithubApiPullRequest,
+    );
+    const [checkRunsResult, statusesResult] = await Promise.allSettled([
+      this.api(`${repositoryPath}/commits/${pullRequest.headSha}/check-runs`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiCheckRuns>,
+      this.api(`${repositoryPath}/commits/${pullRequest.headSha}/status`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiCombinedStatus>,
+    ]);
+    if (
+      checkRunsResult.status === "rejected" &&
+      statusesResult.status === "rejected"
+    ) {
+      throw new Error(
+        `GitHub checks are unavailable: ${pullRequestDataWarning("checks", checkRunsResult.reason).message}`,
+      );
+    }
+    const warnings: GithubPullRequestChecks["warnings"] = [];
+    if (checkRunsResult.status === "rejected") {
+      warnings.push(pullRequestDataWarning("checks", checkRunsResult.reason));
+    }
+    if (statusesResult.status === "rejected") {
+      warnings.push(pullRequestDataWarning("checks", statusesResult.reason));
+    }
+    const rawCheckRuns =
+      checkRunsResult.status === "fulfilled" ? checkRunsResult.value : {};
+    const rawStatuses =
+      statusesResult.status === "fulfilled" ? statusesResult.value : {};
+    const checkRuns = Array.isArray(rawCheckRuns.check_runs)
+      ? (rawCheckRuns.check_runs as GithubApiCheckRun[])
+          .slice(0, 100)
+          .map(parseCheckRun)
+      : [];
+    const statuses = Array.isArray(rawStatuses.statuses)
+      ? (rawStatuses.statuses as GithubApiCommitStatus[])
+          .slice(0, 100)
+          .map(parseCommitStatus)
+      : [];
+    const checks = [...checkRuns, ...statuses].slice(0, 200);
+    return githubPullRequestChecksSchema.parse({
+      checks,
+      checksState: deriveChecksState(checks),
+      checksTruncated:
+        Number(rawCheckRuns.total_count) > checkRuns.length ||
+        (Array.isArray(rawStatuses.statuses) &&
+          rawStatuses.statuses.length >= 100),
+      warnings,
+    });
+  }
+
+  async getPullRequest(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+  ): Promise<GithubPullRequestDetail> {
+    const overview = await this.getPullRequestOverview(
+      nameWithOwner,
+      cwd,
+      pullRequestNumber,
+    );
+    const [filesResult, commitsResult, checksResult] = await Promise.allSettled(
+      [
+        this.getPullRequestFiles(nameWithOwner, cwd, pullRequestNumber),
+        this.getPullRequestCommits(nameWithOwner, cwd, pullRequestNumber),
+        this.getPullRequestChecks(nameWithOwner, cwd, pullRequestNumber),
+      ],
+    );
+    const warnings = [...overview.warnings];
+    if (filesResult.status === "rejected") {
+      warnings.push(pullRequestDataWarning("files", filesResult.reason));
+    }
+    if (commitsResult.status === "rejected") {
+      warnings.push(pullRequestDataWarning("commits", commitsResult.reason));
+    }
+    if (checksResult.status === "rejected") {
+      warnings.push(pullRequestDataWarning("checks", checksResult.reason));
+    }
+    return githubPullRequestDetailSchema.parse({
+      ...overview,
+      files: filesResult.status === "fulfilled" ? filesResult.value.files : [],
+      filesTruncated:
+        filesResult.status === "fulfilled"
+          ? filesResult.value.filesTruncated
+          : true,
+      commits:
+        commitsResult.status === "fulfilled" ? commitsResult.value.commits : [],
+      commitsTruncated:
+        commitsResult.status === "fulfilled"
+          ? commitsResult.value.commitsTruncated
+          : true,
+      checks:
+        checksResult.status === "fulfilled" ? checksResult.value.checks : [],
+      checksTruncated:
+        checksResult.status === "fulfilled"
+          ? checksResult.value.checksTruncated
+          : true,
+      checksState:
+        checksResult.status === "fulfilled"
+          ? checksResult.value.checksState
+          : "unknown",
+      warnings: [
+        ...warnings,
+        ...(filesResult.status === "fulfilled"
+          ? filesResult.value.warnings
+          : []),
+        ...(commitsResult.status === "fulfilled"
+          ? commitsResult.value.warnings
+          : []),
+        ...(checksResult.status === "fulfilled"
+          ? checksResult.value.warnings
+          : []),
+      ],
     });
   }
 

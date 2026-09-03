@@ -250,8 +250,8 @@ const createdIssues: Array<
 > = [];
 const issueListRequests: Array<{
   kind: "issue" | "pull-request";
+  cursor: string | null;
   limit: number;
-  page: number;
 }> = [];
 const repositoryCreateCommands: Array<
   Extract<WorkerCommand, { type: "github.repositories.create" }>
@@ -525,15 +525,15 @@ const workerBridge = {
         };
       case "github.issues.list":
         issueListRequests.push({
-          kind: command.kind,
+          kind: "issue",
+          cursor: command.cursor,
           limit: command.limit,
-          page: command.page,
         });
         return {
-          kind: command.kind,
+          kind: "issue",
           state: command.state,
           total: 1,
-          nextPage: command.page + 1,
+          nextCursor: "next-issue-cursor",
           issues: [
             {
               number: 42,
@@ -547,6 +547,39 @@ const workerBridge = {
               updatedAt: "2026-08-07T13:00:00.000Z",
               closedAt:
                 command.state === "closed" ? "2026-08-07T14:00:00.000Z" : null,
+            },
+          ],
+        };
+      case "github.pull-requests.list":
+        issueListRequests.push({
+          kind: "pull-request",
+          cursor: command.cursor,
+          limit: command.limit,
+        });
+        return {
+          state: command.state,
+          total: 1,
+          nextCursor: "next-pr-cursor",
+          pullRequests: [
+            {
+              number: 42,
+              title: "Test the GitHub pull request view",
+              state: command.state,
+              url: "https://github.com/ArcaneArts/Cantrip/pull/42",
+              author: "cantrip-test",
+              commentCount: 1,
+              labels: [{ name: "feature", color: "22d3ee" }],
+              createdAt: "2026-08-07T12:00:00.000Z",
+              updatedAt: "2026-08-07T13:00:00.000Z",
+              closedAt:
+                command.state === "closed" ? "2026-08-07T14:00:00.000Z" : null,
+              body: "Pull request details",
+              draft: false,
+              merged: false,
+              headRef: "feature/github-list",
+              headSha: "1".repeat(40),
+              baseRef: "main",
+              baseSha: "2".repeat(40),
             },
           ],
         };
@@ -3067,23 +3100,22 @@ describe("local server foundation", () => {
       },
     ]);
     expect(
-      githubIssueListSchema.parse(
+      githubPullRequestListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
-            url: `/api/projects/${project.id}/github/issues?kind=pull-request&state=open&page=3&limit=25`,
+            url: `/api/projects/${project.id}/github/issues?kind=pull-request&state=open&cursor=cursor-3&limit=25`,
           })
         ).json(),
       ),
     ).toMatchObject({
-      kind: "pull-request",
       total: 1,
-      issues: [{ number: 42, state: "open" }],
-      nextPage: 4,
+      pullRequests: [{ number: 42, state: "open" }],
+      nextCursor: "next-pr-cursor",
     });
     expect(issueListRequests).toContainEqual({
       kind: "pull-request",
-      page: 3,
+      cursor: "cursor-3",
       limit: 25,
     });
     const issueCreateResponse = await firstApp.inject({
