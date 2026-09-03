@@ -5,6 +5,9 @@ import {
   type ChatSummary,
   type GithubAgentWorkflowContext,
   type GitCommit,
+  type GitComparisonMode,
+  type GitHistoryFilter,
+  type GitHistoryOptions,
   type GitRef,
   type GitMergeRebaseAction,
   type GitStatus,
@@ -32,17 +35,22 @@ import {
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Check,
   CircleCheck,
   CircleDot,
   FileDiff,
   GitBranch,
   GitCommitHorizontal,
   GitFork,
+  GitCompareArrows,
+  GitCommitVertical,
+  GitMerge,
   Loader2,
   Plus,
   RefreshCw,
   ScanLine,
   Tag,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -94,6 +102,11 @@ import {
 import { cn } from "@/lib/utils";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { projectHasGithubCapability } from "@/lib/project-capabilities";
+import {
+  defaultGitHistoryOptions,
+  parseGitHistoryRoute,
+  replaceGitHistoryRoute,
+} from "@/lib/git-history-navigation";
 import { useCompactLayout, useNarrowViewport } from "@/lib/use-compact-layout";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
@@ -113,6 +126,12 @@ import {
 } from "./git-force-push-dialog";
 import { GitFileHistoryDialog } from "./git-file-history-dialog";
 import { GitCommitSearchDialog } from "./git-commit-search-dialog";
+import { GitHistoryFilters } from "./git-history-filters";
+import {
+  comparisonForSelectedCommits,
+  selectedHistoryCommits,
+  squashActionForSelectedCommits,
+} from "./git-history-selection";
 import { GitRecoveryDialog } from "./git-recovery-dialog";
 import { GitStashPanel } from "./git-stash-panel";
 import { GitRepositoryPanel } from "./git-repository-panel";
@@ -319,9 +338,16 @@ function relativeDate(value: string): string {
   return relativeTime.format(Math.round(days / 365), "year");
 }
 
-function RefLabel({ gitRef }: { gitRef: GitRef }) {
+function RefLabel({
+  gitRef,
+  onFilter,
+}: {
+  gitRef: GitRef;
+  onFilter?(gitRef: GitRef): void;
+}) {
   return (
-    <span
+    <button
+      type="button"
       className={cn(
         "inline-flex h-4 max-w-24 shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium",
         gitRef.kind === "head" &&
@@ -335,6 +361,7 @@ function RefLabel({ gitRef }: { gitRef: GitRef }) {
         gitRef.current && "ring-1 ring-current",
       )}
       title={`${gitRef.kind} ref: ${gitRef.name}`}
+      onClick={() => onFilter?.(gitRef)}
     >
       {gitRef.kind === "tag" ? (
         <Tag className="size-2.5" />
@@ -342,7 +369,7 @@ function RefLabel({ gitRef }: { gitRef: GitRef }) {
         <GitBranch className="size-2.5" />
       )}
       <span className="truncate">{gitRef.name}</span>
-    </span>
+    </button>
   );
 }
 
@@ -542,6 +569,13 @@ export function GitHistoryView({
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [internalSection, setInternalSection] = useState<GitViewSection>(view);
   const section = activeSection ?? internalSection;
+  const initialRoute = useMemo(
+    () => parseGitHistoryRoute(window.location.search),
+    [],
+  );
+  const initialRouteMatches =
+    initialRoute.projectId === project.id &&
+    initialRoute.worktreeId === worktreeId;
   const setSection = useCallback(
     (next: GitViewSection) => {
       setInternalSection(next);
@@ -550,20 +584,47 @@ export function GitHistoryView({
     [onSectionChange],
   );
   const [activeDrawer, setActiveDrawer] = useState<GitHistoryDrawer | null>(
-    null,
+    initialRouteMatches
+      ? initialRoute.comparison
+        ? { kind: "compare" }
+        : initialRoute.commit
+          ? { kind: "commit", revision: initialRoute.commit }
+          : null
+      : null,
   );
   const [presentedDrawer, setPresentedDrawer] =
     useState<GitHistoryDrawer | null>(null);
   const [forcePushOpen, setForcePushOpen] = useState(false);
-  const [fileHistoryOpen, setFileHistoryOpen] = useState(false);
+  const [fileHistoryOpen, setFileHistoryOpen] = useState(
+    initialRouteMatches && Boolean(initialRoute.filePath),
+  );
+  const [fileHistoryPath, setFileHistoryPath] = useState<string | null>(
+    initialRouteMatches ? initialRoute.filePath : null,
+  );
   const [commitSearchOpen, setCommitSearchOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [operationPreset, setOperationPreset] =
     useState<GitMergeRebaseAction | null>(null);
   const [commitActionRequest, setCommitActionRequest] =
     useState<CommitActionRequest | null>(null);
-  const [compareLeft, setCompareLeft] = useState<string | null>(null);
-  const [compareRight, setCompareRight] = useState<string | null>(null);
+  const [compareLeft, setCompareLeft] = useState<string | null>(
+    initialRouteMatches ? (initialRoute.comparison?.left ?? null) : null,
+  );
+  const [compareRight, setCompareRight] = useState<string | null>(
+    initialRouteMatches ? (initialRoute.comparison?.right ?? null) : null,
+  );
+  const [compareMode, setCompareMode] = useState<GitComparisonMode>(
+    initialRouteMatches
+      ? (initialRoute.comparison?.mode ?? "direct")
+      : "direct",
+  );
+  const [historyOptions, setHistoryOptions] = useState<GitHistoryOptions>(
+    initialRouteMatches ? initialRoute.options : defaultGitHistoryOptions,
+  );
+  const [selectedRevisions, setSelectedRevisions] = useState<Set<string>>(
+    () =>
+      new Set(initialRouteMatches ? initialRoute.selectedCommits : undefined),
+  );
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
   const [issueInboxView, setIssueInboxView] = useState<GithubInboxView>("all");
   const [pullRequestInboxView, setPullRequestInboxView] =
@@ -604,6 +665,15 @@ export function GitHistoryView({
     if (activeDrawer) setPresentedDrawer(activeDrawer);
   }, [activeDrawer]);
 
+  const applyHistoryFilters = useCallback((next: Partial<GitHistoryFilter>) => {
+    setHistoryOptions((current) => {
+      const filters = { ...current.filters, ...next };
+      if (next.branch) filters.tag = null;
+      if (next.tag) filters.branch = null;
+      return { ...current, filters };
+    });
+  }, []);
+
   const openCommitDrawer = (revision: string) => {
     setActiveDrawer({ kind: "commit", revision });
   };
@@ -622,6 +692,59 @@ export function GitHistoryView({
     },
     [setSection],
   );
+
+  useEffect(() => {
+    if (section !== "history") return;
+    replaceGitHistoryRoute({
+      projectId: project.id,
+      worktreeId,
+      commit: selectedCommit,
+      selectedCommits: [...selectedRevisions],
+      comparison:
+        compareOpen && compareLeft && compareRight
+          ? { left: compareLeft, right: compareRight, mode: compareMode }
+          : null,
+      filePath: fileHistoryOpen ? fileHistoryPath : null,
+      options: historyOptions,
+    });
+  }, [
+    compareLeft,
+    compareMode,
+    compareOpen,
+    compareRight,
+    fileHistoryOpen,
+    fileHistoryPath,
+    historyOptions,
+    project.id,
+    section,
+    selectedCommit,
+    selectedRevisions,
+    worktreeId,
+  ]);
+
+  useEffect(() => {
+    const restoreRoute = () => {
+      const route = parseGitHistoryRoute(window.location.search);
+      if (route.projectId !== project.id || route.worktreeId !== worktreeId)
+        return;
+      setHistoryOptions(route.options);
+      setSelectedRevisions(new Set(route.selectedCommits));
+      setFileHistoryPath(route.filePath);
+      setFileHistoryOpen(Boolean(route.filePath));
+      if (route.comparison) {
+        setCompareLeft(route.comparison.left);
+        setCompareRight(route.comparison.right);
+        setCompareMode(route.comparison.mode);
+        setActiveDrawer({ kind: "compare" });
+      } else if (route.commit) {
+        setActiveDrawer({ kind: "commit", revision: route.commit });
+      } else {
+        setActiveDrawer(null);
+      }
+    };
+    window.addEventListener("popstate", restoreRoute);
+    return () => window.removeEventListener("popstate", restoreRoute);
+  }, [project.id, worktreeId]);
   const selectedWorktree = worktrees.find(({ id }) => id === worktreeId);
   const selectedWorker = workers.find(
     ({ workerId }) => workerId === selectedWorktree?.workerId,
@@ -886,8 +1009,13 @@ export function GitHistoryView({
     enabled: section === "history" && selectedAvailable,
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
-      getProjectWorktreeHistory(project.id, worktreeId, pageParam),
-    queryKey: ["worktree-history", project.id, worktreeId],
+      getProjectWorktreeHistory(
+        project.id,
+        worktreeId,
+        pageParam,
+        historyOptions,
+      ),
+    queryKey: ["worktree-history", project.id, worktreeId, historyOptions],
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
   const issueKind: GithubIssueKind =
@@ -1063,6 +1191,23 @@ export function GitHistoryView({
     () => history.data?.pages.flatMap((page) => page.commits) ?? [],
     [history.data],
   );
+  const selectedCommits = useMemo(
+    () => selectedHistoryCommits(commits, selectedRevisions),
+    [commits, selectedRevisions],
+  );
+  const selectedComparison = useMemo(
+    () => comparisonForSelectedCommits(commits, selectedRevisions),
+    [commits, selectedRevisions],
+  );
+  const selectedSquashAction = useMemo(
+    () =>
+      squashActionForSelectedCommits(
+        commits,
+        selectedRevisions,
+        status?.head ?? null,
+      ),
+    [commits, selectedRevisions, status?.head],
+  );
   const graph = useMemo(() => graphRows(commits), [commits]);
   const displayRows = useMemo(
     () => buildHistoryDisplayRows(graph.rows, worktrees, statuses),
@@ -1189,14 +1334,28 @@ export function GitHistoryView({
   }, [project.id, view]);
 
   useEffect(() => {
-    setActiveDrawer(null);
+    const route = parseGitHistoryRoute(window.location.search);
+    const matches =
+      route.projectId === project.id && route.worktreeId === worktreeId;
+    setActiveDrawer(
+      matches && route.comparison
+        ? { kind: "compare" }
+        : matches && route.commit
+          ? { kind: "commit", revision: route.commit }
+          : null,
+    );
     setGraphStatus(null);
     setGraphRevision(null);
     setForcePushOpen(false);
     setOperationPreset(null);
     setCommitActionRequest(null);
-    setCompareLeft(null);
-    setCompareRight(null);
+    setCompareLeft(matches ? (route.comparison?.left ?? null) : null);
+    setCompareRight(matches ? (route.comparison?.right ?? null) : null);
+    setCompareMode(matches ? (route.comparison?.mode ?? "direct") : "direct");
+    setFileHistoryPath(matches ? route.filePath : null);
+    setFileHistoryOpen(matches && Boolean(route.filePath));
+    setHistoryOptions(matches ? route.options : defaultGitHistoryOptions);
+    setSelectedRevisions(new Set(matches ? route.selectedCommits : undefined));
   }, [project.id, worktreeId]);
 
   useEffect(() => {
@@ -1241,12 +1400,17 @@ export function GitHistoryView({
       {drawer.kind === "commit" ? (
         <GitCommitInspector
           currentHead={status?.head ?? null}
+          githubUrl={project.github?.url ?? null}
           projectId={project.id}
           worktreeId={worktreeId}
           revision={drawer.revision}
           onClose={closeDrawer}
           onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
           onNavigate={openCommitDrawer}
+          onFilter={(filters) => {
+            applyHistoryFilters(filters);
+            closeDrawer();
+          }}
           onViewInGraph={showCommitInGraph}
           onAction={setCommitActionRequest}
         />
@@ -1256,8 +1420,10 @@ export function GitHistoryView({
           projectId={project.id}
           worktreeId={worktreeId}
           left={compareLeft}
+          mode={compareMode}
           right={compareRight}
           onLeftChange={setCompareLeft}
+          onModeChange={setCompareMode}
           onRightChange={setCompareRight}
           onClose={closeDrawer}
           onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
@@ -1409,7 +1575,10 @@ export function GitHistoryView({
                 },
                 file: {
                   active: fileHistoryOpen,
-                  onSelect: () => setFileHistoryOpen(true),
+                  onSelect: () => {
+                    setFileHistoryPath(null);
+                    setFileHistoryOpen(true);
+                  },
                 },
                 search: {
                   active: commitSearchOpen,
@@ -1493,6 +1662,84 @@ export function GitHistoryView({
             ? (reconcile.error ?? lockWorktree.error)?.message
             : "Worktree operation failed."}
         </p>
+      ) : null}
+
+      {section === "history" ? (
+        <GitHistoryFilters
+          disabled={!selectedAvailable}
+          onAdvancedSearch={() => setCommitSearchOpen(true)}
+          onChange={setHistoryOptions}
+          options={historyOptions}
+        />
+      ) : null}
+      {section === "history" && selectedCommits.length ? (
+        <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-1.5 border-b bg-muted/20 px-3 py-1.5 text-xs">
+          <span className="mr-1 font-medium">
+            {selectedCommits.length} selected
+          </span>
+          <Button
+            className="h-7 gap-1 px-2 text-[10px]"
+            disabled={!selectedComparison}
+            onClick={() => {
+              if (!selectedComparison) return;
+              setCompareLeft(selectedComparison.left);
+              setCompareRight(selectedComparison.right);
+              openToolDrawer("compare");
+            }}
+            size="sm"
+            title="Select exactly two commits to compare"
+            variant="outline"
+          >
+            <GitCompareArrows className="size-3.5" /> Compare
+          </Button>
+          <Button
+            className="h-7 gap-1 px-2 text-[10px]"
+            onClick={() => {
+              const target = selectedCommits.at(-1)!;
+              setCommitActionRequest({
+                kind: "cherryPick",
+                target: {
+                  hash: target.hash,
+                  shortHash: `${selectedCommits.length} commits`,
+                  subject: selectedCommits
+                    .map(({ subject }) => subject)
+                    .join(", "),
+                  parents: target.parents,
+                  isHead: target.hash === status?.head,
+                },
+                revisions: selectedCommits.map(({ hash }) => hash),
+              });
+            }}
+            size="sm"
+            variant="outline"
+          >
+            <GitCommitVertical className="size-3.5" /> Cherry-pick
+          </Button>
+          <Button
+            className="h-7 gap-1 px-2 text-[10px]"
+            disabled={!selectedSquashAction}
+            onClick={() => {
+              if (!selectedSquashAction) return;
+              setOperationPreset(selectedSquashAction);
+              openToolDrawer("operations");
+            }}
+            size="sm"
+            title="Squash is available for a contiguous first-parent selection ending at HEAD"
+            variant="outline"
+          >
+            <GitMerge className="size-3.5" /> Squash
+          </Button>
+          <Button
+            className="ml-auto size-7"
+            onClick={() => setSelectedRevisions(new Set())}
+            size="icon"
+            title="Clear commit selection"
+            variant="ghost"
+          >
+            <X className="size-3.5" />
+            <span className="sr-only">Clear commit selection</span>
+          </Button>
+        </div>
       ) : null}
 
       {section === "graph" ? (
@@ -1760,6 +2007,7 @@ export function GitHistoryView({
                   return (
                     <GitCommitContextMenu
                       key={row.commit.hash}
+                      githubUrl={project.github?.url ?? null}
                       target={{
                         hash: row.commit.hash,
                         shortHash: row.commit.shortHash,
@@ -1883,6 +2131,32 @@ export function GitHistoryView({
                         </div>
                         <div className="min-w-0 pr-2 md:flex md:items-center md:gap-2 md:pr-4">
                           <div className="flex min-w-0 items-center gap-2">
+                            <button
+                              type="button"
+                              aria-pressed={selectedRevisions.has(
+                                row.commit.hash,
+                              )}
+                              className={cn(
+                                "grid size-4 shrink-0 place-items-center rounded border text-transparent hover:border-foreground/60",
+                                selectedRevisions.has(row.commit.hash) &&
+                                  "border-primary bg-primary text-primary-foreground",
+                              )}
+                              onClick={() => {
+                                setSelectedRevisions((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(row.commit.hash))
+                                    next.delete(row.commit.hash);
+                                  else next.add(row.commit.hash);
+                                  return next;
+                                });
+                              }}
+                              title={`Select ${row.commit.shortHash}`}
+                            >
+                              <Check className="size-3" />
+                              <span className="sr-only">
+                                Select commit {row.commit.shortHash}
+                              </span>
+                            </button>
                             {compareOpen ? (
                               <span className="flex shrink-0 items-center gap-0.5">
                                 {(["A", "B"] as const).map((endpoint) => {
@@ -1919,6 +2193,24 @@ export function GitHistoryView({
                                 <RefLabel
                                   key={`${gitRef.kind}:${gitRef.name}`}
                                   gitRef={gitRef}
+                                  onFilter={(selectedRef) => {
+                                    if (selectedRef.kind === "tag") {
+                                      applyHistoryFilters({
+                                        tag: selectedRef.name,
+                                        branch: null,
+                                      });
+                                      return;
+                                    }
+                                    const branch =
+                                      selectedRef.kind === "head"
+                                        ? firstPage?.branch
+                                        : selectedRef.name;
+                                    if (branch)
+                                      applyHistoryFilters({
+                                        branch,
+                                        tag: null,
+                                      });
+                                  }}
                                 />
                               ))}
                             {row.commit.refs.length > visibleRefCount ? (
@@ -1940,17 +2232,35 @@ export function GitHistoryView({
                             </code>
                           </div>
                           <div className="mt-1 flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground md:hidden">
-                            <span className="min-w-0 truncate">
+                            <button
+                              type="button"
+                              className="min-w-0 truncate hover:underline"
+                              onClick={() =>
+                                applyHistoryFilters({
+                                  author: row.commit.authorEmail,
+                                })
+                              }
+                              title={`Filter History by ${row.commit.authorName}`}
+                            >
                               {row.commit.authorName}
-                            </span>
+                            </button>
                             <code className="shrink-0">
                               {row.commit.shortHash}
                             </code>
                           </div>
                         </div>
-                        <span className="hidden truncate text-muted-foreground md:block">
+                        <button
+                          type="button"
+                          className="hidden truncate text-left text-muted-foreground hover:underline md:block"
+                          onClick={() =>
+                            applyHistoryFilters({
+                              author: row.commit.authorEmail,
+                            })
+                          }
+                          title={`Filter History by ${row.commit.authorName}`}
+                        >
                           {row.commit.authorName}
-                        </span>
+                        </button>
                         <span className="text-right text-[10px] text-muted-foreground">
                           {day !== previousCommitDay.get(row.commit.hash)
                             ? relativeDate(row.commit.authoredAt)
@@ -2165,8 +2475,12 @@ export function GitHistoryView({
         worktreeId={worktreeId}
       />
       <GitFileHistoryDialog
+        initialPath={fileHistoryPath}
         open={fileHistoryOpen}
-        onOpenChange={setFileHistoryOpen}
+        onOpenChange={(open) => {
+          setFileHistoryOpen(open);
+          if (!open) setFileHistoryPath(null);
+        }}
         projectId={project.id}
         worktreeId={worktreeId}
         onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
@@ -2182,6 +2496,9 @@ export function GitHistoryView({
         onOpenCommit={(revision) => {
           openCommitDrawer(revision);
         }}
+        onUseFilters={(filters) =>
+          setHistoryOptions((current) => ({ ...current, filters }))
+        }
       />
       <GitRecoveryDialog
         open={recoveryOpen}

@@ -7,6 +7,7 @@ import {
   gitGraphRequestSchema,
   gitGraphCommitOverlayRequestSchema,
   gitCommitSearchQuerySchema,
+  gitHistoryOptionsSchema,
   gitRecoveryActionSchema,
   gitRecoveryApplySchema,
   gitDiffContextLinesSchema,
@@ -57,6 +58,20 @@ export const workerGitCommandSchemas = [
       .array(z.string().regex(/^[0-9a-f]{40,64}$/u))
       .max(500)
       .default([]),
+    options: gitHistoryOptionsSchema.default({
+      filters: {
+        message: null,
+        author: null,
+        hash: null,
+        dateFrom: null,
+        dateTo: null,
+        path: null,
+        branch: null,
+        tag: null,
+      },
+      firstParent: false,
+      hideMerges: false,
+    }),
   }),
   z
     .object({

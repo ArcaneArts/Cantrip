@@ -9,6 +9,7 @@ import {
   ChevronRight,
   File,
   FileCode2,
+  FileClock,
   FileText,
   Folder,
   FolderOpen,
@@ -41,6 +42,7 @@ import {
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
+import { requestGitFileHistory } from "@/lib/git-history-navigation";
 
 const SIDEBAR_FILE_TREE_INDENT_PX = 6;
 const SIDEBAR_HIDDEN_METADATA_NAMES = new Set([".ds_store", "thumbs.db"]);
@@ -143,6 +145,7 @@ function SidebarFileRow({
   onDelete,
   onCreateFolder,
   onOpenGraph,
+  onOpenHistory,
   onOpenNative,
   onOpen,
   onOpenTerminal,
@@ -164,6 +167,7 @@ function SidebarFileRow({
   onDelete(): void;
   onCreateFolder?(): void;
   onOpenGraph?(): void;
+  onOpenHistory?(): void;
   onOpenNative?(localFolder: boolean): void;
   onOpen(): void;
   onOpenTerminal?(): void;
@@ -295,6 +299,12 @@ function SidebarFileRow({
       <ContextMenu.Trigger asChild>{row}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <StyledContextMenuContent className="min-w-48">
+          {entry.kind === "file" && onOpenHistory ? (
+            <StyledContextMenuItem onSelect={onOpenHistory}>
+              <FileClock className="size-4" />
+              Open File History
+            </StyledContextMenuItem>
+          ) : null}
           {onOpenNative && revealLabel ? (
             <StyledContextMenuItem
               onClick={(event) => {
@@ -367,6 +377,7 @@ function SidebarDirectoryNode({
   onCreateFolder,
   onDelete,
   onOpenGraph,
+  onOpenHistory,
   onOpenNative,
   onPreview,
   onOpenTerminal,
@@ -395,6 +406,7 @@ function SidebarDirectoryNode({
   onCreateFolder(parentPath: string): void;
   onDelete(entry: ExplorerEntry): void;
   onOpenGraph?(entry: ExplorerEntry): void;
+  onOpenHistory(path: string): void;
   onOpenNative?(entry: ExplorerEntry, localFolder: boolean): void;
   onPreview(entry: ExplorerEntry): void;
   onOpenTerminal?(entry: ExplorerEntry): void;
@@ -493,6 +505,7 @@ function SidebarDirectoryNode({
                   editingPath={editingPath}
                   onDelete={onDelete}
                   onOpenGraph={onOpenGraph}
+                  onOpenHistory={onOpenHistory}
                   onOpenNative={onOpenNative}
                   onPreview={onPreview}
                   onOpenTerminal={onOpenTerminal}
@@ -525,6 +538,7 @@ function SidebarDirectoryNode({
                       : undefined
                   }
                   onOpen={() => onPreview(child)}
+                  onOpenHistory={() => onOpenHistory(child.path)}
                   onPin={() => onPin(child)}
                   onRename={() => onRename(child)}
                   onRenameCancel={onRenameCancel}
@@ -601,6 +615,14 @@ export function ProjectSidebarFileTree({
   workerOnline: boolean;
 }) {
   const shiftKeyHeld = useShiftKeyHeld();
+  const openFileHistory = (path: string) => {
+    if (!explorer) return;
+    requestGitFileHistory({
+      projectId: explorer.projectId,
+      worktreeId: explorer.worktreeId,
+      path,
+    });
+  };
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
     () => new Set(sidebarFileAncestorPaths(activePath)),
   );
@@ -948,6 +970,7 @@ export function ProjectSidebarFileTree({
                       onCreateFolder={createFolder}
                       onDelete={setDeleteTarget}
                       onOpenGraph={onOpenGraph}
+                      onOpenHistory={openFileHistory}
                       onOpenNative={onOpenNative}
                       onPreview={onPreview}
                       onOpenTerminal={onOpenTerminal}
@@ -980,6 +1003,7 @@ export function ProjectSidebarFileTree({
                           : undefined
                       }
                       onOpen={() => onPreview(entry)}
+                      onOpenHistory={() => openFileHistory(entry.path)}
                       onPin={() => onPin(entry)}
                       onRename={() => beginRename(entry)}
                       onRenameCancel={cancelRename}

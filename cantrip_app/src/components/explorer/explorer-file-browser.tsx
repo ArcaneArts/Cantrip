@@ -20,6 +20,7 @@ import {
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
 import { useShiftKeyHeld } from "@/components/ui/native-folder-reveal-icon";
+import { requestGitFileHistory } from "@/lib/git-history-navigation";
 
 export function ExplorerFileBrowser({
   explorer,
@@ -45,6 +46,12 @@ export function ExplorerFileBrowser({
   revealedPath?: string | null;
 }) {
   const shiftKeyHeld = useShiftKeyHeld();
+  const openFileHistory = (path: string) =>
+    requestGitFileHistory({
+      projectId: explorer.projectId,
+      worktreeId: explorer.worktreeId,
+      path,
+    });
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -140,6 +147,7 @@ export function ExplorerFileBrowser({
                 key={entry.path}
                 localFolderModifier={shiftKeyHeld}
                 onOpenFile={onOpenFile}
+                onOpenHistory={openFileHistory}
                 onReveal={onRevealFolder}
                 revealLabel={revealLabel}
                 onShowInGraph={onShowInGraph}
@@ -159,6 +167,7 @@ export function ExplorerFileBrowser({
                 key={entry.path}
                 localFolderModifier={shiftKeyHeld}
                 onOpen={() => onOpenFile(entry)}
+                onOpenHistory={() => openFileHistory(entry.path)}
                 onReveal={
                   onRevealFolder
                     ? (localFolder) => onRevealFolder(entry, localFolder)

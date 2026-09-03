@@ -2,6 +2,7 @@ import {
   gitActionResultSchema,
   gitActionSchema,
   gitHistorySchema,
+  gitHistoryOptionsSchema,
   type WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
@@ -123,6 +124,7 @@ export function installProjectGitActionAndHistoryRoutes(
         cursor,
         limit,
         revisions: [],
+        options: gitHistoryOptionsSchema.parse({}),
       });
       return reply.send(gitHistorySchema.parse(history));
     } catch (error) {

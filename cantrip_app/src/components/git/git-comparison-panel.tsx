@@ -205,8 +205,10 @@ function RevisionSelector({
 
 export function GitComparisonPanel({
   left,
+  mode,
   onClose,
   onLeftChange,
+  onModeChange,
   onOpenFile,
   onRightChange,
   projectId,
@@ -214,15 +216,16 @@ export function GitComparisonPanel({
   worktreeId,
 }: {
   left: string | null;
+  mode: GitComparisonMode;
   onClose(): void;
   onLeftChange(revision: string): void;
+  onModeChange(mode: GitComparisonMode): void;
   onOpenFile?(path: string): void;
   onRightChange(revision: string): void;
   projectId: string;
   right: string | null;
   worktreeId: string;
 }) {
-  const [mode, setMode] = useState<GitComparisonMode>("direct");
   const [diffContextLines, setDiffContextLines] = useState(3);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
@@ -371,7 +374,7 @@ export function GitComparisonPanel({
                   candidate === mode &&
                     "bg-background font-medium text-foreground shadow-sm",
                 )}
-                onClick={() => setMode(candidate)}
+                onClick={() => onModeChange(candidate)}
               >
                 {candidate === "direct" ? "Direct A → B" : "Merge-base … B"}
               </button>

@@ -55,6 +55,7 @@ import {
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
 import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
+import { requestGitFileHistory } from "@/lib/git-history-navigation";
 import { cn } from "@/lib/utils";
 
 const StructuredFileVisual = lazy(async () => {
@@ -251,6 +252,7 @@ export interface ExplorerHeaderState {
   selectedPath: string | null;
   back(): void;
   refresh(): void;
+  openFileHistory?(): void;
   save(): Promise<boolean>;
   setFileMode(mode: ExplorerFileMode): void;
 }
@@ -1043,6 +1045,15 @@ export function ExplorerView({
       refresh: graphVisible
         ? () => setGraphRefreshEpoch((epoch) => epoch + 1)
         : refreshExplorer,
+      openFileHistory:
+        !graphVisible && selectedPath
+          ? () =>
+              requestGitFileHistory({
+                projectId: explorer.projectId,
+                worktreeId: explorer.worktreeId,
+                path: selectedPath,
+              })
+          : undefined,
       save: saveDraft,
       selectedPath: graphVisible ? null : selectedPath,
       setFileMode: changeFileMode,
@@ -1055,6 +1066,8 @@ export function ExplorerView({
     directoryFetches,
     dirty,
     editableLanguage,
+    explorer.projectId,
+    explorer.worktreeId,
     file.isFetching,
     fileMode,
     graphRootPath,

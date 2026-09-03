@@ -101,6 +101,7 @@ import {
   type GitBlame,
   type GitForcePushPreview,
   type GitHistory,
+  type GitHistoryOptions,
   type GitPartialPatchPreview,
   type GitPartialPatchRequest,
   type GitRemoteAction,
@@ -499,6 +500,20 @@ export async function readGitHistory(
   limit: number,
   cursor = 0,
   revisions: string[] = [],
+  options: GitHistoryOptions = {
+    filters: {
+      message: null,
+      author: null,
+      hash: null,
+      dateFrom: null,
+      dateTo: null,
+      path: null,
+      branch: null,
+      tag: null,
+    },
+    firstParent: false,
+    hideMerges: false,
+  },
 ): Promise<GitHistory> {
   const verifiedRevisions = (
     await Promise.all(
@@ -514,26 +529,63 @@ export async function readGitHistory(
   )
     .filter(({ exists }) => exists)
     .map(({ revision }) => revision);
-  const revisionArgs = ["--all", ...verifiedRevisions];
+  const filters = options.filters;
+  let revisionArgs = ["--all", ...verifiedRevisions];
+  if (filters.hash) {
+    revisionArgs = [await resolveCommit(cwd, filters.hash)];
+  } else if (filters.branch) {
+    revisionArgs = [
+      await resolveCommit(cwd, `refs/heads/${filters.branch}`).catch(() =>
+        resolveCommit(cwd, `refs/remotes/${filters.branch}`),
+      ),
+    ];
+  } else if (filters.tag) {
+    revisionArgs = [await resolveCommit(cwd, `refs/tags/${filters.tag}`)];
+  } else if (options.firstParent) {
+    revisionArgs = ["HEAD"];
+  }
+  const traversalArgs: string[] = [];
+  if (options.firstParent) traversalArgs.push("--first-parent");
+  if (options.hideMerges) traversalArgs.push("--no-merges");
+  if (filters.message) {
+    traversalArgs.push(
+      "--regexp-ignore-case",
+      "--fixed-strings",
+      `--grep=${filters.message}`,
+    );
+  }
+  if (filters.author) {
+    traversalArgs.push(`--author=${escapeGitRegex(filters.author)}`);
+  }
+  if (filters.dateFrom) traversalArgs.push(`--since=${filters.dateFrom}`);
+  if (filters.dateTo) traversalArgs.push(`--until=${filters.dateTo} 23:59:59`);
+  const pathArgs = filters.path ? ["--", filters.path] : [];
   const [branch, head, remotes, totalCountText] = await Promise.all([
     gitOutput(cwd, ["branch", "--show-current"]),
     gitOutput(cwd, ["rev-parse", "--verify", "HEAD"]).catch(() => ""),
     gitOutput(cwd, ["remote"]).catch(() => ""),
-    gitOutput(cwd, ["rev-list", "--count", ...revisionArgs]).catch(() => "0"),
+    gitOutput(cwd, [
+      "rev-list",
+      "--count",
+      ...traversalArgs,
+      ...revisionArgs,
+      ...pathArgs,
+    ]).catch(() => "0"),
   ]);
   const remoteNames = new Set(remotes.split("\n").filter(Boolean));
   let logOutput = "";
   try {
     logOutput = await gitOutput(cwd, [
       "log",
-      "--all",
       "--topo-order",
       "--date-order",
       `--skip=${cursor}`,
       `--max-count=${limit + 1}`,
       "--date=iso-strict",
       "--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%D%x1e",
+      ...traversalArgs,
       ...revisionArgs,
+      ...pathArgs,
     ]);
   } catch (error) {
     const stderr = (error as { stderr?: string }).stderr ?? "";

@@ -1,6 +1,8 @@
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
+  Copy,
+  ExternalLink,
   GitCommitVertical,
   MoreHorizontal,
   Network,
@@ -27,6 +29,7 @@ function actionItems(
   target: CommitActionTarget,
   onAction: (request: CommitActionRequest) => void,
   onViewInGraph?: (revision: string) => void,
+  githubUrl?: string | null,
 ) {
   const item = (
     kind: CommitActionKind,
@@ -47,6 +50,30 @@ function actionItems(
     </Item>
   );
   return [
+    <Item
+      key="copy-sha"
+      className={itemClass}
+      onSelect={() => void navigator.clipboard.writeText(target.hash)}
+    >
+      <Copy className="size-3.5" /> Copy full SHA
+    </Item>,
+    ...(githubUrl
+      ? [
+          <Item
+            key="open-github"
+            className={itemClass}
+            onSelect={() =>
+              window.open(
+                `${githubUrl.replace(/\/$/u, "")}/commit/${target.hash}`,
+                "_blank",
+                "noopener,noreferrer",
+              )
+            }
+          >
+            <ExternalLink className="size-3.5" /> Open commit on GitHub
+          </Item>,
+        ]
+      : []),
     ...(onViewInGraph
       ? [
           <Item
@@ -69,11 +96,13 @@ export function GitCommitContextMenu({
   children,
   onAction,
   onViewInGraph,
+  githubUrl,
   target,
 }: {
   children: ReactElement;
   onAction(request: CommitActionRequest): void;
   onViewInGraph?(revision: string): void;
+  githubUrl?: string | null;
   target: CommitActionTarget;
 }) {
   return (
@@ -88,6 +117,7 @@ export function GitCommitContextMenu({
             target,
             onAction,
             onViewInGraph,
+            githubUrl,
           )}
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
@@ -98,10 +128,12 @@ export function GitCommitContextMenu({
 export function GitCommitActionsDropdown({
   onAction,
   onViewInGraph,
+  githubUrl,
   target,
 }: {
   onAction(request: CommitActionRequest): void;
   onViewInGraph?(revision: string): void;
+  githubUrl?: string | null;
   target: CommitActionTarget;
 }) {
   return (
@@ -127,6 +159,7 @@ export function GitCommitActionsDropdown({
             target,
             onAction,
             onViewInGraph,
+            githubUrl,
           )}
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>

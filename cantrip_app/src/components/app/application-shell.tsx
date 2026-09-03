@@ -141,7 +141,17 @@ import {
   projectOwningWorkerId,
   projectSetupFailureKey,
 } from "@/lib/project-setup-progress";
-import { selectWorkspaceTab } from "@/lib/workspace-selection";
+import {
+  emptyWorkspaceSelection,
+  selectWorkspaceTab,
+} from "@/lib/workspace-selection";
+import {
+  defaultGitHistoryOptions,
+  openGitFileHistoryEvent,
+  parseGitHistoryRoute,
+  pushGitHistoryRoute,
+  type OpenGitFileHistoryRequest,
+} from "@/lib/git-history-navigation";
 import { workspaceWorkerObservationDemands } from "@/lib/workspace-worker-observation";
 import { ChatTranscript } from "@/components/chat/chat-transcript";
 export { ChatTranscript };
@@ -161,6 +171,7 @@ export function App() {
     desktopSidebarDrawer,
     explorerFileTarget,
     folderRevealLabel,
+    gitHistoryTarget,
     isPopout,
     narrowViewport,
     overlayTitlebar,
@@ -207,6 +218,7 @@ export function App() {
     standaloneFilesOpen,
     startupNavigationResolvedRef,
   } = useShellNavigationState({
+    gitHistoryTarget,
     isPopout,
     popoutProjectId,
     projectOverviewPopoutTarget,
@@ -222,6 +234,51 @@ export function App() {
     setWorkspaceSelection,
     workspaceSelection,
   } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
+  useEffect(() => {
+    const openFileHistory = (event: Event) => {
+      const { projectId, worktreeId, path } = (
+        event as CustomEvent<OpenGitFileHistoryRequest>
+      ).detail;
+      const current = parseGitHistoryRoute(window.location.search);
+      pushGitHistoryRoute({
+        projectId,
+        worktreeId,
+        commit: null,
+        selectedCommits: [],
+        comparison: null,
+        filePath: path,
+        options:
+          current.projectId === projectId && current.worktreeId === worktreeId
+            ? current.options
+            : defaultGitHistoryOptions,
+      });
+      setAppMode("ide");
+      setSelectedProjectId(projectId);
+      setProjectOverviewSection("history");
+      setProjectOverviewWorktreeId(worktreeId);
+      setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+      setShowArchivedStandaloneChats(false);
+      setShowImporter(false);
+      setShowProjectSettings(false);
+      setShowServerAdmin(false);
+      setShowSettings(false);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    };
+    window.addEventListener(openGitFileHistoryEvent, openFileHistory);
+    return () =>
+      window.removeEventListener(openGitFileHistoryEvent, openFileHistory);
+  }, [
+    setAppMode,
+    setProjectOverviewSection,
+    setProjectOverviewWorktreeId,
+    setSelectedProjectId,
+    setShowArchivedStandaloneChats,
+    setShowImporter,
+    setShowProjectSettings,
+    setShowServerAdmin,
+    setShowSettings,
+    setWorkspaceSelection,
+  ]);
   const sidebarFileState = useSidebarFileState();
   const {
     explorerGraphRequest,

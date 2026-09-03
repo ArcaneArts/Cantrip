@@ -1,6 +1,7 @@
 import type {
   GitCommitSearchQuery,
   GitCommitSearchResult,
+  GitHistoryFilter,
 } from "@cantrip/protocol";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { GitCommitHorizontal, Loader2, Search } from "lucide-react";
@@ -71,12 +72,14 @@ export function flattenCommitSearchPages(
 export function GitCommitSearchDialog({
   onOpenChange,
   onOpenCommit,
+  onUseFilters,
   open,
   projectId,
   worktreeId,
 }: {
   onOpenChange(open: boolean): void;
   onOpenCommit(revision: string): void;
+  onUseFilters(filters: GitHistoryFilter): void;
   open: boolean;
   projectId: string;
   worktreeId: string;
@@ -137,7 +140,7 @@ export function GitCommitSearchDialog({
                 className="h-8 font-mono text-xs"
               />
             </div>
-            <div className="grid gap-2 sm:grid-cols-[1fr_150px_150px_110px_1fr_auto]">
+            <div className="grid gap-2 sm:grid-cols-[1fr_150px_150px_110px_1fr_auto_auto]">
               <Input
                 aria-label="Repository path"
                 value={draft.path}
@@ -184,6 +187,21 @@ export function GitCommitSearchDialog({
                 disabled={!normalizeCommitSearch(draft)}
               >
                 <Search className="size-3.5" /> Search
+              </Button>
+              <Button
+                size="sm"
+                className="h-8"
+                type="button"
+                variant="outline"
+                disabled={!normalizeCommitSearch(draft)}
+                onClick={() => {
+                  const filters = normalizeCommitSearch(draft);
+                  if (!filters) return;
+                  onUseFilters(filters);
+                  onOpenChange(false);
+                }}
+              >
+                Show in History
               </Button>
             </div>
           </form>

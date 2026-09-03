@@ -35,6 +35,7 @@ export interface CommitActionTarget {
 export interface CommitActionRequest {
   kind: CommitActionKind;
   target: CommitActionTarget;
+  revisions?: string[];
 }
 
 export interface CommitActionEditor {
@@ -59,7 +60,10 @@ export function commitActionFromEditor(
               fromRevision: editor.fromRevision,
               toRevision: editor.toRevision,
             }
-          : { type: "commits", revisions: [request.target.hash] },
+          : {
+              type: "commits",
+              revisions: request.revisions ?? [request.target.hash],
+            },
       };
     case "revert":
       return {

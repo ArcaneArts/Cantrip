@@ -407,6 +407,55 @@ export const gitGraphCommitOverlaySchema = z.object({
 });
 
 const gitSearchDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
+export const gitHistoryFilterSchema = z
+  .object({
+    message: z.string().trim().min(1).max(1_000).nullable().default(null),
+    author: z.string().trim().min(1).max(1_000).nullable().default(null),
+    hash: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[0-9a-f]{4,64}$/u)
+      .nullable()
+      .default(null),
+    dateFrom: gitSearchDateSchema.nullable().default(null),
+    dateTo: gitSearchDateSchema.nullable().default(null),
+    path: gitRelativePathSchema.nullable().default(null),
+    branch: z.string().trim().min(1).max(1_024).nullable().default(null),
+    tag: z.string().trim().min(1).max(1_024).nullable().default(null),
+  })
+  .superRefine((query, context) => {
+    if (query.branch && query.tag) {
+      context.addIssue({
+        code: "custom",
+        path: ["tag"],
+        message: "History can target a branch or tag, not both.",
+      });
+    }
+    if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
+      context.addIssue({
+        code: "custom",
+        path: ["dateTo"],
+        message: "History end date cannot precede its start date.",
+      });
+    }
+  });
+
+export const gitHistoryOptionsSchema = z.object({
+  filters: gitHistoryFilterSchema.default({
+    message: null,
+    author: null,
+    hash: null,
+    dateFrom: null,
+    dateTo: null,
+    path: null,
+    branch: null,
+    tag: null,
+  }),
+  firstParent: z.boolean().default(false),
+  hideMerges: z.boolean().default(false),
+});
+
 export const gitCommitSearchQuerySchema = z
   .object({
     message: z.string().trim().min(1).max(1_000).nullable().default(null),
@@ -1216,6 +1265,8 @@ export type GitGraphCommitOverlayNode = z.infer<
 >;
 export type GitGraphCommitOverlay = z.infer<typeof gitGraphCommitOverlaySchema>;
 export type GitCommitSearchQuery = z.infer<typeof gitCommitSearchQuerySchema>;
+export type GitHistoryFilter = z.infer<typeof gitHistoryFilterSchema>;
+export type GitHistoryOptions = z.infer<typeof gitHistoryOptionsSchema>;
 export type GitCommitSearchResult = z.infer<typeof gitCommitSearchResultSchema>;
 export type GitRecoveryCandidate = z.infer<typeof gitRecoveryCandidateSchema>;
 export type GitRecoveryCandidateList = z.infer<
