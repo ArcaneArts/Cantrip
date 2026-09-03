@@ -4,6 +4,7 @@ import {
   advanceDoubleShiftGesture,
   commandBarScopesAfterBackspace,
   DOUBLE_SHIFT_WINDOW_MS,
+  resetCommandBarResultNavigation,
   type DoubleShiftKeyInput,
 } from "./command-bar";
 
@@ -16,6 +17,22 @@ const shift: DoubleShiftKeyInput = {
 };
 
 describe("command bar gesture", () => {
+  it("returns result navigation to the first selectable item", () => {
+    const firstItem = {
+      getAttribute: (name: string) =>
+        name === "data-value" ? "file README.md README.md" : null,
+    };
+    const list = {
+      querySelector: () => firstItem,
+      scrollTop: 240,
+    } as unknown as HTMLDivElement;
+
+    expect(resetCommandBarResultNavigation(list)).toBe(
+      "file README.md README.md",
+    );
+    expect(list.scrollTop).toBe(0);
+  });
+
   it("opens when Shift is pressed twice within 250 milliseconds", () => {
     const first = advanceDoubleShiftGesture(null, shift, 2_000);
     const second = advanceDoubleShiftGesture(first.lastShiftAt, shift, 2_250);
