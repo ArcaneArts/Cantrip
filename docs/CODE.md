@@ -12,10 +12,10 @@ Settings workbench are documented in [CODE_SETTINGS.md](CODE_SETTINGS.md).
 
 ## 1. Decision
 
-Cantrip will maintain a thin, browser-native Code OSS distribution called
-**Cantrip Code** directly in this monorepo under `cantrip_code/`. The fork will
-use OpenVSCode Server as its immediate upstream and Code OSS as the underlying
-editor. Cantrip will not embed Microsoft VS Code Server, depend on a user's
+Cantrip maintains a thin, browser-native Code OSS distribution called
+**Cantrip Code** directly in this monorepo under `cantrip_code/`. The fork uses
+OpenVSCode Server as its immediate upstream and Code OSS as the underlying
+editor. Cantrip does not embed Microsoft VS Code Server, depend on a user's
 desktop VS Code installation, or use CDP pixel streaming as the primary editor
 experience.
 
@@ -167,7 +167,7 @@ repository must therefore never track:
 - downloaded toolchains and runtimes.
 
 CI will reject oversized tracked files and verify the relevant ignore rules.
-Packaged output belongs in CI artifacts, releases, and the future Cantrip
+Packaged output belongs in CI artifacts, releases, and the Cantrip
 distribution system rather than Git history. When a single mechanical upstream
 snapshot pushes safely, retaining that clear import boundary is preferable to
 arbitrary commit splitting.

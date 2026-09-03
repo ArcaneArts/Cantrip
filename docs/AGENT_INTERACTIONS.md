@@ -1,16 +1,23 @@
 # Durable Agent Interactions
 
 Cantrip stores user-facing Codex requests as server-owned agent interaction
-records. This domain covers command and file approvals, permission grants,
-structured `requestUserInput` questions, and MCP elicitation. The records are
-not chat messages and the browser never responds directly to Codex App Server.
+records. The server durably stores their lifecycle, provenance, and public
+request kind. For ordinary encrypted Chat and Task interactions, the worker
+seals request semantics, the app opens them and seals responses, and the server
+routes and persists only opaque envelopes plus lifecycle metadata. This domain
+covers command and file approvals, permission grants, structured
+`requestUserInput` questions, and MCP elicitation. The records are not chat
+messages and the browser never responds directly to Codex App Server.
 
 ## State and provenance
 
-Every request has a globally idempotent `requestKey`, a typed payload, and the
-project, worker, thread, turn, item, execution-lane, and chat provenance
-available at the time it was created. Requests are chat-backed, and the response
-route rejects any request that is not associated with an active chat.
+Every request has a globally idempotent `requestKey` and the project, worker,
+thread, turn, item, execution-lane, and chat provenance available at the time it
+was created. Request semantics follow versioned typed schemas. The ordinary
+path keeps them inside the protected payload with only the kind classified in
+public; the legacy visible compatibility path stores the typed payload directly.
+Requests are chat-backed, and the response route rejects any request that is
+not associated with an active chat.
 
 The durable states are:
 
@@ -31,18 +38,22 @@ On server startup, unresolved interactions become `interrupted` and active or
 waiting chats become `failed`. This is intentionally fail closed: an approval
 is never inferred after a disconnect or restart.
 
-Answers to questions marked `isSecret` are accepted only from the live response
-body and stored as `[redacted]`. Request and response envelopes are capped at 1
-MB. The server sends the live response directly to the owning worker before it
-persists the redacted durable form, and neither boundary logs response payloads.
+Typed request and response content follows bounded schemas before sealing, and
+the protected envelopes are capped again at the server storage boundary. Secret
+and non-secret answers remain inside the protected response envelope. The
+server forwards that envelope to the owning worker before persisting the same
+ciphertext, and neither boundary logs response payloads. `[redacted]` applies
+only to the legacy visible compatibility path.
 
 ## App Server bridge
 
-Codex threads start and resume with the `on-request` approval policy. The worker
-normalizes command execution, file change, filesystem/network permission,
-`requestUserInput`, and MCP elicitation server requests into versioned worker
-events. The server adds the trusted project, chat, lane, and worker attribution
-before recording the request; the worker never chooses those ownership fields.
+Interactive Codex chats normally start and resume with the `on-request`
+approval policy; selected `:yolo` uses `never`, and structured read-only
+executions use `never` with the read-only sandbox. The worker normalizes command
+execution, file change, filesystem/network permission, `requestUserInput`, and
+MCP elicitation server requests into versioned worker events. The server adds
+the trusted project, chat, lane, and worker attribution before recording the
+request; the worker never chooses those ownership fields.
 
 Responses travel back through a dedicated worker command and are translated to
 the exact App Server JSON-RPC response shape. `serverRequest/resolved` clears a
@@ -77,8 +88,10 @@ worker's fail-closed response.
 
 Plan Mode questions reuse their existing plan panel and are omitted from the
 generic request list when both views refer to the same `requestKey`. Secret
-answers remain component-local during submission, never enter the query cache,
-and return from the server only as `[redacted]`.
+answers remain component-local during submission and never enter the pending
+request query cache. Protected server responses are ciphertext opened only by
+an authorized app or worker; only the legacy visible path returns
+`[redacted]`.
 
 ## Permission profiles
 

@@ -18,8 +18,9 @@ The integration was delivered as sequential, independently merged milestones:
   the stable terminal launcher;
 - PR #564: per-worktree indexing, local Git exclusion, bounded jobs, watcher
   recovery, and automatic synchronization;
-- PR #567: exact-worktree MCP injection and server-side reserved-name
-  enforcement;
+- PR #567: exact-worktree MCP injection and the original reserved-name
+  protection; endpoint-encrypted configurations now validate plaintext in
+  trusted clients and filter collisions on the worker;
 - PR #568: rolling-compatible worker status plus server-routed status, sync,
   rebuild, and update-check operations;
 - PR #570: worker, project, MCP settings, and chat-inventory presentation; and
@@ -564,7 +565,9 @@ before Cantrip manages project indexes or MCP.
 
 - Synthesize the project-specific CodeGraph MCP on the worker.
 - Cover every filesystem-backed agent dispatch and safe thread resume.
-- Add reserved-name enforcement and managed protocol metadata.
+- Add reserved-name protection and managed protocol metadata. The current
+  endpoint-encrypted path validates plaintext in trusted clients and filters
+  collisions on the worker.
 - Add runtime-only fallback guidance for subagents if validation shows it is
   necessary.
 
@@ -605,9 +608,9 @@ request rather than one broad implementation branch.
   restart recovery, and active-target priority at the 128-root bound.
 - protocol tests verify old heartbeat payloads default to unavailable
   CodeGraph capability, preserving rolling compatibility.
-- server repository tests reject the reserved name case-insensitively for
-  create and update; repository guards also protect existing-row update,
-  delete, and copy paths.
+- app protected-secret tests reject reserved names before encryption, and
+  worker managed-MCP tests remove case-insensitive user shadows before adding
+  the authoritative entries.
 - app typechecking and focused settings tests cover capability-omission
   fallback, managed/read-only presentation, and server-routed actions.
 - A macOS arm64 native smoke on 2026-08-19 downloaded upstream v1.5.0 through

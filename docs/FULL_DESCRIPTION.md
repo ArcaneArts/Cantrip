@@ -470,7 +470,7 @@ Enabled and Mandatory flags, order, packaged-template provenance, assignments,
 and optimistic row version. A keyed blind index supports exact key lookup
 without revealing the key to the server.
 
-Root **Settings → Policies** is the only policy-authoring surface. It supports:
+Root **Settings → Policy** is the only policy-authoring surface. It supports:
 
 - search and a flat, divider-based ordered list;
 - pointer and keyboard sorting;
@@ -936,8 +936,9 @@ Behavior telemetry records operational facts such as time to first activity,
 time to visible response, duration, status, tool/compaction counts, approvals,
 files changed, recognized test outcomes, context usage, failover position, and
 interrupts. It intentionally does not store prompts, responses, command output,
-or source contents as analytics. Historical model catalogs are sanitized,
-content-addressed, and deduplicated.
+or source contents as analytics. Catalog metadata is sanitized and hashed
+before minimal historical snapshot rows are deduplicated by hash; provider and
+model names and catalog bodies are not retained in those snapshots.
 
 Usage UI labels bars as **remaining**, so a provider reporting 95% used displays
 5% remaining rather than a misleading 95%-full availability bar.
@@ -984,7 +985,7 @@ dashboards. Major sections are:
 - **Tunnels:** global tunnel status/control;
 - **Workspaces:** storage profiles, names, default workspace, repository
   discovery, and project membership;
-- **Policies:** reusable instruction documents, template copies, ordering,
+- **Policy:** reusable instruction documents, template copies, ordering,
   Enabled/Mandatory scope, and assignment counts;
 - **Skills:** global/project skill discovery and file management;
 - **MCP:** global/project MCP server configuration.
@@ -997,7 +998,7 @@ Every project's settings include:
 - Archive;
 - Automations;
 - Tunnels;
-- Policies, including direct assignments and inherited/Mandatory sources;
+- Policy, including direct assignments and inherited/Mandatory sources;
 - Skills;
 - MCP.
 

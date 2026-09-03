@@ -396,7 +396,12 @@ Synchronize the built web client and Capacitor configuration:
 
 ```shell
 pnpm install --frozen-lockfile
-pnpm --filter @cantrip/app cap:sync
+pnpm --filter @cantrip/version build
+pnpm --filter @cantrip/logging build
+pnpm --filter @cantrip/protocol build
+pnpm --filter @cantrip/glitch build
+pnpm --filter @cantrip/crypto build
+pnpm --filter @cantrip/app cap:sync android
 ```
 
 Open Android Studio:
@@ -459,7 +464,12 @@ Synchronize web assets and Swift package configuration:
 
 ```shell
 pnpm install --frozen-lockfile
-pnpm --filter @cantrip/app cap:sync
+pnpm --filter @cantrip/version build
+pnpm --filter @cantrip/logging build
+pnpm --filter @cantrip/protocol build
+pnpm --filter @cantrip/glitch build
+pnpm --filter @cantrip/crypto build
+pnpm --filter @cantrip/app cap:sync ios
 ```
 
 Open the project:
