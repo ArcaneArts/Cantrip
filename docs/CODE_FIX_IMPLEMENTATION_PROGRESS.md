@@ -283,10 +283,9 @@ merged and the result has been observed on `main`.
 ### Cycle 6 — regression and documentation reconciliation
 
 - Branch: `codex/code-fix-final-audit`
-- Pull request: pending
-- Merge commit: pending
-- Status: implementation and documentation verified locally; pull request
-  pending
+- Pull request: #1658
+- Merge commit: `7cccc702b03d7237b7f6bad7877ef14063415263`
+- Status: merged
 - Behavior: reconciled the authoritative Code lifecycle documentation with the
   merged bounded-prewarm, file-tree continuity, early bridge, authorized startup
   payload, and one-shot acknowledgement behavior. Historical dormancy guidance
@@ -353,8 +352,10 @@ merged and the result has been observed on `main`.
   inactive editors stay dormant; pinning retains the file tree; initial startup
   navigation remains canonical and authenticated; and uncertain acknowledgement
   state fails closed to the existing bridge command.
-- Remaining work: merge this documentation/audit cycle, record its merge in a
-  final ledger-only cycle, and complete one final independent review.
+- Independent review: a read-only final audit found no inaccurate platform or
+  timing claim, unresolved completion item, or blocker after the post-merge
+  native and browser evidence was recorded.
+- Remaining work: none.
 - Known risks: a click that occurs before background prewarm finishes still
   waits for only the remaining real startup work. This is intentional and is
   not hidden with a delay or fake-ready state.
@@ -407,3 +408,7 @@ merged and the result has been observed on `main`.
 | Authorized initial-file startup payload         | Complete | Cycle 4 / PR #1649 |
 | Authenticated acknowledgement and safe fallback | Complete | Cycle 5 / PR #1652 |
 | Tauri/browser and full regression validation    | Complete | Cycle 6            |
+
+All six implementation cycles are merged. The required behavior, validation,
+documentation, and post-merge platform observations are complete; this ledger
+contains no unresolved work required by [`CODE_FIX.md`](./CODE_FIX.md).
