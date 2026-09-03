@@ -85,7 +85,7 @@ messages remain separate transcript entries.
 After a server restart, stored normalized records render without a worker. For
 Codex console turns, `thread/read` reconstructs every supported item that the
 runtime retains, plus turn status and duration. Token-usage and account
-rate-limit notifications are persisted when observed live, but Codex 0.153.0
+rate-limit notifications are persisted when observed live, but Codex 0.153.1
 does not return those notification snapshots from `thread/read`; Cantrip does
 not fabricate them during later console synchronization.
 

@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/openai/codex.git",
-  "ref": "rust-v0.153.0",
-  "commit": "41e22fee981a63b3698df7ed36bad393cda24715",
-  "version": "0.153.0"
+  "ref": "rust-v0.153.1",
+  "commit": "985641272869835d01d025ed2a218fbbce35fa9f",
+  "version": "0.153.1"
 }

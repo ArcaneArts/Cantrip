@@ -6,8 +6,8 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.153.0` from the official
-`rust-v0.153.0` source tag. Its resolved commit, imported source manifest, and
+Cantrip currently pins and builds `codex-cli 0.153.1` from the official
+`rust-v0.153.1` source tag. Its resolved commit, imported source manifest, and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
 by that CLI on September 3, 2026:
@@ -18,10 +18,14 @@ codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
 The adapter's compatibility range is `>=0.153.0 <0.154.0`, but packaged
-workers contain exactly `0.153.0`; they do not select another compatible patch
+workers contain exactly `0.153.1`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
+
+The 0.153.1 catalog adds `gpt-6-astra` for explicit API configuration. Upstream
+marks it hidden from model pickers, so this upgrade does not change Cantrip's
+default model or advertise Astra as a selectable model.
 
 Cantrip keeps the imported snapshot pristine and applies a reviewed patch
 series from `cantrip_codex/patches/` only to the ignored build copy. The series

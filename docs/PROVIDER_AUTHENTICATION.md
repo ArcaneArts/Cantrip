@@ -2,7 +2,7 @@
 
 - Status: endpoint-encrypted for static API keys and ChatGPT/Grok OAuth
 - Last updated: 2026-08-29
-- Codex boundary: packaged `codex-cli 0.153.0`
+- Codex boundary: packaged `codex-cli 0.153.1`
 - Related: [encryption](ENCRYPTION.md),
   [runtime compatibility](CODEX_RUNTIME_COMPATIBILITY.md), and
   [multi-worker placement](MULTI_WORKER_ARCHITECTURE.md)

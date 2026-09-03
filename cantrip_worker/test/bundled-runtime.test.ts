@@ -1,6 +1,7 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -10,9 +11,15 @@ import {
 } from "../src/codex/bundled-runtime.js";
 
 const temporaryDirectories: string[] = [];
-const PINNED_CODEX_VERSION = "0.153.0";
-const PINNED_CODEX_REF = "rust-v0.153.0";
-const PINNED_CODEX_COMMIT = "41e22fee981a63b3698df7ed36bad393cda24715";
+const PINNED_CODEX_VERSION = "0.153.1";
+const PINNED_CODEX_REF = "rust-v0.153.1";
+const PINNED_CODEX_COMMIT = "985641272869835d01d025ed2a218fbbce35fa9f";
+const BUNDLED_MODELS_PATH = fileURLToPath(
+  new URL(
+    "../../cantrip_codex/upstream/codex-rs/models-manager/models.json",
+    import.meta.url,
+  ),
+);
 
 afterEach(async () => {
   await Promise.all(
@@ -20,6 +27,30 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { force: true, recursive: true })),
   );
+});
+
+describe("bundled Codex source", () => {
+  it("keeps GPT-6-Astra API-configurable without making it the picker default", async () => {
+    const catalog = JSON.parse(await readFile(BUNDLED_MODELS_PATH, "utf8")) as {
+      models: Array<{
+        priority: number;
+        slug: string;
+        supported_in_api: boolean;
+        visibility: string;
+      }>;
+    };
+    const astra = catalog.models.find(({ slug }) => slug === "gpt-6-astra");
+    const firstPickerModel = catalog.models
+      .filter(({ visibility }) => visibility === "list")
+      .sort((left, right) => left.priority - right.priority)[0];
+
+    expect(astra).toMatchObject({
+      slug: "gpt-6-astra",
+      supported_in_api: true,
+      visibility: "hide",
+    });
+    expect(firstPickerModel?.slug).toBe("gpt-5.6-sol");
+  });
 });
 
 describe("resolveCodexInstallation", () => {
