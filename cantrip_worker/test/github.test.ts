@@ -18,10 +18,12 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { githubIssueListFiltersSchema } from "@cantrip/protocol";
 
 import {
   GithubClient,
   githubCloneFailureDetails,
+  githubListSearchQuery,
   isWindowsLongPathGitFailure,
   parseGithubCloneProgress,
   readProjectWorktreePolicy,
@@ -1512,11 +1514,21 @@ describe("GitHub project files", () => {
       closed_at: null,
       body: "Issue body",
     });
-    const pullRequest = JSON.stringify({
-      ...JSON.parse(issue),
-      number: 43,
-      pull_request: { url: "https://api.github.com/pulls/43" },
-    });
+    const graphqlIssue = {
+      __typename: "Issue",
+      number: 42,
+      title: "Issue title",
+      state: "OPEN",
+      url: "https://github.com/ArcaneArts/Cantrip/issues/42",
+      author: { login: "author" },
+      comments: { totalCount: 1 },
+      labels: { nodes: [{ name: "feature", color: "22d3ee" }] },
+      assignees: { nodes: [{ login: "maintainer" }] },
+      milestone: { title: "v2" },
+      createdAt: "2026-08-07T12:00:00.000Z",
+      updatedAt: "2026-08-07T13:00:00.000Z",
+      closedAt: null,
+    };
     const comment = JSON.stringify({
       id: 99,
       user: { login: "reviewer" },
@@ -1529,16 +1541,17 @@ describe("GitHub project files", () => {
     await writeFile(
       fakeGh,
       [
-        "#!/bin/sh",
-        'case "$*" in',
-        `  *"/issues/42/comments --method GET"*) printf '%s' '${JSON.stringify([[JSON.parse(comment)]])}' ;;`,
-        `  *"/issues/42/comments --method POST"*) printf '%s' '${comment}' ;;`,
-        `  *"/issues/42 --method PATCH"*) printf '%s' '${issue}' ;;`,
-        `  *"/issues/42"*) printf '%s' '${issue}' ;;`,
-        `  *"/issues --method POST -f title=New issue -f body=Issue details"*) printf '%s' '${issue}' ;;`,
-        `  *"/issues --method GET -f per_page=50 -f page=2"*) printf '%s' '${JSON.stringify([JSON.parse(issue), JSON.parse(pullRequest)])}' ;;`,
-        "  *) exit 1 ;;",
-        "esac",
+        "#!/usr/bin/env node",
+        'const args = process.argv.slice(2); const route = args[1] || "";',
+        `const issue = ${issue};`,
+        `const comment = ${comment};`,
+        `const graphqlIssue = ${JSON.stringify(graphqlIssue)};`,
+        'if (route === "graphql") process.stdout.write(JSON.stringify({ data: { search: { issueCount: 1, nodes: [graphqlIssue], pageInfo: { endCursor: "issue-cursor", hasNextPage: true } } } }));',
+        'else if (route.endsWith("/issues/42/comments") && args.includes("POST")) process.stdout.write(JSON.stringify(comment));',
+        'else if (route.endsWith("/issues/42/comments")) process.stdout.write(JSON.stringify([[comment]]));',
+        'else if (route.endsWith("/issues/42")) process.stdout.write(JSON.stringify(issue));',
+        'else if (route.endsWith("/issues")) process.stdout.write(JSON.stringify(issue));',
+        "else process.exit(1);",
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
@@ -1546,20 +1559,27 @@ describe("GitHub project files", () => {
 
     const github = new GithubClient(dataDirectory);
     await expect(
-      github.listIssues("ArcaneArts/Cantrip", "issue", "open", 2, 50),
+      github.listIssues(
+        "ArcaneArts/Cantrip",
+        "open",
+        null,
+        50,
+        githubIssueListFiltersSchema.parse({
+          labels: ["feature"],
+          assignee: "maintainer",
+        }),
+      ),
     ).resolves.toMatchObject({
       kind: "issue",
       total: 1,
-      issues: [{ number: 42 }],
-      nextPage: null,
-    });
-    await expect(
-      github.listIssues("ArcaneArts/Cantrip", "pull-request", "open", 2, 50),
-    ).resolves.toMatchObject({
-      kind: "pull-request",
-      total: 1,
-      issues: [{ number: 43 }],
-      nextPage: null,
+      issues: [
+        {
+          number: 42,
+          assignees: ["maintainer"],
+          milestone: "v2",
+        },
+      ],
+      nextCursor: "issue-cursor",
     });
     await expect(
       github.getIssue("ArcaneArts/Cantrip", 42),
@@ -1585,7 +1605,7 @@ describe("GitHub project files", () => {
     ).resolves.toMatchObject({ number: 42 });
   });
 
-  it("lists pull requests with branch metadata in one bounded request", async () => {
+  it("lists pull requests through provider-side filters with opaque cursors", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-pr-list-test-"),
     );
@@ -1595,29 +1615,43 @@ describe("GitHub project files", () => {
     await mkdir(binDirectory);
     const fakeGh = path.join(binDirectory, "gh");
     const pullRequest = {
+      __typename: "PullRequest",
       number: 43,
       title: "Task implementation",
-      state: "open",
-      html_url: "https://github.com/ArcaneArts/Cantrip/pull/43",
-      user: { login: "author" },
-      comments: 1,
-      labels: [],
-      created_at: "2026-08-07T12:00:00.000Z",
-      updated_at: "2026-08-07T13:00:00.000Z",
-      closed_at: null,
+      state: "OPEN",
+      url: "https://github.com/ArcaneArts/Cantrip/pull/43",
+      author: { login: "author" },
+      comments: { totalCount: 1 },
+      labels: { nodes: [{ name: "feature", color: "22d3ee" }] },
+      assignees: { nodes: [{ login: "maintainer" }] },
+      milestone: { title: "v2" },
+      createdAt: "2026-08-07T12:00:00.000Z",
+      updatedAt: "2026-08-07T13:00:00.000Z",
+      closedAt: null,
       body: "Implements the Task.",
-      draft: false,
+      isDraft: false,
       merged: false,
-      head: { ref: "agent/manual/task-cycle", sha: "1".repeat(40) },
-      base: { ref: "main", sha: "2".repeat(40) },
+      mergeable: "MERGEABLE",
+      reviewDecision: "APPROVED",
+      headRefName: "agent/manual/task-cycle",
+      headRefOid: "1".repeat(40),
+      baseRefName: "main",
+      baseRefOid: "2".repeat(40),
+      commits: {
+        nodes: [{ commit: { statusCheckRollup: { state: "SUCCESS" } } }],
+      },
     };
     await writeFile(
       fakeGh,
       [
         "#!/usr/bin/env node",
         'const fs = require("node:fs");',
-        `fs.writeFileSync(${JSON.stringify(logPath)}, process.argv.slice(2).join("\\0"));`,
-        `process.stdout.write(${JSON.stringify(JSON.stringify([pullRequest]))});`,
+        `fs.appendFileSync(${JSON.stringify(logPath)}, process.argv.slice(2).join("\\0") + "\\n");`,
+        "const after = process.argv.find((argument) => argument.startsWith('after='));",
+        `const pullRequest = ${JSON.stringify(pullRequest)};`,
+        "pullRequest.number = after ? 44 : 43;",
+        "pullRequest.url = `https://github.com/ArcaneArts/Cantrip/pull/${pullRequest.number}`;",
+        "process.stdout.write(JSON.stringify({ data: { search: { issueCount: 2, nodes: [pullRequest], pageInfo: { endCursor: after ? null : 'opaque-next', hasNextPage: !after } } } }));",
       ].join("\n"),
     );
     await chmod(fakeGh, 0o755);
@@ -1627,12 +1661,22 @@ describe("GitHub project files", () => {
       new GithubClient(dataDirectory).listPullRequests(
         "ArcaneArts/Cantrip",
         "open",
-        2,
+        null,
         50,
+        githubIssueListFiltersSchema.parse({
+          labels: ["feature"],
+          author: "author",
+          assignee: "maintainer",
+          milestone: "v2",
+          view: "review-requested",
+          draft: false,
+          reviewDecision: "approved",
+          checksState: "success",
+        }),
       ),
     ).resolves.toMatchObject({
       state: "open",
-      total: 1,
+      total: 2,
       pullRequests: [
         {
           number: 43,
@@ -1640,13 +1684,98 @@ describe("GitHub project files", () => {
           baseRef: "main",
         },
       ],
-      nextPage: null,
+      nextCursor: "opaque-next",
+    });
+    await expect(
+      new GithubClient(dataDirectory).listPullRequests(
+        "ArcaneArts/Cantrip",
+        "open",
+        "opaque-next",
+        50,
+      ),
+    ).resolves.toMatchObject({
+      pullRequests: [{ number: 44 }],
+      nextCursor: null,
     });
     const invocation = await readFile(logPath, "utf8");
-    expect(invocation).toContain("/pulls");
-    expect(invocation).toContain("per_page=50");
-    expect(invocation).toContain("page=2");
-    expect(invocation).toContain("state=open");
+    expect(invocation).toContain("graphql");
+    expect(invocation).toContain("repo:ArcaneArts/Cantrip is:pr is:open");
+    expect(invocation).toContain('label:"feature"');
+    expect(invocation).toContain("review-requested:@me");
+    expect(invocation).toContain("-is:draft");
+    expect(invocation).toContain("review:approved");
+    expect(invocation).toContain("status:success");
+    expect(invocation).toContain("after=opaque-next");
+  });
+
+  it("builds recently updated issue queries and rejects PR-only issue filters", () => {
+    const filters = githubIssueListFiltersSchema.parse({
+      labels: ["needs triage"],
+      author: "octocat",
+      assignee: "@me",
+      milestone: "v2 beta",
+      view: "recently-updated",
+    });
+    expect(
+      githubListSearchQuery(
+        "ArcaneArts/Cantrip",
+        "issue",
+        "closed",
+        filters,
+        new Date("2026-09-03T12:00:00.000Z"),
+      ),
+    ).toBe(
+      'repo:ArcaneArts/Cantrip is:issue is:closed label:"needs triage" author:octocat assignee:@me milestone:"v2 beta" updated:>=2026-08-04 sort:updated-desc',
+    );
+    expect(() =>
+      githubListSearchQuery(
+        "ArcaneArts/Cantrip",
+        "issue",
+        "open",
+        githubIssueListFiltersSchema.parse({ draft: true }),
+      ),
+    ).toThrow("Pull request filters cannot be applied to issues");
+  });
+
+  it("fills mergeability-filtered pages without reusing skipped cursors", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-pr-mergeability-test-"),
+    );
+    directories.push(dataDirectory);
+    const binDirectory = path.join(dataDirectory, "bin");
+    const logPath = path.join(dataDirectory, "gh.log");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `fs.appendFileSync(${JSON.stringify(logPath)}, process.argv.slice(2).join("\\0") + "\\n");`,
+        "const after = process.argv.find((argument) => argument.startsWith('after='));",
+        "const number = after ? 44 : 43;",
+        "const node = { __typename: 'PullRequest', number, title: `PR ${number}`, state: 'OPEN', url: `https://github.com/ArcaneArts/Cantrip/pull/${number}`, author: { login: 'author' }, comments: { totalCount: 0 }, labels: { nodes: [] }, assignees: { nodes: [] }, milestone: null, createdAt: '2026-09-03T12:00:00.000Z', updatedAt: '2026-09-03T13:00:00.000Z', closedAt: null, body: '', isDraft: false, merged: false, mergeable: after ? 'MERGEABLE' : 'CONFLICTING', reviewDecision: null, headRefName: `feature/${number}`, headRefOid: '1'.repeat(40), baseRefName: 'main', baseRefOid: '2'.repeat(40), commits: { nodes: [] } };",
+        "process.stdout.write(JSON.stringify({ data: { search: { issueCount: 2, nodes: [node], pageInfo: { endCursor: after ? 'cursor-2' : 'cursor-1', hasNextPage: true } } } }));",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+
+    await expect(
+      new GithubClient(dataDirectory).listPullRequests(
+        "ArcaneArts/Cantrip",
+        "open",
+        null,
+        1,
+        githubIssueListFiltersSchema.parse({ mergeability: "mergeable" }),
+      ),
+    ).resolves.toMatchObject({
+      total: null,
+      pullRequests: [{ number: 44, mergeable: true }],
+      nextCursor: "cursor-2",
+    });
+    const invocation = await readFile(logPath, "utf8");
+    expect(invocation).toContain("after=cursor-1");
   });
 
   it("builds a rich pull request inbox with notification attention", async () => {
@@ -2117,9 +2246,9 @@ describe("GitHub project files", () => {
       reviewDecision: "changes-requested",
       checksState: "failure",
       commitCount: 101,
-      commitsTruncated: true,
+      commitsTruncated: false,
       changedFileCount: 101,
-      filesTruncated: true,
+      filesTruncated: false,
       comments: [{ author: "commenter" }],
       commits: [{ author: "Cantrip Author" }],
       files: [{ path: "src/review.ts", previousPath: "src/old-review.ts" }],
@@ -2179,6 +2308,122 @@ describe("GitHub project files", () => {
     await expect(
       github.getPullRequest("ArcaneArts/Cantrip", "/missing/worktree", 44),
     ).rejects.toThrow();
+  });
+
+  it("preserves available pull request sections when another GitHub endpoint fails", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-pr-partial-detail-"),
+    );
+    directories.push(dataDirectory);
+    const repository = path.join(dataDirectory, "repository");
+    const binDirectory = path.join(dataDirectory, "bin");
+    await execFileAsync("git", ["init", "-b", "main", repository]);
+    await mkdir(binDirectory);
+    const head = "4".repeat(40);
+    const pullRequest = {
+      number: 45,
+      title: "Keep partial pull request data",
+      state: "open",
+      html_url: "https://github.com/ArcaneArts/Cantrip/pull/45",
+      user: { login: "author" },
+      comments: 1,
+      labels: [],
+      created_at: "2026-09-03T12:00:00.000Z",
+      updated_at: "2026-09-03T13:00:00.000Z",
+      closed_at: null,
+      body: "Partial detail",
+      draft: false,
+      merged: false,
+      mergeable: true,
+      mergeable_state: "clean",
+      head: { ref: "feature/partial", sha: head },
+      base: { ref: "main", sha: "5".repeat(40) },
+      requested_reviewers: [],
+      additions: 1,
+      deletions: 0,
+      changed_files: 1,
+      commits: 1,
+    };
+    const commit = {
+      sha: head,
+      html_url: `https://github.com/ArcaneArts/Cantrip/commit/${head}`,
+      author: { login: "author" },
+      commit: {
+        message: "Test partial detail",
+        author: {
+          name: "Cantrip Author",
+          date: "2026-09-03T12:00:00.000Z",
+        },
+      },
+    };
+    const checkRuns = {
+      total_count: 1,
+      check_runs: [
+        {
+          id: 10,
+          name: "test",
+          status: "completed",
+          conclusion: "success",
+          details_url: "https://github.com/ArcaneArts/Cantrip/actions/runs/10",
+          started_at: "2026-09-03T12:01:00.000Z",
+          completed_at: "2026-09-03T12:02:00.000Z",
+          output: {},
+        },
+      ],
+    };
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const args = process.argv.slice(2); const route = args[1] || "";',
+        `const pullRequest = ${JSON.stringify(pullRequest)};`,
+        `const commit = ${JSON.stringify(commit)};`,
+        `const checkRuns = ${JSON.stringify(checkRuns)};`,
+        'if (route.endsWith("/issues/45/comments")) process.exit(1);',
+        'else if (route.endsWith("/pulls/45/files")) process.exit(1);',
+        'else if (route.endsWith("/pulls/45/commits")) process.stdout.write(JSON.stringify([commit]));',
+        'else if (route.endsWith("/pulls/45/reviews") || route.endsWith("/pulls/45/comments")) process.stdout.write("[]");',
+        'else if (route.endsWith("/check-runs")) process.stdout.write(JSON.stringify(checkRuns));',
+        'else if (route.endsWith("/status")) process.stdout.write(JSON.stringify({ statuses: [] }));',
+        'else if (route.endsWith("/pulls/45")) process.stdout.write(JSON.stringify(pullRequest));',
+        "else process.exit(1);",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+
+    const github = new GithubClient(dataDirectory);
+    await expect(
+      github.getPullRequestOverview("ArcaneArts/Cantrip", repository, 45),
+    ).resolves.toMatchObject({
+      number: 45,
+      comments: [],
+      reviews: [],
+      warnings: [{ section: "conversation" }],
+    });
+    await expect(
+      github.getPullRequestFiles("ArcaneArts/Cantrip", repository, 45),
+    ).rejects.toThrow();
+    await expect(
+      github.getPullRequestCommits("ArcaneArts/Cantrip", repository, 45),
+    ).resolves.toMatchObject({ commits: [{ sha: head }] });
+    await expect(
+      github.getPullRequestChecks("ArcaneArts/Cantrip", repository, 45),
+    ).resolves.toMatchObject({
+      checksState: "success",
+      checks: [{ name: "test" }],
+    });
+    await expect(
+      github.getPullRequest("ArcaneArts/Cantrip", repository, 45),
+    ).resolves.toMatchObject({
+      number: 45,
+      files: [],
+      filesTruncated: true,
+      commits: [{ sha: head }],
+      checks: [{ name: "test" }],
+      warnings: [{ section: "conversation" }, { section: "files" }],
+    });
   });
 
   it("fetches an exact pull request head without switching the selected worktree", async () => {

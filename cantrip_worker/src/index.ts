@@ -2169,10 +2169,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "github.issues.list":
         return github.listIssues(
           command.repository,
-          command.kind,
           command.state,
-          command.page,
+          command.cursor,
           command.limit,
+          command.filters,
         );
       case "github.inbox.list":
         return github.listInbox(
@@ -2187,8 +2187,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return github.listPullRequests(
           command.repository,
           command.state,
-          command.page,
+          command.cursor,
           command.limit,
+          command.filters,
         );
       case "github.issue.get":
         return github.getIssue(command.repository, command.number);
@@ -2213,11 +2214,38 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.request,
         );
       case "github.pull-request.get":
-        return github.getPullRequest(
-          command.repository,
-          command.cwd,
-          command.number,
-        );
+        switch (command.section) {
+          case "overview":
+            return github.getPullRequestOverview(
+              command.repository,
+              command.cwd,
+              command.number,
+            );
+          case "files":
+            return github.getPullRequestFiles(
+              command.repository,
+              command.cwd,
+              command.number,
+            );
+          case "commits":
+            return github.getPullRequestCommits(
+              command.repository,
+              command.cwd,
+              command.number,
+            );
+          case "checks":
+            return github.getPullRequestChecks(
+              command.repository,
+              command.cwd,
+              command.number,
+            );
+          case "all":
+            return github.getPullRequest(
+              command.repository,
+              command.cwd,
+              command.number,
+            );
+        }
       case "github.pull-request.comment":
         return github.commentOnPullRequest(
           command.repository,

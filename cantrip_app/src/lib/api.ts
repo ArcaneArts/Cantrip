@@ -140,11 +140,16 @@ import {
   githubIssueDetailSchema,
   githubInboxListSchema,
   githubIssueListSchema,
+  githubPullRequestChecksSchema,
+  githubPullRequestCommitsSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestCheckoutResultSchema,
   githubPullRequestDetailSchema,
+  githubPullRequestFilesSchema,
   githubPullRequestLifecyclePreviewSchema,
+  githubPullRequestListSchema,
+  githubPullRequestOverviewSchema,
   githubReleaseListSchema,
   githubReleaseSummarySchema,
   githubRepositoryCreateSchema,
@@ -467,8 +472,9 @@ import type {
   GitStashCreate,
   GitSubmoduleAction,
   GitTagAction,
-  GithubIssueKind,
   GithubIssueCreate,
+  GithubIssueKind,
+  GithubIssueListFilters,
   GithubIssueState,
   GithubInboxView,
   GithubPullRequestCreate,
@@ -4056,6 +4062,62 @@ export async function getGithubPullRequest(
   });
 }
 
+export async function getGithubPullRequestOverview(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.get",
+    arguments: { number: pullRequestNumber, section: "overview" },
+    resultSchema: githubPullRequestOverviewSchema,
+  });
+}
+
+export async function getGithubPullRequestFiles(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.get",
+    arguments: { number: pullRequestNumber, section: "files" },
+    resultSchema: githubPullRequestFilesSchema,
+  });
+}
+
+export async function getGithubPullRequestCommits(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.get",
+    arguments: { number: pullRequestNumber, section: "commits" },
+    resultSchema: githubPullRequestCommitsSchema,
+  });
+}
+
+export async function getGithubPullRequestChecks(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.get",
+    arguments: { number: pullRequestNumber, section: "checks" },
+    resultSchema: githubPullRequestChecksSchema,
+  });
+}
+
 export async function checkoutGithubPullRequest(
   projectId: string,
   worktreeId: string,
@@ -4163,14 +4225,14 @@ export async function applyGithubPullRequestLifecycle(
 
 export async function getGithubIssues(
   projectId: string,
-  kind: GithubIssueKind,
   state: GithubIssueState,
-  page = 1,
+  cursor: string | null = null,
+  filters: Partial<GithubIssueListFilters> = {},
 ) {
   return runProtectedRepositoryOperation({
     projectId,
     type: "github.issues.list",
-    arguments: { kind, state, page, limit: 100 },
+    arguments: { state, cursor, limit: 100, filters },
     resultSchema: githubIssueListSchema,
   });
 }
@@ -4187,6 +4249,20 @@ export async function getGithubInbox(
     type: "github.inbox.list",
     arguments: { kind, state, view, cursor, limit: 50 },
     resultSchema: githubInboxListSchema,
+  });
+}
+
+export async function getGithubPullRequests(
+  projectId: string,
+  state: GithubIssueState,
+  cursor: string | null = null,
+  filters: Partial<GithubIssueListFilters> = {},
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "github.pull-requests.list",
+    arguments: { state, cursor, limit: 100, filters },
+    resultSchema: githubPullRequestListSchema,
   });
 }
 

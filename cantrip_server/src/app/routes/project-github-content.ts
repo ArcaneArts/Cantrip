@@ -4,10 +4,12 @@ import {
   githubIssueCreateSchema,
   githubIssueDetailSchema,
   githubIssueKindSchema,
+  githubIssueListFiltersSchema,
   githubIssueListSchema,
   githubIssueStateSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCreateSchema,
+  githubPullRequestListSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 
@@ -102,8 +104,8 @@ export function installProjectGithubContentRoutes(
     Params: { projectId: string };
     Querystring: {
       kind?: string;
+      cursor?: string;
       limit?: string;
-      page?: string;
       state?: string;
     };
   }>("/api/projects/:projectId/github/issues", async (request, reply) => {
@@ -119,17 +121,10 @@ export function installProjectGithubContentRoutes(
     if (!state.success) {
       return reply.code(400).send({ error: "state must be open or closed" });
     }
-    const page = Number(request.query.page ?? "1");
     const limit = Number(request.query.limit ?? "100");
-    if (
-      !Number.isInteger(page) ||
-      page < 1 ||
-      !Number.isInteger(limit) ||
-      limit < 1 ||
-      limit > 100
-    ) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
       return reply.code(400).send({
-        error: "page must be positive and limit must be between 1 and 100",
+        error: "limit must be between 1 and 100",
       });
     }
     const context = await repository.getGithubProjectExecutionContext(
@@ -140,15 +135,31 @@ export function installProjectGithubContentRoutes(
       return reply.code(404).send({ error: "GitHub project not found." });
     }
     try {
-      const issues = await bridge.request(context.workerId, {
-        type: "github.issues.list",
-        repository: context.nameWithOwner,
-        kind: kind.data,
-        state: state.data,
-        page,
-        limit,
-      });
-      return reply.send(githubIssueListSchema.parse(issues));
+      const result = await bridge.request(
+        context.workerId,
+        kind.data === "pull-request"
+          ? {
+              type: "github.pull-requests.list",
+              repository: context.nameWithOwner,
+              state: state.data,
+              cursor: request.query.cursor ?? null,
+              limit,
+              filters: githubIssueListFiltersSchema.parse({}),
+            }
+          : {
+              type: "github.issues.list",
+              repository: context.nameWithOwner,
+              state: state.data,
+              cursor: request.query.cursor ?? null,
+              limit,
+              filters: githubIssueListFiltersSchema.parse({}),
+            },
+      );
+      return reply.send(
+        kind.data === "pull-request"
+          ? githubPullRequestListSchema.parse(result)
+          : githubIssueListSchema.parse(result),
+      );
     } catch (error) {
       return sendWorkerRequestFailure(reply, error);
     }

@@ -3729,15 +3729,34 @@ describe("Cantrip protocol", () => {
         repository: "ArcaneArts/Cantrip",
         state: "open",
       }),
-    ).toMatchObject({ kind: "issue", page: 1, limit: 100 });
+    ).toMatchObject({ cursor: null, limit: 100, filters: { view: "all" } });
     expect(
       workerCommandSchema.parse({
-        type: "github.issues.list",
+        type: "github.pull-requests.list",
         repository: "ArcaneArts/Cantrip",
-        kind: "pull-request",
         state: "closed",
+        cursor: "opaque-cursor",
+        filters: {
+          labels: ["bug"],
+          view: "review-requested",
+          draft: false,
+          reviewDecision: "approved",
+          mergeability: "mergeable",
+          checksState: "success",
+        },
       }),
-    ).toMatchObject({ kind: "pull-request", state: "closed" });
+    ).toMatchObject({
+      cursor: "opaque-cursor",
+      state: "closed",
+      filters: {
+        labels: ["bug"],
+        view: "review-requested",
+        draft: false,
+        reviewDecision: "approved",
+        mergeability: "mergeable",
+        checksState: "success",
+      },
+    });
     expect(
       workerCommandSchema.parse({
         type: "github.inbox.list",
@@ -3788,7 +3807,6 @@ describe("Cantrip protocol", () => {
         type: "github.issues.list",
         repository: "ArcaneArts/Cantrip",
         state: "open",
-        page: 1,
         limit: 101,
       }),
     ).toThrow();

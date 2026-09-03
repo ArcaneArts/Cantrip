@@ -321,6 +321,7 @@ export function installProjectWorktreePullRequestRoutes(
             cwd: worktree.worktree.path,
             repository: github.nameWithOwner,
             number: pullRequestNumber,
+            section: "all",
           },
           { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
         );

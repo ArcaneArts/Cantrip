@@ -1,13 +1,17 @@
-import type {
-  GitStatus,
-  GithubInboxAttention,
-  GithubIssueDetail,
-  GithubInboxList,
-  GithubInboxView,
-  GithubIssueKind,
-  GithubIssueSummary,
-  GithubIssueState,
-  ProjectSummary,
+import {
+  githubIssueListFiltersSchema,
+  type GitStatus,
+  type GithubIssueDetail,
+  type GithubInboxAttention,
+  type GithubInboxItem,
+  type GithubInboxList,
+  type GithubInboxView,
+  type GithubIssueKind,
+  type GithubIssueListFilters,
+  type GithubIssueState,
+  type GithubIssueSummary,
+  type GithubPullRequestSummary,
+  type ProjectSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,18 +25,27 @@ import {
   GitMerge,
   GitPullRequestDraft,
   Inbox,
-  Loader2,
-  MessageSquare,
-  Plus,
   ShieldCheck,
   UserRoundCheck,
   XCircle,
+  Filter,
+  Loader2,
+  MessageSquare,
+  Plus,
+  Search,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +80,27 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
+const defaultGithubListFilters = githubIssueListFiltersSchema.parse({});
+
+function isPullRequest(
+  item: GithubInboxItem | GithubIssueSummary | GithubPullRequestSummary,
+): item is GithubPullRequestSummary {
+  return "headRef" in item;
+}
+
+function activeFilterCount(filters: GithubIssueListFilters): number {
+  return [
+    filters.labels.length > 0,
+    filters.author !== null,
+    filters.assignee !== null,
+    filters.milestone !== null,
+    filters.draft !== null,
+    filters.reviewDecision !== null,
+    filters.mergeability !== null,
+    filters.checksState !== null,
+  ].filter(Boolean).length;
+}
+
 function errorText(error: unknown): string {
   return errorMessage(error, "GitHub request failed.");
 }
@@ -75,7 +109,7 @@ export function GithubIssueMobileCard({
   issue,
   onSelect,
 }: {
-  issue: GithubInboxList["items"][number] | GithubIssueSummary;
+  issue: GithubInboxItem | GithubIssueSummary | GithubPullRequestSummary;
   onSelect(): void;
 }) {
   const inboxIssue = "attention" in issue ? issue : null;
@@ -488,11 +522,14 @@ function IssueDialog({
 
 export function GithubIssuesView({
   error,
+  filters,
   hasNextPage,
   isFetchingNextPage,
   isLoading,
   inbox,
+  items,
   kind,
+  onFiltersChange,
   onLoadMore,
   onViewChange,
   onSelectWorktree,
@@ -503,11 +540,16 @@ export function GithubIssuesView({
   view,
 }: {
   error: unknown;
+  filters: GithubIssueListFilters;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   isLoading: boolean;
   inbox: GithubInboxList | undefined;
+  items:
+    | Array<GithubInboxItem | GithubIssueSummary | GithubPullRequestSummary>
+    | undefined;
   kind: GithubIssueKind;
+  onFiltersChange(filters: GithubIssueListFilters): void;
   onLoadMore(): void;
   onViewChange(view: GithubInboxView): void;
   onSelectWorktree(worktreeId: string): void;
@@ -522,9 +564,30 @@ export function GithubIssuesView({
   const queryClient = useQueryClient();
   const listRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterDraft, setFilterDraft] =
+    useState<GithubIssueListFilters>(filters);
+  const [searchDraft, setSearchDraft] = useState(filters.search);
   const itemLabel = kind === "pull-request" ? "pull requests" : "issues";
+  const filterCount = activeFilterCount(filters);
+  const filterDraftValid = useMemo(
+    () => githubIssueListFiltersSchema.safeParse(filterDraft).success,
+    [filterDraft],
+  );
+
+  useEffect(() => setSearchDraft(filters.search), [filters.search]);
+
+  useEffect(() => {
+    if (searchDraft === filters.search) return;
+    const timeout = window.setTimeout(
+      () => onFiltersChange({ ...filters, search: searchDraft.trim() }),
+      350,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [filters, onFiltersChange, searchDraft]);
   const views = githubInboxViews(kind, state);
   const activeView = views.find(({ id }) => id === view) ?? views[0]!;
+  const displayItems = inbox?.items ?? items;
 
   useEffect(() => {
     const root = listRef.current;
@@ -583,6 +646,250 @@ export function GithubIssuesView({
               : inbox.total}
           </span>
         ) : null}
+      </div>
+      <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5">
+        <div className="relative min-w-44 flex-1 sm:max-w-md">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label={`Search ${itemLabel}`}
+            className="h-8 pl-8 text-xs"
+            disabled={view !== "all"}
+            placeholder={`Search ${itemLabel}…`}
+            value={searchDraft}
+            onChange={(event) => setSearchDraft(event.target.value)}
+          />
+        </div>
+        <NativeSelect
+          aria-label={`${kind === "pull-request" ? "Pull request" : "Issue"} view`}
+          className="max-w-40"
+          disabled={view !== "all"}
+          size="sm"
+          value={filters.view}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              view: event.target.value as GithubIssueListFilters["view"],
+            })
+          }
+        >
+          <option value="all">All</option>
+          <option value="assigned-to-me">Assigned to me</option>
+          {kind === "pull-request" ? (
+            <option value="review-requested">Review requested</option>
+          ) : null}
+          <option value="recently-updated">Recently updated</option>
+        </NativeSelect>
+        <Popover
+          open={filtersOpen}
+          onOpenChange={(open) => {
+            setFiltersOpen(open);
+            if (open) setFilterDraft(filters);
+          }}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs"
+              disabled={view !== "all"}
+            >
+              <Filter className="size-3.5" />
+              Filters{filterCount ? ` ${filterCount}` : ""}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-[min(92vw,420px)] space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="grid gap-1 text-xs">
+                Author
+                <Input
+                  className="h-8 text-xs"
+                  placeholder="octocat or @me"
+                  value={filterDraft.author ?? ""}
+                  onChange={(event) =>
+                    setFilterDraft((current) => ({
+                      ...current,
+                      author: event.target.value || null,
+                    }))
+                  }
+                />
+              </label>
+              <label className="grid gap-1 text-xs">
+                Assignee
+                <Input
+                  className="h-8 text-xs"
+                  placeholder="octocat or @me"
+                  value={filterDraft.assignee ?? ""}
+                  onChange={(event) =>
+                    setFilterDraft((current) => ({
+                      ...current,
+                      assignee: event.target.value || null,
+                    }))
+                  }
+                />
+              </label>
+              <label className="grid gap-1 text-xs">
+                Milestone
+                <Input
+                  className="h-8 text-xs"
+                  placeholder="Milestone title"
+                  value={filterDraft.milestone ?? ""}
+                  onChange={(event) =>
+                    setFilterDraft((current) => ({
+                      ...current,
+                      milestone: event.target.value || null,
+                    }))
+                  }
+                />
+              </label>
+              <label className="grid gap-1 text-xs">
+                Labels
+                <Input
+                  className="h-8 text-xs"
+                  placeholder="bug, priority"
+                  value={filterDraft.labels.join(", ")}
+                  onChange={(event) =>
+                    setFilterDraft((current) => ({
+                      ...current,
+                      labels: event.target.value
+                        .split(",")
+                        .map((value) => value.trim())
+                        .filter(Boolean),
+                    }))
+                  }
+                />
+              </label>
+              {kind === "pull-request" ? (
+                <>
+                  <label className="grid gap-1 text-xs">
+                    Draft
+                    <NativeSelect
+                      size="sm"
+                      value={
+                        filterDraft.draft === null
+                          ? "all"
+                          : String(filterDraft.draft)
+                      }
+                      onChange={(event) =>
+                        setFilterDraft((current) => ({
+                          ...current,
+                          draft:
+                            event.target.value === "all"
+                              ? null
+                              : event.target.value === "true",
+                        }))
+                      }
+                    >
+                      <option value="all">All</option>
+                      <option value="false">Ready</option>
+                      <option value="true">Draft</option>
+                    </NativeSelect>
+                  </label>
+                  <label className="grid gap-1 text-xs">
+                    Review decision
+                    <NativeSelect
+                      size="sm"
+                      value={filterDraft.reviewDecision ?? "all"}
+                      onChange={(event) =>
+                        setFilterDraft((current) => ({
+                          ...current,
+                          reviewDecision:
+                            event.target.value === "all"
+                              ? null
+                              : (event.target
+                                  .value as GithubIssueListFilters["reviewDecision"]),
+                        }))
+                      }
+                    >
+                      <option value="all">All</option>
+                      <option value="approved">Approved</option>
+                      <option value="changes-requested">
+                        Changes requested
+                      </option>
+                      <option value="review-required">Review required</option>
+                      <option value="none">No review</option>
+                    </NativeSelect>
+                  </label>
+                  <label className="grid gap-1 text-xs">
+                    Mergeability
+                    <NativeSelect
+                      size="sm"
+                      value={filterDraft.mergeability ?? "all"}
+                      onChange={(event) =>
+                        setFilterDraft((current) => ({
+                          ...current,
+                          mergeability:
+                            event.target.value === "all"
+                              ? null
+                              : (event.target
+                                  .value as GithubIssueListFilters["mergeability"]),
+                        }))
+                      }
+                    >
+                      <option value="all">All</option>
+                      <option value="mergeable">Mergeable</option>
+                      <option value="conflicting">Conflicting</option>
+                      <option value="unknown">Calculating</option>
+                    </NativeSelect>
+                  </label>
+                  <label className="grid gap-1 text-xs">
+                    Checks
+                    <NativeSelect
+                      size="sm"
+                      value={filterDraft.checksState ?? "all"}
+                      onChange={(event) =>
+                        setFilterDraft((current) => ({
+                          ...current,
+                          checksState:
+                            event.target.value === "all"
+                              ? null
+                              : (event.target
+                                  .value as GithubIssueListFilters["checksState"]),
+                        }))
+                      }
+                    >
+                      <option value="all">All</option>
+                      <option value="success">Passing</option>
+                      <option value="failure">Failing</option>
+                      <option value="pending">Pending</option>
+                    </NativeSelect>
+                  </label>
+                </>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t pt-3">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const cleared = {
+                    ...defaultGithubListFilters,
+                    search: filters.search,
+                  };
+                  setFilterDraft(cleared);
+                  onFiltersChange(cleared);
+                  setFiltersOpen(false);
+                }}
+              >
+                Clear
+              </Button>
+              <Button
+                size="sm"
+                disabled={!filterDraftValid}
+                onClick={() => {
+                  const parsed = githubIssueListFiltersSchema.safeParse({
+                    ...filterDraft,
+                    search: filters.search,
+                  });
+                  if (!parsed.success) return;
+                  onFiltersChange(parsed.data);
+                  setFiltersOpen(false);
+                }}
+              >
+                Apply filters
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
         <Button
           size="sm"
           className="h-7 gap-1 text-xs"
@@ -602,7 +909,7 @@ export function GithubIssuesView({
           <div className="m-5 rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">
             {errorText(error)}
           </div>
-        ) : !inbox?.items.length ? (
+        ) : !displayItems?.length ? (
           <div className="grid min-h-64 place-items-center text-center">
             <div>
               <CheckCircle2 className="mx-auto size-6 text-muted-foreground" />
@@ -636,7 +943,7 @@ export function GithubIssuesView({
         ) : (
           <>
             <div className="divide-y py-2 md:hidden">
-              {inbox.items.map((issue) => (
+              {displayItems.map((issue) => (
                 <GithubIssueMobileCard
                   key={issue.number}
                   issue={issue}
@@ -656,8 +963,11 @@ export function GithubIssuesView({
                 <span>Comments</span>
                 <span className="text-right">Updated</span>
               </div>
-              {inbox.items.map((issue) => {
-                const attention = visibleGithubInboxAttention(issue);
+              {displayItems.map((issue) => {
+                const inboxIssue = "attention" in issue ? issue : null;
+                const attention = inboxIssue
+                  ? visibleGithubInboxAttention(inboxIssue)
+                  : [];
                 return (
                   <button
                     key={issue.number}
@@ -667,7 +977,7 @@ export function GithubIssuesView({
                     className="grid min-h-16 w-full grid-cols-[70px_minmax(320px,1fr)_280px_140px_80px_110px] items-center px-4 py-2 text-left odd:bg-muted/[0.035] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     <span className="flex items-center gap-2 font-mono text-muted-foreground">
-                      {issue.attention.includes("unread") ? (
+                      {inboxIssue?.attention.includes("unread") ? (
                         <span
                           className="size-1.5 rounded-full bg-blue-500"
                           aria-label="Unread activity"
@@ -690,28 +1000,63 @@ export function GithubIssuesView({
                           </span>
                         ))}
                       </span>
-                      {issue.pullRequest ? (
+                      {inboxIssue?.pullRequest || isPullRequest(issue) ? (
                         <span className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[10px] text-muted-foreground">
                           <GitBranch className="size-3 shrink-0" />
                           <span className="truncate">
-                            {issue.pullRequest.headRef}
+                            {inboxIssue?.pullRequest?.headRef ??
+                              (isPullRequest(issue) ? issue.headRef : "")}
                           </span>
                           <span>→</span>
                           <span className="truncate">
-                            {issue.pullRequest.baseRef}
+                            {inboxIssue?.pullRequest?.baseRef ??
+                              (isPullRequest(issue) ? issue.baseRef : "")}
                           </span>
                         </span>
                       ) : null}
                     </span>
                     <span className="min-w-0 pr-3">
-                      {issue.pullRequest ? (
+                      {inboxIssue?.pullRequest ? (
                         <span className="block">
-                          <PullRequestState item={issue} />
+                          <PullRequestState item={inboxIssue} />
                           {attention.length ? (
                             <span className="mt-1 flex flex-wrap gap-1">
                               {attention.slice(0, 4).map((value) => (
                                 <AttentionPill key={value} attention={value} />
                               ))}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : isPullRequest(issue) ? (
+                        <span className="flex flex-wrap gap-1">
+                          {issue.draft ? (
+                            <span className="rounded-full border px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                              Draft
+                            </span>
+                          ) : null}
+                          {issue.reviewDecision !== "none" ? (
+                            <span className="rounded-full border px-1.5 py-0.5 text-[9px] capitalize text-muted-foreground">
+                              {issue.reviewDecision.replace("-", " ")}
+                            </span>
+                          ) : null}
+                          {issue.checksState !== "none" ? (
+                            <span
+                              className={cn(
+                                "rounded-full border px-1.5 py-0.5 text-[9px] capitalize",
+                                issue.checksState === "success" &&
+                                  "border-emerald-500/40 text-emerald-600",
+                                issue.checksState === "failure" &&
+                                  "border-destructive/40 text-destructive",
+                                issue.checksState === "pending" &&
+                                  "border-amber-500/40 text-amber-600",
+                              )}
+                            >
+                              {issue.checksState}
+                            </span>
+                          ) : null}
+                          {issue.mergeable === false ? (
+                            <span className="rounded-full border border-destructive/40 px-1.5 py-0.5 text-[9px] text-destructive">
+                              Conflicts
                             </span>
                           ) : null}
                         </span>

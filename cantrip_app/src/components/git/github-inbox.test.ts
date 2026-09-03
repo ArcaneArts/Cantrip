@@ -38,6 +38,7 @@ describe("GitHub inbox views", () => {
         author: "octocat",
         commentCount: 0,
         labels: [],
+        milestone: null,
         createdAt: "2026-08-01T00:00:00.000Z",
         updatedAt: "2026-08-01T00:00:00.000Z",
         closedAt: null,

@@ -482,6 +482,37 @@ Manual QA:
 5. Disconnect the worker and confirm inbox reads fail without falling back to
    another worker or exposing GitHub credentials to the app or server.
 
+## GitHub issues and pull request lists
+
+Issues and pull requests use separate GitHub-backed list operations. The
+worker sends `is:issue` or `is:pr` as a provider-side search qualifier before
+GitHub paginates the result, so a page is never emptied by filtering pull
+requests out of the mixed REST issues response. Pagination uses GitHub's opaque
+GraphQL cursor and follows `pageInfo` instead of synthesizing page numbers.
+
+Both lists support title/body search, state, labels, author, assignee,
+milestone, assigned-to-me, and a rolling recently-updated view. Pull requests
+also support review-requested-for-me, draft state, review decision,
+mergeability, and aggregate check status. GitHub applies every documented
+search qualifier before pagination. Mergeability is the exception because
+GitHub does not expose a search qualifier for it: the worker scans bounded
+cursor pages until it fills the requested result page, returns the cursor after
+the last inspected provider row, and leaves the filtered total unknown rather
+than displaying a misleading count.
+
+Manual QA:
+
+1. Create enough interleaved issues and pull requests to exceed one page, then
+   page through each view and confirm no rows disappear because of the other
+   kind.
+2. Combine labels, author, assignee, milestone, state, and recently-updated
+   filters and confirm the rows and total match the equivalent GitHub search.
+3. Filter pull requests by draft, review decision, checks, mergeability,
+   assigned-to-me, and review-requested-for-me; then load another page and
+   confirm the filters and ordering remain stable.
+4. Switch between Issues and Pull requests and confirm each kind preserves its
+   own filters without applying PR-only filters to issues.
+
 ## GitHub pull request creation
 
 Open a project's Issues tab in **Pull requests** mode and choose **Pull
@@ -513,9 +544,16 @@ Manual QA:
 
 ### Pull request review surface
 
-Click a pull request row to open its worktree-scoped review dialog. Overview
-shows draft/open/merged state, head and base, mergeability, aggregate changes,
-requested reviewers, review decisions, and the bounded general conversation.
+Click a pull request row to open its worktree-scoped review dialog. Overview,
+Files, Commits, and Checks load as independent worker operations. A permission,
+rate-limit, or endpoint failure is contained to its section with a retry action;
+tabs that loaded successfully remain usable, including when Overview is
+unavailable. Best-effort Overview subsections such as conversation and reviews
+also surface an explicit warning while retaining the rest of the overview.
+
+Overview shows draft/open/merged state, head and base, mergeability, aggregate
+changes, requested reviewers, review decisions, and the bounded general
+conversation.
 Commits and changed files are capped at 100 entries, reviews at 100, and checks
 plus commit statuses at 200; the UI identifies an incomplete result and links
 to GitHub rather than silently presenting it as complete. Changed-file patches
@@ -542,6 +580,9 @@ Manual QA:
    commit status. Follow the hosted link for a failed check's full log.
 5. Disconnect the selected worktree's worker and confirm the dialog reports it
    offline instead of reading through another worker.
+6. Deny access to checks, comments, or files one endpoint at a time and confirm
+   only that section reports an error or warning; successfully loaded tabs stay
+   visible and independently retryable.
 
 ### Conversations and reviews
 

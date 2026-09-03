@@ -29,6 +29,8 @@ import {
   githubIssueStateSchema,
   githubIssueKindSchema,
   githubInboxViewSchema,
+  githubIssueListFiltersSchema,
+  githubListCursorSchema,
   githubIssueCreateSchema,
   githubIssueCommentCreateSchema,
   githubPullRequestCreateSchema,
@@ -92,10 +94,10 @@ export const workerGithubProjectCommandSchemas = [
   z.object({
     type: z.literal("github.issues.list"),
     repository: workerRepositoryNameSchema,
-    kind: githubIssueKindSchema.default("issue"),
     state: githubIssueStateSchema,
-    page: z.number().int().positive().default(1),
+    cursor: githubListCursorSchema,
     limit: z.number().int().min(1).max(100).default(100),
+    filters: githubIssueListFiltersSchema.prefault({}),
   }),
   z.object({
     type: z.literal("github.inbox.list"),
@@ -138,14 +140,18 @@ export const workerGithubProjectCommandSchemas = [
     type: z.literal("github.pull-requests.list"),
     repository: workerRepositoryNameSchema,
     state: githubIssueStateSchema,
-    page: z.number().int().positive().default(1),
+    cursor: githubListCursorSchema,
     limit: z.number().int().min(1).max(100).default(100),
+    filters: githubIssueListFiltersSchema.prefault({}),
   }),
   z.object({
     type: z.literal("github.pull-request.get"),
     cwd: z.string().min(1).max(8_192),
     repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
+    section: z
+      .enum(["all", "overview", "files", "commits", "checks"])
+      .default("all"),
   }),
   z.object({
     type: z.literal("github.pull-request.comment"),

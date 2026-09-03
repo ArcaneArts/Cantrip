@@ -1,8 +1,11 @@
 import type {
   GithubPullRequestCheck,
-  GithubPullRequestDetail,
+  GithubPullRequestChecks,
+  GithubPullRequestCommits,
   GithubPullRequestFile,
+  GithubPullRequestFiles,
   GithubPullRequestLifecycleAction,
+  GithubPullRequestOverview,
   GithubPullRequestReviewAction,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
@@ -38,7 +41,10 @@ import {
 import {
   checkoutGithubPullRequest,
   generateProjectWorktreeGitDraft,
-  getGithubPullRequest,
+  getGithubPullRequestChecks,
+  getGithubPullRequestCommits,
+  getGithubPullRequestFiles,
+  getGithubPullRequestOverview,
   runGithubPullRequestReviewAction,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -111,13 +117,62 @@ function TruncatedNotice({ children }: { children: string }) {
   );
 }
 
+function DataWarnings({
+  warnings = [],
+}: {
+  warnings?: Array<{ message: string; section: string }>;
+}) {
+  if (warnings.length === 0) return null;
+  return (
+    <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-700 dark:text-amber-300">
+      {warnings.map((warning, index) => (
+        <p key={`${warning.section}:${index}`}>
+          {warning.section.replaceAll("-", " ")}: {warning.message}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function SectionState({
+  error,
+  loading,
+  onRetry,
+}: {
+  error: unknown;
+  loading: boolean;
+  onRetry(): void;
+}) {
+  if (loading) {
+    return (
+      <div className="grid min-h-48 flex-1 place-items-center text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" />
+      </div>
+    );
+  }
+  return (
+    <div className="grid min-h-48 flex-1 place-items-center p-6 text-center">
+      <div>
+        <AlertCircle className="mx-auto size-5 text-destructive" />
+        <p className="mt-2 text-sm font-medium">This section is unavailable</p>
+        <p className="mt-1 max-w-lg text-xs text-muted-foreground">
+          {error instanceof Error ? error.message : "GitHub request failed."}
+        </p>
+        <Button size="sm" variant="outline" className="mt-3" onClick={onRetry}>
+          Retry
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Overview({
   detail,
   error,
   onAction,
   pending,
 }: {
-  detail: GithubPullRequestDetail;
+  detail: GithubPullRequestOverview;
   error: unknown;
   onAction(action: GithubPullRequestReviewAction): Promise<void>;
   pending: boolean;
@@ -134,6 +189,7 @@ function Overview({
   };
   return (
     <div className="space-y-6 overflow-y-auto p-5">
+      <DataWarnings warnings={detail.warnings} />
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {[
           [
@@ -145,7 +201,12 @@ function Overview({
                 : "Blocked",
           ],
           ["Reviews", detail.reviewDecision.replaceAll("-", " ")],
-          ["Checks", detail.checksState],
+          [
+            "Checks",
+            detail.checksState === "unknown"
+              ? "Open Checks tab"
+              : detail.checksState,
+          ],
           ["Change", `+${detail.additions} −${detail.deletions}`],
         ].map(([label, value]) => (
           <div key={label} className="rounded-lg bg-muted/30 px-3 py-2">
@@ -378,11 +439,13 @@ export function PullRequestFiles({
   error,
   onAction,
   pending,
+  reviewThreads = [],
 }: {
-  detail: GithubPullRequestDetail;
+  detail: GithubPullRequestFiles;
   error: unknown;
   onAction(action: GithubPullRequestReviewAction): Promise<void>;
   pending: boolean;
+  reviewThreads?: GithubPullRequestOverview["reviewThreads"];
 }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(
     detail.files[0]?.path ?? null,
@@ -417,6 +480,7 @@ export function PullRequestFiles({
         </span>
         <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
       </button>
+      <DataWarnings warnings={detail.warnings} />
       {commentTarget ? (
         <form
           className="flex shrink-0 flex-col items-stretch gap-2 border-b bg-muted/20 p-3 md:flex-row md:items-start"
@@ -532,7 +596,7 @@ export function PullRequestFiles({
         {selected ? (
           <GitPatchView
             binary={selected.patch === null}
-            commentTargets={detail.reviewThreads.flatMap((thread) =>
+            commentTargets={reviewThreads.flatMap((thread) =>
               thread.path === selected.path && thread.line && thread.side
                 ? [{ line: thread.line, side: thread.side }]
                 : [],
@@ -616,9 +680,10 @@ export function PullRequestFiles({
   );
 }
 
-function Commits({ detail }: { detail: GithubPullRequestDetail }) {
+function Commits({ detail }: { detail: GithubPullRequestCommits }) {
   return (
     <div className="overflow-y-auto">
+      <DataWarnings warnings={detail.warnings} />
       {detail.commitsTruncated ? (
         <TruncatedNotice>
           Showing the first 100 pull request commits.
@@ -662,13 +727,14 @@ function Checks({
   onSummarize,
   summarizing,
 }: {
-  detail: GithubPullRequestDetail;
+  detail: GithubPullRequestChecks;
   onSummarize(): void;
   summarizing: boolean;
 }) {
   const failureCount = detail.checks.filter(isFailedPullRequestCheck).length;
   return (
     <div className="overflow-y-auto">
+      <DataWarnings warnings={detail.warnings} />
       {failureCount ? (
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/95 px-4 py-2 backdrop-blur">
           <p className="text-xs text-muted-foreground">
@@ -748,17 +814,36 @@ export function GithubPullRequestDialog({
     useState<GithubPullRequestLifecycleAction | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const queryClient = useQueryClient();
-  const detailKey = [
+  const pullRequestKey = [
     "github-pull-request",
     projectId,
     worktreeId,
     pullRequestNumber,
   ];
-  const detail = useQuery({
+  const overviewKey = [...pullRequestKey, "overview"];
+  const overview = useQuery({
     enabled: pullRequestNumber !== null,
-    queryKey: detailKey,
+    queryKey: overviewKey,
     queryFn: () =>
-      getGithubPullRequest(projectId, worktreeId, pullRequestNumber!),
+      getGithubPullRequestOverview(projectId, worktreeId, pullRequestNumber!),
+  });
+  const files = useQuery({
+    enabled: pullRequestNumber !== null && tab === "files",
+    queryKey: [...pullRequestKey, "files"],
+    queryFn: () =>
+      getGithubPullRequestFiles(projectId, worktreeId, pullRequestNumber!),
+  });
+  const commits = useQuery({
+    enabled: pullRequestNumber !== null && tab === "commits",
+    queryKey: [...pullRequestKey, "commits"],
+    queryFn: () =>
+      getGithubPullRequestCommits(projectId, worktreeId, pullRequestNumber!),
+  });
+  const checks = useQuery({
+    enabled: pullRequestNumber !== null && tab === "checks",
+    queryKey: [...pullRequestKey, "checks"],
+    queryFn: () =>
+      getGithubPullRequestChecks(projectId, worktreeId, pullRequestNumber!),
   });
   const action = useMutation({
     mutationFn: (input: GithubPullRequestReviewAction) =>
@@ -769,8 +854,9 @@ export function GithubPullRequestDialog({
         input,
       ),
     onSuccess: async (updated) => {
-      queryClient.setQueryData(detailKey, updated);
+      queryClient.setQueryData(overviewKey, updated);
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: pullRequestKey }),
         queryClient.invalidateQueries({
           queryKey: ["github-issues", projectId, "pull-request"],
         }),
@@ -819,184 +905,219 @@ export function GithubPullRequestDialog({
           showClose={false}
         >
           <GitMobileInspectorClose label="Back to pull requests" />
-          {detail.isLoading ? (
-            <div className="grid flex-1 place-items-center text-muted-foreground">
-              <Loader2 className="size-5 animate-spin" />
-            </div>
-          ) : detail.isError || !detail.data ? (
-            <DialogHeader className="p-4 pl-14 pt-[max(1rem,env(safe-area-inset-top))] md:p-6 md:pr-12">
-              <DialogTitle>Pull request could not be loaded</DialogTitle>
-              <DialogDescription>
-                {detail.error instanceof Error
-                  ? detail.error.message
-                  : "GitHub request failed."}
-              </DialogDescription>
-            </DialogHeader>
-          ) : (
-            <>
-              <DialogHeader className="shrink-0 border-b pb-4 pl-14 pr-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-5 md:py-4 md:pr-12">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={detail.data.merged ? "default" : "secondary"}>
-                    {detail.data.merged
-                      ? "merged"
-                      : detail.data.draft
-                        ? "draft"
-                        : detail.data.state}
-                  </Badge>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    #{detail.data.number}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {detail.data.headRef} → {detail.data.baseRef}
-                  </span>
+          {overview.data ? (
+            <DialogHeader className="shrink-0 border-b pb-4 pl-14 pr-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-5 md:py-4 md:pr-12">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={overview.data.merged ? "default" : "secondary"}>
+                  {overview.data.merged
+                    ? "merged"
+                    : overview.data.draft
+                      ? "draft"
+                      : overview.data.state}
+                </Badge>
+                <span className="font-mono text-xs text-muted-foreground">
+                  #{overview.data.number}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {overview.data.headRef} → {overview.data.baseRef}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start">
+                <div className="min-w-0 flex-1">
+                  <DialogTitle className="line-clamp-2 text-left text-lg md:truncate">
+                    {overview.data.title}
+                  </DialogTitle>
+                  <DialogDescription className="text-left">
+                    @{overview.data.author} · {overview.data.commitCount}{" "}
+                    commits · {overview.data.changedFileCount} files
+                  </DialogDescription>
                 </div>
-                <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start">
-                  <div className="min-w-0 flex-1">
-                    <DialogTitle className="line-clamp-2 text-left text-lg md:truncate">
-                      {detail.data.title}
-                    </DialogTitle>
-                    <DialogDescription className="text-left">
-                      @{detail.data.author} · {detail.data.commitCount} commits
-                      · {detail.data.changedFileCount} files
-                    </DialogDescription>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap justify-start gap-1.5 md:justify-end">
+                <div className="flex shrink-0 flex-wrap justify-start gap-1.5 md:justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={checkout.isPending}
+                    onClick={() => checkout.mutate()}
+                  >
+                    {checkout.isPending ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <GitBranch className="size-3.5" />
+                    )}
+                    Checkout
+                  </Button>
+                  {overview.data.state === "open" && overview.data.draft ? (
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={checkout.isPending}
-                      onClick={() => checkout.mutate()}
+                      onClick={() => setLifecycleAction({ type: "mark-ready" })}
                     >
-                      {checkout.isPending ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <GitBranch className="size-3.5" />
-                      )}
-                      Checkout
+                      Ready
                     </Button>
-                    {detail.data.state === "open" && detail.data.draft ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setLifecycleAction({ type: "mark-ready" })
-                        }
-                      >
-                        Ready
-                      </Button>
-                    ) : null}
-                    {detail.data.state === "open" &&
-                    !detail.data.draft &&
-                    !detail.data.merged ? (
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          setLifecycleAction({
-                            type: "merge",
-                            method: "squash",
-                            commitTitle: null,
-                            commitMessage: null,
-                          })
-                        }
-                      >
-                        Merge
-                      </Button>
-                    ) : null}
-                    {detail.data.state === "open" && !detail.data.merged ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                        onClick={() => setLifecycleAction({ type: "close" })}
-                      >
-                        Close
-                      </Button>
-                    ) : null}
-                    {detail.data.state === "closed" && !detail.data.merged ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setLifecycleAction({ type: "reopen" })}
-                      >
-                        Reopen
-                      </Button>
-                    ) : null}
-                    <Button size="sm" variant="outline" asChild>
-                      <a
-                        href={detail.data.url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <ExternalLink className="size-3.5" /> GitHub
-                      </a>
+                  ) : null}
+                  {overview.data.state === "open" &&
+                  !overview.data.draft &&
+                  !overview.data.merged ? (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        setLifecycleAction({
+                          type: "merge",
+                          method: "squash",
+                          commitTitle: null,
+                          commitMessage: null,
+                        })
+                      }
+                    >
+                      Merge
                     </Button>
-                  </div>
+                  ) : null}
+                  {overview.data.state === "open" && !overview.data.merged ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                      onClick={() => setLifecycleAction({ type: "close" })}
+                    >
+                      Close
+                    </Button>
+                  ) : null}
+                  {overview.data.state === "closed" && !overview.data.merged ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setLifecycleAction({ type: "reopen" })}
+                    >
+                      Reopen
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="outline" asChild>
+                    <a
+                      href={overview.data.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink className="size-3.5" /> GitHub
+                    </a>
+                  </Button>
                 </div>
-                {checkout.error ? (
-                  <p className="mt-2 text-left text-xs text-destructive">
-                    {checkout.error instanceof Error
-                      ? checkout.error.message
-                      : "Pull request checkout failed."}
-                  </p>
-                ) : null}
-              </DialogHeader>
-              <div className="flex h-9 min-w-0 shrink-0 items-end gap-1 overflow-x-auto overflow-y-hidden border-b px-3 overscroll-x-contain">
-                {(
-                  ["overview", "files", "commits", "checks"] as PullRequestTab[]
-                ).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setTab(value)}
-                    className={cn(
-                      "h-8 border-b-2 border-transparent px-3 text-xs capitalize text-muted-foreground",
-                      tab === value && "border-foreground text-foreground",
-                    )}
-                  >
-                    {value}
-                    {value === "files"
-                      ? ` ${detail.data.changedFileCount}`
-                      : ""}
-                    {value === "commits" ? ` ${detail.data.commitCount}` : ""}
-                    {value === "checks" ? ` ${detail.data.checks.length}` : ""}
-                  </button>
-                ))}
               </div>
-              <div className="flex min-h-0 flex-1 flex-col">
-                {tab === "overview" ? (
-                  <Overview
-                    detail={detail.data}
-                    error={action.error}
-                    pending={action.isPending}
-                    onAction={async (input) => {
-                      await action.mutateAsync(input);
-                    }}
-                  />
-                ) : null}
-                {tab === "files" ? (
-                  <PullRequestFiles
-                    detail={detail.data}
-                    error={action.error}
-                    pending={action.isPending}
-                    onAction={async (input) => {
-                      await action.mutateAsync(input);
-                    }}
-                  />
-                ) : null}
-                {tab === "commits" ? <Commits detail={detail.data} /> : null}
-                {tab === "checks" ? (
-                  <Checks
-                    detail={detail.data}
-                    summarizing={failedCheckSummary.isPending}
-                    onSummarize={() => {
-                      setAgentOpen(true);
-                      failedCheckSummary.mutate();
-                    }}
-                  />
-                ) : null}
-              </div>
-            </>
+              {checkout.error ? (
+                <p className="mt-2 text-left text-xs text-destructive">
+                  {checkout.error instanceof Error
+                    ? checkout.error.message
+                    : "Pull request checkout failed."}
+                </p>
+              ) : null}
+            </DialogHeader>
+          ) : (
+            <DialogHeader className="shrink-0 border-b p-4 pl-14 pt-[max(1rem,env(safe-area-inset-top))] md:p-6 md:pr-12">
+              <DialogTitle>Pull request #{pullRequestNumber}</DialogTitle>
+              <DialogDescription>
+                {overview.isLoading
+                  ? "Loading overview…"
+                  : "The overview is unavailable. Other sections can still be opened."}
+              </DialogDescription>
+            </DialogHeader>
           )}
+          <div className="flex h-9 min-w-0 shrink-0 items-end gap-1 overflow-x-auto overflow-y-hidden border-b px-3 overscroll-x-contain">
+            {(
+              ["overview", "files", "commits", "checks"] as PullRequestTab[]
+            ).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTab(value)}
+                className={cn(
+                  "h-8 border-b-2 border-transparent px-3 text-xs capitalize text-muted-foreground",
+                  tab === value && "border-foreground text-foreground",
+                )}
+              >
+                {value}
+                {value === "files" && overview.data
+                  ? ` ${overview.data.changedFileCount}`
+                  : ""}
+                {value === "commits" && overview.data
+                  ? ` ${overview.data.commitCount}`
+                  : ""}
+                {value === "checks" && checks.data
+                  ? ` ${checks.data.checks.length}`
+                  : ""}
+              </button>
+            ))}
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            {tab === "overview" ? (
+              overview.data ? (
+                <Overview
+                  detail={{
+                    ...overview.data,
+                    checksState:
+                      checks.data?.checksState ?? overview.data.checksState,
+                  }}
+                  error={action.error}
+                  pending={action.isPending}
+                  onAction={async (input) => {
+                    await action.mutateAsync(input);
+                  }}
+                />
+              ) : (
+                <SectionState
+                  error={overview.error}
+                  loading={overview.isLoading}
+                  onRetry={() => void overview.refetch()}
+                />
+              )
+            ) : null}
+            {tab === "files" ? (
+              files.data ? (
+                <PullRequestFiles
+                  detail={files.data}
+                  error={action.error}
+                  pending={action.isPending}
+                  reviewThreads={overview.data?.reviewThreads}
+                  onAction={async (input) => {
+                    await action.mutateAsync(input);
+                  }}
+                />
+              ) : (
+                <SectionState
+                  error={files.error}
+                  loading={files.isLoading}
+                  onRetry={() => void files.refetch()}
+                />
+              )
+            ) : null}
+            {tab === "commits" ? (
+              commits.data ? (
+                <Commits detail={commits.data} />
+              ) : (
+                <SectionState
+                  error={commits.error}
+                  loading={commits.isLoading}
+                  onRetry={() => void commits.refetch()}
+                />
+              )
+            ) : null}
+            {tab === "checks" ? (
+              checks.data ? (
+                <Checks
+                  detail={checks.data}
+                  summarizing={failedCheckSummary.isPending}
+                  onSummarize={() => {
+                    setAgentOpen(true);
+                    failedCheckSummary.mutate();
+                  }}
+                />
+              ) : (
+                <SectionState
+                  error={checks.error}
+                  loading={checks.isLoading}
+                  onRetry={() => void checks.refetch()}
+                />
+              )
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
       <GitAgentDraftDialog
@@ -1022,7 +1143,8 @@ export function GithubPullRequestDialog({
           worktreeId={worktreeId}
           pullRequestNumber={pullRequestNumber}
           onApplied={(updated) => {
-            queryClient.setQueryData(detailKey, updated);
+            queryClient.setQueryData(overviewKey, updated);
+            void queryClient.invalidateQueries({ queryKey: pullRequestKey });
             void queryClient.invalidateQueries({
               queryKey: ["github-issues", projectId, "pull-request"],
             });

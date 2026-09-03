@@ -23,6 +23,8 @@ function reference(
     createdAt: "2026-08-19T00:00:00.000Z",
     kind,
     labels: [],
+    assignees: [],
+    milestone: null,
     number,
     state,
     title,
