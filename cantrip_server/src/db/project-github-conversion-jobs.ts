@@ -16,15 +16,6 @@ import * as schema from "./schema.js";
 type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
 type JobRow = typeof schema.projectGithubConversionJobs.$inferSelect;
 
-const ACTIVE_WORKFLOW_STATES = [
-  "queued",
-  "running",
-  "waiting",
-  "paused",
-  "cancelling",
-  "recovering",
-] as const;
-
 export const PROJECT_GITHUB_CONVERSION_JOB_LEASE_MS = 2 * 60_000;
 
 export class ProjectGithubConversionJobNotFoundError extends Error {}
@@ -191,72 +182,59 @@ export class ProjectGithubConversionJobRepository {
           "Only a ready folder or local Git project can be converted.",
         );
       }
-      const [activeJobs, collisions, activeWorkflows, sources] =
-        await Promise.all([
-          transaction
-            .select({ id: schema.projectGithubConversionJobs.id })
-            .from(schema.projectGithubConversionJobs)
-            .where(
-              and(
-                eq(schema.projectGithubConversionJobs.projectId, projectId),
-                inArray(schema.projectGithubConversionJobs.state, [
-                  "queued",
-                  "running",
-                  "blocked",
-                ]),
+      const [activeJobs, collisions, sources] = await Promise.all([
+        transaction
+          .select({ id: schema.projectGithubConversionJobs.id })
+          .from(schema.projectGithubConversionJobs)
+          .where(
+            and(
+              eq(schema.projectGithubConversionJobs.projectId, projectId),
+              inArray(schema.projectGithubConversionJobs.state, [
+                "queued",
+                "running",
+                "blocked",
+              ]),
+            ),
+          )
+          .limit(1),
+        transaction
+          .select({ id: schema.projects.id })
+          .from(schema.projects)
+          .where(
+            and(
+              eq(schema.projects.ownerId, ownerId),
+              eq(
+                schema.projects.githubRepositoryBlindIndex,
+                input.repositoryBlindIndex,
               ),
-            )
-            .limit(1),
-          transaction
-            .select({ id: schema.projects.id })
-            .from(schema.projects)
-            .where(
-              and(
-                eq(schema.projects.ownerId, ownerId),
-                eq(
-                  schema.projects.githubRepositoryBlindIndex,
-                  input.repositoryBlindIndex,
-                ),
+            ),
+          )
+          .limit(1),
+        transaction
+          .select({ source: schema.projectSources })
+          .from(schema.projectSources)
+          .innerJoin(
+            schema.projectWorktrees,
+            and(
+              eq(
+                schema.projectWorktrees.projectSourceId,
+                schema.projectSources.id,
               ),
-            )
-            .limit(1),
-          transaction
-            .select({ id: schema.workflowRuns.id })
-            .from(schema.workflowRuns)
-            .where(
-              and(
-                eq(schema.workflowRuns.projectId, projectId),
-                inArray(schema.workflowRuns.status, [
-                  ...ACTIVE_WORKFLOW_STATES,
-                ]),
-              ),
-            )
-            .limit(1),
-          transaction
-            .select({ source: schema.projectSources })
-            .from(schema.projectSources)
-            .innerJoin(
-              schema.projectWorktrees,
-              and(
-                eq(
-                  schema.projectWorktrees.projectSourceId,
-                  schema.projectSources.id,
-                ),
-                eq(schema.projectWorktrees.isPrimary, true),
-                eq(schema.projectWorktrees.isDefault, true),
-                eq(schema.projectWorktrees.lifecycleState, "ready"),
-              ),
-            )
-            .where(
-              and(
-                eq(schema.projectSources.projectId, projectId),
-                eq(schema.projectSources.id, projectSourceId),
-                eq(schema.projectSources.workerId, workerId),
-                isNull(schema.projectSources.removedAt),
-              ),
-            )
-            .limit(1),
-        ]);
+              eq(schema.projectWorktrees.isPrimary, true),
+              eq(schema.projectWorktrees.isDefault, true),
+              eq(schema.projectWorktrees.lifecycleState, "ready"),
+            ),
+          )
+          .where(
+            and(
+              eq(schema.projectSources.projectId, projectId),
+              eq(schema.projectSources.id, projectSourceId),
+              eq(schema.projectSources.workerId, workerId),
+              isNull(schema.projectSources.removedAt),
+            ),
+          )
+          .limit(1),
+      ]);
       if (activeJobs[0]) {
         throw new ProjectGithubConversionJobConflictError(
           "A GitHub conversion is already active for this project.",
@@ -265,11 +243,6 @@ export class ProjectGithubConversionJobRepository {
       if (collisions[0]) {
         throw new ProjectGithubConversionJobConflictError(
           "This GitHub repository is already bound to another Cantrip project.",
-        );
-      }
-      if (activeWorkflows[0]) {
-        throw new ProjectGithubConversionJobConflictError(
-          "Wait for active project workflows to finish before converting.",
         );
       }
       const source = sources[0]?.source;

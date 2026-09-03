@@ -5,7 +5,7 @@ import type {
   WorkerWorktreeSummary,
   WorktreeInventory,
 } from "@cantrip/protocol";
-import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
@@ -20,7 +20,6 @@ export interface WorktreeRemovalBlockers {
   activeLeaseChatIds: string[];
   boundCodeTabIds: string[];
   runningTerminalIds: string[];
-  workflowLeaseIds: string[];
 }
 
 export interface WorktreeLifecycleRepositoryCollaborators {
@@ -334,62 +333,45 @@ export class WorktreeLifecycleRepository {
       worktreeId,
     );
     if (!context) return null;
-    const [chats, leases, terminals, codeTabs, workflowLeases] =
-      await Promise.all([
-        this.database
-          .select({ id: schema.chats.id })
-          .from(schema.chats)
-          .where(
-            and(
-              eq(schema.chats.activeWorktreeId, worktreeId),
-              inArray(schema.chats.status, ["running", "waiting-for-approval"]),
-            ),
+    const [chats, leases, terminals, codeTabs] = await Promise.all([
+      this.database
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.activeWorktreeId, worktreeId),
+            inArray(schema.chats.status, ["running", "waiting-for-approval"]),
           ),
-        this.database
-          .select({ chatId: schema.chatExecutionLanes.chatId })
-          .from(schema.chatExecutionLanes)
-          .where(
-            and(
-              eq(schema.chatExecutionLanes.worktreeId, worktreeId),
-              ne(schema.chatExecutionLanes.state, "released"),
-            ),
+        ),
+      this.database
+        .select({ chatId: schema.chatExecutionLanes.chatId })
+        .from(schema.chatExecutionLanes)
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.worktreeId, worktreeId),
+            ne(schema.chatExecutionLanes.state, "released"),
           ),
-        this.database
-          .select({ id: schema.terminals.id })
-          .from(schema.terminals)
-          .where(
-            and(
-              eq(schema.terminals.worktreeId, worktreeId),
-              eq(schema.terminals.status, "running"),
-              ne(schema.terminals.kind, "run-configuration"),
-            ),
+        ),
+      this.database
+        .select({ id: schema.terminals.id })
+        .from(schema.terminals)
+        .where(
+          and(
+            eq(schema.terminals.worktreeId, worktreeId),
+            eq(schema.terminals.status, "running"),
+            ne(schema.terminals.kind, "run-configuration"),
           ),
-        this.database
-          .select({ id: schema.codeTabs.id })
-          .from(schema.codeTabs)
-          .where(eq(schema.codeTabs.worktreeId, worktreeId)),
-        this.database
-          .select({ id: schema.workflowWorktreeLeases.id })
-          .from(schema.workflowWorktreeLeases)
-          .where(
-            and(
-              or(
-                eq(schema.workflowWorktreeLeases.worktreeId, worktreeId),
-                eq(
-                  schema.workflowWorktreeLeases.requestedWorktreeId,
-                  worktreeId,
-                ),
-              ),
-              ne(schema.workflowWorktreeLeases.state, "released"),
-            ),
-          ),
-      ]);
+        ),
+      this.database
+        .select({ id: schema.codeTabs.id })
+        .from(schema.codeTabs)
+        .where(eq(schema.codeTabs.worktreeId, worktreeId)),
+    ]);
     return {
       activeChatIds: chats.map(({ id }) => id),
       activeLeaseChatIds: leases.map(({ chatId }) => chatId),
       boundCodeTabIds: codeTabs.map(({ id }) => id),
       runningTerminalIds: terminals.map(({ id }) => id),
-      workflowLeaseIds: workflowLeases.map(({ id }) => id),
     };
   }
 }

@@ -735,7 +735,7 @@ export class ProjectReplicaJobRepository {
     const worktreeId = worktrees[0]?.id;
     if (!worktreeId) return "The replica has no Primary worktree record.";
 
-    const [chats, terminals, explorers, codeTabs, views, lanes, leases, jobs] =
+    const [chats, terminals, explorers, codeTabs, views, lanes, jobs] =
       await Promise.all([
         this.database
           .select({ id: schema.chats.id })
@@ -773,16 +773,6 @@ export class ProjectReplicaJobRepository {
           )
           .limit(1),
         this.database
-          .select({ id: schema.workflowWorktreeLeases.id })
-          .from(schema.workflowWorktreeLeases)
-          .where(
-            and(
-              eq(schema.workflowWorktreeLeases.worktreeId, worktreeId),
-              sql`${schema.workflowWorktreeLeases.state} <> 'released'`,
-            ),
-          )
-          .limit(1),
-        this.database
           .select({ id: schema.projectReplicaJobs.id })
           .from(schema.projectReplicaJobs)
           .where(
@@ -800,7 +790,6 @@ export class ProjectReplicaJobRepository {
     if (codeTabs[0]) return "A Code tab is still assigned to this replica.";
     if (views[0]) return "A project view is still assigned to this replica.";
     if (lanes[0]) return "An execution lane is still using this replica.";
-    if (leases[0]) return "A workflow lease is still using this replica.";
     if (jobs[0]) return "Another replica job is still active.";
     return null;
   }

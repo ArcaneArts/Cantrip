@@ -5,20 +5,14 @@ import * as schema from "../db/schema.js";
 export const STORAGE_ACCOUNTING_BASIS_VERSION = "postgres-logical-row-bytes-v1";
 
 export type StorageAccountingCategory =
-  | "account"
-  | "analytics"
-  | "configuration"
-  | "conversations"
-  | "projects"
-  | "workflows";
+  "account" | "analytics" | "configuration" | "conversations" | "projects";
 
 export type StorageAccountingClassification =
   | "account-owned"
   | "accounting-excluded"
   | "chat-owned"
   | "platform-excluded"
-  | "project-owned"
-  | "workflow-owned";
+  | "project-owned";
 
 export type StorageOwnerResolution =
   | "attachment"
@@ -34,12 +28,7 @@ export type StorageOwnerResolution =
   | "tunnel"
   | "tunnel-attachment"
   | "user"
-  | "workspace"
-  | "workflow-definition"
-  | "workflow-revision"
-  | "workflow-run"
-  | "workflow-run-node"
-  | "workflow-trigger";
+  | "workspace";
 
 export type WorkerManagedStorageKind =
   "attachment-replica" | "attachment-source";
@@ -90,18 +79,6 @@ function chatOwned(
       workerManaged === "attachment-replica" ? "attachment" : "chat",
     table,
     workerManaged,
-  };
-}
-
-function workflowOwned(
-  table: AnyPgTable,
-  ownerResolution: StorageOwnerResolution,
-): StorageAccountingManifestEntry {
-  return {
-    category: "workflows",
-    classification: "workflow-owned",
-    ownerResolution,
-    table,
   };
 }
 
@@ -235,21 +212,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     chatOwned(schema.queuedPrompts),
     accountOwned(schema.projectAutomations, "projects"),
     accountOwned(schema.projectAutomationRuns, "projects"),
-    accountOwned(schema.workflowDefinitions, "workflows"),
-    workflowOwned(schema.workflowRevisions, "workflow-definition"),
-    workflowOwned(schema.workflowRevisionNodes, "workflow-revision"),
-    workflowOwned(schema.workflowRevisionEdges, "workflow-revision"),
-    accountOwned(schema.workflowRuns, "workflows"),
-    accountOwned(schema.workflowAutomationTriggers, "workflows"),
-    workflowOwned(schema.workflowTriggerDeliveries, "workflow-trigger"),
-    workflowOwned(schema.workflowRunNodes, "workflow-run"),
-    workflowOwned(schema.workflowRunNodeDependencies, "workflow-run"),
-    workflowOwned(schema.workflowRunNodeItems, "workflow-run-node"),
-    workflowOwned(schema.workflowNodeAttempts, "workflow-run-node"),
-    workflowOwned(schema.workflowWorktreeLeases, "workflow-run"),
-    projectOwned(schema.projectBranchLeases, "workflows"),
-    workflowOwned(schema.workflowRunEvents, "workflow-run"),
-    workflowOwned(schema.workflowApprovalGates, "workflow-run"),
+    projectOwned(schema.projectBranchLeases),
     excluded(
       schema.accountStorageUsageCurrent,
       "accounting-excluded",

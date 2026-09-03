@@ -243,35 +243,6 @@ function ownerSql(resolution: StorageOwnerResolution): OwnerSql {
         joins:
           'inner join "chat_attachments" attachment on attachment."id" = t."attachment_id" inner join "chats" chat on chat."id" = attachment."chat_id" inner join "projects" project on project."id" = chat."project_id"',
       };
-    case "workflow-definition":
-      return {
-        expression: 'workflow."owner_id"',
-        joins:
-          'inner join "workflow_definitions" workflow on workflow."id" = t."workflow_id"',
-      };
-    case "workflow-revision":
-      return {
-        expression: 'workflow."owner_id"',
-        joins:
-          'inner join "workflow_revisions" revision on revision."id" = t."revision_id" inner join "workflow_definitions" workflow on workflow."id" = revision."workflow_id"',
-      };
-    case "workflow-trigger":
-      return {
-        expression: 'trigger."owner_id"',
-        joins:
-          'inner join "workflow_automation_triggers" trigger on trigger."id" = t."trigger_id"',
-      };
-    case "workflow-run":
-      return {
-        expression: 'run."owner_id"',
-        joins: 'inner join "workflow_runs" run on run."id" = t."run_id"',
-      };
-    case "workflow-run-node":
-      return {
-        expression: 'run."owner_id"',
-        joins:
-          'inner join "workflow_run_nodes" run_node on run_node."id" = t."run_node_id" inner join "workflow_runs" run on run."id" = run_node."run_id"',
-      };
   }
 }
 
