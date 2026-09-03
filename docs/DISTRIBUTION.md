@@ -411,8 +411,10 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
   `CANTRIP_PAIRING_RATE_LIMIT_PER_MINUTE`,
   `CANTRIP_UPLOAD_RATE_LIMIT_PER_MINUTE`, and
   `CANTRIP_WEBSOCKET_HANDSHAKE_RATE_PER_MINUTE`: independent in-process request
-  buckets. In a multi-instance deployment, each replica receives a conservative
-  partition of the configured global budget.
+  buckets. The generic API limit applies independently to each HTTP method and
+  route for an owner or client IP, so unrelated background activity cannot
+  exhaust an interactive operation's budget. In a multi-instance deployment,
+  each replica receives a conservative partition of the configured budget.
 - `CANTRIP_ACCOUNT_UPLOAD_CONCURRENCY`,
   `CANTRIP_ACCOUNT_WEBSOCKET_LIMIT`,
   `CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT`,
