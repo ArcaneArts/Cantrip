@@ -46,8 +46,8 @@ The initial endpoint vocabulary is deliberately narrow:
 
 User-created tunnels are `user-managed`. Their editable configuration is a
 desktop loopback source and an explicit worker TCP destination. Managed tunnels
-are registered idempotently by their owning browser, Code, project-share,
-workflow, or system resource. They expose server-computed capabilities instead
+are registered idempotently by their owning browser, Code, project-share, or
+system resource. They expose server-computed capabilities instead
 of UI guesses: a managed tunnel may be inspected and opened through its owner,
 but generic edit and delete operations are rejected. Removing the owning
 resource removes its managed tunnel.

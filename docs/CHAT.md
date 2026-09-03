@@ -53,7 +53,7 @@ visibility, or project creation flow is part of this implementation.
 - Native subagents are disabled at the runtime and protocol layers, not merely
   hidden in the app.
 - Chat has no Plan mode, Goal mode, linked Codex console, Inspect, Trajectory,
-  State panel, subagent view, workflow commands, GitHub references, project
+  State panel, subagent view, GitHub references, project
   commands, or per-chat customization inventory.
 - Prompt queueing, steering, pause/resume, stop, edit-and-retry, forking,
   archiving, and attachments remain available.
@@ -92,7 +92,7 @@ visibility, or project creation flow is part of this implementation.
 - Aggregating project Agent chats into the Chat sidebar.
 - Showing standalone conversations inside IDE workspaces or projects.
 - Giving a Chat access to an existing project, repository, worktree, GitHub
-  issue, pull request, workflow, Run configuration, terminal, Explorer, Code,
+  issue, pull request, GitHub Actions run, Run configuration, terminal, Explorer, Code,
   Browser, Remote Desktop, or project network share.
 - Converting, linking, copying, or promoting a Chat into a project.
 - Creating a project from a Chat.
@@ -102,7 +102,7 @@ visibility, or project creation flow is part of this implementation.
 - A linked Codex console or raw CLI switch-view.
 - Inspect, Trajectory, State, or protected raw diagnostics UI.
 - A per-Chat customization inventory, MCP OAuth panel, MCP resource browser,
-  Skill picker, slash-command palette, or workflow launcher.
+  Skill picker or slash-command palette.
 - Filtering Codex's remaining built-in shell/file tool set beyond existing
   permission behavior.
 - A full embedded Code workspace for scratch files.
@@ -251,7 +251,7 @@ The Chat surface does not render or offer:
   conversation mode;
 - custom root/subagent model controls;
 - Skills or slash-command pickers in the composer;
-- workflows or saved project commands;
+- saved project commands;
 - `#issue` or pull-request reference completion;
 - worktree controls or relocation;
 - open-in-Terminal, open-in-Explorer, open-in-History, or project file actions;
@@ -598,7 +598,7 @@ runtime cache key. An app-server process configured for an IDE Agent chat must
 never be reused as a supposedly subagent-disabled Chat runtime.
 
 The server also rejects standalone requests for Goal, Plan, Task, console,
-worktree, relocation, customization inventory, project workflow, and managed
+worktree, relocation, customization inventory, project automation, and managed
 Cantrip operations. UI gating is not an authorization boundary.
 
 ### Permissions

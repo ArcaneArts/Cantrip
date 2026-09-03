@@ -273,10 +273,6 @@ surfaces may have a worker but no replica or worktree.
 
 ## Project-wide branch coordination
 
-The former durable-workflow branch-lease integration was removed with the
-workflow runtime and persistence. Project branch leases now have chat execution
-lanes as their only holder.
-
 Physical worktree IDs are worker-local. Two replicas can therefore expose
 different worktree IDs for the same Git branch, so a worktree-only lease cannot
 prevent two agents from mutating that logical branch concurrently.
@@ -299,10 +295,9 @@ until the worker reports the branch, because the server cannot safely prove
 cross-worker branch identity otherwise.
 
 The historical migration backfill ranked already-active mutation holders first,
-retained secondary suspended lanes and legacy unreleased workflow-lease rows,
-ignored idle Primary lanes, and created at most one active owner for each
-existing project branch. Losing contenders had to reacquire and received the
-normal branch conflict.
+retained secondary suspended lanes, ignored idle Primary lanes, and created at
+most one active owner for each existing project branch. Losing contenders had
+to reacquire and received the normal branch conflict.
 
 ## Durable job ownership and failover
 

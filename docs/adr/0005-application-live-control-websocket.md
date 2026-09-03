@@ -8,17 +8,11 @@
 > bytes now use WorkerLink instead of feature-specific WebSockets. Cross-server
 > App Live publication is implemented through the relay coordinator and each
 > receiving server's owner-local replay hub.
->
-> The durable workflow app/API, server scheduler/executor, worker handlers,
-> persistence, and shared protocol residue were later removed. Current App Live
-> has no workflow scope, resource, publisher, or subscriber. Workflow statements
-> in the original implementation record below are historical and superseded by
-> this amendment.
 
 ## Implementation status
 
 Implemented on 2026-08-09 for project resources, worktree observations, active
-chat state, workflow execution and catalogs, and customization operations. The
+chat state, and customization operations. The
 [application live transport audit](../LIVE_TRANSPORT_AUDIT.md) records the
 measured request reduction, browser trace, recovery evidence, remaining timers,
 operational counters, and deployment limits.
@@ -31,7 +25,7 @@ cursor and replay ring.
 ## Context
 
 Cantrip's app loads authoritative server state through HTTP, but currently
-keeps many project, chat, worktree, and workflow views current with fixed
+keeps many project, chat, and worktree views current with fixed
 polling intervals. One selected idle project can issue several requests per
 second, active chats add multiple 750 ms loops, and worktree status scales as
 one request per checkout. The local loopback responses are usually fast, but
@@ -61,7 +55,7 @@ request/response APIs. A live event is published only after its underlying
 state commits. Clients may apply a complete validated payload directly or use
 the event to coalesce an HTTP query invalidation.
 
-The live protocol has current-user, project, chat, and workflow-run scopes.
+The live protocol has current-user, project, and chat scopes.
 Clients initialize once, subscribe and unsubscribe as UI scope changes, and
 send bounded heartbeat and resynchronization acknowledgements. Server messages
 identify the server-process epoch, connection, monotonically increasing event
@@ -94,8 +88,7 @@ recovery notifications.
 Every connection validates the configured app Origin and current Cantrip
 identity. Every subscription validates ownership of its requested scope. The
 current product is local single-user, but the protocol must not assume that a
-future authenticated user can subscribe to another owner's project, chat, or
-workflow run.
+future authenticated user can subscribe to another owner's project or chat.
 
 ## Consequences
 

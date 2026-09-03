@@ -9,11 +9,8 @@ not chat messages and the browser never responds directly to Codex App Server.
 
 Every request has a globally idempotent `requestKey`, a typed payload, and the
 project, worker, thread, turn, item, execution-lane, and chat provenance
-available at the time it was created. Current requests are chat-backed.
-Migration `0191` deleted old workflow-tagged requests and removed their
-database columns; the later protocol cleanup removed the corresponding query
-filters. The response route rejects any request that is not associated with an
-active chat.
+available at the time it was created. Requests are chat-backed, and the response
+route rejects any request that is not associated with an active chat.
 
 The durable states are:
 

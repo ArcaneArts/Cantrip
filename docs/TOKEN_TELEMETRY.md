@@ -35,13 +35,12 @@ and reasoning counters, so no raw or reported-total claim is made for them.
 
 ## Attribution and lifecycle
 
-An execution attempt is identified independently from its chat. Legacy rows may
-retain workflow attribution columns, but no current workflow runtime creates
-attempts. The record captures the resolved provider account and route after failover,
-worker, turn, applied reasoning effort, runtime versions, and start/completion
-/finalization timestamps. A running row is created before dispatch and updated
-in place as usage snapshots arrive. Terminal status is recorded even when the
-attempt reports no token counters, since failed work may still consume quota.
+An execution attempt is identified independently from its chat. The record
+captures the resolved provider account and route after failover, worker, turn,
+applied reasoning effort, runtime versions, and start/completion/finalization
+timestamps. A running row is created before dispatch and updated in place as
+usage snapshots arrive. Terminal status is recorded even when the attempt
+reports no token counters, since failed work may still consume quota.
 
 ## Derived quota correlation
 

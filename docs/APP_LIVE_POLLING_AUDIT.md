@@ -3,11 +3,6 @@
 Audited on 2026-08-21 after the CodeGraph, redundant-query, chat sync, log
 streaming, Git state, and provider-auth AppLive phases.
 
-> Historical audit note: the durable workflow app/API, server
-> scheduler/executor, worker handlers, and persistence were removed after this
-> audit. Current source has no workflow live scope, resource, publisher, or
-> subscriber. Workflow references below describe the then-existing surface.
-
 ## Result
 
 Every repeating app query that reads durable server or worker state is now

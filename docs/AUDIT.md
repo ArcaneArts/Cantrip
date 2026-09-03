@@ -3,8 +3,7 @@
 > Historical static-audit snapshot. Findings, counts, rankings, source
 > locations, and “current evidence” were last reconciled through commit
 > `42ebb4988e6a401671493e47bd799dfa0a7745d2`; they are not a current
-> optimization inventory. In particular, the durable-workflow UI, runtime, and
-> persistence cited by several findings were subsequently removed.
+> optimization inventory.
 
 - Date: 2026-08-29
 - Audit baseline: origin/main at ad6cc1b4bbb54dd27078dabed028654d700b7beb
@@ -268,8 +267,8 @@ and wall time for 1/32/128 definitions.
 - Confidence: high
 
 Evidence: cantrip_server/src/app.ts:5426-5440 retains unguarded one-second and 500 ms expiry loops;
-db/repository.ts:18136-18176 duplicates request-path expiry and restores affected chats sequentially;
-the workflow-executor evidence was superseded when that subsystem was removed. Suggested change at
+db/repository.ts:18136-18176 duplicates request-path expiry and restores affected chats sequentially.
+Suggested change at
 the baseline: a shared guarded runner, narrow expiry return projections, and batched restoration,
 with durable bounded watchdogs.
 Validation: ten idle minutes, 1,000 simultaneous expirations, concurrent deadline requests, restart,
@@ -287,23 +286,6 @@ Evidence: cantrip_server/src/live/hub.ts:419-453 retains one global replay array
 and shift eviction; replay scans the global structure for owner-specific cursors. Suggested change:
 use bounded per-owner deques plus an aggregate cap and explicit fair eviction. Validation: many
 owners, hot/cold isolation, exact cursor/replay-too-old semantics, byte caps, reconnect, and memory.
-
-### N0-19 — opportunity — Pre-index workflow detail joins in the UI
-
-Status after this audit: superseded. The workflow center was removed in
-`66ab97645`, so this optimization no longer has a current caller.
-
-- Category: ALGORITHM_COMPLEXITY
-- Expected gain: medium-high
-- Risk: low
-- Complexity: low
-- Confidence: high
-
-Evidence: cantrip_app/src/components/workflows/workflow-center.tsx:1444-1460 filters all attempts and
-searches revision nodes inside every node render; packages/protocol/src/workflows.ts:2221-2226 permits
-1,000 nodes and 10,000 attempts. Suggested change: memoize attemptsByNodeId and revisionNodeByKey per
-run revision. Validation: 100/1,000 nodes with 1,000/10,000 attempts and exact order, status,
-selection, and actions.
 
 ### N0-20 — opportunity — Make Code-settings polling transport-aware
 
@@ -344,8 +326,8 @@ within the current bound.
 - Confidence: high
 
 Evidence: cantrip_server/src/live/hub.ts:694-805 authorizes as many as 128 scopes independently;
-cantrip_server/src/app.ts:4727-4746 still uses full project lists, chat execution context, and workflow details.
-Suggested change: group project/chat/workflow IDs and use narrow ownership/existence queries while
+cantrip_server/src/app.ts:4727-4746 still uses full project lists and chat execution context.
+Suggested change: group project and chat IDs and use narrow ownership/existence queries while
 preserving archival and lifecycle predicates. Validation: identical decisions and SQL plus p50/p95 at
 1/16/128 scopes, including revoke and reconnect races.
 
@@ -447,7 +429,6 @@ prior audits.
 | ----- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | P1-01 | REDUNDANT_COMPUTATION; medium; low risk; low complexity; high confidence                                 | relay-coordinator.ts:273-296 measures coordination bytes by stringify; 935-939 stringifies again for Redis                                                                                                                   | serialize once and carry bytes/length; assert exact quotas and wire payloads                                                |
 | P1-02 | N_PLUS_ONE_OR_CHATTER; medium-high fleet; low-medium risk; medium complexity; high confidence            | coordinated-bridge.ts:121-132 has an unguarded presence interval; 1115-1177 refreshes sequentially; relay-coordinator.ts:587-625 scans then GETs serially                                                                    | guarded bounded concurrency and Redis bulk read; test disconnect/revoke/order and large fleets                              |
-| P1-03 | Superseded after this audit                                                                              | The workflow run repository and runtime were removed in `87adc1841`; persistence was removed in `b6bc0df2a`                                                                                                                  | No current optimization target                                                                                              |
 | P1-04 | STATE_OR_CACHE_STRATEGY; medium-high large repos; low-medium risk; medium complexity; high confidence    | project-workspace-resources.ts:222-239 gates visible stats, but app-live-query.ts:330-340,602-625 invalidates on filesystem/Git; worker scans reach 50k files/256 MiB                                                        | canonical-root single-flight plus short dirty debounce; 100 concurrent/burst requests cause one scan with bounded freshness |
 | P1-05 | REDUNDANT_COMPUTATION; medium-high; low risk; low complexity; high confidence                            | use-explorer-directory.ts:29-55 requests listing; cantrip_worker/src/explorer.ts:183-243 lists/stats, and 442-476 repeats it for commit metadata                                                                             | share a short mutation-invalidated listing and parallelize HEAD; test 1,000 entries, symlinks, immediate mutations          |
 | P1-06 | REDUNDANT_COMPUTATION; high during resize; low risk; low complexity; high confidence                     | shell-chrome.ts:28-34,187-223 updates React state per pointer move; application-shell.tsx:319-338 owns it at root                                                                                                            | rAF CSS/ref preview, one React/persistence commit on completion; test FPS, pointer cancel/capture, keyboard                 |

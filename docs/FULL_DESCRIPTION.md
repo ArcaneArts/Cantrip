@@ -27,8 +27,7 @@ The product is split into three main runtime roles:
   Server.
 - **Server:** authoritative control plane. It owns users, workspaces, projects,
   tabs, chat transcripts, model/provider configuration, encrypted credentials,
-  scheduling, worker enrollment, routing, and audit/telemetry. The retired
-  durable-workflow persistence has been removed.
+  scheduling, worker enrollment, routing, and audit/telemetry.
 - **Worker:** execution/data plane running near project files. It owns managed
   folders, repository checkouts, worktrees, Git processes, PTYs, Codex
   processes, Cantrip Code, browser automation, desktop capture/input, and local
@@ -940,7 +939,7 @@ content-addressed, and deduplicated.
 Usage UI labels bars as **remaining**, so a provider reporting 95% used displays
 5% remaining rather than a misleading 95%-full availability bar.
 
-## Project automations and retired workflow state
+## Project automations
 
 ### Simple project automations
 
@@ -959,22 +958,6 @@ schedule. Configuration is divided into details, schedule, and condition:
 The assigned worker evaluates worker-local conditions. Disabled or false
 conditions do not enqueue the agent turn. Automation state is server-owned so it
 survives client and worker restarts.
-
-### Retired durable workflow subsystem
-
-The former durable graph workflow product is not exposed by the current app or
-public server API. Its authoring, catalog, trigger, and run-management UI/client
-code and all public workflow routes have been removed; former paths receive the
-ordinary not-found response.
-
-The server scheduler, executor, workflow repositories, worker handlers, and
-database tables are removed. Migration `0191` deletes workflow-linked rows from
-shared tables and drops the workflow tables during upgrade. The subsequent
-protocol cleanup removes the dedicated workflow contracts, crypto helpers, and
-live scope. Project automations independently retain the `workflow-content`
-component key for their protected payloads. See
-[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md) and
-[WORKFLOW_OPERATIONS.md](WORKFLOW_OPERATIONS.md).
 
 ## Settings and operations
 
@@ -1147,8 +1130,6 @@ does not fabricate filesystem or live-process state.
 - The same logical branch cannot be mutated concurrently on two replicas.
 - Provider failover stops once side effects may have occurred.
 - Pending approvals recover fail-closed.
-- The retired durable-workflow subsystem has no current execution, management,
-  or persistence path.
 - Offline workers/resources remain visible and explain why they cannot run.
 - Managed folders never relocate or replicate, and Git-only operations remain
   capability-guarded even if the user runs `git init` inside one.
@@ -1288,8 +1269,6 @@ inspection can still use standard shell tools.
 - **Surface:** Agent/Task, Terminal, Explorer, Code, Git, Browser, Remote
   Desktop.
 - **Cantrip Code:** bundled browser-native VS Code-derived workbench.
-- **Workflow:** retired durable-graph feature; only legacy schema and records
-  remain, with no execution runtime.
 - **Automation:** simpler scheduled prompt with an optional single condition.
 - **Policy:** a server-owned reusable Agent instruction that is Mandatory or
   assigned to selected workspaces/projects.
@@ -1320,6 +1299,4 @@ summary:
 - [TAB_GROUPS.md](TAB_GROUPS.md)
 - [TOKEN_TELEMETRY.md](TOKEN_TELEMETRY.md)
 - [TUNNELS.md](TUNNELS.md)
-- [WORKFLOW_OPERATIONS.md](WORKFLOW_OPERATIONS.md)
-- [WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)
 - [WORKTREES.md](WORKTREES.md)

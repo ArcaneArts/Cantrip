@@ -197,7 +197,7 @@ WorkerLink carrier directly between the app and worker, with relay fallback.
 
 ### `cantrip_server`
 
-The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects and durable conversation history, tracks worker presence, persists worktree observations plus project-wide logical branch leases, reconciles per-account logical storage and meters server-carried bandwidth, and authorizes operations on the correct worker checkout. The former durable-workflow UI, API, runtime, and persistence have been removed. It stores ChatGPT and Grok OAuth bundles only as opaque endpoint-encrypted envelopes. Authorized workers decrypt, refresh, and reseal them locally; the server authorizes revision-fenced envelope fetch/reseal and global sign-out.
+The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects and durable conversation history, tracks worker presence, persists worktree observations plus project-wide logical branch leases, reconciles per-account logical storage and meters server-carried bandwidth, and authorizes operations on the correct worker checkout. It stores ChatGPT and Grok OAuth bundles only as opaque endpoint-encrypted envelopes. Authorized workers decrypt, refresh, and reseal them locally; the server authorizes revision-fenced envelope fetch/reseal and global sign-out.
 
 Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
@@ -290,16 +290,6 @@ Simple project automations can schedule a protected prompt and optionally gate
 it on one condition: a worker-side script must exit with code 0, or the
 repository must have at least a configured number of open GitHub issues. A
 false condition records a skipped run instead of dispatching the prompt.
-
-The former durable workflow product has been removed. Its app UI, public server
-APIs, server repositories/scheduler/executor, and worker handlers are absent;
-former paths now receive the ordinary not-found response. Legacy database
-tables and shared protocol/encryption types remain, but old rows are not
-recovered or executed. See the [retired workflow boundary](docs/WORKFLOW_ORCHESTRATION.md)
-and [legacy-data operations](docs/WORKFLOW_OPERATIONS.md); the
-[implementation audit](docs/WORKFLOW_IMPLEMENTATION_AUDIT.md) and
-[architecture decision](docs/adr/0004-codex-native-workflow-control-plane.md)
-are historical records.
 
 Cantrip-specific agent operations are exposed through a worker-owned managed
 MCP server. Its typed catalog covers Policies, worktrees, execution targets,

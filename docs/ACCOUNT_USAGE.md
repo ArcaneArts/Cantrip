@@ -46,14 +46,13 @@ A test compares that manifest with every exported Drizzle table, so adding a
 table without an explicit classification fails the server suite. Included
 server rows are grouped as follows:
 
-| Category        | Included domains                                                                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `account`       | User/session state, mobile grants, worker enrollment and identity, worker credentials, and account encryption principals/grants                          |
-| `configuration` | Settings, providers and provider accounts, models and routes, policies and assignments, MCP definitions, Code settings, and current catalog state        |
-| `projects`      | Projects, workspaces, tabs/groups, sources, worktrees, setup/replica/Git jobs, Run runtimes, terminals, explorers, browsers, surfaces, and tunnels       |
-| `conversations` | Chats, tasks and planning rounds, messages, drafts/plans, runtime lanes, interactions, queued prompts, attachment metadata, imports, and relocation data |
-| `workflows`     | Definitions, revisions, graph nodes/edges, runs, run nodes/items/attempts/events/gates, triggers/deliveries, automations, and worktree/branch leases     |
-| `analytics`     | Audit events, token usage, provider quota/catalog history, and model behavior observations                                                               |
+| Category        | Included domains                                                                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `account`       | User/session state, mobile grants, worker enrollment and identity, worker credentials, and account encryption principals/grants                                                        |
+| `configuration` | Settings, providers and provider accounts, models and routes, policies and assignments, MCP definitions, Code settings, and current catalog state                                      |
+| `projects`      | Projects, workspaces, tabs/groups, sources, worktrees, branch leases, project automations, setup/replica/Git jobs, Run runtimes, terminals, explorers, browsers, surfaces, and tunnels |
+| `conversations` | Chats, tasks and planning rounds, messages, drafts/plans, runtime lanes, interactions, queued prompts, attachment metadata, imports, and relocation data                               |
+| `analytics`     | Audit events, token usage, provider quota/catalog history, and model behavior observations                                                                                             |
 
 Global `system_state` and the server-wide license whitelist are intentionally
 excluded because they are platform-owned. The current projections, snapshots,
