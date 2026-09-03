@@ -5,6 +5,10 @@
 This document is the implemented product and technical contract for Cantrip's
 turn-scoped Trajectory view in agent Inspect surfaces.
 
+The implementation sequence and prescriptive wording later in this document
+are retained as delivery history. The behavioral sections describe the current
+surface unless they explicitly identify a compatibility limit.
+
 Trajectory is a time-track visualization of one root agent turn and every
 native subagent that participated in it. It is not a causal node graph and it
 is not a whole-conversation analytics view.
@@ -29,9 +33,9 @@ is not a whole-conversation analytics view.
   same Trajectory/State tabs. They default to Trajectory and scope it to the
   Task's current turn.
 - The graph has one horizontal track per agent. Each track combines Input,
-  Model, and Tools segments using the existing semantic colors. The root is
-  pinned first and descendants retain first-appearance order for the entire
-  projection so live status/activity updates cannot reshuffle rows.
+  Model, Tools, and Changes segments using the existing semantic colors. The
+  root is pinned first and descendants retain first-appearance order for the
+  entire projection so live status/activity updates cannot reshuffle rows.
 - Nested agents are flattened and path-indented. The graph grows through five
   tracks and then scrolls vertically without desynchronizing the shared time
   axis, playhead, zoom, or pan state.
@@ -76,10 +80,10 @@ is not a whole-conversation analytics view.
 - Sending raw prompts, tool arguments, results, command output, or system
   instructions to plaintext server logs.
 
-## Existing Foundation
+## Delivered foundation
 
-The implementation should extend the current path rather than create a second
-observation stack.
+The implementation extends the existing observation stack rather than creating
+a second one.
 
 - `cantrip_app/src/components/chat/agent-inspect-panel.tsx` owns the resizable
   desktop panel and full-screen mobile overlay.
@@ -304,14 +308,15 @@ scopes.
 ### Agent tracks and semantic categories
 
 Render one stable track for each agent in the selected root turn. A track is a
-single multicolored bar; Input, Model, and Tools remain event categories and
-colors rather than three vertical graph lanes:
+single multicolored bar; Input, Model, Tools, and Changes remain event
+categories and colors rather than separate vertical graph lanes:
 
 | Category | Events                                                                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Input    | Effective system/developer context, root prompt and attachments, child assignments, and root-to-child follow-ups                                 |
 | Model    | Overall agent-turn span, reasoning, plans, commentary, final response, compaction, returned child results, usage, rate-limit, and notice markers |
-| Tools    | Commands, file changes, worktree operations, MCP/dynamic tools, collaboration controls, web search, image view, and review-mode activity         |
+| Tools    | Commands, worktree operations, MCP/dynamic tools, collaboration controls, web search, image view, and review-mode activity                       |
+| Changes  | File changes and their bounded patch/diff previews                                                                                               |
 
 The root track is pinned first. Descendants keep first-appearance order even as
 their status and last-active timestamp change. Flatten nested descendants and
@@ -374,7 +379,7 @@ Filters include:
 
 - agent: All agents, Root only, or any descendant that participated in the
   selected root turn;
-- lane: Input, Model, Tools;
+- lane: Input, Model, Tools, Changes;
 - event family/type;
 - status: running, completed, failed, declined;
 - timing quality: exact, derived, instant; and
@@ -465,12 +470,10 @@ renders raw argument/result bodies.
 
 ### Requirements
 
-Current compact activity models discard useful diagnosis data for several
-tool families. Add an optional, versioned raw envelope to applicable
-trajectory activities for future turns.
+Applicable trajectory activities carry an optional, versioned raw envelope for
+diagnostic request and response data.
 
-The initial contract should carry independently bounded request and response
-documents:
+The contract carries independently bounded request and response documents:
 
 ```text
 schemaVersion
@@ -522,10 +525,10 @@ round-trip tests are required.
 
 ## Effective Instruction Capture
 
-Each new turn should have one trajectory-only Input event representing the
-effective instruction context used to start that turn.
+Each new turn has one trajectory-only Input event representing the effective
+instruction context used to start that turn.
 
-The event should include, where available:
+The event includes, where available:
 
 - runtime-provided system instructions;
 - developer instructions;
@@ -582,13 +585,13 @@ another polling or whole-history query.
   reconciled, retained, or deleted. Timer ticks update elapsed and
   transition-dependent fields without rescanning child transcripts.
 
-## Worker Timing Normalization
+## Worker timing normalization
 
 The protocol already permits `startedAtMs`, `updatedAtMs`, and
-`completedAtMs` on every activity. Normalize future worker events so every
-item-based family spreads the supplied lifecycle timestamps, including MCP,
-dynamic tool, collaboration, subagent, web-search, image-view, review-mode,
-and compaction activities.
+`completedAtMs` on every activity. Worker normalization spreads supplied
+lifecycle timestamps across item-based families, including MCP, dynamic tool,
+collaboration, subagent, web-search, image-view, review-mode, and compaction
+activities.
 
 Retain the item-specific start observed on `item/started` and use it on
 `item/completed`; do not replace it with the overall turn start. Projection
@@ -614,7 +617,7 @@ fallbacks.
 - Preserve the current resizable desktop panel. Do not open another app-level
   sidebar for details.
 
-## Implementation Sequence
+## Delivery history
 
 ### Phase 1: Turn identity and timestamp correctness
 

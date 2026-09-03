@@ -6,11 +6,12 @@ This document describes the implemented system that gives Cantrip agents reliabl
 web search, static page reading, and browser-backed research without paid
 search APIs or host-level prerequisite installation.
 
-The worker always installs and runs its own portable SearXNG, Playwright, and
-Chromium runtimes. It must not discover, reuse, update, or modify copies already
-installed on the host. Docker, system Python, global npm packages, Homebrew,
-`apt`, `winget`, and equivalent package managers are not prerequisites and are
-never invoked as a fallback.
+The worker installs and uses its own portable SearXNG, Playwright, and Chromium
+runtimes. It continuously supervises SearXNG and starts browser processes only
+when rendered browsing needs them. It must not discover, reuse, update, or
+modify copies already installed on the host. Docker, system Python, global npm
+packages, Homebrew, `apt`, `winget`, and equivalent package managers are not
+prerequisites and are never invoked as a fallback.
 
 This follows the worker ownership and managed-runtime model already established
 by [CodeGraph](CODEGRAPH.md), while exposing the resulting operations through

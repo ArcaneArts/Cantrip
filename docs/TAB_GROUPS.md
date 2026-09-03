@@ -1,8 +1,10 @@
 # Project tab groups
 
 Cantrip stores project navigation as ordered tab groups rather than a single
-flat list. The model and same-window interactions are shared by the browser,
-Capacitor, and Tauri clients.
+flat list. The durable model is shared by browser, Capacitor, and Tauri clients.
+Interactive grouping and top-tab drag/drop are desktop/wide-layout controls;
+compact layouts consume the same order through direct bottom-navigation
+selection.
 
 ## Ownership model
 
@@ -27,7 +29,8 @@ but they are no longer a navigation or mutation authority.
 
 ## Same-window dragging
 
-One workspace drag context covers projects, sidebar groups, and top tabs.
+On non-compact layouts, one workspace drag context covers projects, sidebar
+groups, and top tabs.
 
 - Sort top tabs inside their current group.
 - Drag a singleton sidebar group into the visible top bar.
@@ -56,8 +59,10 @@ The explicit pop-out action opens the whole group in its deterministic window.
 Tab dragging remains scoped to the current webview on every platform. Dropping
 a tab outside its current window is cancelled: it does not create a pop-out,
 move an existing pop-out, or dock into another Cantrip window. This keeps Tauri
-behavior aligned with web and Capacitor while preserving ordinary group
-pop-outs and all same-window grouping operations.
+behavior aligned with the wide browser layout while preserving ordinary group
+pop-outs and same-window grouping operations. Capacitor and other compact
+layouts do not render the top tab bar, so they select surfaces through the
+mobile bottom navigation rather than exposing these drag gestures.
 
 ## Manual QA
 
@@ -77,5 +82,6 @@ Before a desktop release, exercise this matrix with `pnpm devtop`:
    connect until selected.
 
 For non-desktop regression coverage, run `pnpm --filter @cantrip/app build` and
-the Capacitor sync/build path appropriate to the target. Same-window grouping
-must work without a Tauri runtime and must behave the same in Tauri.
+the Capacitor sync/build path appropriate to the target. Wide browser layouts
+must preserve same-window grouping without a Tauri runtime; compact layouts
+must preserve durable membership/order while selecting surfaces directly.

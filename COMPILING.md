@@ -70,9 +70,9 @@ Successful bundles are collected under:
 artifacts/bundles/<platform>-<architecture>/
 ```
 
-Lower-level `package:server`, `package:worker`, `package:services`, and
-`package:app` commands are useful when iterating on one artifact. `pnpm bundle`
-is the end-to-end compilation check.
+Lower-level `package:server`, `package:worker`, `package:services`,
+`package:desktop-runtime`, and `package:app` commands are useful when iterating
+on one artifact. `pnpm bundle` is the end-to-end compilation check.
 
 ## Windows
 
@@ -375,7 +375,7 @@ client and do not require Rust, Tauri system libraries, Codex, or the Cantrip
 Code toolchain.
 
 Cantrip uses Capacitor 8.5, Android Gradle Plugin 8.13, Gradle 8.14.3, and Android
-SDK 36. The checked-in application supports Android API 24 and newer.
+SDK 36. The checked-in application supports Android API 26 and newer.
 
 ### Prerequisites
 
@@ -432,7 +432,7 @@ cd cantrip_app/android
 Release distribution additionally requires a private Android signing key and
 release signing configuration. Those credentials must remain outside Git.
 
-Use an API 24+ emulator or physical device for testing. The mobile client must
+Use an API 26+ emulator or physical device for testing. The mobile client must
 be configured through its server switcher to reach a separately running
 Cantrip server; `localhost` on a phone or emulator is not the desktop builder.
 

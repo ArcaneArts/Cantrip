@@ -90,8 +90,10 @@ the user and external tools, not a second execution root.
 - **Requested path** — the exact worker path entered by the user. For a direct
   placement it identifies the checkout; for a managed link it identifies the
   link.
-- **Managed source** — a clone beneath the worker's existing
-  `repositories/<owner>/<repository>` data root.
+- **Managed source** — a Cantrip-owned clone. Managed workspaces derive
+  `workspaces/<workspace-UUID>/repositories/<owner>/<repository>` beneath the
+  worker data directory; the system/legacy workspace path remains
+  `repositories/<owner>/<repository>`.
 - **Managed link** — a POSIX directory symlink or Windows directory junction
   from the requested path to a managed source.
 - **Direct-created source** — an external checkout that Cantrip cloned into a
@@ -597,7 +599,7 @@ action.
 The dialog contains:
 
 - selected worker name and platform;
-- workspace membership selection;
+- single workspace destination;
 - placement choices:
   - **Managed by Cantrip**;
   - **Managed clone with link**; and

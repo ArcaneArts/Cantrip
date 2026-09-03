@@ -1,6 +1,14 @@
-# Cantrip Project Plan
+# Cantrip foundational project plan (historical)
 
-- Status: local and hosted account foundations, independently enrolled workers, portable server-owned ChatGPT/Grok OAuth accounts, multi-worker replicas with customizable Primary placement, Redis relay coordination, fenced scheduling, production deployment assets, and end-to-end durable chat relocation implemented
+> Historical design record. This document preserves the architecture and
+> delivery assumptions used to start Cantrip; it is not the current product
+> contract or roadmap. Several described phases are complete and some details,
+> including workspace cardinality, project kinds, Task scheduling, WorkerLink,
+> and the Codex App Server transport, were replaced during implementation. Use
+> [FULL_DESCRIPTION.md](FULL_DESCRIPTION.md) for the current system overview and
+> the narrower feature contracts it links for authoritative behavior.
+
+- Status: retained for historical rationale; not maintained as current truth
 - Canonical domain: `cantrip.art`
 - Desktop/mobile application identifier: `art.cantrip`
 - Package manager: pnpm workspaces

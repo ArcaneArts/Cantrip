@@ -15,10 +15,11 @@ system Python, SearXNG, Node, Playwright, Chrome, Edge, or Chromium install.
 3. After the change is merged, dispatch `.github/workflows/managed-web-runtimes.yml`
    on `main` with `publish=true`. The signing key and key ID come only from the
    protected repository secret and variable.
-4. Verify the resulting immutable `web-runtime-<bundleVersion>` release has a
-   signed `manifest.json`, twelve artifacts, twelve descriptors, and the
-   corresponding source/license inventories. Never replace assets on an
-   existing tag; publish a new bundle version.
+4. Verify the resulting immutable `web-runtime-<bundleVersion>` release has one
+   shared `manifest.json` containing twelve individually signed artifact
+   records, the twelve artifacts, twelve descriptors, and corresponding
+   source/license inventories. The manifest itself has no top-level signature.
+   Never replace assets on an existing tag; publish a new bundle version.
 5. Start a clean worker for each supported host family and observe both
    components reach `ready` from the published manifest before treating the
    release as promoted.

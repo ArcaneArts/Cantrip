@@ -1,13 +1,13 @@
-# Run Configurations Overhaul Plan
+# Run configurations
 
-Status: planned replacement
+Status: implemented. The architecture below is the shipped contract; milestone
+sections are retained as delivery history.
 
-This document defines the target architecture and delivery plan for Cantrip
-Run configurations. The new system replaces the existing Codex-environment
-action, setup, MCP, CLI, and managed-Run implementation. It is not an
-incremental extension of that system.
+This document defines the current Cantrip Run configuration architecture. It
+replaced the former Codex-environment action, setup, MCP, CLI, and managed-Run
+implementation rather than extending that system.
 
-The product goal is an IntelliJ-style Run experience: shared, typed
+The product provides an IntelliJ-style Run experience: shared, typed
 configurations; persistent project-level controls; guided target discovery;
 durable process ownership; dedicated read-only Run terminals; and equivalent
 app, CLI, and managed MCP operations.
@@ -533,9 +533,9 @@ creation and editing may be added, but structured file input is the canonical
 automation surface. CLI and MCP validation results must match the app because
 all three use the same protocol and worker provider implementation.
 
-## Legacy replacement
+## Completed legacy replacement
 
-The cutover removes the current Run system rather than retaining two competing
+The cutover removed the former Run system rather than retaining two competing
 models:
 
 - delete old `.codex/environments` action discovery and action-ID generation;
@@ -592,13 +592,12 @@ ordinary exited terminal, but it is not rebound to a new configuration.
 - Definition deletion and runtime stop are audited with app, CLI, or MCP
   transport attribution.
 
-## Delivery plan
+## Delivery history
 
-Each milestone is independently reviewed and merged through the repository's
-manual-change worktree and pull-request protocol. The old implementation stays
-available behind a temporary internal feature flag until the replacement
-supports end-to-end app, CLI, and MCP use; the final cutover removes the flag
-and old code.
+These milestones were independently reviewed and merged through the
+repository's manual-change worktree and pull-request protocol. The final
+cutover removed the temporary compatibility flag and old implementation after
+the replacement supported end-to-end app, CLI, and MCP use.
 
 ### Milestone 1: Definition repository and protocol
 

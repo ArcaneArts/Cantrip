@@ -48,15 +48,16 @@ active only after the DNS records requested by App Platform have propagated.
 Run packaging on the target operating system because the Worker contains
 native PTY, screen capture, and image modules.
 
-| Command                 | Output                                                            | Host requirement                                      |
-| ----------------------- | ----------------------------------------------------------------- | ----------------------------------------------------- |
-| `pnpm package:server`   | `artifacts/cantrip-server-<os>-<arch>`                            | No external runtime                                   |
-| `pnpm package:worker`   | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Git at runtime                     |
-| `pnpm package:services` | Both service trees                                                | Same as above                                         |
-| `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                             |
-| `pnpm bundle`           | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                             |
-| `pnpm deploy:server`    | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH |
-| `pnpm release`          | Promotes `release`, deploys App Platform, and deploys the Server  | Same as `deploy:server`, plus `doctl` and push access |
+| Command                        | Output                                                            | Host requirement                                      |
+| ------------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------- |
+| `pnpm package:server`          | `artifacts/cantrip-server-<os>-<arch>`                            | No external runtime                                   |
+| `pnpm package:worker`          | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Git at runtime                     |
+| `pnpm package:services`        | Both service trees                                                | Same as above                                         |
+| `pnpm package:desktop-runtime` | Runtime tree embedded by Tauri                                    | Native build host                                     |
+| `pnpm package:app`             | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                             |
+| `pnpm bundle`                  | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                             |
+| `pnpm deploy:server`           | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH |
+| `pnpm release`                 | Promotes `release`, deploys App Platform, and deploys the Server  | Same as `deploy:server`, plus `doctl` and push access |
 
 Every Worker package must contain the regular entry file
 `dist/mcp/stdio.js` and its production MCP SDK dependencies. Standalone Worker

@@ -1,23 +1,21 @@
-# Workspace Storage and Repository Import Plan
+# Workspace storage and repository import
 
-Status: approved product design; implementation has not started.
+Status: implemented. This document describes the current storage, discovery,
+and import contract. The implementation sequence is retained as delivery
+history rather than future work.
 
 ## Purpose
 
-Cantrip workspaces currently organize projects, policies, and sidebar visibility,
-but they do not own filesystem directories. A managed Git repository is placed
-under the worker's `repositories` directory, while a managed folder project is
-placed under the worker's `folders` directory. Workspace membership and project
-storage are therefore independent today.
+Cantrip workspaces organize projects, policy inheritance, and sidebar
+visibility, and every workspace has an explicit storage profile. The system and
+legacy workspaces retain the established worker-level roots. A managed
+workspace derives Cantrip-owned roots on each worker, while an attached
+workspace binds an existing user-owned directory on one home worker.
 
-This change gives newly created workspaces an explicit storage model. A new
-workspace will either use Cantrip-managed storage on any worker or attach an
-existing directory on one worker. Attached directories can be scanned for Git
-repositories and those repositories can be registered as projects without
-cloning them again.
-
-The change preserves the existing invariant that each project belongs to
-exactly one workspace and cannot be moved between workspaces.
+Attached workspace roots can be scanned for Git repositories and selected
+checkouts can be registered as projects without cloning or moving them.
+Cantrip preserves the invariant that each project belongs permanently to
+exactly one workspace.
 
 ## Terminology
 
@@ -110,7 +108,7 @@ The attached root remains user-owned:
 - Changing the home worker or root path is not supported. The user must create
   a different workspace instead.
 
-## Proposed persistent model
+## Persistent model
 
 Add a one-to-one storage profile for every workspace rather than placing
 worker filesystem state directly on the existing workspace naming and policy
@@ -356,9 +354,9 @@ Repository import should reuse the existing folder materialization and direct
 replica provisioning paths rather than introducing a second Git attachment
 implementation.
 
-## Implementation sequence
+## Delivery history
 
-Each stage should be independently mergeable and retain compatibility with the
+Each stage was independently mergeable and retained compatibility with the
 previous stage.
 
 1. **Storage contracts and migration**
