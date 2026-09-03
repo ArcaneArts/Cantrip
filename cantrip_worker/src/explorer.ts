@@ -21,6 +21,7 @@ import {
   explorerEntryRenameSchema,
   explorerEntrySchema,
   explorerFileSchema,
+  explorerFileSearchSchema,
   explorerMarkdownFileForPath,
   explorerMediaFileChunkSchema,
   explorerMediaFileSchema,
@@ -31,6 +32,7 @@ import {
   type ExplorerEntry,
   type ExplorerEntryMutationResult,
   type ExplorerFile,
+  type ExplorerFileSearch,
   type ExplorerLastCommit,
   type ExplorerMediaFile,
   type ExplorerMediaFileChunk,
@@ -39,6 +41,8 @@ import {
 const DIRECTORY_LIMIT = 1_000;
 const FILE_SIZE_LIMIT = 2 * 1024 * 1024;
 const GIT_STDERR_LIMIT = 64 * 1024;
+const FILE_SEARCH_SCAN_LIMIT = 100_000;
+const FILE_SEARCH_GIT_BUFFER_LIMIT = 32 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
 
 function markdownFile(name: string): boolean {
@@ -51,6 +55,109 @@ function textFile(name: string): boolean {
 
 function viewableFile(name: string): boolean {
   return textFile(name) || explorerMediaTypeForPath(name) !== null;
+}
+
+function fileSearchScore(relativePath: string, query: string): number | null {
+  const normalizedPath = relativePath.toLocaleLowerCase();
+  const filename = path.posix.basename(normalizedPath);
+  if (filename === query) return 0;
+  if (filename.startsWith(query)) return 1;
+  if (filename.includes(query)) return 2;
+  if (normalizedPath.startsWith(query)) return 3;
+  return normalizedPath.includes(query) ? 4 : null;
+}
+
+async function gitProjectFiles(root: string): Promise<string[] | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      [
+        "-C",
+        root,
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+      ],
+      {
+        encoding: "utf8",
+        maxBuffer: FILE_SEARCH_GIT_BUFFER_LIMIT,
+      },
+    );
+    return stdout.split("\0").filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+async function scannedProjectFiles(
+  root: string,
+): Promise<{ paths: string[]; truncated: boolean }> {
+  const rootPath = await realpath(root);
+  const pending = [{ absolute: rootPath, relative: "" }];
+  const paths: string[] = [];
+  let scanned = 0;
+  while (pending.length > 0 && scanned < FILE_SEARCH_SCAN_LIMIT) {
+    const directory = pending.shift()!;
+    const entries = await readdir(directory.absolute, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      if (scanned >= FILE_SEARCH_SCAN_LIMIT) break;
+      scanned += 1;
+      if (entry.name === ".git") continue;
+      const relative = directory.relative
+        ? `${directory.relative}/${entry.name}`
+        : entry.name;
+      if (entry.isDirectory()) {
+        pending.push({
+          absolute: path.join(directory.absolute, entry.name),
+          relative,
+        });
+      } else if (entry.isFile() || entry.isSymbolicLink()) {
+        paths.push(relative);
+      }
+    }
+  }
+  return { paths, truncated: pending.length > 0 };
+}
+
+export async function searchExplorerFiles(
+  root: string,
+  rawQuery: string,
+  limit: number,
+): Promise<ExplorerFileSearch> {
+  const query = rawQuery.trim();
+  if (!query) throw new Error("Enter a file name to search for.");
+  const boundedLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+  const gitPaths = await gitProjectFiles(root);
+  const candidates = gitPaths
+    ? { paths: gitPaths, truncated: false }
+    : await scannedProjectFiles(root);
+  const normalizedQuery = query.toLocaleLowerCase().replaceAll("\\", "/");
+  const matches = candidates.paths
+    .map((relativePath) => ({
+      name: path.posix.basename(relativePath),
+      path: relativePath,
+      score: fileSearchScore(relativePath, normalizedQuery),
+    }))
+    .filter(
+      (candidate): candidate is typeof candidate & { score: number } =>
+        candidate.score !== null,
+    )
+    .sort(
+      (left, right) =>
+        left.score - right.score ||
+        left.name.localeCompare(right.name) ||
+        left.path.localeCompare(right.path),
+    );
+  return explorerFileSearchSchema.parse({
+    query,
+    results: matches
+      .slice(0, boundedLimit)
+      .map(({ name, path: relativePath }) => ({ name, path: relativePath })),
+    truncated: candidates.truncated || matches.length > boundedLimit,
+  });
 }
 
 function fileVersion(bytes: Uint8Array): string {

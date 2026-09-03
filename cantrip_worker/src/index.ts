@@ -183,6 +183,7 @@ import {
   deleteExplorerEntry,
   listExplorerDirectoryCommits,
   listExplorerDirectory,
+  searchExplorerFiles,
   readExplorerFile,
   readExplorerMediaFile,
   renameExplorerEntry,
@@ -3505,6 +3506,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   value: await listExplorerDirectory(
                     command.root,
                     request.path,
+                  ),
+                },
+              };
+              break;
+            case "explorer.files.search":
+              outcome = {
+                ok: true as const,
+                result: {
+                  type: request.type,
+                  value: await searchExplorerFiles(
+                    command.root,
+                    request.query,
+                    request.limit,
                   ),
                 },
               };

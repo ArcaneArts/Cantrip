@@ -12,6 +12,7 @@ import {
   Bot,
   Check,
   CornerDownLeft,
+  FileCode2,
   Folder,
   FolderGit2,
   FolderOpen,
@@ -51,6 +52,7 @@ import {
   getGithubRepositories,
   getGithubStatus,
   getProjectScriptCommands,
+  searchExplorerFiles,
 } from "@/lib/api";
 import {
   advanceDoubleShiftGesture,
@@ -179,10 +181,12 @@ export function AppCommandBar({
   context,
   currentProjectId,
   defaultWorkerId,
+  fileSearchExplorerId,
   onAction,
   onCreatedProject,
   onOpenChange,
   onOpenFolder,
+  onOpenFile,
   onRunScriptCommand,
   onSelectProject,
   open,
@@ -195,10 +199,12 @@ export function AppCommandBar({
   context: AppActionContext;
   currentProjectId: string | null;
   defaultWorkerId: string | null;
+  fileSearchExplorerId: string | null;
   onAction(actionId: AppActionId): void;
   onCreatedProject(project: ProjectSummary): void;
   onOpenChange(open: boolean): void;
   onOpenFolder(): void;
+  onOpenFile(path: string): void;
   onRunScriptCommand(command: ScriptCommand): Promise<void>;
   onSelectProject(projectId: string): void;
   open: boolean;
@@ -209,6 +215,7 @@ export function AppCommandBar({
 }) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
+  const [debouncedFileQuery, setDebouncedFileQuery] = useState("");
   const [scopes, setScopes] = useState<CommandBarScope[]>([]);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [pendingRepositoryId, setPendingRepositoryId] = useState<string | null>(
@@ -223,6 +230,7 @@ export function AppCommandBar({
   const lastShiftAtRef = useRef<number | null>(null);
   const actions = useMemo(() => availableAppActions(context), [context]);
   const activeScope = scopes.at(-1) ?? null;
+  const fileSearchQuery = activeScope === null ? query.trim() : "";
   const githubWorkerId =
     workers.find(
       ({ online, workerId }) => online && workerId === defaultWorkerId,
@@ -281,6 +289,24 @@ export function AppCommandBar({
     refetchOnWindowFocus: false,
     staleTime: 10_000,
   });
+  const projectFiles = useQuery({
+    enabled: Boolean(
+      open &&
+      currentProjectId &&
+      fileSearchExplorerId &&
+      debouncedFileQuery &&
+      debouncedFileQuery === fileSearchQuery,
+    ),
+    queryFn: () =>
+      searchExplorerFiles(fileSearchExplorerId!, debouncedFileQuery),
+    queryKey: [
+      "command-bar-file-search",
+      fileSearchExplorerId,
+      debouncedFileQuery,
+    ],
+    refetchOnWindowFocus: false,
+    staleTime: 5_000,
+  });
   const githubRepositories = repositories.data ?? cachedRepositories.data ?? [];
   const hasGithubRepositoryData = Boolean(
     repositories.data || cachedRepositories.data?.length,
@@ -319,6 +345,18 @@ export function AppCommandBar({
     setScopes([]);
     setOperationError(null);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !fileSearchQuery) {
+      setDebouncedFileQuery("");
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setDebouncedFileQuery(fileSearchQuery),
+      150,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [fileSearchQuery, open]);
 
   const rememberProject = (project: ProjectSummary, workspaceId: string) => {
     queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
@@ -454,6 +492,10 @@ export function AppCommandBar({
       setPendingScriptCommandId(null);
     }
   };
+  const openFile = (path: string) => {
+    onOpenChange(false);
+    onOpenFile(path);
+  };
 
   const placeholder =
     activeScope === "folder"
@@ -462,13 +504,13 @@ export function AppCommandBar({
         ? "Search GitHub repositories…"
         : activeScope === "new-project"
           ? "Choose a source or existing project…"
-          : "Search actions, scripts, or projects…";
+          : "Search actions, scripts, projects, or files…";
   const emptyMessage =
     activeScope === "github"
       ? "No GitHub repositories match your search."
       : activeScope === "new-project"
         ? "No projects match your search."
-        : "No matching actions, scripts, or projects.";
+        : "No matching actions, scripts, projects, or files.";
   const showEmpty = !(
     activeScope === "github" &&
     (githubLoading ||
@@ -543,6 +585,67 @@ export function AppCommandBar({
             {showEmpty ? <CommandEmpty>{emptyMessage}</CommandEmpty> : null}
             {activeScope === null ? (
               <>
+                {fileSearchQuery && fileSearchExplorerId ? (
+                  <CommandGroup heading="Files">
+                    {debouncedFileQuery !== fileSearchQuery ||
+                    projectFiles.isPending ? (
+                      <CommandItem
+                        forceMount
+                        disabled
+                        value={`${fileSearchQuery} searching project files`}
+                      >
+                        <Loader2 className="size-4 animate-spin" />
+                        <span className="text-sm text-muted-foreground">
+                          Searching files…
+                        </span>
+                      </CommandItem>
+                    ) : projectFiles.isError ? (
+                      <CommandItem
+                        forceMount
+                        disabled
+                        value={`${fileSearchQuery} file search unavailable`}
+                      >
+                        <FileCode2 className="size-4" />
+                        <span className="truncate text-sm text-destructive">
+                          {errorMessage(projectFiles.error)}
+                        </span>
+                      </CommandItem>
+                    ) : projectFiles.data?.results.length ? (
+                      projectFiles.data.results.map((file) => (
+                        <CommandItem
+                          key={file.path}
+                          value={`file ${file.name} ${file.path}`}
+                          className="gap-3 rounded-lg px-3 py-2.5"
+                          onSelect={() => openFile(file.path)}
+                        >
+                          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                            <FileCode2 className="size-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">
+                              {file.name}
+                            </span>
+                            <span className="block truncate font-mono text-xs text-muted-foreground">
+                              {file.path}
+                            </span>
+                          </span>
+                          <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                        </CommandItem>
+                      ))
+                    ) : (
+                      <CommandItem
+                        forceMount
+                        disabled
+                        value={`${fileSearchQuery} no matching files`}
+                      >
+                        <FileCode2 className="size-4" />
+                        <span className="text-sm text-muted-foreground">
+                          No files match this search.
+                        </span>
+                      </CommandItem>
+                    )}
+                  </CommandGroup>
+                ) : null}
                 <CommandGroup heading="Actions">
                   {actions.map((action) => (
                     <CommandItem

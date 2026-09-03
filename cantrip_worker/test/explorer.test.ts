@@ -22,6 +22,7 @@ import {
   readExplorerFile,
   readExplorerMediaFile,
   renameExplorerEntry,
+  searchExplorerFiles,
   statExplorerMediaFile,
   writeExplorerFile,
 } from "../src/explorer.js";
@@ -42,6 +43,44 @@ afterEach(async () => {
 });
 
 describe("project explorer", () => {
+  it("searches Git project files by filename and path without listing ignored files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(root);
+    await mkdir(path.join(root, "src", "widgets"), { recursive: true });
+    await mkdir(path.join(root, "dist"));
+    await writeFile(path.join(root, ".gitignore"), "dist/\n");
+    await writeFile(path.join(root, "src", "app.ts"), "export {};\n");
+    await writeFile(path.join(root, "src", "application.ts"), "export {};\n");
+    await writeFile(
+      path.join(root, "src", "widgets", "button.tsx"),
+      "export {};\n",
+    );
+    await writeFile(path.join(root, "dist", "app.js"), "ignored\n");
+    await git(root, ["init"]);
+    await git(root, ["add", ".gitignore", "src/app.ts"]);
+
+    await expect(searchExplorerFiles(root, "app", 10)).resolves.toMatchObject({
+      query: "app",
+      results: [
+        { name: "app.ts", path: "src/app.ts" },
+        { name: "application.ts", path: "src/application.ts" },
+      ],
+      truncated: false,
+    });
+    await expect(
+      searchExplorerFiles(root, "widgets", 10),
+    ).resolves.toMatchObject({
+      results: [{ name: "button.tsx", path: "src/widgets/button.tsx" }],
+    });
+    await expect(searchExplorerFiles(root, "app", 1)).resolves.toMatchObject({
+      results: [{ name: "app.ts", path: "src/app.ts" }],
+      truncated: true,
+    });
+    await expect(searchExplorerFiles(root, "   ", 10)).rejects.toThrow(
+      "Enter a file name",
+    );
+  });
+
   it("creates collision-safe root and nested folders", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
     directories.push(root);

@@ -125,6 +125,7 @@ import {
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
   explorerFileSchema,
+  explorerFileSearchSchema,
   explorerFileWriteSchema,
   explorerWireListSchema,
   explorerWireSummarySchema,
@@ -6890,6 +6891,22 @@ export async function getExplorerDirectory(explorerId: string, path: string) {
     throw new Error("Explorer returned an unexpected directory result.");
   }
   return explorerDirectorySchema.parse(result.value);
+}
+
+export async function searchExplorerFiles(
+  explorerId: string,
+  query: string,
+  limit = 50,
+) {
+  const result = await executeExplorerOperation(explorerId, {
+    type: "explorer.files.search",
+    query,
+    limit,
+  });
+  if (result.type !== "explorer.files.search") {
+    throw new Error("Explorer returned an unexpected file search result.");
+  }
+  return explorerFileSearchSchema.parse(result.value);
 }
 
 export async function getExplorerDirectoryCommits(

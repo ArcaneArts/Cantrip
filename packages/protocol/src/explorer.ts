@@ -17,6 +17,17 @@ export const explorerDirectorySchema = z.object({
   truncated: z.boolean(),
 });
 
+export const explorerFileSearchResultSchema = z.object({
+  name: z.string().min(1).max(255),
+  path: z.string().min(1).max(8_192),
+});
+
+export const explorerFileSearchSchema = z.object({
+  query: z.string().trim().min(1).max(200),
+  results: z.array(explorerFileSearchResultSchema).max(100),
+  truncated: z.boolean(),
+});
+
 export const explorerLastCommitSchema = z.object({
   hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
   shortHash: z.string().min(1).max(64),
@@ -320,6 +331,10 @@ export type ExplorerEntryMutationResult = z.infer<
   typeof explorerEntryMutationResultSchema
 >;
 export type ExplorerDirectory = z.infer<typeof explorerDirectorySchema>;
+export type ExplorerFileSearch = z.infer<typeof explorerFileSearchSchema>;
+export type ExplorerFileSearchResult = z.infer<
+  typeof explorerFileSearchResultSchema
+>;
 export type ExplorerLastCommit = z.infer<typeof explorerLastCommitSchema>;
 export type ExplorerDirectoryCommitEntry = z.infer<
   typeof explorerDirectoryCommitEntrySchema

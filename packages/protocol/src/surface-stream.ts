@@ -9,6 +9,7 @@ import {
   explorerEntryMutationResultSchema,
   explorerEntryRenameSchema,
   explorerFileSchema,
+  explorerFileSearchSchema,
   explorerFileWriteSchema,
   explorerMediaFileChunkSchema,
 } from "./explorer.js";
@@ -100,6 +101,13 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
+        type: z.literal("explorer.files.search"),
+        query: explorerFileSearchSchema.shape.query,
+        limit: z.number().int().min(1).max(100),
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("explorer.directory.commits"),
         path: z.string(),
       })
@@ -148,6 +156,12 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
       .object({
         type: z.literal("explorer.directory.list"),
         value: explorerDirectorySchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.files.search"),
+        value: explorerFileSearchSchema,
       })
       .strict(),
     z
