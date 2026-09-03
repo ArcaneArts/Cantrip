@@ -51,6 +51,8 @@ import {
   chatMessageSchema,
   chatMessageWireListSchema,
   chatWireSummarySchema,
+  chatExecutionLaneListSchema,
+  chatExecutionLaneReleaseSchema,
   contextualChatWireSummarySchema,
   chatModelConfigurationUpdateSchema,
   encryptedChatComposerDraftUpdateSchema,
@@ -147,6 +149,7 @@ import {
   githubPullRequestCheckoutResultSchema,
   githubPullRequestDetailSchema,
   githubPullRequestFilesSchema,
+  githubPullRequestAgentContextSchema,
   githubPullRequestLifecyclePreviewSchema,
   githubPullRequestListSchema,
   githubPullRequestOverviewSchema,
@@ -478,6 +481,7 @@ import type {
   GitStashCreate,
   GitSubmoduleAction,
   GitTagAction,
+  GithubAgentWorkflowContext,
   GithubIssueCreate,
   GithubIssueKind,
   GithubIssueListFilters,
@@ -486,6 +490,7 @@ import type {
   GithubPullRequestCreate,
   GithubPullRequestLifecycleAction,
   GithubPullRequestLifecycleApply,
+  GithubPullRequestAgentContextRequest,
   GithubPullRequestReviewAction,
   GithubActionsRunAction,
   GithubActionsWorkflowDispatch,
@@ -4084,6 +4089,21 @@ export async function getGithubPullRequestOverview(
   });
 }
 
+export async function getGithubPullRequestAgentContext(
+  projectId: string,
+  worktreeId: string,
+  pullRequestNumber: number,
+  request: GithubPullRequestAgentContextRequest,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.agent-context",
+    arguments: { number: pullRequestNumber, request },
+    resultSchema: githubPullRequestAgentContextSchema,
+  });
+}
+
 export async function getGithubPullRequestFiles(
   projectId: string,
   worktreeId: string,
@@ -4130,6 +4150,7 @@ export async function checkoutGithubPullRequest(
   projectId: string,
   worktreeId: string,
   pullRequestNumber: number,
+  expectedHeadSha?: string,
 ) {
   const prepared = await runProtectedRepositoryOperation({
     projectId,
@@ -4138,10 +4159,23 @@ export async function checkoutGithubPullRequest(
     arguments: { number: pullRequestNumber },
     resultSchema: githubPullRequestCheckoutPreparedSchema,
   });
+  if (expectedHeadSha && prepared.headSha !== expectedHeadSha) {
+    throw new Error(
+      "The pull request advanced while its agent context was loading. Retry to use the new exact head.",
+    );
+  }
   const existing = (await getProjectWorktrees(projectId)).find(
     ({ branch }) => branch === prepared.branch,
   );
   if (existing) {
+    if (
+      existing.lifecycleState !== "ready" ||
+      existing.head !== prepared.headSha
+    ) {
+      throw new Error(
+        `The checkout branch ${prepared.branch} belongs to a worktree that is unavailable or no longer at the exact pull-request head.`,
+      );
+    }
     return githubPullRequestCheckoutResultSchema.parse({
       pullRequest: prepared.pullRequest,
       worktree: existing,
@@ -5263,6 +5297,7 @@ export async function createChat(
   worktreeMode?: "agent-managed" | "pinned",
   tabGroupId?: string,
   target?: ExecutionTarget,
+  githubAgentContext?: GithubAgentWorkflowContext,
 ) {
   const id = crypto.randomUUID();
   return chatTitleEncryption.open(
@@ -5274,6 +5309,7 @@ export async function createChat(
         ...(worktreeMode ? { worktreeMode } : {}),
         ...(tabGroupId ? { tabGroupId } : {}),
         ...(target ? { target } : {}),
+        ...(githubAgentContext ? { githubAgentContext } : {}),
       }),
     ),
   );
@@ -7307,6 +7343,23 @@ export async function updateChatWorktree(
         body: JSON.stringify(input),
       }),
     ),
+  );
+}
+
+export async function getChatExecutionLanes(chatId: string) {
+  return chatExecutionLaneListSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/execution-lanes`),
+  );
+}
+
+export async function releaseChatExecutionLane(
+  chatId: string,
+  laneId: string,
+  input: { allowDirty: boolean; returnToPrimary: boolean },
+) {
+  await post(
+    `/api/chats/${encodeURIComponent(chatId)}/execution-lanes/${encodeURIComponent(laneId)}/release`,
+    chatExecutionLaneReleaseSchema.parse(input),
   );
 }
 

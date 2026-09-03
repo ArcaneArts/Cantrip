@@ -1,5 +1,6 @@
 import {
   githubIssueListFiltersSchema,
+  type ChatSummary,
   type GitStatus,
   type GithubIssueDetail,
   type GithubInboxAttention,
@@ -10,12 +11,15 @@ import {
   type GithubIssueListFilters,
   type GithubIssueState,
   type GithubIssueSummary,
+  type GithubPullRequestAgentContextRequest,
   type GithubPullRequestSummary,
   type ProjectSummary,
+  type ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BellDot,
+  Bot,
   CheckCircle2,
   ChevronRight,
   CircleAlert,
@@ -75,6 +79,7 @@ import { GithubIssueCreateDialog } from "./github-issue-create-dialog";
 import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
 import { GithubPullRequestDialog } from "./github-pull-request-dialog";
 import type { GithubActionsTarget } from "./github-actions-model";
+import type { GithubAgentWorkflowCleanupInput } from "./github-agent-workflow";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -293,11 +298,15 @@ function PullRequestState({
 function IssueDialog({
   issueNumber,
   kind,
+  linkedChat,
+  onStartAgent,
   onOpenChange,
   project,
 }: {
   issueNumber: number | null;
   kind: GithubIssueKind;
+  linkedChat: ChatSummary | null;
+  onStartAgent(issue: GithubIssueDetail): Promise<void>;
   onOpenChange(open: boolean): void;
   project: ProjectSummary;
 }) {
@@ -336,7 +345,8 @@ function IssueDialog({
       await refreshLists(detail);
     },
   });
-  const pending = comment.isPending || close.isPending;
+  const startAgent = useMutation({ mutationFn: onStartAgent });
+  const pending = comment.isPending || close.isPending || startAgent.isPending;
 
   return (
     <Dialog
@@ -470,21 +480,37 @@ function IssueDialog({
                   placeholder="Write a comment, or include it while closing…"
                   className="min-h-28 w-full resize-y rounded-xl border bg-background p-3 text-sm outline-none ring-ring focus:ring-2"
                 />
-                {comment.isError || close.isError ? (
+                {comment.isError || close.isError || startAgent.isError ? (
                   <p className="mt-2 text-xs text-destructive">
-                    {errorText(comment.error ?? close.error)}
+                    {errorText(
+                      comment.error ?? close.error ?? startAgent.error,
+                    )}
                   </p>
                 ) : null}
               </section>
             </div>
 
             <DialogFooter className="shrink-0 border-t bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:justify-between md:px-6 md:py-4">
-              <Button variant="outline" asChild>
-                <a href={issue.data.url} target="_blank" rel="noreferrer">
-                  <ExternalLink className="size-4" />
-                  Open in GitHub
-                </a>
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button variant="outline" asChild>
+                  <a href={issue.data.url} target="_blank" rel="noreferrer">
+                    <ExternalLink className="size-4" />
+                    Open in GitHub
+                  </a>
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => startAgent.mutate(issue.data)}
+                >
+                  {startAgent.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Bot className="size-4" />
+                  )}
+                  {linkedChat ? "Open agent" : "Start work"}
+                </Button>
+              </div>
               <div className="flex flex-col-reverse gap-2 sm:flex-row">
                 {issue.data.state === "open" && kind === "issue" ? (
                   <Button
@@ -522,6 +548,7 @@ function IssueDialog({
 }
 
 export function GithubIssuesView({
+  chats,
   error,
   filters,
   hasNextPage,
@@ -533,14 +560,19 @@ export function GithubIssuesView({
   onFiltersChange,
   onLoadMore,
   onOpenActionsRun,
+  onCleanupAgentWorkflow,
+  onStartIssueAgent,
+  onStartPullRequestAgent,
   onViewChange,
   onSelectWorktree,
   project,
   status,
   state,
   worktreeId,
+  worktrees,
   view,
 }: {
+  chats: ChatSummary[];
   error: unknown;
   filters: GithubIssueListFilters;
   hasNextPage: boolean;
@@ -554,12 +586,19 @@ export function GithubIssuesView({
   onFiltersChange(filters: GithubIssueListFilters): void;
   onLoadMore(): void;
   onOpenActionsRun(target: GithubActionsTarget): void;
+  onCleanupAgentWorkflow(input: GithubAgentWorkflowCleanupInput): Promise<void>;
+  onStartIssueAgent(issue: GithubIssueDetail): Promise<void>;
+  onStartPullRequestAgent(
+    pullRequestNumber: number,
+    intent: GithubPullRequestAgentContextRequest["intent"],
+  ): Promise<void>;
   onViewChange(view: GithubInboxView): void;
   onSelectWorktree(worktreeId: string): void;
   project: ProjectSummary;
   status: GitStatus | undefined;
   state: GithubIssueState;
   worktreeId: string;
+  worktrees: ProjectWorktreeSummary[];
   view: GithubInboxView;
 }) {
   const [selectedIssue, setSelectedIssue] = useState<number | null>(null);
@@ -1111,9 +1150,12 @@ export function GithubIssuesView({
 
       {kind === "pull-request" ? (
         <GithubPullRequestDialog
+          chats={chats}
           pullRequestNumber={selectedIssue}
           projectId={project.id}
           worktreeId={worktreeId}
+          worktrees={worktrees}
+          onCleanupAgentWorkflow={onCleanupAgentWorkflow}
           onCheckedOut={onSelectWorktree}
           onOpenActionsRun={(target) => {
             setSelectedIssue(null);
@@ -1122,11 +1164,20 @@ export function GithubIssuesView({
           onOpenChange={(open) => {
             if (!open) setSelectedIssue(null);
           }}
+          onStartAgent={onStartPullRequestAgent}
         />
       ) : (
         <IssueDialog
           issueNumber={selectedIssue}
           kind={kind}
+          linkedChat={
+            chats.find(
+              ({ githubAgentContext }) =>
+                githubAgentContext?.kind === "issue" &&
+                githubAgentContext.number === selectedIssue,
+            ) ?? null
+          }
+          onStartAgent={onStartIssueAgent}
           project={project}
           onOpenChange={(open) => {
             if (!open) setSelectedIssue(null);

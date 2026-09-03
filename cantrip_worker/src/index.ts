@@ -2246,6 +2246,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               command.number,
             );
         }
+      case "github.pull-request.agent-context":
+        return github.getPullRequestAgentContext(
+          command.repository,
+          command.cwd,
+          command.number,
+          command.request,
+        );
       case "github.pull-request.comment":
         return github.commentOnPullRequest(
           command.repository,

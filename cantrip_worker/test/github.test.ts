@@ -22,6 +22,7 @@ import { githubIssueListFiltersSchema } from "@cantrip/protocol";
 
 import {
   GithubClient,
+  githubActionsRunId,
   githubCloneFailureDetails,
   githubListSearchQuery,
   isWindowsLongPathGitFailure,
@@ -34,6 +35,20 @@ import { githubInboxSearchQuery } from "../src/github-inbox.js";
 const directories: string[] = [];
 const originalPath = process.env.PATH;
 const execFileAsync = promisify(execFile);
+
+describe("GitHub Actions run links", () => {
+  it("accepts only hosted GitHub Actions run URLs", () => {
+    expect(
+      githubActionsRunId(
+        "https://github.com/ArcaneArts/Cantrip/actions/runs/123/job/456",
+      ),
+    ).toBe("123");
+    expect(
+      githubActionsRunId("https://example.com/actions/runs/123"),
+    ).toBeNull();
+    expect(githubActionsRunId("not a URL")).toBeNull();
+  });
+});
 
 afterEach(async () => {
   process.env.PATH = originalPath;
@@ -2224,6 +2239,7 @@ describe("GitHub project files", () => {
         'const fs = require("node:fs");',
         `const log = ${JSON.stringify(logPath)};`,
         'const args = process.argv.slice(2); fs.appendFileSync(log, args.join("\\0") + "\\n");',
+        'if (args[0] === "run") { process.stdout.write("test\\tunit\\tFAIL expected true\\n"); process.exit(0); }',
         'const route = args[1] || "";',
         `if (route.endsWith("/pulls/44")) process.stdout.write(${JSON.stringify(JSON.stringify(pullRequest))});`,
         `else if (route.endsWith("/issues/44/comments")) process.stdout.write(${JSON.stringify(JSON.stringify(comments))});`,
@@ -2264,6 +2280,23 @@ describe("GitHub project files", () => {
           path: "src/review.ts",
           line: 4,
           comments: [{ id: 20 }, { id: 21, inReplyToId: 20 }],
+        },
+      ],
+    });
+    await expect(
+      github.getPullRequestAgentContext("ArcaneArts/Cantrip", repository, 44, {
+        intent: "fix-checks",
+      }),
+    ).resolves.toMatchObject({
+      intent: "fix-checks",
+      pullRequest: { number: 44, headSha: head },
+      activeReviewThreads: [],
+      failedChecks: [
+        {
+          checkId: "10",
+          name: "test",
+          logExcerpt: "test\tunit\tFAIL expected true",
+          logUnavailableReason: null,
         },
       ],
     });

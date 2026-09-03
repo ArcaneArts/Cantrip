@@ -1,9 +1,11 @@
 import type {
   ArchivedStandaloneChatSummary,
   BrowserSummary,
+  ChatComposerDraft,
   ChatSummary,
   CodeTabSummary,
   ExecutionTarget,
+  GithubAgentWorkflowContext,
   ExplorerEntry,
   ExplorerSummary,
   ProjectViewKind,
@@ -40,6 +42,8 @@ import {
   permanentlyDeleteArchivedChat,
   renameChat,
   restoreArchivedChat,
+  saveChatComposerDraft,
+  startTurn,
 } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { errorMessage as errorText } from "@/lib/error-message";
@@ -83,7 +87,13 @@ export function useProjectChatCreationOperation({
       worktreeId,
       worktreeMode,
       target,
+      initialDraft,
+      githubAgentContext,
+      startInitialDraft,
     }: {
+      githubAgentContext?: GithubAgentWorkflowContext;
+      initialDraft?: ChatComposerDraft;
+      startInitialDraft?: boolean;
       open?: boolean;
       projectId: string;
       tabGroupId?: string;
@@ -109,7 +119,39 @@ export function useProjectChatCreationOperation({
         worktreeMode,
         tabGroupId,
         target,
-      );
+        githubAgentContext,
+      ).then(async (chat) => {
+        if (initialDraft) {
+          await saveChatComposerDraft(chat.id, initialDraft);
+          queryClient.setQueryData(
+            ["chat-composer-draft", chat.id],
+            initialDraft,
+          );
+          if (startInitialDraft && chat.modelId) {
+            try {
+              await startTurn(
+                chat.id,
+                initialDraft.text,
+                {
+                  modelId: chat.modelId,
+                  reasoningEffort:
+                    initialDraft.reasoningEffort ?? chat.reasoningEffort,
+                  customSubagentModel: chat.customSubagentModel ?? false,
+                  subagentModelId: chat.subagentModelId ?? null,
+                  subagentReasoningEffort: chat.subagentReasoningEffort ?? null,
+                },
+                [],
+                initialDraft.mode,
+              );
+              await saveChatComposerDraft(chat.id, null);
+              queryClient.setQueryData(["chat-composer-draft", chat.id], null);
+            } catch {
+              // Keep the complete draft visible when starting is unavailable.
+            }
+          }
+        }
+        return chat;
+      });
     },
     onSuccess: (chat, { open }) => {
       queryClient.setQueryData<ChatSummary[]>(

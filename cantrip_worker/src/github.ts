@@ -27,6 +27,7 @@ import {
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestDetailSchema,
+  githubPullRequestAgentContextSchema,
   githubPullRequestLifecyclePreviewSchema,
   githubPullRequestSummarySchema,
   githubActionsArtifactSchema,
@@ -66,6 +67,8 @@ import {
   type GithubPullRequestCreate,
   type GithubPullRequestCreateResult,
   type GithubPullRequestCheckoutPrepared,
+  type GithubPullRequestAgentContext,
+  type GithubPullRequestAgentContextRequest,
   type GithubPullRequestCheck,
   type GithubPullRequestChecks,
   type GithubPullRequestCommits,
@@ -1391,6 +1394,29 @@ function pullRequestDataWarning(
   };
 }
 
+const failedCheckConclusions = new Set([
+  "failure",
+  "error",
+  "timed_out",
+  "cancelled",
+  "action_required",
+]);
+
+function failedPullRequestCheck(check: GithubPullRequestCheck): boolean {
+  return failedCheckConclusions.has(check.conclusion ?? "");
+}
+
+export function githubActionsRunId(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== "github.com") return null;
+    return parsed.pathname.match(/\/actions\/runs\/(\d+)/u)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function pullRequestLifecycleToken(
   detail: GithubPullRequestDetail,
   action: GithubPullRequestLifecycleAction,
@@ -2496,6 +2522,86 @@ export class GithubClient {
           ? checksResult.value.warnings
           : []),
       ],
+    });
+  }
+
+  async getPullRequestAgentContext(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    request: GithubPullRequestAgentContextRequest,
+  ): Promise<GithubPullRequestAgentContext> {
+    const pullRequest = await this.getPullRequest(
+      nameWithOwner,
+      cwd,
+      pullRequestNumber,
+    );
+    const activeReviewThreads = pullRequest.reviewThreads.filter(
+      ({ resolved }) => resolved !== true,
+    );
+    const failedChecks = pullRequest.checks
+      .filter(failedPullRequestCheck)
+      .slice(0, 20);
+    const logs = new Map<
+      string,
+      { excerpt: string | null; unavailableReason: string | null }
+    >();
+    if (request.intent === "fix-checks") {
+      await Promise.all(
+        [...new Set(failedChecks.map(({ url }) => githubActionsRunId(url)))]
+          .filter((runId): runId is string => Boolean(runId))
+          .slice(0, 5)
+          .map(async (runId) => {
+            try {
+              const { stdout, stderr } = await execFileAsync(
+                "gh",
+                ["run", "view", runId, "--repo", nameWithOwner, "--log-failed"],
+                { maxBuffer: 4 * 1024 * 1024, timeout: 30_000 },
+              );
+              const output = `${stdout}${stderr}`.trim();
+              logs.set(runId, {
+                excerpt: output ? output.slice(-100_000) : null,
+                unavailableReason: output
+                  ? null
+                  : "GitHub returned no failed-step log output for this run.",
+              });
+            } catch (error) {
+              logs.set(runId, {
+                excerpt: null,
+                unavailableReason:
+                  `Failed-step logs could not be loaded: ${error instanceof Error ? error.message : String(error)}`.slice(
+                    0,
+                    2_000,
+                  ),
+              });
+            }
+          }),
+      );
+    }
+    return githubPullRequestAgentContextSchema.parse({
+      intent: request.intent,
+      pullRequest,
+      activeReviewThreads:
+        request.intent === "address-review" ? activeReviewThreads : [],
+      failedChecks:
+        request.intent === "fix-checks"
+          ? failedChecks.map((check) => {
+              const runId = githubActionsRunId(check.url);
+              const log = runId ? logs.get(runId) : null;
+              return {
+                checkId: check.id,
+                name: check.name,
+                url: check.url,
+                summary: check.summary,
+                logExcerpt: log?.excerpt ?? null,
+                logUnavailableReason: log
+                  ? log.unavailableReason
+                  : runId
+                    ? "This run was outside the bounded log-fetch window."
+                    : "This check does not expose GitHub Actions run logs.",
+              };
+            })
+          : [],
     });
   }
 

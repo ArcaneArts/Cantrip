@@ -3166,6 +3166,10 @@ export const chats = pgTable(
     permissionProfileId: text("permission_profile_id"),
     automationPaused: boolean("automation_paused").notNull().default(false),
     planMode: text("plan_mode").notNull().default("default"),
+    githubItemKind: text("github_item_kind"),
+    githubItemNumber: integer("github_item_number"),
+    githubAgentIntent: text("github_agent_intent"),
+    githubHeadSha: text("github_head_sha"),
     protectedComposerDraft: jsonb(
       "protected_composer_draft",
     ).$type<ChatComposerDraftOpaqueState>(),
@@ -3211,6 +3215,26 @@ export const chats = pgTable(
     check(
       "chats_context_kind_check",
       sql`${table.contextKind} IN ('project', 'standalone')`,
+    ),
+    check(
+      "chats_github_agent_context_check",
+      sql`(
+        ${table.githubItemKind} IS NULL AND
+        ${table.githubItemNumber} IS NULL AND
+        ${table.githubAgentIntent} IS NULL AND
+        ${table.githubHeadSha} IS NULL
+      ) OR (
+        ${table.contextKind} = 'project' AND
+        ${table.experience} = 'agent' AND
+        ${table.githubItemKind} IN ('issue', 'pull-request') AND
+        ${table.githubItemNumber} > 0 AND
+        ${table.githubAgentIntent} IN ('start-work', 'address-review', 'fix-checks') AND
+        ${table.githubHeadSha} ~ '^[0-9a-f]{40,64}$' AND
+        (
+          (${table.githubItemKind} = 'issue' AND ${table.githubAgentIntent} = 'start-work') OR
+          (${table.githubItemKind} = 'pull-request' AND ${table.githubAgentIntent} IN ('address-review', 'fix-checks'))
+        )
+      )`,
     ),
     check(
       "chats_execution_root_check",

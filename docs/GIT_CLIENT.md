@@ -725,6 +725,60 @@ Manual QA:
 6. Disconnect the selected worker and confirm no fallback worker is used and
    no partial server worktree record is created.
 
+### Issue and pull request agent workflows
+
+GitHub items can enter a native, durable work loop without changing Cantrip's
+execution model. **Start work** on an issue creates a deterministic
+`cantrip/issue-N-...` branch at the selected worktree's exact HEAD, creates its
+own Cantrip-managed worktree, and opens a pinned agent chat. The issue body and
+bounded discussion are protected client-side and started with the chat's
+configured model. If a turn cannot start, the complete task remains in the
+encrypted composer draft instead of being lost.
+
+**Address review** and **Fix checks** use the pull request's exact hosted head.
+Cantrip fetches or reuses the SHA-qualified PR worktree and binds the agent chat
+to the item number and head SHA. Address review adds unresolved or
+resolution-unknown review threads to the existing unsent draft. Fix checks
+adds the bounded check summaries and up to five GitHub Actions failed-step log
+excerpts; unavailable third-party or inaccessible logs remain explicit rather
+than blocking the workflow. Repeating an action reuses the exact-head chat and
+worktree, preserving any unsent text in the composer.
+
+Issue text, review comments, and job output are treated as untrusted evidence.
+Generated prompts explicitly keep the agent inside the dedicated worktree and
+prohibit pushing, merging, closing items, submitting reviews, posting comments,
+or publishing drafted replies. Code remains in the worktree and proposed
+GitHub replies remain in the agent's response for user review.
+
+After a linked PR is merged, the inspector offers cleanup. Cleanup archives the
+linked chat, removes only a clean non-primary worktree, and optionally deletes
+the local branch through Cantrip's existing reviewed branch preview/apply
+operation. All SHA-qualified worktrees linked to the PR are included. Dirty
+worktrees stop their cleanup and remain recoverable.
+
+Manual QA:
+
+1. Start work from an issue and confirm a pinned chat opens on a new issue
+   branch/worktree at the selected exact HEAD, with the issue context submitted
+   to the agent or retained intact in the composer when starting is unavailable.
+2. Click Start work again and confirm Cantrip opens the existing chat instead
+   of creating a second branch, worktree, or chat.
+3. Address review on a PR and confirm the exact PR head, active review threads,
+   and safety boundary appear in the draft on its SHA-qualified worktree.
+4. Open Checks, choose Fix checks, and confirm failed GitHub Actions steps use
+   bounded log excerpts while third-party or inaccessible logs explain why no
+   excerpt is present.
+5. Add unsent text to the linked chat, invoke Address review or Fix checks
+   again, and confirm the existing draft is preserved and the new task is
+   appended once.
+6. Merge the PR and choose Cleanup. Confirm the chat is archived, a clean
+   secondary worktree is removed, and local branch deletion is optional and
+   goes through the reviewed operation. Repeat with a dirty worktree and
+   confirm it is preserved.
+7. Place adversarial instructions in issue text, review comments, and failed
+   logs; confirm they remain quoted task evidence and are not published or run
+   automatically.
+
 ## Responsive Git surfaces
 
 At narrow viewport widths, issue and pull-request lists use stacked cards

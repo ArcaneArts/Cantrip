@@ -403,6 +403,10 @@ export class ChatCatalogRepository {
         experience === "task"
           ? (input as EncryptedTaskCreate).chatId
           : (input as EncryptedChatCreate).id;
+      const githubAgentContext =
+        experience === "task"
+          ? undefined
+          : (input as EncryptedChatCreate).githubAgentContext;
       const result = await transaction
         .insert(schema.chats)
         .values({
@@ -421,6 +425,10 @@ export class ChatCatalogRepository {
           customSubagentModel: defaultSettings.customSubagentModel,
           subagentModelId: defaultSettings.subagentModelId,
           subagentReasoningEffort: defaultSettings.subagentReasoningEffort,
+          githubItemKind: githubAgentContext?.kind ?? null,
+          githubItemNumber: githubAgentContext?.number ?? null,
+          githubAgentIntent: githubAgentContext?.intent ?? null,
+          githubHeadSha: githubAgentContext?.headSha ?? null,
         })
         .returning();
       const chat = firstOrThrow(result, "creating a chat");
