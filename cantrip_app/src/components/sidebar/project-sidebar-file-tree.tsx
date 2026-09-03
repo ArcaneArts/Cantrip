@@ -185,6 +185,7 @@ function SidebarFileRow({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const cancelRenameOnBlurRef = useRef(false);
+  const keepRenameInputFocusedRef = useRef(false);
   const revealLocalFolder = useRef(false);
   useEffect(() => {
     if (!editing) return;
@@ -201,6 +202,7 @@ function SidebarFileRow({
       aria-expanded={entry.kind === "directory" ? expanded : undefined}
       aria-level={depth + 1}
       data-elite-global
+      data-elite-ignore={editing ? "" : undefined}
       className={cn(
         "flex h-7 w-full min-w-0 items-center gap-1 rounded px-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
         active && "bg-muted text-foreground",
@@ -298,7 +300,14 @@ function SidebarFileRow({
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>{row}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <StyledContextMenuContent className="min-w-48">
+        <StyledContextMenuContent
+          className="min-w-48"
+          onCloseAutoFocus={(event) => {
+            if (!keepRenameInputFocusedRef.current) return;
+            keepRenameInputFocusedRef.current = false;
+            event.preventDefault();
+          }}
+        >
           {entry.kind === "file" && onOpenHistory ? (
             <StyledContextMenuItem onSelect={onOpenHistory}>
               <FileClock className="size-4" />
@@ -349,7 +358,12 @@ function SidebarFileRow({
             (onOpenTerminal || onOpenGraph || onCreateFolder)) ? (
             <ContextMenu.Separator className="my-1 h-px bg-border" />
           ) : null}
-          <StyledContextMenuItem onSelect={onRename}>
+          <StyledContextMenuItem
+            onSelect={() => {
+              keepRenameInputFocusedRef.current = true;
+              onRename();
+            }}
+          >
             <Pencil className="size-4" />
             Rename
           </StyledContextMenuItem>

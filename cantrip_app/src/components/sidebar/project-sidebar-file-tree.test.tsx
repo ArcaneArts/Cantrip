@@ -46,6 +46,19 @@ vi.mock("@radix-ui/react-context-menu", async () => {
   const Container = React.forwardRef<unknown, { children?: React.ReactNode }>(
     ({ children }, _ref) => React.createElement(React.Fragment, null, children),
   );
+  const Content = React.forwardRef<
+    unknown,
+    {
+      children?: React.ReactNode;
+      onCloseAutoFocus?(event: { preventDefault(): void }): void;
+    }
+  >(({ children, onCloseAutoFocus }, _ref) =>
+    React.createElement(
+      "context-menu-content",
+      { "data-context-menu-content": true, onCloseAutoFocus },
+      children,
+    ),
+  );
   const Item = React.forwardRef<
     unknown,
     {
@@ -75,7 +88,7 @@ vi.mock("@radix-ui/react-context-menu", async () => {
       ),
   );
   return {
-    Content: Container,
+    Content,
     Item,
     Portal: Container,
     Root: Container,
@@ -610,6 +623,43 @@ describe("project sidebar file tree encryption gate", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("keeps the complete file name selected after its context menu closes", async () => {
+    const focus = vi.fn();
+    const select = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree(), {
+        createNodeMock: (element) =>
+          element.type === "input" ? { focus, select } : null,
+      });
+    });
+
+    await act(async () => buttonNamed(renderer, "Rename").props.onClick());
+    const input = renderer.root.findByProps({
+      "aria-label": "Rename example.ts",
+    });
+    const contextMenu = renderer.root
+      .findAllByProps({ "data-context-menu-content": true })
+      .find(
+        (candidate) => typeof candidate.props.onCloseAutoFocus === "function",
+      );
+    const preventDefault = vi.fn();
+    await act(async () =>
+      contextMenu?.props.onCloseAutoFocus({ preventDefault }),
+    );
+
+    expect(input.props.value).toBe("example.ts");
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(
+      renderer.root.findByProps({ role: "treeitem" }).props[
+        "data-elite-ignore"
+      ],
+    ).toBe("");
+    await act(async () => renderer.unmount());
+  });
+
   it("shows files in the native manager and forwards the Shift local preference", async () => {
     const onOpenNative = vi.fn();
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -683,6 +733,15 @@ describe("project sidebar file tree encryption gate", () => {
     ).toBe("New Folder");
     expect(focus).toHaveBeenCalledTimes(1);
     expect(select).toHaveBeenCalledTimes(1);
+    expect(
+      renderer.root
+        .findAllByProps({ role: "treeitem" })
+        .find(
+          (row) =>
+            row.findAllByProps({ "aria-label": "Rename New Folder" }).length >
+            0,
+        )?.props["data-elite-ignore"],
+    ).toBe("");
     await act(async () => renderer.unmount());
   });
 
