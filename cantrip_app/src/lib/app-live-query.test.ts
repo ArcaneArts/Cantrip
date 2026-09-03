@@ -742,17 +742,6 @@ describe("application live query bridge", () => {
       ["project-tab-layout", "project-one"],
     ]);
     expect(
-      appLiveEventQueryKeys(
-        event({
-          resource: "workflow-run",
-          scope: { kind: "workflow-run", runId: "run-one" },
-        }),
-      ),
-    ).toEqual([
-      ["workflow-run", "run-one"],
-      ["workflow-interactions", "run-one"],
-    ]);
-    expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["worktrees", "project-one"]);
     expect(
@@ -862,15 +851,6 @@ describe("application live query bridge", () => {
       ["run-configuration-secrets", "project-one"],
       ["run-configuration", "project-one", "configuration-one"],
     ]);
-    expect(
-      appLiveEventQueryKeys(
-        event({
-          entityId: "workflow-one",
-          resource: "workflow-definition",
-          scope: { kind: "project", projectId: "project-one" },
-        }),
-      ),
-    ).toEqual([["workflow-repository", "project-one"]]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -1939,93 +1919,6 @@ describe("application live query bridge", () => {
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["skills", "chat-one"],
-      });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("coalesces workflow progress and rejects duplicate durable sequences", async () => {
-    vi.useFakeTimers();
-    try {
-      const queryClient = new QueryClient();
-      const invalidate = vi
-        .spyOn(queryClient, "invalidateQueries")
-        .mockResolvedValue();
-      const bridge = new AppLiveQueryBridge(queryClient);
-      const runEvent = {
-        ...event({
-          entityId: "run-one",
-          resource: "workflow-node",
-          scope: { kind: "workflow-run", runId: "run-one" },
-        }),
-        revision: 7,
-      } satisfies AppLiveEvent;
-      const projectEvent = {
-        ...runEvent,
-        cursor: 2,
-        scope: { kind: "project", projectId: "project-one" },
-      } satisfies AppLiveEvent;
-
-      bridge.handleEvent(runEvent);
-      bridge.handleEvent({ ...runEvent, cursor: 3 });
-      bridge.handleEvent({ ...runEvent, cursor: 4, revision: 6 });
-      bridge.handleEvent(projectEvent);
-      expect(invalidate).not.toHaveBeenCalled();
-
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(invalidate).toHaveBeenCalledTimes(3);
-      expect(invalidate).toHaveBeenCalledWith({
-        queryKey: ["workflow-run", "run-one"],
-      });
-      expect(invalidate).toHaveBeenCalledWith({
-        queryKey: ["workflow-interactions", "run-one"],
-      });
-      expect(invalidate).toHaveBeenCalledWith({
-        queryKey: ["workflow-runs", "project-one"],
-      });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("accepts a restarted workflow sequence after scope recovery", async () => {
-    vi.useFakeTimers();
-    try {
-      const queryClient = new QueryClient();
-      const invalidate = vi
-        .spyOn(queryClient, "invalidateQueries")
-        .mockResolvedValue();
-      const bridge = new AppLiveQueryBridge(queryClient);
-      const workflowEvent = (
-        cursor: number,
-        revision: number,
-      ): AppLiveEvent => ({
-        ...event({
-          entityId: "run-one",
-          resource: "workflow-run",
-          scope: { kind: "workflow-run", runId: "run-one" },
-        }),
-        cursor,
-        revision,
-      });
-
-      bridge.handleEvent(workflowEvent(20, 20));
-      await vi.advanceTimersByTimeAsync(100);
-      await bridge.recoverScopes(
-        [{ kind: "workflow-run", runId: "run-one" }],
-        "server-epoch-changed",
-      );
-      invalidate.mockClear();
-      bridge.handleEvent(workflowEvent(1, 1));
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(invalidate).toHaveBeenCalledWith({
-        queryKey: ["workflow-run", "run-one"],
-      });
-      expect(invalidate).toHaveBeenCalledWith({
-        queryKey: ["workflow-interactions", "run-one"],
       });
     } finally {
       vi.useRealTimers();

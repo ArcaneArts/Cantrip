@@ -997,7 +997,6 @@ export async function buildApp({
     applicationOwnerId,
     bridge,
     serverId,
-    deliverWorkflowTrigger,
     directAttachments,
     gitOperationRequestRuntime,
     isWorkerConnected: (workerId) => bridge.isConnected(workerId),
@@ -1011,9 +1010,6 @@ export async function buildApp({
     publishProjectReplicaJobChange,
     publishWorkspaceRepositoryDiscoveryChange,
     publishStandaloneChatRootJobChange,
-    publishWorkflowDefinitionChange,
-    publishWorkflowRunChange,
-    publishWorkflowTriggerChange,
     queueChatRelocationJobs: () => chatRelocationJobExecutor.queueAvailable(),
     queueProjectFolderSetupJobs: () =>
       projectFolderSetupJobExecutor.queueAvailable(),
@@ -1026,13 +1022,11 @@ export async function buildApp({
     repository,
     requireProjectRelocation,
     retireRunConfigurationRuntimes,
-    runAsOwner,
     scheduleProjectWorktreeObservation,
     scheduleWorkerWorktreeObservation,
     standaloneChatRootJobExecutor,
     tunnelRuntime,
     workerLinks,
-    workflowExecutor,
     worktreeCoordinator,
   });
 

@@ -113,7 +113,6 @@ export function publicRoute(route: string): boolean {
     route === "/api/auth/mobile-sign-in/exchange" ||
     route === "/api/auth/session" ||
     route.startsWith("/api/internal/") ||
-    route.startsWith("/api/workflow-hooks/") ||
     route === "/api/tunnel-attachments/:attachmentId/connect"
   );
 }
@@ -155,7 +154,6 @@ export function standaloneChatFeatureForbidden(route: string): boolean {
     route === "/api/chats/:chatId/relocations" ||
     route === "/api/chats/:chatId/skills" ||
     route === "/api/chats/:chatId/sync" ||
-    route === "/api/chats/:chatId/workflow-generation" ||
     route === "/api/chats/:chatId/worktree" ||
     route.startsWith("/api/chats/:chatId/customizations") ||
     route.startsWith("/api/chats/:chatId/execution-lanes")

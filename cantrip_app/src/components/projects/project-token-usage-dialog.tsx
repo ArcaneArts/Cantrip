@@ -390,7 +390,7 @@ export function ProjectTokenUsageDialog({
             <Coins className="size-5" /> Token usage
           </DialogTitle>
           <DialogDescription>
-            {projectName} · tracked across agents, workflows, and agent tools.
+            {projectName} · tracked across agents, tasks, and agent tools.
           </DialogDescription>
         </DialogHeader>
         <DialogClose

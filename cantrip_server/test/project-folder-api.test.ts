@@ -21,12 +21,6 @@ import {
   projectAutomationWireSchema,
 } from "@cantrip/protocol/automations";
 import type { TaskOpaqueContent } from "@cantrip/protocol/tasks";
-import {
-  encryptedWorkflowAutomationTriggerCreateSchema,
-  encryptedWorkflowDefinitionCreateSchema,
-  workflowAutomationTriggerWireSchema,
-  workflowDefinitionWireDetailSchema,
-} from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -1412,7 +1406,7 @@ describe("managed folder project lifecycle", () => {
     expect(ownerTunnel.statusCode).toBe(201);
   });
 
-  it("keeps scheduled prompts and non-Git workflow triggers available", async () => {
+  it("keeps scheduled project prompts available", async () => {
     const project = await createFolder("Automated folder");
     await waitUntilReady(project.id);
     const root = (
@@ -1505,125 +1499,6 @@ describe("managed folder project lifecycle", () => {
       }),
     });
     expect(openIssues.statusCode).toBe(201);
-
-    const preauthorized = {
-      filesystem: "read-only",
-      network: "none",
-      approvalMode: "preauthorized",
-      skills: [],
-      mcpServers: [],
-      nativeSubagents: false,
-    } as const;
-    const workflowResponse = await app.inject({
-      method: "POST",
-      url: "/api/workflows",
-      payload: encryptedWorkflowDefinitionCreateSchema.parse({
-        id: randomUUID(),
-        scope: "project",
-        projectId: project.id,
-        source: "manual",
-        trustState: "trusted",
-        slugBlindIndex: protectedBytes("folder-workflow-slug", 32),
-        content: {
-          protectedSlug: protectedWorkflowEnvelope("folder-workflow-slug"),
-          protectedName: protectedWorkflowEnvelope("folder-workflow-name"),
-          protectedDescription: protectedWorkflowEnvelope(
-            "folder-workflow-description",
-          ),
-          protectedProvenance: protectedWorkflowEnvelope(
-            "folder-workflow-provenance",
-          ),
-        },
-        revision: {
-          id: randomUUID(),
-          source: "manual",
-          trustState: "trusted",
-          contentBlindIndex: protectedBytes("folder-workflow-content", 32),
-          content: {
-            protectedProvenance: protectedWorkflowEnvelope(
-              "folder-workflow-revision-provenance",
-            ),
-            protectedContentHash: protectedWorkflowEnvelope(
-              "folder-workflow-content-hash",
-            ),
-            protectedDefinition: protectedWorkflowEnvelope(
-              "folder-workflow-definition",
-            ),
-          },
-          manifest: {
-            version: 1,
-            nodes: [
-              {
-                id: randomUUID(),
-                type: "gate",
-                mutationMode: "read-only",
-                modelRouteId: null,
-                permissionProfileId: null,
-              },
-            ],
-            edges: [],
-          },
-        },
-      }),
-    });
-    expect(workflowResponse.statusCode, workflowResponse.body).toBe(201);
-    const revisionId = workflowDefinitionWireDetailSchema.parse(
-      workflowResponse.json(),
-    ).revision!.id;
-    const triggerBase = {
-      id: randomUUID(),
-      workflowRevisionId: revisionId,
-      projectId: project.id,
-      enabled: true,
-      permissionManifest: preauthorized,
-      selectedModelRouteId: null,
-      selectedPermissionProfileId: null,
-      protectedName: protectedWorkflowEnvelope("folder-trigger-name"),
-      protectedConfiguration: protectedWorkflowEnvelope(
-        "folder-trigger-configuration",
-      ),
-      protectedInput: protectedWorkflowEnvelope("folder-trigger-input"),
-      credentialHash: null,
-    };
-    const scheduleTrigger = await app.inject({
-      method: "POST",
-      url: "/api/workflow-triggers",
-      payload: encryptedWorkflowAutomationTriggerCreateSchema.parse({
-        ...triggerBase,
-        type: "schedule",
-        publicConfiguration: {
-          type: "schedule",
-          intervalSeconds: 60,
-          startAt: startsAt,
-          catchUpPolicy: "once",
-          offlinePolicy: "pause",
-        },
-      }),
-    });
-    expect(scheduleTrigger.statusCode, scheduleTrigger.body).toBe(201);
-    expect(
-      workflowAutomationTriggerWireSchema.parse(scheduleTrigger.json()),
-    ).toMatchObject({ type: "schedule", projectId: project.id });
-
-    const gitTrigger = await app.inject({
-      method: "POST",
-      url: "/api/workflow-triggers",
-      payload: encryptedWorkflowAutomationTriggerCreateSchema.parse({
-        ...triggerBase,
-        id: randomUUID(),
-        type: "git",
-        publicConfiguration: {
-          type: "git",
-          event: "push",
-          minimumIntervalSeconds: 1,
-        },
-      }),
-    });
-    expect(gitTrigger.statusCode).toBe(409);
-    expect(gitTrigger.json()).toMatchObject({
-      code: "project-capability-unavailable",
-      capability: "git",
-    });
   });
 
   it("keeps durable state readable offline and rejects folder worktree CLI commands", async () => {

@@ -4,7 +4,7 @@ import { createAuthRouteSupport } from "../http/auth-route-support.js";
 import type { RequestLimits } from "../http/request-limits.js";
 import { installAccountLiveTrafficRoute } from "./account-live-traffic.js";
 import { installAccountSecurityRoutes } from "./account-security.js";
-import { installApiMetadataRoute } from "./api-meta-and-removed-routes.js";
+import { installApiMetadataRoute } from "./api-metadata.js";
 import { installAuthSessionRoutes } from "./auth-sessions.js";
 import { installDirectAttachmentControlRoutes } from "./direct-attachment-control.js";
 import { installInternalProviderCredentialRoutes } from "./internal-provider-credentials.js";

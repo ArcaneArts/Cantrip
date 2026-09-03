@@ -1,13 +1,15 @@
 import {
   isLocalGitProject,
   isWorkerBoundFolderProject,
-  type ProjectSummary,
 } from "@cantrip/protocol";
 
-type ProjectWorkerAffinity = Pick<
-  ProjectSummary,
-  "capabilities" | "originKind" | "preferredWorkerId" | "replicas" | "source"
->;
+interface ProjectWorkerAffinity {
+  capabilities: { git: boolean };
+  originKind: "github" | "managed-folder";
+  preferredWorkerId?: string | null;
+  replicas: ReadonlyArray<{ ready: boolean; workerId: string }>;
+  source?: { workerId: string } | null;
+}
 
 export function projectAllowsExecutionOnWorker(
   project: ProjectWorkerAffinity,

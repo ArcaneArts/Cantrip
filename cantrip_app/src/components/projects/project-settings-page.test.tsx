@@ -78,7 +78,6 @@ describe("project settings", () => {
       "general",
       "archive",
       "automations",
-      "workflows",
       "tunnels",
       "policies",
       "skills",
@@ -321,7 +320,6 @@ describe("project settings", () => {
     const renderSection = (
       initialSection:
         | "general"
-        | "workflows"
         | "replicas"
         | "policies"
         | "worktrees"
@@ -396,7 +394,6 @@ describe("project settings", () => {
 
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).toContain("~/repos/cantrip");
-    expect(markup).toContain("Workflows");
     expect(markup).not.toContain("Environment");
     expect(markup).toContain("Archive");
     expect(markup).toContain("Worktrees");
@@ -406,7 +403,7 @@ describe("project settings", () => {
     expect(markup).toContain("Skills");
     expect(markup).toContain("MCP");
     expect(markup).not.toContain("MCP servers");
-    expect(markup).not.toContain("New workflow");
+    expect(markup).not.toContain("Workflows");
     expect(markup).not.toContain("Agent managed");
     expect(markup).not.toContain("Worker offline");
     expect(markup).toContain('data-slot="project-settings"');
@@ -414,10 +411,6 @@ describe("project settings", () => {
     expect(markup).toContain('data-slot="settings-mobile-categories"');
     expect(markup).toContain('aria-label="Search all project settings"');
     expect(markup).not.toContain('role="tablist"');
-
-    const workflowsMarkup = renderSection("workflows");
-    expect(workflowsMarkup).toContain("New workflow");
-    expect(workflowsMarkup).not.toContain("Agent managed");
 
     const worktreesMarkup = renderSection("worktrees");
     expect(worktreesMarkup).toContain("Agent managed");
@@ -427,7 +420,6 @@ describe("project settings", () => {
     expect(worktreesMarkup).toContain(
       'aria-label="Search all project settings"',
     );
-    expect(worktreesMarkup).not.toContain("New workflow");
 
     const replicasMarkup = renderSection("replicas");
     expect(replicasMarkup).toContain("Project placement");
@@ -438,11 +430,9 @@ describe("project settings", () => {
     expect(tunnelsMarkup).toContain("Project tunnels");
     expect(tunnelsMarkup).toContain("Project Tunnels");
     expect(tunnelsMarkup).toContain("All Tunnels");
-    expect(tunnelsMarkup).not.toContain("New workflow");
 
     const policiesMarkup = renderSection("policies");
     expect(policiesMarkup).toContain("Project review");
     expect(policiesMarkup).toContain("Assigned directly to this project");
-    expect(policiesMarkup).not.toContain("New workflow");
   });
 });

@@ -1,17 +1,10 @@
-import type { ProjectSummary } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import { projectAllowsExecutionOnWorker } from "./worker-affinity.js";
 
 const project = {
   originKind: "managed-folder",
-  capabilities: {
-    git: true,
-    github: false,
-    worktrees: false,
-    replicas: false,
-    relocation: false,
-  },
+  capabilities: { git: true },
   preferredWorkerId: "home-worker",
   source: { workerId: "home-worker" },
   replicas: [
@@ -19,7 +12,7 @@ const project = {
     { workerId: "replica-worker", ready: true },
     { workerId: "preparing-worker", ready: false },
   ],
-} as ProjectSummary;
+} satisfies Parameters<typeof projectAllowsExecutionOnWorker>[0];
 
 describe("project worker affinity", () => {
   it("keeps plain folders on their owning worker", () => {
