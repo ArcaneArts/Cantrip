@@ -1,3 +1,4 @@
+import { KeyboardOff } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -40,10 +41,12 @@ const buttonClassName =
 export function MobileTerminalCommandBar({
   bottomInset,
   disabled = false,
+  onDismiss,
   onKey,
 }: {
   bottomInset: number;
   disabled?: boolean;
+  onDismiss(): void;
   onKey(key: MobileTerminalKey, shift: boolean): void;
 }) {
   const [shift, setShift] = useState(false);
@@ -56,7 +59,7 @@ export function MobileTerminalCommandBar({
   return (
     <div
       aria-label="Terminal keyboard actions"
-      className="fixed left-0 right-0 z-50 h-12 border-t border-border bg-background/95 shadow-[0_-4px_16px_rgba(0,0,0,0.12)] backdrop-blur"
+      className="fixed left-0 right-0 z-50 h-12 border-t border-border bg-background/95 backdrop-blur"
       data-slot="mobile-terminal-command-bar"
       onPointerDown={(event) => event.preventDefault()}
       role="toolbar"
@@ -103,6 +106,14 @@ export function MobileTerminalCommandBar({
             <span aria-hidden="true">{action.label}</span>
           </button>
         ))}
+        <button
+          aria-label="Dismiss keyboard"
+          className={buttonClassName}
+          onClick={onDismiss}
+          type="button"
+        >
+          <KeyboardOff aria-hidden="true" className="size-4" />
+        </button>
       </div>
     </div>
   );
