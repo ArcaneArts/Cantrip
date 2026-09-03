@@ -11,6 +11,44 @@ ref, path, remote, and user-supplied values are validated at the protocol and
 worker boundaries. Potentially large histories, file lists, messages, and
 patches are bounded or paginated.
 
+## Shared Diff V2
+
+Working changes, commit inspection, comparisons, stashes, reviewed Git
+operations, file history, and GitHub pull request files use one diff surface.
+It supports unified and split layouts, syntax-aware text, word-level replacement
+highlights, whitespace-only filtering, next/previous hunk navigation, copy-path
+and copy-patch actions, and opening the selected file in Cantrip or GitHub.
+Renames retain both paths instead of presenting the destination as an unrelated
+file.
+
+Omitted unchanged ranges can be expanded in worker-backed single-file diffs.
+Expansion re-fetches the authoritative patch with a larger bounded context
+rather than manufacturing lines in the browser. Raster image revisions up to
+2 MB are transported as bounded previews; larger images and other binary files
+show explicit metadata states. Hosted pull request images use their bounded raw
+file URL when GitHub supplies one.
+
+Pull request reviews add line-range selection and comment navigation to the
+same surface. Select a line, then Shift-click another line on the same side to
+create a multi-line review range. Right-side selections can seed a GitHub
+suggested-change block before the comment is submitted.
+
+Manual QA:
+
+1. Open the same text change from Working changes, a commit, a comparison, a
+   stash, file history, and a pull request; toggle unified/split and whitespace
+   modes and confirm the content remains consistent.
+2. Use next/previous change controls across a multi-hunk patch, expand an
+   omitted range, and confirm the new context comes from the selected worker.
+3. Inspect an added, deleted, renamed, binary, small image, and image larger
+   than 2 MB; confirm each side and bounded state is explicit.
+4. Copy the path and patch, then open a working-copy file in Cantrip and a pull
+   request file on GitHub.
+5. In a pull request, select one line and a Shift-clicked range, navigate known
+   comment markers, and submit a normal comment and a suggested change.
+6. Disconnect the selected worktree's worker while expanding context and
+   confirm the operation fails without falling back to another checkout.
+
 ## Commit inspection
 
 Click any commit row in a History tab to open its inspector. It includes the
@@ -19,7 +57,7 @@ signature state, refs, parent and child navigation, aggregate change stats,
 and the files changed relative to the selected parent. Merge commits allow a
 different parent to be selected; root commits compare against the empty tree.
 File patches are fetched lazily through the reusable revision-diff endpoint,
-and use the same side-by-side viewer as working-copy changes. Renames, deleted
+and use the same shared viewer as working-copy changes. Renames, deleted
 files, binary files, and truncated messages, file lists, or patches are marked
 explicitly.
 

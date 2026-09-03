@@ -43,7 +43,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-import { GitPatchView } from "./git-patch-view";
+import { GitPatchView, gitDiffImagePreviewFromUrl } from "./git-patch-view";
 import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
 import {
   GitMobileInspectorClose,
@@ -392,6 +392,9 @@ export function PullRequestFiles({
     line: number;
     path: string;
     side: "LEFT" | "RIGHT";
+    selectedText: string;
+    startLine: number | null;
+    startSide: "LEFT" | "RIGHT" | null;
   } | null>(null);
   const [commentBody, setCommentBody] = useState("");
   const selected = selectedPath
@@ -428,8 +431,8 @@ export function PullRequestFiles({
                   path: commentTarget.path,
                   line: commentTarget.line,
                   side: commentTarget.side,
-                  startLine: null,
-                  startSide: null,
+                  startLine: commentTarget.startLine,
+                  startSide: commentTarget.startSide,
                 },
               });
               setCommentBody("");
@@ -441,8 +444,11 @@ export function PullRequestFiles({
         >
           <div className="min-w-0 flex-1">
             <p className="mb-1 font-mono text-[10px] text-muted-foreground">
-              {commentTarget.path}:{commentTarget.line} ·{" "}
-              {commentTarget.side.toLowerCase()} side
+              {commentTarget.path}:
+              {commentTarget.startLine
+                ? `${commentTarget.startLine}-${commentTarget.line}`
+                : commentTarget.line}{" "}
+              · {commentTarget.side.toLowerCase()} side
             </p>
             <textarea
               autoFocus
@@ -451,6 +457,21 @@ export function PullRequestFiles({
               value={commentBody}
               onChange={(event) => setCommentBody(event.target.value)}
             />
+            {commentTarget.side === "RIGHT" ? (
+              <Button
+                className="mt-1 h-7 text-[10px]"
+                onClick={() =>
+                  setCommentBody(
+                    `\`\`\`suggestion\n${commentTarget.selectedText}\n\`\`\``,
+                  )
+                }
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Add suggested change
+              </Button>
+            ) : null}
             {error ? (
               <p className="mt-1 text-xs text-destructive">
                 {error instanceof Error
@@ -510,15 +531,34 @@ export function PullRequestFiles({
         </div>
         {selected ? (
           <GitPatchView
+            binary={selected.patch === null}
+            commentTargets={detail.reviewThreads.flatMap((thread) =>
+              thread.path === selected.path && thread.line && thread.side
+                ? [{ line: thread.line, side: thread.side }]
+                : [],
+            )}
             error={null}
             loading={false}
+            newFile={
+              gitDiffImagePreviewFromUrl(selected.path, selected.rawUrl) ??
+              (selected.patch === null
+                ? {
+                    kind: "binary",
+                    size: null,
+                    mimeType: null,
+                    base64: null,
+                    truncated: false,
+                  }
+                : undefined)
+            }
             newLabel={selected.path}
             oldLabel={selected.previousPath ?? selected.path}
             onClose={() => setFilePickerOpen(true)}
-            onCommentLine={(line, side) => {
-              setCommentTarget({ line, side, path: selected.path });
+            onCommentRange={(selection) => {
+              setCommentTarget({ ...selection, path: selected.path });
               setCommentBody("");
             }}
+            openFileUrl={selected.blobUrl}
             originalPath={selected.previousPath}
             patch={selected.patch ?? undefined}
             path={selected.path}

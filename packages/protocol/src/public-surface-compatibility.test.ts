@@ -21,6 +21,7 @@ import type {
   ExecutionTarget,
   ExternalChatTranscript,
   GitHistory,
+  GitDiffFileSide,
   GitManagedOperationResponse,
   GithubInboxList,
   GithubPullRequestDetail,
@@ -58,8 +59,8 @@ describe("protocol public surface compatibility", () => {
   it("keeps the root runtime export surface stable", () => {
     const exportNames = Object.keys(protocol).sort();
 
-    expect(exportNames).toHaveLength(1_850);
-    expect(stableFingerprint(exportNames)).toBe("93f4f3983ccaa574:60648");
+    expect(exportNames).toHaveLength(1_852);
+    expect(stableFingerprint(exportNames)).toBe("1cdee79f2282f723:60700");
   });
 
   it("keeps worker discriminators stable and ordered", () => {
@@ -95,6 +96,7 @@ describe("protocol public surface compatibility", () => {
     expectTypeOf<GithubPullRequestDetail>().not.toBeNever();
     expectTypeOf<GithubInboxList>().not.toBeNever();
     expectTypeOf<GitHistory>().not.toBeNever();
+    expectTypeOf<GitDiffFileSide>().not.toBeNever();
     expectTypeOf<GitManagedOperationResponse>().not.toBeNever();
     expectTypeOf<WorktreeInventory>().not.toBeNever();
     expectTypeOf<ChatSummary>().not.toBeNever();

@@ -4,7 +4,6 @@ import type {
   GitPartialPatchRequest,
 } from "@cantrip/protocol";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckSquare2, Loader2, Square, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,6 @@ import {
   applyProjectWorktreePartialPatch,
   previewProjectWorktreePartialPatch,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
 import {
@@ -113,6 +111,8 @@ export function GitPartialPatchView({
   error,
   loading,
   onClose,
+  onContextLinesChange,
+  onOpenFile,
   path,
   projectId,
   scope,
@@ -122,6 +122,8 @@ export function GitPartialPatchView({
   error: unknown;
   loading: boolean;
   onClose(): void;
+  onContextLinesChange?(contextLines: number): void;
+  onOpenFile?(): void;
   path: string;
   projectId: string;
   scope: "unstaged" | "staged";
@@ -170,10 +172,8 @@ export function GitPartialPatchView({
       ).length,
     0,
   );
-  const toggleHunk = (hunk: SelectablePatchHunk) => {
-    const keys = hunk.lines
-      .filter(({ kind }) => kind === "add" || kind === "delete")
-      .map(({ index }) => `${hunk.index}:${index}`);
+  const toggleHunk = (hunkIndex: number, lineIndexes: number[]) => {
+    const keys = lineIndexes.map((lineIndex) => `${hunkIndex}:${lineIndex}`);
     const all = keys.length > 0 && keys.every((key) => selected.has(key));
     setSelected((current) => {
       const next = new Set(current);
@@ -196,116 +196,44 @@ export function GitPartialPatchView({
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-8 md:hidden"
-          onClick={onClose}
-        >
-          <ArrowLeft className="size-4" />
-        </Button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-mono text-xs font-medium">{path}</p>
-          <p className="text-[10px] text-muted-foreground">
-            Select changed lines or whole hunks · {scope}
-          </p>
-        </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="hidden size-8 md:inline-flex"
-          onClick={onClose}
-        >
-          <X className="size-4" />
-        </Button>
-      </div>
-      {loading ? (
-        <div className="grid flex-1 place-items-center">
-          <Loader2 className="size-5 animate-spin" />
-        </div>
-      ) : error ? (
-        <div className="grid flex-1 place-items-center p-6 text-sm text-destructive">
-          {error instanceof Error ? error.message : "Diff could not be loaded."}
-        </div>
-      ) : unavailableReason ? (
-        <div className="grid flex-1 place-items-center p-6 text-sm text-amber-600">
+      <GitPatchView
+        binary={diff?.binary}
+        error={error}
+        lineSelection={
+          unavailableReason || hunks.length === 0
+            ? undefined
+            : {
+                selected,
+                onToggleHunk: toggleHunk,
+                onToggleLine: (hunkIndex, lineIndex) => {
+                  const key = `${hunkIndex}:${lineIndex}`;
+                  setSelected((current) => {
+                    const next = new Set(current);
+                    next.has(key) ? next.delete(key) : next.add(key);
+                    return next;
+                  });
+                },
+              }
+        }
+        loading={loading}
+        newFile={diff?.newFile}
+        newLabel={scope === "staged" ? "Index" : "Working tree"}
+        oldFile={diff?.oldFile}
+        oldLabel={scope === "staged" ? "HEAD" : "Index"}
+        onClose={onClose}
+        onContextLinesChange={onContextLinesChange}
+        onOpenFile={onOpenFile}
+        originalPath={diff?.originalPath}
+        patch={diff?.patch}
+        path={path}
+        subtitle={`Select changed lines or whole hunks · ${scope}`}
+        truncated={diff?.truncated ?? false}
+      />
+      {unavailableReason ? (
+        <p className="shrink-0 border-t bg-amber-500/10 px-3 py-2 text-[10px] text-amber-700 dark:text-amber-300">
           {unavailableReason}
-        </div>
-      ) : hunks.length === 0 ? (
-        <div className="grid flex-1 place-items-center p-6 text-center text-sm text-muted-foreground">
-          This binary, rename-only, or mode-only change has no selectable text
-          hunks. Use the file-level action.
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-5">
-          {hunks.map((hunk) => {
-            const changed = hunk.lines.filter(
-              ({ kind }) => kind === "add" || kind === "delete",
-            );
-            const all =
-              changed.length > 0 &&
-              changed.every(({ index }) =>
-                selected.has(`${hunk.index}:${index}`),
-              );
-            return (
-              <div
-                key={hunk.index}
-                className="mb-3 overflow-hidden rounded-lg bg-muted/20"
-              >
-                <button
-                  type="button"
-                  className="flex h-8 w-full items-center gap-2 bg-blue-500/10 px-2 text-left text-blue-700 dark:text-blue-300"
-                  onClick={() => toggleHunk(hunk)}
-                >
-                  {all ? (
-                    <CheckSquare2 className="size-3.5" />
-                  ) : (
-                    <Square className="size-3.5" />
-                  )}
-                  <span className="truncate">{hunk.header}</span>
-                </button>
-                {hunk.lines.map((line) => {
-                  const selectable =
-                    line.kind === "add" || line.kind === "delete";
-                  const key = `${hunk.index}:${line.index}`;
-                  return (
-                    <button
-                      key={line.index}
-                      type="button"
-                      disabled={!selectable}
-                      className={cn(
-                        "flex min-h-5 w-full items-start gap-2 px-2 text-left whitespace-pre",
-                        line.kind === "add" && "bg-emerald-500/10",
-                        line.kind === "delete" && "bg-red-500/10",
-                        selectable && "hover:brightness-110",
-                      )}
-                      onClick={() =>
-                        setSelected((current) => {
-                          const next = new Set(current);
-                          next.has(key) ? next.delete(key) : next.add(key);
-                          return next;
-                        })
-                      }
-                    >
-                      <span className="mt-0.5 w-3 shrink-0">
-                        {selectable ? (
-                          selected.has(key) ? (
-                            <CheckSquare2 className="size-3" />
-                          ) : (
-                            <Square className="size-3" />
-                          )
-                        ) : null}
-                      </span>
-                      <span>{line.text || " "}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      )}
+        </p>
+      ) : null}
       <div className="flex shrink-0 items-center gap-2 border-t p-2">
         <span className="mr-auto text-[10px] text-muted-foreground">
           {changedLineCount} changed lines selected

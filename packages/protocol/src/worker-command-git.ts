@@ -9,6 +9,7 @@ import {
   gitCommitSearchQuerySchema,
   gitRecoveryActionSchema,
   gitRecoveryApplySchema,
+  gitDiffContextLinesSchema,
   gitDiffScopeSchema,
   gitPartialPatchRequestSchema,
   gitPartialPatchApplySchema,
@@ -150,6 +151,7 @@ export const workerGitCommandSchemas = [
       .regex(/^[0-9a-f]{40,64}$/u)
       .nullable(),
     path: gitRelativePathSchema,
+    contextLines: gitDiffContextLinesSchema.default(3),
   }),
   z.object({
     type: z.literal("git.status"),
@@ -160,6 +162,7 @@ export const workerGitCommandSchemas = [
     cwd: z.string().min(1),
     path: gitRelativePathSchema,
     scope: gitDiffScopeSchema,
+    contextLines: gitDiffContextLinesSchema.default(3),
   }),
   z.object({
     type: z.literal("git.patch.preview"),
@@ -186,6 +189,7 @@ export const workerGitCommandSchemas = [
     cwd: z.string().min(1).max(8_192),
     hash: z.string().regex(/^[0-9a-f]{40,64}$/u),
     path: gitRelativePathSchema,
+    contextLines: gitDiffContextLinesSchema.default(3),
   }),
   z.object({
     type: z.literal("git.stash.action.preview"),

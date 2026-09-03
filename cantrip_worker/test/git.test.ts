@@ -3672,6 +3672,82 @@ describe("Git history", () => {
     ).rejects.toThrow("Invalid Git diff path");
   });
 
+  it("returns bounded image sides and configurable unchanged context", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    const beforeImage = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const afterImage = Buffer.concat([beforeImage, Buffer.from([0])]);
+    const textPath = path.join(directory, "lines.txt");
+    await writeFile(path.join(directory, "image.png"), beforeImage);
+    await writeFile(
+      textPath,
+      Array.from({ length: 12 }, (_, index) => `line-${index + 1}`).join("\n") +
+        "\n",
+    );
+    await execFileAsync("git", ["-C", directory, "add", "."]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+
+    await writeFile(path.join(directory, "image.png"), afterImage);
+    await writeFile(
+      textPath,
+      Array.from({ length: 12 }, (_, index) =>
+        index === 5 ? "changed" : `line-${index + 1}`,
+      ).join("\n") + "\n",
+    );
+
+    const imageDiff = await readGitFileDiff(directory, "image.png", "unstaged");
+    expect(imageDiff).toMatchObject({
+      binary: true,
+      oldFile: {
+        kind: "image",
+        mimeType: "image/png",
+        size: beforeImage.length,
+        truncated: false,
+      },
+      newFile: {
+        kind: "image",
+        mimeType: "image/png",
+        size: afterImage.length,
+        truncated: false,
+      },
+    });
+    expect(imageDiff.oldFile?.base64).toBe(beforeImage.toString("base64"));
+    expect(imageDiff.newFile?.base64).toBe(afterImage.toString("base64"));
+
+    const compact = await readGitFileDiff(
+      directory,
+      "lines.txt",
+      "unstaged",
+      0,
+    );
+    const expanded = await readGitFileDiff(
+      directory,
+      "lines.txt",
+      "unstaged",
+      3,
+    );
+    expect(compact.patch.split("\n")).not.toContain(" line-5");
+    expect(expanded.patch.split("\n")).toContain(" line-5");
+  });
+
   it("treats discarded filenames as literals instead of Git pathspecs", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-git-test-"));
     directories.push(directory);

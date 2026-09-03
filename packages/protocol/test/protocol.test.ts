@@ -5270,14 +5270,30 @@ describe("Cantrip protocol", () => {
         cwd: "/workspace/Cantrip",
         path: "src/app.ts",
         scope: "unstaged",
-      }).type,
-    ).toBe("git.diff");
+      }),
+    ).toMatchObject({ type: "git.diff", contextLines: 3 });
+    expect(
+      workerCommandSchema.safeParse({
+        type: "git.diff",
+        cwd: "/workspace/Cantrip",
+        path: "src/app.ts",
+        scope: "unstaged",
+        contextLines: 1_001,
+      }).success,
+    ).toBe(false);
     expect(
       gitFileDiffSchema.parse({
         path: "src/app.ts",
         scope: "staged",
         patch: "@@ -1 +1 @@",
         truncated: false,
+        oldFile: {
+          kind: "image",
+          size: 42,
+          mimeType: "image/png",
+          base64: "cG5n",
+          truncated: false,
+        },
       }).scope,
     ).toBe("staged");
   });

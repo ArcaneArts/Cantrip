@@ -65,6 +65,7 @@ export function installProjectWorktreeGitHistoryAndGraphRoutes(
           cwd: context.worktree.path,
           path: filePath,
           scope: scope.data,
+          contextLines: 3,
         });
         return reply.send(gitFileDiffSchema.parse(result));
       } catch (error) {

@@ -207,6 +207,7 @@ export function GitComparisonPanel({
   left,
   onClose,
   onLeftChange,
+  onOpenFile,
   onRightChange,
   projectId,
   right,
@@ -215,12 +216,14 @@ export function GitComparisonPanel({
   left: string | null;
   onClose(): void;
   onLeftChange(revision: string): void;
+  onOpenFile?(path: string): void;
   onRightChange(revision: string): void;
   projectId: string;
   right: string | null;
   worktreeId: string;
 }) {
   const [mode, setMode] = useState<GitComparisonMode>("direct");
+  const [diffContextLines, setDiffContextLines] = useState(3);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const refs = useQuery({
@@ -237,7 +240,10 @@ export function GitComparisonPanel({
       refs.data[0];
     if (!left && current) onLeftChange(current.revision);
   }, [left, onLeftChange, refs.data]);
-  useEffect(() => setSelectedPath(null), [left, mode, right]);
+  useEffect(() => {
+    setSelectedPath(null);
+    setDiffContextLines(3);
+  }, [left, mode, right]);
   const comparison = useQuery({
     enabled: Boolean(left && right),
     queryFn: () =>
@@ -256,6 +262,7 @@ export function GitComparisonPanel({
         comparison.data!.right,
         comparison.data!.diffBase,
         selectedFile!.path,
+        diffContextLines,
       ),
     queryKey: [
       "worktree-comparison-diff",
@@ -264,6 +271,7 @@ export function GitComparisonPanel({
       comparison.data?.right,
       comparison.data?.diffBase,
       selectedFile?.path,
+      diffContextLines,
     ],
   });
   const candidates = refs.data ?? [];
@@ -525,6 +533,7 @@ export function GitComparisonPanel({
         <GitPatchView
           error={fileDiff.error}
           loading={fileDiff.isLoading}
+          newFile={fileDiff.data?.newFile}
           newLabel={`B · ${comparison.data?.right.slice(0, 10) ?? "target"}`}
           oldLabel={
             mode === "direct"
@@ -532,11 +541,19 @@ export function GitComparisonPanel({
               : `Merge base · ${comparison.data?.diffBase.slice(0, 10) ?? "base"}`
           }
           onClose={() => setSelectedPath(null)}
+          onContextLinesChange={setDiffContextLines}
+          onOpenFile={
+            onOpenFile && selectedFile?.status !== "deleted"
+              ? () => onOpenFile(selectedPath)
+              : undefined
+          }
+          oldFile={fileDiff.data?.oldFile}
           originalPath={selectedFile?.originalPath}
           patch={fileDiff.data?.patch}
           path={selectedPath}
           subtitle={comparisonDirectionLabel(mode)}
           truncated={fileDiff.data?.truncated ?? false}
+          binary={fileDiff.data?.binary ?? selectedFile?.binary}
         />
       ) : null}
       <GitAgentDraftDialog

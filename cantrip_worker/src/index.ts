@@ -3232,11 +3232,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.revision,
           command.baseRevision,
           command.path,
+          command.contextLines,
         );
       case "git.status":
         return readGitStatus(command.cwd);
       case "git.diff":
-        return readGitFileDiff(command.cwd, command.path, command.scope);
+        return readGitFileDiff(
+          command.cwd,
+          command.path,
+          command.scope,
+          command.contextLines,
+        );
       case "git.patch.preview":
         return previewGitPartialPatch(command.cwd, command.request);
       case "git.patch.apply":
@@ -3250,7 +3256,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "git.stash.create":
         return createGitStash(command.cwd, command.request);
       case "git.stash.diff":
-        return readGitStashFileDiff(command.cwd, command.hash, command.path);
+        return readGitStashFileDiff(
+          command.cwd,
+          command.hash,
+          command.path,
+          command.contextLines,
+        );
       case "git.stash.action.preview":
         return previewGitStashAction(command.cwd, command.action);
       case "git.stash.action.apply":

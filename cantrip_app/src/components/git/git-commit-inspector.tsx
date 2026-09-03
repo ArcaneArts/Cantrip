@@ -370,6 +370,7 @@ export function GitCommitInspector({
   onAction,
   onClose,
   onNavigate,
+  onOpenFile,
   onViewInGraph,
   projectId,
   revision,
@@ -379,16 +380,19 @@ export function GitCommitInspector({
   onAction(request: CommitActionRequest): void;
   onClose(): void;
   onNavigate(revision: string): void;
+  onOpenFile?(path: string): void;
   onViewInGraph?(revision: string): void;
   projectId: string;
   revision: string;
   worktreeId: string;
 }) {
   const [parentIndex, setParentIndex] = useState(0);
+  const [diffContextLines, setDiffContextLines] = useState(3);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   useEffect(() => {
     setParentIndex(0);
     setSelectedPath(null);
+    setDiffContextLines(3);
   }, [revision, worktreeId]);
   const detail = useQuery({
     queryFn: () =>
@@ -424,6 +428,7 @@ export function GitCommitInspector({
         detail.data!.hash,
         detail.data!.baseHash,
         selectedFile!.path,
+        diffContextLines,
       ),
     queryKey: [
       "worktree-revision-diff",
@@ -432,6 +437,7 @@ export function GitCommitInspector({
       detail.data?.hash,
       detail.data?.baseHash,
       selectedFile?.path,
+      diffContextLines,
     ],
   });
 
@@ -508,14 +514,23 @@ export function GitCommitInspector({
         <GitPatchView
           error={fileDiff.error}
           loading={fileDiff.isLoading}
+          newFile={fileDiff.data?.newFile}
           newLabel={detail.data?.shortHash ?? "Commit"}
           oldLabel={detail.data?.baseHash?.slice(0, 10) ?? "Empty tree"}
           onClose={() => setSelectedPath(null)}
+          onContextLinesChange={setDiffContextLines}
+          onOpenFile={
+            onOpenFile && selectedFile?.status !== "deleted"
+              ? () => onOpenFile(selectedPath)
+              : undefined
+          }
+          oldFile={fileDiff.data?.oldFile}
           originalPath={selectedFile?.originalPath}
           patch={fileDiff.data?.patch}
           path={selectedPath}
           subtitle={`${commitFileStatusLabel(selectedFile?.status ?? "unknown")} · revision patch`}
           truncated={fileDiff.data?.truncated ?? false}
+          binary={fileDiff.data?.binary ?? selectedFile?.binary}
         />
       ) : null}
     </aside>

@@ -232,6 +232,7 @@ export function installProjectWorktreeGitRevisionAndPatchRoutes(
           revision: request.params.revision,
           baseRevision: base ?? null,
           path: parsedPath.data,
+          contextLines: 3,
         });
         return reply.send(gitRevisionFileDiffSchema.parse(diff));
       } catch (error) {

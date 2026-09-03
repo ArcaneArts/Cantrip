@@ -257,18 +257,21 @@ function ChangeTree({
 
 export function GitChangesPanel({
   onClose,
+  onOpenFile,
   projectId,
   status,
   worktreeId,
   worktreeName,
 }: {
   onClose(): void;
+  onOpenFile?(path: string): void;
   projectId: string;
   status: GitStatus;
   worktreeId: string;
   worktreeName: string;
 }) {
   const queryClient = useQueryClient();
+  const [diffContextLines, setDiffContextLines] = useState(3);
   const [commitMessage, setCommitMessage] = useState("");
   const [discardTarget, setDiscardTarget] = useState<
     GitFileChange | "all" | null
@@ -346,6 +349,7 @@ export function GitChangesPanel({
       worktreeId,
       selected?.path,
       selected?.scope,
+      diffContextLines,
     ],
     queryFn: () => {
       if (!selected) throw new Error("No changed file is selected.");
@@ -354,9 +358,14 @@ export function GitChangesPanel({
         worktreeId,
         selected.path,
         selected.scope,
+        diffContextLines,
       );
     },
   });
+
+  useEffect(() => {
+    setDiffContextLines(3);
+  }, [selected?.path, selected?.scope]);
 
   useEffect(() => {
     if (
@@ -421,6 +430,10 @@ export function GitChangesPanel({
             error={diff.error}
             loading={diff.isLoading}
             onClose={() => setSelected(null)}
+            onContextLinesChange={setDiffContextLines}
+            onOpenFile={
+              onOpenFile ? () => onOpenFile(selected.path) : undefined
+            }
             projectId={projectId}
             worktreeId={worktreeId}
           />

@@ -2995,12 +2995,13 @@ export async function getProjectWorktreeFileDiff(
   worktreeId: string,
   path: string,
   scope: GitDiffScope,
+  contextLines = 3,
 ) {
   return runProtectedRepositoryOperation({
     projectId,
     worktreeId,
     type: "git.diff",
-    arguments: { path, scope },
+    arguments: { contextLines, path, scope },
     resultSchema: gitFileDiffSchema,
   });
 }
@@ -3290,12 +3291,13 @@ export async function getProjectWorktreeRevisionDiff(
   revision: string,
   baseRevision: string | null,
   path: string,
+  contextLines = 3,
 ) {
   return runProtectedRepositoryOperation({
     projectId,
     worktreeId,
     type: "git.revision.diff",
-    arguments: { revision, baseRevision, path },
+    arguments: { revision, baseRevision, path, contextLines },
     resultSchema: gitRevisionFileDiffSchema,
   });
 }
@@ -3841,12 +3843,13 @@ export async function getProjectWorktreeStashFileDiff(
   worktreeId: string,
   hash: string,
   path: string,
+  contextLines = 3,
 ) {
   return runProtectedRepositoryOperation({
     projectId,
     worktreeId,
     type: "git.stash.diff",
-    arguments: { hash, path },
+    arguments: { hash, path, contextLines },
     resultSchema: gitStashFileDiffSchema,
   });
 }
