@@ -312,6 +312,12 @@ function pullRequestDetailFixture(number: number) {
     headSha: "4".repeat(40),
     baseRef: "main",
     baseSha: "3".repeat(40),
+    nodeId: `PR_${number}`,
+    viewerLogin: "cantrip-test",
+    pendingReview: null,
+    autoMerge: null,
+    mergeQueueEnabled: true,
+    mergeQueueEntry: null,
     comments: [],
     commentsTruncated: false,
     requestedReviewers: ["reviewer"],
@@ -670,6 +676,7 @@ const workerBridge = {
       case "github.pull-request.review.submit":
       case "github.pull-request.review.comment":
       case "github.pull-request.review.reply":
+      case "github.pull-request.review.mutate":
         pullRequestReviewCommands.push(command);
         return pullRequestDetailFixture(command.number);
       case "github.pull-request.lifecycle.preview": {
@@ -3290,23 +3297,28 @@ describe("local server foundation", () => {
     }
     expect(pullRequestReviewCommands.slice(-4)).toMatchObject([
       {
-        type: "github.pull-request.comment",
+        type: "github.pull-request.review.mutate",
         cwd: primaryWorktree!.path,
         number: 44,
-        body: "General feedback",
+        action: { type: "comment", body: "General feedback" },
       },
       {
-        type: "github.pull-request.review.submit",
-        review: { event: "approve", body: "Looks good" },
+        type: "github.pull-request.review.mutate",
+        action: {
+          type: "submit-review",
+          review: { event: "approve", body: "Looks good" },
+        },
       },
       {
-        type: "github.pull-request.review.comment",
-        comment: { path: "src/review.ts", line: 12, side: "RIGHT" },
+        type: "github.pull-request.review.mutate",
+        action: {
+          type: "inline-comment",
+          comment: { path: "src/review.ts", line: 12, side: "RIGHT" },
+        },
       },
       {
-        type: "github.pull-request.review.reply",
-        commentId: 99,
-        body: "Updated.",
+        type: "github.pull-request.review.mutate",
+        action: { type: "reply", commentId: 99, body: "Updated." },
       },
     ]);
     expect(

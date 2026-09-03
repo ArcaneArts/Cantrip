@@ -81,6 +81,7 @@ import {
   type GithubPullRequestList,
   type GithubPullRequestOverview,
   type GithubPullRequestReview,
+  type GithubPullRequestReviewAction,
   type GithubPullRequestReviewComment,
   type GithubPullRequestReviewSubmit,
   type GithubPullRequestReviewThread,
@@ -488,6 +489,7 @@ interface GithubApiPullRequest extends GithubApiIssue {
   mergeable_state?: unknown;
   merged?: unknown;
   merged_at?: unknown;
+  node_id?: unknown;
   requested_reviewers?: unknown;
 }
 
@@ -537,6 +539,80 @@ interface GithubGraphqlSearchResponse {
   };
 }
 
+interface GithubGraphqlPullRequestReviewCommentNode {
+  author?: { login?: unknown } | null;
+  body?: unknown;
+  createdAt?: unknown;
+  databaseId?: unknown;
+  diffHunk?: unknown;
+  line?: unknown;
+  path?: unknown;
+  pullRequestReview?: {
+    databaseId?: unknown;
+    id?: unknown;
+    state?: unknown;
+  } | null;
+  replyTo?: { databaseId?: unknown } | null;
+  startLine?: unknown;
+  updatedAt?: unknown;
+  url?: unknown;
+}
+
+interface GithubGraphqlPullRequestReviewThreadNode {
+  comments?: GithubGraphqlConnection<GithubGraphqlPullRequestReviewCommentNode>;
+  diffSide?: unknown;
+  id?: unknown;
+  isOutdated?: unknown;
+  isResolved?: unknown;
+  line?: unknown;
+  path?: unknown;
+  startDiffSide?: unknown;
+  startLine?: unknown;
+  viewerCanResolve?: unknown;
+  viewerCanUnresolve?: unknown;
+}
+
+interface GithubGraphqlPullRequestReviewContextResponse {
+  data?: {
+    repository?: {
+      pullRequest?: {
+        autoMergeRequest?: {
+          enabledAt?: unknown;
+          mergeMethod?: unknown;
+        } | null;
+        id?: unknown;
+        isMergeQueueEnabled?: unknown;
+        mergeQueueEntry?: {
+          id?: unknown;
+          position?: unknown;
+          state?: unknown;
+        } | null;
+        reviews?: GithubGraphqlConnection<{
+          author?: { login?: unknown } | null;
+          comments?: { totalCount?: unknown };
+          id?: unknown;
+          state?: unknown;
+        }>;
+        reviewThreads?: GithubGraphqlConnection<GithubGraphqlPullRequestReviewThreadNode>;
+      } | null;
+    } | null;
+    viewer?: { login?: unknown } | null;
+  };
+}
+
+interface GithubGraphqlPullRequestFileStateResponse {
+  data?: {
+    repository?: {
+      pullRequest?: {
+        files?: GithubGraphqlConnection<{
+          path?: unknown;
+          viewerViewedState?: unknown;
+        }>;
+      } | null;
+    } | null;
+  };
+}
+
 const GITHUB_LIST_SEARCH_QUERY = `
   query CantripGithubList($search: String!, $first: Int!, $after: String) {
     search(type: ISSUE, query: $search, first: $first, after: $after) {
@@ -566,6 +642,192 @@ const GITHUB_LIST_SEARCH_QUERY = `
           }
         }
       }
+    }
+  }
+`;
+
+const GITHUB_PULL_REQUEST_REVIEW_CONTEXT_QUERY = `
+  query CantripPullRequestReviewContext(
+    $owner: String!
+    $repository: String!
+    $number: Int!
+  ) {
+    viewer { login }
+    repository(owner: $owner, name: $repository) {
+      pullRequest(number: $number) {
+        id
+        isMergeQueueEnabled
+        autoMergeRequest { enabledAt mergeMethod }
+        mergeQueueEntry { id position state }
+        reviews(last: 20, states: [PENDING]) {
+          nodes { id state author { login } comments { totalCount } }
+        }
+        reviewThreads(first: 100) {
+          totalCount
+          nodes {
+            id path line startLine diffSide startDiffSide
+            isResolved isOutdated viewerCanResolve viewerCanUnresolve
+            comments(first: 100) {
+              totalCount
+              nodes {
+                databaseId author { login } body url path line startLine
+                diffHunk createdAt updatedAt replyTo { databaseId }
+                pullRequestReview { databaseId id state }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const GITHUB_PULL_REQUEST_FILE_STATES_QUERY = `
+  query CantripPullRequestFileStates(
+    $owner: String!
+    $repository: String!
+    $number: Int!
+  ) {
+    repository(owner: $owner, name: $repository) {
+      pullRequest(number: $number) {
+        files(first: 100) { nodes { path viewerViewedState } }
+      }
+    }
+  }
+`;
+
+const GITHUB_CREATE_PENDING_REVIEW_MUTATION = `
+  mutation CantripCreatePendingReview($pullRequestId: ID!, $head: GitObjectID!) {
+    addPullRequestReview(input: {
+      pullRequestId: $pullRequestId
+      commitOID: $head
+    }) { pullRequestReview { id } }
+  }
+`;
+
+const GITHUB_ADD_PENDING_REVIEW_THREAD_MUTATION = `
+  mutation CantripAddPendingReviewThread(
+    $reviewId: ID!
+    $body: String!
+    $path: String!
+    $line: Int!
+    $side: DiffSide!
+    $startLine: Int
+    $startSide: DiffSide
+  ) {
+    addPullRequestReviewThread(input: {
+      pullRequestReviewId: $reviewId
+      body: $body
+      path: $path
+      line: $line
+      side: $side
+      startLine: $startLine
+      startSide: $startSide
+    }) { thread { id } }
+  }
+`;
+
+const GITHUB_SUBMIT_PENDING_REVIEW_MUTATION = `
+  mutation CantripSubmitPendingReview(
+    $reviewId: ID!
+    $event: PullRequestReviewEvent!
+    $body: String
+  ) {
+    submitPullRequestReview(input: {
+      pullRequestReviewId: $reviewId
+      event: $event
+      body: $body
+    }) { pullRequestReview { id state } }
+  }
+`;
+
+const GITHUB_DELETE_PENDING_REVIEW_MUTATION = `
+  mutation CantripDeletePendingReview($reviewId: ID!) {
+    deletePullRequestReview(input: { pullRequestReviewId: $reviewId }) {
+      pullRequestReview { id }
+    }
+  }
+`;
+
+const GITHUB_SET_REVIEW_THREAD_RESOLVED_MUTATION = `
+  mutation CantripSetReviewThreadResolved($threadId: ID!) {
+    resolveReviewThread(input: { threadId: $threadId }) {
+      thread { id isResolved }
+    }
+  }
+`;
+
+const GITHUB_SET_REVIEW_THREAD_UNRESOLVED_MUTATION = `
+  mutation CantripSetReviewThreadUnresolved($threadId: ID!) {
+    unresolveReviewThread(input: { threadId: $threadId }) {
+      thread { id isResolved }
+    }
+  }
+`;
+
+const GITHUB_MARK_FILE_VIEWED_MUTATION = `
+  mutation CantripMarkFileViewed($pullRequestId: ID!, $path: String!) {
+    markFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+      pullRequest { id }
+    }
+  }
+`;
+
+const GITHUB_UNMARK_FILE_VIEWED_MUTATION = `
+  mutation CantripUnmarkFileViewed($pullRequestId: ID!, $path: String!) {
+    unmarkFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+      pullRequest { id }
+    }
+  }
+`;
+
+const GITHUB_CONVERT_PULL_REQUEST_TO_DRAFT_MUTATION = `
+  mutation CantripConvertPullRequestToDraft($pullRequestId: ID!) {
+    convertPullRequestToDraft(input: { pullRequestId: $pullRequestId }) {
+      pullRequest { id isDraft }
+    }
+  }
+`;
+
+const GITHUB_ENABLE_AUTO_MERGE_MUTATION = `
+  mutation CantripEnableAutoMerge(
+    $pullRequestId: ID!
+    $head: GitObjectID!
+    $method: PullRequestMergeMethod!
+    $title: String
+    $body: String
+  ) {
+    enablePullRequestAutoMerge(input: {
+      pullRequestId: $pullRequestId
+      expectedHeadOid: $head
+      mergeMethod: $method
+      commitHeadline: $title
+      commitBody: $body
+    }) { pullRequest { id } }
+  }
+`;
+
+const GITHUB_DISABLE_AUTO_MERGE_MUTATION = `
+  mutation CantripDisableAutoMerge($pullRequestId: ID!) {
+    disablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId }) {
+      pullRequest { id }
+    }
+  }
+`;
+
+const GITHUB_ENQUEUE_PULL_REQUEST_MUTATION = `
+  mutation CantripEnqueuePullRequest($pullRequestId: ID!, $head: GitObjectID!) {
+    enqueuePullRequest(input: {
+      pullRequestId: $pullRequestId
+      expectedHeadOid: $head
+    }) { mergeQueueEntry { id } }
+  }
+`;
+
+const GITHUB_DEQUEUE_PULL_REQUEST_MUTATION = `
+  mutation CantripDequeuePullRequest($pullRequestId: ID!) {
+    dequeuePullRequest(input: { pullRequestId: $pullRequestId }) {
+      mergeQueueEntry { id }
     }
   }
 `;
@@ -1178,6 +1440,7 @@ function parsePullRequestFile(value: GithubApiPullRequestFile) {
     rawUrl: nullableUrl(value.raw_url),
     patch: rawPatch?.slice(0, 1_000_000) ?? null,
     patchTruncated: rawPatch !== null && rawPatch.length > 1_000_000,
+    viewed: null,
   };
 }
 
@@ -1291,7 +1554,178 @@ function parsePullRequestReviewComment(
     inReplyToId: nullablePositiveInteger(value.in_reply_to_id),
     createdAt: String(value.created_at),
     updatedAt: String(value.updated_at),
+    pending: false,
   };
+}
+
+interface PullRequestReviewContext {
+  autoMerge: GithubPullRequestOverview["autoMerge"];
+  mergeQueueEnabled: boolean;
+  mergeQueueEntry: GithubPullRequestOverview["mergeQueueEntry"];
+  nodeId: string;
+  pendingReview: GithubPullRequestOverview["pendingReview"];
+  reviewThreads: GithubPullRequestReviewThread[];
+  reviewThreadsTruncated: boolean;
+  viewerLogin: string;
+}
+
+function graphqlReviewComment(
+  value: GithubGraphqlPullRequestReviewCommentNode,
+  thread: GithubGraphqlPullRequestReviewThreadNode,
+): GithubPullRequestReviewComment | null {
+  const id = nullablePositiveInteger(value.databaseId);
+  const path = typeof value.path === "string" ? value.path : thread.path;
+  const url = typeof value.url === "string" ? value.url : null;
+  const createdAt = nullableDate(value.createdAt);
+  const updatedAt = nullableDate(value.updatedAt);
+  if (
+    id === null ||
+    typeof path !== "string" ||
+    !url ||
+    !createdAt ||
+    !updatedAt
+  ) {
+    return null;
+  }
+  return {
+    id,
+    reviewId: nullablePositiveInteger(value.pullRequestReview?.databaseId),
+    author: githubLogin(value.author),
+    body: boundedText(value.body, 1_000_000),
+    url,
+    path,
+    line:
+      nullablePositiveInteger(value.line) ??
+      nullablePositiveInteger(thread.line),
+    side: reviewSide(thread.diffSide),
+    startLine:
+      nullablePositiveInteger(value.startLine) ??
+      nullablePositiveInteger(thread.startLine),
+    startSide: reviewSide(thread.startDiffSide),
+    diffHunk: boundedText(value.diffHunk, 100_000),
+    inReplyToId: nullablePositiveInteger(value.replyTo?.databaseId),
+    createdAt,
+    updatedAt,
+    pending: String(value.pullRequestReview?.state).toUpperCase() === "PENDING",
+  };
+}
+
+export function parsePullRequestReviewContext(
+  value: GithubGraphqlPullRequestReviewContextResponse,
+): PullRequestReviewContext {
+  const viewerLogin = value.data?.viewer?.login;
+  const pullRequest = value.data?.repository?.pullRequest;
+  if (
+    typeof viewerLogin !== "string" ||
+    !viewerLogin ||
+    typeof pullRequest?.id !== "string" ||
+    !pullRequest.id
+  ) {
+    throw new Error("GitHub returned an invalid pull request review context.");
+  }
+  const reviewNodes = Array.isArray(pullRequest.reviews?.nodes)
+    ? pullRequest.reviews.nodes
+    : [];
+  const pending = reviewNodes.find(
+    (review) =>
+      String(review.state).toUpperCase() === "PENDING" &&
+      review.author?.login === viewerLogin,
+  );
+  const threadNodes = Array.isArray(pullRequest.reviewThreads?.nodes)
+    ? pullRequest.reviewThreads.nodes
+    : [];
+  let commentsTruncated = false;
+  const reviewThreads = threadNodes.flatMap((thread) => {
+    if (typeof thread.id !== "string" || typeof thread.path !== "string") {
+      return [];
+    }
+    const commentNodes = Array.isArray(thread.comments?.nodes)
+      ? thread.comments.nodes
+      : [];
+    const comments = commentNodes.flatMap((comment) => {
+      const parsed = graphqlReviewComment(comment, thread);
+      return parsed ? [parsed] : [];
+    });
+    if (Number(thread.comments?.totalCount) > comments.length) {
+      commentsTruncated = true;
+    }
+    if (comments.length === 0) return [];
+    return [
+      {
+        id: thread.id,
+        path: thread.path,
+        line: nullablePositiveInteger(thread.line),
+        side: reviewSide(thread.diffSide),
+        startLine: nullablePositiveInteger(thread.startLine),
+        startSide: reviewSide(thread.startDiffSide),
+        resolved:
+          typeof thread.isResolved === "boolean" ? thread.isResolved : null,
+        outdated: thread.isOutdated === true,
+        viewerCanResolve: thread.viewerCanResolve === true,
+        viewerCanUnresolve: thread.viewerCanUnresolve === true,
+        comments: comments.slice(0, 100),
+      },
+    ];
+  });
+  const autoMerge = pullRequest.autoMergeRequest;
+  const enabledAt = nullableDate(autoMerge?.enabledAt);
+  const method = String(autoMerge?.mergeMethod).toLowerCase();
+  const parsedAutoMerge =
+    enabledAt && ["merge", "squash", "rebase"].includes(method)
+      ? {
+          enabledAt,
+          method: method as "merge" | "squash" | "rebase",
+        }
+      : null;
+  const queue = pullRequest.mergeQueueEntry;
+  return {
+    nodeId: pullRequest.id,
+    viewerLogin,
+    pendingReview:
+      pending && typeof pending.id === "string"
+        ? {
+            id: pending.id,
+            commentCount: Math.max(
+              0,
+              Number(pending.comments?.totalCount) || 0,
+            ),
+          }
+        : null,
+    autoMerge: parsedAutoMerge,
+    mergeQueueEnabled: pullRequest.isMergeQueueEnabled === true,
+    mergeQueueEntry:
+      queue && typeof queue.id === "string" && typeof queue.state === "string"
+        ? {
+            id: queue.id,
+            position:
+              Number.isInteger(Number(queue.position)) &&
+              Number(queue.position) >= 0
+                ? Number(queue.position)
+                : null,
+            state: queue.state.toLowerCase(),
+          }
+        : null,
+    reviewThreads: reviewThreads.slice(0, 100),
+    reviewThreadsTruncated:
+      commentsTruncated ||
+      Number(pullRequest.reviewThreads?.totalCount) > reviewThreads.length,
+  };
+}
+
+function parsePullRequestFileViewedStates(
+  value: GithubGraphqlPullRequestFileStateResponse,
+): Map<string, boolean> {
+  const nodes = value.data?.repository?.pullRequest?.files?.nodes;
+  if (!Array.isArray(nodes)) {
+    throw new Error("GitHub returned invalid pull request file review state.");
+  }
+  return new Map(
+    nodes.flatMap((node) =>
+      typeof node.path === "string"
+        ? [[node.path, node.viewerViewedState === "VIEWED"] as const]
+        : [],
+    ),
+  );
 }
 
 export function groupPullRequestReviewThreads(
@@ -1324,7 +1758,12 @@ export function groupPullRequestReviewThreads(
       path: root.path,
       line: root.line,
       side: root.side,
+      startLine: root.startLine,
+      startSide: root.startSide,
       resolved: null,
+      outdated: false,
+      viewerCanResolve: false,
+      viewerCanUnresolve: false,
       comments: threadComments.slice(0, 100),
     };
   });
@@ -1435,6 +1874,8 @@ function pullRequestLifecycleToken(
         mergeableState: detail.mergeableState,
         checksState: detail.checksState,
         reviewDecision: detail.reviewDecision,
+        autoMerge: detail.autoMerge,
+        mergeQueueEntry: detail.mergeQueueEntry,
       }),
     )
     .digest("hex");
@@ -1619,6 +2060,34 @@ export class GithubClient {
       maxBuffer: 32 * 1024 * 1024,
     });
     return JSON.parse(stdout);
+  }
+
+  private async graphql<T>(
+    query: string,
+    variables: Record<string, string | number | boolean | null>,
+  ): Promise<T> {
+    const args = ["-f", `query=${query}`];
+    for (const [name, value] of Object.entries(variables)) {
+      if (value === null) continue;
+      args.push(
+        typeof value === "string" ? "-f" : "-F",
+        `${name}=${String(value)}`,
+      );
+    }
+    return (await this.api("graphql", args)) as T;
+  }
+
+  private async pullRequestReviewContext(
+    nameWithOwner: string,
+    pullRequestNumber: number,
+  ): Promise<PullRequestReviewContext> {
+    const [owner, repository] = repositorySegments(nameWithOwner);
+    return parsePullRequestReviewContext(
+      await this.graphql<GithubGraphqlPullRequestReviewContextResponse>(
+        GITHUB_PULL_REQUEST_REVIEW_CONTEXT_QUERY,
+        { owner, repository, number: pullRequestNumber },
+      ),
+    );
   }
 
   private async listSearchPage(
@@ -2251,27 +2720,32 @@ export class GithubClient {
     )) as GithubApiPullRequest;
     const summary = parsePullRequest(rawPullRequest);
     const issuePath = `${repositoryPath}/issues/${pullRequestNumber}`;
-    const [commentsResult, reviewsResult, reviewCommentsResult] =
-      await Promise.allSettled([
-        this.api(`${issuePath}/comments`, [
-          "--method",
-          "GET",
-          "-f",
-          "per_page=100",
-        ]) as Promise<GithubApiIssueComment[]>,
-        this.api(`${pullRequestPath}/reviews`, [
-          "--method",
-          "GET",
-          "-f",
-          "per_page=100",
-        ]) as Promise<GithubApiPullRequestReview[]>,
-        this.api(`${pullRequestPath}/comments`, [
-          "--method",
-          "GET",
-          "-f",
-          "per_page=100",
-        ]) as Promise<GithubApiPullRequestReviewComment[]>,
-      ]);
+    const [
+      commentsResult,
+      reviewsResult,
+      reviewCommentsResult,
+      reviewContextResult,
+    ] = await Promise.allSettled([
+      this.api(`${issuePath}/comments`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiIssueComment[]>,
+      this.api(`${pullRequestPath}/reviews`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiPullRequestReview[]>,
+      this.api(`${pullRequestPath}/comments`, [
+        "--method",
+        "GET",
+        "-f",
+        "per_page=100",
+      ]) as Promise<GithubApiPullRequestReviewComment[]>,
+      this.pullRequestReviewContext(nameWithOwner, pullRequestNumber),
+    ]);
     const warnings: GithubPullRequestOverview["warnings"] = [];
     const rawComments =
       commentsResult.status === "fulfilled" &&
@@ -2300,11 +2774,21 @@ export class GithubClient {
         pullRequestDataWarning("review-threads", reviewCommentsResult.reason),
       );
     }
+    if (reviewContextResult.status === "rejected") {
+      warnings.push(
+        pullRequestDataWarning("review-threads", reviewContextResult.reason),
+      );
+    }
     const reviews = rawReviews.slice(0, 100).map(parsePullRequestReview);
     const reviewComments = rawReviewComments
       .slice(0, 100)
       .map(parsePullRequestReviewComment);
-    const reviewThreads = groupPullRequestReviewThreads(reviewComments);
+    const fallbackReviewThreads = groupPullRequestReviewThreads(reviewComments);
+    const reviewContext =
+      reviewContextResult.status === "fulfilled"
+        ? reviewContextResult.value
+        : null;
+    const reviewThreads = reviewContext?.reviewThreads ?? fallbackReviewThreads;
     const requestedReviewers = Array.isArray(rawPullRequest.requested_reviewers)
       ? [
           ...new Set(
@@ -2316,6 +2800,16 @@ export class GithubClient {
       : [];
     return githubPullRequestOverviewSchema.parse({
       ...summary,
+      nodeId:
+        reviewContext?.nodeId ??
+        (typeof rawPullRequest.node_id === "string"
+          ? rawPullRequest.node_id
+          : null),
+      viewerLogin: reviewContext?.viewerLogin ?? null,
+      pendingReview: reviewContext?.pendingReview ?? null,
+      autoMerge: reviewContext?.autoMerge ?? null,
+      mergeQueueEnabled: reviewContext?.mergeQueueEnabled ?? false,
+      mergeQueueEntry: reviewContext?.mergeQueueEntry ?? null,
       comments: rawComments.slice(0, 100).map(parseIssueComment),
       commentsTruncated: summary.commentCount > rawComments.length,
       requestedReviewers,
@@ -2340,7 +2834,8 @@ export class GithubClient {
       reviewsTruncated: rawReviews.length >= 100,
       reviewThreads,
       reviewThreadsTruncated:
-        rawReviewComments.length >= 100 || reviewThreads.length >= 100,
+        reviewContext?.reviewThreadsTruncated ??
+        (rawReviewComments.length >= 100 || reviewThreads.length >= 100),
       warnings,
     });
   }
@@ -2351,21 +2846,46 @@ export class GithubClient {
     pullRequestNumber: number,
   ): Promise<GithubPullRequestFiles> {
     await this.verifyWorktree(cwd);
-    const values = await this.api(
-      `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/files`,
-      ["--method", "GET", "-f", "per_page=100"],
-    );
+    const [values, viewedStatesResult] = await Promise.all([
+      this.api(
+        `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/files`,
+        ["--method", "GET", "-f", "per_page=100"],
+      ),
+      (async () => {
+        const [owner, repository] = repositorySegments(nameWithOwner);
+        return parsePullRequestFileViewedStates(
+          await this.graphql<GithubGraphqlPullRequestFileStateResponse>(
+            GITHUB_PULL_REQUEST_FILE_STATES_QUERY,
+            { owner, repository, number: pullRequestNumber },
+          ),
+        );
+      })().then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      ),
+    ]);
     if (!Array.isArray(values)) {
       throw new Error(
         "GitHub returned an invalid pull request files response.",
       );
     }
+    const viewedStates = viewedStatesResult.ok
+      ? viewedStatesResult.value
+      : new Map<string, boolean>();
     return githubPullRequestFilesSchema.parse({
       files: (values as GithubApiPullRequestFile[])
         .slice(0, 100)
-        .map(parsePullRequestFile),
+        .map((value) => {
+          const file = parsePullRequestFile(value);
+          return {
+            ...file,
+            viewed: viewedStates.get(file.path) ?? null,
+          };
+        }),
       filesTruncated: values.length >= 100,
-      warnings: [],
+      warnings: viewedStatesResult.ok
+        ? []
+        : [pullRequestDataWarning("files", viewedStatesResult.error)],
     });
   }
 
@@ -2694,11 +3214,35 @@ export class GithubClient {
     review: GithubPullRequestReviewSubmit,
   ): Promise<GithubPullRequestDetail> {
     await this.verifyWorktree(cwd);
-    const event = review.event === "approve" ? "APPROVE" : "REQUEST_CHANGES";
-    await this.api(
-      `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/reviews`,
-      ["--method", "POST", "-f", `event=${event}`, "-f", `body=${review.body}`],
+    const event =
+      review.event === "approve"
+        ? "APPROVE"
+        : review.event === "request-changes"
+          ? "REQUEST_CHANGES"
+          : "COMMENT";
+    const context = await this.pullRequestReviewContext(
+      nameWithOwner,
+      pullRequestNumber,
     );
+    if (context.pendingReview) {
+      await this.graphql(GITHUB_SUBMIT_PENDING_REVIEW_MUTATION, {
+        reviewId: context.pendingReview.id,
+        event,
+        body: review.body || null,
+      });
+    } else {
+      await this.api(
+        `${this.repositoryApiPath(nameWithOwner)}/pulls/${pullRequestNumber}/reviews`,
+        [
+          "--method",
+          "POST",
+          "-f",
+          `event=${event}`,
+          "-f",
+          `body=${review.body}`,
+        ],
+      );
+    }
     return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
   }
 
@@ -2713,30 +3257,248 @@ export class GithubClient {
     const pullRequest = parsePullRequest(
       (await this.api(pullRequestPath)) as GithubApiPullRequest,
     );
-    const args = [
-      "--method",
-      "POST",
-      "-f",
-      `body=${comment.body}`,
-      "-f",
-      `commit_id=${pullRequest.headSha}`,
-      "-f",
-      `path=${comment.path}`,
-      "-F",
-      `line=${comment.line}`,
-      "-f",
-      `side=${comment.side}`,
-    ];
-    if (comment.startLine !== null && comment.startSide !== null) {
-      args.push(
-        "-F",
-        `start_line=${comment.startLine}`,
-        "-f",
-        `start_side=${comment.startSide}`,
+    const context = await this.pullRequestReviewContext(
+      nameWithOwner,
+      pullRequestNumber,
+    );
+    let reviewId = context.pendingReview?.id ?? null;
+    if (!reviewId) {
+      const created = await this.graphql<{
+        data?: {
+          addPullRequestReview?: { pullRequestReview?: { id?: unknown } };
+        };
+      }>(GITHUB_CREATE_PENDING_REVIEW_MUTATION, {
+        pullRequestId: context.nodeId,
+        head: pullRequest.headSha,
+      });
+      const id = created.data?.addPullRequestReview?.pullRequestReview?.id;
+      if (typeof id !== "string" || !id) {
+        throw new Error("GitHub did not create a pending review.");
+      }
+      reviewId = id;
+    }
+    await this.graphql(GITHUB_ADD_PENDING_REVIEW_THREAD_MUTATION, {
+      reviewId,
+      body: comment.body,
+      path: comment.path,
+      line: comment.line,
+      side: comment.side,
+      startLine: comment.startLine,
+      startSide: comment.startSide,
+    });
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async discardPullRequestReview(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+  ): Promise<GithubPullRequestDetail> {
+    await this.verifyWorktree(cwd);
+    const context = await this.pullRequestReviewContext(
+      nameWithOwner,
+      pullRequestNumber,
+    );
+    if (!context.pendingReview) {
+      throw new Error("There is no pending review to discard.");
+    }
+    await this.graphql(GITHUB_DELETE_PENDING_REVIEW_MUTATION, {
+      reviewId: context.pendingReview.id,
+    });
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async setPullRequestThreadResolved(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    threadId: string,
+    resolved: boolean,
+  ): Promise<GithubPullRequestDetail> {
+    await this.verifyWorktree(cwd);
+    const context = await this.pullRequestReviewContext(
+      nameWithOwner,
+      pullRequestNumber,
+    );
+    if (!context.reviewThreads.some((thread) => thread.id === threadId)) {
+      throw new Error(
+        "The review thread does not belong to this pull request.",
       );
     }
-    await this.api(`${pullRequestPath}/comments`, args);
+    await this.graphql(
+      resolved
+        ? GITHUB_SET_REVIEW_THREAD_RESOLVED_MUTATION
+        : GITHUB_SET_REVIEW_THREAD_UNRESOLVED_MUTATION,
+      { threadId },
+    );
     return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async setPullRequestFileViewed(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    filePath: string,
+    viewed: boolean,
+  ): Promise<GithubPullRequestDetail> {
+    await this.verifyWorktree(cwd);
+    const context = await this.pullRequestReviewContext(
+      nameWithOwner,
+      pullRequestNumber,
+    );
+    await this.graphql(
+      viewed
+        ? GITHUB_MARK_FILE_VIEWED_MUTATION
+        : GITHUB_UNMARK_FILE_VIEWED_MUTATION,
+      { pullRequestId: context.nodeId, path: filePath },
+    );
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async updatePullRequestDetails(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    details: Extract<
+      GithubPullRequestReviewAction,
+      { type: "update-details" }
+    >["details"],
+  ): Promise<GithubPullRequestDetail> {
+    await this.verifyWorktree(cwd);
+    const repositoryPath = this.repositoryApiPath(nameWithOwner);
+    const pullRequestPath = `${repositoryPath}/pulls/${pullRequestNumber}`;
+    const current = await this.getPullRequestOverview(
+      nameWithOwner,
+      cwd,
+      pullRequestNumber,
+    );
+    await this.api(pullRequestPath, [
+      "--method",
+      "PATCH",
+      "-f",
+      `title=${details.title}`,
+      "-f",
+      `body=${details.body}`,
+    ]);
+
+    const nextLabels = new Set(details.labels);
+    const currentLabels = new Set(current.labels.map((label) => label.name));
+    const addedLabels = [...nextLabels].filter(
+      (label) => !currentLabels.has(label),
+    );
+    if (addedLabels.length > 0) {
+      await this.api(`${repositoryPath}/issues/${pullRequestNumber}/labels`, [
+        "--method",
+        "POST",
+        ...addedLabels.flatMap((label) => ["-f", `labels[]=${label}`]),
+      ]);
+    }
+    for (const label of currentLabels) {
+      if (!nextLabels.has(label)) {
+        await this.api(
+          `${repositoryPath}/issues/${pullRequestNumber}/labels/${encodeURIComponent(label)}`,
+          ["--method", "DELETE"],
+        );
+      }
+    }
+
+    const nextReviewers = new Set(details.reviewers);
+    const currentReviewers = new Set(current.requestedReviewers);
+    const addedReviewers = [...nextReviewers].filter(
+      (reviewer) => !currentReviewers.has(reviewer),
+    );
+    const removedReviewers = [...currentReviewers].filter(
+      (reviewer) => !nextReviewers.has(reviewer),
+    );
+    if (addedReviewers.length > 0) {
+      await this.api(`${pullRequestPath}/requested_reviewers`, [
+        "--method",
+        "POST",
+        ...addedReviewers.flatMap((reviewer) => [
+          "-f",
+          `reviewers[]=${reviewer}`,
+        ]),
+      ]);
+    }
+    if (removedReviewers.length > 0) {
+      await this.api(`${pullRequestPath}/requested_reviewers`, [
+        "--method",
+        "DELETE",
+        ...removedReviewers.flatMap((reviewer) => [
+          "-f",
+          `reviewers[]=${reviewer}`,
+        ]),
+      ]);
+    }
+    return this.getPullRequest(nameWithOwner, cwd, pullRequestNumber);
+  }
+
+  async runPullRequestReviewAction(
+    nameWithOwner: string,
+    cwd: string,
+    pullRequestNumber: number,
+    action: GithubPullRequestReviewAction,
+  ): Promise<GithubPullRequestDetail> {
+    switch (action.type) {
+      case "comment":
+        return this.commentOnPullRequest(
+          nameWithOwner,
+          cwd,
+          pullRequestNumber,
+          action.body,
+        );
+      case "submit-review":
+        return this.submitPullRequestReview(
+          nameWithOwner,
+          cwd,
+          pullRequestNumber,
+          action.review,
+        );
+      case "inline-comment":
+        return this.commentOnPullRequestLine(
+          nameWithOwner,
+          cwd,
+          pullRequestNumber,
+          action.comment,
+        );
+      case "reply":
+        return this.replyToPullRequestReview(
+          nameWithOwner,
+          cwd,
+          pullRequestNumber,
+          action.commentId,
+          action.body,
+        );
+      case "discard-review":
+        return this.discardPullRequestReview(
+          nameWithOwner,
+          cwd,
+          pullRequestNumber,
+        );
+      case "set-thread-resolved":
+        return this.setPullRequestThreadResolved(
+          nameWithOwner,
+          cwd,
+          pullRequestNumber,
+          action.threadId,
+          action.resolved,
+        );
+      case "set-file-viewed":
+        return this.setPullRequestFileViewed(
+          nameWithOwner,
+          cwd,
+          pullRequestNumber,
+          action.path,
+          action.viewed,
+        );
+      case "update-details":
+        return this.updatePullRequestDetails(
+          nameWithOwner,
+          cwd,
+          pullRequestNumber,
+          action.details,
+        );
+    }
   }
 
   async replyToPullRequestReview(
@@ -2796,6 +3558,16 @@ export class GithubClient {
           "GitHub will notify requested reviewers that this draft is ready for review.",
         );
         break;
+      case "convert-draft":
+        warnings.push(
+          "Requested reviewers will no longer be expected to review this pull request until it is marked ready again.",
+        );
+        break;
+      case "update-branch":
+        warnings.push(
+          `GitHub will update ${detail.headRef} with the latest changes from ${detail.baseRef} and may run checks again.`,
+        );
+        break;
       case "merge":
         if (detail.state !== "open" || detail.draft || detail.merged) {
           throw new Error(
@@ -2825,6 +3597,27 @@ export class GithubClient {
         } else if (detail.reviewDecision === "review-required") {
           warnings.push("Requested reviews are still outstanding.");
         }
+        break;
+      case "enable-auto-merge":
+        destructive = true;
+        confirmationPhrase = `auto-merge #${detail.number}`;
+        warnings.push(
+          `GitHub will ${action.method} this pull request automatically once repository requirements are satisfied.`,
+        );
+        break;
+      case "disable-auto-merge":
+        break;
+      case "enqueue-merge-queue":
+        destructive = true;
+        confirmationPhrase = `queue #${detail.number}`;
+        warnings.push(
+          "The pull request will merge when it reaches the front of GitHub's merge queue and required checks pass.",
+        );
+        break;
+      case "dequeue-merge-queue":
+        warnings.push(
+          "Removing this pull request from the merge queue may discard its current queue position.",
+        );
         break;
     }
     return githubPullRequestLifecyclePreviewSchema.parse({
@@ -2898,6 +3691,24 @@ export class GithubClient {
           { maxBuffer: 4 * 1024 * 1024 },
         );
         break;
+      case "convert-draft": {
+        const context = await this.pullRequestReviewContext(
+          nameWithOwner,
+          pullRequestNumber,
+        );
+        await this.graphql(GITHUB_CONVERT_PULL_REQUEST_TO_DRAFT_MUTATION, {
+          pullRequestId: context.nodeId,
+        });
+        break;
+      }
+      case "update-branch":
+        await this.api(`${pullRequestPath}/update-branch`, [
+          "--method",
+          "PUT",
+          "-f",
+          `expected_head_sha=${preview.headSha}`,
+        ]);
+        break;
       case "merge": {
         const args = [
           "--method",
@@ -2924,6 +3735,51 @@ export class GithubClient {
               : "GitHub did not merge the pull request.",
           );
         }
+        break;
+      }
+      case "enable-auto-merge": {
+        const context = await this.pullRequestReviewContext(
+          nameWithOwner,
+          pullRequestNumber,
+        );
+        await this.graphql(GITHUB_ENABLE_AUTO_MERGE_MUTATION, {
+          pullRequestId: context.nodeId,
+          head: preview.headSha,
+          method: request.action.method.toUpperCase(),
+          title: request.action.commitTitle,
+          body: request.action.commitMessage,
+        });
+        break;
+      }
+      case "disable-auto-merge": {
+        const context = await this.pullRequestReviewContext(
+          nameWithOwner,
+          pullRequestNumber,
+        );
+        await this.graphql(GITHUB_DISABLE_AUTO_MERGE_MUTATION, {
+          pullRequestId: context.nodeId,
+        });
+        break;
+      }
+      case "enqueue-merge-queue": {
+        const context = await this.pullRequestReviewContext(
+          nameWithOwner,
+          pullRequestNumber,
+        );
+        await this.graphql(GITHUB_ENQUEUE_PULL_REQUEST_MUTATION, {
+          pullRequestId: context.nodeId,
+          head: preview.headSha,
+        });
+        break;
+      }
+      case "dequeue-merge-queue": {
+        const context = await this.pullRequestReviewContext(
+          nameWithOwner,
+          pullRequestNumber,
+        );
+        await this.graphql(GITHUB_DEQUEUE_PULL_REQUEST_MUTATION, {
+          pullRequestId: context.nodeId,
+        });
         break;
       }
     }

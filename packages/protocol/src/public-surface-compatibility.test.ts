@@ -61,8 +61,8 @@ describe("protocol public surface compatibility", () => {
   it("keeps the root runtime export surface stable", () => {
     const exportNames = Object.keys(protocol).sort();
 
-    expect(exportNames).toHaveLength(1_883);
-    expect(stableFingerprint(exportNames)).toBe("95f8ff8dfda9b8c1:61730");
+    expect(exportNames).toHaveLength(1_886);
+    expect(stableFingerprint(exportNames)).toBe("362d873463f951a8:61845");
   });
 
   it("keeps worker discriminators stable and ordered", () => {
@@ -76,8 +76,8 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(277);
-    expect(stableFingerprint(commandTypes)).toBe("250c0fcbde0d7457:7114");
+    expect(commandTypes).toHaveLength(278);
+    expect(stableFingerprint(commandTypes)).toBe("ff78f301594616a5:7150");
     expect(eventTypes).toHaveLength(25);
     expect(stableFingerprint(eventTypes)).toBe("4a9b26ee148990aa:702");
     expect(notificationTypes).toHaveLength(14);

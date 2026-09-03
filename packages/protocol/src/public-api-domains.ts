@@ -32,6 +32,8 @@ export type {
   GithubPullRequestReview,
   GithubPullRequestReviewComment,
   GithubPullRequestReviewThread,
+  GithubPullRequestPendingReview,
+  GithubPullRequestDetailsUpdate,
   GithubPullRequestReviewSubmit,
   GithubPullRequestInlineCommentCreate,
   GithubPullRequestReviewAction,

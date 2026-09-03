@@ -36,6 +36,7 @@ import {
   githubPullRequestCreateSchema,
   githubPullRequestReviewSubmitSchema,
   githubPullRequestInlineCommentCreateSchema,
+  githubPullRequestReviewActionSchema,
   githubPullRequestLifecycleActionSchema,
   githubPullRequestLifecycleApplySchema,
   githubActionsWorkflowDispatchSchema,
@@ -191,6 +192,13 @@ export const workerGithubProjectCommandSchemas = [
     number: z.number().int().positive(),
     commentId: z.number().int().positive(),
     body: githubIssueCommentCreateSchema.shape.body,
+  }),
+  z.object({
+    type: z.literal("github.pull-request.review.mutate"),
+    cwd: z.string().min(1).max(8_192),
+    repository: workerRepositoryNameSchema,
+    number: z.number().int().positive(),
+    action: githubPullRequestReviewActionSchema,
   }),
   z.object({
     type: z.literal("github.pull-request.lifecycle.preview"),

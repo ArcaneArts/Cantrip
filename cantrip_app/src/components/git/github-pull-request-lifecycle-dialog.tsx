@@ -34,8 +34,20 @@ export function pullRequestLifecycleLabel(
       return "Reopen pull request";
     case "mark-ready":
       return "Mark ready for review";
+    case "convert-draft":
+      return "Convert pull request to draft";
+    case "update-branch":
+      return "Update pull request branch";
     case "merge":
       return `${action.method[0]!.toUpperCase()}${action.method.slice(1)} pull request`;
+    case "enable-auto-merge":
+      return "Enable auto-merge";
+    case "disable-auto-merge":
+      return "Disable auto-merge";
+    case "enqueue-merge-queue":
+      return "Enter merge queue";
+    case "dequeue-merge-queue":
+      return "Leave merge queue";
   }
 }
 
@@ -69,16 +81,20 @@ export function GithubPullRequestLifecycleDialog({
   worktreeId: string;
 }) {
   const [method, setMethod] = useState<"merge" | "squash" | "rebase">(
-    initialAction?.type === "merge" ? initialAction.method : "squash",
+    initialAction?.type === "merge" ||
+      initialAction?.type === "enable-auto-merge"
+      ? initialAction.method
+      : "squash",
   );
   const [commitTitle, setCommitTitle] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const action = useMemo<GithubPullRequestLifecycleAction | null>(
     () =>
-      initialAction?.type === "merge"
+      initialAction?.type === "merge" ||
+      initialAction?.type === "enable-auto-merge"
         ? {
-            type: "merge",
+            type: initialAction.type,
             method,
             commitTitle: commitTitle.trim() || null,
             commitMessage: commitMessage.trim() || null,
@@ -114,7 +130,12 @@ export function GithubPullRequestLifecycleDialog({
   const apply = reviewedOperation.apply;
   useEffect(() => {
     if (!initialAction) return;
-    setMethod(initialAction.type === "merge" ? initialAction.method : "squash");
+    setMethod(
+      initialAction.type === "merge" ||
+        initialAction.type === "enable-auto-merge"
+        ? initialAction.method
+        : "squash",
+    );
     setCommitTitle("");
     setCommitMessage("");
     setConfirmation("");
@@ -146,7 +167,8 @@ export function GithubPullRequestLifecycleDialog({
 
         {!reviewed ? (
           <div className="space-y-4">
-            {action?.type === "merge" ? (
+            {action?.type === "merge" ||
+            action?.type === "enable-auto-merge" ? (
               <>
                 <label className="block text-xs font-medium">
                   Merge method

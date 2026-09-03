@@ -638,12 +638,18 @@ Manual QA:
 
 The PR overview supports general comments, approvals with an optional note,
 and change requests with a required explanation. Inline review comments start
-by selecting an old or new line number in the shared Files diff; GitHub
-validates that the path, side, line, and exact PR-head commit still belong to
-the current diff. Existing inline comments are grouped into threads and can be
-replied to from Cantrip. GitHub's REST review-comments API does not expose a
-thread's resolved flag, so Cantrip keeps that state explicitly unknown rather
-than making an unreliable claim.
+by selecting an old or new line number, or a Shift-selected multi-line range,
+in the shared Files diff. Right-side ranges can be turned into GitHub suggested
+changes. Inline comments are added to the viewer's pending review and published
+together by Submit review, Approve, or Request changes; the pending review can
+also be discarded without publishing it.
+
+Review threads use GitHub's GraphQL thread identity and expose resolved,
+outdated, and pending state. Reviewers can resolve or reopen threads when
+GitHub grants the corresponding permission, and Files can jump directly to the
+next current unresolved thread. Changed files expose GitHub's viewed/unviewed
+state and can be toggled from the active diff. Existing thread replies remain
+available from the Overview conversation.
 
 Every review mutation is validated by the shared protocol, serialized by the
 server for the project, executed with the selected worktree and worker-owned
@@ -657,38 +663,47 @@ Manual QA:
    list count appear only after GitHub accepts it.
 2. Approve with and without a note, then request changes with an explanation;
    verify an empty change request is rejected before reaching the worker.
-3. Select an added, deleted, and context line in Files, submit comments on the
-   correct right/left side, and confirm each appears in its GitHub thread.
-4. Reply to an existing inline thread and confirm the authoritative refresh
-   preserves comment order and review state.
-5. Change the PR head after opening its diff and confirm GitHub rejects a stale
+3. Select added, deleted, context, and multi-line ranges in Files. Add several
+   inline comments and a suggested change, verify they stay pending, then
+   publish them together with each supported review event.
+4. Discard a pending review and confirm none of its inline comments publish.
+   Reply to an existing thread and confirm comment order is preserved.
+5. Resolve and reopen a thread, mark files viewed/unviewed, and repeatedly jump
+   to the next unresolved thread across multiple files.
+6. Edit the PR title, Markdown body, labels, and requested reviewers and verify
+   removals as well as additions against GitHub's authoritative state.
+7. Change the PR head after opening its diff and confirm GitHub rejects a stale
    inline target rather than commenting on a different revision.
-6. Disconnect the selected worker during a submission and confirm the draft
+8. Disconnect the selected worker during a submission and confirm the draft
    remains visible with an error and no fallback worker is used.
 
 ### Pull request lifecycle and merge
 
-Open PRs can be closed, closed unmerged PRs can be reopened, and drafts can be
-marked ready for review. An open ready PR can be merged with GitHub's merge,
-squash, or rebase method, including optional commit title and message where
-GitHub supports them. Cantrip does not bypass branch protection: GitHub remains
-authoritative for required checks, reviews, allowed merge methods, and other
-repository rules.
+Open PRs can be closed, closed unmerged PRs can be reopened, drafts can be
+marked ready for review, and ready PRs can be converted back to drafts. The
+head branch can be updated from its base through GitHub. An open ready PR can
+be merged with GitHub's merge, squash, or rebase method, including optional
+commit title and message where GitHub supports them. Repositories that support
+the features can enable or disable auto-merge and enter or leave GitHub's merge
+queue. Cantrip does not bypass branch protection: GitHub remains authoritative
+for required checks, reviews, allowed merge methods, queue eligibility, and
+other repository rules.
 
 Every lifecycle operation has a worker-authored preview bound to the PR number,
 exact head/base commits, open/draft/merged state, mergeability, checks, review
-decision, and requested action. Close and merge require typing the displayed
-phrase. Apply re-fetches and recomputes the preview; any changed state rejects
-the token. Merge also sends the reviewed head SHA to GitHub's merge endpoint,
-closing the remaining race between validation and mutation. The app updates
-only from the complete post-action PR response.
+decision, auto-merge/queue state, and requested action. Close, merge, enabling
+auto-merge, and entering the merge queue require typing the displayed phrase.
+Apply re-fetches and recomputes the preview; any changed state rejects the
+token. Merge, auto-merge, queue entry, and branch update also send the reviewed
+head SHA to GitHub's mutation, closing the remaining race between validation
+and mutation. The app updates only from the complete post-action PR response.
 
 Manual QA:
 
 1. Preview and close an open PR, type an incorrect phrase, then the exact
    `close #N` phrase; reopen it and verify the hosted state after each action.
-2. Mark a draft ready and confirm GitHub notifies reviewers and the draft badge
-   disappears only after the authoritative refresh.
+2. Mark a draft ready, convert it back to draft, and confirm each badge changes
+   only after the authoritative refresh.
 3. Preview merge, squash, and rebase with optional commit title/message; verify
    the dialog names exact head/base SHAs, checks, reviews, and mergeability.
 4. Advance the PR head after preview and confirm apply rejects the stale token;
@@ -697,7 +712,11 @@ Manual QA:
 5. Try blocked mergeability, pending/failed checks, requested changes, and a
    repository that disallows one merge method. Confirm warnings are precise
    and GitHub protection is never bypassed.
-6. Disconnect the selected worker and confirm preview/apply fail without using
+6. Update the PR branch and verify GitHub uses the reviewed head SHA and runs
+   any configured checks again.
+7. Enable and disable auto-merge for every allowed merge method. Enter and
+   leave a configured merge queue, and verify queue state/position refreshes.
+8. Disconnect the selected worker and confirm preview/apply fail without using
    another worktree or exposing GitHub credentials.
 
 ### Pull request worktrees

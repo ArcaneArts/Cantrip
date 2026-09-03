@@ -249,6 +249,7 @@ export function GitPatchView({
   commentTargets = [],
   contextLines = 3,
   error,
+  focusCommentTarget,
   lineSelection,
   loading,
   newFile,
@@ -271,6 +272,7 @@ export function GitPatchView({
   commentTargets?: readonly GitDiffCommentTarget[];
   contextLines?: number;
   error: unknown;
+  focusCommentTarget?: GitDiffCommentTarget | null;
   lineSelection?: GitDiffLineSelection;
   loading: boolean;
   newFile?: GitDiffFilePreview;
@@ -335,6 +337,13 @@ export function GitPatchView({
     const node = nodes?.[index];
     node?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
+  useEffect(() => {
+    if (!focusCommentTarget) return;
+    scrollTo(
+      `[data-comment-target="${focusCommentTarget.side}:${focusCommentTarget.line}"]`,
+      0,
+    );
+  }, [focusCommentTarget?.line, focusCommentTarget?.side, patch, path]);
   const navigateHunk = (direction: -1 | 1) => {
     if (!hunkCount) return;
     const next = (activeHunk + direction + hunkCount) % hunkCount;

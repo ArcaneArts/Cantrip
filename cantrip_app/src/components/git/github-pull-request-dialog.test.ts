@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   isFailedPullRequestCheck,
   PullRequestFiles,
+  nextUnresolvedReviewThread,
   pullRequestCheckLabel,
   pullRequestFileSubtitle,
   mergeCheckedOutWorktree,
@@ -66,6 +67,7 @@ describe("GitHub pull request review presentation", () => {
       rawUrl: null,
       patch: "@@ -1 +1 @@\n-old\n+new",
       patchTruncated: false,
+      viewed: false,
     } satisfies GithubPullRequestFile;
     expect(pullRequestFileSubtitle(file)).toBe("src/old.ts → renamed · +5 −2");
   });
@@ -113,6 +115,7 @@ describe("GitHub pull request review presentation", () => {
       rawUrl: null,
       patch: "@@ -1 +1 @@\n-old\n+new",
       patchTruncated: false,
+      viewed: true,
     } satisfies GithubPullRequestFile;
     const markup = renderToStaticMarkup(
       createElement(PullRequestFiles, {
@@ -132,5 +135,54 @@ describe("GitHub pull request review presentation", () => {
     expect(markup).toContain("hidden w-72");
     expect(markup).toContain("md:block");
     expect(markup).not.toContain('w-72 shrink-0 overflow-y-auto border-r"');
+  });
+
+  it("cycles through unresolved, current review threads", () => {
+    const thread = (
+      id: string,
+      path: string,
+      resolved = false,
+      outdated = false,
+    ) => ({
+      id,
+      path,
+      line: 2,
+      side: "RIGHT" as const,
+      startLine: null,
+      startSide: null,
+      resolved,
+      outdated,
+      viewerCanResolve: true,
+      viewerCanUnresolve: false,
+      comments: [
+        {
+          id: Number(id),
+          reviewId: 1,
+          author: "reviewer",
+          body: "Review this",
+          url: `https://github.com/example/repo/pull/1#discussion_r${id}`,
+          path,
+          line: 2,
+          side: "RIGHT" as const,
+          startLine: null,
+          startSide: null,
+          diffHunk: "@@ -1 +1 @@",
+          inReplyToId: null,
+          createdAt: "2026-09-03T12:00:00.000Z",
+          updatedAt: "2026-09-03T12:00:00.000Z",
+          pending: false,
+        },
+      ],
+    });
+    const threads = [
+      thread("1", "first.ts"),
+      thread("2", "resolved.ts", true),
+      thread("3", "outdated.ts", false, true),
+      thread("4", "last.ts"),
+    ];
+
+    expect(nextUnresolvedReviewThread(null, threads)?.id).toBe("1");
+    expect(nextUnresolvedReviewThread("1", threads)?.id).toBe("4");
+    expect(nextUnresolvedReviewThread("4", threads)?.id).toBe("1");
   });
 });

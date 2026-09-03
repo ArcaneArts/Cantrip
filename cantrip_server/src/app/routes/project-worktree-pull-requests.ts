@@ -382,47 +382,15 @@ export function installProjectWorktreePullRequestRoutes(
               repository: github.nameWithOwner,
               number: pullRequestNumber,
             };
-            const response =
-              action.data.type === "comment"
-                ? await bridge.request(
-                    worktree.workerId,
-                    {
-                      type: "github.pull-request.comment",
-                      ...shared,
-                      body: action.data.body,
-                    },
-                    { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
-                  )
-                : action.data.type === "submit-review"
-                  ? await bridge.request(
-                      worktree.workerId,
-                      {
-                        type: "github.pull-request.review.submit",
-                        ...shared,
-                        review: action.data.review,
-                      },
-                      { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
-                    )
-                  : action.data.type === "inline-comment"
-                    ? await bridge.request(
-                        worktree.workerId,
-                        {
-                          type: "github.pull-request.review.comment",
-                          ...shared,
-                          comment: action.data.comment,
-                        },
-                        { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
-                      )
-                    : await bridge.request(
-                        worktree.workerId,
-                        {
-                          type: "github.pull-request.review.reply",
-                          ...shared,
-                          commentId: action.data.commentId,
-                          body: action.data.body,
-                        },
-                        { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
-                      );
+            const response = await bridge.request(
+              worktree.workerId,
+              {
+                type: "github.pull-request.review.mutate",
+                ...shared,
+                action: action.data,
+              },
+              { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+            );
             return githubPullRequestDetailSchema.parse(response);
           },
         );

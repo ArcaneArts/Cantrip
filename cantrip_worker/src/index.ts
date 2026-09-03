@@ -2282,6 +2282,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.commentId,
           command.body,
         );
+      case "github.pull-request.review.mutate":
+        return github.runPullRequestReviewAction(
+          command.repository,
+          command.cwd,
+          command.number,
+          command.action,
+        );
       case "github.pull-request.lifecycle.preview":
         return github.previewPullRequestLifecycle(
           command.repository,

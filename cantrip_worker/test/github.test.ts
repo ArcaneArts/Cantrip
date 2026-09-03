@@ -1991,6 +1991,7 @@ describe("GitHub project files", () => {
     ).stdout.trim();
     const base = "2".repeat(40);
     const pullRequest = {
+      node_id: "PR_node_44",
       number: 44,
       title: "Add PR creation",
       state: "open",
@@ -2228,6 +2229,80 @@ describe("GitHub project files", () => {
         updated_at: "2026-08-10T12:32:00.000Z",
       },
     ];
+    const reviewContext = {
+      data: {
+        viewer: { login: "author" },
+        repository: {
+          pullRequest: {
+            id: "PR_node_44",
+            isMergeQueueEnabled: true,
+            autoMergeRequest: null,
+            mergeQueueEntry: null,
+            reviews: {
+              nodes: [
+                {
+                  id: "PRR_pending_44",
+                  state: "PENDING",
+                  author: { login: "author" },
+                  comments: { totalCount: 1 },
+                },
+              ],
+            },
+            reviewThreads: {
+              totalCount: 1,
+              nodes: [
+                {
+                  id: "PRRT_44",
+                  path: "src/review.ts",
+                  line: 4,
+                  startLine: null,
+                  diffSide: "RIGHT",
+                  startDiffSide: null,
+                  isResolved: false,
+                  isOutdated: false,
+                  viewerCanResolve: true,
+                  viewerCanUnresolve: false,
+                  comments: {
+                    totalCount: 2,
+                    nodes: reviewComments.map((comment) => ({
+                      databaseId: comment.id,
+                      author: comment.user,
+                      body: comment.body,
+                      url: comment.html_url,
+                      path: comment.path,
+                      line: comment.line,
+                      startLine: comment.start_line,
+                      diffHunk: comment.diff_hunk,
+                      createdAt: comment.created_at,
+                      updatedAt: comment.updated_at,
+                      replyTo: comment.in_reply_to_id
+                        ? { databaseId: comment.in_reply_to_id }
+                        : null,
+                      pullRequestReview: {
+                        databaseId: comment.pull_request_review_id,
+                        id: "PRR_12",
+                        state: "SUBMITTED",
+                      },
+                    })),
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const viewedStates = {
+      data: {
+        repository: {
+          pullRequest: {
+            files: {
+              nodes: [{ path: "src/review.ts", viewerViewedState: "VIEWED" }],
+            },
+          },
+        },
+      },
+    };
     const binDirectory = path.join(dataDirectory, "bin");
     const logPath = path.join(dataDirectory, "gh.log");
     await mkdir(binDirectory);
@@ -2241,7 +2316,11 @@ describe("GitHub project files", () => {
         'const args = process.argv.slice(2); fs.appendFileSync(log, args.join("\\0") + "\\n");',
         'if (args[0] === "run") { process.stdout.write("test\\tunit\\tFAIL expected true\\n"); process.exit(0); }',
         'const route = args[1] || "";',
-        `if (route.endsWith("/pulls/44")) process.stdout.write(${JSON.stringify(JSON.stringify(pullRequest))});`,
+        'const query = args.find((arg) => arg.startsWith("query=")) || "";',
+        `if (route === "graphql" && query.includes("CantripPullRequestReviewContext")) process.stdout.write(${JSON.stringify(JSON.stringify(reviewContext))});`,
+        `else if (route === "graphql" && query.includes("CantripPullRequestFileStates")) process.stdout.write(${JSON.stringify(JSON.stringify(viewedStates))});`,
+        'else if (route === "graphql") process.stdout.write(JSON.stringify({ data: { ok: true } }));',
+        `else if (route.endsWith("/pulls/44")) process.stdout.write(${JSON.stringify(JSON.stringify(pullRequest))});`,
         `else if (route.endsWith("/issues/44/comments")) process.stdout.write(${JSON.stringify(JSON.stringify(comments))});`,
         `else if (route.endsWith("/pulls/44/commits")) process.stdout.write(${JSON.stringify(JSON.stringify(commits))});`,
         `else if (route.endsWith("/pulls/44/files")) process.stdout.write(${JSON.stringify(JSON.stringify(files))});`,
@@ -2269,7 +2348,13 @@ describe("GitHub project files", () => {
       filesTruncated: false,
       comments: [{ author: "commenter" }],
       commits: [{ author: "Cantrip Author" }],
-      files: [{ path: "src/review.ts", previousPath: "src/old-review.ts" }],
+      files: [
+        {
+          path: "src/review.ts",
+          previousPath: "src/old-review.ts",
+          viewed: true,
+        },
+      ],
       checks: [
         { name: "test", conclusion: "failure" },
         { name: "deploy", status: "in-progress" },
@@ -2277,11 +2362,16 @@ describe("GitHub project files", () => {
       reviews: [{ author: "reviewer", state: "changes-requested" }],
       reviewThreads: [
         {
+          id: "PRRT_44",
           path: "src/review.ts",
           line: 4,
+          resolved: false,
+          viewerCanResolve: true,
           comments: [{ id: 20 }, { id: 21, inReplyToId: 20 }],
         },
       ],
+      pendingReview: { id: "PRR_pending_44", commentCount: 1 },
+      mergeQueueEnabled: true,
     });
     await expect(
       github.getPullRequestAgentContext("ArcaneArts/Cantrip", repository, 44, {
@@ -2333,13 +2423,59 @@ describe("GitHub project files", () => {
       20,
       "Updated.",
     );
+    await github.runPullRequestReviewAction(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "set-thread-resolved", threadId: "PRRT_44", resolved: true },
+    );
+    await github.runPullRequestReviewAction(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "set-thread-resolved", threadId: "PRRT_44", resolved: false },
+    );
+    await github.runPullRequestReviewAction(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "set-file-viewed", path: "src/review.ts", viewed: false },
+    );
+    await github.runPullRequestReviewAction(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      {
+        type: "update-details",
+        details: {
+          title: "Updated review title",
+          body: "Updated description",
+          labels: ["updated"],
+          reviewers: ["new-reviewer"],
+        },
+      },
+    );
+    await github.runPullRequestReviewAction(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "discard-review" },
+    );
     const mutationInvocations = await readFile(logPath, "utf8");
     expect(mutationInvocations).toContain("body=General feedback");
     expect(mutationInvocations).toContain("event=REQUEST_CHANGES");
-    expect(mutationInvocations).toContain(`commit_id=${head}`);
+    expect(mutationInvocations).toContain("CantripAddPendingReviewThread");
+    expect(mutationInvocations).toContain("reviewId=PRR_pending_44");
     expect(mutationInvocations).toContain("path=src/review.ts");
     expect(mutationInvocations).toContain("line=4");
     expect(mutationInvocations).toContain("/comments/20/replies");
+    expect(mutationInvocations).toContain("CantripSetReviewThreadResolved");
+    expect(mutationInvocations).toContain("CantripSetReviewThreadUnresolved");
+    expect(mutationInvocations).toContain("CantripUnmarkFileViewed");
+    expect(mutationInvocations).toContain("title=Updated review title");
+    expect(mutationInvocations).toContain("labels[]=updated");
+    expect(mutationInvocations).toContain("reviewers[]=new-reviewer");
+    expect(mutationInvocations).toContain("CantripDeletePendingReview");
     await expect(
       github.getPullRequest("ArcaneArts/Cantrip", "/missing/worktree", 44),
     ).rejects.toThrow();
@@ -2415,7 +2551,10 @@ describe("GitHub project files", () => {
         `const pullRequest = ${JSON.stringify(pullRequest)};`,
         `const commit = ${JSON.stringify(commit)};`,
         `const checkRuns = ${JSON.stringify(checkRuns)};`,
-        'if (route.endsWith("/issues/45/comments")) process.exit(1);',
+        'const query = args.find((arg) => arg.startsWith("query=")) || "";',
+        'if (route === "graphql" && query.includes("CantripPullRequestReviewContext")) process.stdout.write(JSON.stringify({ data: { viewer: { login: "author" }, repository: { pullRequest: { id: "PR_node_45", isMergeQueueEnabled: false, autoMergeRequest: null, mergeQueueEntry: null, reviews: { nodes: [] }, reviewThreads: { totalCount: 0, nodes: [] } } } } }));',
+        'else if (route === "graphql") process.stdout.write(JSON.stringify({ data: { repository: { pullRequest: { files: { nodes: [] } } } } }));',
+        'else if (route.endsWith("/issues/45/comments")) process.exit(1);',
         'else if (route.endsWith("/pulls/45/files")) process.exit(1);',
         'else if (route.endsWith("/pulls/45/commits")) process.stdout.write(JSON.stringify([commit]));',
         'else if (route.endsWith("/pulls/45/reviews") || route.endsWith("/pulls/45/comments")) process.stdout.write("[]");',
@@ -2554,6 +2693,8 @@ describe("GitHub project files", () => {
       draft: false,
       merged: false,
       mergeable: true,
+      autoMerge: false,
+      queued: false,
       head: originalHead,
       base: "6".repeat(40),
     };
@@ -2571,10 +2712,20 @@ describe("GitHub project files", () => {
         'const args = process.argv.slice(2); fs.appendFileSync(logPath, args.join("\\0") + "\\n");',
         "let state = JSON.parse(fs.readFileSync(statePath, 'utf8'));",
         "const save = () => fs.writeFileSync(statePath, JSON.stringify(state));",
-        "const pr = () => ({ number: 44, title: 'Lifecycle', state: state.state, html_url: 'https://github.com/ArcaneArts/Cantrip/pull/44', user: { login: 'author' }, comments: 0, labels: [], created_at: '2026-08-10T12:00:00.000Z', updated_at: '2026-08-10T13:00:00.000Z', closed_at: state.state === 'closed' ? '2026-08-10T14:00:00.000Z' : null, body: 'Lifecycle', draft: state.draft, merged: state.merged, head: { ref: 'feature/lifecycle', sha: state.head }, base: { ref: 'main', sha: state.base }, requested_reviewers: [], mergeable: state.mergeable, mergeable_state: state.mergeable ? 'clean' : 'blocked', additions: 1, deletions: 0, changed_files: 0, commits: 0 });",
+        "const pr = () => ({ node_id: 'PR_node_44', number: 44, title: 'Lifecycle', state: state.state, html_url: 'https://github.com/ArcaneArts/Cantrip/pull/44', user: { login: 'author' }, comments: 0, labels: [], created_at: '2026-08-10T12:00:00.000Z', updated_at: '2026-08-10T13:00:00.000Z', closed_at: state.state === 'closed' ? '2026-08-10T14:00:00.000Z' : null, body: 'Lifecycle', draft: state.draft, merged: state.merged, head: { ref: 'feature/lifecycle', sha: state.head }, base: { ref: 'main', sha: state.base }, requested_reviewers: [], mergeable: state.mergeable, mergeable_state: state.mergeable ? 'clean' : 'blocked', additions: 1, deletions: 0, changed_files: 0, commits: 0 });",
         "if (args[0] === 'pr' && args[1] === 'ready') { state.draft = false; save(); process.exit(0); }",
         "const route = args[1] || ''; const methodIndex = args.indexOf('--method'); const method = methodIndex >= 0 ? args[methodIndex + 1] : 'GET';",
-        "if (route.endsWith('/pulls/44/merge')) { state.state = 'closed'; state.merged = true; save(); process.stdout.write(JSON.stringify({ merged: true, sha: state.head, message: 'Merged' })); }",
+        "const query = args.find((arg) => arg.startsWith('query=')) || '';",
+        "const context = () => ({ data: { viewer: { login: 'author' }, repository: { pullRequest: { id: 'PR_node_44', isMergeQueueEnabled: true, autoMergeRequest: state.autoMerge ? { enabledAt: '2026-09-03T12:00:00.000Z', mergeMethod: 'SQUASH' } : null, mergeQueueEntry: state.queued ? { id: 'MQE_44', position: 1, state: 'QUEUED' } : null, reviews: { nodes: [] }, reviewThreads: { totalCount: 0, nodes: [] } } } } });",
+        "if (route === 'graphql' && query.includes('CantripPullRequestReviewContext')) process.stdout.write(JSON.stringify(context()));",
+        "else if (route === 'graphql' && query.includes('CantripPullRequestFileStates')) process.stdout.write(JSON.stringify({ data: { repository: { pullRequest: { files: { nodes: [] } } } } }));",
+        "else if (route === 'graphql' && query.includes('CantripConvertPullRequestToDraft')) { state.draft = true; save(); process.stdout.write(JSON.stringify({ data: { convertPullRequestToDraft: { pullRequest: { id: 'PR_node_44', isDraft: true } } } })); }",
+        "else if (route === 'graphql' && query.includes('CantripEnableAutoMerge')) { state.autoMerge = true; save(); process.stdout.write(JSON.stringify({ data: { enablePullRequestAutoMerge: { pullRequest: { id: 'PR_node_44' } } } })); }",
+        "else if (route === 'graphql' && query.includes('CantripDisableAutoMerge')) { state.autoMerge = false; save(); process.stdout.write(JSON.stringify({ data: { disablePullRequestAutoMerge: { pullRequest: { id: 'PR_node_44' } } } })); }",
+        "else if (route === 'graphql' && query.includes('CantripEnqueuePullRequest')) { state.queued = true; save(); process.stdout.write(JSON.stringify({ data: { enqueuePullRequest: { mergeQueueEntry: { id: 'MQE_44' } } } })); }",
+        "else if (route === 'graphql' && query.includes('CantripDequeuePullRequest')) { state.queued = false; save(); process.stdout.write(JSON.stringify({ data: { dequeuePullRequest: { mergeQueueEntry: { id: 'MQE_44' } } } })); }",
+        "else if (route.endsWith('/pulls/44/merge')) { state.state = 'closed'; state.merged = true; save(); process.stdout.write(JSON.stringify({ merged: true, sha: state.head, message: 'Merged' })); }",
+        "else if (route.endsWith('/pulls/44/update-branch')) process.stdout.write(JSON.stringify({ message: 'Updating pull request branch' }));",
         "else if (route.endsWith('/pulls/44') && method === 'PATCH') { const next = args.find((arg) => arg.startsWith('state=')); state.state = next?.slice(6) || state.state; save(); process.stdout.write(JSON.stringify(pr())); }",
         "else if (route.endsWith('/pulls/44')) process.stdout.write(JSON.stringify(pr()));",
         "else if (route.endsWith('/check-runs')) process.stdout.write(JSON.stringify({ total_count: 0, check_runs: [] }));",
@@ -2647,6 +2798,104 @@ describe("GitHub project files", () => {
       }),
     ).resolves.toMatchObject({ draft: false });
 
+    const draftPreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "convert-draft" },
+    );
+    await expect(
+      github.applyPullRequestLifecycle("ArcaneArts/Cantrip", repository, 44, {
+        action: { type: "convert-draft" },
+        token: draftPreview.token,
+        confirmation: "",
+      }),
+    ).resolves.toMatchObject({ draft: true });
+
+    await writeFile(statePath, JSON.stringify(initialState));
+    const updatePreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "update-branch" },
+    );
+    await github.applyPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      {
+        action: { type: "update-branch" },
+        token: updatePreview.token,
+        confirmation: "",
+      },
+    );
+
+    const autoMergeAction = {
+      type: "enable-auto-merge" as const,
+      method: "squash" as const,
+      commitTitle: null,
+      commitMessage: null,
+    };
+    const autoMergePreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      autoMergeAction,
+    );
+    await expect(
+      github.applyPullRequestLifecycle("ArcaneArts/Cantrip", repository, 44, {
+        action: autoMergeAction,
+        token: autoMergePreview.token,
+        confirmation: "auto-merge #44",
+      }),
+    ).resolves.toMatchObject({ autoMerge: { method: "squash" } });
+    const disableAutoMergePreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "disable-auto-merge" },
+    );
+    await github.applyPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      {
+        action: { type: "disable-auto-merge" },
+        token: disableAutoMergePreview.token,
+        confirmation: "",
+      },
+    );
+
+    const enqueuePreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "enqueue-merge-queue" },
+    );
+    await expect(
+      github.applyPullRequestLifecycle("ArcaneArts/Cantrip", repository, 44, {
+        action: { type: "enqueue-merge-queue" },
+        token: enqueuePreview.token,
+        confirmation: "queue #44",
+      }),
+    ).resolves.toMatchObject({ mergeQueueEntry: { state: "queued" } });
+    const dequeuePreview = await github.previewPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      { type: "dequeue-merge-queue" },
+    );
+    await github.applyPullRequestLifecycle(
+      "ArcaneArts/Cantrip",
+      repository,
+      44,
+      {
+        action: { type: "dequeue-merge-queue" },
+        token: dequeuePreview.token,
+        confirmation: "",
+      },
+    );
+
     const mergeAction = {
       type: "merge" as const,
       method: "squash" as const,
@@ -2686,6 +2935,12 @@ describe("GitHub project files", () => {
     const invocations = await readFile(logPath, "utf8");
     expect(invocations).toContain("state=closed");
     expect(invocations).toContain("state=open");
+    expect(invocations).toContain("CantripConvertPullRequestToDraft");
+    expect(invocations).toContain("/pulls/44/update-branch");
+    expect(invocations).toContain("CantripEnableAutoMerge");
+    expect(invocations).toContain("CantripDisableAutoMerge");
+    expect(invocations).toContain("CantripEnqueuePullRequest");
+    expect(invocations).toContain("CantripDequeuePullRequest");
     expect(invocations).toContain(
       ["pr", "ready", "44", "--repo", "ArcaneArts/Cantrip"].join("\0"),
     );
