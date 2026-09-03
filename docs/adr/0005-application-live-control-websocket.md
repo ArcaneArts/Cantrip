@@ -9,11 +9,11 @@
 > App Live publication is implemented through the relay coordinator and each
 > receiving server's owner-local replay hub.
 >
-> The durable workflow app/API, server scheduler/executor, and worker handlers
-> were later removed. `workflow-run` remains only in the shared protocol schema;
-> the server rejects that scope and there is no publisher or subscriber.
-> Workflow statements in the original implementation record below are
-> historical and superseded by this amendment.
+> The durable workflow app/API, server scheduler/executor, worker handlers,
+> persistence, and shared protocol residue were later removed. Current App Live
+> has no workflow scope, resource, publisher, or subscriber. Workflow statements
+> in the original implementation record below are historical and superseded by
+> this amendment.
 
 ## Implementation status
 

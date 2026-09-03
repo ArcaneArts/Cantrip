@@ -34,10 +34,9 @@ requests or carries bulk feature bytes.
 
 The client initializes protocol version `1` with a bounded client identity,
 supported client-control capabilities, and an optional same-epoch resume cursor.
-It then manages current-user, project, and chat subscriptions. The protocol
-retains `workflow-run` as a compatibility schema value, but the server rejects
-that scope and no current publisher or client subscriber exists. The server returns its process epoch,
-connection ID, current cursor, heartbeat interval, and replay decision.
+It then manages current-user, project, and chat subscriptions. The server
+returns its process epoch, connection ID, current cursor, heartbeat interval,
+and replay decision.
 
 Each committed event contains one authorized scope, a typed resource and
 action, an optional opaque entity ID and revision, a commit timestamp, and an

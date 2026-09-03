@@ -110,9 +110,8 @@ The attached root remains user-owned:
 
 ## Persistent model
 
-Add a one-to-one storage profile for every workspace rather than placing
-worker filesystem state directly on the existing workspace naming and policy
-record.
+Every workspace has a one-to-one storage profile, keeping worker filesystem
+state separate from the existing workspace naming and policy record.
 
 ```text
 project_workspace_storage_profiles
@@ -333,7 +332,7 @@ explicit migration flow; it must never happen as a side effect of this change.
 
 ## Protocol outline
 
-The implementation should add versioned schemas for:
+The shared protocol defines versioned schemas for:
 
 - workspace storage profile summaries;
 - managed and attached workspace creation requests;
@@ -343,15 +342,15 @@ The implementation should add versioned schemas for:
 - explicit error codes for invalid roots, unsupported checkout types,
   duplicates, worker unavailability, scan truncation, and stale candidates.
 
-Expected worker commands include equivalents of:
+The worker commands are:
 
 ```text
 workspace.root.attach
 workspace.repositories.discover
 ```
 
-Repository import should reuse the existing folder materialization and direct
-replica provisioning paths rather than introducing a second Git attachment
+Repository import reuses the existing folder materialization and direct replica
+provisioning paths rather than introducing a second Git attachment
 implementation.
 
 ## Delivery history

@@ -1,10 +1,10 @@
 # Application live transport audit
 
 > Historical measurement record. The durable workflow app/API, server
-> scheduler/executor, and worker handlers were later removed; old rows no
-> longer run. Workflow polling and subscription statements below describe the
-> audit-date client. Current source has no workflow publisher or subscriber,
-> and the server rejects the protocol's residual `workflow-run` scope.
+> scheduler/executor, worker handlers, and persistence were later removed.
+> Workflow polling and subscription statements below describe the audit-date
+> client. Current source has no workflow live scope, resource, publisher, or
+> subscriber.
 
 - Date: 2026-08-09
 - Scope: local single-server deployment

@@ -4,10 +4,9 @@ Audited on 2026-08-21 after the CodeGraph, redundant-query, chat sync, log
 streaming, Git state, and provider-auth AppLive phases.
 
 > Historical audit note: the durable workflow app/API, server
-> scheduler/executor, and worker handlers were removed after this audit. Current
-> source has no workflow publisher or subscriber, and the server rejects the
-> protocol's residual `workflow-run` scope. Workflow references below describe
-> the then-existing surface.
+> scheduler/executor, worker handlers, and persistence were removed after this
+> audit. Current source has no workflow live scope, resource, publisher, or
+> subscriber. Workflow references below describe the then-existing surface.
 
 ## Result
 

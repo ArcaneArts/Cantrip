@@ -1,5 +1,11 @@
 # Cantrip performance and reliability audit
 
+> Historical static-audit snapshot. Findings, counts, rankings, source
+> locations, and “current evidence” were last reconciled through commit
+> `42ebb4988e6a401671493e47bd799dfa0a7745d2`; they are not a current
+> optimization inventory. In particular, the durable-workflow UI, runtime, and
+> persistence cited by several findings were subsequently removed.
+
 - Date: 2026-08-29
 - Audit baseline: origin/main at ad6cc1b4bbb54dd27078dabed028654d700b7beb
 - Reconciliation updated through: origin/main at a5fe041d62447876e94134289e92385799a79756
@@ -15,7 +21,8 @@ and scheduler hot paths have been fixed. This pass removed every completed recor
 inventory and audited the replacement architecture rather than carrying legacy evidence forward.
 
 The deeper pass originally found 14 strong new opportunities. T0-01 through T0-14 are now fixed,
-along with N0-01 and N0-03. There are 41 actionable carryover opportunities after this cleanup.
+along with N0-01 and N0-03. At this baseline, 41 actionable carryover
+opportunities remained after cleanup.
 Four additional items remain measure-first candidates. The priority table is intentionally narrower
 than the full inventory.
 
@@ -106,7 +113,7 @@ inventory. Items T0-09 through T0-14 and N0-01/N0-03 were former priority ranks 
 | N0-01 | fixed  | Former priority rank 7; detailed entry removed |
 | N0-03 | fixed  | Former priority rank 8; detailed entry removed |
 
-## Revalidated priority opportunities
+## Baseline revalidated priority opportunities
 
 ### N0-07 — opportunity — Batch project and worker routing-metadata hydration
 
@@ -262,8 +269,9 @@ and wall time for 1/32/128 definitions.
 
 Evidence: cantrip_server/src/app.ts:5426-5440 retains unguarded one-second and 500 ms expiry loops;
 db/repository.ts:18136-18176 duplicates request-path expiry and restores affected chats sequentially;
-workflows/executor.ts:529-544 hydrates full runs for notification. Suggested change: a shared guarded
-runner, narrow expiry return projections, and batched restoration, with durable bounded watchdogs.
+the workflow-executor evidence was superseded when that subsystem was removed. Suggested change at
+the baseline: a shared guarded runner, narrow expiry return projections, and batched restoration,
+with durable bounded watchdogs.
 Validation: ten idle minutes, 1,000 simultaneous expirations, concurrent deadline requests, restart,
 winner semantics, notification, and recovery.
 
@@ -281,6 +289,9 @@ use bounded per-owner deques plus an aggregate cap and explicit fair eviction. V
 owners, hot/cold isolation, exact cursor/replay-too-old semantics, byte caps, reconnect, and memory.
 
 ### N0-19 — opportunity — Pre-index workflow detail joins in the UI
+
+Status after this audit: superseded. The workflow center was removed in
+`66ab97645`, so this optimization no longer has a current caller.
 
 - Category: ALGORITHM_COMPLEXITY
 - Expected gain: medium-high
@@ -426,7 +437,7 @@ change: order true dependencies but all-settle independent cleanup groups under 
 always attempting credential/session revocation and final transport close. Validation: inject one
 failure/hang per stage and prove every later cleanup runs, resources close, and exit stays bounded.
 
-## Revalidated follow-on inventory
+## Baseline revalidated follow-on inventory
 
 These remain actionable but rank below the frontier above. Each row includes current proof and the
 minimum safe next step; implementation should retain the detailed equivalence tests already named in
@@ -436,7 +447,7 @@ prior audits.
 | ----- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | P1-01 | REDUNDANT_COMPUTATION; medium; low risk; low complexity; high confidence                                 | relay-coordinator.ts:273-296 measures coordination bytes by stringify; 935-939 stringifies again for Redis                                                                                                                   | serialize once and carry bytes/length; assert exact quotas and wire payloads                                                |
 | P1-02 | N_PLUS_ONE_OR_CHATTER; medium-high fleet; low-medium risk; medium complexity; high confidence            | coordinated-bridge.ts:121-132 has an unguarded presence interval; 1115-1177 refreshes sequentially; relay-coordinator.ts:587-625 scans then GETs serially                                                                    | guarded bounded concurrency and Redis bulk read; test disconnect/revoke/order and large fleets                              |
-| P1-03 | N_PLUS_ONE_OR_CHATTER; medium-high recovery; low risk; medium complexity; high confidence                | db/workflow-runs.ts:5573-5655 selects up to 500 attempts and sequentially loads full runs plus revision nodes                                                                                                                | memoize/bulk recovery projections; compare SQL and outcomes for shared runs                                                 |
+| P1-03 | Superseded after this audit                                                                              | The workflow run repository and runtime were removed in `87adc1841`; persistence was removed in `b6bc0df2a`                                                                                                                  | No current optimization target                                                                                              |
 | P1-04 | STATE_OR_CACHE_STRATEGY; medium-high large repos; low-medium risk; medium complexity; high confidence    | project-workspace-resources.ts:222-239 gates visible stats, but app-live-query.ts:330-340,602-625 invalidates on filesystem/Git; worker scans reach 50k files/256 MiB                                                        | canonical-root single-flight plus short dirty debounce; 100 concurrent/burst requests cause one scan with bounded freshness |
 | P1-05 | REDUNDANT_COMPUTATION; medium-high; low risk; low complexity; high confidence                            | use-explorer-directory.ts:29-55 requests listing; cantrip_worker/src/explorer.ts:183-243 lists/stats, and 442-476 repeats it for commit metadata                                                                             | share a short mutation-invalidated listing and parallelize HEAD; test 1,000 entries, symlinks, immediate mutations          |
 | P1-06 | REDUNDANT_COMPUTATION; high during resize; low risk; low complexity; high confidence                     | shell-chrome.ts:28-34,187-223 updates React state per pointer move; application-shell.tsx:319-338 owns it at root                                                                                                            | rAF CSS/ref preview, one React/persistence commit on completion; test FPS, pointer cancel/capture, keyboard                 |
@@ -519,7 +530,7 @@ only then narrow observation boundaries, batch a frame, and cap timers while pre
 
 These should remain small internal utilities tied to the listed callers, not a generic framework.
 
-## Recommended delivery sequence
+## Historical recommended delivery sequence
 
 ### Wave 0 — add proof counters and deterministic fixtures
 

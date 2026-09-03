@@ -14,13 +14,13 @@ Store Connect for TestFlight processing rather than attached publicly.
 
 The two browser-only surfaces are deployed separately through DigitalOcean App
 Platform using `.do/app.yaml`. Both static components watch `release` with
-automatic deploys enabled, and `pnpm release` also reapplies the committed spec,
-waits for the App Platform deployment, and verifies that both components
-activated the exact release commit. Host-based ingress serves the marketing
-site at `cantrip.art`, the browser application at `app.cantrip.art`, and
-redirects the DigitalOcean starter hostname to the marketing site. The
-components build from the repository root so pnpm can resolve the shared
-workspace packages.
+automatic deploys enabled. `pnpm release` validates and reapplies the committed
+spec with source updates, then continues without waiting for App Platform
+activation or verifying the active component commit before deploying the
+production Server. Host-based ingress serves the marketing site at
+`cantrip.art`, the browser application at `app.cantrip.art`, and redirects the
+DigitalOcean starter hostname to the marketing site. The components build from
+the repository root so pnpm can resolve the shared workspace packages.
 Each component has an explicit browser-only build command; App Platform must
 not invoke the root native distribution build, which requires Rust and other
 desktop toolchains that are intentionally absent from its Node.js build image.
@@ -45,19 +45,20 @@ active only after the DNS records requested by App Platform have propagated.
 
 ## Build matrix
 
-Run packaging on the target operating system because the Worker contains
-native PTY, screen capture, and image modules.
+Run service packaging on the target operating system; the packaging script
+rejects cross-target requests. The Worker additionally contains native PTY,
+screen-capture, and image modules.
 
-| Command                        | Output                                                            | Host requirement                                      |
-| ------------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------- |
-| `pnpm package:server`          | `artifacts/cantrip-server-<os>-<arch>`                            | No external runtime                                   |
-| `pnpm package:worker`          | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Git at runtime                     |
-| `pnpm package:services`        | Both service trees                                                | Same as above                                         |
-| `pnpm package:desktop-runtime` | Runtime tree embedded by Tauri                                    | Native build host                                     |
-| `pnpm package:app`             | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                             |
-| `pnpm bundle`                  | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                             |
-| `pnpm deploy:server`           | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH |
-| `pnpm release`                 | Promotes `release`, deploys App Platform, and deploys the Server  | Same as `deploy:server`, plus `doctl` and push access |
+| Command                        | Output                                                            | Host requirement                                                    |
+| ------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `pnpm package:server`          | `artifacts/cantrip-server-<os>-<arch>`                            | Current native target host; artifact needs no separate Node runtime |
+| `pnpm package:worker`          | `artifacts/cantrip-worker-<os>-<arch>`                            | Native build host, Git at runtime                                   |
+| `pnpm package:services`        | Both service trees                                                | Same as above                                                       |
+| `pnpm package:desktop-runtime` | Runtime tree embedded by Tauri                                    | Native build host                                                   |
+| `pnpm package:app`             | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                                           |
+| `pnpm bundle`                  | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                                           |
+| `pnpm deploy:server`           | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH               |
+| `pnpm release`                 | Promotes `release`, deploys App Platform, and deploys the Server  | Same as `deploy:server`, plus `doctl` and push access               |
 
 Every Worker package must contain the regular entry file
 `dist/mcp/stdio.js` and its production MCP SDK dependencies. Standalone Worker
@@ -311,9 +312,9 @@ to equal `origin/main`, verifies that `origin/release` can fast-forward, and
 then pushes `main` to `release`. It refuses dirty trees, non-`main` branches,
 unpushed main commits, and divergent release history. The branch push triggers
 the native client release workflow. The release command then validates and
-applies `.do/app.yaml` with authenticated `doctl`, waits for App Platform, and
-requires both the `app` and `site` components to activate the exact promoted
-commit. Finally, it cross-builds the Linux x64 Server with Docker Buildx, loads
+applies `.do/app.yaml` with authenticated `doctl` and source updates, without
+waiting for activation or checking the active component SHAs. Finally, it
+cross-builds the Linux x64 Server with Docker Buildx, loads
 the production environment from Infisical on the release machine, and deploys
 that same commit to the configured production host. Use `pnpm deploy:server`
 to retry only the server deployment without advancing `release`.
@@ -448,9 +449,10 @@ WorkerLink, and native Code uses a loopback forward.
 When the Worker will run on the same desktop as the Cantrip app, select the
 hosted server in that app and use Settings → Workers → **Add this machine**.
 The signed-in app creates and consumes the one-time enrollment internally,
-persists only the resulting worker credential in the worker's protected data
-directory, and can enable launch-at-login. The app starts hidden in the system
-tray after login; closing the main window does not stop its linked workers.
+persists the stable worker identity and resulting credential—but not the
+one-time enrollment code—in the worker's protected data directory, and can
+enable launch-at-login. The app starts hidden in the system tray after login;
+closing the main window does not stop its linked workers.
 
 For headless hosts or machines without the desktop app, the manual flow remains
 available:
@@ -461,10 +463,12 @@ generated POSIX or PowerShell pairing command, and set the code once as
 `CANTRIP_WORKER_ENROLLMENT_CODE`, and configure a display name plus durable
 `CANTRIP_WORKER_DATA_DIR`. The worker creates a stable local identity, exchanges
 the single-use code, and stores its unique credential in
-`worker-credential.json` with owner-only filesystem permissions. Remove the
-link code from the environment after the first successful start. Immutable
-deployments may inject `CANTRIP_WORKER_CREDENTIAL` with its bound
-`CANTRIP_WORKER_ID` from a secret manager instead.
+`worker-credential.json` together with the bound worker ID and server origin.
+Its stable worker ID is stored separately in `worker-identity.json`. Both files
+use owner-only filesystem permissions (`0600` on Unix). Remove the link code
+from the environment after the first successful start. Immutable deployments
+may inject `CANTRIP_WORKER_CREDENTIAL` with its bound `CANTRIP_WORKER_ID` from a
+secret manager instead.
 
 The artifact contains the exact Codex CLI compiled from `cantrip_codex/` for
 its operating system and architecture. GitHub CLI, repository files,

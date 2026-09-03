@@ -273,8 +273,9 @@ surfaces may have a worker but no replica or worktree.
 
 ## Project-wide branch coordination
 
-Legacy workflow lease rows may remain in the database, but there is no workflow
-scheduler, executor, recovery path, worker handler, app surface, or public API.
+The former durable-workflow branch-lease integration was removed with the
+workflow runtime and persistence. Project branch leases now have chat execution
+lanes as their only holder.
 
 Physical worktree IDs are worker-local. Two replicas can therefore expose
 different worktree IDs for the same Git branch, so a worktree-only lease cannot
@@ -283,9 +284,7 @@ prevent two agents from mutating that logical branch concurrently.
 The server also persists `project_branch_leases`. A partial unique index permits
 only one active holder for each `(project_id, branch_name)`, regardless of
 worker, replica, or physical worktree. Chat execution acquires this fence in the
-same transaction that activates its execution lane. An old unreleased
-workflow-linked branch lease can still occupy that unique fence and block a
-chat, but no current workflow path acquires, renews, or releases one.
+same transaction that activates its execution lane.
 
 Primary chat turns release their logical fence when the turn finishes. A
 secondary chat lane retains it while suspended because that worktree may contain

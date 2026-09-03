@@ -1,5 +1,11 @@
 # Client-worker network fabric progress
 
+> Historical execution ledger. Test counts, baseline failures, blockers, and
+> observations described as “current” below record the tranche work through PR
+> #1213; they are not a live repository-health report. The current structural
+> acceptance check has four stale Code/Explorer test-name markers and stops
+> before running its matrix.
+
 - Tranche One: Stabilized
 - Tranche Two: Stabilized
 - Architecture: [NETWORK.md](NETWORK.md)
@@ -142,7 +148,7 @@ intentionally out of scope.
 
 ## Blockers and known risks
 
-- No current blocker.
+- No blocker was recorded at tranche closure.
 - T2.11 validates the shared browser/Capacitor renderer path deterministically
   and syncs both Capacitor projects, but no physical iOS or Android device or
   multi-device LAN/WAN/cellular/restrictive-NAT topology was available. Those
@@ -170,7 +176,8 @@ intentionally out of scope.
   The broad server run reproduces the existing schema, placement, version, and
   order failure cluster recorded below; the focused replicated service and
   relay suites pass. No failing broad test exercises the mixed-carrier manager.
-- The repository-wide `pnpm check` currently stops at the pre-existing
+- At the recorded Tranche One baseline, repository-wide `pnpm check` stopped at
+  the then-existing
   `audit:server-boundaries` failure: “Client-control notification E2EE boundary
   regressed: client: protected notification path is missing.” Root formatting
   reports four unmodified files:
@@ -178,6 +185,10 @@ intentionally out of scope.
   `cantrip_app/src/lib/client-session.ts`,
   `cantrip_app/src/lib/server-connections.ts`, and
   `cantrip_server/test/chat-turn-retry-repository.test.ts`.
+- The server-boundary audit now passes. The current
+  `pnpm network:acceptance:check` instead stops on four renamed Code/Explorer
+  test markers in `scripts/network-tranche-two-acceptance.mjs`; the dated matrix
+  results in this ledger remain historical evidence.
 - The Tranche One final full protocol suite passed 359 tests. Its final full app suite
   passes 1,582 tests with three skipped. The final full worker suite passes 883
   tests with two skipped across 142 passing files and one skipped file. The

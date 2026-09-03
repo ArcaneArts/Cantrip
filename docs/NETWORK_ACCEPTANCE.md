@@ -6,7 +6,13 @@
 - Post-gate regression run: 2026-08-27
 - Post-gate repair: [#1213](https://github.com/ArcaneArts/Cantrip/pull/1213)
 - Command: `pnpm network:acceptance`
-- Result: Pass
+- Recorded result (2026-08-27): Pass
+
+> Current verification note: `pnpm network:acceptance:check` now stops because
+> four Code/Explorer test-name markers in the structural matrix no longer match
+> the renamed tests. This is verifier drift, not a newly executed failure of
+> the topology cases. The pass results below are the dated acceptance record and
+> should not be read as a current test run.
 
 This is the repeatable stabilization record for the operational Cantrip
 client-worker route fabric. The executable matrix lives in

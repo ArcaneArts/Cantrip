@@ -8,9 +8,8 @@ current contract.
 
 > Current workflow boundary: the durable workflow UI and public APIs were
 > removed after this folder-project rollout. Workflow references in the
-> delivery history are historical. Legacy workflow schemas and rows remain for
-> compatibility and conservative safety checks, but there is no scheduler,
-> recovery path, executor, worker handler, UI, or public API.
+> delivery history are historical. The runtime and persistence have also been
+> removed; only shared contract residue and historical migrations remain.
 
 The implementation was delivered through seven sequential Manual Change
 Protocol cycles: domain and migration, worker materialization, routing and
@@ -384,11 +383,11 @@ dashboard replaces worktree/branch placement with the owning worker and folder
 display path. It omits PR association and Git-derived dirty/merge warnings
 rather than presenting them as failed lookups.
 
-## Legacy workflow records
+## Historical workflow references
 
-Legacy folder-workflow records may remain in compatibility tables, but they are
-not scheduled, recovered, dispatched, or executable. They do not provide a
-current folder feature.
+The workflow steps in the delivery record below describe the product at the
+time of that rollout. Current source has no durable-workflow records, scheduler,
+recovery path, dispatcher, or folder-workflow feature.
 
 ## Surface and feature behavior
 
@@ -503,8 +502,7 @@ lifecycle.
 The conversion must:
 
 1. require the owning worker online and the project free of an active folder
-   setup, deletion, or conversion, with no legacy workflow-run row left in an
-   active status;
+   setup, deletion, or conversion;
 2. require the user to select or create a GitHub repository accessible through
    that worker;
 3. reject a GitHub repository already bound to another Cantrip project;

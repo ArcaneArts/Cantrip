@@ -1,18 +1,26 @@
 # Terminal architecture
 
-Cantrip terminals are worker-owned PTYs rendered by Xterm in the app. The PTY,
-its process generation, and its canonical terminal state outlive any one visible
-React host. Browser navigation therefore parks a live terminal surface instead
-of destroying it. A parked surface keeps its Xterm instance, addons, stream,
-buffer, and input/output sequencing, but is never fitted against a hidden or
-zero-sized container. Restoring it performs a fit, Xterm refresh, link refresh,
-focus recovery, and PTY dimension synchronization.
+Cantrip interactive and chat-console terminals are worker-owned PTYs rendered
+by Xterm in the app. The PTY, its process generation, and its canonical
+terminal state outlive any one visible React host. Browser navigation therefore
+parks one of these live terminal surfaces instead of destroying it. A parked
+surface keeps its Xterm instance, addons, stream, buffer, and input/output
+sequencing, but is never fitted against a hidden or zero-sized container.
+Restoring it performs a fit, Xterm refresh, link refresh, focus recovery, and
+PTY dimension synchronization.
 
-The browser retains at most 12 inactive terminal surfaces. Eviction is safe
-because a later renderer can recover from the worker's canonical snapshot. A
-terminal is disposed immediately at a real lifecycle boundary: terminal close
-or exit, worker identity replacement, authenticated-session invalidation, or
-owner removal.
+The browser retains at most 12 inactive interactive/chat-console surfaces.
+Eviction is safe because a later renderer can recover from the worker's
+canonical snapshot. Explicit close, worker identity replacement,
+authenticated-session invalidation, owner removal, or retained-view replacement
+tears down renderer ownership. A normal process exit writes the exit marker,
+closes the attachment, and schedules reconnect; it does not synchronously
+dispose the renderer. A linked console additionally closes its presentation
+through `onExit`.
+
+Run-configuration terminals are excluded from the retained-view registry. They
+use `RunTerminalView` and bounded runtime-output polling rather than this parked
+Xterm lifecycle.
 
 ## Canonical worker state
 

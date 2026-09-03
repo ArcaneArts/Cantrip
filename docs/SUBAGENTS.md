@@ -4,7 +4,16 @@ Status: implemented
 
 Scope: native Codex subagents, model configuration, encrypted event transport, chat presentation, and trajectory visualization
 
-## Issue
+Compatible IDE/project Agent and Task sessions enable native subagents without
+adding a proactive-delegation prompt. Standalone Chat disables them. ChatGPT
+routes use MultiAgent V2 under `cantrip_agents`; Ollama and OpenAI-compatible
+routes use MultiAgent V1.
+
+The Issue and Current Behavior sections below preserve the pre-implementation
+baseline. Target, architecture, cycle, and acceptance language records the
+delivered design.
+
+## Historical issue
 
 Cantrip already runs a Codex version with native collaboration support and recognizes a small subset of its subagent activity, but it does not expose subagents as complete, durable participants in an agent turn. Child-thread notifications are not owned by the root execution, child conversations are not reconstructed, collaboration activity is flattened into generic tool rows, and the trajectory assumes one agent with three fixed lanes.
 
@@ -24,7 +33,7 @@ The feature must preserve Cantrip's encrypted-content boundary. Subagent prompts
 - In the first implementation, a custom subagent model must have a usable route on the same provider identity as the selected root route. Native Codex currently copies the parent's provider into spawned threads and does not expose a provider override on `spawn_agent`.
 - Every implementation cycle described below must use its own worktree, PR, and squash automerge. A cycle starts from the newly merged `main`; there is no umbrella PR.
 
-## Current Behavior
+## Historical pre-implementation behavior
 
 ### Codex runtime
 
@@ -60,7 +69,8 @@ Subagent support must extend this mechanism. It must not introduce a plaintext c
 
 ### Availability
 
-- Native subagent tools are available in every compatible Codex session by default.
+- Native subagent tools are available by default in compatible IDE/project
+  Agent and Task sessions. Standalone Chat disables them.
 - Cantrip does not add a proactive-delegation prompt, silently spawn agents, or change approval policy.
 - Existing prompt and policy controls continue to determine whether the model actually uses a subagent.
 - Older/incompatible workers report the capability as unavailable instead of accepting configuration they cannot honor.
@@ -104,7 +114,9 @@ It reuses the main chat's message, markdown, activity, and detail renderers but 
 
 ### Trajectory
 
-The trajectory has one horizontal track per agent rather than three global bars. Each track is a single multicolored bar whose segments retain the existing semantic colors for input, model work, and tools. Additional activity categories may add colors later without changing the track model.
+The trajectory has one horizontal track per agent rather than three global
+bars. Each track is a single multicolored bar whose segments use the current
+Input, Model, Tools, and Changes categories.
 
 Ordering is deterministic:
 
@@ -127,7 +139,7 @@ Introduce one shared protocol object and use it for account defaults, chat state
 
 ```ts
 type ModelConfiguration = {
-  modelId: string;
+  modelId: string | null;
   reasoningEffort: ReasoningEffort | null;
   customSubagentModel: boolean;
   subagentModelId: string | null;
@@ -164,11 +176,11 @@ Cross-provider custom subagents are deferred. Supporting them requires an upstre
 
 ### Runtime enablement
 
-Make availability explicit in generated Codex runtime configuration:
-
-- `agents.enabled=true`
-- stable native `multi_agent` support enabled
-- no proactive/automatic-delegation mode
+Generated Codex runtime configuration enables native subagents only for
+compatible IDE/project Agent and Task sessions, with no proactive or automatic
+delegation mode. Standalone Chat disables them. ChatGPT routes select
+MultiAgent V2 under `cantrip_agents`; Ollama and OpenAI-compatible routes select
+MultiAgent V1.
 
 Extend the worker turn command/options with the resolved subagent runtime defaults and capability version. Keep these values scoped to a chat turn rather than mutating a user's global Codex configuration.
 
@@ -263,7 +275,12 @@ The main transcript, subagent panel, and trajectory consume this shared projecti
 - `packages/protocol/src/communication-content.ts`: protected content and agent-scope classification.
 - `cantrip_server/src/db/schema.ts`: chat and user-settings migration; existing encrypted chat-message storage.
 - `cantrip_server/src/db/repository.ts`: new-chat default copying, atomic configuration updates, queued-turn snapshots, and removal of chat-to-profile reasoning side effects.
-- `cantrip_server/src/app.ts`: atomic API, route-pair validation, worker command construction, capability checks, and continuation filtering.
+- `cantrip_server/src/app/routes/chat-runtime-configuration.ts`: atomic model
+  configuration API and validation.
+- `cantrip_server/src/app/runtime/model-routing-runtime.ts`: paired model-route
+  resolution.
+- `cantrip_server/src/app/runtime/chat-turn-runtime.ts`: worker command
+  construction, turn snapshots, capability checks, and continuation filtering.
 - `cantrip_app/src/lib/api.ts`: atomic model-configuration client mutation.
 - `cantrip_app/src/components/chat/model-reasoning-picker.tsx`: shared root/subagent configuration dialog.
 - `cantrip_app/src/components/settings/settings-page.tsx`: account default entry point.
@@ -367,7 +384,9 @@ Light checks: package-focused checks/builds and `git diff --check`; use the repo
 
 ## Acceptance Criteria
 
-- Native subagent tools are enabled for compatible chats by default without making delegation proactive.
+- Native subagent tools are enabled for compatible IDE/project Agent and Task
+  sessions by default without making delegation proactive; standalone Chat
+  disables them.
 - A new chat receives the complete account default model configuration.
 - The composer has one model control and no separate reasoning brain button.
 - The same dialog edits a chat and the account default, with correct inherited/custom behavior and atomic saving.
