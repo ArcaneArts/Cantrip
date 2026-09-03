@@ -1,7 +1,7 @@
 import {
   clearSensitiveBytes,
   deriveComponentKey,
-  encryptWorkflowContent,
+  encryptProjectAutomationContent,
   generateAccountMasterKey,
 } from "@cantrip/crypto";
 import {
@@ -15,7 +15,7 @@ import { protectProjectAutomationDispatch } from "../src/automation-encryption.j
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 describe("project automation dispatch encryption", () => {
-  it("executes from ciphertext created by the legacy workflow-content API", async () => {
+  it("executes while preserving the legacy workflow-content cryptographic contract", async () => {
     const ownerId = "automation-owner";
     const automationId = "5c993b4c-395d-44bf-90fd-8432ed8f503e";
     const accountKey = generateAccountMasterKey();
@@ -31,12 +31,12 @@ describe("project automation dispatch encryption", () => {
       component: "chat-content",
       keyRevision: 1,
     });
-    const legacyEncrypt = <T>(
+    const encryptAutomationField = <T>(
       field: "name" | "prompt" | "condition",
       content: T,
       schema: { parse(value: unknown): T },
     ) =>
-      encryptWorkflowContent({
+      encryptProjectAutomationContent({
         ownerId,
         context: {
           recordKind: "project-automation",
@@ -60,17 +60,17 @@ describe("project automation dispatch encryption", () => {
 
     try {
       const content = {
-        protectedName: await legacyEncrypt(
+        protectedName: await encryptAutomationField(
           "name",
           { version: 1 as const, name: "Nightly review" },
           projectAutomationProtectedNameSchema,
         ),
-        protectedPrompt: await legacyEncrypt(
+        protectedPrompt: await encryptAutomationField(
           "prompt",
           { version: 1 as const, prompt: "Review the project" },
           projectAutomationProtectedPromptSchema,
         ),
-        protectedCondition: await legacyEncrypt(
+        protectedCondition: await encryptAutomationField(
           "condition",
           { version: 1 as const, condition: null },
           projectAutomationProtectedConditionSchema,

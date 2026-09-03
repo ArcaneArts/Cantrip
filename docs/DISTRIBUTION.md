@@ -191,9 +191,12 @@ Run `pnpm verify:installation-compatibility` before packaging. The gate checks
 the immutable version-one manifest at
 `scripts/installation-compatibility.v1.json` against the desktop, iOS, Android,
 browser, server, and encryption implementations, then runs platform-path and
-browser-recovery contract simulations. `pnpm release` executes it before
-advancing `release`. A contract change without a named migration and test
-fixture blocks release.
+browser-recovery contract simulations. It also executes the workflow-removal
+verifier, which rejects restored product artifacts, APIs, runtime or
+schema identifiers, and documentation while requiring the forward data-removal
+migration and its preservation test to remain intact. `pnpm release` executes
+both checks before advancing `release`. A compatibility contract change without
+a named migration and test fixture blocks release.
 
 The native workflow adds a different gate in each artifact lane. Current Rust,
 Swift, and Android Java storage readers consume the checked-in version-one

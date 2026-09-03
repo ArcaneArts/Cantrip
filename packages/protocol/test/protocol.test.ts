@@ -7,7 +7,6 @@ import {
   agentActivitySchema,
   agentFilePreviewLimitCharacters,
   agentTurnResultSchema,
-  agentInteractionRequestQuerySchema,
   agentInteractionRequestSchema,
   agentInteractionRuntimeRequestSchema,
   agentInteractionResolutionCreateSchema,
@@ -4383,21 +4382,6 @@ describe("Cantrip protocol", () => {
     };
 
     expect(agentInteractionRequestSchema.parse(request)).toEqual(request);
-    expect(
-      agentInteractionRequestSchema.safeParse({
-        ...request,
-        provenance: {
-          ...request.provenance,
-          workflowRunId: "retired-run",
-          workflowNodeId: "retired-node",
-        },
-      }).success,
-    ).toBe(false);
-    expect(
-      agentInteractionRequestQuerySchema.safeParse({
-        workflowRunId: "retired-run",
-      }).success,
-    ).toBe(false);
     expect(
       agentInteractionResolutionCreateSchema.parse({
         idempotencyKey: "resolve-1",

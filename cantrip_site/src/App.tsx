@@ -42,7 +42,6 @@ import {
   Sparkles,
   Sun,
   TerminalSquare,
-  Workflow,
   X,
   Zap,
   type LucideIcon,
@@ -239,15 +238,15 @@ const capabilityGroups: Array<{
     ],
   },
   {
-    icon: Workflow,
+    icon: CalendarClock,
     label: "AUTOMATE",
-    title: "Durable workflows, not fragile macros",
+    title: "Schedule a protected prompt for the right Agent chat",
     description:
-      "Compose agent, verification, approval, condition, map, pipeline, and repeat-until nodes with explicit budgets and recovery.",
+      "Project automations retain their schedule across restarts and let the assigned worker evaluate one explicit condition before dispatch.",
     features: [
-      "Schedules, webhooks, Git events, APIs, and saved commands",
-      "Pause, cancel, retry, approvals, and bounded concurrency",
-      "Trusted unattended revisions with permission manifests",
+      "Interval, weekday, and cron schedules with time zones",
+      "Optional worker script or open-GitHub-issue condition",
+      "Encrypted names, prompts, conditions, and chat turns",
     ],
   },
   {
@@ -851,47 +850,42 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-function WorkflowBoard() {
+function AutomationBoard() {
   return (
-    <div className="workflow-board" aria-label="Cantrip workflow example">
-      <div className="workflow-topline">
+    <div
+      className="automation-board"
+      aria-label="Cantrip project automation example"
+    >
+      <div className="automation-topline">
         <span>
-          <Activity size={14} /> Release readiness
+          <Activity size={14} /> Morning issue triage
         </span>
-        <span className="workflow-state">
-          <i /> RUNNING
+        <span className="automation-state">
+          <i /> ENABLED
         </span>
       </div>
-      <div className="workflow-trigger">
+      <div className="automation-schedule">
         <CalendarClock size={17} />
         <div>
-          <small>TRIGGER</small>
+          <small>SCHEDULE</small>
           <strong>Every weekday · 08:30</strong>
         </div>
       </div>
-      <div className="workflow-flow">
-        <div className="workflow-node active">
+      <div className="automation-details">
+        <div className="automation-detail">
           <Bot size={17} />
-          <span>Agent</span>
-          <small>Inspect changes</small>
+          <span>Target chat</span>
+          <small>Release agent</small>
         </div>
-        <ArrowRight size={15} />
-        <div className="workflow-node complete">
-          <Check size={17} />
-          <span>Verify</span>
-          <small>Tests + policy</small>
-        </div>
-        <ArrowRight size={15} />
-        <div className="workflow-node waiting">
-          <CirclePause size={17} />
-          <span>Approval</span>
-          <small>Wait for owner</small>
+        <div className="automation-detail condition">
+          <ShieldCheck size={17} />
+          <span>Condition</span>
+          <small>At least one open issue</small>
         </div>
       </div>
-      <div className="workflow-footer">
-        <span>Budget 38%</span>
-        <span>2 / 4 nodes complete</span>
-        <span>Worktree isolated</span>
+      <div className="automation-footer">
+        <span>Last run · Complete</span>
+        <span>Next · Tomorrow 08:30</span>
       </div>
     </div>
   );
@@ -914,7 +908,7 @@ function App() {
             <a href="#workspace">IDE</a>
             <a href="#agents">Agents</a>
             <a href="#git">Git</a>
-            <a href="#workflows">Automate</a>
+            <a href="#automations">Automate</a>
             <a href="#architecture">Deploy</a>
           </nav>
           <div className="header-actions">
@@ -1399,28 +1393,28 @@ function App() {
           </div>
         </section>
 
-        <section className="workflow-section section-wrap" id="workflows">
-          <div className="workflow-copy">
-            <SectionLabel>WORKFLOWS &amp; AUTOMATIONS</SectionLabel>
-            <h2>Turn repeatable work into durable systems.</h2>
+        <section className="automation-section section-wrap" id="automations">
+          <div className="automation-copy">
+            <SectionLabel>PROJECT AUTOMATIONS</SectionLabel>
+            <h2>Put one repeatable prompt on a durable schedule.</h2>
             <p>
-              Build automations from explicit steps instead of hiding the run in
-              one giant prompt. Schedule them, trigger them from Git or an API,
-              and keep a human approval exactly where it matters.
+              Choose an Agent chat, protect its prompt, and optionally require a
+              worker script or open-issue threshold before Cantrip dispatches
+              the turn.
             </p>
-            <div className="workflow-points">
+            <div className="automation-points">
               <span>
-                <Zap size={16} /> Schedules, webhooks, Git events, and APIs
+                <Zap size={16} /> Interval, weekday, and cron schedules
               </span>
               <span>
-                <Workflow size={16} /> Agent, verify, condition, map, and repeat
+                <CalendarClock size={16} /> One selected Agent chat and prompt
               </span>
               <span>
-                <ShieldCheck size={16} /> Budgets, permissions, and approvals
+                <ShieldCheck size={16} /> Optional worker-local condition
               </span>
             </div>
           </div>
-          <WorkflowBoard />
+          <AutomationBoard />
         </section>
 
         <section
