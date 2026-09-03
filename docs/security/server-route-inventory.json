@@ -140,7 +140,6 @@
       "cantrip_server/src/app/runtime/tunnel-control-plane-runtime.ts",
       "cantrip_server/src/app/runtime/worker-notification-runtime.ts",
       "cantrip_server/src/app/runtime/worker-observation-publication-runtime.ts",
-      "cantrip_server/src/app/runtime/workflow-scheduling-runtime.ts",
       "cantrip_server/src/app/shared/constants.ts",
       "cantrip_server/src/app/shared/errors.ts",
       "cantrip_server/src/app/shared/git-managed-operations.ts",
@@ -173,18 +172,18 @@
     "workerCredentialRoutes": 13,
     "durableTables": 100,
     "agentOperations": 44,
-    "workerCommands": 280,
+    "workerCommands": 273,
     "liveResources": 48,
     "clientControlCommands": 4,
     "cliCommands": 35,
     "tunnelFrameKinds": 9,
-    "repositoryMethods": 413,
+    "repositoryMethods": 356,
     "repositoryOwnerEvidence": {
-      "explicit-owner": 339,
+      "explicit-owner": 287,
       "owner-parameter-unused": 18,
       "worker-scoped": 8,
       "system-lifecycle": 9,
-      "delegated-or-missing-review": 39
+      "delegated-or-missing-review": 34
     }
   },
   "contractSetDigests": {
@@ -193,7 +192,7 @@
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "b9e36d56fc85b2ab701bf63cb89390ddbfff4ab43535e190d83c84a4d96e52dd",
-    "workerCommands": "30b631278fc5e0f35b8f0b751f5d945c17e14b81fb9295cf7baeaca2ecad9833",
+    "workerCommands": "fc63ee379629457138cb3ddd623e100e1c260b8b485d94977107020957db633d",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -845,7 +844,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 58,
+      "line": 52,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests",
@@ -858,7 +857,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 77,
+      "line": 70,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId",
@@ -871,7 +870,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 91,
+      "line": 84,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId/respond",
@@ -2613,7 +2612,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-worker-websocket.ts",
-      "line": 126,
+      "line": 120,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/connect",
@@ -2626,7 +2625,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-worker-http-control.ts",
-      "line": 56,
+      "line": 50,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/encryption/bootstrap",
@@ -2652,7 +2651,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-worker-http-control.ts",
-      "line": 181,
+      "line": 175,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/heartbeat",
@@ -2691,7 +2690,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/live.ts",
-      "line": 54,
+      "line": 51,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/live",
@@ -7295,13 +7294,6 @@
     "worker.encryption.refresh",
     "worker.restart",
     "worker.version",
-    "workflow.definition.generate",
-    "workflow.gate.decide.protected",
-    "workflow.node.execute",
-    "workflow.node.interrupt",
-    "workflow.repository.scan",
-    "workflow.repository.write",
-    "workflow.trigger.prepare.protected",
     "workspace.repositories.discover",
     "workspace.repository-import.validate",
     "worktree.create",
@@ -8624,41 +8616,6 @@
       "command": "worker.version",
       "classification": "intentionally-public-control-plane",
       "rationale": "reviewed worker lifecycle or capability contract"
-    },
-    {
-      "command": "workflow.definition.generate",
-      "classification": "endpoint-protected",
-      "rationale": "operation-bound protected worker contract"
-    },
-    {
-      "command": "workflow.gate.decide.protected",
-      "classification": "endpoint-protected",
-      "rationale": "operation-bound protected worker contract"
-    },
-    {
-      "command": "workflow.node.execute",
-      "classification": "endpoint-protected",
-      "rationale": "operation-bound protected worker contract"
-    },
-    {
-      "command": "workflow.node.interrupt",
-      "classification": "endpoint-protected",
-      "rationale": "operation-bound protected worker contract"
-    },
-    {
-      "command": "workflow.repository.scan",
-      "classification": "endpoint-protected",
-      "rationale": "operation-bound protected worker contract"
-    },
-    {
-      "command": "workflow.repository.write",
-      "classification": "endpoint-protected",
-      "rationale": "operation-bound protected worker contract"
-    },
-    {
-      "command": "workflow.trigger.prepare.protected",
-      "classification": "endpoint-protected",
-      "rationale": "operation-bound protected worker contract"
     },
     {
       "command": "workspace.repositories.discover",
@@ -10865,487 +10822,487 @@
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 641,
+      "line": 632,
       "method": "updateChat",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 649,
+      "line": 640,
       "method": "getChatComposerDraftWireState",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 656,
+      "line": 647,
       "method": "updateChatComposerDraft",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 664,
+      "line": 655,
       "method": "setChatAutomationPaused",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 672,
+      "line": 663,
       "method": "updateChatWorktree",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 679,
+      "line": 670,
       "method": "deleteChat",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 686,
+      "line": 677,
       "method": "archiveStandaloneChat",
       "ownerEvidence": "owner-parameter-unused"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 703,
+      "line": 694,
       "method": "restoreStandaloneChat",
       "ownerEvidence": "owner-parameter-unused"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 714,
+      "line": 705,
       "method": "getStandaloneChatRootForDeletion",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 729,
+      "line": 720,
       "method": "restoreArchivedChat",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 736,
+      "line": 727,
       "method": "permanentlyDeleteArchivedChat",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 746,
+      "line": 737,
       "method": "purgeExpiredArchivedChats",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 752,
+      "line": 743,
       "method": "forkChat",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 763,
+      "line": 754,
       "method": "forkStandaloneChat",
       "ownerEvidence": "owner-parameter-unused"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 783,
+      "line": 774,
       "method": "reorderProjects",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 787,
+      "line": 778,
       "method": "setChatModel",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 801,
+      "line": 792,
       "method": "getChatModelConfiguration",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 808,
+      "line": 799,
       "method": "setChatModelConfiguration",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 820,
+      "line": 811,
       "method": "setChatReasoningEffort",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 832,
+      "line": 823,
       "method": "getModelReasoningDefault",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 839,
+      "line": 830,
       "method": "setChatReasoningEffortAndRememberDefault",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 853,
+      "line": 844,
       "method": "setChatPermissionProfile",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 865,
+      "line": 856,
       "method": "getEncryptedChatPlanState",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 872,
+      "line": 863,
       "method": "getChatPlanWireState",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 879,
+      "line": 870,
       "method": "updateChatPlanMode",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 887,
+      "line": 878,
       "method": "updateEncryptedChatPlanState",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 894,
+      "line": 885,
       "method": "getChatLiveRouting",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 900,
+      "line": 891,
       "method": "getChatExecutionContext",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 907,
+      "line": 898,
       "method": "listChatExecutionContextsByThreadId",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 919,
+      "line": 910,
       "method": "updateChatRuntime",
       "ownerEvidence": "worker-scoped"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 941,
+      "line": 932,
       "method": "setChatStatus",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 948,
+      "line": 939,
       "method": "acknowledgeChatCompletion",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 954,
+      "line": 945,
       "method": "recordAgentInteractionRequest",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 960,
+      "line": 951,
       "method": "recordEncryptedAgentInteractionRequest",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 966,
+      "line": 957,
       "method": "listAgentInteractionRequests",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 973,
+      "line": 964,
       "method": "getAgentInteractionRequest",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 983,
+      "line": 974,
       "method": "getAgentInteractionRequestByKey",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 993,
+      "line": 984,
       "method": "resolveAgentInteractionRequest",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1005,
+      "line": 996,
       "method": "validateAgentInteractionResolution",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1017,
+      "line": 1008,
       "method": "resolveEncryptedAgentInteractionRequest",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1029,
+      "line": 1020,
       "method": "validateEncryptedAgentInteractionResolution",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1041,
+      "line": 1032,
       "method": "expireAgentInteractionRequests",
       "ownerEvidence": "system-lifecycle"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1047,
+      "line": 1038,
       "method": "interruptAgentInteractionRequests",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1053,
+      "line": 1044,
       "method": "terminalizeAgentInteractionRequestFromWorker",
       "ownerEvidence": "worker-scoped"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1067,
+      "line": 1058,
       "method": "createChatAttachment",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1080,
+      "line": 1071,
       "method": "getChatAttachment",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1087,
+      "line": 1078,
       "method": "getChatAttachments",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1099,
+      "line": 1090,
       "method": "getChatAttachmentReplicaWorkerIds",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1109,
+      "line": 1100,
       "method": "deleteChatAttachment",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1116,
+      "line": 1107,
       "method": "listMessages",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1120,
+      "line": 1111,
       "method": "listEncryptedMessages",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1127,
+      "line": 1118,
       "method": "getLatestEncryptedUserMessage",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1134,
+      "line": 1125,
       "method": "trimLatestEncryptedTurn",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1146,
+      "line": 1137,
       "method": "listEncryptedMessagePage",
       "ownerEvidence": "owner-parameter-unused"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1157,
+      "line": 1148,
       "method": "listAgentMessageWire",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1161,
+      "line": 1152,
       "method": "listTaskMessages",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1168,
+      "line": 1159,
       "method": "listTaskMessagePage",
       "ownerEvidence": "owner-parameter-unused"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1179,
+      "line": 1170,
       "method": "listMessageHeaders",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1183,
+      "line": 1174,
       "method": "listQueuedPrompts",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1190,
+      "line": 1181,
       "method": "listEncryptedQueuedPrompts",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1197,
+      "line": 1188,
       "method": "getEncryptedQueuedPrompt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1204,
+      "line": 1195,
       "method": "createEncryptedQueuedPrompt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1218,
+      "line": 1209,
       "method": "replaceEncryptedQueuedPrompt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1232,
+      "line": 1223,
       "method": "getQueuedPrompt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1239,
+      "line": 1230,
       "method": "createQueuedPrompt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1255,
+      "line": 1246,
       "method": "updateQueuedPrompt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1269,
+      "line": 1260,
       "method": "getQueuedPromptByIdempotencyKey",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1281,
+      "line": 1272,
       "method": "deleteQueuedPrompt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1288,
+      "line": 1279,
       "method": "reorderQueuedPrompts",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1296,
+      "line": 1287,
       "method": "appendMessage",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1310,
+      "line": 1301,
       "method": "appendEncryptedMessage",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1324,
+      "line": 1315,
       "method": "upsertEncryptedMessage",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1338,
+      "line": 1329,
       "method": "getEncryptedMessageByIdempotencyKey",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1350,
+      "line": 1341,
       "method": "setEncryptedMessageModelRoute",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1369,
+      "line": 1360,
       "method": "appendTaskMessage",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1383,
+      "line": 1374,
       "method": "upsertTaskMessage",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1397,
+      "line": 1388,
       "method": "setTaskMessageModelRoute",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1416,
+      "line": 1407,
       "method": "getTaskMessageByIdempotencyKey",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1428,
+      "line": 1419,
       "method": "setMessageModelRoute",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1447,
+      "line": 1438,
       "method": "upsertMessage",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/repository.ts",
-      "line": 1461,
+      "line": 1452,
       "method": "getMessageByIdempotencyKey",
       "ownerEvidence": "explicit-owner"
     },
@@ -11389,348 +11346,6 @@
       "file": "cantrip_server/src/db/tab-layouts.ts",
       "line": 741,
       "method": "reorderProjects",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 730,
-      "method": "listRuns",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 758,
-      "method": "createRun",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 996,
-      "method": "getRun",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1151,
-      "method": "reserveWorktreeLease",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1338,
-      "method": "activateWorktreeLease",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1503,
-      "method": "failWorktreeLeaseAllocation",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1569,
-      "method": "preflightWorktreeLeaseOutcome",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1614,
-      "method": "beginWorktreeLeaseOutcome",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1739,
-      "method": "resolveWorktreeLeaseOutcome",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1864,
-      "method": "listEvents",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1898,
-      "method": "listDispatchableRuns",
-      "ownerEvidence": "delegated-or-missing-review"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1918,
-      "method": "listRecoverableWorktreeLeases",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1988,
-      "method": "enforceRunBudget",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2224,
-      "method": "getReadyAgentCandidates",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2396,
-      "method": "advanceReadyCollectionNode",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2471,
-      "method": "advanceReadyRepeatUntilNode",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2593,
-      "method": "advanceReadyControlNode",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2662,
-      "method": "failUnsupportedRun",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2717,
-      "method": "claimAgentAttempt",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 3031,
-      "method": "recordAttemptWorkerEvent",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 3261,
-      "method": "completeAgentAttempt",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 3462,
-      "method": "openProtectedGateAttempt",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 3577,
-      "method": "failProtectedAgentAttempt",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 4553,
-      "method": "failAgentAttempt",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5543,
-      "method": "renewAttemptHeartbeat",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5573,
-      "method": "recoverInterruptedAttempts",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5756,
-      "method": "pauseRun",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5827,
-      "method": "resumeRun",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5911,
-      "method": "requestCancellation",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6162,
-      "method": "retryNode",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6441,
-      "method": "getProtectedGateDecisionContext",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6559,
-      "method": "decideProtectedGate",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6575,
-      "method": "replayProtectedGateDecision",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6611,
-      "method": "expirePendingGates",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6680,
-      "method": "getInteractionExecutionContext",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6731,
-      "method": "terminalizeWorkflowInteractions",
-      "ownerEvidence": "delegated-or-missing-review"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6754,
-      "method": "terminalizeWorkflowInteraction",
-      "ownerEvidence": "delegated-or-missing-review"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 187,
-      "method": "create",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 238,
-      "method": "list",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 265,
-      "method": "get",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 282,
-      "method": "getDeliveryContext",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 305,
-      "method": "getWebhookDeliveryContext",
-      "ownerEvidence": "delegated-or-missing-review"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 327,
-      "method": "update",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 360,
-      "method": "listDueSchedules",
-      "ownerEvidence": "delegated-or-missing-review"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 376,
-      "method": "claimScheduleOccurrence",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 515,
-      "method": "claimDelivery",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 608,
-      "method": "acceptDelivery",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 660,
-      "method": "failDelivery",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflow-triggers.ts",
-      "line": 714,
-      "method": "advanceSchedule",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflows.ts",
-      "line": 108,
-      "method": "listDefinitions",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflows.ts",
-      "line": 141,
-      "method": "createDefinition",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflows.ts",
-      "line": 207,
-      "method": "getDefinition",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflows.ts",
-      "line": 228,
-      "method": "updateDefinition",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflows.ts",
-      "line": 271,
-      "method": "listRevisions",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflows.ts",
-      "line": 284,
-      "method": "getRevision",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflows.ts",
-      "line": 303,
-      "method": "getRevisionById",
-      "ownerEvidence": "explicit-owner"
-    },
-    {
-      "file": "cantrip_server/src/db/workflows.ts",
-      "line": 322,
-      "method": "appendRevision",
       "ownerEvidence": "explicit-owner"
     }
   ],

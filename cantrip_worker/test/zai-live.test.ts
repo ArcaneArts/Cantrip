@@ -41,21 +41,15 @@ describe.skipIf(!apiKey)("Z.ai Coding Plan live smoke", () => {
       compatibility,
     );
     try {
-      const result = await runtime.runWorkflowNode({
-        workflowRunId: "zai-live-run",
-        runNodeId: "zai-live-node",
-        attemptId: "zai-live-attempt",
-        idempotencyKey: `zai-live-${Date.now()}`,
-        worktreeId: null,
+      const result = await runtime.runAgentOperation({
+        operationId: `zai-live-${Date.now()}`,
         cwd: root,
-        threadId: null,
         prompt: "Reply with exactly: ZAI_OK",
         developerInstructions: null,
         skillNames: [],
         outputSchema: {},
         mutationMode: "read-only",
         networkAccess: "none",
-        approvalMode: "preauthorized",
         permissionProfileId: null,
         timeoutMs: 120_000,
         model: {
@@ -71,6 +65,7 @@ describe.skipIf(!apiKey)("Z.ai Coding Plan live smoke", () => {
           baseUrl: "https://api.z.ai/api/v1",
           apiKey,
         },
+        mcpServers: [],
       });
       expect(result.status).toBe("completed");
       expect(result.text).toContain("ZAI_OK");

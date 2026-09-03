@@ -32,10 +32,6 @@ import {
   WorkspaceRepositoryDiscoveryJobExecutor,
   type WorkspaceRepositoryDiscoveryLiveChange,
 } from "../../workspace-repository-discovery/executor.js";
-import {
-  WorkflowExecutor,
-  type WorkflowRunLiveChange,
-} from "../../workflows/executor.js";
 import { ProjectWorktreeCoordinator } from "../../worktrees/coordinator.js";
 
 type OwnerRunner = <T>(ownerId: string, operation: () => T) => T;
@@ -61,8 +57,8 @@ export interface BackgroundJobRuntimeDependencies {
 }
 
 /**
- * Owns the worktree coordinator and durable workflow, project, and chat
- * background-job executors together with their live change publication.
+ * Owns the worktree coordinator and durable project and chat background-job
+ * executors together with their live change publication.
  */
 export function createBackgroundJobRuntime({
   app,
@@ -83,46 +79,6 @@ export function createBackgroundJobRuntime({
       publishLiveInvalidation("worktree", { projectId });
       void scheduleProjectWorktreeObservation(projectId);
     },
-  );
-  const publishWorkflowRunChange = (
-    change: Omit<WorkflowRunLiveChange, "ownerId"> & { ownerId?: string },
-  ): void => {
-    if (!livePublishingEnabled()) return;
-    try {
-      const ownerId = change.ownerId ?? applicationOwnerId();
-      liveHub.publish({
-        ownerId,
-        scope: { kind: "workflow-run", runId: change.runId },
-        resource: change.resource,
-        action: "invalidated",
-        entityId: change.runId,
-        revision: change.revision,
-        payload: null,
-      });
-      if (change.projectId) {
-        liveHub.publish({
-          ownerId,
-          scope: { kind: "project", projectId: change.projectId },
-          resource: change.resource,
-          action: "invalidated",
-          entityId: change.runId,
-          revision: change.revision,
-          payload: null,
-        });
-      }
-    } catch (error) {
-      app.log.error(
-        { err: error, workflowRunId: change.runId },
-        "Could not publish workflow run live change",
-      );
-    }
-  };
-  const workflowExecutor = new WorkflowExecutor(
-    repository,
-    bridge,
-    worktreeCoordinator,
-    app.log,
-    publishWorkflowRunChange,
   );
   const publishProjectReplicaJobChange = (
     change: ProjectReplicaJobLiveChange,
@@ -587,9 +543,7 @@ export function createBackgroundJobRuntime({
     publishProjectGithubConversionChange,
     publishProjectReplicaJobChange,
     publishStandaloneChatRootJobChange,
-    publishWorkflowRunChange,
     standaloneChatRootJobExecutor,
-    workflowExecutor,
     workspaceRepositoryDiscoveryJobExecutor,
     worktreeCoordinator,
   };

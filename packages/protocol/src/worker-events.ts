@@ -269,43 +269,6 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     type: z.literal("agent.interaction.expired"),
     requestKey: z.string().min(1).max(200),
   }),
-  z.object({
-    type: z.literal("workflow.node.activity"),
-    attemptId: z.string().min(1).max(200),
-    activity: agentActivitySchema,
-  }),
-  z.object({
-    type: z.literal("workflow.node.message"),
-    attemptId: z.string().min(1).max(200),
-    message: normalizedAgentMessageSchema,
-  }),
-  z.object({
-    type: z.literal("workflow.node.plan.updated"),
-    attemptId: z.string().min(1).max(200),
-    turnId: z.string().min(1),
-    explanation: z.string().nullable(),
-    steps: z.array(planStepSchema),
-  }),
-  z.object({
-    type: z.literal("workflow.node.interaction.requested"),
-    attemptId: z.string().min(1).max(200),
-    request: agentInteractionRuntimeRequestSchema,
-  }),
-  z.object({
-    type: z.literal("workflow.node.interaction.requested.protected"),
-    attemptId: z.string().min(1).max(200),
-    request: encryptedAgentInteractionRuntimeRequestSchema,
-  }),
-  z.object({
-    type: z.literal("workflow.node.interaction.cleared"),
-    attemptId: z.string().min(1).max(200),
-    requestKey: z.string().min(1).max(200),
-  }),
-  z.object({
-    type: z.literal("workflow.node.interaction.expired"),
-    attemptId: z.string().min(1).max(200),
-    requestKey: z.string().min(1).max(200),
-  }),
   z
     .object({
       type: z.literal("terminal.output"),

@@ -31,12 +31,7 @@ import {
 } from "../../live/task-live-routing.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
-import type { WorkflowRunLiveChange } from "../../workflows/executor.js";
 import type { ChatLiveResource } from "../shared/live-resources.js";
-
-type PublishWorkflowRunChange = (
-  change: Omit<WorkflowRunLiveChange, "ownerId"> & { ownerId?: string },
-) => void;
 
 export interface LiveMutationRuntimeDependencies {
   app: Pick<FastifyInstance, "log">;
@@ -52,14 +47,13 @@ export interface LiveMutationRuntimeDependencies {
       projectId?: string | null;
     },
   ) => void;
-  publishWorkflowRunChange: PublishWorkflowRunChange;
   repository: ServerRepository;
   taskLiveInvalidationRouter: TaskLiveInvalidationRouter;
 }
 
 /**
  * Owns live chat/task publication and repository mutation wrappers that keep
- * chat, queue, plan, interaction, automation, and workflow clients current.
+ * chat, queue, plan, interaction, and automation clients current.
  */
 export function createLiveMutationRuntime({
   app,
@@ -68,28 +62,15 @@ export function createLiveMutationRuntime({
   liveHub,
   livePublishingEnabled,
   publishLiveInvalidation,
-  publishWorkflowRunChange,
   repository,
   taskLiveInvalidationRouter,
 }: LiveMutationRuntimeDependencies) {
-  const publishWorkflowDefinitionChange = (workflowId: string): void => {
-    publishLiveInvalidation("workflow-definition", { entityId: workflowId });
-  };
   const publishProjectAutomationChange = (
     projectId: string,
     automationId: string,
   ): void => {
     publishLiveInvalidation("project-automation", {
       entityId: automationId,
-      projectId,
-    });
-  };
-  const publishWorkflowTriggerChange = (
-    triggerId: string,
-    projectId: string,
-  ): void => {
-    publishLiveInvalidation("workflow-trigger", {
-      entityId: triggerId,
       projectId,
     });
   };
@@ -480,14 +461,6 @@ export function createLiveMutationRuntime({
       );
       publishChatSummary(interaction.provenance.chatId, interaction.projectId);
     }
-    if (interaction?.provenance.workflowRunId) {
-      publishWorkflowRunChange({
-        projectId: interaction.projectId,
-        resource: "workflow-gate",
-        revision: null,
-        runId: interaction.provenance.workflowRunId,
-      });
-    }
     return interaction;
   };
   const resolveLiveEncryptedAgentInteractionRequest = async (
@@ -504,14 +477,6 @@ export function createLiveMutationRuntime({
         interaction.id,
       );
       publishChatSummary(interaction.provenance.chatId, interaction.projectId);
-    }
-    if (interaction?.provenance.workflowRunId) {
-      publishWorkflowRunChange({
-        projectId: interaction.projectId,
-        resource: "workflow-gate",
-        revision: null,
-        runId: interaction.provenance.workflowRunId,
-      });
     }
     return interaction;
   };
@@ -553,30 +518,14 @@ export function createLiveMutationRuntime({
       ...input,
     );
     const chats = new Map<string, string | null>();
-    const workflowRuns = new Map<string, string>();
     for (const interaction of interactions) {
       if (interaction.provenance.chatId) {
         chats.set(interaction.provenance.chatId, interaction.projectId);
-      }
-      if (interaction.provenance.workflowRunId) {
-        if (!interaction.projectId) continue;
-        workflowRuns.set(
-          interaction.provenance.workflowRunId,
-          interaction.projectId,
-        );
       }
     }
     for (const [chatId, projectId] of chats) {
       publishChatInvalidation(chatId, "agent-interaction");
       publishChatSummary(chatId, projectId);
-    }
-    for (const [runId, projectId] of workflowRuns) {
-      publishWorkflowRunChange({
-        projectId,
-        resource: "workflow-gate",
-        revision: null,
-        runId,
-      });
     }
     return interactions;
   };
@@ -621,8 +570,6 @@ export function createLiveMutationRuntime({
     publishChatTurnBoundary,
     publishInferenceProgress,
     publishProjectAutomationChange,
-    publishWorkflowDefinitionChange,
-    publishWorkflowTriggerChange,
     recordLiveAgentInteractionRequest,
     recordLiveEncryptedAgentInteractionRequest,
     reorderLiveQueuedPrompts,

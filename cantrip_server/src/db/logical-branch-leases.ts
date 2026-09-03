@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import { and, eq, isNull } from "drizzle-orm";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import * as schema from "./schema.js";
-import type { WorkflowRunTransaction } from "./workflow-run-transitions.js";
+
+type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
+type RepositoryTransaction = Parameters<
+  Parameters<RepositoryDatabase["transaction"]>[0]
+>[0];
 
 export class LogicalBranchLeaseConflictError extends Error {}
 
@@ -44,7 +50,7 @@ function conflict(branchName: string): LogicalBranchLeaseConflictError {
 }
 
 export async function acquireChatLogicalBranchLease(
-  transaction: WorkflowRunTransaction,
+  transaction: RepositoryTransaction,
   input: {
     branchName: string | null;
     chatId: string;
@@ -150,74 +156,8 @@ export async function acquireChatLogicalBranchLease(
   }
 }
 
-export async function acquireWorkflowLogicalBranchLease(
-  transaction: WorkflowRunTransaction,
-  input: {
-    branchName: string;
-    leaseId: string;
-    projectId: string;
-    workerId: string;
-    worktreeId: string | null;
-  },
-): Promise<void> {
-  const now = new Date();
-  const existing = await transaction
-    .select()
-    .from(schema.projectBranchLeases)
-    .where(
-      eq(schema.projectBranchLeases.workflowWorktreeLeaseId, input.leaseId),
-    )
-    .limit(1);
-  if (existing[0]) {
-    if (
-      existing[0].projectId !== input.projectId ||
-      existing[0].branchName !== input.branchName
-    ) {
-      throw conflict(input.branchName);
-    }
-    if (existing[0].state === "active") {
-      await transaction
-        .update(schema.projectBranchLeases)
-        .set({
-          workerId: input.workerId,
-          worktreeId: input.worktreeId,
-          updatedAt: now,
-        })
-        .where(eq(schema.projectBranchLeases.id, existing[0].id));
-      return;
-    }
-  }
-  try {
-    if (existing[0]) {
-      await transaction
-        .update(schema.projectBranchLeases)
-        .set({
-          state: "active",
-          workerId: input.workerId,
-          worktreeId: input.worktreeId,
-          releasedAt: null,
-          updatedAt: now,
-        })
-        .where(eq(schema.projectBranchLeases.id, existing[0].id));
-      return;
-    }
-    await transaction.insert(schema.projectBranchLeases).values({
-      id: randomUUID(),
-      projectId: input.projectId,
-      branchName: input.branchName,
-      workflowWorktreeLeaseId: input.leaseId,
-      worktreeId: input.worktreeId,
-      workerId: input.workerId,
-      state: "active",
-    });
-  } catch (error) {
-    if (isUniqueViolation(error)) throw conflict(input.branchName);
-    throw error;
-  }
-}
-
 export async function releaseChatLogicalBranchLease(
-  transaction: WorkflowRunTransaction,
+  transaction: RepositoryTransaction,
   laneId: string,
 ): Promise<void> {
   const now = new Date();
@@ -227,22 +167,6 @@ export async function releaseChatLogicalBranchLease(
     .where(
       and(
         eq(schema.projectBranchLeases.chatExecutionLaneId, laneId),
-        eq(schema.projectBranchLeases.state, "active"),
-      ),
-    );
-}
-
-export async function releaseWorkflowLogicalBranchLease(
-  transaction: WorkflowRunTransaction,
-  leaseId: string,
-): Promise<void> {
-  const now = new Date();
-  await transaction
-    .update(schema.projectBranchLeases)
-    .set({ state: "released", releasedAt: now, updatedAt: now })
-    .where(
-      and(
-        eq(schema.projectBranchLeases.workflowWorktreeLeaseId, leaseId),
         eq(schema.projectBranchLeases.state, "active"),
       ),
     );

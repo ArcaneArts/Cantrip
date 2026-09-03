@@ -45,10 +45,6 @@ import {
   type TunnelAttachmentAuthorization,
 } from "../db/repository.js";
 import { prepareRuntimesForReasoning } from "../models/reasoning.js";
-import {
-  WorkflowTriggerConflictError,
-  WorkflowTriggerRateLimitError,
-} from "../db/workflow-triggers.js";
 import { WorkerUnavailableError } from "../workers/bridge.js";
 import { RemoteSurfaceRelay } from "../remote-surfaces/relay.js";
 import { WorktreeCreateMutationError } from "../worktrees/coordinator.js";
@@ -124,12 +120,10 @@ import { installTaskRouteRuntime } from "./runtime/task-routes.js";
 import { createTunnelControlPlaneRuntime } from "./runtime/tunnel-control-plane-runtime.js";
 import { createWorkerNotificationRuntime } from "./runtime/worker-notification-runtime.js";
 import { createWorkerObservationPublicationRuntime } from "./runtime/worker-observation-publication-runtime.js";
-import { createWorkflowSchedulingRuntime } from "./runtime/workflow-scheduling-runtime.js";
 import {
   AGENT_INTERACTION_EXPIRY_SWEEP_MS,
   ATTACHMENT_CHUNK_BYTES,
   FINITE_WORKER_COMMAND_TIMEOUT_MS,
-  WORKFLOW_GATE_EXPIRY_SWEEP_MS,
 } from "./shared/constants.js";
 import { ProviderAccountReconnectRequiredError } from "./shared/errors.js";
 import { installMutationLiveInvalidationHook } from "./http/mutation-live-invalidation.js";
@@ -352,8 +346,6 @@ export async function buildApp({
     publishChatTurnBoundary,
     publishInferenceProgress,
     publishProjectAutomationChange,
-    publishWorkflowDefinitionChange,
-    publishWorkflowTriggerChange,
     recordLiveAgentInteractionRequest,
     recordLiveEncryptedAgentInteractionRequest,
     reorderLiveQueuedPrompts,
@@ -376,7 +368,6 @@ export async function buildApp({
     liveHub,
     livePublishingEnabled: isLivePublishingEnabled,
     publishLiveInvalidation,
-    publishWorkflowRunChange: (change) => publishWorkflowRunChange(change),
     repository,
     taskLiveInvalidationRouter,
   });
@@ -394,9 +385,7 @@ export async function buildApp({
     publishProjectReplicaJobChange,
     publishWorkspaceRepositoryDiscoveryChange,
     publishStandaloneChatRootJobChange,
-    publishWorkflowRunChange,
     standaloneChatRootJobExecutor,
-    workflowExecutor,
     worktreeCoordinator,
   } = createBackgroundJobRuntime({
     app,
@@ -544,12 +533,6 @@ export async function buildApp({
   await chatImportJobExecutor.recoverAfterRestart(!coordinator);
   chatImportJobExecutor.queueAvailable();
   chatImportJobExecutor.startRecoverySweep();
-  await workflowExecutor.recoverAfterRestart(recoverGlobalStartupState);
-  workflowExecutor.startRecoverySweep();
-  await workflowExecutor.expireGates();
-  void workflowExecutor.queueAvailableRuns().catch((error) => {
-    app.log.error({ err: error }, "Could not resume queued workflow runs");
-  });
 
   await installTransportSecurity(app, config, websocketMaxPayloadBytes);
 
@@ -636,21 +619,6 @@ export async function buildApp({
     updateTerminalStatus,
     workerPresenceFingerprints,
   } = interactiveSurfaceRuntime;
-  const workflowSchedulingRuntime = createWorkflowSchedulingRuntime({
-    app,
-    applicationOwnerId,
-    bridge,
-    operationalMetrics,
-    publishWorkflowRunChange,
-    publishWorkflowTriggerChange,
-    repository,
-    runAsOwner,
-    schedulerLeaseTtlMs,
-    serverInstanceId,
-    workflowExecutor,
-  });
-  const { deliverWorkflowTrigger } = workflowSchedulingRuntime;
-
   const agentInteractionExpiryTimer = setInterval(() => {
     void expireLiveAgentInteractionRequests().catch((error) => {
       app.log.error(
@@ -660,12 +628,6 @@ export async function buildApp({
     });
   }, AGENT_INTERACTION_EXPIRY_SWEEP_MS);
   agentInteractionExpiryTimer.unref();
-  const workflowGateExpiryTimer = setInterval(() => {
-    void workflowExecutor.expireGates().catch((error) => {
-      app.log.error({ err: error }, "Could not expire workflow gates");
-    });
-  }, WORKFLOW_GATE_EXPIRY_SWEEP_MS);
-  workflowGateExpiryTimer.unref();
 
   const agentOperationRuntime = createAgentOperationRuntime({
     applicationOwnerId,
@@ -944,7 +906,6 @@ export async function buildApp({
     resolveLiveAgentInteractionRequest,
     resolveLiveEncryptedAgentInteractionRequest,
     runtimeForContext,
-    workflowExecutor,
   });
 
   const { prepareProviderAccountSignOut, resolveAccountAuthTarget } =
@@ -1313,7 +1274,6 @@ export async function buildApp({
     resumePendingWorktreeTransitionsForWorker,
     scheduleWorkerOfflineInvalidation,
     serverId,
-    workflowExecutor,
   });
 
   installInternalWorkerWebsocketRoute(app, {
@@ -1340,7 +1300,6 @@ export async function buildApp({
     serverControlPlaneGeneration,
     standaloneChatRootJobExecutor,
     synchronizeTerminalServicesForWorker,
-    workflowExecutor,
   });
 
   installProjectWorktreeGitCommitSignatureRoute(app, {
@@ -1365,8 +1324,6 @@ export async function buildApp({
     tunnelControlPlaneRuntime.stopExpirySweep();
     closeSessionSockets(() => true, "Server is shutting down");
     clearInterval(agentInteractionExpiryTimer);
-    clearInterval(workflowGateExpiryTimer);
-    workflowSchedulingRuntime.close();
     clearInterval(taskScheduleTimer);
     taskGoalRuntime.close();
     clearInterval(workerCatalogRefreshTimer);
@@ -1383,7 +1340,6 @@ export async function buildApp({
     projectGithubConversionJobExecutor.stop();
     chatRelocationJobExecutor.stop();
     chatImportJobExecutor.stop();
-    workflowExecutor.stop();
     await usageHistoryMaintenance.close();
     await storageReconciler.close();
     app.log.info(
@@ -1411,7 +1367,6 @@ export async function buildApp({
     await accountUsageMeter.close();
     liveInfrastructureRuntime.closeAccountResourceUsageInvalidations();
     await coordinator?.close();
-    await workflowSchedulingRuntime.waitForIdle();
     await taskRouteRuntime.waitForActiveTaskScheduleTick();
     await projectReplicaJobExecutor.drain();
     await projectFolderSetupJobExecutor.drain();
@@ -1420,7 +1375,6 @@ export async function buildApp({
     await projectGithubConversionJobExecutor.drain();
     await chatRelocationJobExecutor.drain();
     await chatImportJobExecutor.drain();
-    await workflowExecutor.drain();
     await database.close();
     if (codeTunnelCloseError) throw codeTunnelCloseError;
   });

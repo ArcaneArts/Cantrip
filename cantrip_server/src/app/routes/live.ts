@@ -44,11 +44,8 @@ export function installLiveRoute(
         return Boolean(
           await repository.getChatExecutionContext(ownerId, scope.chatId),
         );
-      case "workflow-run":
-        return Boolean(
-          await repository.workflowRuns.getRun(ownerId, scope.runId),
-        );
     }
+    return false;
   };
 
   app.get("/api/live", { websocket: true }, (socket, request) => {

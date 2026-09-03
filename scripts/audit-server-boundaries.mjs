@@ -94,9 +94,6 @@ const repositoryFiles = [
   "repository-facade-identity-model.ts",
   "repository-facade-project-execution.ts",
   "tab-layouts.ts",
-  "workflow-runs.ts",
-  "workflow-triggers.ts",
-  "workflows.ts",
 ].map((file) => resolve(repositoryRoot, "cantrip_server/src/db", file));
 const inventoryPath = resolve(
   repositoryRoot,
@@ -129,7 +126,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "b9e36d56fc85b2ab701bf63cb89390ddbfff4ab43535e190d83c84a4d96e52dd",
   workerCommands:
-    "30b631278fc5e0f35b8f0b751f5d945c17e14b81fb9295cf7baeaca2ecad9833",
+    "fc63ee379629457138cb3ddd623e100e1c260b8b485d94977107020957db633d",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3778,7 +3775,6 @@ async function attachmentContentRepositoryBoundaryAudit() {
     resolve(serverSourcePath, "chat-imports/executor.ts"),
     resolve(serverSourcePath, "chat-relocations/executor.ts"),
     resolve(serverSourcePath, "chats/execution-helpers.ts"),
-    resolve(serverSourcePath, "workflows/generation-helpers.ts"),
     resolve(repositoryRoot, "packages/protocol/src/worker-command-surfaces.ts"),
     resolve(repositoryRoot, "cantrip_worker/src/index.ts"),
   ];
@@ -3788,7 +3784,6 @@ async function attachmentContentRepositoryBoundaryAudit() {
     importExecutorText,
     relocationExecutorText,
     chatExecutionHelpersText,
-    workflowGenerationHelpersText,
     protocolText,
     workerText,
   ] = await Promise.all(paths.map((path) => readFile(path, "utf8")));
@@ -3871,7 +3866,7 @@ async function attachmentContentRepositoryBoundaryAudit() {
       failures.push(`attachment jobs: plaintext relay returned (${marker})`);
     }
   }
-  const contentBuilderText = `${chatExecutionHelpersText}\n${workflowGenerationHelpersText}`;
+  const contentBuilderText = chatExecutionHelpersText;
   for (const field of ["fileName", "mimeType", "previewText", "sha256"]) {
     if (
       new RegExp(`\\bitem\\.attachment\\.${field}\\b`, "u").test(

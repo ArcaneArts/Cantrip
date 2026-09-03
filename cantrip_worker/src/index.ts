@@ -99,10 +99,6 @@ import {
   type WorkspaceRootAttachment,
   type RepositoryOperationOutcomeContent,
 } from "@cantrip/protocol/repository-operation";
-import {
-  protectedWorkflowTriggerPrepareResultSchema,
-  workflowNodeExecutionResultSchema,
-} from "@cantrip/protocol/workflows";
 import { cantripVersion } from "@cantrip/version";
 
 import { AttachmentStore } from "./attachment-store.js";
@@ -118,11 +114,6 @@ import { ProjectExportManager } from "./project-export-manager.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { protectProjectAutomationDispatch } from "./automation-encryption.js";
 import {
-  executeProtectedWorkflowNode,
-  prepareProtectedWorkflowTrigger,
-  resolveProtectedWorkflowGate,
-} from "./workflow-execution-encryption.js";
-import {
   discoverExternalChatHistory,
   readExternalChatHistory,
 } from "./external-chat-history.js";
@@ -130,6 +121,7 @@ import { codexAccountHome } from "./codex/account-home.js";
 import {
   CodexAppServer,
   codexRuntimeId,
+  type AgentOperationResult,
   type RuntimeSubagentDefaults,
 } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
@@ -393,10 +385,6 @@ import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { WorktreeManager } from "./worktrees.js";
-import {
-  scanWorkflowRepository,
-  writeWorkflowRepositoryDocument,
-} from "./workflow-repository.js";
 
 const GIT_AGENT_GENERATION_TIMEOUT_MS = 2 * 60 * 1_000;
 const GIT_AGENT_OUTPUT_SCHEMA = {
@@ -2953,9 +2941,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             let selectedRuntime: (typeof command.agentRuntimes)[number] | null =
               null;
             let selectedProvider: RuntimeProvider | null = null;
-            let selectedExecution: ReturnType<
-              typeof workflowNodeExecutionResultSchema.parse
-            > | null = null;
+            let selectedExecution: AgentOperationResult | null = null;
             let lastError: unknown = null;
             for (const runtime of command.agentRuntimes) {
               try {
@@ -2963,45 +2949,37 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   provider: runtime.provider,
                   service: workerEncryption,
                 });
-                const result = workflowNodeExecutionResultSchema.parse(
-                  await runtimeFor({
-                    model: runtime.model,
-                    provider: openedProvider,
-                  }).runWorkflowNode({
-                    workflowRunId: `git-agent:${command.operationId}`,
-                    runNodeId: input.task,
-                    attemptId: `${command.operationId}:${runtime.routeId}`,
-                    idempotencyKey: command.operationId,
-                    worktreeId: null,
-                    cwd: command.cwd,
-                    threadId: null,
-                    prompt: await buildGitAgentPrompt(
-                      command.cwd,
-                      {
-                        task: input.task,
-                        instructions: input.instructions,
-                        baseRevision: input.baseRevision,
-                        headRevision: input.headRevision,
-                        pullRequestNumber: input.pullRequestNumber,
-                      },
-                      failedChecksEvidence,
-                    ),
-                    developerInstructions: GIT_AGENT_INSTRUCTIONS,
-                    skillNames: [],
-                    outputSchema: GIT_AGENT_OUTPUT_SCHEMA,
-                    mutationMode: "read-only",
-                    networkAccess: "none",
-                    approvalMode: "preauthorized",
-                    permissionProfileId: null,
-                    timeoutMs: GIT_AGENT_GENERATION_TIMEOUT_MS,
-                    model: runtime.model,
-                    provider: openedProvider,
-                    mcpServers: await agentMcpServers(
-                      command.cwd,
-                      command.mcpServers,
-                    ),
-                  }),
-                );
+                const result = await runtimeFor({
+                  model: runtime.model,
+                  provider: openedProvider,
+                }).runAgentOperation({
+                  operationId: command.operationId,
+                  cwd: command.cwd,
+                  prompt: await buildGitAgentPrompt(
+                    command.cwd,
+                    {
+                      task: input.task,
+                      instructions: input.instructions,
+                      baseRevision: input.baseRevision,
+                      headRevision: input.headRevision,
+                      pullRequestNumber: input.pullRequestNumber,
+                    },
+                    failedChecksEvidence,
+                  ),
+                  developerInstructions: GIT_AGENT_INSTRUCTIONS,
+                  skillNames: [],
+                  outputSchema: GIT_AGENT_OUTPUT_SCHEMA,
+                  mutationMode: "read-only",
+                  networkAccess: "none",
+                  permissionProfileId: null,
+                  timeoutMs: GIT_AGENT_GENERATION_TIMEOUT_MS,
+                  model: runtime.model,
+                  provider: openedProvider,
+                  mcpServers: await agentMcpServers(
+                    command.cwd,
+                    command.mcpServers,
+                  ),
+                });
                 generated = gitAgentDraftModelOutputSchema.parse(
                   result.structuredResult,
                 );
@@ -4723,14 +4701,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           await runtimeFor({
             model: command.model,
             provider: provider(),
-          }).runWorkflowNode({
-            workflowRunId: `provider-test:${testId}`,
-            runNodeId: "connection",
-            attemptId: testId,
-            idempotencyKey: testId,
-            worktreeId: null,
+          }).runAgentOperation({
+            operationId: testId,
             cwd,
-            threadId: null,
             prompt: "Reply with exactly OK.",
             developerInstructions:
               "This is a provider connection check. Do not call tools or inspect files. Reply with exactly OK.",
@@ -4738,7 +4711,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             outputSchema: {},
             mutationMode: "read-only",
             networkAccess: "none",
-            approvalMode: "preauthorized",
             permissionProfileId: null,
             timeoutMs: 90_000,
             model: command.model,
@@ -5325,143 +5297,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
         return runTurn(command.prompt!, command.resultMode);
       }
-      case "workflow.node.execute": {
-        let protectedEventQueue = Promise.resolve();
-        let protectedEventFailure: unknown = null;
-        const queueProtectedEvent = (
-          create: () => WorkerEvent | Promise<WorkerEvent>,
-        ): void => {
-          protectedEventQueue = protectedEventQueue
-            .then(async () => {
-              if (protectedEventFailure) return;
-              emit(await create());
-            })
-            .catch((error: unknown) => {
-              protectedEventFailure ??= error;
-            });
-        };
-        const result = await executeProtectedWorkflowNode({
-          command,
-          service: workerEncryption,
-          execute: async ({ executionKey, threadId, ...protectedOptions }) => {
-            const runtime = runtimeFor({
-              model: command.model,
-              provider: provider(),
-            });
-            const execution = await runtime.runWorkflowNode({
-              workflowRunId: command.workflowRunId,
-              runNodeId: command.runNodeId,
-              attemptId: command.attemptId,
-              idempotencyKey: createHash("sha256")
-                .update(command.idempotencyKey)
-                .update("\0")
-                .update(executionKey)
-                .digest("hex"),
-              worktreeId: command.worktreeId,
-              rootKind: command.rootKind,
-              cwd: command.cwd,
-              threadId,
-              ...protectedOptions,
-              mutationMode: command.mutationMode,
-              permissionProfileId: command.permissionProfileId,
-              timeoutMs: command.timeoutMs,
-              model: command.model,
-              provider: provider(),
-              mcpServers: await agentMcpServers(
-                command.cwd,
-                command.mcpServers,
-              ),
-              onInteractionRequest: (request) =>
-                queueProtectedEvent(async () => {
-                  try {
-                    return {
-                      type: "workflow.node.interaction.requested.protected",
-                      attemptId: command.attemptId,
-                      request: await protectAgentInteractionRequest({
-                        request,
-                        service: workerEncryption,
-                      }),
-                    };
-                  } catch (error) {
-                    await runtime.cancelAgentInteraction(
-                      request.requestKey,
-                      "Cantrip could not encrypt the workflow interaction safely.",
-                    );
-                    throw error;
-                  }
-                }),
-              onInteractionCleared: (requestKey) =>
-                queueProtectedEvent(() => ({
-                  type: "workflow.node.interaction.cleared",
-                  attemptId: command.attemptId,
-                  requestKey,
-                })),
-              onInteractionExpired: (requestKey) =>
-                queueProtectedEvent(() => ({
-                  type: "workflow.node.interaction.expired",
-                  attemptId: command.attemptId,
-                  requestKey,
-                })),
-            });
-            await protectedEventQueue;
-            if (protectedEventFailure) throw protectedEventFailure;
-            return execution;
-          },
-        });
-        await protectedEventQueue;
-        if (protectedEventFailure) throw protectedEventFailure;
-        return result;
-      }
-      case "workflow.gate.decide.protected":
-        return resolveProtectedWorkflowGate({
-          command,
-          service: workerEncryption,
-        });
-      case "workflow.trigger.prepare.protected":
-        return protectedWorkflowTriggerPrepareResultSchema.parse(
-          await prepareProtectedWorkflowTrigger({
-            command,
-            service: workerEncryption,
-          }),
-        );
-      case "workflow.definition.generate":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).runWorkflowNode({
-          workflowRunId: `generation:${command.generationId}`,
-          runNodeId: "definition",
-          attemptId: command.generationId,
-          idempotencyKey: command.generationId,
-          worktreeId: null,
-          cwd: command.cwd,
-          threadId: null,
-          prompt: command.prompt,
-          developerInstructions: command.developerInstructions,
-          skillNames: [],
-          outputSchema: command.outputSchema,
-          mutationMode: "read-only",
-          networkAccess: "none",
-          approvalMode: "preauthorized",
-          permissionProfileId: null,
-          timeoutMs: command.timeoutMs,
-          model: command.model,
-          provider: provider(),
-          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
-        });
-      case "workflow.repository.scan":
-        return scanWorkflowRepository(command.cwd);
-      case "workflow.repository.write":
-        return writeWorkflowRepositoryDocument(
-          command.cwd,
-          command.document,
-          command.overwrite,
-        );
-      case "workflow.node.interrupt":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).interruptThread(command.threadId);
       case "chat.pause.set": {
         const previouslyPaused = pausedChats.has(command.chatId);
         try {

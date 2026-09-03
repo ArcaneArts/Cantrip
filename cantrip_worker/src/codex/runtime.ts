@@ -16,16 +16,15 @@ import type {
   PermissionProfileCapability,
   PlanMode,
 } from "@cantrip/protocol";
-import type { WorkflowNodeExecutionWorkerResult } from "@cantrip/protocol/workflows";
-
 import type {
+  AgentOperationResult,
   CodexSkill,
   CompactAgentThreadOptions,
   GoalRuntimeOptions,
   HydrateChatRelocationOptions,
   RuntimeChatAttachment,
   RunAgentTurnOptions,
-  RunWorkflowNodeOptions,
+  RunAgentOperationOptions,
 } from "./app-server.js";
 
 export interface CodexRuntimeDiagnostic {
@@ -62,9 +61,9 @@ export interface CodexRuntime {
     paused: boolean,
   ): Promise<{ threadId: string; turnId: string } | null>;
   runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult>;
-  runWorkflowNode(
-    options: RunWorkflowNodeOptions,
-  ): Promise<WorkflowNodeExecutionWorkerResult>;
+  runAgentOperation(
+    options: RunAgentOperationOptions,
+  ): Promise<AgentOperationResult>;
   listSkills(
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
     forceReload?: boolean,
@@ -202,7 +201,6 @@ export interface CodexRuntime {
       threadId: string;
     },
   ): Promise<{ rolledBack: true }>;
-  interruptThread(threadId: string): Promise<{ interrupted: boolean }>;
   steerThread(
     chatId: string,
     threadId: string | null,

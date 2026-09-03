@@ -76,10 +76,10 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(280);
-    expect(stableFingerprint(commandTypes)).toBe("9e1aad95c2632839:7210");
-    expect(eventTypes).toHaveLength(25);
-    expect(stableFingerprint(eventTypes)).toBe("4a9b26ee148990aa:702");
+    expect(commandTypes).toHaveLength(273);
+    expect(stableFingerprint(commandTypes)).toBe("9715f45e8704a82a:7004");
+    expect(eventTypes).toHaveLength(18);
+    expect(stableFingerprint(eventTypes)).toBe("1d616530daf5093c:466");
     expect(notificationTypes).toHaveLength(14);
     expect(stableFingerprint(notificationTypes)).toBe("6768707e4d303352:420");
   });

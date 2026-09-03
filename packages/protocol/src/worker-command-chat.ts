@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { boundedJsonObjectSchema } from "./bounded-json.js";
 import {
   chatPlanOpaqueStateSchema,
   chatMessageOpaqueContentSchema,
@@ -19,12 +18,6 @@ import {
 import { taskDispatchWorkerLeaseSchema } from "./task-scheduling.js";
 import { encryptionKeyBytesSchema } from "./encryption.js";
 import { mcpServerOpaqueRuntimeSchema } from "./protected-secrets.js";
-import {
-  protectedWorkflowGateDecisionRequestSchema,
-  protectedWorkflowNodeExecutionRequestSchema,
-  protectedWorkflowTriggerPrepareRequestSchema,
-  workflowRepositoryDocumentSchema,
-} from "./workflows.js";
 import { NATIVE_SUBAGENT_PROTOCOL_VERSION } from "./runtime-capabilities.js";
 import { reasoningEffortSchema } from "./providers.js";
 import { projectRootKindSchema } from "./project-foundation.js";
@@ -232,53 +225,6 @@ export const workerChatCommandSchemas = [
         });
       }
     }),
-  protectedWorkflowNodeExecutionRequestSchema.extend({
-    type: z.literal("workflow.node.execute"),
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
-    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
-  }),
-  protectedWorkflowGateDecisionRequestSchema.extend({
-    type: z.literal("workflow.gate.decide.protected"),
-  }),
-  protectedWorkflowTriggerPrepareRequestSchema.extend({
-    type: z.literal("workflow.trigger.prepare.protected"),
-  }),
-  z.object({
-    type: z.literal("workflow.definition.generate"),
-    generationId: z.string().min(1).max(200),
-    cwd: z.string().trim().min(1).max(8_192),
-    prompt: z.string().trim().min(1).max(100_000),
-    developerInstructions: z.string().trim().min(1).max(100_000),
-    outputSchema: boundedJsonObjectSchema,
-    timeoutMs: z
-      .number()
-      .int()
-      .min(1_000)
-      .max(15 * 60 * 1_000),
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
-    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
-  }),
-  z.object({
-    type: z.literal("workflow.repository.scan"),
-    cwd: z.string().trim().min(1).max(8_192),
-  }),
-  z.object({
-    type: z.literal("workflow.repository.write"),
-    cwd: z.string().trim().min(1).max(8_192),
-    document: workflowRepositoryDocumentSchema,
-    overwrite: z.boolean().default(false),
-  }),
-  z.object({
-    type: z.literal("workflow.node.interrupt"),
-    workflowRunId: z.string().min(1).max(200),
-    runNodeId: z.string().min(1).max(200),
-    attemptId: z.string().min(1).max(200),
-    threadId: z.string().min(1).max(200),
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
-  }),
   z.object({
     type: z.literal("chat.pause.set"),
     chatId: z.string().min(1),
