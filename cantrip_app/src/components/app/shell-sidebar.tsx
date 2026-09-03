@@ -399,6 +399,25 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                       setShowImporter(false);
                       setShowProjectSettings(false);
                     }}
+                    onOpenProjectSettings={openProjectSettings}
+                    onRemoveProject={(projectId, deleteLocalFiles) =>
+                      removeProjectMutation
+                        .mutateAsync({ projectId, deleteLocalFiles })
+                        .then(() => undefined)
+                    }
+                    onRevealProject={(project, localFolder) =>
+                      revealProjectInNativeFileManager(
+                        project,
+                        localFolder,
+                        "",
+                        worktrees.data?.find(
+                          (worktree: ProjectWorktreeSummary) =>
+                            worktree.projectSourceId === project.source?.id &&
+                            worktree.isPrimary,
+                        ),
+                      )
+                    }
+                    projectRevealLabel={projectRevealLabel ?? undefined}
                     tabPlacement={selectedPlacementContext}
                   />
                 </div>

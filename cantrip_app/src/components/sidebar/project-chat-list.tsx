@@ -3,7 +3,6 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type {
   BrowserSummary,
   ChatSummary,
@@ -33,12 +32,11 @@ import {
   MoreHorizontal,
   Pencil,
   Play,
-  Settings,
   SquareTerminal,
   Trash2,
   WifiOff,
 } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
   projectFolderSetupErrorMessage,
@@ -54,14 +52,7 @@ import {
 import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
 import { Button } from "@/components/ui/button";
 import { InlineAlert } from "@/components/ui/inline-alert";
-import {
-  NativeFolderRevealIcon,
-  useShiftKeyHeld,
-} from "@/components/ui/native-folder-reveal-icon";
-import {
-  openSidebarActionsMenu,
-  SortableSidebarSurfaceRow,
-} from "@/components/sidebar/sortable-sidebar-surface-row";
+import { SortableSidebarSurfaceRow } from "@/components/sidebar/sortable-sidebar-surface-row";
 import {
   ProjectSidebarFileTree,
   type ExplorerFileMutationAuthorization,
@@ -69,9 +60,11 @@ import {
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
 import {
-  StyledDropdownMenuContent,
-  StyledDropdownMenuItem,
-} from "@/components/ui/styled-menu";
+  ProjectContextMenu,
+  ProjectDropdownMenu,
+  type ProjectMenuActions,
+} from "@/components/projects/project-actions-menu";
+import { ProjectRemovalDialog } from "@/components/projects/project-removal-dialog";
 import {
   Dialog,
   DialogClose,
@@ -82,7 +75,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { projectRemovalAction } from "@/lib/project-removal";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
   type WorkspaceDndData,
@@ -275,119 +267,85 @@ export function ProjectOverviewTab({
   const settingUp = cloning || preparing;
   const failed = project.setupStatus === "failed";
   const folderBlocked = preparing && folderSetupJob?.state === "blocked";
-  const revealLocalFolder = useRef(false);
-  const shiftKeyHeld = useShiftKeyHeld();
+  const actions: ProjectMenuActions = {
+    onOpenSettings,
+    onRemove,
+    onReveal,
+    revealDisabled,
+    revealLabel: projectRevealLabel,
+  };
   return (
     <div className="group mb-1 flex min-h-full flex-col">
-      <div
-        title={
-          failed
-            ? (projectSetupErrorMessage(project.setupError) ?? undefined)
-            : folderSetupJob?.error
-              ? projectFolderSetupErrorMessage(folderSetupJob.error.code)
-              : setupJob
-                ? projectReplicaJobMessage(setupJob)
-                : undefined
-        }
-        onContextMenu={openSidebarActionsMenu}
-        className={cn(
-          "flex h-8 items-center rounded-md hover:bg-muted",
-          active && "bg-muted font-medium",
-        )}
-      >
-        <button
-          type="button"
+      <ProjectContextMenu actions={actions}>
+        <div
+          title={
+            failed
+              ? (projectSetupErrorMessage(project.setupError) ?? undefined)
+              : folderSetupJob?.error
+                ? projectFolderSetupErrorMessage(folderSetupJob.error.code)
+                : setupJob
+                  ? projectReplicaJobMessage(setupJob)
+                  : undefined
+          }
           className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            settingUp && "cursor-default",
+            "flex h-8 items-center rounded-md hover:bg-muted",
+            active && "bg-muted font-medium",
           )}
-          onClick={onSelect}
         >
-          {folderBlocked ? (
-            <WifiOff className="size-3.5 shrink-0 text-amber-500" />
-          ) : settingUp ? (
-            <Loader2 className="size-3.5 shrink-0 animate-spin" />
-          ) : failed ? (
-            <CircleAlert className="size-3.5 shrink-0 text-destructive" />
-          ) : (
-            <LayoutDashboard className="size-3.5 shrink-0 text-muted-foreground" />
-          )}
-          <span className="truncate">Overview</span>
-          {settingUp || failed ? (
-            <span
-              className={cn(
-                "ml-auto shrink-0 text-[10px] font-normal text-muted-foreground",
-                failed && "text-destructive",
-              )}
-            >
-              {folderBlocked
-                ? "Worker offline"
-                : cloning
-                  ? setupJob
-                    ? `${setupJob.progress.percent}%`
-                    : "Starting"
-                  : preparing
-                    ? "Preparing"
-                    : "Failed"}
-            </span>
-          ) : null}
-        </button>
-        {settingUp && !folderBlocked ? null : (
-          <DropdownMenuPrimitive.Root>
-            <DropdownMenuPrimitive.Trigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              settingUp && "cursor-default",
+            )}
+            onClick={onSelect}
+          >
+            {folderBlocked ? (
+              <WifiOff className="size-3.5 shrink-0 text-amber-500" />
+            ) : settingUp ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin" />
+            ) : failed ? (
+              <CircleAlert className="size-3.5 shrink-0 text-destructive" />
+            ) : (
+              <LayoutDashboard className="size-3.5 shrink-0 text-muted-foreground" />
+            )}
+            <span className="truncate">Overview</span>
+            {settingUp || failed ? (
+              <span
+                className={cn(
+                  "ml-auto shrink-0 text-[10px] font-normal text-muted-foreground",
+                  failed && "text-destructive",
+                )}
+              >
+                {folderBlocked
+                  ? "Worker offline"
+                  : cloning
+                    ? setupJob
+                      ? `${setupJob.progress.percent}%`
+                      : "Starting"
+                    : preparing
+                      ? "Preparing"
+                      : "Failed"}
+              </span>
+            ) : null}
+          </button>
+          {settingUp && !folderBlocked ? null : (
+            <ProjectDropdownMenu actions={actions}>
               <button
-                data-actions-trigger
                 type="button"
                 aria-label={`Project actions for ${project.name}`}
                 onClick={(event) => event.stopPropagation()}
-                className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
               >
                 <MoreHorizontal className="size-3.5" />
                 <span className="sr-only">
                   Project actions for {project.name}
                 </span>
               </button>
-            </DropdownMenuPrimitive.Trigger>
-            <DropdownMenuPrimitive.Portal>
-              <StyledDropdownMenuContent
-                align="end"
-                sideOffset={4}
-                className="min-w-36"
-              >
-                <StyledDropdownMenuItem onSelect={onOpenSettings}>
-                  <Settings className="size-4" /> Settings
-                </StyledDropdownMenuItem>
-                {onReveal ? (
-                  <StyledDropdownMenuItem
-                    disabled={revealDisabled}
-                    onClick={(event) => {
-                      revealLocalFolder.current = event.shiftKey;
-                    }}
-                    onSelect={() => {
-                      const localFolder = revealLocalFolder.current;
-                      revealLocalFolder.current = false;
-                      onReveal(localFolder);
-                    }}
-                  >
-                    <NativeFolderRevealIcon
-                      className="size-4"
-                      localFolder={shiftKeyHeld}
-                    />{" "}
-                    {projectRevealLabel}
-                  </StyledDropdownMenuItem>
-                ) : null}
-                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-                <StyledDropdownMenuItem
-                  className="text-destructive focus:bg-destructive/10"
-                  onSelect={onRemove}
-                >
-                  <Trash2 className="size-4" /> Remove project
-                </StyledDropdownMenuItem>
-              </StyledDropdownMenuContent>
-            </DropdownMenuPrimitive.Portal>
-          </DropdownMenuPrimitive.Root>
-        )}
-      </div>
+            </ProjectDropdownMenu>
+          )}
+        </div>
+      </ProjectContextMenu>
       {children}
     </div>
   );
@@ -574,12 +532,6 @@ export function ProjectChatList({
     useState<ProjectViewSummary | null>(null);
   const [removeProjectTarget, setRemoveProjectTarget] =
     useState<ProjectSummary | null>(null);
-  const [deleteLocalFiles, setDeleteLocalFiles] = useState(false);
-  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
-  const [removeProjectPending, setRemoveProjectPending] = useState(false);
-  const [removeProjectError, setRemoveProjectError] = useState<string | null>(
-    null,
-  );
   const [revealingProjectId, setRevealingProjectId] = useState<string | null>(
     null,
   );
@@ -589,32 +541,6 @@ export function ProjectChatList({
   const standaloneTerminals = terminals.filter(
     (terminal) => terminal.linkedChatId === null,
   );
-  const closeRemoveProject = () => {
-    if (removeProjectPending) return;
-    setRemoveProjectTarget(null);
-    setDeleteLocalFiles(false);
-    setDeleteConfirmationOpen(false);
-    setRemoveProjectError(null);
-  };
-  const submitRemoveProject = async (deleteFiles: boolean) => {
-    if (!removeProjectTarget || removeProjectPending) return;
-    setRemoveProjectPending(true);
-    setRemoveProjectError(null);
-    try {
-      await onRemoveProject(removeProjectTarget.id, deleteFiles);
-      setRemoveProjectTarget(null);
-      setDeleteLocalFiles(false);
-      setDeleteConfirmationOpen(false);
-    } catch (error) {
-      setRemoveProjectError(
-        error instanceof Error
-          ? error.message
-          : "Could not remove the project.",
-      );
-    } finally {
-      setRemoveProjectPending(false);
-    }
-  };
   type SidebarTab =
     | { id: string; kind: "chat"; chat: ChatSummary }
     | {
@@ -840,9 +766,6 @@ export function ProjectChatList({
                 revealDisabled={revealingProjectId !== null}
                 onSelect={() => onSelectProject(project.id)}
                 onRemove={() => {
-                  setDeleteLocalFiles(false);
-                  setDeleteConfirmationOpen(false);
-                  setRemoveProjectError(null);
                   setRemoveProjectTarget(project);
                 }}
               >
@@ -1281,129 +1204,11 @@ export function ProjectChatList({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog
-        open={Boolean(removeProjectTarget) && !deleteConfirmationOpen}
-        onOpenChange={(open) => {
-          if (!open && !deleteConfirmationOpen) closeRemoveProject();
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove project?</DialogTitle>
-            <DialogDescription>
-              “{removeProjectTarget?.name}” will be unlinked from Cantrip.{" "}
-              {removeProjectTarget?.folderManagement === "external"
-                ? "The attached folder remains unchanged on its worker and can be added again later."
-                : removeProjectTarget?.originKind === "managed-folder"
-                  ? "The folder remains on its worker and can be added again later using its path."
-                  : "Its repository remains on the worker and can be re-linked later."}
-            </DialogDescription>
-          </DialogHeader>
-          {removeProjectTarget?.source ? (
-            <code className="block break-all rounded-md bg-muted px-3 py-2 text-xs">
-              {removeProjectTarget.source.displayPath}
-            </code>
-          ) : null}
-          {removeProjectTarget?.source &&
-          removeProjectTarget.folderManagement !== "external" ? (
-            <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4 accent-destructive"
-                checked={deleteLocalFiles}
-                onChange={(event) => setDeleteLocalFiles(event.target.checked)}
-              />
-              <span>
-                <span className="font-medium">Also delete local files</span>
-                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                  Permanently removes the local project files from the worker.
-                  The owning worker must be online.
-                </span>
-              </span>
-            </label>
-          ) : null}
-          {removeProjectError ? (
-            <p className="text-sm text-destructive">{removeProjectError}</p>
-          ) : null}
-          <DialogFooter>
-            <Button
-              disabled={removeProjectPending}
-              onClick={closeRemoveProject}
-              variant="outline"
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={removeProjectPending}
-              onClick={() => {
-                const action = projectRemovalAction(
-                  deleteLocalFiles,
-                  removeProjectTarget?.originKind === "managed-folder",
-                );
-                if (action === "confirm-delete") {
-                  setDeleteConfirmationOpen(true);
-                } else {
-                  void submitRemoveProject(action === "delete");
-                }
-              }}
-              variant={deleteLocalFiles ? "destructive" : "default"}
-            >
-              {removeProjectPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
-              {deleteLocalFiles
-                ? removeProjectTarget?.originKind === "managed-folder"
-                  ? "Continue to delete"
-                  : "Delete files and remove"
-                : "Unlink project"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={Boolean(removeProjectTarget) && deleteConfirmationOpen}
-        onOpenChange={(open) => {
-          if (!open && deleteConfirmationOpen) closeRemoveProject();
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete local files permanently?</DialogTitle>
-            <DialogDescription>
-              This deletes “{removeProjectTarget?.name}” at the exact path below
-              and unlinks the project. Cantrip and Git cannot recover these
-              files.
-            </DialogDescription>
-          </DialogHeader>
-          <code className="block break-all rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
-            {removeProjectTarget?.source?.displayPath ?? "Source unavailable"}
-          </code>
-          {removeProjectError ? (
-            <p className="text-sm text-destructive">{removeProjectError}</p>
-          ) : null}
-          <DialogFooter>
-            <Button
-              disabled={removeProjectPending}
-              onClick={() => {
-                setRemoveProjectError(null);
-                setDeleteConfirmationOpen(false);
-              }}
-              variant="outline"
-            >
-              Back
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void submitRemoveProject(true)}
-              pending={removeProjectPending}
-              pendingLabel="Deleting…"
-            >
-              <Trash2 className="size-4" />
-              Delete folder permanently
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProjectRemovalDialog
+        onOpenChange={(open) => !open && setRemoveProjectTarget(null)}
+        onRemove={onRemoveProject}
+        project={removeProjectTarget}
+      />
       <Dialog
         open={Boolean(deleteTerminalTarget)}
         onOpenChange={(open) => {

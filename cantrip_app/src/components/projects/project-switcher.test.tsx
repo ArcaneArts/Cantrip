@@ -46,6 +46,8 @@ describe("project switcher", () => {
         onAddProject={vi.fn()}
         onCreateTab={vi.fn()}
         onManageWorkspaces={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onRemoveProject={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
       />,
@@ -62,6 +64,9 @@ describe("project switcher", () => {
     expect(markup).not.toContain(">Manage<");
     expect(markup).toContain("New project");
     expect(markup).not.toContain("New workspace");
+    expect(markup.match(/data-slot="project-switcher-project"/g)).toHaveLength(
+      1,
+    );
   });
 
   it("hides the add-tab action when no project is selected", () => {
@@ -74,6 +79,8 @@ describe("project switcher", () => {
         onAddProject={vi.fn()}
         onCreateTab={vi.fn()}
         onManageWorkspaces={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onRemoveProject={vi.fn()}
         onSelectProject={vi.fn()}
         onSelectWorkspace={vi.fn()}
       />,
