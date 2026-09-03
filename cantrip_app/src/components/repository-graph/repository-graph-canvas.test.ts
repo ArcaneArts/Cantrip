@@ -11,6 +11,7 @@ import {
   Canvas2DRepositoryGraphAdapter,
   RepositoryGraphRenderPlanner,
   createRepositoryGraphRenderPlan,
+  repositoryGraphNodeScreenRadius,
   type RepositoryGraphRenderPlan,
 } from "./repository-graph-canvas";
 import {
@@ -32,13 +33,12 @@ function node(id: string, parentId: string | null): RepositoryGraphInputNode {
   };
 }
 
-function legacyRenderPlan(
+function uncachedRenderPlan(
   scene: RepositoryGraphScene,
   camera: RepositoryGraphCamera,
   viewport: RepositoryGraphViewport,
   options: {
     hoveredNodeId?: string | null;
-    maxLabels?: number;
     selectedNodeId?: string | null;
   } = {},
 ): RepositoryGraphRenderPlan {
@@ -52,32 +52,10 @@ function legacyRenderPlan(
       visibleIds.has(edge.parentId) ||
       visibleIds.has(edge.id.split("->")[1] ?? ""),
   );
-  const maxLabels = Math.max(0, options.maxLabels ?? 120);
-  const prioritized = visible
-    .filter(
-      (entry) =>
-        entry.id === options.selectedNodeId ||
-        entry.id === options.hoveredNodeId ||
-        entry.kind === "directory" ||
-        entry.aggregated ||
-        entry.radius * camera.scale >= 7,
-    )
-    .sort((left, right) => {
-      const leftSelected =
-        left.id === options.selectedNodeId || left.id === options.hoveredNodeId;
-      const rightSelected =
-        right.id === options.selectedNodeId ||
-        right.id === options.hoveredNodeId;
-      if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
-      if (left.kind !== right.kind)
-        return left.kind === "directory"
-          ? -1
-          : right.kind === "directory"
-            ? 1
-            : 0;
-      return right.radius - left.radius;
-    });
-  return { edges, labels: prioritized.slice(0, maxLabels), nodes: visible };
+  const hoveredNode = options.hoveredNodeId
+    ? visible.find((entry) => entry.id === options.hoveredNodeId)
+    : undefined;
+  return { edges, labels: hoveredNode ? [hoveredNode] : [], nodes: visible };
 }
 
 function benchmarkScene(nodeCount: number): RepositoryGraphScene {
@@ -145,7 +123,7 @@ describe("repository graph canvas render planning", () => {
     );
   });
 
-  it("culls offscreen nodes and caps labels independently of the scene size", () => {
+  it("culls offscreen nodes and hides labels until a node is hovered", () => {
     const nodes = [node("root", null)];
     for (let index = 0; index < 500; index += 1)
       nodes.push(node(`file-${index}`, "root"));
@@ -154,37 +132,41 @@ describe("repository graph canvas render planning", () => {
       scene,
       defaultRepositoryGraphCamera(),
       { height: 300, width: 400 },
-      { maxLabels: 8 },
     );
     expect(plan.nodes.length).toBeLessThan(scene.nodes.length);
-    expect(plan.labels.length).toBeLessThanOrEqual(8);
+    expect(plan.labels).toEqual([]);
   });
 
-  it("keeps a selected small node at the front of the label budget", () => {
+  it("shows a label only for the hovered node", () => {
     const scene = buildRepositoryGraphScene([
       node("root", null),
       node("alpha", "root"),
       node("beta", "root"),
     ]);
-    const plan = createRepositoryGraphRenderPlan(
+    const selected = createRepositoryGraphRenderPlan(
       scene,
       defaultRepositoryGraphCamera(),
       { height: 1_000, width: 1_000 },
-      { maxLabels: 1, selectedNodeId: "beta" },
+      { selectedNodeId: "beta" },
     );
-    expect(plan.labels.map((entry) => entry.id)).toEqual(["beta"]);
+    const hovered = createRepositoryGraphRenderPlan(
+      scene,
+      defaultRepositoryGraphCamera(),
+      { height: 1_000, width: 1_000 },
+      { hoveredNodeId: "alpha", selectedNodeId: "beta" },
+    );
+    expect(selected.labels).toEqual([]);
+    expect(hovered.labels.map((entry) => entry.id)).toEqual(["alpha"]);
   });
 
-  it("matches the previous visible nodes, labels, and edge set", () => {
+  it("matches the uncached visible nodes, hovered label, and edge set", () => {
     const scene = benchmarkScene(500);
     const viewport = { height: 720, width: 1_100 };
     for (const camera of benchmarkCameras(scene, viewport)) {
       const options = {
         hoveredNodeId: "file-200",
-        maxLabels: 37,
-        selectedNodeId: "file-400",
       };
-      const previous = legacyRenderPlan(scene, camera, viewport, options);
+      const previous = uncachedRenderPlan(scene, camera, viewport, options);
       const current = createRepositoryGraphRenderPlan(
         scene,
         camera,
@@ -196,6 +178,40 @@ describe("repository graph canvas render planning", () => {
       expect(current.edges.map(({ id }) => id).sort()).toEqual(
         previous.edges.map(({ id }) => id).sort(),
       );
+    }
+  });
+
+  it("scales node radii linearly with map zoom", () => {
+    expect(repositoryGraphNodeScreenRadius(12, 0.25)).toBe(3);
+    expect(repositoryGraphNodeScreenRadius(12, 1)).toBe(12);
+    expect(repositoryGraphNodeScreenRadius(12, 4)).toBe(48);
+  });
+
+  it("preserves layout collision spacing at every zoom", () => {
+    const scene = buildRepositoryGraphScene([
+      node("root", null),
+      { ...node("large", "root"), radius: 30 },
+      { ...node("medium", "root"), radius: 18 },
+      node("small", "root"),
+    ]);
+
+    for (const scale of [0.25, 1, 4]) {
+      for (let leftIndex = 0; leftIndex < scene.nodes.length; leftIndex += 1) {
+        for (
+          let rightIndex = leftIndex + 1;
+          rightIndex < scene.nodes.length;
+          rightIndex += 1
+        ) {
+          const left = scene.nodes[leftIndex]!;
+          const right = scene.nodes[rightIndex]!;
+          const screenDistance =
+            Math.hypot(left.x - right.x, left.y - right.y) * scale;
+          const combinedRadius =
+            repositoryGraphNodeScreenRadius(left.radius, scale) +
+            repositoryGraphNodeScreenRadius(right.radius, scale);
+          expect(screenDistance).toBeGreaterThanOrEqual(combinedRadius);
+        }
+      }
     }
   });
 
@@ -283,7 +299,7 @@ describe("repository graph canvas render planning", () => {
         const scene = benchmarkScene(nodeCount);
         const cameras = benchmarkCameras(scene, viewport);
         const expected = cameras.map((camera) =>
-          legacyRenderPlan(scene, camera, viewport),
+          uncachedRenderPlan(scene, camera, viewport),
         );
         const equivalencePlanner = new RepositoryGraphRenderPlanner();
         cameras.forEach((camera, index) => {
@@ -316,7 +332,7 @@ describe("repository graph canvas render planning", () => {
               const frameStartedAt = performance.now();
               const plan = planner
                 ? planner.create(scene, camera, viewport)
-                : legacyRenderPlan(scene, camera, viewport);
+                : uncachedRenderPlan(scene, camera, viewport);
               iterationFrames.push(performance.now() - frameStartedAt);
               sink +=
                 plan.nodes.length + plan.edges.length + plan.labels.length;
