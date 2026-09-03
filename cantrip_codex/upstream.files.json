@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "upstream": {
     "repository": "https://github.com/openai/codex.git",
-    "ref": "rust-v0.153.0",
-    "commit": "41e22fee981a63b3698df7ed36bad393cda24715",
-    "version": "0.153.0"
+    "ref": "rust-v0.153.1",
+    "commit": "985641272869835d01d025ed2a218fbbce35fa9f",
+    "version": "0.153.1"
   },
   "files": [
     {
@@ -1068,9 +1068,14 @@
       "size": 11466
     },
     {
+      "path": "codex-rs/app-server/tests/suite/v2/guardian_v2_model_tests.rs",
+      "sha256": "e817811e73671767805866f385e43e74ad9954ea1a0955aaa4944c25bda533c1",
+      "size": 5372
+    },
+    {
       "path": "codex-rs/app-server/tests/suite/v2/guardian_v2.rs",
-      "sha256": "961c6fbb401cbfc7e637ff08d52320e1d6815fb987bdbfbc7469e7a0ed373d2b",
-      "size": 89730
+      "sha256": "6bd5eb42da98888b84ecd9c91bb70c148fe00b39d3a484e7aec7fd4a23e43703",
+      "size": 89859
     },
     {
       "path": "codex-rs/app-server/tests/suite/v2/history_notes_extension.rs",
@@ -1139,8 +1144,8 @@
     },
     {
       "path": "codex-rs/app-server/tests/suite/v2/mcp_tool.rs",
-      "sha256": "6f996b4b338bd8af3db0a04ac967175673a742948a178154e3f2e156952ef648",
-      "size": 57655
+      "sha256": "b174cad57de87d5fe547fc9747cd1a0ae09d4416d44f8d252bc7368fc50217b1",
+      "size": 57921
     },
     {
       "path": "codex-rs/app-server/tests/suite/v2/memory_reset.rs",
@@ -7874,7 +7879,7 @@
     },
     {
       "path": "codex-rs/Cargo.toml",
-      "sha256": "b8dacb72cb2ef05add2b4c731c6c52d885795fe3912f240751aa5975e9e930e8",
+      "sha256": "64bccf036dc7ab02371a4f204f50db59eb2efea343f1e5c2de74c68aa34a4ec5",
       "size": 18786
     },
     {
@@ -13189,8 +13194,8 @@
     },
     {
       "path": "codex-rs/core/tests/suite/guardian_review.rs",
-      "sha256": "a1c606233a3ffc147542820a56f433fe15489e0a02158262c7500a45d8bcda4f",
-      "size": 72885
+      "sha256": "173289bb41d76837d7b9fd39f5ebb24aea19d66a2015d71e15efde3f40ac728c",
+      "size": 72603
     },
     {
       "path": "codex-rs/core/tests/suite/guardian_subagent_authorization.rs",
@@ -15769,13 +15774,13 @@
     },
     {
       "path": "codex-rs/ext/guardian-v2/src/async_scorer/extension_tests.rs",
-      "sha256": "2d729cc576265dd845ec3a468b3023e0bb5c863a9fad23607c1186e805815745",
-      "size": 112573
+      "sha256": "e52ac7b7ce4b45c7e35826566b26adff5c82806e5df87bd37bddf6fd0a11c780",
+      "size": 114476
     },
     {
       "path": "codex-rs/ext/guardian-v2/src/async_scorer/extension.rs",
-      "sha256": "3a873da8b1efcf12171dbc95fcdfdc9bee4119dc4970cad62e938fc1b6911556",
-      "size": 39337
+      "sha256": "c111c5fac5b9e4657e93c1abceb5600dead7d2da89478d88496fc5299bdb6220",
+      "size": 39806
     },
     {
       "path": "codex-rs/ext/guardian-v2/src/async_scorer/metrics.rs",
@@ -18679,8 +18684,8 @@
     },
     {
       "path": "codex-rs/models-manager/models.json",
-      "sha256": "eb0d7b9a5dcaf103895c5f8a14c16b269df46e039b375a55ba97f6238542d2ed",
-      "size": 424117
+      "sha256": "22c9b18dc86a995e398178dcd5ba6d6a4af7cb900fb51e17d5f1357fea4903c3",
+      "size": 515131
     },
     {
       "path": "codex-rs/models-manager/prompt.md",
@@ -28149,8 +28154,8 @@
     },
     {
       "path": "codex-rs/tui/src/chatwidget/tests/helpers.rs",
-      "sha256": "0706746c7c67cfc4c26f6afab0f70f51f5889c9538be1c83706dbdf890e09565",
-      "size": 54145
+      "sha256": "589bfdb49c89cd9fd7f393799d2b9853aa4e312d74f11273c8e0b1ba00443a3e",
+      "size": 54279
     },
     {
       "path": "codex-rs/tui/src/chatwidget/tests/history_replay.rs",
@@ -30519,8 +30524,8 @@
     },
     {
       "path": "codex-rs/tui/src/status/tests.rs",
-      "sha256": "c5483fed156f035ed8066e331f0239ad7b256f3049a85fc880a6be2a84fddc3a",
-      "size": 75616
+      "sha256": "c1c30bdcc210dd65eb49f7797ceb420c21580a252c8029610c681bb72c980a04",
+      "size": 75668
     },
     {
       "path": "codex-rs/tui/src/status/thread_usage_tests.rs",
