@@ -61,6 +61,7 @@ import {
   useProjectSetupOperations,
 } from "@/components/app/project-operations";
 import { useProjectWorkspaceResources } from "@/components/app/project-workspace-resources";
+import { useProjectSurfaceCloseCoordinator } from "@/components/app/project-surface-close";
 import {
   projectWorkspaceSurfaceSelection,
   useActiveProjectWorkspace,
@@ -234,6 +235,10 @@ export function App() {
     setWorkspaceSelection,
     workspaceSelection,
   } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
+  const projectSurfaceClose = useProjectSurfaceCloseCoordinator({
+    queryClient,
+    setWorkspaceSelection,
+  });
   useEffect(() => {
     const openFileHistory = (event: Event) => {
       const { projectId, worktreeId, path } = (
@@ -672,6 +677,7 @@ export function App() {
     setChatConsoleOpen,
     setProjectTaskChatIds,
     setTaskChatViewIds,
+    surfaceClose: projectSurfaceClose,
   });
   const {
     deleteTerminalMutation,
@@ -682,6 +688,7 @@ export function App() {
     selectedProjectId,
     setPendingTerminalInputs,
     setTerminalServiceTerminalId,
+    surfaceClose: projectSurfaceClose,
     terminalServiceTerminalId,
   });
   const {
@@ -692,13 +699,26 @@ export function App() {
     explorerLifecycleRef,
     queryClient,
     selectedProjectId,
+    surfaceClose: projectSurfaceClose,
   });
   const { deleteBrowserMutation, updateBrowserMutation } =
-    useBrowserSurfaceOperations({ queryClient, selectedProjectId });
+    useBrowserSurfaceOperations({
+      queryClient,
+      selectedProjectId,
+      surfaceClose: projectSurfaceClose,
+    });
   const { deleteCodeTabMutation, updateCodeTabMutation } =
-    useCodeSurfaceOperations({ queryClient, selectedProjectId });
+    useCodeSurfaceOperations({
+      queryClient,
+      selectedProjectId,
+      surfaceClose: projectSurfaceClose,
+    });
   const { deleteProjectViewMutation, renameProjectViewMutation } =
-    useProjectViewSurfaceOperations({ queryClient, selectedProjectId });
+    useProjectViewSurfaceOperations({
+      queryClient,
+      selectedProjectId,
+      surfaceClose: projectSurfaceClose,
+    });
   const {
     removeProjectMutation,
     reorderProjectsMutation,
@@ -765,6 +785,7 @@ export function App() {
     });
   const { displayTerminals, projectSurfaceIndex, selectedSurface } =
     useProjectSurfaceSelection({
+      omittedTabKeys: projectSurfaceClose.pendingTabKeys,
       resources: projectWorkspaceResources,
       selectedTabKey,
     });

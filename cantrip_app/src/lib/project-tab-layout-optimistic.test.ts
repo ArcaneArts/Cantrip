@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyOptimisticTabLayoutCommand,
   applyOptimisticTabLayoutToCache,
+  removeProjectTabFromLayout,
   restoreOptimisticTabLayoutCache,
 } from "./project-tab-layout-optimistic";
 
@@ -59,6 +60,26 @@ const layout: ProjectTabLayoutSummary = {
 };
 
 describe("optimistic tab layouts", () => {
+  it("removes a member and immediately promotes the remaining tab", () => {
+    const next = removeProjectTabFromLayout(layout, "chat:a");
+
+    expect(next.groups[0]).toMatchObject({
+      anchorTabKey: "terminal:a",
+      position: 0,
+      title: "terminal:a",
+    });
+    expect(next.groups[0]?.members).toMatchObject([
+      { position: 0, tabKey: "terminal:a" },
+    ]);
+  });
+
+  it("removes and repositions an emptied tab group", () => {
+    const next = removeProjectTabFromLayout(layout, "explorer:b");
+
+    expect(next.groups).toHaveLength(1);
+    expect(next.groups[0]).toMatchObject({ id: "group-a", position: 0 });
+  });
+
   it("promotes the first remaining member when splitting the anchor", () => {
     const next = applyOptimisticTabLayoutCommand(layout, {
       type: "move-member",

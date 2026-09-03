@@ -48,6 +48,27 @@ export interface ProjectSurfaceIndex {
   unresolvedTabKeys: readonly string[];
 }
 
+export function omitProjectSurfaceTabs(
+  index: ProjectSurfaceIndex,
+  omittedTabKeys: ReadonlySet<string>,
+): ProjectSurfaceIndex {
+  if (omittedTabKeys.size === 0) return index;
+  return {
+    byGroupId: new Map(
+      [...index.byGroupId].map(([groupId, surfaces]) => [
+        groupId,
+        surfaces.filter(({ tabKey }) => !omittedTabKeys.has(tabKey)),
+      ]),
+    ),
+    byTabKey: new Map(
+      [...index.byTabKey].filter(([tabKey]) => !omittedTabKeys.has(tabKey)),
+    ),
+    unresolvedTabKeys: index.unresolvedTabKeys.filter(
+      (tabKey) => !omittedTabKeys.has(tabKey),
+    ),
+  };
+}
+
 export function projectSurfaceIsFile(
   surface: ProjectSurface,
 ): surface is ProjectFileSurface {
