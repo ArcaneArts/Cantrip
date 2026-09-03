@@ -87,8 +87,7 @@ panel after the configured server is present on that chat's Codex thread.
 Typing `/` at the start of an otherwise empty chat draft searches Cantrip
 built-in chat commands and Codex skills discovered for that chat runtime.
 Built-ins use `/name`; skills use `$name`. Choosing a skill inserts its native
-mention. Durable workflow entries and `/personal/...` or `/project/...`
-namespaces are no longer present.
+mention.
 
 `POST /api/chats/:chatId/customizations/mcp-resource` reads one advertised MCP
 resource through Codex. Cantrip limits the normalized response to 5 MB before

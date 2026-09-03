@@ -543,6 +543,4 @@ chat/source fails closed because the server revalidates the worker from the
 chat's active worktree. If that chat has automation paused, the protected prompt
 is queued rather than started. If the owning worker is offline, the due
 occurrence remains pending until that worker resumes polling; recovery runs at
-most one missed occurrence before advancing to the next future slot. Legacy
-workflow trigger/delivery/run rows are not scheduled, executed, or recovered by
-current code.
+most one missed occurrence before advancing to the next future slot.

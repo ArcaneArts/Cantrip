@@ -81,10 +81,6 @@ The server-owned persistence and API state machine for approvals and structured
 user interaction is documented in
 [`AGENT_INTERACTIONS.md`](AGENT_INTERACTIONS.md).
 
-The constrained, non-executable workflow graph and orchestration primitive
-contract is documented in
-[`WORKFLOW_ORCHESTRATION.md`](WORKFLOW_ORCHESTRATION.md).
-
 The worker will:
 
 - detect the installed Codex binary and version;
@@ -333,7 +329,7 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `project_worktrees` | Durable observations for Primary, Cantrip-managed, agent, user, and external checkouts: worker/path ownership, branch/HEAD, lifecycle, lock, detached, and scan state. |
 | `chats` | Server-owned logical conversation with project, title, active worker, runtime profile, status, model, and event cursor. |
 | `chat_execution_lanes` | Historical and active chat/worktree leases with actor, purpose, transition state, base/starting revision, runtime association, and lifecycle timestamps. |
-| `project_branch_leases` | Project-wide logical Git branch mutation fences shared by chat execution lanes and workflow worktree leases across every worker replica. |
+| `project_branch_leases` | Project-wide logical Git branch mutation fences shared by chat execution lanes across every worker replica. |
 | `chat_runtime_sessions` | Mapping from one logical chat to a worker- and worktree-specific Codex thread/session, active model route, status, and replay/handoff metadata. |
 | `chat_messages` | Ordered server-held conversation history that remains readable independently of worker availability, including the concrete model route/provider audit for dispatched user turns. |
 | `turns` | Cantrip projection of Codex turns, status, timestamps, usage, and error summary. |
@@ -700,7 +696,7 @@ Configuration uses validated environment variables and config files with documen
 ## 14. Observability and operations
 
 Cantrip now uses a shared structured operational-log contract with request,
-command, worker, project, chat, turn, workflow/run, and surface correlation IDs.
+command, worker, project, chat, turn, and surface correlation IDs.
 Server and worker records are sanitized once before they fan out to the colored
 console, bounded service buffer, and rotated JSONL sink. Deliberate client and
 native Tauri lifecycle events use the same vocabulary and reach the desktop
@@ -714,7 +710,7 @@ operator runbook.
 
 The server also exposes protected aggregate Prometheus metrics for HTTP/database health, connected workers, command activity, live connections, tunnel/relay traffic, quota rejection, scheduler throughput/lag, and scheduler lease contention/recovery. Extend them with active turns, queue latency, event lag, Codex process restarts, approval wait time, provider errors, and WebSocket reconnects as those runtime counters become available.
 
-`/healthz` distinguishes process liveness from database and optional Redis coordination readiness. Redis-backed worker leases, routed commands/data planes, and live invalidation fanout support multiple relay instances, with a configured replica ceiling conservatively partitioning global quotas. Scheduled workflow and project-automation occurrences use PostgreSQL leases plus fencing tokens, allowing crash recovery without accepting a stale dispatcher's completion. Future probes should add migration status and explicit required-worker readiness. Worker health reports should distinguish server connectivity, Codex availability, provider auth, runtime crash loops, disk pressure, and source availability.
+`/healthz` distinguishes process liveness from database and optional Redis coordination readiness. Redis-backed worker leases, routed commands/data planes, and live invalidation fanout support multiple relay instances, with a configured replica ceiling conservatively partitioning global quotas. Project-automation occurrences use PostgreSQL leases plus fencing tokens, allowing crash recovery without accepting a stale dispatcher's completion. Future probes should add migration status and explicit required-worker readiness. Worker health reports should distinguish server connectivity, Codex availability, provider auth, runtime crash loops, disk pressure, and source availability.
 
 For PostgreSQL deployments, document migrations, backups, point-in-time recovery expectations, and restore tests. PGlite deployments should expose a safe export/backup command and warn that they are not multi-server databases.
 
@@ -781,21 +777,13 @@ Exit: a public Cantrip server can coordinate multiple private workers without in
 
 Exit: browser, desktop, and mobile clients share the same protocol and can reconnect to long-running work.
 
-### Phase 5: hardening and advanced workflows
+### Phase 5: hardening and advanced operations
 
 - Add organization roles only with a complete tenancy model.
 - Add chat fork/branch and export/import.
-- Extend the implemented local worktree workflows with Git-assisted cross-worker synchronization and explicit transfer handling for uncommitted changes.
-- Harden the implemented native customization and scheduled workflow controls for authenticated hosted deployment; enable plugin mutations only after the pinned Codex App Server exposes a stable contract.
+- Extend local worktree operations with Git-assisted cross-worker synchronization and explicit transfer handling for uncommitted changes.
+- Harden native customization and project-automation controls for authenticated hosted deployment; enable plugin mutations only after the pinned Codex App Server exposes a stable contract.
 - Add protocol compatibility matrices, upgrade tooling, load tests, and disaster-recovery exercises.
-
-The implemented local workflow boundary is specified in the
-[orchestration contract](WORKFLOW_ORCHESTRATION.md) and
-[ADR 0004](adr/0004-codex-native-workflow-control-plane.md). Operational
-recovery, trigger trust, migration, backup, and rollback guidance lives in the
-[workflow operations guide](WORKFLOW_OPERATIONS.md); the final evidence and
-pull-request ledger live in the
-[workflow implementation audit](WORKFLOW_IMPLEMENTATION_AUDIT.md).
 
 ## 16. MVP acceptance criteria
 
@@ -817,7 +805,6 @@ The first meaningful release is complete when all of the following are true:
   lifecycle belong to the server. A newly enrolled worker can use the existing
   logical model profiles without provider sign-in or durable local credentials.
 - A tested OpenAI-compatible profile and a worker-local Ollama profile can run, with unsupported capabilities visibly disabled.
-- A trusted workflow can execute bounded Codex nodes, survive durable-boundary restarts, isolate mutations in leased worktrees, and be invoked through explicitly enabled schedule/API/webhook/Git/saved-command triggers without adding a second agent runtime.
 - Security tests cover unauthorized chat access, forged worker events, replayed commands, path traversal, symlink escape, secret leakage, and approval spoofing.
 
 ## 17. Major risks and mitigations

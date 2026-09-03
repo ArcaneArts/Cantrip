@@ -26,9 +26,7 @@ Repository lookups include the owner alongside resource identifiers. A
 foreign identifier therefore follows the same not-found path as a random
 identifier. Collection routes return only owned rows. This applies to project
 tabs, chat data, model/provider configuration, worktrees, remote surfaces, and
-their mutations. Durable workflow routes are no longer registered; former
-durable-workflow and webhook paths use the ordinary not-found response and have
-no authentication exception.
+their mutations.
 
 ## Long-lived transports and capabilities
 

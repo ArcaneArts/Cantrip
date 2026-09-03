@@ -6,14 +6,9 @@ the baseline, implementation, and verification sections is retained as delivery
 history; the product decisions and final acceptance behavior describe the
 current contract.
 
-> Current workflow boundary: the durable workflow UI and public APIs were
-> removed after this folder-project rollout. Workflow references in the
-> delivery history are historical. The runtime and persistence have also been
-> removed; only shared contract residue and historical migrations remain.
-
 The implementation was delivered through seven sequential Manual Change
 Protocol cycles: domain and migration, worker materialization, routing and
-agent execution, Tasks and workflows, application UX, explicit GitHub
+agent execution, Tasks and automations, application UX, explicit GitHub
 conversion, and final acceptance/documentation. Each cycle used its own
 worktree and ready pull request; no omnibus branch was used.
 
@@ -147,7 +142,6 @@ root, never a worktree.
 | Worker storage      | Clones live under the worker-managed `repositories` root.                                    | Add a separate managed folder root keyed by project UUID.                                               |
 | Agent policy        | Agent context advertises worktree acquisition and Git-oriented repository work.              | Supply folder-specific direct-write context and reject worktree commands.                               |
 | Observation         | Workers periodically run Git inventory and status for every configured source/worktree pair. | Never configure Git observation for folder sources.                                                     |
-| Workflows           | Write nodes allocate secondary worktrees and require a Git checkpoint.                       | Run against the folder root and complete without a Git lease or checkpoint.                             |
 | Tasks               | The implementation dashboard reports worktree dirtiness and associated PRs.                  | Show folder/worker placement and omit Git- and PR-derived sections and warnings.                        |
 | Overview            | Commit and code statistics come from Git tracked files.                                      | Replace Git metrics with a bounded, symlink-safe folder scan.                                           |
 | Removal             | Worker deletion accepts only managed repository paths.                                       | Add a distinct managed-folder deletion command and two-step destructive UI.                             |
@@ -160,7 +154,7 @@ change. The physical `mkdir` is small; most of the work is separating the
 current execution-root contract from assumptions that every root has Git
 metadata, a checkout lifecycle, and a recoverable checkpoint. The change spans
 the protocol, both databases, server orchestration, the worker command loop,
-workflow and Task state machines, and desktop/mobile application surfaces.
+Task and automation state machines, and desktop/mobile application surfaces.
 
 The work was delivered as seven independently mergeable changes matching the
 milestones below. The first vertical slice established the migration,
@@ -171,7 +165,7 @@ worker-command, and test costs used by the later passes.
 | Kinds, capabilities, backfill | Medium      | Additive data changes, but every existing GitHub project must retain identical behavior.     |
 | Durable creation and deletion | High        | Requires replay-safe server/worker coordination and strict path-containment guarantees.      |
 | Runtime surface routing       | Medium-high | Many surfaces already accept a root, but shared resolvers currently expect Git worktrees.    |
-| Workflows and Tasks           | High        | Mutation completion, dashboards, retries, and concurrency currently consume Git state.       |
+| Tasks and automations         | High        | Mutation completion, dashboards, retries, and concurrency must respect folder capabilities.  |
 | Desktop and mobile UI         | Medium-high | Capability filtering must cover creation, menus, settings, tabs, overview, and offline UX.   |
 | GitHub conversion             | High        | This is a transactional origin transition with local and remote history safety constraints.  |
 | Regression coverage           | High        | The feature must add non-Git paths without weakening existing Git and multi-worker behavior. |
@@ -181,7 +175,7 @@ The completed critical path was:
 1. introduce persisted kinds and authoritative capabilities;
 2. materialize one safe worker-owned folder and expose it as an execution root;
 3. route the ordinary runtime surfaces without invoking Git observation;
-4. remove Git checkpoint assumptions from workflows and Tasks;
+4. remove Git checkpoint assumptions from Tasks and automations;
 5. expose the capability-driven creation and management UI; and
 6. add GitHub conversion after folder mode itself is stable.
 
@@ -189,10 +183,10 @@ The most likely implementation touchpoints are
 `packages/protocol/src/index.ts`, `packages/protocol/src/live.ts`,
 `cantrip_server/src/db/schema.ts`, the project routes in
 `cantrip_server/src/app.ts`, `cantrip_server/src/project-replicas`,
-`cantrip_server/src/worktrees`, `cantrip_server/src/workflows`,
-`cantrip_server/src/tasks`, `cantrip_worker/src/runtime-loop.ts`,
+`cantrip_server/src/worktrees`, `cantrip_server/src/tasks`,
+`cantrip_worker/src/runtime-loop.ts`,
 `cantrip_worker/src/worktrees.ts`, `cantrip_worker/src/git.ts`, and the project,
-Task, workflow, tab, and mobile components under `cantrip_app/src`. The exact
+Task, automation, tab, and mobile components under `cantrip_app/src`. The exact
 files can be narrowed per milestone, but the protocol and central server
 capability guard must land before independent surface work can safely proceed.
 
@@ -211,8 +205,8 @@ flowchart LR
 ```
 
 The app continues to talk only to the server. The server owns the logical
-project, setup job, workspace membership, conversations, tabs, policies, legacy
-workflow compatibility rows, and routing metadata. The worker alone chooses,
+project, setup job, workspace membership, conversations, tabs, policies, and
+routing metadata. The worker alone chooses,
 creates, canonicalizes, reads, executes in, shares, and deletes the physical
 folder.
 
@@ -382,12 +376,6 @@ Tasks preserve their complete planning and Goal lifecycle. Their implementation
 dashboard replaces worktree/branch placement with the owning worker and folder
 display path. It omits PR association and Git-derived dirty/merge warnings
 rather than presenting them as failed lookups.
-
-## Historical workflow references
-
-The workflow steps in the delivery record below describe the product at the
-time of that rollout. Current source has no durable-workflow records, scheduler,
-recovery path, dispatcher, or folder-workflow feature.
 
 ## Surface and feature behavior
 
@@ -565,7 +553,7 @@ summary so origin kind and capabilities cannot remain stale after setup.
 - Workspace-write sandbox roots contain only the canonical folder root unless
   an explicitly selected permission profile grants more access.
 - Project names are display data and never participate in path construction.
-- Logs may include project, worker, request, workflow, and surface IDs but must
+- Logs may include project, worker, request, and surface IDs but must
   follow existing path-redaction policy for physical worker paths.
 
 ## Implementation milestones (complete)
@@ -598,11 +586,8 @@ merge observation, and cleanup.
 - Exclude folder roots from Git observation and worktree coordination.
 - Add folder statistics.
 
-### Milestone 4: workflows, Tasks, and automations
+### Milestone 4: Tasks and automations
 
-- Execute read and write workflow nodes directly in the folder root without
-  Git leases or checkpoints.
-- Adapt workflow result and dashboard representations.
 - Remove Git/PR assumptions from Task dashboards.
 - Preserve scheduled prompts and script conditions while rejecting
   open-issues conditions.
@@ -625,8 +610,8 @@ merge observation, and cleanup.
 
 ### Milestone 7: documentation and cross-platform acceptance
 
-- Update README, full description, deployment backup guidance, workflows,
-  Tasks, worktrees, and hosted acceptance documentation.
+- Update README, full description, deployment backup guidance, Tasks,
+  automations, worktrees, and hosted acceptance documentation.
 - Exercise browser, Tauri, iOS/Android layouts, PGlite, PostgreSQL, local mode,
   and a remote hosted worker.
 

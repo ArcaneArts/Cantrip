@@ -17,7 +17,7 @@ The current boundary is:
   worker.
 
 The central schema contains durable tables covering identity, providers,
-workers, projects, chats, telemetry, workflows, tunnels, and Run state. The
+workers, projects, chats, telemetry, tunnels, and Run state. The
 generated boundary inventory classifies every discovered durable table instead
 of relying on a manually maintained count. See
 [schema.ts](../cantrip_server/src/db/schema.ts).
@@ -66,11 +66,8 @@ intentionally visible control-plane metadata:
   server retains only opaque IDs and envelopes plus size, status, placement,
   replica, and transfer-control metadata.
 - Project automation names, prompts, and conditions are client-encrypted under
-  `workflow-content`; assigned workers evaluate conditions and seal chat turns.
-- The retired graph-workflow UI, runtime, persistence, and stored rows have been
-  removed. Historical migrations and implementation records remain; the same
-  `workflow-content` component name is independently used by current project
-  automations.
+  the compatibility component name `workflow-content`; assigned workers
+  evaluate conditions and seal chat turns.
 - Repository and Git operations, including Git-agent tasks, locally gathered
   evidence, and generated drafts, use protected client-to-worker envelopes or
   worker-local opaque routing handles.
@@ -747,55 +744,47 @@ fail closed as unclassified even if someone regenerates the inventory. The
 original ledger and the post-closure tracker are both closed; the generated
 inventory currently reports no remaining planned rows.
 
-| Data class                                                                                        | Current protection                                                                                                                                                                              | Rollout status                                   | E2EE feasibility     | Complexity  | What the server loses                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shared encryption formats and cryptographic primitives                                            | Versioned endpoint-only primitives                                                                                                                                                              | Foundation complete                              | Required             | Medium      | No server decryption capability is introduced                                                                                                                                          |
-| Account profiles, client wrappers, and scoped worker grants                                       | Opaque versioned registry; no server key access                                                                                                                                                 | Registry foundation complete                     | Required             | High        | Password-based server decryption and direct inspection of key material                                                                                                                 |
-| Client device-key custody and in-memory key handling                                              | Nonextractable IndexedDB key; memory-only AMK                                                                                                                                                   | Client custody complete                          | Required             | Medium      | No server decryption capability is introduced                                                                                                                                          |
-| Account initialization, device authorization, and password lifecycle                              | Login-password initialization plus device-key unlock; device-only anonymous local custody                                                                                                       | Client initialization complete                   | Required             | High        | Server-only password reset and plaintext key recovery                                                                                                                                  |
-| Worker key custody, public registration, and scoped component grants                              | Protected local private key; opaque server grants; Task and ordinary chat execution require exact scoped readiness                                                                              | Worker grants and active-path readiness complete | Required             | High        | Server cannot create grants or run plaintext work without an authorized worker                                                                                                         |
-| Workspace display names                                                                           | AES-256-GCM E2EE; client-only key; deterministic semantic-only default sentinel is sealed on first unlocked read                                                                                | E2EE complete                                    | Implemented          | Low-Medium  | Name-based server search and validation                                                                                                                                                |
-| Project display names                                                                             | AES-256-GCM E2EE; client-only key; project-domain pre-release reset                                                                                                                             | E2EE complete                                    | Implemented          | Medium      | Independent label search and presentation                                                                                                                                              |
-| Ordinary agent-chat message bodies, reasoning, command output, diffs, file paths                  | AES-256-GCM E2EE across client turns, worker streams, server-authored notices, automation turns, sync, imports, forks, and relocation                                                           | E2EE complete                                    | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                                                                                                           |
-| Task briefs, plans, questions, answers, directions, errors, messages, and Goals                   | AES-256-GCM E2EE across Task rows, planning rounds, Task messages, Goal APIs, live events, and relocation                                                                                       | E2EE complete                                    | Excellent            | Medium-High | Server cannot inspect, transform, reconstruct, or search protected Task content                                                                                                        |
-| Ordinary chat and Task display titles                                                             | AES-256-GCM E2EE; client-created labels and scoped worker-created import labels                                                                                                                 | E2EE complete                                    | Implemented          | Medium      | Title search, concatenation, automation copies, and execution-target presentation                                                                                                      |
-| Queued prompts                                                                                    | Client- or worker-sealed `chat-content`, including the future row-bound message; worker opens only when dispatching or steering                                                                 | E2EE complete                                    | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                                                                                                                   |
-| Ordinary chat plan snapshots and questions                                                        | Worker-sealed `chat-content` state; client-only presentation; answers use encrypted interaction responses                                                                                       | E2EE complete                                    | Implemented          | Medium      | Server cannot inspect plan prose, questions, or answers                                                                                                                                |
-| Attachment bytes, filenames, MIME, previews, digests, and errors                                  | Worker-local bytes; row-bound metadata envelopes; operation/sequence-bound ciphertext chunks across upload, download, import, and relocation relays                                             | E2EE complete                                    | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                                                                                                          |
-| Interaction and approval request details and responses                                            | Ordinary chat requests/responses use row-bound `interaction-content`; worker/client endpoints alone open semantic content                                                                       | E2EE complete                                    | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                                                                                                              |
-| Surface private-state contracts, endpoint codecs, and scoped worker grants                        | Bounded `surface-private-state` envelopes; independently grantable from display labels                                                                                                          | E2EE closure complete and statically enforced    | Required             | Medium      | No server decryption capability is introduced                                                                                                                                          |
-| Terminal working directories and service commands                                                 | AES-256-GCM E2EE; client-created row-bound state; worker-only execution                                                                                                                         | E2EE complete                                    | Excellent            | Medium      | Server cannot inspect or synthesize launch paths or service commands                                                                                                                   |
-| Explorer selected path                                                                            | AES-256-GCM E2EE; client-created row-bound state                                                                                                                                                | E2EE complete                                    | Excellent            | Low-Medium  | Server cannot restore or inspect the selected entry                                                                                                                                    |
-| Browser initial, current, and navigated URLs                                                      | AES-256-GCM E2EE; canonical row state plus operation-bound client/worker updates                                                                                                                | E2EE complete                                    | Excellent            | Medium      | Server cannot search, validate, execute, or diagnose browser destinations                                                                                                              |
-| Remote Desktop target selection and private inventory details                                     | AES-256-GCM E2EE; canonical revisioned target plus operation-bound worker inventory                                                                                                             | E2EE complete                                    | Excellent            | Medium-High | Server cannot inspect targets, application names, window titles, or monitor labels                                                                                                     |
-| Surface private-state server boundary and lifecycle audit                                         | Generated route/worker-command inventory, schema/repository guards, endpoint restart proof, full temporary-DB sentinel scan                                                                     | Closure audit complete                           | Required             | Medium      | Server persists and relays only opaque state contracts and public routing metadata                                                                                                     |
-| Terminal interactive input, output, and snapshots                                                 | Operation-, direction-, and sequence-bound AES-256-GCM under `surface-private-state`; client/worker and worker/worker CLI paths                                                                 | E2EE complete                                    | Implemented          | High        | Server cannot inspect shell interaction content                                                                                                                                        |
-| Explorer operation paths, entries, Git paths, and file/media contents                             | Operation-, direction-, and sequence-bound AES-256-GCM under `surface-private-state`; opaque HTTP, worker-command, and worker/worker CLI relays                                                 | E2EE complete                                    | Implemented          | High        | Server cannot inspect filesystem operations or content                                                                                                                                 |
-| Browser page content, cookies, credentials, profiles, screenshots, and frames                     | All relayed control, frame, cursor, clipboard, and signaling payloads use attachment-bound AES-256-GCM; cookies, profiles, and browser-held credentials stay worker-local                       | E2EE complete                                    | Implemented          | High        | Server cannot inspect or diagnose browser session content                                                                                                                              |
-| Remote Desktop frames, input, and clipboard                                                       | All relayed control, frame, cursor, clipboard, and signaling payloads use attachment-bound AES-256-GCM                                                                                          | E2EE complete                                    | Implemented          | High        | Server cannot inspect or transform desktop session content                                                                                                                             |
-| Surface and project-view display labels                                                           | AES-256-GCM E2EE; client-created row-bound labels; canonical browser/desktop copies only                                                                                                        | E2EE complete                                    | Implemented          | Medium      | Server retains routing and ordering but loses name-based search and synthesis                                                                                                          |
-| Custom tab-group display labels                                                                   | AES-256-GCM E2EE for custom labels; unnamed groups derive from decrypted members client-side                                                                                                    | E2EE complete                                    | Implemented          | Medium      | Server retains layout structure but cannot present or synthesize group labels                                                                                                          |
-| Private display-label server boundary and lifecycle audit                                         | Generated route inventory, repository/schema guards, endpoint restart proof, full temporary-DB sentinel scan                                                                                    | Closure audit complete                           | Required             | Medium      | Server builds and persists only opaque label contracts                                                                                                                                 |
-| Cantrip policy content and effective agent policy context                                         | AES-256-GCM E2EE for policy keys, names, summaries, bodies, prompt context, and CLI presentation; keyed blind uniqueness                                                                        | E2EE complete                                    | Implemented          | Medium-High | Server cannot inspect policy semantics, compose policy prompts, or resolve CLI keys                                                                                                    |
-| Provider API keys, account labels, and ChatGPT/Grok OAuth access, refresh, and identity tokens    | Row-bound AES-256-GCM E2EE under `provider-credential`; client-only label presentation; authorized-worker credential refresh and reseal                                                         | E2EE complete                                    | Implemented          | High        | Server cannot present account labels, test credentials, refresh tokens, or use private catalog endpoints                                                                               |
-| MCP names, commands, URLs, headers, environment, and configuration                                | Row-bound AES-256-GCM under `mcp-secret`; keyed name blind index; worker-local file/listener discoveries are encrypted before relay; worker binding is routing metadata                         | E2EE complete                                    | Implemented          | High        | Server can route by scope and blind override key but cannot inspect configured or discovered plaintext                                                                                 |
-| Project automation names, prompts, and conditions                                                 | Row-bound `workflow-content`; client-only presentation; worker-only condition evaluation and chat-turn sealing                                                                                  | E2EE complete                                    | Implemented          | Medium      | Server can schedule and route automations but cannot inspect their name, prompt, or condition                                                                                          |
-| Historical workflow catalog slugs, names, descriptions, provenance, and revision hashes           | Removed with the workflow tables by migration `0191`; earlier migrations stored row-bound `workflow-content` and blind indexes                                                                  | Removed                                          | Removed              | Medium      | Current server schema has no workflow catalog storage                                                                                                                                  |
-| Historical workflow revision graphs, prompts, configuration, predicates, schemas, and permissions | Removed with the workflow tables by migration `0191`; earlier migrations stored protected definitions and public manifests                                                                      | Removed                                          | Removed              | High        | Current server schema has no workflow revision storage                                                                                                                                 |
-| Historical workflow run, node, item, attempt, result, and error content                           | Removed with the workflow tables by migration `0191`; earlier migrations stored endpoint-sealed envelopes                                                                                       | Removed                                          | Removed              | Very high   | Current server schema has no durable-workflow runtime storage                                                                                                                          |
-| Historical workflow map, pipeline, reduce, repeat, verify, and condition semantics                | Removed with the workflow tables by migration `0191`; the worker evaluator and persistence are absent                                                                                           | Removed                                          | Removed              | Very high   | No current component expands collections, evaluates predicates, or aggregates workflow results                                                                                         |
-| Historical workflow gates and decisions                                                           | Removed with workflow tables and workflow-tagged interaction rows by migration `0191`                                                                                                           | Removed                                          | Removed              | Very high   | Current interactions are chat-backed                                                                                                                                                   |
-| Historical workflow controls and content-bearing events                                           | Removed with the workflow tables by migration `0191`; no current runtime emits or applies them                                                                                                  | Removed                                          | Removed              | Very high   | Current server schema has no workflow control or event storage                                                                                                                         |
-| Historical workflow triggers and deliveries                                                       | Removed with the workflow tables by migration `0191`; no scanner, webhook route, worker preparation, or delivery path remains                                                                   | Removed                                          | Removed              | Very high   | Current server schema has no workflow trigger or delivery storage                                                                                                                      |
-| Server-bound repository identities and names, remotes, paths, branch names, and Git output        | `repository-content` operations; keyed identity blind indexes; worker-local opaque routing for identity, setup, lifecycle, paths, branches, status, operation state, and Git-agent drafts       | E2EE complete                                    | Implemented          | High        | Sensitive repository metadata and operation payloads that cross or persist on the server; worker-local source and checkouts are not encrypted by this system; equality leakage remains |
-| Token usage, agent/wall-clock time, concurrency, quotas, and model-behavior analytics             | Minimized operational ledger: counters, execution intervals, timestamps, versions, coarse outcomes, routing IDs, and opaque dimensions only; labels are resolved on the unlocked client         | Selective minimization complete                  | Intentional metadata | Medium      | Server retains aggregate analysis and routing dimensions but loses raw payloads, historical labels, copied names, and exact diagnostic context                                         |
-| Diagnostic logs and audit metadata                                                                | Persistent/remote logs use event codes plus an operational allowlist; audits use fixed columns without arbitrary metadata, IP/user-agent hashes, raw errors, paths, prompts, or provider bodies | Minimization complete                            | Intentional metadata | Medium      | Server retains coarse operational/security events but loses free-form forensic payloads and exact diagnostics                                                                          |
-| Worker platform, capabilities, online state, and tunnel routing state                             | Plaintext                                                                                                                                                                                       | Intentionally plaintext                          | Poor                 | High        | Routing requires this state; semantic tunnel configuration is tracked separately below                                                                                                 |
-| Historical workflow status, leases, retries, dependencies, and deadlines                          | Removed with the workflow tables and shared-table residue by migration `0191`                                                                                                                   | Removed                                          | Removed              | Very high   | Current lifecycle and accounting code has no workflow-row dependency                                                                                                                   |
-| User IDs, roles, account status, licenses, and memberships                                        | Plaintext                                                                                                                                                                                       | Do not encrypt                                   | Do not encrypt       | -           | The server must enforce authorization                                                                                                                                                  |
-| Sessions, enrollment codes, and worker credentials                                                | Hashed                                                                                                                                                                                          | Keep hashed                                      | Do not encrypt; hash | -           | The server must validate them                                                                                                                                                          |
-| Opaque IDs, foreign-key relationships, ordering, and timestamps                                   | Plaintext                                                                                                                                                                                       | Usually keep plaintext                           | Usually plaintext    | -           | Needed for synchronization and routing                                                                                                                                                 |
-| Public provider model catalogs and system state                                                   | Plaintext/public                                                                                                                                                                                | No encryption benefit                            | No benefit           | -           | Generally public or operational data                                                                                                                                                   |
+| Data class                                                                                     | Current protection                                                                                                                                                                              | Rollout status                                   | E2EE feasibility     | Complexity  | What the server loses                                                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared encryption formats and cryptographic primitives                                         | Versioned endpoint-only primitives                                                                                                                                                              | Foundation complete                              | Required             | Medium      | No server decryption capability is introduced                                                                                                                                          |
+| Account profiles, client wrappers, and scoped worker grants                                    | Opaque versioned registry; no server key access                                                                                                                                                 | Registry foundation complete                     | Required             | High        | Password-based server decryption and direct inspection of key material                                                                                                                 |
+| Client device-key custody and in-memory key handling                                           | Nonextractable IndexedDB key; memory-only AMK                                                                                                                                                   | Client custody complete                          | Required             | Medium      | No server decryption capability is introduced                                                                                                                                          |
+| Account initialization, device authorization, and password lifecycle                           | Login-password initialization plus device-key unlock; device-only anonymous local custody                                                                                                       | Client initialization complete                   | Required             | High        | Server-only password reset and plaintext key recovery                                                                                                                                  |
+| Worker key custody, public registration, and scoped component grants                           | Protected local private key; opaque server grants; Task and ordinary chat execution require exact scoped readiness                                                                              | Worker grants and active-path readiness complete | Required             | High        | Server cannot create grants or run plaintext work without an authorized worker                                                                                                         |
+| Workspace display names                                                                        | AES-256-GCM E2EE; client-only key; deterministic semantic-only default sentinel is sealed on first unlocked read                                                                                | E2EE complete                                    | Implemented          | Low-Medium  | Name-based server search and validation                                                                                                                                                |
+| Project display names                                                                          | AES-256-GCM E2EE; client-only key; project-domain pre-release reset                                                                                                                             | E2EE complete                                    | Implemented          | Medium      | Independent label search and presentation                                                                                                                                              |
+| Ordinary agent-chat message bodies, reasoning, command output, diffs, file paths               | AES-256-GCM E2EE across client turns, worker streams, server-authored notices, automation turns, sync, imports, forks, and relocation                                                           | E2EE complete                                    | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                                                                                                           |
+| Task briefs, plans, questions, answers, directions, errors, messages, and Goals                | AES-256-GCM E2EE across Task rows, planning rounds, Task messages, Goal APIs, live events, and relocation                                                                                       | E2EE complete                                    | Excellent            | Medium-High | Server cannot inspect, transform, reconstruct, or search protected Task content                                                                                                        |
+| Ordinary chat and Task display titles                                                          | AES-256-GCM E2EE; client-created labels and scoped worker-created import labels                                                                                                                 | E2EE complete                                    | Implemented          | Medium      | Title search, concatenation, automation copies, and execution-target presentation                                                                                                      |
+| Queued prompts                                                                                 | Client- or worker-sealed `chat-content`, including the future row-bound message; worker opens only when dispatching or steering                                                                 | E2EE complete                                    | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                                                                                                                   |
+| Ordinary chat plan snapshots and questions                                                     | Worker-sealed `chat-content` state; client-only presentation; answers use encrypted interaction responses                                                                                       | E2EE complete                                    | Implemented          | Medium      | Server cannot inspect plan prose, questions, or answers                                                                                                                                |
+| Attachment bytes, filenames, MIME, previews, digests, and errors                               | Worker-local bytes; row-bound metadata envelopes; operation/sequence-bound ciphertext chunks across upload, download, import, and relocation relays                                             | E2EE complete                                    | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                                                                                                          |
+| Interaction and approval request details and responses                                         | Ordinary chat requests/responses use row-bound `interaction-content`; worker/client endpoints alone open semantic content                                                                       | E2EE complete                                    | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                                                                                                              |
+| Surface private-state contracts, endpoint codecs, and scoped worker grants                     | Bounded `surface-private-state` envelopes; independently grantable from display labels                                                                                                          | E2EE closure complete and statically enforced    | Required             | Medium      | No server decryption capability is introduced                                                                                                                                          |
+| Terminal working directories and service commands                                              | AES-256-GCM E2EE; client-created row-bound state; worker-only execution                                                                                                                         | E2EE complete                                    | Excellent            | Medium      | Server cannot inspect or synthesize launch paths or service commands                                                                                                                   |
+| Explorer selected path                                                                         | AES-256-GCM E2EE; client-created row-bound state                                                                                                                                                | E2EE complete                                    | Excellent            | Low-Medium  | Server cannot restore or inspect the selected entry                                                                                                                                    |
+| Browser initial, current, and navigated URLs                                                   | AES-256-GCM E2EE; canonical row state plus operation-bound client/worker updates                                                                                                                | E2EE complete                                    | Excellent            | Medium      | Server cannot search, validate, execute, or diagnose browser destinations                                                                                                              |
+| Remote Desktop target selection and private inventory details                                  | AES-256-GCM E2EE; canonical revisioned target plus operation-bound worker inventory                                                                                                             | E2EE complete                                    | Excellent            | Medium-High | Server cannot inspect targets, application names, window titles, or monitor labels                                                                                                     |
+| Surface private-state server boundary and lifecycle audit                                      | Generated route/worker-command inventory, schema/repository guards, endpoint restart proof, full temporary-DB sentinel scan                                                                     | Closure audit complete                           | Required             | Medium      | Server persists and relays only opaque state contracts and public routing metadata                                                                                                     |
+| Terminal interactive input, output, and snapshots                                              | Operation-, direction-, and sequence-bound AES-256-GCM under `surface-private-state`; client/worker and worker/worker CLI paths                                                                 | E2EE complete                                    | Implemented          | High        | Server cannot inspect shell interaction content                                                                                                                                        |
+| Explorer operation paths, entries, Git paths, and file/media contents                          | Operation-, direction-, and sequence-bound AES-256-GCM under `surface-private-state`; opaque HTTP, worker-command, and worker/worker CLI relays                                                 | E2EE complete                                    | Implemented          | High        | Server cannot inspect filesystem operations or content                                                                                                                                 |
+| Browser page content, cookies, credentials, profiles, screenshots, and frames                  | All relayed control, frame, cursor, clipboard, and signaling payloads use attachment-bound AES-256-GCM; cookies, profiles, and browser-held credentials stay worker-local                       | E2EE complete                                    | Implemented          | High        | Server cannot inspect or diagnose browser session content                                                                                                                              |
+| Remote Desktop frames, input, and clipboard                                                    | All relayed control, frame, cursor, clipboard, and signaling payloads use attachment-bound AES-256-GCM                                                                                          | E2EE complete                                    | Implemented          | High        | Server cannot inspect or transform desktop session content                                                                                                                             |
+| Surface and project-view display labels                                                        | AES-256-GCM E2EE; client-created row-bound labels; canonical browser/desktop copies only                                                                                                        | E2EE complete                                    | Implemented          | Medium      | Server retains routing and ordering but loses name-based search and synthesis                                                                                                          |
+| Custom tab-group display labels                                                                | AES-256-GCM E2EE for custom labels; unnamed groups derive from decrypted members client-side                                                                                                    | E2EE complete                                    | Implemented          | Medium      | Server retains layout structure but cannot present or synthesize group labels                                                                                                          |
+| Private display-label server boundary and lifecycle audit                                      | Generated route inventory, repository/schema guards, endpoint restart proof, full temporary-DB sentinel scan                                                                                    | Closure audit complete                           | Required             | Medium      | Server builds and persists only opaque label contracts                                                                                                                                 |
+| Cantrip policy content and effective agent policy context                                      | AES-256-GCM E2EE for policy keys, names, summaries, bodies, prompt context, and CLI presentation; keyed blind uniqueness                                                                        | E2EE complete                                    | Implemented          | Medium-High | Server cannot inspect policy semantics, compose policy prompts, or resolve CLI keys                                                                                                    |
+| Provider API keys, account labels, and ChatGPT/Grok OAuth access, refresh, and identity tokens | Row-bound AES-256-GCM E2EE under `provider-credential`; client-only label presentation; authorized-worker credential refresh and reseal                                                         | E2EE complete                                    | Implemented          | High        | Server cannot present account labels, test credentials, refresh tokens, or use private catalog endpoints                                                                               |
+| MCP names, commands, URLs, headers, environment, and configuration                             | Row-bound AES-256-GCM under `mcp-secret`; keyed name blind index; worker-local file/listener discoveries are encrypted before relay; worker binding is routing metadata                         | E2EE complete                                    | Implemented          | High        | Server can route by scope and blind override key but cannot inspect configured or discovered plaintext                                                                                 |
+| Project automation names, prompts, and conditions                                              | Row-bound `workflow-content`; client-only presentation; worker-only condition evaluation and chat-turn sealing                                                                                  | E2EE complete                                    | Implemented          | Medium      | Server can schedule and route automations but cannot inspect their name, prompt, or condition                                                                                          |
+| Server-bound repository identities and names, remotes, paths, branch names, and Git output     | `repository-content` operations; keyed identity blind indexes; worker-local opaque routing for identity, setup, lifecycle, paths, branches, status, operation state, and Git-agent drafts       | E2EE complete                                    | Implemented          | High        | Sensitive repository metadata and operation payloads that cross or persist on the server; worker-local source and checkouts are not encrypted by this system; equality leakage remains |
+| Token usage, agent/wall-clock time, concurrency, quotas, and model-behavior analytics          | Minimized operational ledger: counters, execution intervals, timestamps, versions, coarse outcomes, routing IDs, and opaque dimensions only; labels are resolved on the unlocked client         | Selective minimization complete                  | Intentional metadata | Medium      | Server retains aggregate analysis and routing dimensions but loses raw payloads, historical labels, copied names, and exact diagnostic context                                         |
+| Diagnostic logs and audit metadata                                                             | Persistent/remote logs use event codes plus an operational allowlist; audits use fixed columns without arbitrary metadata, IP/user-agent hashes, raw errors, paths, prompts, or provider bodies | Minimization complete                            | Intentional metadata | Medium      | Server retains coarse operational/security events but loses free-form forensic payloads and exact diagnostics                                                                          |
+| Worker platform, capabilities, online state, and tunnel routing state                          | Plaintext                                                                                                                                                                                       | Intentionally plaintext                          | Poor                 | High        | Routing requires this state; semantic tunnel configuration is tracked separately below                                                                                                 |
+| User IDs, roles, account status, licenses, and memberships                                     | Plaintext                                                                                                                                                                                       | Do not encrypt                                   | Do not encrypt       | -           | The server must enforce authorization                                                                                                                                                  |
+| Sessions, enrollment codes, and worker credentials                                             | Hashed                                                                                                                                                                                          | Keep hashed                                      | Do not encrypt; hash | -           | The server must validate them                                                                                                                                                          |
+| Opaque IDs, foreign-key relationships, ordering, and timestamps                                | Plaintext                                                                                                                                                                                       | Usually keep plaintext                           | Usually plaintext    | -           | Needed for synchronization and routing                                                                                                                                                 |
+| Public provider model catalogs and system state                                                | Plaintext/public                                                                                                                                                                                | No encryption benefit                            | No benefit           | -           | Generally public or operational data                                                                                                                                                   |
 
 The applicable rollout status in this ledger or the post-closure review must
 be updated as each component lands. A row is not `E2EE complete` while any
@@ -976,10 +965,6 @@ presentation and seals the user's response; the worker opens that response
 immediately before handing it to the runtime. The server never receives
 semantic details or secret answers in plaintext.
 
-Migration `0191` deleted workflow-tagged interaction rows and columns. The
-current interaction schema and response route are chat-only, so there is no
-durable-workflow response path.
-
 The ordinary message and queue rows are now closed. Server-authored worktree
 continuations, failure notices, recovery messages, automation turns, and
 automation queues are sealed by the assigned worker before persistence.
@@ -993,8 +978,7 @@ workers with the same passwordless post-login grant flow.
 
 The message API now returns only the strict `chat-encrypted` or
 `task-encrypted` wire shapes; the temporary mixed and visible ordinary-chat
-reader is removed. Chat-sourced workflow generation is unavailable: its app
-client and public server route have been removed.
+reader is removed.
 
 Ordinary Plan Mode state now uses the same independently scoped `chat-content`
 key without exposing its semantics to the server. The worker receives the
@@ -1027,7 +1011,7 @@ Ordinary agent chats now have a dedicated `chat_messages.protected_content`
 shape for the primary turn path, while routing and ordering remain separate
 fields such as chat ID, sequence, role, worktree, model route, and timestamp.
 Task-experience chats use a separate encrypted message shape;
-Task rows and planning rounds likewise separate public workflow state from
+Task rows and planning rounds likewise separate public lifecycle state from
 encrypted sensitive prose. Ordinary-chat and Task titles now use the shared
 `private-surface-metadata` protected-label contract. Clients allocate the chat
 ID before encrypting, while external-import workers use their scoped component
@@ -1039,7 +1023,7 @@ metadata, or exposes a plaintext chat title through archives, relocation,
 execution-target catalogs, or tab-layout summaries. Fork labels are derived
 and encrypted by the client. Project automation presentation resolves the
 already-decrypted chat list, and default tab-group titles are derived from
-decrypted members in the client. Ordinary plan state and workflow content are
+decrypted members in the client. Ordinary plan state and automation content are
 tracked separately and do not weaken the completed title or message rows.
 
 [Migration 0106](../cantrip_server/drizzle/0106_wandering_squadron_sinister.sql)
@@ -1255,7 +1239,7 @@ to one member, increments affected projects' layout revisions once, adds the
 required opaque `protected_state` column, and removes `directory_path` and
 `service_command`. Users/auth, encryption profiles and grants, workers and
 credentials, workspaces, projects, sources/worktrees, chats/Tasks, other
-surfaces, policies, workflows, and unrelated tab memberships remain intact.
+surfaces, policies, and unrelated tab memberships remain intact.
 Focused tests apply this migration and the persistence path only to disposable
 PGlite databases; no user development database is connected to or wiped.
 
@@ -1301,7 +1285,7 @@ clears custom labels from groups reduced to one member, increments each
 affected project layout revision once, adds required `protected_state`, and
 removes `selected_path`. Account/auth and encryption custody, workers,
 workspaces, projects, sources/worktrees, chats/Tasks, terminal and other
-surfaces, policies, workflows, and unrelated tab members remain intact.
+surfaces, policies, and unrelated tab members remain intact.
 Focused migration and persistence tests use disposable PGlite databases only;
 no user development database is connected to or reset.
 
@@ -1424,7 +1408,7 @@ browser Remote Surface rows, and only Browser tab memberships; repairs mixed
 tab groups and increments affected layout revisions; adds protected state and
 revision columns; and removes `browsers.url`. Accounts and auth, encryption
 profiles/principals/grants, workers, workspaces, projects, sources/worktrees,
-chats/Tasks, terminals, Explorers, Remote Desktops, workflows, and unrelated
+chats/Tasks, terminals, Explorers, Remote Desktops, and unrelated
 tab members remain intact. Focused tests apply the reset only to disposable
 PGlite databases; no user development database is connected to or reset.
 
@@ -1469,7 +1453,7 @@ requiring future desktop surfaces to have protected state, a revision, and no
 plaintext configuration beyond the public kind. It preserves users/auth,
 encryption custody and grants, workers, workspaces, projects, sources/
 worktrees, chats/Tasks, History and Issues views, terminal/Explorer/browser
-rows, workflows, and unrelated tab members. Tests apply it only to disposable
+rows and unrelated tab members. Tests apply it only to disposable
 PGlite databases; no user development database is connected to or reset.
 
 Focused protocol, client, worker, server-persistence, fleet, and
@@ -1642,7 +1626,7 @@ encrypted execution path and persist its opaque results as described below.
 deletes only chats whose experience is `task`, allowing their dependent Task
 records and planning rounds to cascade while preserving accounts, encryption
 profiles, projects, workers, workspace data, and ordinary chats. It then
-replaces the Task prose columns with public workflow classifications and one
+replaces the Task prose columns with public lifecycle classifications and one
 bounded `task-content` envelope per Task or planning round. There is no legacy
 plaintext compatibility mode because existing development Task data is
 explicitly disposable for this rollout.
@@ -1723,7 +1707,7 @@ validation now exist only in the trusted
 [worker Task operation](../cantrip_worker/src/task-operation.ts). The server's
 [Task repository](../cantrip_server/src/db/tasks.ts),
 [opaque relay](../cantrip_server/src/tasks/encrypted-relay.ts), routes, live
-events, dashboard, and relocation paths operate only on public workflow state
+events, dashboard, and relocation paths operate only on public lifecycle state
 and authenticated envelopes.
 
 The static [server boundary audit](../scripts/audit-server-boundaries.mjs) now
@@ -1945,23 +1929,12 @@ size, and digest enforcement. The generated
 opaque schema and routes, ciphertext-only import/relocation relays, trusted
 worker operations, and removal of legacy plaintext headers and columns.
 
-## Workflows and project automations
+## Project automations
 
-Project automations remain a supported feature. The durable graph-workflow UI,
-app client, public routes, server scheduler/executor/repositories, and worker
-handlers were later removed. The durable-workflow paragraphs below are a
-historical encryption record, not a current authoring, launch, trigger, gate,
-supervision, recovery, execution, or persistence contract. Migration `0191`
-later deleted workflow-linked shared rows and dropped all durable-workflow
-tables. A later cleanup deleted the dedicated protocol and crypto modules, so
-only historical migrations and implementation records remain.
+The compatibility component name `workflow-content` scopes the row- and
+field-bound AES-256-GCM codec used by project automations.
 
-The `workflow-content` component name still scopes the row- and field-bound
-AES-256-GCM codec used by project automations. The dedicated durable-workflow
-protocol and crypto modules were removed; this component name is not a shared
-graph-workflow contract.
-
-Project automations are the first complete workflow-content slice. The client
+The client
 creates the automation UUID and separately encrypts its name, prompt, and
 condition with associated data binding the account, component, automation row,
 field, format, and key revision. The server stores and returns only these
@@ -1985,127 +1958,8 @@ not reset accounts, password/device-key custody, worker grants, projects,
 chats, providers, policies, or workspaces, and it is not a remote or production
 reset mechanism.
 
-The workflow catalog was the next completed slice. The former client allocated
-definition and revision UUIDs before mutation, then encrypted definition slugs,
-names, descriptions, and provenance plus revision provenance and canonical
-content hashes. Associated data binds every field to its owner, component,
-record kind, row ID, field, format, and key revision. The server stores only
-the opaque fields and a keyed blind index for slug uniqueness and revision
-deduplication. Those blind indexes reveal equality within an account but do not
-let a database reader calculate a tag for a guessed value without the account
-key. Those routes, rows, and indexes were all subsequently removed.
-
-The old aggregate `workflow_revisions.definition` graph copy is removed. All
-public workflow routes and the app workflow client are now absent. Former
-definition, run, trigger, hook, generation, and repository paths receive the
-ordinary not-found response rather than the earlier workflow-specific `410`.
-
-[Migration 0126](../cantrip_server/drizzle/0126_slow_bastion.sql) is the
-permitted pre-release workflow-aggregate cutover. It deletes existing workflow
-definitions and cascades through their revisions, triggers, runs, and dependent
-runtime rows before installing required protected catalog columns and removing
-the legacy plaintext fields. Accounts, encryption custody, workers, projects,
-chats, project automations, providers, policies, workspaces, and unrelated data
-remain intact. It is not a remote or production reset mechanism and does not
-attempt server-side re-encryption without an owner's unlocked key.
-
-The generated [server boundary inventory](security/server-route-inventory.json)
-records the current absence of public workflow routes. The workflow migration,
-app catalog, and server relay tests were removed with the executable subsystem.
-
-Complete revision definitions were the next completed slice. The former client
-encrypted the graph, node keys/names/configuration/prompts, edge mappings and
-predicates, declared input/output schemas, defaults, and permission
-requirements in one revision-bound `protected_definition` envelope. It also
-created a minimized public scheduling manifest containing random node/edge
-UUIDs, dependency topology, primitive type, read/write mode, and optional model
-route or permission-profile IDs. The client authenticated the manifest against
-the decrypted definition before presentation. The manifest leaks graph shape
-and operational classifications, but no authored identifiers, prose,
-predicates, schemas, defaults, skill/MCP requirements, or data mappings.
-
-The server formerly retained opaque definition bytes and the public manifest.
-Former authoring writes filled private node and edge columns only with fixed
-empty placeholders; no authored node key, name, prompt, configuration, schema,
-permission bundle, edge mapping, or predicate was copied into them. Migration
-`0191` removed those tables.
-
-[Migration 0127](../cantrip_server/drizzle/0127_hesitant_tattoo.sql) performs a
-second permitted pre-release workflow-only reset before making
-`workflow_revisions.protected_definition` mandatory. It clears definitions and
-their dependent triggers/runs because catalog rows written between the two
-cutovers cannot be transformed without an unlocked owner endpoint. It preserves
-all unrelated account, key-custody, worker, project, chat, project-automation,
-provider, policy, and workspace data and is not a remote or production reset
-mechanism.
-
-At the final implemented state before retirement, workers opened complete
-revisions, evaluated graph semantics, and sealed run/node/attempt results,
-errors, interactions, and gates. That executor and its worker-side encryption
-adapter are now removed. There is no manual-run API, background recovery,
-schedule dispatch, workflow interaction response, gate expiry/decision path, or
-budget enforcement. Migration `0191` deletes pre-existing rows during upgrade.
-
-[Migration 0128](../cantrip_server/drizzle/0128_aromatic_slapstick.sql) resets
-only legacy workflow runs and dependent runtime rows before adding the
-protected run/node/item/attempt columns. It preserves workflow definitions,
-accounts, encryption custody, worker grants, projects, chats, automations,
-providers, policies, workspaces, and unrelated data. At that historical stage,
-status, topology, budgets, aggregate token usage, routing, leases, deadlines,
-attempt counts, and timestamps remained plaintext metadata. Migration `0191`
-later removed them.
-
-[Migration 0129](../cantrip_server/drizzle/0129_graceful_tony_stark.sql) removes
-the gate prompt, permission manifest, decision reason, and obsolete interaction
-link from server storage, then adds the opaque request/response envelopes and
-public denial policy. It does not reset a remote or production database.
-Because a server could not encrypt pre-cutover plaintext gates, those old rows
-were deliberately unreadable until migration `0191` removed them.
-
-Before the public workflow surface was removed, workflow control operations
-sealed pause/cancel reasons directly to the run row and resume/retry reasons to
-the stable event operation. Those routes and client controls no longer exist.
-Cancellation propagates a fixed operational message to interrupted rows rather
-than copying the user's reason. The generic event log stores a separate opaque
-payload and an allowlisted public payload containing only event ordering,
-routing IDs, lifecycle classifications, bounded coarse codes, revision
-fingerprints, and aggregate usage. Raw worker events, text previews, messages,
-reasons, authored collection paths/step keys, and arbitrary JSON are discarded
-at the persistence boundary.
-
-[Migration 0130](../cantrip_server/drizzle/0130_protected_workflow_events.sql)
-adds the protected run-reason and event-payload columns, replaces the arbitrary
-event JSON column with explicitly public metadata, and removes the old pause,
-cancel, and event payload columns. A server cannot transform those legacy
-values without an endpoint key, so the pre-release cutover deliberately drops
-them instead of adding a plaintext compatibility reader. It does not reset a
-remote or production server. Remaining pre-cutover rows stayed unreadable and
-failed closed until migration `0191` removed them.
-
-Workflow triggers and deliveries completed the unattended protected-runtime
-slice before removal. Trigger names, private configuration, base inputs, Git
-branch patterns, and saved-command names were protected.
-
-The server retained only the trigger type, enabled state, budget and coarse
-permission classification, model/permission routing IDs, cadence, start and
-catch-up/offline policy, minimum interval, Git event class, timestamps, leases,
-and opaque envelopes. Webhook credentials used one-way SHA-256 verifiers.
-
-Before retirement, the server sent due trigger ciphertext to a worker, which
-authenticated the manifest and returned a run-bound input envelope. That
-schedule scanner, worker handler, and persistence are gone.
-
-[Migration 0131](../cantrip_server/drizzle/0131_protected_workflow_triggers.sql)
-removes the legacy trigger name, configuration, structured-input, error, and
-delivery-provenance/error-message columns and introduces required trigger
-envelopes plus optional delivery ciphertext. Because a server cannot transform
-those values without an endpoint key, the migration requires the documented
-pre-release server wipe before deployment; it contains no remote or production
-reset operation and no plaintext compatibility reader.
-
 The project-automation crypto tests cover its `workflow-content` envelope
-contract. The generated boundary inventory records that public workflow routes,
-server persistence, and dedicated shared workflow contracts are absent.
+contract.
 
 ## Projects, worktrees, and Git
 
@@ -2655,9 +2509,8 @@ counts, worker presence, model-route choices, and traffic patterns.
    enforce the trusted-endpoint boundary; and a reopened temporary-database
    scan contains zero Task sentinel prose. Ordinary chat secondary producers
    are closed in milestone 10. Ordinary chat approvals use the endpoint-only
-   `interaction-content` path completed in milestone 11. The workflow-agent
-   envelope work recorded by historical milestone 21 has no current response
-   path. Task/chat titles are tracked separately and are E2EE complete.
+   `interaction-content` path completed in milestone 11. Task/chat titles are
+   tracked separately and are E2EE complete.
 8. **Private display labels — complete:** one bounded bundle, exact
    associated-data mapping, trusted
    client and worker adapters, scoped worker readiness, and fail-closed label
@@ -2744,17 +2597,7 @@ counts, worker presence, model-route choices, and traffic patterns.
     automation names, prompts, and conditions under `workflow-content`; the
     assigned worker evaluates conditions and seals allowed chat turns; the
     server retains only scheduling, routing, lifecycle, and opaque payloads.
-21. **Core workflow encryption closure — historical before subsystem
-    removal:** definition catalog fields, revision provenance/hashes, graphs,
-    node prose and configuration, edge predicates/mappings, schemas, defaults,
-    permissions, run inputs/results, interactions, gate decisions, controls,
-    trigger configuration, and delivery inputs were moved to endpoint-sealed
-    envelopes. Current source retains historical migrations and implementation
-    records only. The public app/API, workflow repositories,
-    scheduler/executor, worker commands/events, persistence, dedicated protocol
-    and crypto modules, and interaction/gate/trigger execution paths are
-    removed.
-22. **Analytics, audit, and persistent-log minimization — complete:** analytics
+21. **Analytics, audit, and persistent-log minimization — complete:** analytics
     retain only counters, timestamps, coarse classifications, public routing
     IDs, and opaque dimensions; clients reconstruct presentation labels after
     unlock. Raw provider/usage/catalog payloads, copied labels/names, account
@@ -2762,7 +2605,7 @@ counts, worker presence, model-route choices, and traffic patterns.
     persistent log messages are removed. The boundary is statically audited,
     and an optional future maximum-privacy mode may relocate the remaining
     numeric ledger to workers.
-23. **Run and discovered script content — complete:** `run-content` protects
+22. **Run and discovered script content — complete:** `run-content` protects
     configuration inspection and authoring, setup scripts, action commands,
     diagnostics, Run logs, setup output, signals, and detailed failures across
     app, MCP, CLI, server, and worker paths. The worker owns validation,
@@ -2770,14 +2613,14 @@ counts, worker presence, model-route choices, and traffic patterns.
     allowlisted lifecycle/routing metadata and stable setup error codes.
     Discovered project and terminal commands use operation-bound
     `repository-content` responses and remain opaque to the server.
-24. **Skill and customization content — complete:** `customization-content`
+23. **Skill and customization content — complete:** `customization-content`
     protects skill inventories and editable files, hooks, roots, external
     previews/import selections and status, customization inventories, local
     paths, commands, warnings, and detailed errors across app, server, and
     worker. The worker performs schema validation and local mutations, the
     client owns presentation, and the server retains only authenticated routing
     scope plus coarse operation/result/lifecycle metadata.
-25. **MCP runtime content — complete:** protected customization inventories
+24. **MCP runtime content — complete:** protected customization inventories
     cover MCP servers, tools, schemas, resources, templates, descriptions,
     URIs, annotations, and diagnostics. Operation-specific
     `customization-content` requests and responses protect resource-read
@@ -2785,7 +2628,7 @@ counts, worker presence, model-route choices, and traffic patterns.
     and status details, reload results, and runtime errors. The client polls
     protected status while pending; the server emits only payload-free
     customization invalidations and retains coarse lifecycle metadata.
-26. **Tunnel configuration content — complete:** client-created
+25. **Tunnel configuration content — complete:** client-created
     `tunnel-content` records protect user/Browser names, descriptions, and full
     endpoint configuration at rest and across the relay. The assigned worker
     opens a record only after validating its server, worker, tunnel, operation,
@@ -2794,7 +2637,7 @@ counts, worker presence, model-route choices, and traffic patterns.
     attachment listener coordinates and free-form control errors are removed.
     Generic tunnel application payload protection is completed by the next
     recorded rollout item.
-27. **Generic tunnel data plane, including Code — complete:** a random key
+26. **Generic tunnel data plane, including Code — complete:** a random key
     carried inside `tunnel-content` protects every desktop-to-worker data frame
     with AES-256-GCM across all WorkerLink carriers. Project-share roots,
     capability paths, credentials, and WebDAV bytes remain client/worker-only;
@@ -2805,7 +2648,7 @@ counts, worker presence, model-route choices, and traffic patterns.
     flow-control, size, timing, and counter metadata. Desktop and remote-web
     Code use the same protected tunnel to a worker-local HTTP/WebSocket endpoint;
     the old server Code surface and plaintext compatibility routes are removed.
-28. **Durable project and chat job status — minimization complete:** folder
+27. **Durable project and chat job status — minimization complete:** folder
     setup, GitHub conversion, replica, chat import, and chat relocation rows
     retain only stable error codes, retryability, lifecycle state, and required
     scheduling metadata. Replica, import, and relocation progress is constrained
@@ -2816,7 +2659,7 @@ counts, worker presence, model-route choices, and traffic patterns.
     messages and project setup prose, and adds database checks that reject new
     semantic job status. The generated boundary audit freezes these minimized
     table and wire contracts.
-29. **Client-control notification content — complete:** the worker-owned MCP
+28. **Client-control notification content — complete:** the worker-owned MCP
     adapter encrypts notification level, title, and message under the dedicated
     `client-control-content` component before invoking the server. The live hub
     forwards an operation-bound envelope plus project/worker routing metadata;
@@ -2824,7 +2667,7 @@ counts, worker presence, model-route choices, and traffic patterns.
     context. Plaintext notification fields are absent from the server operation
     and live-control contracts, and worker grants are refreshed through the
     existing password-rooted key hierarchy without another user secret.
-30. **Session request-fingerprint minimization and whole-product closure —
+29. **Session request-fingerprint minimization and whole-product closure —
     complete:** login no longer hashes or stores request IP addresses or user
     agents. [Migration 0149](../cantrip_server/drizzle/0149_nebulous_meggan.sql)
     drops both legacy columns while retaining session-token and CSRF-token hashes
