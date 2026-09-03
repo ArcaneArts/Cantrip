@@ -197,6 +197,7 @@ describe("account settings", () => {
   it("keeps the Elite lab out of the visible settings navigation", () => {
     const markup = renderSettings("general");
     const general = markup.indexOf(">General<");
+    const appearance = markup.indexOf(">Appearance<");
     const usage = markup.indexOf(">Usage<");
     const code = markup.indexOf(">Code<");
     const models = markup.indexOf(">Models<");
@@ -205,8 +206,9 @@ describe("account settings", () => {
     const logs = markup.indexOf(">Logs<");
 
     expect(general).toBeGreaterThanOrEqual(0);
+    expect(appearance).toBeGreaterThan(general);
     expect(markup).not.toContain(">Elite<");
-    expect(code).toBeGreaterThan(general);
+    expect(code).toBeGreaterThan(appearance);
     expect(usage).toBeGreaterThan(code);
     expect(models).toBeGreaterThan(usage);
     expect(tasks).toBeGreaterThan(models);
@@ -236,6 +238,11 @@ describe("account settings", () => {
     ).toEqual([
       expect.objectContaining({ id: "extensions", sectionId: "code" }),
     ]);
+    expect(
+      settingsSearchResults("brightness", settingsNavigationSections),
+    ).toEqual([
+      expect.objectContaining({ id: "appearance", sectionId: "appearance" }),
+    ]);
   });
 
   it("exposes account usage as its own settings section", () => {
@@ -258,14 +265,12 @@ describe("account settings", () => {
   });
 
   it("keeps the Elite configuration entry in Appearance without Pro Mode", () => {
-    const markup = renderSettings("general");
-    const appearance = markup.indexOf(">Appearance<");
+    const markup = renderSettings("appearance");
+    const appearance = markup.lastIndexOf(">Appearance<");
     const eliteMode = markup.indexOf(">Elite Mode<");
-    const nextSettingsRow = markup.indexOf(">Default agent permissions<");
 
     expect(appearance).toBeGreaterThanOrEqual(0);
     expect(eliteMode).toBeGreaterThan(appearance);
-    expect(eliteMode).toBeLessThan(nextSettingsRow);
     expect(markup).toContain("Elite Mode");
     expect(markup).not.toContain("elite-secret-entry");
     expect(markup).toContain('aria-label="Elite Mode"');
@@ -273,7 +278,7 @@ describe("account settings", () => {
   });
 
   it("uses a compact brightness dropdown in Appearance", () => {
-    const markup = renderSettings("general");
+    const markup = renderSettings("appearance");
 
     expect(markup).toContain('aria-label="Brightness"');
     expect(markup).toContain(
@@ -283,9 +288,12 @@ describe("account settings", () => {
     expect(markup).toContain('<option value="dark">Dark</option>');
   });
 
-  it("keeps content gutters off by default and exposes them in General", () => {
-    const disabled = renderSettings("general");
-    const enabled = renderSettings("general", settingsWithContentGutters(true));
+  it("keeps content gutters off by default and exposes them in Appearance", () => {
+    const disabled = renderSettings("appearance");
+    const enabled = renderSettings(
+      "appearance",
+      settingsWithContentGutters(true),
+    );
 
     expect(disabled).toContain('aria-label="Content gutters"');
     expect(disabled).not.toContain(
@@ -356,9 +364,10 @@ describe("account settings", () => {
     expect(markup).toContain("Policy");
   });
 
-  it("separates general preferences from model and provider management", () => {
+  it("separates appearance, general, and model provider settings", () => {
     const general = renderSettings("general");
-    expect(general).toContain("System follows the operating system.");
+    expect(general).not.toContain("System follows the operating system.");
+    expect(general).not.toContain('aria-label="Brightness"');
     expect(general).toContain("Default agent permissions");
     expect(general).toContain("Standalone Chat permissions");
     expect(general).toContain("YOLO mode");
@@ -373,6 +382,11 @@ describe("account settings", () => {
     expect(general).not.toContain(
       "Logical models with ordered provider failover routes.",
     );
+
+    const appearance = renderSettings("appearance");
+    expect(appearance).toContain("System follows the operating system.");
+    expect(appearance).toContain('aria-label="Brightness"');
+    expect(appearance).not.toContain("Default agent permissions");
 
     const models = renderSettings("models");
     expect(models).toContain("Search all settings");
