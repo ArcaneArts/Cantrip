@@ -33,6 +33,7 @@ export function ShellOverlays({
     isPopout,
     onlineWorker,
     openCreatedProject,
+    openProjectExplorerFile,
     prepareExplorerRebind,
     projectWorkspaces,
     projects,
@@ -40,6 +41,7 @@ export function ShellOverlays({
     retryLongPathSetupMutation,
     runProjectScriptCommand,
     scriptCommandWorktreeId,
+    sidebarExplorer,
     selectProjectFromCommandBar,
     selectedLongPathFailure,
     selectedLongPathSetupJob,
@@ -142,12 +144,21 @@ export function ShellOverlays({
           context={appActionContext}
           currentProjectId={selectedProjectId}
           defaultWorkerId={onlineWorker?.workerId ?? null}
+          fileSearchExplorerId={sidebarExplorer?.id ?? null}
           onAction={executeAppAction}
           onCreatedProject={openCreatedProject}
           onOpenChange={setCommandBarOpen}
           onOpenFolder={() => {
             setFolderProjectDialogMode("existing");
             setFolderProjectDialogOpen(true);
+          }}
+          onOpenFile={(path) => {
+            if (!selectedProjectId || !sidebarExplorer) return;
+            openProjectExplorerFile(
+              selectedProjectId,
+              sidebarExplorer.worktreeId,
+              path,
+            );
           }}
           onRunScriptCommand={runProjectScriptCommand}
           onSelectProject={selectProjectFromCommandBar}

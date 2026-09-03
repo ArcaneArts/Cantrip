@@ -29,6 +29,7 @@ vi.mock("@/lib/api", () => ({
   getGithubRepositories: vi.fn(),
   getGithubStatus: vi.fn(),
   getProjectScriptCommands: vi.fn(),
+  searchExplorerFiles: vi.fn(),
 }));
 vi.mock("@/lib/project-encryption", () => ({
   createGithubProject: vi.fn(),
@@ -93,6 +94,7 @@ describe("app command bar", () => {
           context={{ projectId: "project-cantrip" }}
           currentProjectId="project-cantrip"
           defaultWorkerId={null}
+          fileSearchExplorerId={null}
           open
           projects={projects}
           workers={[]}
@@ -101,6 +103,7 @@ describe("app command bar", () => {
           onCreatedProject={vi.fn()}
           onOpenChange={vi.fn()}
           onOpenFolder={vi.fn()}
+          onOpenFile={vi.fn()}
           onRunScriptCommand={vi.fn()}
           onSelectProject={vi.fn()}
           scriptWorktreeId="worktree-cantrip"
@@ -108,12 +111,13 @@ describe("app command bar", () => {
       </QueryClientProvider>,
     );
 
-    expect(markup).toContain("Search actions, scripts, or projects…");
+    expect(markup).toContain("Search actions, scripts, projects, or files…");
     expect(markup).toContain("self-start");
     expect(markup).toContain('data-elite-ignore=""');
     expect(markup).not.toContain("top-[15vh]");
     expect(markup).toContain("Projects");
     expect(markup).toContain("Project scripts");
+    expect(markup).not.toContain("Files");
     expect(markup).toContain("pnpm run dev");
     expect(markup).toContain("ArcaneArts/Cantrip · Primary");
     expect(markup).toContain("ArcaneArts/CareMap · Other Workspace");
