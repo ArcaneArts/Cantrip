@@ -99,8 +99,6 @@ describe("agent interaction response builders", () => {
         turnId: "turn-one",
         itemId: null,
         executionLaneId: null,
-        workflowRunId: null,
-        workflowNodeId: null,
         workerId: "worker-one",
       },
       status: "pending",

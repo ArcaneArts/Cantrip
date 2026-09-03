@@ -78,8 +78,6 @@ describe("ordinary agent interaction encryption", () => {
         turnId: "turn-id",
         itemId: "item-id",
         executionLaneId: "lane-id",
-        workflowRunId: null,
-        workflowNodeId: null,
         workerId: "worker-id",
       },
       classification,

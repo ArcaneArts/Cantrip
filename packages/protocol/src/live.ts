@@ -118,12 +118,6 @@ export const appLiveScopeSchema = z.discriminatedUnion("kind", [
       chatId: liveIdSchema,
     })
     .strict(),
-  z
-    .object({
-      kind: z.literal("workflow-run"),
-      runId: liveIdSchema,
-    })
-    .strict(),
 ]);
 
 export type AppLiveScope = z.infer<typeof appLiveScopeSchema>;
@@ -136,8 +130,6 @@ export function appLiveScopeKey(scope: AppLiveScope): string {
       return `project:${scope.projectId}`;
     case "chat":
       return `chat:${scope.chatId}`;
-    case "workflow-run":
-      return `workflow-run:${scope.runId}`;
   }
 }
 
@@ -203,11 +195,6 @@ export const appLiveResourceSchema = z.enum([
   "project-view",
   "remote-desktop",
   "tunnel",
-  "workflow-definition",
-  "workflow-run",
-  "workflow-node",
-  "workflow-gate",
-  "workflow-trigger",
   "customization",
 ]);
 

@@ -12,7 +12,6 @@ export const accountStorageCategorySchema = z.enum([
   "configuration",
   "conversations",
   "projects",
-  "workflows",
 ]);
 
 export const accountResourceUsageAccuracySchema = z.enum([
