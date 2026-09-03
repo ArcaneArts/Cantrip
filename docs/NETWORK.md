@@ -34,8 +34,8 @@ The initial design makes the following decisions:
 - Tauri may additionally expose a real localhost port to unrelated desktop
   applications. Browser and Capacitor do not have to expose operating-system
   localhost ports, but in-app consumers must use the same direct fabric.
-- VPN interfaces such as Tailscale and ZeroTier are classified as `WAN` unless
-  their interface name is listed in
+- Worker VPN interfaces such as Tailscale and ZeroTier are classified as `WAN`
+  unless their interface name is listed in
   `CANTRIP_WORKER_LINK_VPN_LAN_ALLOWLIST`.
 - `RELAY` means the ordinary authenticated Cantrip server relay. TURN is not
   part of the first implementation.
@@ -211,13 +211,16 @@ the worker through WebRTC, reporting it as `LAN` is acceptable.
 
 ### LAN
 
-The LAN round admits host or peer-reflexive private, link-local, mDNS, and CGNAT
-candidates on interfaces allowed by the interface policy. VPN candidates
-require the explicit `CANTRIP_WORKER_LINK_VPN_LAN_ALLOWLIST`. Server-reflexive,
-public-internet, relay, and non-allowlisted VPN candidates are excluded. The
-worker sends a bounded candidate advertisement through its authenticated server
-connection. The server releases candidates only within an authorized peer
-session. The client attempts those candidates; it never scans a subnet.
+The LAN round admits host or peer-reflexive private, link-local, and mDNS
+candidates. On the worker-owned side, interface policy applies and candidates
+from recognized VPN interfaces require the explicit
+`CANTRIP_WORKER_LINK_VPN_LAN_ALLOWLIST`. CGNAT addresses are treated as VPN;
+browser and WebView ICE do not reveal interface names, so their CGNAT candidates
+remain excluded from LAN. Server-reflexive, public-internet, relay, and other
+non-allowlisted worker VPN candidates are also excluded. The worker sends a
+bounded candidate advertisement through its authenticated server connection.
+The server releases candidates only within an authorized peer session. The
+client attempts those candidates; it never scans a subnet.
 
 The connection selects `LAN` only after completing an authenticated handshake
 with the exact server-advertised worker process. Address classification limits
@@ -857,18 +860,18 @@ in [NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md).
 
 Build a repeatable network matrix for every migrated feature:
 
-| Scenario                                          | Expected route                                                  |
-| ------------------------------------------------- | --------------------------------------------------------------- |
-| Tauri and worker on the same machine              | LOCAL                                                           |
-| Separate devices on the same ordinary LAN         | LAN                                                             |
-| Tailscale or ZeroTier path                        | WAN                                                             |
-| Direct public peer connectivity through STUN      | WAN                                                             |
-| Direct UDP blocked                                | RELAY                                                           |
-| Worker peer listener blocked by firewall          | RELAY                                                           |
-| Cellular to Wi-Fi transition                      | Keep healthy LOCAL; otherwise reprobe from LAN                  |
-| Wi-Fi to cellular transition                      | Keep healthy LOCAL; otherwise reprobe WAN/RELAY after LAN fails |
-| Server replica differs from worker-owning replica | Same route semantics                                            |
-| Grant expires or account session ends             | Channel revoked                                                 |
+| Scenario                                          | Expected route                                                                                                                         |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Tauri and worker on the same machine              | LOCAL                                                                                                                                  |
+| Separate devices on the same ordinary LAN         | LAN                                                                                                                                    |
+| Tailscale or ZeroTier path                        | WAN by default; LAN is possible when the worker interface is allowlisted and the client candidate is private or mDNS rather than CGNAT |
+| Direct public peer connectivity through STUN      | WAN                                                                                                                                    |
+| Direct UDP blocked                                | RELAY                                                                                                                                  |
+| Worker peer listener blocked by firewall          | RELAY                                                                                                                                  |
+| Cellular to Wi-Fi transition                      | Keep healthy LOCAL; otherwise reprobe from LAN                                                                                         |
+| Wi-Fi to cellular transition                      | Keep healthy LOCAL; otherwise reprobe WAN/RELAY after LAN fails                                                                        |
+| Server replica differs from worker-owning replica | Same route semantics                                                                                                                   |
+| Grant expires or account session ends             | Channel revoked                                                                                                                        |
 
 The matrix must cover:
 
@@ -917,6 +920,5 @@ The matrix must cover:
 - TURN or another non-Cantrip relay carrier.
 - Transparent resumption of arbitrary byte streams.
 - Additional trusted-device approval beyond account authentication.
-- Treating an allowlisted VPN interface as LAN.
 - General operating-system localhost tunnel listeners for platforms that do not
   expose the required native APIs.

@@ -155,8 +155,9 @@ fallbacks outside request-owned account operations.
   server never accepts a plaintext password through configuration.
 - Browser sessions use 256-bit random opaque cookies. Only SHA-256 token hashes
   are stored in PostgreSQL/PGlite.
-- Each session has an independent CSRF secret, expiry, last-seen metadata, and
-  explicit revocation state. Sign-out can revoke one or all user sessions.
+- Each session has a per-session CSRF token derived from its random session
+  token, expiry, last-seen metadata, and explicit revocation state. Sign-out can
+  revoke one or all user sessions.
 - Hosted cookies use the `__Host-` prefix, `HttpOnly`, `Secure`, `Path=/`, and a
   configurable SameSite policy. `SameSite=None` is rejected unless Secure is
   enabled.

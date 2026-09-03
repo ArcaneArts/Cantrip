@@ -34,9 +34,12 @@ provenance or payload is also a conflict.
 
 When the last pending interaction for a chat reaches a terminal state, the
 server restores the chat to `running` so the worker bridge can finish the turn.
-On server startup, unresolved interactions become `interrupted` and active or
-waiting chats become `failed`. This is intentionally fail closed: an approval
-is never inferred after a disconnect or restart.
+During single-instance startup recovery, unresolved interactions become
+`interrupted`. Running or waiting chats become `failed` unless
+automation-paused, in which case they return to `idle`. A coordinated rolling
+startup with another live server preserves peer-owned transient state. Recovery
+is intentionally fail closed: an approval is never inferred after a disconnect
+or recovered restart.
 
 Typed request and response content follows bounded schemas before sealing, and
 the protected envelopes are capped again at the server storage boundary. Secret

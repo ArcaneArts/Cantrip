@@ -118,6 +118,9 @@ recreating its parser or graph engine.
 - The MCP launcher connects to or starts one detached daemon for the indexed
   project. This lets multiple agents share the same graph without each owning a
   complete parser process.
+- Cantrip-managed MCP launches override that upstream default with
+  `CODEGRAPH_NO_DAEMON=1` because shared-daemon attachment is unreliable for
+  canonical Windows worktree paths.
 - The primary MCP surface is `codegraph_explore`; CodeGraph sends its own agent
   guidance in the MCP initialize response.
 - The graph is stored beneath a directory inside the project root. The
@@ -131,9 +134,8 @@ recreating its parser or graph engine.
   configuration. Cantrip must not call it because that configuration refresh is
   outside Cantrip's ownership boundary.
 
-These facts should be revalidated against the pinned upstream release when the
-implementation begins. The upstream project can evolve independently of this
-plan.
+These facts must be revalidated when Cantrip advances the researched upstream
+release. The upstream project can evolve independently of this integration.
 
 ## 5. Ownership and data flow
 
@@ -167,7 +169,7 @@ flowchart LR
 - Install, verify, update, roll back, and execute the CodeGraph runtime.
 - Disable telemetry before first use and after every update.
 - Map a canonical project/worktree identity to a canonical local path.
-- Own indexing, synchronization, watcher/daemon supervision, and cleanup.
+- Own indexing, synchronization, filesystem-watcher supervision, and cleanup.
 - Add the stable launcher to terminal and automation `PATH` values.
 - Add a project-specific managed MCP entry to each Codex run.
 - Report bounded version, update, index, and health state to the server.
@@ -200,19 +202,20 @@ CodeGraph binary.
 └── release-cache.json            # ETag and latest validated release record
 ```
 
-The launcher resolves `current.json` on every invocation. Existing MCP daemon
+The launcher resolves `current.json` on every invocation. Existing MCP
 processes can continue using the executable image with which they started,
-while new terminals and MCP launches use the new version immediately.
+while new terminal and MCP launches use the new version immediately.
 
 ### Startup sequence
 
-`CodeGraphRuntimeManager.prepare()` creates and publishes the stable launcher
-before PTYs and command services are constructed. A cached runtime is validated
-and has telemetry disabled synchronously. The release check, download, and
-promotion then run in the background; a first installation does not hold up
-terminals, Git, files, or Codex. When a verified first install becomes ready,
-the worker dynamically creates the project supervisor and applies the latest
-server-authorized worktree inventory.
+Worker startup calls `CodeGraphRuntimeManager.prepare()` to create the stable
+launcher, then calls `publishEnvironment()` before PTYs and command services are
+constructed. A cached runtime is validated and has telemetry disabled
+synchronously. The release check, download, and promotion then run in the
+background; a first installation does not hold up terminals, Git, files, or
+Codex. When a verified first install becomes ready, the worker dynamically
+creates the project supervisor and applies the latest server-authorized
+worktree inventory.
 
 1. Detect the normalized target: `darwin|linux|win32` and `arm64|x64`.
 2. Load and validate the last known verified runtime, if present.
@@ -256,10 +259,10 @@ working version in place.
   MCP become available dynamically after the verified install completes.
 - An offline check uses the cached runtime. Offline first start reports
   CodeGraph unavailable with a repairable reason.
-- After promotion, idle CodeGraph daemons are restarted and new Codex runs use
-  the new version. Active turns finish on the previous version and rematerialize
-  their managed MCP at the next safe thread resume. No live turn is killed just
-  to update CodeGraph.
+- After promotion, new terminal and MCP launches resolve the new version.
+  Existing MCP processes are not interrupted; active turns continue with their
+  current process and rematerialize the managed MCP at the next safe thread
+  resume.
 - If the candidate fails its staged or promoted-location MCP handshake, the
   manager removes the candidate directory and leaves `current.json` pointing
   at the previous verified runtime. The worker reports the bounded diagnostic.
@@ -291,8 +294,11 @@ stderr, but never project code or query arguments. `telemetry off` is
 idempotent. A failure makes CodeGraph health `degraded` and prevents a newly
 downloaded version from promotion; it does not crash the worker.
 
-The stable terminal launcher applies these variables only to CodeGraph. It must
-not set `DO_NOT_TRACK=1` globally for every command in the user's terminal.
+Worker startup currently publishes these variables and the launcher directory
+into the worker process environment, so Cantrip-owned child commands, including
+terminal commands, inherit them. The stable launcher also reapplies them when it
+invokes CodeGraph; Cantrip does not modify the host user's login-shell
+configuration.
 
 ## 8. Terminal and command availability
 
@@ -303,20 +309,11 @@ launcher wins only inside Cantrip-owned process environments.
 
 Normal analysis commands pass through unchanged, including `init`, `status`,
 `sync`, `query`, `explore`, `callers`, `callees`, `impact`, and `affected`.
-Cantrip-owned lifecycle commands need explicit behavior:
-
-- `codegraph upgrade` should invoke or report the worker-managed update path,
-  not the upstream installer that rewrites global agent configuration.
-- `codegraph install` should explain that MCP installation is already managed
-  by Cantrip and offer `--print-config` only through the upstream executable if
-  the user explicitly needs it for an external agent.
-- `codegraph uninstall` must not remove Cantrip's managed launcher or MCP
-  integration. Project-level `uninit` remains available for diagnosis, but the
-  supervisor marks the project uninitialized and may rebuild it according to
-  managed policy.
-
-The exact interception surface belongs in the launcher, with focused tests, so
-upstream self-management cannot corrupt the worker-owned install.
+The managed launcher rejects `install`, `uninstall`, and `upgrade`
+case-insensitively with exit status 2 and explains that CodeGraph is managed by
+Cantrip and updated during worker startup. Other commands, including
+project-level `uninit`, pass through to upstream CodeGraph; managed supervision
+may recreate an index after it is removed.
 
 ## 9. Project, replica, and worktree lifecycle
 
@@ -327,7 +324,8 @@ Each physical checkout gets its own graph:
 ```
 
 This is required because Primary and secondary worktrees can contain different
-revisions, and two workers must never share SQLite locking or daemon state.
+revisions, and two workers must never share SQLite locking or index/process
+state.
 
 ### Initialization
 
@@ -349,8 +347,9 @@ revisions, and two workers must never share SQLite locking or daemon state.
 
 - Auto-sync is enabled by default and is the managed baseline, not a setting a
   user must opt into.
-- Supervise one CodeGraph daemon/watcher per initialized physical worktree
-  while its replica is active. Multiple agents proxy to that shared daemon.
+- Supervise one worker filesystem watcher per initialized physical worktree
+  while its replica is active. Each Cantrip-managed MCP launch runs in
+  direct/no-daemon mode against that worktree's shared index.
 - Before an agent launch, run a cheap status check and request an incremental
   `sync` if the watcher reports stale or degraded state.
 - File-save bursts, branch switches, rebases, resets, and worktree moves can
@@ -392,6 +391,7 @@ worktree and before `codexMcpConfigOverride()` materializes native
   "args": ["serve", "--mcp", "--path", "<canonical worktree root>"],
   "environment": {
     "CODEGRAPH_DIR": ".codegraph-cantrip",
+    "CODEGRAPH_NO_DAEMON": "1",
     "CODEGRAPH_TELEMETRY": "0",
     "DO_NOT_TRACK": "1",
     "CODEGRAPH_NO_UPDATE_CHECK": "1"
@@ -401,7 +401,7 @@ worktree and before `codexMcpConfigOverride()` materializes native
 
 Using `--path` is intentional. It avoids relying on the current working
 directory of Codex's MCP child process and prevents a project-less or stale
-daemon from serving the wrong graph.
+MCP process from serving the wrong graph.
 
 The upstream CodeGraph installer already supports Codex CLI, but Cantrip does
 not need it. Cantrip supplies the same stdio MCP definition directly to:
@@ -502,21 +502,21 @@ progress through normal worker observations.
 
 ## 13. Failure and recovery behavior
 
-| Failure                                | Required behavior                                                                                 |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| GitHub unavailable                     | Use the last verified runtime and report a stale update check.                                    |
-| No runtime and offline                 | Disable only CodeGraph; keep the worker online.                                                   |
-| Hash, digest, or version mismatch      | Delete staging data, retain current runtime, surface a security error.                            |
-| Extraction failure                     | Retain current runtime and remove the partial directory.                                          |
-| Telemetry suppression failure          | Do not promote the new version; mark the current integration degraded.                            |
-| New runtime fails health/MCP handshake | Roll back atomically to the prior verified version.                                               |
-| Worker restarts before target replay   | Reauthorize the exact requested worktree and restore MCP/status without blocking unrelated tools. |
-| Initial index fails                    | Preserve logs, report degraded state, allow retry/rebuild, and let agents fall back.              |
-| Watcher/daemon exits                   | Restart with bounded exponential backoff and run catch-up sync.                                   |
-| SQLite lock/corruption                 | Mark the graph degraded; an explicit Rebuild removes only the derived index and creates it again. |
-| Worktree disappears                    | Stop supervision and remove its in-memory registration without touching another checkout.         |
-| Active turn during update              | Let it finish on the old process; rematerialize at the next safe resume.                          |
-| Old server/app during rollout          | Worker omits unsupported status fields and continues normal agents without UI management.         |
+| Failure                                | Required behavior                                                                                   |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| GitHub unavailable                     | Use the last verified runtime and report a stale update check.                                      |
+| No runtime and offline                 | Disable only CodeGraph; keep the worker online.                                                     |
+| Hash, digest, or version mismatch      | Delete staging data, retain current runtime, surface a security error.                              |
+| Extraction failure                     | Retain current runtime and remove the partial directory.                                            |
+| Telemetry suppression failure          | Do not promote the new version; mark the current integration degraded.                              |
+| New runtime fails health/MCP handshake | Roll back atomically to the prior verified version.                                                 |
+| Worker restarts before target replay   | Reauthorize the exact requested worktree and restore MCP/status without blocking unrelated tools.   |
+| Initial index fails                    | Preserve logs, report degraded state, allow retry/rebuild, and let agents fall back.                |
+| Filesystem watcher exits               | Retry the watcher with bounded exponential backoff; periodic reconciliation performs catch-up sync. |
+| SQLite lock/corruption                 | Mark the graph degraded; an explicit Rebuild removes only the derived index and creates it again.   |
+| Worktree disappears                    | Stop supervision and remove its in-memory registration without touching another checkout.           |
+| Active turn during update              | Let it finish on the old process; rematerialize at the next safe resume.                            |
+| Old server/app during rollout          | Worker omits unsupported status fields and continues normal agents without UI management.           |
 
 All errors should use the existing worker service logging conventions. Include
 worker, project, worktree, phase, CodeGraph version, duration, and outcome; do
@@ -532,7 +532,7 @@ in server-visible payloads.
 - Run CodeGraph with the same OS identity and filesystem permissions as the
   worker; it receives no server credential or provider secret.
 - Pass only the selected canonical worktree to `--path`.
-- Keep graph databases, daemon sockets, and logs on the worker.
+- Keep graph databases and CodeGraph process state/logs on the worker.
 - Do not expose graph contents through a generic server API. Agents access them
   only through their worker-local stdio MCP.
 - Disable telemetry and upstream background update checks by command and
@@ -559,7 +559,7 @@ before Cantrip manages project indexes or MCP.
 - Add the project/worktree supervisor and job scheduler.
 - Initialize existing replicas and new worktrees with bounded concurrency.
 - Manage local Git excludes without tracked changes.
-- Supervise watchers/daemons and publish status, sync, and rebuild commands.
+- Supervise filesystem watchers and publish status, sync, and rebuild commands.
 
 ### Milestone 3: immutable MCP injection — complete (PR #567)
 
