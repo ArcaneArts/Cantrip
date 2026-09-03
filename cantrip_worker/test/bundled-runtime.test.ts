@@ -10,9 +10,9 @@ import {
 } from "../src/codex/bundled-runtime.js";
 
 const temporaryDirectories: string[] = [];
-const PINNED_CODEX_VERSION = "0.151.0";
-const PINNED_CODEX_REF = "rust-v0.151.0";
-const PINNED_CODEX_COMMIT = "78c290807ce710180111df227df3b7a4fe845452";
+const PINNED_CODEX_VERSION = "0.153.0";
+const PINNED_CODEX_REF = "rust-v0.153.0";
+const PINNED_CODEX_COMMIT = "41e22fee981a63b3698df7ed36bad393cda24715";
 
 afterEach(async () => {
   await Promise.all(
