@@ -7,9 +7,14 @@ import { Check, ChevronDown, FolderGit2, Plus, Settings } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
+  ProjectContextMenu,
+  type ProjectMenuActions,
+} from "@/components/projects/project-actions-menu";
+import {
   ProjectCreateMenu,
   type ProjectCreateSource,
 } from "@/components/projects/project-create-menu";
+import { ProjectRemovalDialog } from "@/components/projects/project-removal-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -18,6 +23,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import {
   Popover,
   PopoverContent,
@@ -53,8 +59,12 @@ export function ProjectSwitcher({
   onAddProject,
   onCreateTab,
   onManageWorkspaces,
+  onOpenProjectSettings,
+  onRemoveProject,
+  onRevealProject,
   onSelectProject,
   onSelectWorkspace,
+  projectRevealLabel,
   projects,
   selectedProjectId,
   tabPlacement,
@@ -65,8 +75,15 @@ export function ProjectSwitcher({
   onAddProject(source: ProjectCreateSource): void;
   onCreateTab(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onManageWorkspaces(): void;
+  onOpenProjectSettings(projectId: string): void;
+  onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
+  onRevealProject?: (
+    project: ProjectSummary,
+    localFolder: boolean,
+  ) => Promise<void>;
   onSelectProject(projectId: string): void;
   onSelectWorkspace(workspaceId: string): void;
+  projectRevealLabel?: string;
   projects: ProjectSummary[];
   selectedProjectId: string | null;
   tabPlacement?: ProjectSurfacePlacementContext;
@@ -81,6 +98,12 @@ export function ProjectSwitcher({
     projects.find(({ id }) => id === selectedProjectId) ?? null;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [removeProjectTarget, setRemoveProjectTarget] =
+    useState<ProjectSummary | null>(null);
+  const [revealingProjectId, setRevealingProjectId] = useState<string | null>(
+    null,
+  );
+  const [revealError, setRevealError] = useState<string | null>(null);
   const results = useMemo(
     () => searchProjects(projects, workspaces, activeWorkspace, query),
     [activeWorkspace, projects, query, workspaces],
@@ -90,6 +113,21 @@ export function ProjectSwitcher({
   const changeOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (nextOpen) setQuery("");
+  };
+  const revealProject = (project: ProjectSummary, localFolder: boolean) => {
+    if (!onRevealProject || revealingProjectId) return;
+    setOpen(false);
+    setRevealError(null);
+    setRevealingProjectId(project.id);
+    void onRevealProject(project, localFolder)
+      .catch((error: unknown) => {
+        setRevealError(
+          error instanceof Error
+            ? error.message
+            : "Could not reveal this project.",
+        );
+      })
+      .finally(() => setRevealingProjectId(null));
   };
 
   return (
@@ -159,34 +197,57 @@ export function ProjectSwitcher({
                   <CommandGroup
                     heading={searchingEverywhere ? "All projects" : undefined}
                   >
-                    {results.map(({ project, workspace }) => (
-                      <CommandItem
-                        key={project.id}
-                        className="py-2"
-                        onSelect={() => {
-                          onSelectProject(project.id);
+                    {results.map(({ project, workspace }) => {
+                      const actions: ProjectMenuActions = {
+                        onOpenSettings: () => {
                           setOpen(false);
-                        }}
-                        value={project.id}
-                      >
-                        <FolderGit2 className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">
-                            {project.name}
-                          </span>
-                          <span className="block truncate text-[11px] text-muted-foreground">
-                            {projectContext(
-                              project,
-                              workspace,
-                              searchingEverywhere,
-                            )}
-                          </span>
-                        </span>
-                        {project.id === selectedProject?.id ? (
-                          <Check className="size-4 shrink-0" />
-                        ) : null}
-                      </CommandItem>
-                    ))}
+                          onOpenProjectSettings(project.id);
+                        },
+                        onRemove: () => {
+                          setOpen(false);
+                          setRemoveProjectTarget(project);
+                        },
+                        onReveal:
+                          project.source &&
+                          projectRevealLabel &&
+                          onRevealProject
+                            ? (localFolder) =>
+                                revealProject(project, localFolder)
+                            : undefined,
+                        revealDisabled: revealingProjectId !== null,
+                        revealLabel: projectRevealLabel,
+                      };
+                      return (
+                        <ProjectContextMenu actions={actions} key={project.id}>
+                          <CommandItem
+                            className="py-2"
+                            data-slot="project-switcher-project"
+                            onSelect={() => {
+                              onSelectProject(project.id);
+                              setOpen(false);
+                            }}
+                            value={project.id}
+                          >
+                            <FolderGit2 className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">
+                                {project.name}
+                              </span>
+                              <span className="block truncate text-[11px] text-muted-foreground">
+                                {projectContext(
+                                  project,
+                                  workspace,
+                                  searchingEverywhere,
+                                )}
+                              </span>
+                            </span>
+                            {project.id === selectedProject?.id ? (
+                              <Check className="size-4 shrink-0" />
+                            ) : null}
+                          </CommandItem>
+                        </ProjectContextMenu>
+                      );
+                    })}
                   </CommandGroup>
                 ) : (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -254,6 +315,22 @@ export function ProjectSwitcher({
           />
         ) : null}
       </div>
+      <ProjectRemovalDialog
+        onOpenChange={(nextOpen) => !nextOpen && setRemoveProjectTarget(null)}
+        onRemove={onRemoveProject}
+        project={removeProjectTarget}
+      />
+      {revealError ? (
+        <InlineAlert
+          className="fixed bottom-5 right-5 z-[110] max-w-md border-destructive bg-destructive px-4 py-3 text-destructive-foreground shadow-xl"
+          dismissLabel="Dismiss project reveal error"
+          icon={false}
+          onDismiss={() => setRevealError(null)}
+          tone="error"
+        >
+          Could not reveal project: {revealError}
+        </InlineAlert>
+      ) : null}
     </>
   );
 }
