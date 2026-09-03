@@ -14,11 +14,11 @@ worker control. See
 [PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md).
 
 A worker-managed folder project is intentionally outside this worktree model.
-It has one UUID-derived execution root on one owning worker. Agents and
-write-capable workflows may write there directly according to their permission
-and concurrency configuration, while worktrees, Git observation, replicas, and
-relocation stay unavailable. Running `git init` does not opt the project into
-this guide; only explicit conversion to a GitHub repository does. See
+It has one UUID-derived execution root on one owning worker. Agents may write
+there directly according to their permission profile, while worktrees, Git
+observation, replicas, and relocation stay unavailable. Legacy workflow records
+may remain in the database but cannot execute. Running `git init` does not opt
+the project into this guide; only explicit conversion to a GitHub repository does. See
 [FOLDERS.md](FOLDERS.md).
 
 ## User model
@@ -119,8 +119,7 @@ Cantrip enforces these boundaries:
   branch, name, and base revision, never a secondary target path;
 - the worker canonicalizes paths and verifies Git common-directory identity;
 - one server coordinator serializes mutating worktree operations per project
-  source; user and chat-agent operations use it now, and workflow allocation
-  must enter through the same boundary;
+  source for user and chat-agent operations;
 - Primary cannot be individually removed or locked;
 - branches are retained when a worktree is removed;
 - dirty-patch transfers resolve both worktrees through server-owned IDs,
@@ -201,7 +200,7 @@ Run the focused automated suites from a clean milestone worktree:
 ```shell
 pnpm --filter @cantrip/protocol test
 pnpm --filter @cantrip/worker test -- worktrees.test.ts app-server.test.ts
-pnpm --filter @cantrip/server test -- worktree-migration.test.ts worktree-api.test.ts project-placement-api.test.ts workflow-domain-migration.test.ts
+pnpm --filter @cantrip/server test -- worktree-migration.test.ts worktree-api.test.ts project-placement-api.test.ts
 pnpm --filter @cantrip/app test -- worktree-control.test.ts git-history.test.ts project-settings-page.test.tsx desktop-popout.test.ts
 pnpm check
 pnpm --filter @cantrip/app build
@@ -223,13 +222,13 @@ pnpm --filter @cantrip/server test
 
 The folder-focused coverage includes OS-specific POSIX/Windows path derivation,
 UUID and symlink containment, PGlite migration, owner-only placement, the Task
-lifecycle, direct parallel workflow writes/retries/repeats, offline state,
-destructive removal, conversion, and rejection of Git/worktree routes.
+lifecycle, offline state, destructive removal, conversion, and rejection of
+Git/worktree routes.
 
 The migration suite applies the real SQL migration chain to PGlite and verifies
 Primary/tab/transcript backfills plus deterministic project-wide logical branch
-lease backfill. The placement and workflow suites verify that different
-worker-local worktree IDs cannot concurrently acquire the same project branch.
+lease backfill. The placement suite verifies that different worker-local
+worktree IDs cannot concurrently acquire the same project branch.
 To exercise the same Drizzle migration folder
 against disposable PostgreSQL, start the repository's tmpfs-backed database
 and the server with `DATABASE_URL`:

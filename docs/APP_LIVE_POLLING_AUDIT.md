@@ -3,6 +3,12 @@
 Audited on 2026-08-21 after the CodeGraph, redundant-query, chat sync, log
 streaming, Git state, and provider-auth AppLive phases.
 
+> Historical audit note: the durable workflow app/API, server
+> scheduler/executor, and worker handlers were removed after this audit. Current
+> source has no workflow publisher or subscriber, and the server rejects the
+> protocol's residual `workflow-run` scope. Workflow references below describe
+> the then-existing surface.
+
 ## Result
 
 Every repeating app query that reads durable server or worker state is now
@@ -24,7 +30,7 @@ automation content; clients fetch the authorized server-owned summary.
 
 ### Initial snapshot, degraded fallback, or reconciliation
 
-- Project, worktree, surface, chat, task, workflow, CodeGraph, Git operation,
+- Project, worktree, surface, chat, task, CodeGraph, Git operation,
   Git conflict, provider-auth, project automation, token-usage, account-session,
   and worker-management queries poll only when AppLive is not healthy.
 - The remote log viewer reads one backlog, streams by cursor while connected,

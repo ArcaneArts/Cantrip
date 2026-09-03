@@ -13,7 +13,7 @@ Cantrip has two top-level product modes:
 
 - **IDE** is the existing project and workspace experience. It contains
   project Agent chats, Tasks, terminals, Explorer, Code, Git, Browser, Remote
-  Desktop, workflows, and the other project surfaces.
+  Desktop, and the other project surfaces.
 - **Chat** is a standalone conversation experience similar to a conventional
   AI chat application. It uses the same account, models, worker-hosted Codex
   harness, encrypted history, attachments, context meter, streaming, and

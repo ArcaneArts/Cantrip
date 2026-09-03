@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-08-26
 
+> Implementation update: LAN and WAN are operational authenticated WebRTC peer
+> carriers. The fixed route order is `LOCAL → LAN → WAN → RELAY`; ADR 0010
+> defines the native bridge into the renderer-owned carrier.
+
 ## Context
 
 [ADR 0008](0008-server-authorized-local-direct-data-plane.md) authorizes one
@@ -11,7 +15,7 @@ boundary: the server authorizes an exact client, worker process, and resource,
 while a worker address is only rendezvous metadata. It does not provide a
 feature-neutral identity or authorization lifetime that Terminal, tunnels,
 project shares, Code, Browser, Remote Desktop, and worker observations can
-share across `LOCAL`, future `LAN` and `WAN`, and server `RELAY` routes.
+share across `LOCAL`, `LAN`, `WAN`, and server `RELAY` routes.
 
 Extending the direct-capability record independently for each route would make
 the attachment type, rather than the client-worker relationship, the unit of
@@ -45,24 +49,25 @@ existing server-owned repositories. Account logout, resource release or
 deletion, worker disconnect or process replacement, lease expiry, and orderly
 server or worker shutdown revoke the corresponding transient authority.
 
-The protocol names `local`, `lan`, `wan`, and `relay` now, with fixed priority
-`LOCAL -> LAN -> WAN -> RELAY`. Tranche One enables only `local` and `relay`.
-Naming the later routes is a compatibility seam, not permission to gather
-candidates or negotiate peer connections in Tranche One.
+The protocol names `local`, `lan`, `wan`, and `relay`, with fixed priority
+`LOCAL -> LAN -> WAN -> RELAY`. LOCAL uses the authorized loopback proof,
+LAN/WAN use authenticated WebRTC peer carriers, and RELAY uses the server.
 
 Logical reliable channels use a common bounded envelope with route generation,
 grant, channel, connection, QoS lane, sequence, open/accept/reject, data,
-credit, half-close, close, and error operations. The existing generic tunnel
-frame remains valid and may be encapsulated as a WorkerLink stream payload.
+credit, half-close, close, and error operations. Tunnel consumers carry the
+existing `tunnel-data-plane-v1` frame inside WorkerLink reliable streams.
 Endpoint encryption and protected tunnel records therefore remain unchanged.
 
 ADR 0008's one-use loopback capability remains the `LOCAL` carrier proof during
 the compatibility migration. The WorkerLink grant authorizes the logical
 resource; the direct capability proves that the exact authorized worker process
-is reachable over loopback. The server `RELAY` carrier uses the same logical
-session and grant contract over its authenticated client and worker channels.
-Feature code requests a resource stream and QoS lane but does not choose either
-carrier.
+is reachable over loopback. LAN/WAN require an authenticated peer handshake
+bound to the exact session identity, route and route generation, and challenge.
+Each channel `open` separately presents the exact resource grant. The server
+`RELAY` carrier uses the same logical session and grant contract over its
+authenticated client and worker channels. Feature code requests a resource
+stream and QoS lane but does not choose a carrier.
 
 WorkerLink coordination uses the existing worker bridge and replicated-server
 coordination abstractions. This ADR does not select Redis, server-to-server
@@ -75,14 +80,14 @@ affinity as part of the feature protocol.
   receiving general access to the worker.
 - Authorization and topology selection move beneath feature components while
   durable resource ownership remains unchanged.
-- Route replacement increments `routeGeneration`; old-generation frames are
-  rejected instead of entering replacement channels.
+- A server-authorized route-policy or authority replacement increments
+  `routeGeneration`; carrier readiness, promotion, and demotion within that
+  policy do not. Old-generation frames are rejected instead of entering
+  replacement channels.
 - Per-lane queues and credit windows can isolate interactive traffic from
   stream and future bulk traffic.
-- Tranche One can wrap the proven loopback broker and server relays before
-  adding LAN/WAN reachability.
-- A future peer carrier can use the same session, grants, frames, adapters, and
-  feature-facing API without renaming routes or redesigning authorization.
+- The implemented peer carrier uses the same session, grants, frames, adapters,
+  and feature-facing API across LAN and WAN without redesigning authorization.
 
 ## Rejected alternatives
 

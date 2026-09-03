@@ -23,25 +23,24 @@ The checked-in route inventory must report zero `legacyLocalOwnerRoutes`.
 
 ## Guarantee matrix
 
-| Guarantee                                                                                  | Primary automated evidence                                                                                                                       |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Anonymous loopback remains zero-auth                                                       | `local-foundation.test.ts`, `config.test.ts`                                                                                                     |
-| Password and account sessions, CSRF, expiry, and revocation                                | `auth-service.test.ts`, `auth-api.test.ts`, `live-api.test.ts`                                                                                   |
-| Cross-account HTTP and live-resource isolation                                             | `tenant-authorization.test.ts`, `live-hub.test.ts`                                                                                               |
-| Independent worker enrollment, rotation, revocation, and ID binding                        | `worker-enrollment-api.test.ts`, `worker-bridge-surface.test.ts`                                                                                 |
-| Provider and MCP secrets are encrypted and redacted                                        | `provider-secret-encryption.test.ts`, `mcp-secret-encryption.test.ts`, `secret-vault.test.ts`                                                    |
-| Hosted origin, proxy, cookie, size, and startup rules fail closed                          | `http-hardening.test.ts`, `config.test.ts`, `abuse-limits.test.ts`                                                                               |
-| Project replicas use explicit placement, guarded synchronization, and expiry-fenced replay | `project-placement-api.test.ts`, `project-replica-jobs.test.ts`, `project-replica-executor.test.ts`                                              |
-| Managed folders remain owner-bound, non-Git, durable offline, and explicitly convertible   | `project-folder-api.test.ts`, `managed-folders.test.ts`, `task-domain.test.ts`, `workflow-execution.test.ts`, app managed-folder component tests |
-| Chat relocation hydrates safely, commits atomically, and recovers only expired claims      | `chat-relocation-jobs.test.ts`, `chat-relocation-api.test.ts`, `chat-relocation-executor.test.ts`, `chat-relocation-dialog.test.tsx`             |
-| Code, project-share, browser, desktop, terminal, and generic tunnels remain server-routed  | `code-tunnel.test.ts`, `project-share-tunnel.test.ts`, `remote-surface-relay.test.ts`, `tunnel-control-plane.test.ts`, `tunnel-runtime.test.ts`  |
-| Two server replicas route worker commands and live invalidations through Redis             | `shared-relay-coordination.test.ts`                                                                                                              |
-| A rolling server startup preserves transient state owned by an existing peer               | `coordinated-startup-recovery.test.ts`                                                                                                           |
-| Account/worker quotas reject excess work visibly                                           | `abuse-limits.test.ts`, `managed-relay-telemetry.test.ts`                                                                                        |
-| Security activity, probes, and metrics omit product content                                | `audit-events.test.ts`, `http-hardening.test.ts`, `managed-relay-telemetry.test.ts`                                                              |
-| Scheduled workflow and project-automation occurrences are leased and fenced                | `workflow-trigger-api.test.ts`, `project-automation-api.test.ts`                                                                                 |
-| In-flight workflow attempts renew, expire, recover, and dispatch with account attribution  | `workflow-execution.test.ts`, `workflow-executor-coordination.test.ts`                                                                           |
-| Migration and packaged-runtime contracts remain usable                                     | migration tests under `cantrip_server/test`, `bundled-runtime.test.ts`, and release-script tests under `scripts/test`                            |
+| Guarantee                                                                                                            | Primary automated evidence                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anonymous loopback remains zero-auth                                                                                 | `local-foundation.test.ts`, `config.test.ts`                                                                                                                   |
+| Password and account sessions, CSRF, expiry, and revocation                                                          | `auth-service.test.ts`, `auth-api.test.ts`, `live-api.test.ts`                                                                                                 |
+| Cross-account HTTP and live-resource isolation                                                                       | `tenant-authorization.test.ts`, `live-hub.test.ts`                                                                                                             |
+| Independent worker enrollment, rotation, revocation, and ID binding                                                  | `worker-enrollment-api.test.ts`, `worker-bridge-surface.test.ts`                                                                                               |
+| Provider and MCP content is endpoint-encrypted and opaque to the server                                              | `protected-secrets.test.ts`, `provider-account-portability.test.ts`, `provider-account-secret-encryption.test.ts`, endpoint-encryption boundary audit          |
+| Hosted origin, proxy, cookie, size, and startup rules fail closed                                                    | `http-hardening.test.ts`, `config.test.ts`, `abuse-limits.test.ts`                                                                                             |
+| Project replicas use explicit placement, guarded synchronization, and expiry-fenced replay                           | `project-placement-api.test.ts`, `project-replica-jobs.test.ts`, `project-replica-executor.test.ts`                                                            |
+| Managed folders remain owner-bound, non-Git, durable offline, and explicitly convertible                             | `project-folder-api.test.ts`, `managed-folders.test.ts`, `task-domain.test.ts`, and app managed-folder component tests                                         |
+| Chat relocation hydrates safely, commits atomically, and recovers only expired claims                                | `chat-relocation-jobs.test.ts`, `chat-relocation-api.test.ts`, `chat-relocation-executor.test.ts`, `chat-relocation-dialog.test.tsx`                           |
+| Supported Code, share, Browser, Desktop, Terminal, and tunnel traffic uses exact WorkerLink grants and route fencing | WorkerLink coordinator/service/relay, client carrier/feature adapter, worker gateway/adapter, Code-tunnel, project-share, and tunnel-runtime tests             |
+| Two server replicas route worker commands and live invalidations through Redis                                       | `shared-relay-coordination.test.ts`                                                                                                                            |
+| A rolling server startup preserves transient state owned by an existing peer                                         | `coordinated-startup-recovery.test.ts`                                                                                                                         |
+| Account/worker quotas reject excess work visibly                                                                     | `abuse-limits.test.ts`, `worker-link-relay.test.ts`                                                                                                            |
+| Security activity, probes, and metrics omit product content                                                          | `audit-events.test.ts`, `http-hardening.test.ts`, `operational-metrics.test.ts`                                                                                |
+| Project-automation dispatch is exercised                                                                             | `project-automation-api.test.ts`                                                                                                                               |
+| Migration and packaged-runtime contracts remain usable                                                               | migration tests under `cantrip_server/test`, `bundled-runtime.test.ts`, and release-script `*.test.mjs` files under `scripts/` and test-bearing subdirectories |
 
 The route inventory is review evidence rather than a proof by itself. Routes
 classified as `application-principal` must derive ownership from the request
@@ -69,9 +68,9 @@ and proxy configuration being released:
    live surfaces become unavailable.
 6. Create two managed folders with the same display name on one enrolled
    worker, one from a remote browser/mobile-sized client and one from Tauri.
-   Verify both have distinct UUID paths; Agent, Task, Terminal, Explorer, Code,
-   Browser, Remote Desktop, tunnel/share, script automation, and a direct
-   parallel write workflow use only that worker; and no Git, Issues, PR,
+   Verify both have distinct workspace-derived paths; Agent, Task, Terminal, Explorer, Code,
+   Browser, Remote Desktop, tunnel/share, and script automation use only that
+   worker; and no Git, Issues, PR,
    release, worktree, replica, relocation, or open-issue control appears. Take
    the worker offline and verify history remains readable while filesystem
    actions fail explicitly, then reconnect and verify live recovery. Unlink one
@@ -85,21 +84,18 @@ and proxy configuration being released:
    job and a chat relocation. Verify the surviving process does not steal a
    fresh claim, then recovers it after expiry with a higher attempt; verify the
    former holder cannot publish a late completion.
-8. While one replica owns an active chat, workflow attempt, Remote Desktop, and
-   tunnel attachment, start another replica. Verify none of those records is
-   reset or orphaned and the active operations continue through the peer.
-9. Trigger one scheduled occurrence during a rolling server restart and verify
-   exactly one durable run is accepted.
-10. Kill a server during a silent and an approval-waiting workflow attempt. Verify
-    a live peer leaves each fresh heartbeat alone, recovers it only after the
-    stale window, publishes the owning account's invalidation, and rejects the
-    former holder's late completion.
-11. Back up PostgreSQL, the encryption keyring, and a quiesced worker data
-    volume containing a managed folder. Restore into an isolated deployment,
-    migrate, and verify account login, worker metadata, chat history, one
-    secret-backed provider, and the managed folder's contents.
+8. While one replica owns an active chat, Remote Desktop, and tunnel
+   attachment, start another replica. Verify none of those records is reset or
+   orphaned and the active operations continue through the peer.
+9. Make one project automation occurrence due during a rolling server restart.
+   Verify only one protected chat prompt/message is accepted; duplicate or
+   stale dispatch completion is rejected by the durable occurrence claim.
+10. Back up PostgreSQL and a quiesced worker data volume containing a managed
+    folder. Restore into an isolated deployment, migrate, and verify account
+    login, worker metadata, chat history, one secret-backed provider, and the
+    managed folder's contents.
 
-Record the release version, commit, platform artifacts, proxy/TURN configuration,
+Record the release version, commit, platform artifacts, proxy/WorkerLink configuration,
 and pass/fail result outside the repository. Do not record credentials, prompts,
 terminal output, source content, or raw capability URLs.
 

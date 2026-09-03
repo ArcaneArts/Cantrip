@@ -2,7 +2,7 @@
 
 - Status: Accepted foundation contract
 - Last updated: 2026-08-12
-- Related decisions: [ADR 0001](adr/0001-agent-managed-worktree-execution.md), [ADR 0002](adr/0002-worker-owned-remote-surfaces.md), [ADR 0003](adr/0003-worker-owned-chat-attachments.md), [ADR 0006](adr/0006-multi-worker-project-replicas.md), and the [provider authentication contract](PROVIDER_AUTHENTICATION.md)
+- Related decisions: [ADR 0001](adr/0001-agent-managed-worktree-execution.md), [ADR 0002](adr/0002-worker-owned-remote-surfaces.md), [ADR 0003](adr/0003-worker-owned-chat-attachments.md), [ADR 0006](adr/0006-multi-worker-project-replicas.md), [ADR 0009](adr/0009-worker-link-session-and-grant-authority.md), [ADR 0010](adr/0010-tauri-native-worker-link-carrier.md), and the [provider authentication contract](PROVIDER_AUTHENTICATION.md)
 
 ## Purpose
 
@@ -10,7 +10,8 @@ Cantrip supports one logical project on multiple worker machines. The governing
 model is:
 
 > One project, many worker-local replicas, with every surface having explicit
-> execution placement and the Cantrip Server acting as the canonical router.
+> execution placement and the Cantrip Server acting as the canonical
+> control-plane and placement router.
 
 The server owns canonical product state, routing, authorization, durable jobs,
 leases, and conversation history. A worker owns its filesystem, Git processes,
@@ -19,21 +20,21 @@ are replaceable execution endpoints and never communicate directly with one
 another.
 
 The server remains the canonical control plane even when a desktop app and a
-worker share one machine. An authenticated worker may advertise a loopback-only
-direct broker, but the endpoint is usable only through a short-lived,
-resource-bound capability minted by the server and installed over the worker's
-outbound control connection. A native locality challenge proves the advertised
-worker is actually reachable on this host; network names and addresses alone
-never select the direct route. Direct failure preserves the existing
-server-relayed data plane.
+worker share one machine. WorkerLink sessions and exact resource grants bind
+the server identity and generation, owner, account session, client instance,
+worker generation, optional exact attachment, operations, lanes, and lease.
+Candidate addresses are rendezvous data, not authority. The authenticated
+carrier handshake and worker-installed grant must both succeed.
 
-Current data-plane support is intentionally client-specific. Tauri can create a
-verified same-machine forward for generic tunnels, PTYs, project shares, and
-Cantrip Code. Web and Capacitor clients use the server relay for those resources.
-Browser and Remote Desktop instead use server-signaled WebRTC, which can select
-a direct ICE path on any supported client and falls back to the Remote Surface
-WebSocket relay. In every case, resource creation, placement, capabilities,
-revocation, and recovery remain server-owned.
+Supported clients follow the policy-filtered `LOCAL`, `LAN`, `WAN`, then server
+`RELAY` priority. LOCAL uses the server-authorized loopback proof and is normally
+available only to Tauri; browser and Capacitor normally begin with LAN. LAN/WAN
+use renderer-owned authenticated WebRTC peer carriers, and native
+operating-system tunnels use a bounded WebView bridge into that shared renderer
+manager. Supported Terminal, Code, Browser, Remote Desktop, tunnel,
+project-share, and observation paths use the same fabric. In every case,
+resource creation, placement, authorization, revocation, and recovery remain
+server-owned.
 
 This document defines the contracts later multi-worker changes must preserve.
 Replica persistence, reads, exact-revision provisioning, guarded
@@ -61,12 +62,12 @@ and workers. See [the Codex chat import guide](CODEX_CHAT_IMPORT.md).
 
 Provider authentication deliberately does not follow runtime placement.
 ChatGPT and Grok/SuperGrok OAuth accounts, quota state, and catalog availability
-belong to the server account. Any compatible enrolled worker may request a
-short-lived access lease and recreate a selected provider route without a local
-provider sign-in. Chat relocation therefore preserves the logical model,
-concrete route, provider account, reasoning selection, and credential-home key
-while the target runtime obtains its own lease. Worker scope remains correct for
-machine-local providers such as Ollama.
+belong to the Cantrip account. A compatible enrolled worker fetches the opaque
+credential from Cantrip Server, opens, refreshes, and reseals it locally, and
+constructs a short-lived in-memory access-token lease. Chat relocation therefore
+preserves the logical model, concrete route, provider account, reasoning
+selection, and credential-home key while the target worker constructs its own
+lease. Worker scope remains correct for machine-local providers such as Ollama.
 
 ## Current replica read contract
 
@@ -220,7 +221,7 @@ a target on the current worker reconfigures the current stream; selecting a
 monitor or window on another worker creates a normal Remote Desktop in the
 current tab group with explicit worker placement and the selected capture
 target. Every resulting tab attaches and reconnects independently through the
-existing Remote Surface transport, so a slow or disconnected worker cannot
+shared WorkerLink Remote Surface client, so a slow or disconnected worker cannot
 stall a healthy worker's stream. Servers advertise the feature through
 `capabilities.remoteDesktopFleet`; rolling clients treat a missing flag as
 false and retain the single-worker target menu.
@@ -272,6 +273,9 @@ surfaces may have a worker but no replica or worktree.
 
 ## Project-wide branch coordination
 
+Legacy workflow lease rows may remain in the database, but there is no workflow
+scheduler, executor, recovery path, worker handler, app surface, or public API.
+
 Physical worktree IDs are worker-local. Two replicas can therefore expose
 different worktree IDs for the same Git branch, so a worktree-only lease cannot
 prevent two agents from mutating that logical branch concurrently.
@@ -279,17 +283,15 @@ prevent two agents from mutating that logical branch concurrently.
 The server also persists `project_branch_leases`. A partial unique index permits
 only one active holder for each `(project_id, branch_name)`, regardless of
 worker, replica, or physical worktree. Chat execution acquires this fence in the
-same transaction that activates its execution lane. Workflow execution acquires
-it while reserving the worktree, before provisioning or dispatch. A conflicting
-chat or workflow receives an explicit conflict and no worker command is sent.
+same transaction that activates its execution lane. An old unreleased
+workflow-linked branch lease can still occupy that unique fence and block a
+chat, but no current workflow path acquires, renews, or releases one.
 
 Primary chat turns release their logical fence when the turn finishes. A
 secondary chat lane retains it while suspended because that worktree may contain
 uncommitted state and can be resumed; explicit lane release relinquishes it.
-Workflow leases retain the fence through active, checkpointed, and recoverable
-states, then release it with a terminal outcome or non-recoverable allocation
-failure. Durable relocation and same-chat, same-branch handoff transfer the
-fence transactionally, so there is no unowned interval during placement commit.
+Durable relocation and same-chat, same-branch handoff transfer the fence
+transactionally, so there is no unowned interval during placement commit.
 
 Detached worktrees have no branch identity and remain isolated by their physical
 lane. For a named but not-yet-observed Primary checkout, a single-replica project
@@ -297,10 +299,11 @@ may continue under its physical lease. A multi-replica project fails closed
 until the worker reports the branch, because the server cannot safely prove
 cross-worker branch identity otherwise.
 
-Migration backfill ranks already-active mutation holders first, retains
-secondary suspended lanes and live workflow leases, ignores idle Primary lanes,
-and creates at most one active owner for each existing project branch. Losing
-legacy contenders must reacquire and will receive the normal branch conflict.
+The historical migration backfill ranked already-active mutation holders first,
+retained secondary suspended lanes and legacy unreleased workflow-lease rows,
+ignored idle Primary lanes, and created at most one active owner for each
+existing project branch. Losing contenders had to reacquire and received the
+normal branch conflict.
 
 ## Durable job ownership and failover
 
@@ -323,32 +326,25 @@ server-side attempt fencing make the retry safe, while relocation still refuses
 dirty worktrees, revision drift, unavailable attachments, and incompatible
 worker capabilities.
 
-Workflow node attempts use a parallel heartbeat-lease contract. A live server
-renews every active attempt even when the worker emits no progress, and clustered
-recovery considers only heartbeats stale for two minutes. Recovery is fenced by
-the exact heartbeat value it observed, retains the run's account owner for live
-invalidations and redispatch, and keeps the worker request within the persisted
-node timeout budget. Recoverable worktree leases are scanned across all owners
-but still execute only through their explicitly assigned worker and branch
-fences.
-
 ## Authority boundaries
 
-| Concern                                         | App                            | Server                                      | Worker                                 |
-| ----------------------------------------------- | ------------------------------ | ------------------------------------------- | -------------------------------------- |
-| Project, replica, placement, and job records    | Render and request             | Authoritative                               | Reports observations                   |
-| Ownership and authorization                     | Supplies authenticated session | Authoritative                               | Enforces command binding               |
-| Target resolution and routing                   | Supplies an untrusted selector | Authoritative                               | Accepts only routed commands           |
-| Paths, symlinks, files, Git, and dirty state    | Never dereferences             | Stores bounded observations                 | Authoritative                          |
-| Conversation transcript and relocation state    | Render and request             | Authoritative                               | Hosts worker-specific runtime          |
-| Codex rollout files and processes               | Never accesses directly        | Stores runtime association                  | Authoritative                          |
-| PTYs, Code, browser, and desktop processes      | Attaches through server        | Owns durable surface lifecycle              | Authoritative                          |
-| Provider OAuth credentials/status/catalog       | Displays redacted state        | Encrypted durable state and lease authority | Uses ephemeral access leases           |
-| Enrollment credentials and machine capabilities | Displays redacted state        | Owns enrollment and policy                  | Owns machine identity and capabilities |
+| Concern                                         | App                                                             | Server                                           | Worker                                                       |
+| ----------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
+| Project, replica, placement, and job records    | Render and request                                              | Authoritative                                    | Reports observations                                         |
+| Ownership and authorization                     | Supplies authenticated session                                  | Authoritative                                    | Enforces command binding                                     |
+| Target resolution and routing                   | Supplies an untrusted selector                                  | Authoritative                                    | Accepts only routed commands                                 |
+| Paths, symlinks, files, Git, and dirty state    | Never dereferences                                              | Stores bounded observations                      | Authoritative                                                |
+| Conversation transcript and relocation state    | Render and request                                              | Authoritative                                    | Hosts worker-specific runtime                                |
+| Codex rollout files and processes               | Never accesses directly                                         | Stores runtime association                       | Authoritative                                                |
+| PTYs, Code, browser, and desktop processes      | Attaches through authorized WorkerLink direct or RELAY carriers | Owns durable surface lifecycle and authorization | Authoritative                                                |
+| Provider OAuth credentials/status/catalog       | Seals credentials and displays endpoint-opened state            | Stores opaque envelopes and revisions            | Opens, refreshes/reseals, and keeps its access lease locally |
+| Enrollment credentials and machine capabilities | Displays redacted state                                         | Owns enrollment and policy                       | Owns machine identity and capabilities                       |
 
-The app connects only to the server. Worker commands use the authenticated,
-versioned server-to-worker protocol. A server may fan an operation out to many
-workers, but workers do not receive addresses or credentials for one another.
+The app uses the server for durable state, control, and authorization, and may
+connect directly to an authorized worker for WorkerLink data. Worker commands
+use the authenticated, versioned server-to-worker protocol. A server may fan an
+operation out to many workers, but workers do not receive addresses or
+credentials for one another.
 
 ## Protocol contracts
 
@@ -796,10 +792,11 @@ of a project or chat.
 Worker requests distinguish finite control operations from event streams.
 Replica commands, relocation hydration, and user-triggered Git or GitHub
 controls have explicit deadlines; the Git and GitHub ceiling is 30 minutes.
-Only an active Codex turn and an attached terminal intentionally remain open
-for their stream lifetime (with a 24-hour relay ceiling when routed through a
-peer server). Disconnect, stop, detach, or job cancellation closes the relevant
-stream or supersedes its durable attempt.
+An active Codex turn is the intentional long-lived server request, with a
+24-hour relay ceiling when routed through a peer server. An attached Terminal
+does not hold a worker request open; its lifetime is governed by the WorkerLink
+session, exact grant, and reliable stream. Disconnect, stop, detach, or job
+cancellation closes the relevant stream or supersedes its durable attempt.
 
 Recommended stable error families are `target-not-found`, `target-mismatch`,
 `worker-offline`, `capability-missing`, `replica-not-ready`, `worktree-dirty`,

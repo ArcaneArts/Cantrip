@@ -53,6 +53,6 @@ WORKDIR /opt/cantrip
 ENV CANTRIP_DATA_DIR=/var/lib/cantrip \
     NODE_ENV=production
 VOLUME ["/var/lib/cantrip"]
-EXPOSE 4310 4311
+EXPOSE 4310
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/opt/cantrip/start.sh"]

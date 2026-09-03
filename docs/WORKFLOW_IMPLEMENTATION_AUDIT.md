@@ -1,9 +1,19 @@
 # Workflow implementation audit
 
+> Historical implementation evidence captured before the endpoint-encrypted
+> workflow cutover. The entire public durable-workflow product was later
+> removed: the current app has no workflow UI/client, and the server registers
+> no public workflow routes. The scheduler, executor, repositories, worker
+> handlers, and focused runtime tests were removed afterward. Only legacy
+> database/protocol/encryption shapes remain. Everything below is historical.
+> Use the [retired workflow boundary](WORKFLOW_ORCHESTRATION.md) and
+> [legacy-data operations](WORKFLOW_OPERATIONS.md) for the current
+> boundary.
+
 - Audit date: 2026-08-09
 - Runtime: bundled Codex CLI/App Server `0.146.1`
 - Product boundary: local single-user Cantrip
-- Result: the Codex-native customization and workflow roadmap is implemented;
+- Result at the audit date: the Codex-native customization and workflow roadmap was implemented;
   the limitations below remain explicit product boundaries rather than hidden
   fallbacks.
 
@@ -23,8 +33,9 @@ worker/worktree routing, triggers, audit state, recovery, and UI. See
 
 ## Recovery and security evidence
 
-This matrix points to existing focused tests instead of duplicating them in the
-final documentation pass.
+This matrix points to then-existing focused tests instead of duplicating them in
+the final documentation pass. Several workflow UI/API suites named here were
+removed with the public feature.
 
 | Requirement                      | Evidence                                                                                                                                                                                         | Result                                                                             |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
@@ -68,7 +79,7 @@ final documentation pass.
   control-plane phase.
 - Workflow migrations are forward-only. Schema downgrade requires restoring a
   matching pre-upgrade database backup; see
-  [Workflow operations](WORKFLOW_OPERATIONS.md#migration-backup-and-rollback).
+  [Workflow operations](WORKFLOW_OPERATIONS.md#upgrade-and-data-handling).
 
 ## Final validation
 

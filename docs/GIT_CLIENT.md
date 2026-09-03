@@ -553,8 +553,8 @@ Manual QA:
 ## GitHub Actions
 
 GitHub-backed projects expose hosted CI in a dedicated **Actions** tab. This is
-GitHub Actions terminology and state, separate from Cantrip's own workflow
-automation. The tab lists repository workflows, paginated workflow runs, exact
+GitHub Actions terminology and state, separate from Cantrip's retired durable
+workflow feature. The tab lists repository workflows, paginated workflow runs, exact
 run attempts, jobs, steps, live status, and job logs. Active runs and logs poll
 while GitHub is still executing them, then settle to a slower repository-level
 refresh. Artifacts are linked through GitHub, with common test and coverage

@@ -1,423 +1,76 @@
-# Workflow orchestration contract
+# Retired durable workflow subsystem
 
-Cantrip workflows are a server-owned, durable control plane above Codex App
-Server. Codex remains responsible for each agent loop; Cantrip validates the
-workflow graph, schedules durable node boundaries, routes worker commands, and
-persists intermediate results. Workflow definitions never contain executable
-JavaScript or another general-purpose expression language.
+Status: removed from the executable product.
 
-For deployment boundaries, recovery, trigger operation, migrations, and
-rollback, see [Workflow operations](WORKFLOW_OPERATIONS.md). The final
-requirement-to-test matrix and implementation ledger are in the
-[Workflow implementation audit](WORKFLOW_IMPLEMENTATION_AUDIT.md).
+Cantrip no longer exposes or runs its former durable DAG workflow subsystem.
+The app workflow center and client APIs were removed first; the server
+scheduler, executor, workflow repositories, and worker execution, trigger,
+gate, generation, and repository handlers were then removed. Former public
+durable-workflow paths are simply unregistered and receive the normal
+not-found response.
 
-## Definition boundary
+This retirement does not affect either of the current automation surfaces:
 
-Every immutable workflow revision uses graph version `1`. A graph is a bounded
-directed acyclic graph with unique node keys and dependency edges. Every node
-has one of the following types and a type-specific, strictly validated
-configuration:
+- **Project automations** schedule one protected prompt, optionally after one
+  worker-evaluated condition.
+- **GitHub Actions workflows** are repository files inspected and dispatched
+  through the Git/GitHub surface.
 
-| Node          | Configuration contract                                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `agent`       | One Codex prompt with optional developer instructions, structured-input inclusion, and an automatic-retry ceiling.                   |
-| `map`         | One Codex prompt applied to a collection selected by JSON pointer, with an explicit concurrency limit and collection failure policy. |
-| `pipeline`    | A bounded ordered list of uniquely keyed Codex steps applied to a collection with explicit concurrency and failure policy.           |
-| `reduce`      | One Codex synthesis prompt over a selected collection, with explicit empty-collection behavior.                                      |
-| `verify`      | One independent Codex verification prompt, a deterministic pass predicate, and a failure policy.                                     |
-| `condition`   | A read-only branch boundary whose outgoing edges contain ordered deterministic predicates and at most one final fallback.            |
-| `repeatUntil` | One Codex prompt with explicit success predicate, progress pointer, unchanged-progress limit, iteration limit, and duration limit.   |
-| `gate`        | A read-only approval boundary with a prompt, optional expiry, and denial policy.                                                     |
+Neither surface uses the retired durable workflow runtime.
 
-Collection concurrency is always explicit and bounded. Repeat nodes cannot be
-saved without success, no-progress, iteration, and elapsed-time limits.
-Pipeline step keys must be unique. Unknown configuration fields are rejected so
-misspellings cannot silently alter runtime safety.
+## What remains in source
 
-## Deterministic predicates
+The following are compatibility artifacts, not an executable subsystem:
 
-Predicates select a value with an RFC 6901 JSON pointer and apply one bounded
-operator:
+- database tables and historical migrations for definitions, revisions, runs,
+  nodes, attempts, gates, triggers, deliveries, events, and workflow worktree
+  leases;
+- shared protocol and `workflow-content` encryption schemas;
+- protocol `workflow-run` live-scope/resource names, although `/api/live` does
+  not authorize that scope and no durable-workflow publisher remains;
+- account-storage classification for legacy rows; and
+- conservative lifecycle checks that still notice legacy active run or
+  worktree-lease markers before an update, conversion, replica removal, or
+  worktree removal.
 
-- `exists` or `not-exists` without a comparison value;
-- `equals` or `not-equals`;
-- numeric or otherwise type-compatible ordering through `greater-than`,
-  `greater-than-or-equals`, `less-than`, and `less-than-or-equals`; or
-- `contains`.
+There is no supported API for creating, listing, starting, resuming,
+controlling, or deleting these legacy records. Existing rows are not recovered,
+scheduled, dispatched, or drained. The generic interaction route now rejects a
+request that is not associated with an active chat.
 
-Comparison operators require an explicit JSON value, including when that value
-is `null`. Predicate evaluation will fail closed on incompatible operand types;
-it does not coerce strings, evaluate source code, or access data outside the
-node's structured input or result.
+## Compatibility boundary
 
-Only `condition` nodes may own conditional outgoing edges. A condition has at
-least two outgoing branches, at least one predicate, and at most one fallback.
-The fallback has no predicate and must be the last outgoing edge so branch
-selection remains deterministic across restarts.
+The residual schema is intentionally inert. It prevents an older database from
+failing immediately on columns and relationships still referenced by storage
+accounting and conservative deletion checks, but it does not promise backward
+execution compatibility. Operators should not mark old runs or leases active:
+because there is no workflow runtime to advance them, active legacy markers can
+continue to block the guarded operation that detects them.
 
-## Runtime rollout
+Cantrip does not currently ship a workflow-data cleanup command. Back up the
+database before any manual intervention and treat direct edits as unsupported.
+A future schema migration, rather than an application route, is the appropriate
+place to remove or transform these tables.
 
-The runtime executes read-only `agent`, `map`, `reduce`, `verify`, `condition`,
-and `gate` nodes. It claims independent Codex-backed roots up to the run's
-maximum parallelism, persists each attempt independently, aggregates usage,
-and only releases a downstream node after every incoming dependency is durably
-satisfied. Deterministic condition and gate transitions do not consume an
-agent concurrency slot. A single dependency passes its selected result
-directly. Fan-in without explicit target names builds an object keyed by source
-node; explicit target names build the same object under those names. Duplicate
-target names are rejected when the revision is saved.
+## Source anchors
 
-A map node expands the array or object selected by `collectionPath` into
-durable collection-item rows before dispatching any Codex turn. Array order is
-preserved. Object keys are processed in lexical order, and the final object
-retains the original keys. Each item owns its attempt counter, lease, worker
-and worktree attribution, Codex thread and turn attribution, structured result,
-usage, errors, and timestamps. `maxConcurrency` limits active items within the
-map while the run's `maxParallelism` remains the global ceiling. Expansion also
-counts against `maxNodes`, so a collection that would exceed the immutable run
-budget fails before its first item is dispatched. An empty collection completes
-at the expansion boundary without a worker turn.
+- [`build-app.ts`](../cantrip_server/src/app/build-app.ts) installs no
+  durable-workflow API or scheduling runtime.
+- [`background-job-runtime.ts`](../cantrip_server/src/app/runtime/background-job-runtime.ts)
+  owns current project and chat background jobs only.
+- [`agent-interactions.ts`](../cantrip_server/src/app/routes/agent-interactions.ts)
+  accepts responses only for active chat-backed interactions.
+- [`schema.ts`](../cantrip_server/src/db/schema.ts) retains the legacy workflow
+  tables.
+- [`worktree-lifecycle.ts`](../cantrip_server/src/db/repository/worktree-lifecycle.ts),
+  [`project-replica-jobs.ts`](../cantrip_server/src/db/project-replica-jobs.ts),
+  and
+  [`project-github-conversion-jobs.ts`](../cantrip_server/src/db/project-github-conversion-jobs.ts)
+  contain conservative legacy-row blockers.
+- [`workflows.ts`](../packages/protocol/src/workflows.ts) and
+  [`workflow-content.ts`](../packages/crypto/src/workflow-content.ts) retain
+  historical wire and ciphertext contracts without making them public routes.
 
-With `failurePolicy: fail-fast`, an exhausted item fails the map, skips items
-that have not started, and best-effort interrupts in-flight sibling turns with
-persisted Codex thread attribution. With `continue`, all items run and the aggregate
-contains explicit outcome envelopes: completed entries have
-`{ status: "completed", result }`, and failed entries have
-`{ status: "failed", error: { code, message } }`. Automatic retries are
-calculated per item and cannot exceed the run's per-node attempt ceiling.
-Operator retry resumes only retryable or previously skipped items; completed
-items are retained. Cancellation terminalizes active and pending items, while
-startup recovery marks interrupted items as recovering without re-expanding
-the collection. Downstream nodes are released only after the parent map reaches
-a durable terminal boundary.
-
-A pipeline uses the same durable collection expansion and concurrency rules,
-then advances each item through its immutable ordered `steps`. The first step
-receives the object formed with `itemInputKey`; each later step receives the
-previous step's structured result directly. Every step starts or resumes its
-own Codex thread, applies its own prompt, developer instructions, output schema,
-and automatic-retry ceiling, and commits its result before the next step can be
-scheduled. The item execution state records the current step position and
-attempt count plus a bounded ledger of completed step results, usage, Codex
-thread and turn attribution, and completion times. This is the restart boundary;
-completed steps are never replayed merely because a later step was orphaned or
-retried.
-
-Pipeline concurrency counts active items, while `maxParallelism` remains the
-run-wide ceiling. Each logical item-step invocation counts against `maxNodes`
-before expansion. A pipeline's collection failure policy applies when a step
-exhausts its attempts: `fail-fast` skips remaining ready items and best-effort
-interrupts attributed siblings, while `continue` preserves the
-failed step and emits the same explicit collection outcome envelope as `map`.
-Operator retry resumes the failed step and previously skipped items without
-discarding completed step ledgers. Empty collections complete without a Codex
-turn.
-
-A reduce node applies `collectionPath` to its durable node input before the
-selected array or object is rendered into the Codex prompt. A missing path or
-non-collection value fails explicitly. An empty collection is rejected when
-`emptyCollection` is `fail`; `complete` permits the reducer to execute with the
-empty collection as its structured input.
-
-Verification nodes evaluate their pass predicate after Codex returns a
-structured result. `fail-run` participates in the ordinary bounded retry
-policy; `continue` preserves the result and releases downstream dependencies.
-The optional `automaticRetries` setting narrows automatic attempts without
-increasing the immutable run budget, leaving remaining attempts available for
-an explicit operator retry.
-
-Condition nodes evaluate outgoing predicates in immutable edge order, choose
-the first match, and use the final fallback only when no predicate matches.
-Unselected dependencies and downstream paths are durably skipped. When no edge
-matches, `requireMatch: true` fails the run with `condition-no-match`;
-`requireMatch: false` completes the condition and skips every branch. A
-condition decision and its event are committed atomically, so a restart cannot
-choose a different path. Deterministic condition and gate decisions are final
-and cannot be retried in place.
-
-A `repeatUntil` node initializes a durable loop cursor before its first Codex
-turn. The first iteration receives the node's structured input; each later
-iteration receives the previous committed structured result and resumes the
-same node-owned Codex thread. Successful turns append a bounded iteration
-ledger containing the result, selected progress value, usage, thread and turn
-attribution, and completion time. Execution failures retry within the current
-iteration, so they do not consume an iteration or duplicate a completed ledger
-entry. Startup recovery and operator retry likewise resume the current
-iteration from this persisted boundary.
-
-After each turn, the server resolves `progressPath` and evaluates
-`successCondition` against the structured result. A missing progress value
-fails explicitly. Otherwise success completes the node and releases its
-downstream dependencies. An unsatisfied result schedules another iteration
-only when all four ceilings still allow it: `maxUnchangedIterations`,
-`maxIterations`, `maxDurationMs` measured from loop initialization, and the
-run-wide `maxNodes` budget. Each initialized iteration counts as one logical
-node, and the remaining loop duration also caps the active worker turn. Hard
-loop ceilings fail the run with an auditable reason and cannot be bypassed by
-node retry; a changed limit requires a new run.
-
-Gate nodes create a durable pending approval record and move the node to
-`waiting-for-approval`. The run remains waiting until an idempotent operator
-decision, cancellation, or optional expiry is persisted. Approval passes the
-gate input downstream. Denial and expiry either fail the run or skip the gated
-path according to the revision's denial policy. Startup recovery preserves
-pending gates, expires overdue records before dispatch, and resumes approved
-work without creating a duplicate gate. Cancellation terminalizes pending
-gates, and decisions against cancelled or otherwise incompatible terminal
-states fail with a conflict.
-
-## Run-wide budgets
-
-Every run snapshots immutable limits for expanded node count, attempts per
-execution unit, parallelism, node duration, total tokens, elapsed run time, and
-optional estimated cost. The scheduler checks the run-wide limits before every
-durable transition and after a worker boundary. A live token-usage update that
-reaches `maxTokens` terminalizes the run immediately and best-effort interrupts
-all attributed active turns. Worker turn timeouts are capped by both the node
-limit and the remaining `maxDurationMs` measured from the run's first start, so
-a later node cannot receive a fresh full-run time allowance.
-
-When a nonterminal run reaches a token, elapsed-time, or available-cost limit,
-no additional work is claimed. A final result may equal its configured maximum
-but cannot exceed it. Budget terminalization atomically fails the run, cancels
-pending nodes, items, and gates, interrupts active attempts, and appends one
-`run.budget.exceeded` event containing the limit, observed value, error code,
-and measured usage. This boundary is durable across restart and cannot be
-bypassed by pause, resume, or node retry.
-
-`maxEstimatedCostUsd` is a hard opt-in guard. Cost is aggregated only from
-turns that have actually reported usage; untouched zero-usage nodes do not make
-an otherwise measured total unavailable. Once a completed attempt has real
-usage, the run fails closed with `workflow-cost-budget-unavailable` if its cost
-signal is absent. Runs without an estimated-cost limit continue to expose
-`costAvailable: false` without failing.
-
-## Durable pause and resume
-
-`POST /api/workflow-runs/:runId/pause` is a graceful durable pause. The server
-atomically records the operator reason and idempotency key, changes an active
-run to `paused`, and stops claiming new Codex turns or deterministic control
-nodes. It does not interrupt turns that were already dispatched. Those turns
-may finish at their normal durable boundary; their completed result, failed
-attempt, or scheduled retry is retained while the run remains paused. If that
-boundary terminalizes the entire run, the terminal result wins over the pause.
-Pausing therefore does not spend an attempt merely to stop scheduling.
-
-An approval or denial may still be persisted for a pending gate while its run
-is manually paused. A nonterminal decision can ready downstream work, but the
-work is not dispatched until resume. Cancellation is also valid while paused
-and remains terminal. Recovery or an unrecoverable boundary failure supersedes
-the manual pause and clears its reason.
-
-`POST /api/workflow-runs/:runId/resume` atomically clears the manual pause,
-recomputes the run from persisted nodes and collection items, appends a resume
-event, and queues only the work that is still ready. Neither control mutates
-attempt counters. Both controls require an idempotency key; replay with the
-same payload returns the current run, while reusing the key with different
-input is a conflict. Paused runs are not startup-dispatchable, so they remain
-paused across server restarts until an explicit resume or cancellation.
-
-Subsequent scheduler changes must preserve these contracts, persist every
-intermediate boundary, and apply the run budget as an additional ceiling over
-node-local concurrency and loop limits.
-
-Write-capable `agent`, `map`, `pipeline`, `reduce`, `verify`, and `repeatUntil`
-nodes use the same declared filesystem permission invariant as other workflow
-nodes. `condition` and `gate` nodes are always read-only.
-
-On GitHub-backed projects, every write-capable execution unit is dispatched
-into its attributed non-Primary workflow lane; the repository rejects a write
-attempt that does not hold the exact active run/node/item lease for that worker
-and worktree. On a worker-managed folder, write units instead run directly in
-the one owning execution root. The graph's normal `maxParallelism`, node/item
-concurrency, permission, retry, and repeat rules still apply. Folder attempts
-record a `direct-folder` change summary, but create no worktree lease, Git
-checkpoint, branch, or revision claim.
-
-The durable allocation boundary is represented by a workflow worktree lease.
-Each lease belongs to exactly one node or collection item, reserves a
-worker-selected worktree identity before filesystem creation, and progresses
-through allocating, active, checkpointed, recovery, and terminal states. It
-records the source and worker attribution, branch and base revision, starting
-and ending revisions, dirty state, and a structured produced-change summary.
-An unreleased workflow lease is an explicit worktree-removal blocker. Terminal
-unit completion records the worker-observed Git HEAD, dirty state, and file
-summary in the same database transaction as the durable node boundary.
-
-`POST /api/workflow-runs/:runId/worktree-leases/:leaseId/outcome` requires the
-checkpoint's expected ending revision and an idempotency key. Its explicit
-outcomes are:
-
-- `keep`: retain the checkpointed lease and its cleanup blocker for inspection;
-- `deliver`: accept the checkpoint and hand the managed checkout back for
-  ordinary Cantrip use without merging or copying anything into Primary;
-- `release`: relinquish workflow ownership while preserving the checkout, with
-  a neutral audit outcome; and
-- `discard`: force-remove only the isolated Cantrip-managed checkout, without
-  deleting its branch or resetting Primary.
-
-Before a terminal outcome, the owning worker must be online and its current
-Git branch, HEAD, upstream/ahead/behind values, and file summary must exactly
-match the checkpoint. Drift before resolution starts leaves the lease
-checkpointed so the user can keep and inspect it. After validation, `deliver`,
-`release`, and `discard` persist the exact pending request and move the lease to
-`recovering` before any terminal filesystem side effect. The unreleased lease
-continues blocking cleanup throughout that boundary.
-
-An exact retry resumes the persisted intent. In particular, a retried discard
-first reconciles the worker inventory: an already-absent isolated checkout is
-treated as a completed removal and the durable `discarded` outcome is finalized
-without issuing a second remove. A different terminal request conflicts while
-an intent is recovering. `keep` is the safe escape hatch: it cancels the
-pending terminal intent, preserves the checkout and cleanup blocker, and
-returns the lease to its checkpointed `kept` state. Replaying a finalized
-outcome with the same key and payload is safe; reusing the key with different
-input is a conflict.
-
-Cantrip scans durable `recovering` workflow leases during server startup and
-again when the owning worker sends a heartbeat or attaches its command socket.
-An interrupted allocation is requeued through the normal workflow scheduler;
-a pending terminal outcome is replayed through the same checkpoint validation
-and worker-owned Git commands as the original request. Offline or unsafe lanes
-remain visibly recovering and continue blocking cleanup instead of being
-silently released.
-
-## Operator surface
-
-Project Settings contains a browser-portable workflow center. It lists the
-current project's workflows together with personal workflows, shows immutable
-revision, provenance, trust, stage, permission, and dependency metadata, and
-reviews structured JSON input plus the snapshotted permission and budget
-envelopes before launch. The app communicates only with the Cantrip Server API;
-it does not access worker files or Codex App Server directly.
-
-The same surface creates personal or project definitions and edits an existing
-definition by appending an immutable revision. Slug and scope are fixed after
-creation. Graph, declared input/output schemas, defaults, and permission
-requirements remain data-only JSON and are parsed with the shared strict
-workflow schemas before any request is sent. The authoring form cannot bypass
-cycle, node-configuration, predicate, permission, concurrency, or repeat-limit
-validation. A manual edit records its source revision and prior source/trust
-state in provenance; editing a previously trusted definition defaults the new
-revision to `modified` until the operator explicitly chooses another trust
-state.
-
-The authoring dialog can ask Codex to generate a definition from a task,
-selected chat, pasted runbook, or demonstrated process. The operator selects an
-existing project chat only to reuse its worker checkout and model route; the
-worker starts a separate workflow-owned Codex thread with read-only filesystem,
-no network, no skills, and a strict structured-output contract. For chat
-sources, the server supplies a bounded copy of server-owned text history. Codex
-does not receive authority to persist or launch the result.
-
-`POST /api/chats/:chatId/workflow-generation` parses the model envelope, parses
-each embedded JSON document, and validates the complete definition with the
-same canonical graph, schema, permission, scope, and provenance validators used
-by normal authoring. Invalid output fails closed. A successful response is an
-unpersisted `generated`/`untrusted` preview attributed to its Codex thread,
-turn, route, provider, and measured usage. The app only populates the existing
-authoring fields; an explicit Create or Append action is still required after
-review. This keeps Codex responsible for the agent turn while Cantrip owns the
-constrained workflow representation, validation, trust, and persistence.
-
-Repository portability and the Claude workflow bridge use the versioned
-project convention
-`.cantrip/workflows/<slug>.json`. The document format is
-`cantrip.workflow` version `1` and contains the portable definition plus the
-source workflow and revision identity. Export always targets the project
-Primary checkout through a worker command. A different existing file returns a
-collision and requires an explicit reviewed overwrite; an identical snapshot
-is idempotent. Personal workflows remain server-managed and are never silently
-written to a project or user configuration directory.
-
-The same worker-owned scan inspects only regular, bounded files directly under
-`.cantrip/workflows` and `.claude/workflows`; it does not follow directory or
-file symlinks. Cantrip v1 JSON documents, Claude Markdown prompt workflows, and
-Claude JSON `steps` graphs are translated into the constrained portable model.
-Every detected item has a content-derived opaque id. Import re-scans the
-checkout and requires that reviewed id to still exist, then creates a project
-workflow with repository/Claude provenance and `untrusted` trust. Slug
-collisions fail instead of replacing durable state.
-
-JavaScript, TypeScript, unknown formats, and malformed definitions are never
-loaded or executed. The operator sees an explicit diagnostic. Bounded source
-text may be opened in the existing Codex-assisted authoring path as inert
-runbook material; the read-only generation boundary and canonical validation
-still apply before an explicit save. General Claude/Cursor configuration and
-slash-command imports continue to use Codex App Server
-`externalAgentConfig/detect` and `externalAgentConfig/import`; Cantrip does not
-duplicate those native semantics. Plugin packaging remains disabled while the
-installed App Server marks plugin mutation APIs as under development.
-
-Project runs receive committed state changes through the application live
-channel and retain 1.5–2 second active-run snapshots only as a disconnected
-fallback. They expose durable run and recovery states, node duration and usage,
-worker/worktree/model/Codex attribution, pending approval gates, and
-checkpointed execution lanes. Operators can pause, resume, cancel, approve,
-deny, retry eligible failed nodes, open a lane in the Git view, or select an
-explicit lane outcome. Controls use a fresh idempotency key and replace the
-local run snapshot only after the server returns the validated durable state.
-An offline or recovering lane therefore stays visible instead of being
-optimistically treated as complete.
-
-A completed run can be saved back to its owning workflow as an immutable
-`saved-run` revision. The snapshot reuses the exact executed graph and declared
-schemas, records the run and executed revision as provenance, and may promote
-the successful structured input to the next revision's defaults. The operator
-must review the resulting `modified` trust state before relying on it for
-unattended work. Repeating the same save is content-hash idempotent and returns
-the existing revision; active, failed, cancelled, or archived workflows fail
-closed.
-
-## Unattended trigger control plane
-
-Cantrip owns durable trigger delivery above the Codex agent runtime. Trigger
-records pin an immutable workflow revision, project, structured input, budget,
-permission manifest, and optional model and permission-profile routes. Delivery
-records persist the idempotency key, sanitized provenance, status, run identity,
-and bounded failure details. Schedule triggers additionally persist their next
-due time, last delivery, catch-up policy, and offline policy so a server restart
-does not duplicate an accepted interval.
-
-Only a `trusted` definition and revision whose revision-level and node-level
-approval modes are all `preauthorized` can be attached to an unattended
-trigger. The trigger manifest must also be preauthorized. These conditions are
-checked when the trigger is created or re-enabled, at every delivery claim, and
-again when the run is created. A later trust downgrade or permission change
-therefore fails closed rather than inheriting stale authority. Normal workflow
-permission coverage and runtime enforcement still apply inside every node.
-
-Schedule triggers choose `skip` or one-delivery catch-up behavior and either
-pause while their worker is offline or persist a queued run for later dispatch.
-The scheduler advances due times with compare-and-set updates. API deliveries
-use the operator API's trigger-scoped endpoint and webhook deliveries use a
-separate trigger-scoped endpoint with a constant-time comparison against a stored
-SHA-256 credential hash; public trigger responses never return that hash.
-Every trigger has a durable minimum interval, and repeating an idempotency key
-returns the original delivery and run instead of launching twice.
-
-Structured delivery input is validated and merged with the trigger snapshot
-before persistence. Fields whose names indicate secrets, tokens, passwords,
-credentials, authorization values, or API keys are rejected recursively, and
-neither webhook credentials nor payloads are included in provenance.
-
-Git/GitHub adapters deliver a normalized `push` or `pull-request` event to a
-specific trigger. Cantrip verifies the configured event and a bounded `*`
-branch pattern before claiming the provider delivery id; event, branch, and
-delivery id are retained as auditable provenance. Saved commands appear in the
-unified palette as `/command/<key>` and invoke their specific trigger with a
-fresh idempotency key. Both adapters use the same worker availability, trust,
-preauthorization, rate-limit, and secret-input checks as schedules and scoped
-webhooks.
-
-The workflow center creates every trigger disabled. It shows its pinned type,
-delivery surface, next due time, and latest durable error, and exposes explicit
-Enable and Disable actions. Webhook credentials are hashed in the client and
-cleared from the form; only the SHA-256 hash crosses the app/server boundary.
-The app remains a client of Cantrip Server, and Cantrip's trigger adapters remain
-control-plane consumers rather than alternate agent runtimes.
-
-Git triggers and open-issue automation conditions require the corresponding
-project capability. Managed-folder projects keep schedules, scoped API,
-credentialed webhooks, saved commands, and script conditions, while Git events
-and open-issue conditions are hidden and rejected by the server.
+For historical implementation evidence, see
+[WORKFLOW_IMPLEMENTATION_AUDIT.md](WORKFLOW_IMPLEMENTATION_AUDIT.md) and
+[ADR 0004](adr/0004-codex-native-workflow-control-plane.md).

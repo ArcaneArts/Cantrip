@@ -64,8 +64,8 @@ processes remain on the worker that owns the checkout.
 
 ## 2. Goals
 
-- Make `codegraph` available from normal terminals, terminal services,
-  automation, workflows, Codex consoles, and agent command environments.
+- Make `codegraph` available from normal terminals, terminal services, project
+  automation, Codex consoles, and agent command environments.
 - Give every Cantrip agent working in a project the upstream
   `codegraph_explore` MCP tool and CodeGraph's native MCP usage guidance.
 - Keep each graph current after file edits, branch changes, agent writes, and
@@ -295,10 +295,10 @@ not set `DO_NOT_TRACK=1` globally for every command in the user's terminal.
 
 ## 8. Terminal and command availability
 
-`TerminalManager`, terminal services, workflows, automation, and other
-worker-owned command runners will prepend the worker's CodeGraph launcher
-directory to `PATH`. An existing user-managed CodeGraph remains untouched and
-Cantrip's launcher wins only inside Cantrip-owned process environments.
+`TerminalManager`, terminal services, project automation, and other worker-owned
+command runners will prepend the worker's CodeGraph launcher directory to
+`PATH`. An existing user-managed CodeGraph remains untouched and Cantrip's
+launcher wins only inside Cantrip-owned process environments.
 
 Normal analysis commands pass through unchanged, including `init`, `status`,
 `sync`, `query`, `explore`, `callers`, `callees`, `impact`, and `affected`.
@@ -407,7 +407,7 @@ not need it. Cantrip supplies the same stdio MCP definition directly to:
 
 - normal agent turns and resumed chats;
 - the linked Codex console;
-- workflow and automation agent runs;
+- project automation agent runs;
 - Git-generated agent work;
 - chat import and relocation hydration; and
 - structured filesystem-backed agent operations when MCP use is compatible

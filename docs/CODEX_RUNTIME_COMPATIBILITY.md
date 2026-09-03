@@ -191,29 +191,31 @@ configuration, providers, or authentication, and never modifies an existing
 external thread. See
 [the export contract](CODEX_CHAT_EXPORT.md).
 
-## Server-managed ChatGPT authentication
+## Endpoint-protected ChatGPT authentication
 
 Portable ChatGPT accounts depend on an experimental Codex 0.153 App Server
-surface. Before starting a server-managed ChatGPT runtime, the worker requires:
+surface. Before starting a portable ChatGPT runtime, the worker requires:
 
 - semantic version `0.153.x`;
 - `initialize.capabilities.experimentalApi` support; and
 - an available `account/login/start` method.
 
-The worker obtains a short-lived access lease from Cantrip Server and invokes
-`account/login/start` with `type: "chatgptAuthTokens"`, the access token,
-ChatGPT account/workspace ID, and plan type. Codex may later send the worker an
+The worker fetches the opaque credential from Cantrip Server, opens it locally,
+refreshes and reseals the OAuth bundle when needed, and constructs a short-lived
+in-memory access-token lease. It invokes `account/login/start` with
+`type: "chatgptAuthTokens"`, the access token, ChatGPT account/workspace ID, and
+plan type. Codex may later send the worker an
 `account/chatgptAuthTokens/refresh` server request. Cantrip validates its reason
-and previous account ID, asks the server for a forced lease newer than the
-current credential revision, verifies the provider/account identity did not
+and previous account ID, obtains and opens the current opaque credential,
+refreshes/reseals it locally, verifies the provider/account identity did not
 change, and returns the replacement token within the normal App Server request
-timeout. The worker keeps these tokens only in memory and does not create a
-durable `auth.json` for this mode.
+timeout. The worker keeps tokens and five-minute access-token leases only in
+memory and does not create a durable `auth.json` for this mode.
 
 This integration required no patch to the imported Codex 0.153 source. It is
 still experimental upstream: method names, request shapes, login result types,
 or refresh timing may change even if core thread methods remain compatible.
-Cantrip therefore fails with an explicit server-managed-auth compatibility
+Cantrip therefore fails with an explicit portable-auth compatibility
 error instead of falling through to an unrelated account. A Codex pin upgrade
 must regenerate schemas and add a real compatibility fixture covering login,
 one successful turn, the refresh server request, identity preservation, and
