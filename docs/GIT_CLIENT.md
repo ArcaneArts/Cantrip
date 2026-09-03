@@ -366,8 +366,8 @@ the original HEAD before rewriting it.
 If cherry-pick or revert conflicts, Cantrip does not claim success or clean up
 the Git sequencer. The result records the operation type, original/current HEAD,
 source sequence, current step, and conflicted paths, then directs the user to
-Working changes. This shared operation envelope is the basis for the resumable
-continue/skip/abort controls in the next Git milestone.
+Working changes. This shared operation envelope also drives the shipped
+resumable continue/skip/abort controls.
 
 Manual QA:
 

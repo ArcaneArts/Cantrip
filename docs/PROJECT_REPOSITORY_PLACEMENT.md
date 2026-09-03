@@ -11,12 +11,20 @@ submits placement intent; only the worker parses paths or changes files.
 
 ## Placement modes
 
-| Mode                                              | Requested path                  | Canonical execution root                          | Ownership |
-| ------------------------------------------------- | ------------------------------- | ------------------------------------------------- | --------- |
-| **Managed by Cantrip**                            | None                            | `<worker-data>/repositories/<owner>/<repository>` | Cantrip   |
-| **Managed clone with link**                       | Exact final link path           | The managed checkout, never the link spelling     | Cantrip   |
-| **Use this worker path** with a missing target    | Exact final checkout path       | The created checkout after canonicalization       | Cantrip   |
-| **Use this worker path** with a matching checkout | Exact existing Primary checkout | The existing checkout after canonicalization      | User      |
+| Mode                                              | Requested path                  | Canonical execution root                                 | Ownership |
+| ------------------------------------------------- | ------------------------------- | -------------------------------------------------------- | --------- |
+| **Managed by Cantrip**                            | None                            | The selected workspace's derived managed repository root | Cantrip   |
+| **Managed clone with link**                       | Exact final link path           | The managed checkout, never the link spelling            | Cantrip   |
+| **Use this worker path** with a missing target    | Exact final checkout path       | The created checkout after canonicalization              | Cantrip   |
+| **Use this worker path** with a matching checkout | Exact existing Primary checkout | The existing checkout after canonicalization             | User      |
+
+For a managed workspace, the derived target is
+`<worker-data>/workspaces/<workspace-UUID>/repositories/<owner>/<repository>`.
+The built-in system workspace and legacy workspaces retain
+`<worker-data>/repositories/<owner>/<repository>`. An attached workspace's home
+root is never an implicit clone destination; additional managed replicas retain
+the established worker-level root unless the user chooses an exact direct
+path.
 
 The existing **Add** action remains the one-click managed import. Choose **Add
 with location...** to select another mode. The path label names the selected
@@ -35,6 +43,10 @@ Code, Git, CodeGraph, workflows, shares, and Run configurations continue using
 the managed checkout's canonical path. Removing the link does not make the project
 unavailable; Project Settings can repair a missing link when the original path
 is free.
+
+Workers advertise `workspaceScopedRoots` before the server assigns a managed
+workspace repository or folder to them. Older workers remain usable for the
+system/legacy workspace but cannot receive workspace-scoped materialization.
 
 ## Privacy and authority
 

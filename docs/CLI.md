@@ -151,9 +151,9 @@ commands can run from a normal project terminal.
 ## Codex integration
 
 For applicable new and resumed chat threads, the worker injects a required
-native MCP server named `cantrip`. Its 36 read, worker-mutation, and ephemeral
-client-control tools appear in Codex's runtime inventory as **Managed by
-Cantrip**. The developer instruction directs Codex to prefer MCP, start with
+native MCP server named `cantrip`. Its permission-filtered read,
+worker-mutation, and ephemeral client-control catalog appears in Codex's
+runtime inventory as **Managed by Cantrip**. The developer instruction directs Codex to prefer MCP, start with
 `context_get`, read required Policies, use `run_configuration_detect` for
 guided targets, and obtain stable IDs and revisions through
 `run_configuration_list` or `run_configuration_get`. Agents create and update

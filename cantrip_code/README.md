@@ -46,6 +46,7 @@ series, product overrides, Cantrip-owned extensions, and native target.
 ```bash
 pnpm code:build
 pnpm code:ready
+pnpm code:source:verify
 pnpm code:verify
 pnpm code:dev
 pnpm code:clean
@@ -57,14 +58,16 @@ packager. It writes only ignored build and cache directories. A valid build is
 reused until an input changes. Git worktrees share the repository-level
 `.cantrip-code/cache` so sequential PR cycles reuse the same immutable artifact;
 set `CANTRIP_CODE_CACHE_DIR` to place this build cache on another volume.
-`code:verify` hashes the complete cached distribution against its manifest;
-`code:ready` is the intentionally cheaper startup check. `code:dev` hosts the
-cached editor on `127.0.0.1:9888` with isolated development state.
+`code:source:verify` verifies the vendored source and patch manifest.
+`code:verify` validates source/build identity, required entrypoints, and bundled
+Workbench compatibility; `code:ready` is the intentionally cheaper startup
+check. `code:dev` hosts the cached editor on `127.0.0.1:9888` with isolated
+development state.
 
-Normal `pnpm dev` and `pnpm devtop` never begin the large editor build. They
-stop with a `pnpm code:build` instruction when the required cache is absent or
-stale. Worker and desktop packaging do build (or reuse) the editor and embed
-that exact immutable distribution.
+Normal `pnpm dev` and `pnpm devtop` run `pnpm dev:prepare`, which builds or
+reuses the required editor cache before starting the stack. Worker and desktop
+packaging likewise build or reuse the editor and embed that exact immutable
+distribution.
 
 The editor build bootstraps the exact Node release pinned in upstream's
 `.nvmrc`, verifies it against Node's published SHA-256 inventory, and caches it

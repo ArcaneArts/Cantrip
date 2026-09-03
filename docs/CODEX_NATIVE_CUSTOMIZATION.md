@@ -187,8 +187,10 @@ through import before Cantrip implements and validates them.
 
 ## Deliberate degradation
 
-- Native multi-agent activity uses Codex's `multi_agent` feature and App Server
-  events. Cantrip does not synthesize custom subagent semantics.
+- Native multi-agent activity uses Codex's provider-compatible v1 or v2
+  multi-agent feature and App Server events. ChatGPT uses v2 under the
+  `cantrip_agents` namespace; Ollama and OpenAI-compatible providers use v1.
+  Cantrip does not synthesize custom subagent semantics.
 - Codex 0.151.0 does not expose a project/personal custom-agent discovery
   method. Cantrip reports that control as unsupported while keeping native
   subagents available.

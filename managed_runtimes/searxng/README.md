@@ -14,8 +14,9 @@ pnpm managed-runtime:searxng:build -- --target linux-x64
 The build downloads only the pinned inputs, verifies their byte count and
 SHA-256 digest, installs wheels into the bundled interpreter, gathers matching
 source distributions and license metadata, launches the artifact offline, and
-writes an unsigned release descriptor. Release CI repeats a real-engine smoke
-before signing and publishing all six descriptors as one manifest.
+writes an unsigned release descriptor. Release CI repeats a real-engine smoke,
+signs each artifact record, and publishes the records inside the shared
+twelve-artifact web-runtime manifest.
 
 Production signing uses `CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_BASE64`, an
 Ed25519 PKCS#8 DER private key stored as a GitHub Actions secret. The matching

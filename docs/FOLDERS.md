@@ -1,7 +1,10 @@
-# Worker-managed folder projects
+# Folder-origin and local Git projects
 
 Status: implemented. This document is the product contract, architecture
-record, and acceptance matrix for the shipped behavior.
+record, and acceptance matrix for the shipped behavior. Imperative language in
+the baseline, implementation, and verification sections is retained as delivery
+history; the product decisions and final acceptance behavior describe the
+current contract.
 
 The implementation was delivered through seven sequential Manual Change
 Protocol cycles: domain and migration, worker materialization, routing and
@@ -13,16 +16,16 @@ worktree and ready pull request; no omnibus branch was used.
 
 Folder attachment and GitHub repository placement are separate authority
 contracts. A newly created folder source uses the worker's `managedFolders`
-lifecycle without Git capabilities. When the user explicitly attaches an
-existing folder whose root is a Git checkout, Cantrip detects that checkout and
-enables its local Git surfaces. If its `origin` is a GitHub repository that the
-worker's existing `gh` CLI session can access, Cantrip also enables GitHub
-Issues, pull requests, releases, and related repository surfaces. This does not
-grant replica, relocation, or secondary-worktree management to the folder
-project. A GitHub source uses the `projectReplicas` lifecycle and
-may choose a managed Primary, a managed Primary with an external link, or a
-direct exact worker path. Its worker validates Git identity and always exposes
-the canonical Primary checkout to runtime surfaces.
+lifecycle without Git capabilities. When the user attaches an existing folder
+whose root is a Git checkout, Cantrip registers a **local Git project** and
+enables Git surfaces. If its `origin` is a GitHub repository that the worker's
+existing `gh` CLI session can access, Cantrip also enables GitHub Issues, pull
+requests, releases, and related repository surfaces. A local Git project can
+attach an existing matching checkout at the current revision on another worker
+and relocate execution between ready sources. It does not gain Cantrip-managed
+secondary worktrees or automatic clone/synchronization behavior. A full GitHub
+project may additionally create managed replicas, use managed-link placement,
+or clone to a direct exact worker path.
 
 Neither flow interprets a path on the browser, desktop, or mobile client. A
 remote path always belongs to the selected worker, and the server routes only
@@ -32,26 +35,28 @@ See [PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md).
 
 ## Objective
 
-Provide a first-class Cantrip project type backed by a new empty directory on one
-worker rather than by a Git or GitHub repository. A folder project supports the
-normal Cantrip workspace experience without creating a `.git` directory,
-requiring GitHub authentication, or pretending that Git-backed recovery and
-replication exist.
+Provide first-class Cantrip projects backed either by a non-Git directory on one
+worker or by an attached local Git checkout. A non-Git folder supports the
+normal Cantrip workspace experience without creating a `.git` directory or
+pretending that Git-backed recovery exists. A checkout detected during
+attachment receives explicit Git-derived capabilities instead of being treated
+as an ordinary folder.
 
-The directory remains owned by exactly one worker. Any authenticated Cantrip
-client may view and control the project through the server from a browser,
-Tauri desktop app, or mobile device. If the owning worker is offline, durable
-server-owned metadata and conversation history remain readable, but every
-operation that needs the directory or that worker is unavailable until it
-reconnects.
+A non-Git directory remains owned by exactly one worker. A local Git project may
+attach matching user-owned sources on additional workers and select one as its
+preferred source. Any authenticated Cantrip client may view and control either
+kind through the server. When no ready source is online, durable server-owned
+metadata and conversation history remain readable while filesystem-backed
+operations are unavailable.
 
 ## Product decisions
 
 - Folder projects may create a new empty Cantrip-managed directory or attach
   an existing directory selected on the worker.
-- A folder project is permanently bound to its creation worker until it is
-  explicitly converted into a GitHub-backed project. V1 does not replicate its
-  files or relocate its execution to another worker.
+- A non-Git folder is bound to its creation worker until it is explicitly
+  converted into a GitHub-backed project. A local Git project may attach an
+  existing matching checkout on another worker and relocate execution to that
+  ready source.
 - Project display names may repeat. Physical directory identity uses the
   project UUID and never depends on the display name.
 - Agents and write-capable workflows may write directly into the folder. The
@@ -61,9 +66,9 @@ reconnects.
 - Non-Git folder projects have no repository surfaces. An attached folder
   rooted at a Git checkout gains local History, changes, graph, branch, stash,
   tag, remote, and related Git views. An authenticated GitHub `origin` also
-  enables Issues, pull requests, releases, and related GitHub views. Folder
-  projects never gain Git replicas, relocation, or secondary-worktree
-  management from this detection.
+  enables Issues, pull requests, releases, and related GitHub views. Local Git
+  projects gain source attachment and relocation, but not Cantrip-managed
+  secondary worktrees or automatic replica synchronization.
 - Running `git init` after a folder is added does not silently change its
   capabilities. Repository capabilities are detected while attaching an
   existing folder. Explicit conversion remains the path for moving a
@@ -76,15 +81,20 @@ reconnects.
 
 ## Terminology
 
-- **Folder project** — the server-owned project whose origin kind is a managed
-  directory rather than GitHub.
-- **Folder source** — the one worker-owned physical installation of that
-  project.
+- **Folder-origin project** — a project whose origin kind is `managed-folder`,
+  covering both non-Git folders and local Git projects.
+- **Non-Git folder** — a folder-origin project without Git capability and with
+  one worker-bound source.
+- **Local Git project** — a folder-origin project detected as a Git checkout at
+  attachment time. It may have multiple attached user-owned sources.
+- **Folder source** — a worker-owned or user-owned physical installation of a
+  folder-origin project.
 - **Execution root** — the canonical directory used as `cwd` and workspace
   root by Agents, Tasks, Terminals, Explorers, Code, workflows, and related
   worker operations.
-- **Owning worker** — the only worker allowed to dereference or execute in the
-  folder source.
+- **Owning worker** — for a non-Git folder, the only worker allowed to
+  dereference or execute in its source. A local Git project instead selects
+  among its ready attached sources.
 - **Remote client** — any browser, desktop, or mobile client connected to the
   server. Client location does not change worker ownership.
 
@@ -117,10 +127,11 @@ root, never a worktree.
 - attaching an existing worker directory; and
 - conditional Git and GitHub repository surfaces for an attached checkout.
 
-### Not supported
+### Not supported for non-Git folders
 
 - additional worktrees or worktree policy selection;
-- project replicas, cross-worker file synchronization, or chat relocation;
+- additional worker sources, cross-worker file synchronization, or chat
+  relocation;
 - automatic project-type changes after `git init`; or
 - recovery, rollback, diff attribution, or checkpoint revisions supplied by
   Git.
@@ -254,10 +265,11 @@ origin-kind heuristics:
 }
 ```
 
-For a non-Git folder all five values are false. Attached checkouts may set
-`git`, and authenticated GitHub checkouts may additionally set `github`.
-`worktrees`, `replicas`, and `relocation` stay false for every folder project.
-Filesystem and runtime capabilities continue to come from the owning worker.
+For a non-Git folder all five values are false. An attached checkout sets `git`,
+may set `github` when its remote is verified, and sets `replicas` plus
+`relocation` so matching existing sources can be attached and selected on other
+workers. `worktrees` remains false for local Git projects. Filesystem and
+runtime capabilities continue to come from the selected source worker.
 
 ### Worker capability
 
@@ -277,7 +289,7 @@ Content-Type: application/json
 {
   "name": "Scratch prototype",
   "workerId": "worker-id",
-  "workspaceIds": ["workspace-id"]
+  "workspaceId": "workspace-id"
 }
 ```
 
@@ -297,14 +309,17 @@ restarts. Do not perform an untracked `mkdir` directly inside the HTTP request.
 The setup sequence is:
 
 1. In one database transaction, create the `managed-folder` project, assign its
-   workspaces, bind its preferred worker, and enqueue an idempotent setup job.
+   workspace, bind its preferred worker, and enqueue an idempotent setup job.
 2. Publish the project and setup-job invalidations so every client sees
    `preparing` immediately.
 3. When the worker is available and advertises the capability, send a bounded
    command containing the project UUID.
-4. The worker derives `<worker-data>/folders/<project-id>`, creates it with
-   owner-only permissions where supported, rejects symlinks and non-directory
-   collisions, canonicalizes it, and returns its canonical and display paths.
+4. The worker derives
+   `<worker-data>/workspaces/<workspace-id>/folders/<project-id>` for a managed
+   workspace, or the legacy `<worker-data>/folders/<project-id>` root for the
+   system/legacy workspace. It creates the directory with owner-only
+   permissions where supported, rejects symlinks and non-directory collisions,
+   canonicalizes it, and returns its canonical and display paths.
 5. Repeating the same command for the same project returns the same empty or
    previously materialized managed directory. It never chooses a new path.
 6. In one completion transaction, insert the folder source and folder-root
@@ -322,17 +337,17 @@ replica executor.
 
 ## Execution placement and offline behavior
 
-All folder-backed operations resolve to the owning worker and folder-root row.
-An explicit target naming another worker is rejected with a capability-specific
-conflict. Browser and Remote Desktop surfaces also remain on the owning worker
-for a folder project, even though those surface types can use arbitrary workers
-for GitHub projects today.
+Non-Git folder operations resolve to the owning worker and folder-root row. An
+explicit target naming another worker is rejected with a capability-specific
+conflict. Local Git project operations resolve through the selected ready
+source; Browser and Remote Desktop may target available project workers under
+the normal placement rules.
 
 Remote clients are not restricted. They continue to read server-owned state
 and route actions through the server from any supported client. Worker
 placement and client location are independent concepts.
 
-When the owning worker is offline:
+When a non-Git folder's owning worker is offline:
 
 - project identity, settings, tabs, conversation history, plans, workflow
   history, and usage remain readable;
@@ -344,9 +359,10 @@ When the owning worker is offline:
 
 ## Agent and Task behavior
 
-The folder root is a normal Codex `cwd` and runtime workspace root. Default
-permission profiles and approval behavior remain unchanged. Folder projects
-use direct workspace-write semantics because no secondary worktree exists.
+The non-Git folder root is a normal Codex `cwd` and runtime workspace root.
+Default permission profiles and approval behavior remain unchanged. Folder
+projects use direct workspace-write semantics because no secondary worktree
+exists.
 
 Every turn receives concise application context stating that:
 
@@ -367,7 +383,7 @@ rather than presenting them as failed lookups.
 
 ## Workflow behavior
 
-Folder projects allow both read-only and write-capable workflow nodes.
+Non-Git folder projects allow both read-only and write-capable workflow nodes.
 
 - Every node executes on the owning worker in the same folder root.
 - Read-only nodes keep the existing read-only sandbox behavior.
@@ -391,24 +407,25 @@ warning gate that blocks their requested execution.
 
 ## Surface and feature behavior
 
-| Feature                           | Folder-project behavior                                                            |
-| --------------------------------- | ---------------------------------------------------------------------------------- |
-| Agent / Task                      | Runs in the folder root with direct writes.                                        |
-| Terminal                          | Starts in the folder or requested safe subdirectory.                               |
-| Explorer                          | Full read/write support; commit metadata reports unavailable.                      |
-| Code                              | Opens the folder root in the existing isolated Cantrip Code session.               |
-| Browser                           | Runs on the owning worker.                                                         |
-| Remote Desktop                    | Shows and controls the owning worker.                                              |
-| Tunnels                           | Existing project-associated tunnel routing remains available on the owning worker. |
-| Project Share                     | Shares the folder root through the existing authorized WebDAV path.                |
-| Policies / skills / MCP           | Resolve and apply normally. Repository-local files are read from the folder.       |
-| Scheduled prompts                 | Run normally against the selected Agent.                                           |
-| Script condition                  | Runs in the folder root.                                                           |
-| Open-issues condition             | Hidden and rejected because there is no GitHub repository.                         |
-| Workflow repository               | Scans and writes normal workflow files in the folder.                              |
-| External chat import              | Path-based matching may apply; Git-origin matching does not.                       |
-| Git / Issues / PRs / Releases     | Hidden in UI and rejected by the server.                                           |
-| Worktrees / replicas / relocation | Hidden and rejected for folder projects.                                           |
+| Feature                       | Folder-project behavior                                                                |
+| ----------------------------- | -------------------------------------------------------------------------------------- |
+| Agent / Task                  | Runs in the folder root with direct writes.                                            |
+| Terminal                      | Starts in the folder or requested safe subdirectory.                                   |
+| Explorer                      | Full read/write support; commit metadata reports unavailable.                          |
+| Code                          | Opens the folder root in the existing isolated Cantrip Code session.                   |
+| Browser                       | Runs on the owning worker.                                                             |
+| Remote Desktop                | Shows and controls the owning worker.                                                  |
+| Tunnels                       | Existing project-associated tunnel routing remains available on the owning worker.     |
+| Project Share                 | Shares the folder root through the existing authorized WebDAV path.                    |
+| Policies / skills / MCP       | Resolve and apply normally. Repository-local files are read from the folder.           |
+| Scheduled prompts             | Run normally against the selected Agent.                                               |
+| Script condition              | Runs in the folder root.                                                               |
+| Open-issues condition         | Hidden and rejected because there is no GitHub repository.                             |
+| Workflow repository           | Scans and writes normal workflow files in the folder.                                  |
+| External chat import          | Path-based matching may apply; Git-origin matching does not.                           |
+| Git / Issues / PRs / Releases | Hidden for non-Git folders; exposed according to detected local Git/GitHub capability. |
+| Worktrees                     | Hidden and rejected for every local Git project until full GitHub conversion.          |
+| Sources / relocation          | Hidden for non-Git folders; local Git projects may attach matching ready sources.      |
 
 ## Folder statistics
 
@@ -433,7 +450,7 @@ size.
 
 The New Project flow exposes three clear paths:
 
-1. **New folder** — requires a name, owning worker, and workspace membership;
+1. **New folder** — requires a name, owning worker, and workspace destination;
 2. **Existing folder** — attaches an exact directory on the selected worker;
 3. **GitHub repository** — retains the existing import/create experience.
 
@@ -450,10 +467,10 @@ the project overview, consistent with existing mobile navigation.
 Use a normal folder icon and source display path. Add a compact `Folder`
 identity label where GitHub projects show repository identity.
 
-For folder projects:
+For non-Git folder projects:
 
 - remove Git from every surface-creation menu;
-- remove Worktrees and Replicas settings;
+- remove Worktrees and worker-source settings;
 - hide worktree policy, branch, HEAD, dirty state, Issues, PRs, and releases;
 - hide chat worktree-mode controls and relocation actions;
 - keep Automations, Workflows, Tunnels, Policies, Skills, MCP, archive, and
@@ -466,8 +483,9 @@ The server remains the enforcement boundary for stale clients.
 ## Unlink and destructive deletion
 
 The first removal dialog defaults to **Unlink project** and leaves the folder
-unchanged. It must explain that V1 cannot reattach the preserved folder through
-the New Folder flow. The user retains full access to the path on the worker.
+unchanged. The preserved directory can later be attached as a new project
+through **Existing folder**. The user retains full access to the path on the
+worker.
 
 The first dialog also offers **Also delete local files**. When checked, its
 primary action becomes **Continue to delete** and opens a second dialog. The
@@ -480,9 +498,10 @@ second dialog:
 
 The server closes or revokes project-owned terminals, remote surfaces, shares,
 and tunnels before deletion. The worker deletion command accepts only the
-canonical `<worker-data>/folders/<project-id>` target recorded for that
-project, rejects the folders root itself, rejects symlinks and kind mismatches,
-and deletes no path supplied directly by a client.
+canonical derived managed-folder target recorded for that project—inside the
+workspace-scoped root for managed workspaces or the worker-level root for the
+system/legacy workspace. It rejects either folders root itself, symlinks, and
+kind mismatches, and deletes no path supplied directly by a client.
 
 If the worker is offline, unlink without file deletion remains possible after
 server-owned cleanup. Local-file deletion waits for the owning worker and never
@@ -490,11 +509,12 @@ silently degrades into unlinking.
 
 ## Explicit conversion to GitHub
 
-Manual `git init`, adding a remote, or creating commits after attachment does
-not change the project's persisted capabilities. A folder stays in the
-worker-bound folder lifecycle even when repository views are enabled. The user
-must choose **Convert to GitHub project** in Project Settings to move it into
-the replica and worktree-management lifecycle.
+Manual `git init`, adding a remote, or creating commits after a non-Git folder
+has been registered does not change its persisted capabilities. Git detected
+during initial attachment creates a local Git project with source attachment
+and relocation support. The user must choose **Convert to GitHub project** in
+Project Settings to enter the full managed-replica and secondary-worktree
+lifecycle.
 
 The conversion must:
 
@@ -644,8 +664,9 @@ merge observation, and cleanup.
 - Offline setup remains queued and resumes after reconnect.
 - Replayed setup completion does not duplicate a source or root.
 - Every filesystem-backed surface resolves only to the owning worker.
-- Explicit other-worker targets and every Git-only route fail for folder
-  projects.
+- Explicit other-worker targets and every Git-only route fail for non-Git
+  folders. Local Git projects accept only compatible ready attached sources and
+  still reject secondary-worktree operations.
 - Remote clients retain readable durable state while the worker is offline.
 - Unlink succeeds independently of worker availability; deletion requires the
   owning worker.
@@ -677,8 +698,9 @@ merge observation, and cleanup.
 
 - New Folder is available without GitHub authentication.
 - Duplicate names render and select independently.
-- Git, Issues, PRs, releases, Worktrees, Replicas, relocation, and open-issue
-  conditions do not appear.
+- Git, Issues, PRs, releases, Worktrees, worker sources, relocation, and
+  open-issue conditions do not appear for non-Git folders. Local Git projects
+  expose only the capabilities detected and authorized for their source.
 - Agent, Task, Terminal, Explorer, Code, Browser, Remote Desktop, tunnel,
   policy, skill, MCP, workflow, and automation actions remain available.
 - Offline state is explicit and recovers live.
@@ -703,19 +725,20 @@ also run the focused matrix in
 ## Definition of done
 
 A user can create two identically named empty folder projects or attach an
-existing directory on one or more workers, distinguish them by worker/path
-context, and use every supported Cantrip surface from local or remote clients.
+existing directory, distinguish them by worker/path context, and use every
+supported Cantrip surface from local or remote clients.
 An attached Git checkout exposes repository history, and an authenticated
-GitHub origin exposes GitHub collaboration views. Direct Agent and workflow
-writes are permitted according to the selected permissions and workflow
-definition.
+GitHub origin exposes GitHub collaboration views. A local Git project may attach
+matching checkouts on additional workers and relocate to a ready source. Direct
+Agent and workflow writes are permitted according to the selected permissions
+and workflow definition.
 
-The project stays bound to its owning worker, becomes unavailable for execution
-when that worker is offline, and resumes on reconnect. Unsupported replication
-and relocation actions remain absent and fail closed through the server if
-invoked by a stale client. Permanent deletion requires a second warning and can
-remove only the exact worker-managed folder.
+The non-Git folder stays bound to its owning worker, becomes unavailable for
+execution when that worker is offline, and resumes on reconnect. Unsupported
+source attachment and relocation actions remain absent and fail closed through
+the server if invoked by a stale client. Permanent deletion requires a second
+warning and can remove only the exact worker-managed folder.
 
-The project can gain managed replicas and worktrees only through the explicit
-GitHub conversion flow, which preserves its Cantrip identity and never guesses how to merge or
-overwrite repository history.
+A local Git project gains full managed replicas and worktrees only through the
+explicit GitHub conversion flow, which preserves its Cantrip identity and never
+guesses how to merge or overwrite repository history.

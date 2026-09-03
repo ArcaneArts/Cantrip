@@ -8,15 +8,18 @@ The project is inspired by the Codex desktop experience, but its architecture is
 
 ## What Cantrip does
 
-Cantrip organizes work into projects backed either by a GitHub repository or by
-a worker-bound folder. From the project picker, create an empty Cantrip-owned
-folder, attach a directory that already exists on a selected worker, import an
-existing repository, or create a public or private repository in a personal
-account or organization. Folder projects do not expose Cantrip's Git, GitHub,
-worktree, replica, or relocation features. A Cantrip-managed folder can later
-use the explicit conversion flow to become a new or empty GitHub repository;
-an attached user-owned folder stays in folder mode. Every project resolves to a
-source folder on a worker and can contain an ordered mix of:
+Cantrip organizes work into projects backed by a GitHub repository, an imported
+local Git checkout, or a worker-bound non-Git folder. From the project picker,
+create an empty Cantrip-owned folder, attach a directory that already exists on
+a selected worker, import a repository discovered in a workspace, or create or
+import a public or private GitHub repository. Cantrip detects Git when an
+existing directory is attached. A local Git project receives Git, source
+attachment, and safe relocation capabilities; a verified GitHub remote also
+enables GitHub collaboration surfaces. Local Git projects do not receive
+Cantrip-managed secondary worktrees. A ready managed folder or local Git
+project can later use the explicit conversion flow to enter the full GitHub
+project lifecycle. Every project resolves to a source folder on a worker and
+can contain an ordered mix of:
 
 GitHub imports keep a one-click worker-managed default and also support an
 exact path on the selected worker. Cantrip can keep the canonical clone in its
@@ -28,15 +31,15 @@ cross the server only as opaque worker routing handles. See the
 [project repository placement guide](docs/PROJECT_REPOSITORY_PLACEMENT.md).
 
 - Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, drag-and-drop, paste, and picker attachments, large-paste attachments, image input for capable providers including Grok, per-message Default/Plan/Goal modes, model and reasoning selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
-- Task-backed chats for large jobs. A Task starts as a full Markdown brief with
-  attachments, runs strictly read-only planning into a durable Markdown plan
-  and structured questions, supports repeated refinements and revision-safe
-  user edits, then finalizes and automatically starts one Goal on the same
-  Codex thread. Its dashboard keeps the immutable plan, Goal usage and controls,
-  live Agent activity, worker/worktree state, associated pull requests, and
-  nonblocking policy-cycle warnings together. Tasks survive tab changes,
-  desktop pop-outs, worker outages, archive/restore, server restarts, and—on
-  GitHub-backed projects—relocation. See [the Tasks contract](docs/TASKS.md).
+- Task-backed chats for large jobs. **Direct** Tasks queue an ordinary Agent
+  turn; opt-in **Plan + Goal** Tasks run read-only planning, support question
+  rounds and revision-safe plan edits, then finalize into Goal implementation
+  on the same Codex thread. Every runnable cycle enters the durable
+  account-global scheduler and waits for an eligible configured Task Worker
+  with capacity. Task state survives tab changes, desktop pop-outs, worker
+  outages, archive/restore, server restarts, and—on Git-capable projects—safe
+  relocation between compatible ready sources. See [the Tasks
+  contract](docs/TASKS.md).
 - Native macOS and Windows import of compatible local ChatGPT Codex chats as
   resumable Cantrip-managed forks. See
   [the Codex chat import guide](docs/CODEX_CHAT_IMPORT.md).
@@ -52,25 +55,29 @@ cross the server only as opaque worker routing handles. See the
   the selected file, draft, cursor, scroll position, and undo history survive
   ordinary tab changes.
 - Embedded Cantrip Code tabs backed by the selected worker and checkout, with the project pretrusted, Cantrip's chosen theme applied on startup, and unnecessary onboarding/chat surfaces hidden.
-- Worker-streamed Browser tabs for project-related web pages, with server-routed keyboard, mouse, wheel, and mobile touch input while Chromium and its persistent profile remain on the worker.
+- Worker-streamed Browser tabs for project-related web pages, with
+  WorkerLink-routed keyboard, mouse, wheel, and mobile touch input while
+  Chromium and its persistent profile remain on the worker.
 - Saved and feature-managed tunnels that expose explicit worker-local services
   on Tauri desktop loopback without opening inbound worker ports. See
   [the tunnels guide](docs/TUNNELS.md).
 - One-click Remote Desktop tabs for the project worker's screen.
-- On GitHub-backed projects, a unified Git tab with History, Issues, and Pull
-  Requests. History includes a branch graph, refs and tags, every known
+- On Git-capable projects, a unified Git tab. History includes a branch graph,
+  refs and tags, every known
   worktree HEAD, per-worktree WIP state, clickable commit inspection and
   revision patches, staged and unstaged changes, commits, branches, stashes,
-  conflict resolution, and pull/push operations. Issues and pull requests have
-  open/closed views and GitHub-backed management. See
+  conflict resolution, and pull/push operations. Projects whose remote is a
+  verified accessible GitHub repository also receive Issues and Pull Requests
+  views with GitHub-backed management. See
   [the Git client guide](docs/GIT_CLIENT.md).
 
-Folder projects have two ownership modes:
+Folder-origin projects have two ownership modes:
 
 - **Managed folder:** Cantrip creates an empty UUID-derived directory beneath
-  the selected worker's private `folders` root. Unlinking preserves it so it
-  can be added again by path. Permanent deletion is available only through a
-  separate checkbox and an additional warning confirmation.
+  the selected workspace's Cantrip-managed storage on the selected worker.
+  Unlinking preserves it so it can be added again by path. Permanent deletion
+  is available only through a separate checkbox and an additional warning
+  confirmation.
 - **Attached folder:** Cantrip resolves an existing directory on the selected
   worker and leaves it user-owned. The desktop add dialog can browse when that
   worker is linked to the same desktop installation; otherwise enter an
@@ -80,9 +87,11 @@ Folder projects have two ownership modes:
 Project display names may repeat in either mode. Both modes support Agents,
 Tasks, terminals, Explorer, Code, Browser, Remote Desktop, tunnels, shares,
 scripts, policies, skills, MCP, automations, and direct write-capable workflows.
-Only a ready Cantrip-managed folder offers GitHub conversion. Running `git init`
-inside either kind of folder does not change the Cantrip project type. See
-[the folder-project design](docs/FOLDERS.md).
+An attached directory that is already a Git checkout is registered as a local
+Git project and may attach matching ready sources on other workers. A verified
+GitHub remote adds collaboration features. Running `git init` after a non-Git
+folder is added does not silently change its capabilities; use the explicit
+conversion flow instead. See [the folder-project contract](docs/FOLDERS.md).
 
 On macOS and Windows desktop builds, each project's actions menu includes
 **Reveal in Finder** or **Reveal in File Explorer**. Selecting it normally
@@ -94,7 +103,16 @@ worker and path. For a remote worker, the Shift shortcut is intentionally a
 silent no-op. Browser and mobile clients do not show the native reveal action.
 See [the project network-share guide](docs/PROJECT_NETWORK_SHARES.md).
 
-Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Pressing Shift twice opens the global command palette at the top of the app: it searches context-aware actions, detected scripts for the selected project, and projects across every workspace. Choosing a project switches to an available containing workspace when needed. Choosing a script sends it to an idle selected terminal or opens an appropriately grouped project terminal. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
+Each project belongs permanently to exactly one server-owned workspace chosen
+when it is created or imported. A workspace groups the projects shown in the
+sidebar and also defines its managed or attached storage context; membership
+never duplicates repository, tab, or runtime state. Pressing Shift twice opens the global command palette at the top
+of the app: it searches context-aware actions, detected scripts for the selected
+project, and projects across every workspace. Choosing a project switches to
+its workspace when needed. Choosing a script sends it to an idle selected
+terminal or opens an appropriately grouped project terminal. Tabs can be
+renamed, reordered, grouped, split, popped out on desktop, or closed with the
+middle mouse button; projects themselves are never removed by middle-click.
 
 Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, reusable Agent Policies, model providers, models, and the default model. **Settings → Usage** displays reconciled logical server storage, separate server-known worker attachment estimates, current UTC-day server bandwidth, and retained history; no account limits are currently enforced. See the [account resource usage contract](docs/ACCOUNT_USAGE.md) for exact measurement, retention, privacy, and operational semantics. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers—even when the selected worker is reached remotely through the server. Filter by chat/turn, request, worker, workflow/run, project, or surface IDs to follow an operation without exposing prompts, terminal I/O, or page/desktop contents. See the [service log guide](docs/SERVICE_LOGS.md) for source availability, correlation, redaction, retention, verification, and troubleshooting. Provider support currently includes:
 
@@ -132,14 +150,14 @@ The app can switch between the structured chat view and the linked live Codex co
 
 ### Persistent tab groups
 
-Project surfaces are organized into server-owned tab groups. Each group is one
-sidebar row and has an always-visible horizontal top bar; a singleton is simply
-a one-member group. Drag a singleton sidebar row into the visible top bar to
+Project surfaces are organized into server-owned tab groups. In the desktop and
+wide-browser layout, each group is one sidebar row and has a horizontal top bar;
+a singleton is simply a one-member group. Drag a singleton sidebar row into the visible top bar to
 join it, drag top tabs to reorder them, or drag a top tab back to the sidebar to
-split it. These grouping operations work in Vite, Capacitor, and Tauri and use
-one revision-checked server mutation, so refreshes and other clients see the
-same membership and order. The active member inside each group remains local to
-each window.
+split it. These interactions use revision-checked server mutations, so compact
+and mobile clients observe the same membership and order even though their
+bottom navigation selects surfaces directly and does not expose grouping drag
+and drop. The active member inside each group remains local to each window.
 
 On Tauri, the pop-out action opens the complete group rather than one isolated
 surface. A group has at most one local pop-out owner; selecting its row in the
@@ -171,7 +189,12 @@ flowchart LR
 
 ### `cantrip_app`
 
-The React frontend is the control surface. Vite provides the browser development build, Tauri provides the desktop shell, and Capacitor packages the native iOS and Android clients. The app knows the server URL but never connects directly to a worker or assumes project files exist on the client device.
+The React frontend is the control surface. Vite provides the browser
+development build, Tauri provides the desktop shell, and Capacitor packages the
+native iOS and Android clients. The app sends authoritative snapshots and
+mutations only through the server and never assumes project files exist on the
+client device. After server authorization, live feature bytes may use a scoped
+WorkerLink carrier directly between the app and worker, with relay fallback.
 
 ### `cantrip_server`
 
@@ -194,7 +217,12 @@ once the server and worker live on different hosts. Server-managed ChatGPT and
 Grok access leases remain in memory; normal operation does not create
 worker-local `auth.json` or `grok-auth.json` credentials.
 
-Chat attachments are staged beneath the worker's private Cantrip data directory, outside project sources and Git worktrees. Workers communicate through the server. There is intentionally no app-to-worker connection mode. See [ADR 0003](docs/adr/0003-worker-owned-chat-attachments.md) for the attachment transport, model-capability fallback, limits, and storage boundary.
+Chat attachments are staged beneath the worker's private Cantrip data
+directory, outside project sources and Git worktrees. Server control-plane
+authorization remains mandatory; resource-granted WorkerLink sessions may then
+carry live feature traffic over LOCAL, LAN, WAN, or RELAY routes. See [ADR
+0003](docs/adr/0003-worker-owned-chat-attachments.md) for the attachment-specific
+relay, model-capability fallback, limits, and storage boundary.
 
 ### `packages/protocol`
 
@@ -232,10 +260,11 @@ the practical smoke-test boundary for each release candidate.
 
 Conversation history and configuration live on the server, so they remain
 readable when a worker is unavailable. Project files and live runtime state
-remain on the worker. GitHub-backed conversations can move only through an
-explicit compatible-checkout handoff. Managed-folder conversations cannot
-relocate; their filesystem-backed actions remain unavailable until the owning
-worker reconnects.
+remain on the worker. GitHub-backed conversations relocate through explicit
+compatible-checkout handoff; local Git conversations can relocate only to a
+matching attached ready source. Non-Git folder conversations cannot relocate;
+their filesystem-backed actions remain unavailable until the owning worker
+reconnects.
 
 The app keeps one versioned application-control WebSocket per selected server
 profile for committed state notifications and cache synchronization. HTTP
@@ -362,12 +391,12 @@ metadata remains visible while a worker is offline. See
 [docs/WORKTREES.md](docs/WORKTREES.md) for user behavior, safety rules, API
 boundaries, and the development test matrix.
 
-Managed-folder projects do not expose this worktree model. Their Agent, Task,
+Non-Git folder projects do not expose this worktree model. Their Agent, Task,
 Terminal, Explorer, Code, automation, and workflow operations all resolve to
-the one worker-owned execution root. Agent writes follow the selected
-permission profile, and workflow writes follow the graph's configured
-concurrency. The server rejects worktree, replica, relocation, and Git
-operations even if a stale client invokes them.
+the one worker-owned execution root. Local Git projects expose Git plus matching
+source attachment/relocation but still reject secondary-worktree operations.
+Agent writes follow the selected permission profile, and workflow writes follow
+the graph's configured concurrency.
 
 ## Repository layout
 
@@ -379,8 +408,11 @@ Cantrip/
 ├── cantrip_worker/    # Codex runtime, terminals, files, Git, and GitHub access
 ├── cantrip_cli/       # Worker-authenticated Rust command-line interface
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest
-├── packages/protocol/ # Shared runtime-validated contracts
-├── docs/PLAN.md       # Product architecture and phased roadmap
+├── cantrip_code/      # Pinned browser-native Code OSS distribution
+├── packages/          # Protocol, crypto, logging, version, and shared UI packages
+├── managed_runtimes/  # Pinned portable web/search runtimes
+├── deploy/            # Hosted services, containers, and proxy examples
+├── docs/              # Current contracts plus labeled historical delivery records
 └── package.json       # Root development and verification commands
 ```
 
@@ -491,8 +523,10 @@ beside `pnpm dev` or `pnpm devtop`; pressing `Ctrl+C` stops both its server and
 database, and the database is discarded.
 
 Browser tabs launch headless Chromium on the selected worker and render CDP
-screencast frames inside the normal React layout. Navigation and input travel
-through the Cantrip server; the app never receives Chromium's debugging URL.
+screencast frames inside the normal React layout. Server authorization and
+signaling establish a resource-scoped WorkerLink; frames and input then use the
+best available LOCAL, LAN, WAN, or RELAY carrier. The app never receives
+Chromium's debugging URL.
 Persistent browser profiles live under the worker data directory at
 `.cantrip/dev/worker/browser/profiles/` by default and are ignored by Git.
 The same canvas renderer is used by Vite, Tauri, Capacitor-compatible clients,
@@ -502,15 +536,14 @@ page selection or pasting local clipboard text requires an explicit toolbar
 action; Cantrip does not continuously synchronize browser and device
 clipboards.
 
-Remote Surfaces always retain the authenticated server-routed WebSocket data
-plane. A deployment can additionally configure relay-only WebRTC by setting
-`CANTRIP_TURN_URLS` and `CANTRIP_TURN_SHARED_SECRET` on the server. The server
-derives short-lived TURN REST credentials for each attachment and never sends
-the shared secret to an app or worker. Browser frames then use an unordered
-loss-tolerant data channel while input and control messages use an ordered data
-channel. Negotiation failure automatically keeps the live WebSocket stream.
-Direct ICE candidates are deliberately disabled, preserving the rule that apps
-do not connect to workers. See `.env.example` for TTL and timeout overrides.
+Remote Surfaces use the same server-authorized WorkerLink transport. Direct
+LOCAL, LAN, and WAN routes are preferred when policy and connectivity permit;
+the authenticated server relay remains the fallback and carries all traffic
+when no direct route succeeds. Every route is tied to the granted resource and
+worker generation, so discovering a worker endpoint never grants another
+surface or exposes native runtime credentials. See [the WorkerLink carrier
+ADR](docs/adr/0010-tauri-native-worker-link-carrier.md) and [the live transport
+guide](docs/LIVE_TRANSPORT.md).
 
 ### Remote Desktop tabs
 
@@ -521,10 +554,10 @@ Hostnames, ports, display names, and passwords are not part of the managed
 desktop API.
 
 The worker captures its current display and injects explicit pointer,
-keyboard, and clipboard actions. Encoded frames and input travel app ↔ server
-↔ worker over the same authenticated WebSocket or relay-only WebRTC Remote
-Surface transport as Browser tabs. No listener is exposed on the worker and an
-app never receives a worker address or native desktop-control credential.
+keyboard, and clipboard actions. Encoded frames and input use the same scoped
+WorkerLink routing as Browser tabs, including direct carriers and server relay
+fallback. No dedicated inbound worker listener or native desktop-control
+credential is exposed.
 
 Remote Desktop defaults to a best-effort 30 FPS native capture pipeline and
 can target 15, 30, or at most 60 FPS from Settings. Adaptive, data-saver,
@@ -836,14 +869,16 @@ Browser-only and mobile clients cannot bootstrap a Node server or worker. They u
 The mobile shell provides bottom navigation for project surfaces, native haptic
 feedback on tab press and long-press reset, safe-area-aware layouts, a terminal
 keyboard command bar, QR-assisted sign-in, and touch-correct Browser input and
-scrolling. These clients still operate entirely through the selected Cantrip
-server; camera access is used only for the sign-in scanner, and no local server
-option is presented outside Tauri.
+scrolling. Authoritative state and WorkerLink authorization still come from the
+selected Cantrip server; live feature bytes may use a direct scoped carrier.
+Camera access is used only for the sign-in scanner, and no local server option
+is presented outside Tauri.
 
 ## Further design
 
-See [docs/PLAN.md](docs/PLAN.md) for the security model, durable chat design,
-worker protocol, account and pairing flows, and phased roadmap. The accepted
+See [docs/FULL_DESCRIPTION.md](docs/FULL_DESCRIPTION.md) for the current system
+map and links to authoritative feature contracts. The original [foundational
+plan](docs/PLAN.md) is retained as a historical design record. The accepted
 [multi-worker architecture contract](docs/MULTI_WORKER_ARCHITECTURE.md) defines
 project replicas, execution placement, synchronization, and safe chat
 relocation

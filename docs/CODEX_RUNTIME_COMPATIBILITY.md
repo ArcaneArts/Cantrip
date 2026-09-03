@@ -106,10 +106,13 @@ in [`MCP.md`](MCP.md).
 
 ## Native subagent compatibility
 
-Compatible Codex sessions enable native collaboration explicitly with
-`features.multi_agent=true` and `agents.enabled=true`. This only makes the
-native tools available; Cantrip does not add an instruction that proactively
-delegates work. With no custom child configuration the worker omits
+Compatible Codex sessions always set `agents.enabled=true`. Ollama and
+OpenAI-compatible providers enable native collaboration with
+`features.multi_agent=true`; ChatGPT providers disable that v1 feature and
+enable `features.multi_agent_v2.enabled=true` under the `cantrip_agents` tool
+namespace to avoid collisions with server-owned collaboration tools. These
+settings only make the native tools available; Cantrip does not add an
+instruction that proactively delegates work. With no custom child configuration the worker omits
 `agents.default_subagent_model` and
 `agents.default_subagent_reasoning_effort`, preserving Codex inheritance. A
 custom child model is resolved by the server on the same provider/account as
