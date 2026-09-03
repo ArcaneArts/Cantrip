@@ -3855,8 +3855,6 @@ describe("local server foundation", () => {
         turnId: "turn-approval",
         itemId: "item-approval",
         executionLaneId: null,
-        workflowRunId: null,
-        workflowNodeId: null,
         workerId: "test-worker",
       },
       payload: {
@@ -3996,8 +3994,6 @@ describe("local server foundation", () => {
           turnId: "turn-approval",
           itemId: "item-input",
           executionLaneId: null,
-          workflowRunId: null,
-          workflowNodeId: null,
           workerId: "test-worker",
         },
         payload: {
@@ -4040,8 +4036,6 @@ describe("local server foundation", () => {
           turnId: "turn-approval",
           itemId: "item-permissions",
           executionLaneId: null,
-          workflowRunId: null,
-          workflowNodeId: null,
           workerId: "test-worker",
         },
         payload: {
@@ -4087,8 +4081,6 @@ describe("local server foundation", () => {
           turnId: "turn-approval",
           itemId: "item-secret",
           executionLaneId: null,
-          workflowRunId: null,
-          workflowNodeId: null,
           workerId: "test-worker",
         },
         payload: {
@@ -4139,8 +4131,6 @@ describe("local server foundation", () => {
           turnId: "turn-approval",
           itemId: "item-file",
           executionLaneId: null,
-          workflowRunId: null,
-          workflowNodeId: null,
           workerId: "test-worker",
         },
         payload: {

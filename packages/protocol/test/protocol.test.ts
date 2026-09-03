@@ -278,7 +278,7 @@ function terminalStateFixture() {
   };
 }
 
-function workflowContentFixture() {
+function protectedContentFixture() {
   return terminalStateFixture().protectedState;
 }
 
@@ -297,7 +297,7 @@ function protectedChatMessageFixture() {
       mode: "default" as const,
       attachmentIds: [],
     },
-    protectedContent: workflowContentFixture(),
+    protectedContent: protectedContentFixture(),
     reasoningEffort: null,
     idempotencyKey: "protected-usage-message",
   };
@@ -308,7 +308,7 @@ function attachmentChunkFixture() {
     sequence: 0,
     plaintextBytes: 7,
     eof: true,
-    envelope: workflowContentFixture().envelope,
+    envelope: protectedContentFixture().envelope,
   };
 }
 
@@ -4354,8 +4354,6 @@ describe("Cantrip protocol", () => {
         turnId: "turn-1",
         itemId: "item-1",
         executionLaneId: "lane-1",
-        workflowRunId: null,
-        workflowNodeId: null,
         workerId: "worker-1",
       },
       payload: {
@@ -4385,6 +4383,21 @@ describe("Cantrip protocol", () => {
     };
 
     expect(agentInteractionRequestSchema.parse(request)).toEqual(request);
+    expect(
+      agentInteractionRequestSchema.safeParse({
+        ...request,
+        provenance: {
+          ...request.provenance,
+          workflowRunId: "retired-run",
+          workflowNodeId: "retired-node",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      agentInteractionRequestQuerySchema.safeParse({
+        workflowRunId: "retired-run",
+      }).success,
+    ).toBe(false);
     expect(
       agentInteractionResolutionCreateSchema.parse({
         idempotencyKey: "resolve-1",
@@ -6889,7 +6902,7 @@ describe("Cantrip protocol", () => {
             chatId: attachment.chatId,
             sizeBytes: attachment.sizeBytes,
             status: attachment.status,
-            protectedMetadata: workflowContentFixture(),
+            protectedMetadata: protectedContentFixture(),
             createdAt: attachment.createdAt,
           },
         ],
@@ -7036,7 +7049,7 @@ describe("Cantrip protocol", () => {
               chatId: "chat-1",
               sizeBytes: 7,
               status: "ready",
-              protectedMetadata: workflowContentFixture(),
+              protectedMetadata: protectedContentFixture(),
               createdAt: "2026-08-12T00:00:00.000Z",
             },
             sha256: "a".repeat(64),

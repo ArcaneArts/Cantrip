@@ -21,16 +21,16 @@ export const agentInteractionRequestStatusSchema = z.enum([
   "interrupted",
 ]);
 
-export const agentInteractionProvenanceSchema = z.object({
-  chatId: z.string().min(1).nullable(),
-  threadId: z.string().min(1),
-  turnId: z.string().min(1).nullable(),
-  itemId: z.string().min(1).nullable(),
-  executionLaneId: z.string().min(1).nullable(),
-  workflowRunId: z.string().min(1).nullable(),
-  workflowNodeId: z.string().min(1).nullable(),
-  workerId: z.string().min(1),
-});
+export const agentInteractionProvenanceSchema = z
+  .object({
+    chatId: z.string().min(1).nullable(),
+    threadId: z.string().min(1),
+    turnId: z.string().min(1).nullable(),
+    itemId: z.string().min(1).nullable(),
+    executionLaneId: z.string().min(1).nullable(),
+    workerId: z.string().min(1),
+  })
+  .strict();
 
 export const agentInteractionRequestPayloadSchema = z.discriminatedUnion(
   "kind",
@@ -382,12 +382,13 @@ export const agentInteractionResolutionWireCreateSchema = z.union([
   encryptedAgentInteractionResolutionCreateSchema,
 ]);
 
-export const agentInteractionRequestQuerySchema = z.object({
-  chatId: z.string().min(1).optional(),
-  workflowRunId: z.string().min(1).optional(),
-  status: agentInteractionRequestStatusSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
-});
+export const agentInteractionRequestQuerySchema = z
+  .object({
+    chatId: z.string().min(1).optional(),
+    status: agentInteractionRequestStatusSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(100),
+  })
+  .strict();
 
 export type AgentInteractionRequestKind = z.infer<
   typeof agentInteractionRequestKindSchema

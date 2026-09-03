@@ -7609,14 +7609,12 @@ export async function updateChatPermissionProfile(
 export async function getAgentInteractionRequests(
   input: {
     chatId?: string;
-    workflowRunId?: string;
     status?: AgentInteractionRequestStatus;
     limit?: number;
   } = {},
 ) {
   const query = new URLSearchParams();
   if (input.chatId) query.set("chatId", input.chatId);
-  if (input.workflowRunId) query.set("workflowRunId", input.workflowRunId);
   if (input.status) query.set("status", input.status);
   if (input.limit) query.set("limit", String(input.limit));
   const suffix = query.size > 0 ? `?${query.toString()}` : "";

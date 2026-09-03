@@ -26,7 +26,6 @@ export type OperationalLogContext = Record<string, unknown> & {
   surfaceId?: string;
   turnId?: string;
   workerId?: string;
-  workflowId?: string;
 };
 
 export type RepeatedLogOptions = {

@@ -33,7 +33,7 @@ import { installProjectWorktreePullRequestRoutes } from "./project-worktree-pull
 import { installProjectWorktreeStatusRoute } from "./project-worktree-status.js";
 import { installProjectWorktreeRoutes } from "./project-worktrees.js";
 
-export type ProjectWorkflowRouteDependencies = Parameters<
+export type ProjectRouteDependencies = Parameters<
   typeof installGithubRepositoryCatalogRoutes
 >[1] &
   Parameters<typeof installProjectCatalogAndPlacementRoutes>[1] &
@@ -67,9 +67,9 @@ export type ProjectWorkflowRouteDependencies = Parameters<
   Parameters<typeof installProjectChatCatalogRoutes>[1];
 
 /** Registers the contiguous project, worktree, and Git tranche. */
-export function installProjectWorkflowRoutes(
+export function installProjectRoutes(
   app: FastifyInstance,
-  dependencies: ProjectWorkflowRouteDependencies,
+  dependencies: ProjectRouteDependencies,
 ): void {
   installGithubRepositoryCatalogRoutes(app, dependencies);
 

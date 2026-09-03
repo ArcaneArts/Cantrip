@@ -129,7 +129,7 @@ import { ProviderAccountReconnectRequiredError } from "./shared/errors.js";
 import { installMutationLiveInvalidationHook } from "./http/mutation-live-invalidation.js";
 import { installCoreInfrastructureRoutes } from "./routes/core-infrastructure-registry.js";
 import { installInteractiveWorkspaceRoutes } from "./routes/interactive-workspace-registry.js";
-import { installProjectWorkflowRoutes } from "./routes/project-workflow-registry.js";
+import { installProjectRoutes } from "./routes/project-route-registry.js";
 
 export async function buildApp({
   config,
@@ -954,7 +954,7 @@ export async function buildApp({
     workerCatalogRefreshTimer,
   } = settingsRouteRuntime;
 
-  installProjectWorkflowRoutes(app, {
+  installProjectRoutes(app, {
     applicationOwnerId,
     bridge,
     serverId,

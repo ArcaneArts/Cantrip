@@ -14,8 +14,6 @@ export * from "./repository-operation.js";
 
 export * from "./endpoint-content.js";
 
-export * from "./workflow-content.js";
-
 export * from "./customization-content.js";
 
 export * from "./tunnel-content.js";

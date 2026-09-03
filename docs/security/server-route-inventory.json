@@ -76,9 +76,9 @@
       "cantrip_server/src/app/routes/project-preserving-removal.ts",
       "cantrip_server/src/app/routes/project-removal.ts",
       "cantrip_server/src/app/routes/project-replicas.ts",
+      "cantrip_server/src/app/routes/project-route-registry.ts",
       "cantrip_server/src/app/routes/project-settings-and-insights.ts",
       "cantrip_server/src/app/routes/project-views.ts",
-      "cantrip_server/src/app/routes/project-workflow-registry.ts",
       "cantrip_server/src/app/routes/project-workspaces.ts",
       "cantrip_server/src/app/routes/project-worktree-git-commit-actions.ts",
       "cantrip_server/src/app/routes/project-worktree-git-commit-signature.ts",
@@ -173,7 +173,7 @@
     "durableTables": 86,
     "agentOperations": 44,
     "workerCommands": 273,
-    "liveResources": 48,
+    "liveResources": 43,
     "clientControlCommands": 4,
     "cliCommands": 35,
     "tunnelFrameKinds": 9,
@@ -191,7 +191,7 @@
     "applicationRoutes": "0e99c956028a15d3f895c4ae0427899cddf68391c5e362b9b20ee4de70b04e16",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
-    "liveResources": "b9e36d56fc85b2ab701bf63cb89390ddbfff4ab43535e190d83c84a4d96e52dd",
+    "liveResources": "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
     "workerCommands": "fc63ee379629457138cb3ddd623e100e1c260b8b485d94977107020957db633d",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
@@ -8644,11 +8644,6 @@
     "tunnel",
     "worker",
     "worker-availability",
-    "workflow-definition",
-    "workflow-gate",
-    "workflow-node",
-    "workflow-run",
-    "workflow-trigger",
     "workspace-repository-discovery-job",
     "worktree",
     "worktree-status"
@@ -8853,31 +8848,6 @@
       "resource": "worker-availability",
       "classification": "intentionally-public-control-plane",
       "rationale": "reviewed invalidation-only resource"
-    },
-    {
-      "resource": "workflow-definition",
-      "classification": "endpoint-protected",
-      "rationale": "invalidations carry opaque IDs or protected summaries"
-    },
-    {
-      "resource": "workflow-gate",
-      "classification": "endpoint-protected",
-      "rationale": "invalidations carry opaque IDs or protected summaries"
-    },
-    {
-      "resource": "workflow-node",
-      "classification": "endpoint-protected",
-      "rationale": "invalidations carry opaque IDs or protected summaries"
-    },
-    {
-      "resource": "workflow-run",
-      "classification": "endpoint-protected",
-      "rationale": "invalidations carry opaque IDs or protected summaries"
-    },
-    {
-      "resource": "workflow-trigger",
-      "classification": "endpoint-protected",
-      "rationale": "invalidations carry opaque IDs or protected summaries"
     },
     {
       "resource": "workspace-repository-discovery-job",

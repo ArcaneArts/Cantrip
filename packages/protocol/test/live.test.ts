@@ -82,10 +82,9 @@ describe("application live protocol", () => {
           { kind: "current-user" },
           projectScope,
           { kind: "chat", chatId: "chat-1" },
-          { kind: "workflow-run", runId: "run-1" },
         ],
       }).scopes,
-    ).toHaveLength(4);
+    ).toHaveLength(3);
     expect(() =>
       appLiveClientMessageSchema.parse({
         type: "subscribe",
@@ -93,6 +92,13 @@ describe("application live protocol", () => {
         scopes: [projectScope, projectScope],
       }),
     ).toThrow(/unique/i);
+    expect(() =>
+      appLiveClientMessageSchema.parse({
+        type: "subscribe",
+        requestId: "request-1",
+        scopes: [{ kind: "workflow-run", runId: "run-1" }],
+      }),
+    ).toThrow();
     expect(() =>
       appLiveClientMessageSchema.parse({
         type: "subscribe",
@@ -110,13 +116,11 @@ describe("application live protocol", () => {
       { kind: "current-user" },
       projectScope,
       { kind: "chat", chatId: "chat-1" },
-      { kind: "workflow-run", runId: "run-1" },
     ];
     expect(scopes.map(appLiveScopeKey)).toEqual([
       "current-user",
       "project:project-1",
       "chat:chat-1",
-      "workflow-run:run-1",
     ]);
   });
 
@@ -280,6 +284,19 @@ describe("application live protocol", () => {
         retryable: false,
       }).code,
     ).toBe("unauthorized-scope");
+    expect(() =>
+      appLiveServerMessageSchema.parse({
+        type: "event",
+        cursor: 13,
+        scope: projectScope,
+        resource: "workflow-run",
+        action: "updated",
+        entityId: "run-1",
+        revision: 1,
+        payload: null,
+        occurredAt: "2026-08-09T12:00:00.000Z",
+      }),
+    ).toThrow();
     expect(() =>
       appLiveServerMessageSchema.parse({
         type: "event",

@@ -3,9 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   accountResourceUsageHistoryQuerySchema,
   accountResourceUsageSchema,
+  accountStorageCategorySchema,
 } from "../src/resource-usage.js";
 
 describe("account resource usage protocol", () => {
+  it("rejects the retired workflow storage category", () => {
+    expect(accountStorageCategorySchema.safeParse("workflows").success).toBe(
+      false,
+    );
+  });
+
   it("preserves exact bigint counters as decimal strings", () => {
     const parsed = accountResourceUsageSchema.parse({
       measurement: {

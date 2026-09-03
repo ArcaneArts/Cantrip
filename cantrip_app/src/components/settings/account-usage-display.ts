@@ -68,7 +68,6 @@ const storageLabels: Record<string, string> = {
   configuration: "Configuration",
   conversations: "Conversations",
   projects: "Projects & workspaces",
-  workflows: "Workflows",
   attachments: "Attachment sources",
   "attachment-replicas": "Ready attachment replicas",
 };

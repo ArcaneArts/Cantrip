@@ -50,8 +50,6 @@ function agentInteractionRequestBase(
       turnId: request.turnId,
       itemId: request.itemId,
       executionLaneId: request.executionLaneId,
-      workflowRunId: null,
-      workflowNodeId: null,
       workerId: request.workerId,
     },
     status: request.status,
@@ -434,7 +432,6 @@ export class AgentInteractionRepository {
     query: AgentInteractionRequestQuery,
   ): Promise<AgentInteractionRequestWire[]> {
     await this.collaborators.expireAgentInteractionRequests();
-    if (query.workflowRunId) return [];
     const conditions = [eq(schema.agentInteractionRequests.ownerId, ownerId)];
     if (query.chatId) {
       conditions.push(eq(schema.agentInteractionRequests.chatId, query.chatId));

@@ -12,10 +12,6 @@
       "types": "./src/elite.ts",
       "import": "./dist/elite.js"
     },
-    "./workflows": {
-      "types": "./src/workflows.ts",
-      "import": "./dist/workflows.js"
-    },
     "./bounded-json": {
       "types": "./src/bounded-json.ts",
       "import": "./dist/bounded-json.js"
@@ -119,10 +115,6 @@
     "./client-control-content": {
       "types": "./src/client-control-content.ts",
       "import": "./dist/client-control-content.js"
-    },
-    "./workflow-content": {
-      "types": "./src/workflow-content.ts",
-      "import": "./dist/workflow-content.js"
     },
     "./project-automation-content": {
       "types": "./src/project-automation-content.ts",
