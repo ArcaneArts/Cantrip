@@ -27,6 +27,7 @@ import {
   readProjectWorktreePolicy,
   summarizeGithubCloneFailure,
 } from "../src/github.js";
+import { githubInboxSearchQuery } from "../src/github-inbox.js";
 
 const directories: string[] = [];
 const originalPath = process.env.PATH;
@@ -42,6 +43,28 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
+});
+
+describe("GitHub inbox saved queries", () => {
+  it("maps every saved view to the narrowest safe GitHub search", () => {
+    const query = (view: Parameters<typeof githubInboxSearchQuery>[3]) =>
+      githubInboxSearchQuery(
+        "ArcaneArts/Cantrip",
+        "pull-request",
+        "open",
+        view,
+      );
+
+    expect(query("all")).toBe("repo:ArcaneArts/Cantrip is:pr is:open");
+    expect(query("needs-review")).toContain("review-requested:@me");
+    expect(query("failed-checks")).toContain("status:failure");
+    expect(query("merge-conflicts")).toBe(query("all"));
+    expect(query("approved-ready")).toContain("review:approved -is:draft");
+    expect(query("approved-ready")).not.toContain("status:success");
+    expect(query("stale")).toMatch(/updated:<\d{4}-\d{2}-\d{2}/u);
+    expect(query("assigned-to-me")).toContain("assignee:@me");
+    expect(query("activity")).toContain("mentions:@me");
+  });
 });
 
 describe("GitHub project files", () => {
@@ -1624,6 +1647,173 @@ describe("GitHub project files", () => {
     expect(invocation).toContain("per_page=50");
     expect(invocation).toContain("page=2");
     expect(invocation).toContain("state=open");
+  });
+
+  it("builds a rich pull request inbox with notification attention", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-inbox-test-"),
+    );
+    directories.push(dataDirectory);
+    const binDirectory = path.join(dataDirectory, "bin");
+    const logPath = path.join(dataDirectory, "gh.log");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    const node = {
+      __typename: "PullRequest",
+      number: 43,
+      title: "Repair the build",
+      state: "OPEN",
+      url: "https://github.com/ArcaneArts/Cantrip/pull/43",
+      author: { login: "author" },
+      comments: { totalCount: 3 },
+      labels: { nodes: [{ name: "bug", color: "ef4444" }] },
+      assignees: { nodes: [{ login: "viewer" }] },
+      createdAt: "2099-09-01T12:00:00.000Z",
+      updatedAt: "2099-09-02T12:00:00.000Z",
+      closedAt: null,
+      isDraft: false,
+      headRefName: "fix/build",
+      baseRefName: "main",
+      mergeable: "CONFLICTING",
+      reviewDecision: "CHANGES_REQUESTED",
+      reviewRequests: {
+        nodes: [{ requestedReviewer: { login: "viewer" } }],
+      },
+      commits: {
+        nodes: [{ commit: { statusCheckRollup: { state: "FAILURE" } } }],
+      },
+    };
+    const notification = {
+      reason: "review_requested",
+      unread: true,
+      subject: {
+        type: "PullRequest",
+        url: "https://api.github.com/repos/ArcaneArts/Cantrip/pulls/43",
+      },
+    };
+    const search = {
+      data: {
+        search: {
+          issueCount: 1,
+          pageInfo: { endCursor: "next-page", hasNextPage: true },
+          nodes: [node],
+        },
+      },
+    };
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        "const args = process.argv.slice(2);",
+        `fs.appendFileSync(${JSON.stringify(logPath)}, args.join("\\0") + "\\n");`,
+        'if (args[0] === "api" && args[1] === "user") process.stdout.write("viewer\\n");',
+        `else if (args[1]?.endsWith("/notifications")) process.stdout.write(${JSON.stringify(JSON.stringify([notification]))});`,
+        `else if (args[1] === "graphql") process.stdout.write(${JSON.stringify(JSON.stringify(search))});`,
+        "else process.exit(1);",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+
+    await expect(
+      new GithubClient(dataDirectory).listInbox(
+        "ArcaneArts/Cantrip",
+        "pull-request",
+        "open",
+        "all",
+        null,
+        50,
+      ),
+    ).resolves.toMatchObject({
+      total: 1,
+      nextCursor: "next-page",
+      viewerLogin: "viewer",
+      activityAvailable: true,
+      items: [
+        {
+          number: 43,
+          assignees: ["viewer"],
+          attention: expect.arrayContaining([
+            "assigned",
+            "review-requested",
+            "unread",
+            "failed-checks",
+            "merge-conflict",
+          ]),
+          pullRequest: {
+            headRef: "fix/build",
+            baseRef: "main",
+            mergeable: "conflicting",
+            reviewDecision: "changes-requested",
+            checksState: "failure",
+          },
+        },
+      ],
+    });
+    const invocation = await readFile(logPath, "utf8");
+    expect(invocation).toContain("repo:ArcaneArts/Cantrip is:pr is:open");
+    expect(invocation).toContain("searchQuery=");
+    expect(invocation).toContain("per_page=50");
+  });
+
+  it("falls back to GitHub mention search when notifications are unavailable", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-inbox-mention-test-"),
+    );
+    directories.push(dataDirectory);
+    const binDirectory = path.join(dataDirectory, "bin");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    const search = {
+      data: {
+        search: {
+          issueCount: 1,
+          pageInfo: { endCursor: null, hasNextPage: false },
+          nodes: [
+            {
+              __typename: "Issue",
+              number: 9,
+              title: "Mention the maintainer",
+              state: "OPEN",
+              url: "https://github.com/ArcaneArts/Cantrip/issues/9",
+              author: { login: "author" },
+              comments: { totalCount: 0 },
+              labels: { nodes: [] },
+              assignees: { nodes: [] },
+              createdAt: "2099-09-01T12:00:00.000Z",
+              updatedAt: "2099-09-02T12:00:00.000Z",
+              closedAt: null,
+            },
+          ],
+        },
+      },
+    };
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        "const args = process.argv.slice(2);",
+        'if (args[0] === "api" && args[1] === "user") process.stdout.write("viewer\\n");',
+        'else if (args[1]?.endsWith("/notifications")) process.exit(1);',
+        `else if (args[1] === "graphql") process.stdout.write(${JSON.stringify(JSON.stringify(search))});`,
+        "else process.exit(1);",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+
+    await expect(
+      new GithubClient(dataDirectory).listInbox(
+        "ArcaneArts/Cantrip",
+        "issue",
+        "open",
+        "activity",
+      ),
+    ).resolves.toMatchObject({
+      activityAvailable: false,
+      items: [{ number: 9, attention: ["mention"] }],
+    });
   });
 
   it("creates pull requests only from an exactly published local branch", async () => {

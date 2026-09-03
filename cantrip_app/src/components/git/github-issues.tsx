@@ -1,18 +1,32 @@
 import type {
   GitStatus,
+  GithubInboxAttention,
   GithubIssueDetail,
+  GithubInboxList,
+  GithubInboxView,
   GithubIssueKind,
-  GithubIssueList,
+  GithubIssueSummary,
+  GithubIssueState,
   ProjectSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BellDot,
   CheckCircle2,
   ChevronRight,
+  CircleAlert,
+  CircleDotDashed,
   ExternalLink,
+  GitBranch,
+  GitMerge,
+  GitPullRequestDraft,
+  Inbox,
   Loader2,
   MessageSquare,
   Plus,
+  ShieldCheck,
+  UserRoundCheck,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -33,11 +47,17 @@ import {
   getGithubIssue,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { cn } from "@/lib/utils";
 import { GitContentSurface } from "./git-content-surface";
 import {
   GitMobileInspectorClose,
   gitMobileInspectorClassName,
 } from "./git-mobile-inspector";
+import {
+  githubInboxAttentionLabels,
+  githubInboxViews,
+  visibleGithubInboxAttention,
+} from "./github-inbox";
 import { GithubIssueCreateDialog } from "./github-issue-create-dialog";
 import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
 import { GithubPullRequestDialog } from "./github-pull-request-dialog";
@@ -55,9 +75,11 @@ export function GithubIssueMobileCard({
   issue,
   onSelect,
 }: {
-  issue: GithubIssueList["issues"][number];
+  issue: GithubInboxList["items"][number] | GithubIssueSummary;
   onSelect(): void;
 }) {
+  const inboxIssue = "attention" in issue ? issue : null;
+  const attention = inboxIssue ? visibleGithubInboxAttention(inboxIssue) : [];
   return (
     <button
       type="button"
@@ -87,10 +109,38 @@ export function GithubIssueMobileCard({
             ) : null}
           </span>
         ) : null}
+        {inboxIssue?.pullRequest ? (
+          <span className="mt-2 flex min-w-0 items-center gap-1 font-mono text-[10px] text-muted-foreground">
+            <GitBranch className="size-3 shrink-0" />
+            <span className="truncate">{inboxIssue.pullRequest.headRef}</span>
+            <span>→</span>
+            <span className="truncate">{inboxIssue.pullRequest.baseRef}</span>
+          </span>
+        ) : null}
+        {inboxIssue?.pullRequest ? (
+          <span className="mt-2 block">
+            <PullRequestState item={inboxIssue} />
+          </span>
+        ) : null}
+        {attention.length ? (
+          <span className="mt-2 flex min-w-0 flex-wrap gap-1">
+            {attention.slice(0, 4).map((value) => (
+              <AttentionPill key={value} attention={value} />
+            ))}
+          </span>
+        ) : null}
       </span>
       <ChevronRight className="mt-0.5 size-4 text-muted-foreground" />
       <span className="col-span-2 flex min-w-0 items-center gap-2 overflow-hidden text-[10px] text-muted-foreground">
-        <span className="shrink-0 font-mono">#{issue.number}</span>
+        <span className="flex shrink-0 items-center gap-1.5 font-mono">
+          {inboxIssue?.attention.includes("unread") ? (
+            <span
+              className="size-1.5 rounded-full bg-blue-500"
+              aria-label="Unread activity"
+            />
+          ) : null}
+          #{issue.number}
+        </span>
         <span className="min-w-0 truncate">@{issue.author}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
           <MessageSquare className="size-3" /> {issue.commentCount}
@@ -100,6 +150,108 @@ export function GithubIssueMobileCard({
         </span>
       </span>
     </button>
+  );
+}
+
+function attentionTone(attention: GithubInboxAttention): string {
+  switch (attention) {
+    case "failed-checks":
+    case "merge-conflict":
+      return "border-destructive/40 bg-destructive/10 text-destructive";
+    case "approved-ready":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "review-requested":
+    case "mention":
+    case "unread":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "assigned":
+      return "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+    case "stale":
+      return "border-border bg-muted/50 text-muted-foreground";
+  }
+}
+
+function AttentionPill({ attention }: { attention: GithubInboxAttention }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 items-center rounded-full border px-1.5 text-[9px] font-medium",
+        attentionTone(attention),
+      )}
+    >
+      {githubInboxAttentionLabels[attention]}
+    </span>
+  );
+}
+
+function PullRequestState({
+  item,
+}: {
+  item: GithubInboxList["items"][number];
+}) {
+  const pullRequest = item.pullRequest;
+  if (!pullRequest) return null;
+  const review =
+    pullRequest.reviewDecision === "approved"
+      ? {
+          label: "Approved",
+          className: "text-emerald-600 dark:text-emerald-300",
+        }
+      : pullRequest.reviewDecision === "changes-requested"
+        ? { label: "Changes requested", className: "text-destructive" }
+        : pullRequest.reviewDecision === "review-required"
+          ? {
+              label: "Review required",
+              className: "text-amber-600 dark:text-amber-300",
+            }
+          : { label: "No review", className: "text-muted-foreground" };
+  const checks =
+    pullRequest.checksState === "success"
+      ? {
+          label: "Checks passed",
+          className: "text-emerald-600 dark:text-emerald-300",
+        }
+      : pullRequest.checksState === "failure"
+        ? { label: "Checks failed", className: "text-destructive" }
+        : pullRequest.checksState === "pending"
+          ? {
+              label: "Checks pending",
+              className: "text-amber-600 dark:text-amber-300",
+            }
+          : pullRequest.checksState === "none"
+            ? { label: "No checks", className: "text-muted-foreground" }
+            : { label: "Checks neutral", className: "text-muted-foreground" };
+  const merge =
+    pullRequest.mergeable === "mergeable"
+      ? {
+          label: "Mergeable",
+          icon: GitMerge,
+          className: "text-muted-foreground",
+        }
+      : pullRequest.mergeable === "conflicting"
+        ? { label: "Conflict", icon: XCircle, className: "text-destructive" }
+        : {
+            label: "Merge pending",
+            icon: CircleDotDashed,
+            className: "text-muted-foreground",
+          };
+  const MergeIcon = merge.icon;
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        {pullRequest.draft ? (
+          <GitPullRequestDraft className="size-3" />
+        ) : (
+          <ShieldCheck className="size-3" />
+        )}
+        {pullRequest.draft ? "Draft" : "Ready"}
+      </span>
+      <span className={review.className}>{review.label}</span>
+      <span className={checks.className}>{checks.label}</span>
+      <span className={cn("inline-flex items-center gap-1", merge.className)}>
+        <MergeIcon className="size-3" /> {merge.label}
+      </span>
+    </span>
   );
 }
 
@@ -124,9 +276,14 @@ function IssueDialog({
   });
   const refreshLists = async (detail: GithubIssueDetail) => {
     queryClient.setQueryData(detailKey, detail);
-    await queryClient.invalidateQueries({
-      queryKey: ["github-issues", project.id],
-    });
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["github-issues", project.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["github-inbox", project.id],
+      }),
+    ]);
   };
   const comment = useMutation({
     mutationFn: (body: string) =>
@@ -334,33 +491,40 @@ export function GithubIssuesView({
   hasNextPage,
   isFetchingNextPage,
   isLoading,
-  issues,
+  inbox,
   kind,
   onLoadMore,
+  onViewChange,
   onSelectWorktree,
   project,
   status,
+  state,
   worktreeId,
+  view,
 }: {
   error: unknown;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   isLoading: boolean;
-  issues: GithubIssueList | undefined;
+  inbox: GithubInboxList | undefined;
   kind: GithubIssueKind;
   onLoadMore(): void;
+  onViewChange(view: GithubInboxView): void;
   onSelectWorktree(worktreeId: string): void;
   project: ProjectSummary;
   status: GitStatus | undefined;
+  state: GithubIssueState;
   worktreeId: string;
+  view: GithubInboxView;
 }) {
   const [selectedIssue, setSelectedIssue] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const queryClient = useQueryClient();
   const listRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const state = issues?.state ?? "open";
   const itemLabel = kind === "pull-request" ? "pull requests" : "issues";
+  const views = githubInboxViews(kind, state);
+  const activeView = views.find(({ id }) => id === view) ?? views[0]!;
 
   useEffect(() => {
     const root = listRef.current;
@@ -378,7 +542,47 @@ export function GithubIssuesView({
 
   return (
     <GitContentSurface className="flex flex-col" guttered>
-      <div className="flex h-9 shrink-0 items-center justify-end px-3">
+      <div className="flex min-h-10 shrink-0 items-center gap-2 border-b px-3">
+        <div
+          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-label={`${kind === "pull-request" ? "Pull request" : "Issue"} saved views`}
+        >
+          {views.map((savedView) => (
+            <Button
+              key={savedView.id}
+              type="button"
+              size="sm"
+              variant={view === savedView.id ? "outline" : "ghost"}
+              className="h-7 shrink-0 rounded-full px-2.5 text-[10px]"
+              title={savedView.description}
+              aria-pressed={view === savedView.id}
+              onClick={() => onViewChange(savedView.id)}
+            >
+              {savedView.id === "activity" ? (
+                <BellDot className="size-3" />
+              ) : savedView.id === "assigned-to-me" ? (
+                <UserRoundCheck className="size-3" />
+              ) : savedView.id === "failed-checks" ||
+                savedView.id === "merge-conflicts" ? (
+                <CircleAlert className="size-3" />
+              ) : savedView.id === "approved-ready" ? (
+                <CheckCircle2 className="size-3" />
+              ) : savedView.id === "needs-review" ? (
+                <MessageSquare className="size-3" />
+              ) : (
+                <Inbox className="size-3" />
+              )}
+              {savedView.label}
+            </Button>
+          ))}
+        </div>
+        {inbox ? (
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            {inbox.total === null
+              ? `${inbox.items.length} loaded`
+              : inbox.total}
+          </span>
+        ) : null}
         <Button
           size="sm"
           className="h-7 gap-1 text-xs"
@@ -398,13 +602,19 @@ export function GithubIssuesView({
           <div className="m-5 rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">
             {errorText(error)}
           </div>
-        ) : !issues?.issues.length ? (
+        ) : !inbox?.items.length ? (
           <div className="grid min-h-64 place-items-center text-center">
             <div>
               <CheckCircle2 className="mx-auto size-6 text-muted-foreground" />
               <p className="mt-3 font-medium">
-                No {state} {itemLabel}
+                No {state} {itemLabel} in {activeView.label.toLowerCase()}
               </p>
+              {view === "activity" && inbox && !inbox.activityAvailable ? (
+                <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                  GitHub notification access is unavailable. Mention search is
+                  still active.
+                </p>
+              ) : null}
               {hasNextPage ? (
                 <div ref={loadMoreRef}>
                   <Button
@@ -426,7 +636,7 @@ export function GithubIssuesView({
         ) : (
           <>
             <div className="divide-y py-2 md:hidden">
-              {issues.issues.map((issue) => (
+              {inbox.items.map((issue) => (
                 <GithubIssueMobileCard
                   key={issue.number}
                   issue={issue}
@@ -434,52 +644,106 @@ export function GithubIssuesView({
                 />
               ))}
             </div>
-            <div className="hidden min-w-[680px] py-2 text-xs md:block">
+            <div className="hidden min-w-[980px] py-2 text-xs md:block">
               <div
                 data-slot="table-header-surface"
-                className="sticky top-0 z-10 grid h-7 grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
+                className="sticky top-0 z-10 grid h-7 grid-cols-[70px_minmax(320px,1fr)_280px_140px_80px_110px] items-center border-y bg-muted/95 px-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
               >
                 <span>{kind === "pull-request" ? "PR" : "Issue"}</span>
                 <span>Title</span>
-                <span>Author</span>
+                <span>Status</span>
+                <span>People</span>
                 <span>Comments</span>
                 <span className="text-right">Updated</span>
               </div>
-              {issues.issues.map((issue) => (
-                <button
-                  key={issue.number}
-                  type="button"
-                  data-high-contrast-row
-                  onClick={() => setSelectedIssue(issue.number)}
-                  className="grid h-10 w-full grid-cols-[70px_minmax(320px,1fr)_130px_90px_100px] items-center px-4 text-left odd:bg-muted/[0.035] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                >
-                  <span className="font-mono text-muted-foreground">
-                    #{issue.number}
-                  </span>
-                  <span className="flex min-w-0 items-center gap-2 pr-4">
-                    <span className="truncate font-medium">{issue.title}</span>
-                    {issue.labels.slice(0, 2).map((label) => (
-                      <span
-                        key={label.name}
-                        className="max-w-24 truncate rounded-full border px-1.5 py-0.5 text-[9px]"
-                        style={{ borderColor: `#${label.color}80` }}
-                      >
-                        {label.name}
+              {inbox.items.map((issue) => {
+                const attention = visibleGithubInboxAttention(issue);
+                return (
+                  <button
+                    key={issue.number}
+                    type="button"
+                    data-high-contrast-row
+                    onClick={() => setSelectedIssue(issue.number)}
+                    className="grid min-h-16 w-full grid-cols-[70px_minmax(320px,1fr)_280px_140px_80px_110px] items-center px-4 py-2 text-left odd:bg-muted/[0.035] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    <span className="flex items-center gap-2 font-mono text-muted-foreground">
+                      {issue.attention.includes("unread") ? (
+                        <span
+                          className="size-1.5 rounded-full bg-blue-500"
+                          aria-label="Unread activity"
+                        />
+                      ) : null}
+                      #{issue.number}
+                    </span>
+                    <span className="min-w-0 pr-4">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate font-medium">
+                          {issue.title}
+                        </span>
+                        {issue.labels.slice(0, 2).map((label) => (
+                          <span
+                            key={label.name}
+                            className="max-w-24 shrink-0 truncate rounded-full border px-1.5 py-0.5 text-[9px]"
+                            style={{ borderColor: `#${label.color}80` }}
+                          >
+                            {label.name}
+                          </span>
+                        ))}
                       </span>
-                    ))}
-                  </span>
-                  <span className="truncate text-muted-foreground">
-                    @{issue.author}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <MessageSquare className="size-3" />
-                    {issue.commentCount}
-                  </span>
-                  <span className="text-right text-[10px] text-muted-foreground">
-                    {dateFormatter.format(new Date(issue.updatedAt))}
-                  </span>
-                </button>
-              ))}
+                      {issue.pullRequest ? (
+                        <span className="mt-1 flex min-w-0 items-center gap-1 font-mono text-[10px] text-muted-foreground">
+                          <GitBranch className="size-3 shrink-0" />
+                          <span className="truncate">
+                            {issue.pullRequest.headRef}
+                          </span>
+                          <span>→</span>
+                          <span className="truncate">
+                            {issue.pullRequest.baseRef}
+                          </span>
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 pr-3">
+                      {issue.pullRequest ? (
+                        <span className="block">
+                          <PullRequestState item={issue} />
+                          {attention.length ? (
+                            <span className="mt-1 flex flex-wrap gap-1">
+                              {attention.slice(0, 4).map((value) => (
+                                <AttentionPill key={value} attention={value} />
+                              ))}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="flex flex-wrap gap-1">
+                          {attention.slice(0, 4).map((value) => (
+                            <AttentionPill key={value} attention={value} />
+                          ))}
+                        </span>
+                      )}
+                    </span>
+                    <span className="min-w-0 text-[10px] text-muted-foreground">
+                      <span className="block truncate">@{issue.author}</span>
+                      {issue.assignees.length ? (
+                        <span className="mt-0.5 block truncate">
+                          Assigned @{issue.assignees[0]}
+                          {issue.assignees.length > 1
+                            ? ` +${issue.assignees.length - 1}`
+                            : ""}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <MessageSquare className="size-3" />
+                      {issue.commentCount}
+                    </span>
+                    <span className="text-right text-[10px] text-muted-foreground">
+                      {dateFormatter.format(new Date(issue.updatedAt))}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
             {hasNextPage || isFetchingNextPage ? (
               <div
@@ -530,6 +794,9 @@ export function GithubIssuesView({
             void queryClient.invalidateQueries({
               queryKey: ["github-issues", project.id, "issue"],
             });
+            void queryClient.invalidateQueries({
+              queryKey: ["github-inbox", project.id, "issue"],
+            });
             setSelectedIssue(issue.number);
           }}
         />
@@ -543,6 +810,9 @@ export function GithubIssuesView({
           onCreated={(pullRequest) => {
             void queryClient.invalidateQueries({
               queryKey: ["github-issues", project.id, "pull-request"],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ["github-inbox", project.id, "pull-request"],
             });
             queryClient.setQueryData(
               ["github-issue", project.id, pullRequest.number],

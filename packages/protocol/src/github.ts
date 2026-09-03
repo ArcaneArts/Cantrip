@@ -52,6 +52,27 @@ export const githubRepositoryCreateSchema = z.object({
 
 export const githubIssueStateSchema = z.enum(["open", "closed"]);
 export const githubIssueKindSchema = z.enum(["issue", "pull-request"]);
+export const githubInboxViewSchema = z.enum([
+  "all",
+  "needs-review",
+  "failed-checks",
+  "merge-conflicts",
+  "approved-ready",
+  "stale",
+  "assigned-to-me",
+  "activity",
+]);
+
+export const githubInboxAttentionSchema = z.enum([
+  "assigned",
+  "mention",
+  "review-requested",
+  "unread",
+  "failed-checks",
+  "merge-conflict",
+  "approved-ready",
+  "stale",
+]);
 
 export const githubIssueLabelSchema = z.object({
   name: z.string().min(1),
@@ -162,6 +183,38 @@ export const githubPullRequestListSchema = z.object({
   total: z.number().int().nonnegative(),
   pullRequests: z.array(githubPullRequestSummarySchema),
   nextPage: z.number().int().positive().nullable().default(null),
+});
+
+export const githubInboxPullRequestStateSchema = z.object({
+  draft: z.boolean(),
+  headRef: z.string().min(1),
+  baseRef: z.string().min(1),
+  mergeable: z.enum(["mergeable", "conflicting", "unknown"]),
+  reviewDecision: z.enum([
+    "approved",
+    "changes-requested",
+    "review-required",
+    "none",
+  ]),
+  checksState: z.enum(["success", "failure", "pending", "neutral", "none"]),
+});
+
+export const githubInboxItemSchema = githubIssueSummarySchema.extend({
+  kind: githubIssueKindSchema,
+  assignees: z.array(z.string().min(1)).max(100),
+  attention: z.array(githubInboxAttentionSchema).max(8),
+  pullRequest: githubInboxPullRequestStateSchema.nullable(),
+});
+
+export const githubInboxListSchema = z.object({
+  kind: githubIssueKindSchema,
+  state: githubIssueStateSchema,
+  view: githubInboxViewSchema,
+  total: z.number().int().nonnegative().nullable(),
+  items: z.array(githubInboxItemSchema).max(100),
+  nextCursor: z.string().min(1).max(2_000).nullable(),
+  viewerLogin: z.string().min(1),
+  activityAvailable: z.boolean(),
 });
 
 export const githubPullRequestCreateResultSchema = z.object({
@@ -461,6 +514,14 @@ export type GithubRepositoryCreate = z.infer<
 export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
 
 export type GithubIssueKind = z.infer<typeof githubIssueKindSchema>;
+
+export type GithubInboxView = z.infer<typeof githubInboxViewSchema>;
+
+export type GithubInboxAttention = z.infer<typeof githubInboxAttentionSchema>;
+
+export type GithubInboxItem = z.infer<typeof githubInboxItemSchema>;
+
+export type GithubInboxList = z.infer<typeof githubInboxListSchema>;
 
 export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
 

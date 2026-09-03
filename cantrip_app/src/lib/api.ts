@@ -138,6 +138,7 @@ import {
   executionTargetResolveRequestSchema,
   githubAuthStatusSchema,
   githubIssueDetailSchema,
+  githubInboxListSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutPreparedSchema,
@@ -469,6 +470,7 @@ import type {
   GithubIssueKind,
   GithubIssueCreate,
   GithubIssueState,
+  GithubInboxView,
   GithubPullRequestCreate,
   GithubPullRequestLifecycleAction,
   GithubPullRequestLifecycleApply,
@@ -4167,6 +4169,21 @@ export async function getGithubIssues(
     type: "github.issues.list",
     arguments: { kind, state, page, limit: 100 },
     resultSchema: githubIssueListSchema,
+  });
+}
+
+export async function getGithubInbox(
+  projectId: string,
+  kind: GithubIssueKind,
+  state: GithubIssueState,
+  view: GithubInboxView,
+  cursor: string | null = null,
+) {
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "github.inbox.list",
+    arguments: { kind, state, view, cursor, limit: 50 },
+    resultSchema: githubInboxListSchema,
   });
 }
 
