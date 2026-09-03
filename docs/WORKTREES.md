@@ -63,9 +63,12 @@ to their HEAD lane. Selecting a marker changes which checkout supplies status,
 staging, commit, pull, push, branch creation/switching, and the changes panel.
 
 Marker menus can open or create an owning Chat, Terminal, Explorer, or another
-History tab. History also exposes create, reconcile/refresh, lock/unlock,
-prune, and safe removal. Terminal and Explorer tabs never silently move when a
-chat changes lanes; create a new tab on the desired checkout instead.
+History tab. History also exposes source-aware creation from branches, issues,
+and pull requests; opening the worktree that already owns a branch; moving a
+reviewed dirty patch between compatible worktrees; copying selected commits to
+another lane; reconcile/refresh; lock/unlock; bulk cleanup; prune; and safe
+removal. Terminal and Explorer tabs never silently move when a chat changes
+lanes; create a new tab on the desired checkout instead.
 
 ## Policies and safety
 
@@ -120,6 +123,11 @@ Cantrip enforces these boundaries:
   must enter through the same boundary;
 - Primary cannot be individually removed or locked;
 - branches are retained when a worktree is removed;
+- dirty-patch transfers resolve both worktrees through server-owned IDs,
+  require the same source and worker, and verify one Git common directory;
+- move previews bind both HEAD/status snapshots plus working and staged-index
+  content, and apply retains recovery state whenever conflict resolution is
+  required;
 - locked, dirty, active, leased, or terminal-backed worktrees block unsafe
   removal;
 - one chat exclusively leases a secondary managed checkout by default;

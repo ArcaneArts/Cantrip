@@ -136,6 +136,8 @@ export const repositoryOperationTypeSchema = z.enum([
   "git.tag.action.apply",
   "git.commit.action.preview",
   "git.commit.action.apply",
+  "git.worktree.changes.preview",
+  "git.worktree.changes.apply",
   "git.operation.current",
   "git.operation.preview",
   "git.operation.start",
@@ -240,6 +242,8 @@ const repositoryOperationAccessByType = {
   "git.tag.action.apply": "write",
   "git.commit.action.preview": "read",
   "git.commit.action.apply": "write",
+  "git.worktree.changes.preview": "read",
+  "git.worktree.changes.apply": "write",
   "git.operation.current": "read",
   "git.operation.preview": "read",
   "git.operation.start": "write",
@@ -352,6 +356,7 @@ export const repositoryOperationWireRequestSchema = z
     access: repositoryOperationAccessSchema.default("write"),
     agent: z.boolean().default(false),
     modelId: z.string().min(1).max(200).optional(),
+    peerWorktreeId: z.string().min(1).max(200).optional(),
   })
   .strict()
   .refine((value) => value.agent || value.modelId === undefined, {

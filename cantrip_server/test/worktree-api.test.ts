@@ -2641,6 +2641,101 @@ describe.sequential("server worktree control plane", () => {
     }
   });
 
+  it("routes protected peer worktree operations only within one project source", async () => {
+    const protectedRequest = {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1 as const,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    };
+    const peerWorktreeId = randomUUID();
+    const peerPath = path.join(dataDirectory, "worktrees", peerWorktreeId);
+    workerWorktrees.push({
+      path: peerPath,
+      head: "2".repeat(40),
+      branch: "peer-operation",
+      detached: false,
+      isPrimary: false,
+      managed: true,
+      locked: false,
+      lockReason: null,
+      prunable: false,
+      pruneReason: null,
+      missing: false,
+    });
+    await database.repository.reconcileProjectWorktrees(
+      LOCAL_USER_ID,
+      projectId,
+      "test-worker",
+      inventory(),
+      {
+        id: peerWorktreeId,
+        name: "peer-operation",
+        origin: "cantrip",
+        path: peerPath,
+      },
+    );
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${primaryId}/repository-operation`,
+        payload: {
+          operationId: "41111111-1111-4111-8111-111111111111",
+          protectedRequest,
+          access: "read",
+          peerWorktreeId,
+        },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(repositoryOperationCommands.at(-1)).toMatchObject({
+        worktreeId: primaryId,
+        peerWorktree: {
+          id: peerWorktreeId,
+        },
+      });
+
+      const sameWorktree = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${primaryId}/repository-operation`,
+        payload: {
+          operationId: "41111111-1111-4111-8111-111111111112",
+          protectedRequest,
+          access: "read",
+          peerWorktreeId: primaryId,
+        },
+      });
+      expect(sameWorktree.statusCode).toBe(409);
+
+      const unknownPeer = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${primaryId}/repository-operation`,
+        payload: {
+          operationId: "41111111-1111-4111-8111-111111111113",
+          protectedRequest,
+          access: "read",
+          peerWorktreeId: "missing-worktree",
+        },
+      });
+      expect(unknownPeer.statusCode).toBe(404);
+    } finally {
+      const peerIndex = workerWorktrees.findIndex(
+        ({ path: candidate }) => candidate === peerPath,
+      );
+      if (peerIndex >= 0) workerWorktrees.splice(peerIndex, 1);
+      await database.repository.rollbackProjectWorktreeCreation(
+        LOCAL_USER_ID,
+        projectId,
+        "test-worker",
+        { id: peerWorktreeId, origin: "cantrip", path: peerPath },
+      );
+    }
+  });
+
   it("fails closed on legacy plaintext repository routes", async () => {
     const gitResponse = await app.inject({
       method: "POST",

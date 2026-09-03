@@ -173,6 +173,8 @@ import {
   gitBranchMutationResultSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitWorktreeChangesMovePreviewSchema,
+  gitWorktreeChangesMoveResultSchema,
   gitConflictDetailSchema,
   gitConflictListSchema,
   gitConflictResolutionPreviewSchema,
@@ -466,6 +468,7 @@ import type {
   GitAgentDraftCreate,
   GitBranchAction,
   GitCommitAction,
+  GitWorktreeChangesMoveRequest,
   GitCommitSearchQuery,
   GitHistoryOptions,
   GitConflictResolutionRequest,
@@ -2718,6 +2721,7 @@ async function runProtectedRepositoryOperation<T>(input: {
   agent?: boolean;
   arguments: Record<string, unknown>;
   modelId?: string;
+  peerWorktreeId?: string;
   projectId: string;
   resultSchema: RepositoryResultSchema<T>;
   target?: RepositoryOperationTarget;
@@ -2758,6 +2762,9 @@ async function runProtectedRepositoryOperation<T>(input: {
             protectedRequest,
             access: repositoryOperationAccess(input.type),
             agent: input.agent ?? false,
+            ...(input.peerWorktreeId
+              ? { peerWorktreeId: input.peerWorktreeId }
+              : {}),
             ...(input.modelId ? { modelId: input.modelId } : {}),
           }),
         },
@@ -3033,6 +3040,7 @@ export async function createProjectWorktree(
   const parsed = projectWorktreeCreateSchema.parse(input);
   const worktrees = await getProjectWorktreeWireList(projectId);
   const workerId =
+    worktrees.find(({ id }) => id === parsed.sourceWorktreeId)?.workerId ??
     worktrees.find(({ isPrimary }) => isPrimary)?.workerId ??
     worktrees.find(({ isDefault }) => isDefault)?.workerId;
   if (!workerId)
@@ -3054,6 +3062,7 @@ export async function createProjectWorktree(
   });
   const protectedInput = projectWorktreeCreateSchema.parse({
     name: protectedValues.values.name,
+    sourceWorktreeId: parsed.sourceWorktreeId,
     mode:
       parsed.mode.type === "detached"
         ? {
@@ -3449,6 +3458,39 @@ export async function applyProjectWorktreeCommitAction(
     type: "git.commit.action.apply",
     arguments: { action, token },
     resultSchema: gitCommitActionResultSchema,
+  });
+}
+
+export async function previewProjectWorktreeChangesMove(
+  projectId: string,
+  sourceWorktreeId: string,
+  targetWorktreeId: string,
+) {
+  const request: GitWorktreeChangesMoveRequest = { sourceWorktreeId };
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId: targetWorktreeId,
+    peerWorktreeId: sourceWorktreeId,
+    type: "git.worktree.changes.preview",
+    arguments: { request },
+    resultSchema: gitWorktreeChangesMovePreviewSchema,
+  });
+}
+
+export async function applyProjectWorktreeChangesMove(
+  projectId: string,
+  sourceWorktreeId: string,
+  targetWorktreeId: string,
+  token: string,
+) {
+  const request: GitWorktreeChangesMoveRequest = { sourceWorktreeId };
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId: targetWorktreeId,
+    peerWorktreeId: sourceWorktreeId,
+    type: "git.worktree.changes.apply",
+    arguments: { request, token },
+    resultSchema: gitWorktreeChangesMoveResultSchema,
   });
 }
 

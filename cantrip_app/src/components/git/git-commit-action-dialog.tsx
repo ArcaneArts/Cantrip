@@ -1,7 +1,11 @@
-import type { GitCommitAction, GitCommitActionResult } from "@cantrip/protocol";
+import type {
+  GitCommitAction,
+  GitCommitActionResult,
+  ProjectWorktreeSummary,
+} from "@cantrip/protocol";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -36,6 +40,7 @@ export interface CommitActionRequest {
   kind: CommitActionKind;
   target: CommitActionTarget;
   revisions?: string[];
+  targetWorktreeId?: string;
 }
 
 export interface CommitActionEditor {
@@ -81,6 +86,26 @@ export function commitActionFromEditor(
   }
 }
 
+export function eligibleCommitActionWorktrees(
+  currentWorktreeId: string,
+  worktrees: readonly ProjectWorktreeSummary[],
+): ProjectWorktreeSummary[] {
+  const current = worktrees.find(({ id }) => id === currentWorktreeId);
+  if (!current) return [];
+  return worktrees
+    .filter(
+      (worktree) =>
+        worktree.projectSourceId === current.projectSourceId &&
+        worktree.workerId === current.workerId &&
+        worktree.lifecycleState === "ready",
+    )
+    .sort((left, right) => {
+      if (left.id === currentWorktreeId) return -1;
+      if (right.id === currentWorktreeId) return 1;
+      return left.name.localeCompare(right.name);
+    });
+}
+
 function titleFor(kind: CommitActionKind): string {
   switch (kind) {
     case "cherryPick":
@@ -100,14 +125,26 @@ export function GitCommitActionDialog({
   projectId,
   request,
   worktreeId,
+  worktrees,
 }: {
-  onConflict(paths: string[]): void;
+  onConflict(worktreeId: string, paths: string[]): void;
   onOpenChange(open: boolean): void;
   projectId: string;
   request: CommitActionRequest | null;
   worktreeId: string;
+  worktrees: readonly ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
+  const eligibleWorktrees = useMemo(
+    () => eligibleCommitActionWorktrees(worktreeId, worktrees),
+    [worktreeId, worktrees],
+  );
+  const [targetWorktreeId, setTargetWorktreeId] = useState(worktreeId);
+  const operationWorktreeId = eligibleWorktrees.some(
+    ({ id }) => id === targetWorktreeId,
+  )
+    ? targetWorktreeId
+    : worktreeId;
   const [editor, setEditor] = useState<CommitActionEditor>({
     range: false,
     fromRevision: "",
@@ -118,28 +155,36 @@ export function GitCommitActionDialog({
   const [result, setResult] = useState<GitCommitActionResult | null>(null);
   const reviewedOperation = useReviewedOperation({
     preview: (action: GitCommitAction) =>
-      previewProjectWorktreeCommitAction(projectId, worktreeId, action),
+      previewProjectWorktreeCommitAction(
+        projectId,
+        operationWorktreeId,
+        action,
+      ),
     apply: ({ preview, request: action }) =>
       applyProjectWorktreeCommitAction(
         projectId,
-        worktreeId,
+        operationWorktreeId,
         action,
         preview.token,
       ),
     missingReviewMessage: "Review the commit action first.",
     onSuccess: (next) => {
       queryClient.setQueryData(
-        ["worktree-status", projectId, worktreeId],
+        ["worktree-status", projectId, operationWorktreeId],
         next.status,
       );
       void queryClient.invalidateQueries({
-        queryKey: ["worktree-history", projectId, worktreeId],
+        queryKey: ["worktree-history", projectId, operationWorktreeId],
       });
       void queryClient.invalidateQueries({
-        queryKey: ["worktree-commit", projectId, worktreeId],
+        queryKey: ["worktree-commit", projectId, operationWorktreeId],
       });
       void queryClient.invalidateQueries({
-        queryKey: ["worktree-revision-candidates", projectId, worktreeId],
+        queryKey: [
+          "worktree-revision-candidates",
+          projectId,
+          operationWorktreeId,
+        ],
       });
       if (
         next.operation &&
@@ -153,6 +198,7 @@ export function GitCommitActionDialog({
     },
   });
   useEffect(() => {
+    setTargetWorktreeId(request?.targetWorktreeId ?? worktreeId);
     setEditor({
       range: false,
       fromRevision: request?.target.hash ?? "",
@@ -165,7 +211,7 @@ export function GitCommitActionDialog({
     });
     reviewedOperation.reset();
     setResult(null);
-  }, [request]);
+  }, [request, worktreeId]);
   const reviewedAction = reviewedOperation.request;
   const preview = reviewedOperation.preview;
   const apply = reviewedOperation.apply;
@@ -219,7 +265,7 @@ export function GitCommitActionDialog({
             <DialogFooter>
               <Button
                 onClick={() => {
-                  onConflict(conflictPaths);
+                  onConflict(operationWorktreeId, conflictPaths);
                   onOpenChange(false);
                 }}
               >
@@ -315,6 +361,27 @@ export function GitCommitActionDialog({
             <div className="grid gap-4 py-3">
               {request?.kind === "cherryPick" ? (
                 <>
+                  <label className="grid gap-1 text-sm">
+                    Destination worktree
+                    <NativeSelect
+                      className="h-9 rounded-md border bg-background px-3"
+                      value={operationWorktreeId}
+                      onChange={(event) =>
+                        setTargetWorktreeId(event.target.value)
+                      }
+                    >
+                      {eligibleWorktrees.map((worktree) => (
+                        <option key={worktree.id} value={worktree.id}>
+                          {worktree.name} · {worktree.branch ?? "Detached HEAD"}
+                          {worktree.id === worktreeId ? " (current)" : ""}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    <span className="text-xs text-muted-foreground">
+                      The selected commits are previewed and applied in this
+                      worktree.
+                    </span>
+                  </label>
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"

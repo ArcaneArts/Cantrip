@@ -17,6 +17,7 @@ import {
   applyGitRemoteAction,
   applyGitRecoveryAction,
   applyGitStashAction,
+  applyGitWorktreeChangesMove,
   applyGitSubmoduleAction,
   applyGitTagAction,
   controlGitManagedOperation,
@@ -32,6 +33,7 @@ import {
   previewGitRemoteAction,
   previewGitRecoveryAction,
   previewGitStashAction,
+  previewGitWorktreeChangesMove,
   previewGitSubmoduleAction,
   previewGitTagAction,
   previewGitManagedOperation,
@@ -74,6 +76,216 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("moves staged, unstaged, and untracked changes between worktrees", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-move-changes-"));
+    directories.push(root);
+    const source = path.join(root, "source");
+    const target = path.join(root, "target");
+    await execFileAsync("git", ["init", "-b", "main", source]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(source, "staged.txt"), "base staged\n");
+    await writeFile(path.join(source, "unstaged.txt"), "base unstaged\n");
+    await execFileAsync("git", ["-C", source, "add", "."]);
+    await execFileAsync("git", ["-C", source, "commit", "-m", "Base"]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "worktree",
+      "add",
+      "-b",
+      "target",
+      target,
+    ]);
+    await writeFile(path.join(source, "staged.txt"), "moved staged\n");
+    await execFileAsync("git", ["-C", source, "add", "staged.txt"]);
+    await writeFile(path.join(source, "unstaged.txt"), "moved unstaged\n");
+    await writeFile(path.join(source, "untracked.txt"), "moved untracked\n");
+
+    const request = { sourceWorktreeId: "source-worktree" };
+    const preview = await previewGitWorktreeChangesMove(
+      target,
+      source,
+      request,
+    );
+    expect(preview).toMatchObject({
+      request,
+      destructive: true,
+      sourceBranch: "main",
+      targetBranch: "target",
+      wouldConflict: false,
+    });
+    const result = await applyGitWorktreeChangesMove(
+      target,
+      source,
+      request,
+      preview.token,
+    );
+    expect(result.sourceStatus.files).toEqual([]);
+    expect(result.status.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "staged.txt", staged: true }),
+        expect.objectContaining({ path: "unstaged.txt", unstaged: true }),
+        expect.objectContaining({ path: "untracked.txt", unstaged: true }),
+      ]),
+    );
+    expect(await readFile(path.join(target, "staged.txt"), "utf8")).toBe(
+      "moved staged\n",
+    );
+    expect(await readFile(path.join(target, "untracked.txt"), "utf8")).toBe(
+      "moved untracked\n",
+    );
+    expect((await readGitStashes(source)).stashes).toEqual([]);
+  });
+
+  it("rejects stale worktree moves and retains a recovery stash for conflicts", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-move-conflict-"));
+    directories.push(root);
+    const source = path.join(root, "source");
+    const target = path.join(root, "target");
+    await execFileAsync("git", ["init", "-b", "main", source]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(path.join(source, "shared.txt"), "base\n");
+    await execFileAsync("git", ["-C", source, "add", "."]);
+    await execFileAsync("git", ["-C", source, "commit", "-m", "Base"]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "worktree",
+      "add",
+      "-b",
+      "target",
+      target,
+    ]);
+    await writeFile(path.join(target, "shared.txt"), "target\n");
+    await execFileAsync("git", ["-C", target, "commit", "-am", "Target"]);
+    await writeFile(path.join(source, "shared.txt"), "source\n");
+
+    const request = { sourceWorktreeId: "source-worktree" };
+    const stale = await previewGitWorktreeChangesMove(target, source, request);
+    await writeFile(path.join(source, "shared.txt"), "source changed again\n");
+    await expect(
+      applyGitWorktreeChangesMove(target, source, request, stale.token),
+    ).rejects.toThrow("changed after this preview");
+
+    const preview = await previewGitWorktreeChangesMove(
+      target,
+      source,
+      request,
+    );
+    expect(preview.wouldConflict).toBe(true);
+    const result = await applyGitWorktreeChangesMove(
+      target,
+      source,
+      request,
+      preview.token,
+    );
+    expect(result.operation).toMatchObject({
+      type: "stash",
+      state: "conflicted",
+      conflictedPaths: ["shared.txt"],
+    });
+    expect(result.sourceStatus.files).toEqual([]);
+    expect(result.stash).not.toBeNull();
+
+    await writeFile(path.join(target, "shared.txt"), "resolved\n");
+    await execFileAsync("git", ["-C", target, "add", "shared.txt"]);
+    const completed = await controlGitManagedOperation(
+      target,
+      {
+        type: "stash",
+        originalHead: result.operation!.originalHead,
+        sourceRef: result.operation!.sourceRef,
+        sourceRevision: result.operation!.sourceRevision,
+        targetRef: result.operation!.targetRef,
+        targetRevision: result.operation!.targetRevision,
+        pendingCommits: result.operation!.pendingCommits,
+        totalSteps: 1,
+        checkpointRef: result.operation!.checkpointRef,
+      },
+      "continue",
+    );
+    expect(completed.state).toBe("completed");
+    expect((await readGitStashes(source)).stashes).toEqual([]);
+  });
+
+  it("invalidates a worktree move when only the staged snapshot changes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-move-index-"));
+    directories.push(root);
+    const source = path.join(root, "source");
+    const target = path.join(root, "target");
+    const filePath = path.join(source, "mixed.txt");
+    await execFileAsync("git", ["init", "-b", "main", source]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    await writeFile(filePath, "base\n");
+    await execFileAsync("git", ["-C", source, "add", "mixed.txt"]);
+    await execFileAsync("git", ["-C", source, "commit", "-m", "Base"]);
+    await execFileAsync("git", [
+      "-C",
+      source,
+      "worktree",
+      "add",
+      "-b",
+      "target",
+      target,
+    ]);
+    await writeFile(filePath, "staged one\n");
+    await execFileAsync("git", ["-C", source, "add", "mixed.txt"]);
+    await writeFile(filePath, "working copy\n");
+
+    const request = { sourceWorktreeId: "source-worktree" };
+    const preview = await previewGitWorktreeChangesMove(
+      target,
+      source,
+      request,
+    );
+    await writeFile(filePath, "staged two\n");
+    await execFileAsync("git", ["-C", source, "add", "mixed.txt"]);
+    await writeFile(filePath, "working copy\n");
+
+    await expect(
+      applyGitWorktreeChangesMove(target, source, request, preview.token),
+    ).rejects.toThrow("changed after this preview");
+  });
+
   it("previews, persists, and continues a conflicting merge", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-merge-test-"));
     directories.push(root);

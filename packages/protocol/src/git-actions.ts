@@ -5,6 +5,7 @@ import {
   gitComparisonCommitSchema,
   gitFileChangeSchema,
   gitStatusSchema,
+  gitStashMutationResultSchema,
   gitBranchNameInputSchema,
   gitRemoteNameInputSchema,
   gitRevisionInputSchema,
@@ -363,6 +364,40 @@ export const gitCommitActionResultSchema = z.object({
   operation: gitOperationSummarySchema.nullable(),
 });
 
+export const gitWorktreeChangesMoveRequestSchema = z
+  .object({ sourceWorktreeId: z.string().min(1).max(200) })
+  .strict();
+
+export const gitWorktreeChangesMovePreviewSchema = z
+  .object({
+    request: gitWorktreeChangesMoveRequestSchema,
+    token: z.string().regex(/^[0-9a-f]{64}$/u),
+    destructive: z.literal(true),
+    summary: z.string().min(1).max(10_000),
+    warnings: z.array(z.string().min(1).max(1_000)).max(100),
+    sourceBranch: z.string().min(1).max(1_000).nullable(),
+    sourceHead: gitCommitHashInputSchema,
+    targetBranch: z.string().min(1).max(1_000).nullable(),
+    targetHead: gitCommitHashInputSchema,
+    files: z.array(gitFileChangeSchema).min(1).max(100_000),
+    patch: z.string().max(2_000_000),
+    patchTruncated: z.boolean(),
+    wouldConflict: z.boolean(),
+  })
+  .strict();
+
+export const gitWorktreeChangesMoveApplySchema = z
+  .object({
+    request: gitWorktreeChangesMoveRequestSchema,
+    token: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .strict();
+
+export const gitWorktreeChangesMoveResultSchema =
+  gitStashMutationResultSchema.extend({
+    sourceStatus: gitStatusSchema,
+  });
+
 const gitPathsSchema = z.array(gitRelativePathSchema).min(1).max(1_000);
 export const gitActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stage"), paths: gitPathsSchema }),
@@ -489,6 +524,18 @@ export type GitCommitActionPreview = z.infer<
 >;
 export type GitCommitActionApply = z.infer<typeof gitCommitActionApplySchema>;
 export type GitCommitActionResult = z.infer<typeof gitCommitActionResultSchema>;
+export type GitWorktreeChangesMoveRequest = z.infer<
+  typeof gitWorktreeChangesMoveRequestSchema
+>;
+export type GitWorktreeChangesMovePreview = z.infer<
+  typeof gitWorktreeChangesMovePreviewSchema
+>;
+export type GitWorktreeChangesMoveApply = z.infer<
+  typeof gitWorktreeChangesMoveApplySchema
+>;
+export type GitWorktreeChangesMoveResult = z.infer<
+  typeof gitWorktreeChangesMoveResultSchema
+>;
 export type GitAction = z.infer<typeof gitActionSchema>;
 export type GitActionResult = z.infer<typeof gitActionResultSchema>;
 export type GitForcePushPreview = z.infer<typeof gitForcePushPreviewSchema>;

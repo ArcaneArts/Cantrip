@@ -1,11 +1,41 @@
-import type { GitManagedBranch } from "@cantrip/protocol";
+import type {
+  GitBranchList,
+  GitManagedBranch,
+  ProjectWorktreeSummary,
+} from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
   branchActionDescription,
   branchStateLabel,
   filterManagedBranches,
+  worktreeCreateInputForBranch,
 } from "./git-branch-panel";
+
+function worktree(id: string, branchName: string): ProjectWorktreeSummary {
+  return {
+    id,
+    projectSourceId: "source-one",
+    projectId: "project-one",
+    rootKind: "git-worktree",
+    workerId: "worker-one",
+    name: id,
+    path: `/tmp/${id}`,
+    displayPath: `/tmp/${id}`,
+    isPrimary: id === "primary",
+    isDefault: id === "primary",
+    origin: "cantrip",
+    lifecycleState: "ready",
+    branch: branchName,
+    head: "a".repeat(40),
+    detached: false,
+    locked: false,
+    lockReason: null,
+    lastScannedAt: null,
+    createdAt: "2026-08-10T12:00:00.000Z",
+    updatedAt: "2026-08-10T12:00:00.000Z",
+  };
+}
 
 function branch(
   name: string,
@@ -97,5 +127,48 @@ describe("Git branch panel helpers", () => {
         force: true,
       }),
     ).toContain("Force-delete");
+  });
+
+  it("creates or derives worktree checkouts without stealing owned branches", () => {
+    const local = branch("feature/search", "local");
+    const remote = branch("origin/review/fix", "remote", {
+      remoteName: "origin",
+    });
+    const inventory = {
+      currentBranch: "main",
+      head: "a".repeat(40),
+      detached: false,
+      defaultRemote: "origin",
+      remotes: ["origin"],
+      pullStrategy: { mode: "fast-forward-only", description: "ff-only" },
+      branches: [branch("main", "local", { current: true }), local, remote],
+      truncated: false,
+      generatedAt: "2026-08-10T12:00:00.000Z",
+    } satisfies GitBranchList;
+
+    expect(worktreeCreateInputForBranch(local, inventory, [])).toEqual({
+      name: "search",
+      mode: { type: "existingBranch", branch: "feature/search" },
+    });
+    expect(worktreeCreateInputForBranch(remote, inventory, [])).toEqual({
+      name: "fix",
+      mode: {
+        type: "newBranch",
+        branch: "review/fix",
+        startPoint: "refs/remotes/origin/review/fix",
+      },
+    });
+    expect(
+      worktreeCreateInputForBranch(local, inventory, [
+        worktree("feature-lane", "feature/search"),
+      ]),
+    ).toEqual({
+      name: "search",
+      mode: {
+        type: "newBranch",
+        branch: "",
+        startPoint: "refs/heads/feature/search",
+      },
+    });
   });
 });

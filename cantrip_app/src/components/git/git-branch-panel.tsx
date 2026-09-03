@@ -4,6 +4,8 @@ import type {
   GitBranchList,
   GitManagedBranch,
   GitMergeRebaseAction,
+  ProjectWorktreeCreate,
+  ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -11,11 +13,13 @@ import {
   CloudUpload,
   GitBranch,
   GitBranchPlus,
+  GitFork,
   GitMerge,
   GitPullRequestArrow,
   Loader2,
   MoreHorizontal,
   RefreshCw,
+  ScanLine,
   Search,
   Trash2,
   X,
@@ -39,11 +43,13 @@ import {
   previewProjectWorktreeBranchAction,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { worktreeForBranch } from "@/components/worktrees/worktree-control";
 
 import {
   ReviewedOperationDialog,
   useReviewedOperation,
 } from "./reviewed-operation";
+import { GitWorktreeCleanupDialog } from "./git-worktree-cleanup-dialog";
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
@@ -114,6 +120,53 @@ export function branchActionDescription(action: GitBranchAction): string {
   }
 }
 
+export function worktreeCreateInputForBranch(
+  branch: GitManagedBranch,
+  inventory: GitBranchList,
+  worktrees: readonly ProjectWorktreeSummary[],
+): ProjectWorktreeCreate {
+  const owningWorktree = worktreeForBranch(worktrees, branch);
+  const localBranches = new Set(
+    inventory.branches
+      .filter(({ kind }) => kind === "local")
+      .map(({ name }) => name),
+  );
+  const trackedLocal = branch.trackingLocalBranches.find(
+    (name) =>
+      !worktrees.some(
+        (worktree) => !worktree.detached && worktree.branch === name,
+      ),
+  );
+  const shortName =
+    branch.kind === "remote" && branch.remoteName
+      ? branch.name.slice(branch.remoteName.length + 1)
+      : branch.name;
+  const displayName = (shortName.split("/").at(-1) || "Worktree").slice(0, 200);
+  if (branch.kind === "local" && !owningWorktree) {
+    return {
+      name: displayName,
+      mode: { type: "existingBranch", branch: branch.name },
+    };
+  }
+  if (branch.kind === "remote" && trackedLocal) {
+    return {
+      name: displayName,
+      mode: { type: "existingBranch", branch: trackedLocal },
+    };
+  }
+  return {
+    name: displayName,
+    mode: {
+      type: "newBranch",
+      branch:
+        branch.kind === "remote" && !localBranches.has(shortName)
+          ? shortName
+          : "",
+      startPoint: branch.fullRef,
+    },
+  };
+}
+
 type EditorState =
   | { type: "create"; name: string; startPoint: string; checkout: boolean }
   | { type: "rename"; branch: GitManagedBranch; value: string }
@@ -171,21 +224,26 @@ function BranchActions({
   disabled,
   inventory,
   onEdit,
+  onCreateWorktree,
+  onSelectWorktree,
   onOperation,
   onReview,
+  worktrees,
 }: {
   branch: GitManagedBranch;
   disabled: boolean;
   inventory: GitBranchList;
   onEdit(editor: EditorState): void;
+  onCreateWorktree(branch: GitManagedBranch): void;
   onOperation(action: GitMergeRebaseAction): void;
   onReview(action: GitBranchAction): void;
+  onSelectWorktree(worktreeId: string): void;
+  worktrees: readonly ProjectWorktreeSummary[];
 }) {
   const itemClass =
     "flex cursor-default select-none items-center gap-2 rounded px-2 py-1.5 text-xs outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
-  const blockedByWorktree = Boolean(
-    branch.worktree && !branch.worktree.current,
-  );
+  const owningWorktree = worktreeForBranch(worktrees, branch);
+  const blockedByWorktree = Boolean(owningWorktree && !branch.current);
   return (
     <DropdownMenuPrimitive.Root>
       <DropdownMenuPrimitive.Trigger asChild>
@@ -206,19 +264,27 @@ function BranchActions({
         >
           {!branch.current ? (
             <>
-              <DropdownMenuPrimitive.Item
-                className={itemClass}
-                disabled={blockedByWorktree}
-                onSelect={() =>
-                  onReview({
-                    type: "switch",
-                    name: branch.name,
-                    kind: branch.kind,
-                  })
-                }
-              >
-                <ArrowRightLeft className="size-3.5" /> Switch here
-              </DropdownMenuPrimitive.Item>
+              {owningWorktree ? (
+                <DropdownMenuPrimitive.Item
+                  className={itemClass}
+                  onSelect={() => onSelectWorktree(owningWorktree.id)}
+                >
+                  <GitFork className="size-3.5" /> Open owning worktree
+                </DropdownMenuPrimitive.Item>
+              ) : (
+                <DropdownMenuPrimitive.Item
+                  className={itemClass}
+                  onSelect={() =>
+                    onReview({
+                      type: "switch",
+                      name: branch.name,
+                      kind: branch.kind,
+                    })
+                  }
+                >
+                  <ArrowRightLeft className="size-3.5" /> Switch here
+                </DropdownMenuPrimitive.Item>
+              )}
               <DropdownMenuPrimitive.Item
                 className={itemClass}
                 onSelect={() =>
@@ -238,6 +304,13 @@ function BranchActions({
               <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
             </>
           ) : null}
+          <DropdownMenuPrimitive.Item
+            className={itemClass}
+            onSelect={() => onCreateWorktree(branch)}
+          >
+            <GitBranchPlus className="size-3.5" /> Create worktree…
+          </DropdownMenuPrimitive.Item>
+          <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
           {branch.kind === "local" ? (
             <>
               <DropdownMenuPrimitive.Item
@@ -309,18 +382,25 @@ function BranchActions({
 export function GitBranchPanel({
   onClose,
   onOperation,
+  onCreateWorktree,
+  onSelectWorktree,
   projectId,
+  worktrees,
   worktreeId,
 }: {
   onClose(): void;
   onOperation(action: GitMergeRebaseAction): void;
+  onCreateWorktree(input: ProjectWorktreeCreate): void;
+  onSelectWorktree(worktreeId: string): void;
   projectId: string;
   worktreeId: string;
+  worktrees: readonly ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<"local" | "remote">("local");
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   const branches = useQuery({
     queryKey: ["worktree-branches", projectId, worktreeId],
     queryFn: () => getProjectWorktreeBranches(projectId, worktreeId),
@@ -377,6 +457,15 @@ export function GitBranchPanel({
   const remoteCount =
     branches.data?.branches.filter(({ kind }) => kind === "remote").length ?? 0;
   const busy = operation.busy;
+  const currentWorktree = worktrees.find(({ id }) => id === worktreeId);
+  const sourceWorktrees = currentWorktree
+    ? worktrees.filter(
+        ({ projectSourceId, workerId }) =>
+          projectSourceId === currentWorktree.projectSourceId &&
+          workerId === currentWorktree.workerId,
+      )
+    : [];
+  const primaryWorktree = sourceWorktrees.find(({ isPrimary }) => isPrimary);
 
   return (
     <aside className="absolute inset-y-0 right-0 z-20 flex w-full min-w-0 flex-col border-l bg-background shadow-2xl md:w-[min(48rem,78vw)]">
@@ -427,6 +516,15 @@ export function GitBranchPanel({
           }
         >
           Prune…
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1 px-2 text-xs"
+          disabled={!primaryWorktree || busy}
+          onClick={() => setCleanupOpen(true)}
+        >
+          <ScanLine className="size-3.5" /> Clean up…
         </Button>
         <Button
           size="icon"
@@ -529,8 +627,19 @@ export function GitBranchPanel({
                 disabled={busy}
                 inventory={branches.data!}
                 onEdit={setEditor}
+                onCreateWorktree={(selectedBranch) =>
+                  onCreateWorktree(
+                    worktreeCreateInputForBranch(
+                      selectedBranch,
+                      branches.data!,
+                      sourceWorktrees,
+                    ),
+                  )
+                }
                 onOperation={onOperation}
                 onReview={operation.review}
+                onSelectWorktree={onSelectWorktree}
+                worktrees={sourceWorktrees}
               />
             </div>
           ))
@@ -736,6 +845,20 @@ export function GitBranchPanel({
           </div>
         )}
       </ReviewedOperationDialog>
+      {primaryWorktree ? (
+        <GitWorktreeCleanupDialog
+          open={cleanupOpen}
+          primaryWorktreeId={primaryWorktree.id}
+          projectId={projectId}
+          worktrees={sourceWorktrees}
+          onOpenChange={setCleanupOpen}
+          onComplete={({ removedWorktreeIds }) => {
+            if (removedWorktreeIds.includes(worktreeId)) {
+              onSelectWorktree(primaryWorktree.id);
+            }
+          }}
+        />
+      ) : null}
     </aside>
   );
 }

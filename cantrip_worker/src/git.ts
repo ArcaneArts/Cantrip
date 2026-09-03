@@ -20,6 +20,8 @@ import {
   gitBranchMutationResultSchema,
   gitCommitActionPreviewSchema,
   gitCommitActionResultSchema,
+  gitWorktreeChangesMovePreviewSchema,
+  gitWorktreeChangesMoveResultSchema,
   gitConflictDetailSchema,
   gitConflictListSchema,
   gitConflictResolutionPreviewSchema,
@@ -67,6 +69,9 @@ import {
   type GitCommitAction,
   type GitCommitActionPreview,
   type GitCommitActionResult,
+  type GitWorktreeChangesMovePreview,
+  type GitWorktreeChangesMoveRequest,
+  type GitWorktreeChangesMoveResult,
   type GitConflictDetail,
   type GitConflictKind,
   type GitConflictList,
@@ -2819,6 +2824,355 @@ async function dropStashByHash(cwd: string, hash: string): Promise<string> {
   return runGit(cwd, ["stash", "drop", stash.ref]);
 }
 
+async function canonicalGitCommonDirectory(cwd: string): Promise<string> {
+  const commonDirectory = await gitOutput(cwd, [
+    "rev-parse",
+    "--git-common-dir",
+  ]);
+  return realpath(path.resolve(cwd, commonDirectory)).catch(() =>
+    path.resolve(cwd, commonDirectory),
+  );
+}
+
+async function gitIndexFingerprint(cwd: string): Promise<string> {
+  const indexPath = await gitOutput(cwd, ["rev-parse", "--git-path", "index"]);
+  const contents = await readFile(path.resolve(cwd, indexPath));
+  return createHash("sha256").update(contents).digest("hex");
+}
+
+async function worktreeChangesMoveState(
+  sourceCwd: string,
+  targetCwd: string,
+): Promise<{
+  sourceStatus: GitStatus;
+  targetStatus: GitStatus;
+  sourceHead: string;
+  targetHead: string;
+  patch: string;
+  completePatch: string;
+  patchTruncated: boolean;
+  untracked: Array<{ path: string; hash: string }>;
+  token: string;
+}> {
+  const [sourcePath, targetPath, sourceCommon, targetCommon] =
+    await Promise.all([
+      realpath(sourceCwd).catch(() => path.resolve(sourceCwd)),
+      realpath(targetCwd).catch(() => path.resolve(targetCwd)),
+      canonicalGitCommonDirectory(sourceCwd),
+      canonicalGitCommonDirectory(targetCwd),
+    ]);
+  if (sourcePath === targetPath) {
+    throw new Error("Choose a different worktree for the moved changes.");
+  }
+  if (sourceCommon !== targetCommon) {
+    throw new Error(
+      "Changes can only move between worktrees of one repository.",
+    );
+  }
+  await Promise.all([
+    assertNoInProgressGitOperation(sourceCwd),
+    assertNoInProgressGitOperation(targetCwd),
+  ]);
+  const [sourceStatus, targetStatus, sourceHead, targetHead, diff, indexTree] =
+    await Promise.all([
+      readGitStatus(sourceCwd),
+      readGitStatus(targetCwd),
+      resolveCommit(sourceCwd, "HEAD"),
+      resolveCommit(targetCwd, "HEAD"),
+      gitDiffOutput(
+        sourceCwd,
+        ["diff", "--binary", "--no-ext-diff", "HEAD"],
+        false,
+      ),
+      gitIndexFingerprint(sourceCwd),
+    ]);
+  if (sourceStatus.files.length === 0) {
+    throw new Error("The source worktree has no changes to move.");
+  }
+  requireCleanStatus(targetStatus, "Moving changes");
+  const untrackedPaths = sourceStatus.files
+    .filter(
+      ({ indexStatus, worktreeStatus }) =>
+        indexStatus === "?" && worktreeStatus === "?",
+    )
+    .map(({ path: filePath }) => filePath)
+    .sort();
+  const untracked = await Promise.all(
+    untrackedPaths.map(async (filePath) => {
+      if (!safeGitPath(filePath)) {
+        throw new Error(`The untracked path ${filePath} is not safe to move.`);
+      }
+      return {
+        path: filePath,
+        hash: await gitOutput(sourceCwd, ["hash-object", "--", filePath]),
+      };
+    }),
+  );
+  const changedContent = await Promise.all(
+    [
+      ...new Set(
+        sourceStatus.files.flatMap(({ path: filePath, originalPath }) =>
+          originalPath ? [filePath, originalPath] : [filePath],
+        ),
+      ),
+    ]
+      .sort()
+      .map(async (filePath) => ({
+        path: filePath,
+        hash: await gitOutput(sourceCwd, ["hash-object", "--", filePath]).catch(
+          () => null,
+        ),
+      })),
+  );
+  const patch = diff.output.slice(0, DIFF_CHARACTER_LIMIT);
+  const patchTruncated =
+    diff.truncated || diff.output.length > DIFF_CHARACTER_LIMIT;
+  const token = createHash("sha256")
+    .update(
+      JSON.stringify({
+        sourceHead,
+        targetHead,
+        sourceStatus,
+        targetStatus,
+        untracked,
+        changedContent,
+        indexTree,
+      }),
+    )
+    .update("\0")
+    .update(diff.output)
+    .digest("hex");
+  return {
+    sourceStatus,
+    targetStatus,
+    sourceHead,
+    targetHead,
+    patch,
+    completePatch: diff.output,
+    patchTruncated,
+    untracked,
+    token,
+  };
+}
+
+async function previewWorktreeChangesConflict(
+  targetCwd: string,
+  targetHead: string,
+  patch: string,
+): Promise<boolean> {
+  if (!patch) return false;
+  const temporaryRoot = await mkdtemp(
+    path.join(tmpdir(), "cantrip-worktree-move-preview-"),
+  );
+  const previewPath = path.join(temporaryRoot, "worktree");
+  const patchPath = path.join(temporaryRoot, "changes.patch");
+  let added = false;
+  try {
+    await writeFile(patchPath, patch, "utf8");
+    await runGit(targetCwd, [
+      "worktree",
+      "add",
+      "--detach",
+      previewPath,
+      targetHead,
+    ]);
+    added = true;
+    return (
+      (
+        await runGitOutcome(previewPath, [
+          "apply",
+          "--index",
+          "--3way",
+          patchPath,
+        ])
+      ).code !== 0
+    );
+  } finally {
+    if (added) {
+      await runGitOutcome(previewPath, ["reset", "--hard", targetHead]);
+      await runGitOutcome(previewPath, ["clean", "-fd"]);
+      await runGitOutcome(targetCwd, [
+        "worktree",
+        "remove",
+        "--force",
+        previewPath,
+      ]);
+    }
+    await rm(temporaryRoot, { force: true, recursive: true });
+  }
+}
+
+export async function previewGitWorktreeChangesMove(
+  targetCwd: string,
+  sourceCwd: string,
+  request: GitWorktreeChangesMoveRequest,
+): Promise<GitWorktreeChangesMovePreview> {
+  const state = await worktreeChangesMoveState(sourceCwd, targetCwd);
+  const untrackedCollisions = (
+    await Promise.all(
+      state.untracked.map(async ({ path: filePath }) => ({
+        filePath,
+        exists: await lstat(path.resolve(targetCwd, filePath))
+          .then(() => true)
+          .catch(() => false),
+      })),
+    )
+  ).filter(({ exists }) => exists);
+  const trackedConflict = state.patchTruncated
+    ? false
+    : await previewWorktreeChangesConflict(
+        targetCwd,
+        state.targetHead,
+        state.completePatch,
+      );
+  const warnings: string[] = [];
+  if (state.patchTruncated) {
+    warnings.push(
+      "The patch preview is truncated, so the complete move is validated when Git applies it.",
+    );
+  }
+  if (state.untracked.length > 0) {
+    warnings.push(
+      `${state.untracked.length} untracked ${state.untracked.length === 1 ? "file is" : "files are"} included in the move.`,
+    );
+  }
+  if (untrackedCollisions.length > 0) {
+    warnings.push(
+      `${untrackedCollisions.length} untracked ${untrackedCollisions.length === 1 ? "path already exists" : "paths already exist"} in the target worktree.`,
+    );
+  }
+  const wouldConflict = trackedConflict || untrackedCollisions.length > 0;
+  if (wouldConflict) {
+    warnings.push(
+      "The target may require conflict resolution. Cantrip retains a recovery stash until the move is resolved.",
+    );
+  }
+  return gitWorktreeChangesMovePreviewSchema.parse({
+    request,
+    token: state.token,
+    destructive: true,
+    summary: `Move ${state.sourceStatus.files.length} changed ${state.sourceStatus.files.length === 1 ? "file" : "files"} from ${state.sourceStatus.branch || state.sourceHead.slice(0, 10)} to ${state.targetStatus.branch || state.targetHead.slice(0, 10)}.`,
+    warnings,
+    sourceBranch: state.sourceStatus.branch || null,
+    sourceHead: state.sourceHead,
+    targetBranch: state.targetStatus.branch || null,
+    targetHead: state.targetHead,
+    files: state.sourceStatus.files,
+    patch: state.patch,
+    patchTruncated: state.patchTruncated,
+    wouldConflict,
+  });
+}
+
+export async function applyGitWorktreeChangesMove(
+  targetCwd: string,
+  sourceCwd: string,
+  request: GitWorktreeChangesMoveRequest,
+  token: string,
+): Promise<GitWorktreeChangesMoveResult> {
+  const preview = await previewGitWorktreeChangesMove(
+    targetCwd,
+    sourceCwd,
+    request,
+  );
+  if (preview.token !== token) {
+    throw new Error(
+      "The source or target worktree changed after this preview. Review the move again.",
+    );
+  }
+  const stashesBefore = await readGitStashes(sourceCwd);
+  await runGit(sourceCwd, [
+    "stash",
+    "push",
+    "--include-untracked",
+    "--message",
+    `Cantrip move from ${request.sourceWorktreeId} (${token.slice(0, 12)})`,
+  ]);
+  const created = (await readGitStashes(sourceCwd)).stashes.find(
+    ({ hash }) => !stashesBefore.stashes.some((stash) => stash.hash === hash),
+  );
+  if (!created) {
+    throw new Error("Git did not create the recovery stash for this move.");
+  }
+
+  const targetRef = await gitOutput(targetCwd, [
+    "symbolic-ref",
+    "-q",
+    "HEAD",
+  ]).catch(() => null);
+  const checkpointRef = await createStashOperationCheckpoint(
+    targetCwd,
+    preview.targetHead,
+    token,
+  );
+  const outcome = await runGitOutcome(targetCwd, [
+    "stash",
+    "apply",
+    "--index",
+    created.hash,
+  ]);
+  const targetStatus = await readGitStatus(targetCwd);
+  const conflictedPaths = conflictPaths(targetStatus);
+  if (outcome.code !== 0 && conflictedPaths.length === 0) {
+    await restoreStashOperationCheckpoint(targetCwd, {
+      originalHead: preview.targetHead,
+      targetRef,
+      checkpointRef,
+      branch: null,
+    });
+    const restored = await runGitOutcome(sourceCwd, [
+      "stash",
+      "apply",
+      "--index",
+      created.hash,
+    ]);
+    if (restored.code === 0) await dropStashByHash(sourceCwd, created.hash);
+    throw new Error(
+      restored.code === 0
+        ? outcome.output ||
+            "Git could not apply the changes to the target worktree."
+        : `${outcome.output}\nThe source recovery stash ${created.ref} was retained because restoring it also failed: ${restored.output}`,
+    );
+  }
+  if (outcome.code === 0) {
+    await dropStashByHash(targetCwd, created.hash);
+    await runGit(targetCwd, ["update-ref", "-d", checkpointRef]);
+  }
+  return gitWorktreeChangesMoveResultSchema.parse({
+    output:
+      outcome.code === 0
+        ? outcome.output
+        : `${outcome.output}\nRecovery stash retained as ${created.ref}.`,
+    status: targetStatus,
+    sourceStatus: await readGitStatus(sourceCwd),
+    stash:
+      outcome.code === 0
+        ? null
+        : ((await readGitStashes(targetCwd)).stashes.find(
+            ({ hash }) => hash === created.hash,
+          ) ?? null),
+    conflictedPaths,
+    operation:
+      conflictedPaths.length > 0
+        ? {
+            type: "stash",
+            state: "conflicted",
+            originalHead: preview.targetHead,
+            currentHead: await resolveCommit(targetCwd, "HEAD"),
+            sourceRef: `apply:move-${request.sourceWorktreeId}`,
+            sourceRevision: created.hash,
+            targetRef,
+            targetRevision: preview.targetHead,
+            pendingCommits: [created.hash],
+            currentStep: 1,
+            totalSteps: 1,
+            checkpointRef,
+            conflictedPaths,
+          }
+        : null,
+  });
+}
+
 function stashOperationSource(action: GitStashAction): string {
   if (action.type === "apply" || action.type === "pop") {
     return `${action.type}:${action.ref}`;
@@ -2832,13 +3186,22 @@ function stashOperationSource(action: GitStashAction): string {
 function parseStashOperationSource(source: string | null): {
   action: "apply" | "pop" | "branch";
   branch: string | null;
+  dropOnComplete: boolean;
 } {
-  if (source?.startsWith("apply:")) return { action: "apply", branch: null };
-  if (source?.startsWith("pop:")) return { action: "pop", branch: null };
+  if (source?.startsWith("apply:")) {
+    return {
+      action: "apply",
+      branch: null,
+      dropOnComplete: source.startsWith("apply:move-"),
+    };
+  }
+  if (source?.startsWith("pop:")) {
+    return { action: "pop", branch: null, dropOnComplete: true };
+  }
   if (source?.startsWith("branch:")) {
     const branch = source.slice("branch:".length).split(":", 1)[0];
     if (!branch) throw new Error("The stash branch operation is invalid.");
-    return { action: "branch", branch };
+    return { action: "branch", branch, dropOnComplete: true };
   }
   throw new Error("The durable stash operation metadata is invalid.");
 }
@@ -6116,10 +6479,11 @@ export async function controlGitManagedOperation(
         branch: source.branch,
       });
     } else {
-      if (source.action === "pop" || source.action === "branch") {
+      if (source.dropOnComplete) {
         output = await dropStashByHash(cwd, context.sourceRevision);
       }
     }
+    await runGit(cwd, ["update-ref", "-d", context.checkpointRef]);
     return inspectGitManagedOperation(
       cwd,
       context,

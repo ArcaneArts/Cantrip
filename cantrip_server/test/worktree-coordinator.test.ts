@@ -214,6 +214,82 @@ describe("project worktree coordinator", () => {
     expect(changedProjects).toEqual(["project-1"]);
   });
 
+  it("creates from the explicitly selected project source", async () => {
+    const selectedSourcePath = "/replicas/worker-two/cantrip";
+    const created: WorkerWorktreeSummary = {
+      ...primary,
+      path: "/replicas/worker-two/worktrees/review",
+      branch: "review",
+      isPrimary: false,
+    };
+    const getProjectSource = vi.fn();
+    const repository = {
+      getProjectSource,
+      async getProjectWorktreeContext() {
+        return {
+          sourcePath: selectedSourcePath,
+          workerId: "worker-2",
+        };
+      },
+      async reconcileProjectWorktrees() {
+        return [
+          {
+            ...primaryProjectWorktree,
+            id: "review-worktree",
+            projectSourceId: "source-2",
+            workerId: "worker-2",
+            name: "Review",
+            path: created.path,
+            displayPath: created.path,
+            isPrimary: false,
+            isDefault: false,
+            branch: created.branch,
+            head: created.head,
+          },
+        ];
+      },
+    } as unknown as ServerRepository;
+    const commands: Array<{ workerId: string; command: WorkerCommand }> = [];
+    const bridge = {
+      async request(workerId: string, command: WorkerCommand) {
+        commands.push({ workerId, command });
+        return {
+          created: true,
+          worktree: created,
+          inventory: {
+            sourcePath: selectedSourcePath,
+            primaryPath: selectedSourcePath,
+            gitCommonDir: `${selectedSourcePath}/.git`,
+            managedRoot: "/replicas/worker-two/worktrees",
+            repositoryFingerprint: "b".repeat(64),
+            worktrees: [{ ...primary, path: selectedSourcePath }, created],
+          },
+        };
+      },
+    } as unknown as WorkerCommandBus;
+    const coordinator = new ProjectWorktreeCoordinator(repository, bridge);
+
+    await coordinator.create("owner-1", "project-1", {
+      sourceWorktreeId: "selected-worktree",
+      worktreeId: "review-worktree",
+      name: "Review",
+      origin: "user",
+      mode: { type: "existingBranch", branch: "review" },
+    });
+
+    expect(getProjectSource).not.toHaveBeenCalled();
+    expect(commands).toEqual([
+      {
+        workerId: "worker-2",
+        command: expect.objectContaining({
+          type: "worktree.create",
+          sourcePath: selectedSourcePath,
+          worktreeId: "review-worktree",
+        }),
+      },
+    ]);
+  });
+
   it("rolls back a newly created physical worktree when reconciliation fails", async () => {
     const created: WorkerWorktreeSummary = {
       ...primary,
