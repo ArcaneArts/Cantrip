@@ -319,6 +319,53 @@ from the pre-goal baseline removes more code than it adds: source is net
 `-234` lines, tests are net `-321` lines, and the combined change is net `-555`
 lines. This comparison excludes unrelated application code and documentation.
 
+### Post-goal correction: bounded sidebar preview startup
+
+Status: merged in PRs #1642, #1643, #1644, #1649, and #1652.
+
+Later four-trace analysis found that Pass 4's generic dormancy rule had also
+disabled the intentionally bounded sidebar preview prewarm. The rule remains
+correct for ordinary inactive and durable editors; the two explicit sidebar
+preview owners are now a narrow exception with their own capability. They may
+start hidden and pathless, but activation and pinning retain the same keyed
+Explorer, session, attachment, iframe, and workbench. The successor pool owner
+starts warming after a pin, and no other retained editor infers permission from
+being hidden or inactive.
+
+The same correction keeps the populated file tree mounted during pinning,
+starts the authenticated workbench bridge before presentation setup, and feeds
+the worker-authorized canonical initial file into OpenVSCode startup. A one-shot
+duplicate suppression applies only when the current authenticated extension
+socket proves the exact file is the sole active tab. All other cases retain the
+single validated `open-file` command established by this simplification work.
+
+The current deterministic acceptance matrix proves:
+
+- exactly the bounded sidebar pool may own hidden pathless workbenches;
+- first activation, same-preview replacement, pinning, and successor activation
+  preserve lifecycle identities without creating another frame or attachment;
+- unrelated inactive editors remain dormant and security-identity changes retire
+  incompatible owners;
+- a populated file-tree row remains mounted during the pin handoff;
+- presentation latency cannot block bridge connection; and
+- startup acknowledgement fails closed to the established command path.
+
+Post-merge native and browser acceptance added real first-selection and pin
+handoff coverage for this correction. On an isolated macOS Tauri profile, the
+first two ready preview owners opened fixture files in 355 ms and 226 ms total
+without creating a route, transport, frame, attachment, or workbench during the
+selection. The pin handoff kept the tree visible and settled in 54 ms. On an
+isolated browser/server/worker fixture, the two relay prewarms completed in
+2,058 ms and 2,249 ms; their ready selections completed in 196 ms and 256 ms
+without lifecycle recreation, and the browser pin handoff kept the tree visible
+while settling in 254 ms. A deliberately early post-reload browser selection
+arrived before workbench readiness and took the safe path exactly once: the
+same attachment reached readiness, the worker emitted one direct file-open, and
+the requested file rendered without a retry or replacement chain.
+
+This correction adds no navigation retry, automatic editor replacement,
+readiness poll, timeout increase, or unbounded background workbench.
+
 ## Measurements
 
 | Path                   |                                                   Before | Current evidence                                       |

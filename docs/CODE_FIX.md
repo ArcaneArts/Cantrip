@@ -1,8 +1,33 @@
 # Cantrip Code editor latency diagnosis and fix design
 
-- Status: root cause confirmed; implementation design ready
+- Status: implemented and regression-verified
 - Analyzed baseline: `0e154d670fae8f005564d1356e5a81a732e833cb`
 - Confidence: 98% for the primary latency cause and bounded-prewarm fix; 99% for the file-tree replay cause
+
+## Implementation outcome
+
+The diagnosed lifecycle error is fixed by the merged sequence in
+[`CODE_FIX_IMPLEMENTATION_PROGRESS.md`](./CODE_FIX_IMPLEMENTATION_PROGRESS.md):
+
+- PR #1642 restored real prewarming only for the existing bounded two-owner
+  sidebar preview pool while leaving ordinary inactive editors dormant.
+- PR #1643 kept populated file-tree rows mounted during pinning.
+- PR #1644 started the authenticated extension bridge before nonessential
+  presentation setup.
+- PR #1649 passed only the worker-authorized canonical initial file through
+  OpenVSCode's supported startup navigation.
+- PR #1652 added an authenticated, exact, one-shot acknowledgement so the
+  redundant fallback open is suppressed only after the workbench proves the
+  requested file is the sole active tab.
+
+Deterministic lifecycle coverage proves that a completed prewarm leaves no
+route, transport, attachment, iframe, or workbench creation on first-selection
+or post-pin selection paths. Missing, stale, mismatched, or unsupported startup
+state still uses the existing validated bridge command. No retry, polling,
+delay, timeout increase, or broader hidden-editor activation was added.
+
+The present-tense diagnosis below describes the analyzed baseline, not current
+behavior. It is retained as the evidence and design record for the fix.
 
 ## Executive verdict
 
