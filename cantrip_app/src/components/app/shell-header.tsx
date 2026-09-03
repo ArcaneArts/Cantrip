@@ -431,6 +431,8 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                   {gitHistoryHeader ? (
                     gitHistoryHeader.section === "graph" ? (
                       ` · ${gitHistoryHeader.graphNodes.toLocaleString()} repository nodes`
+                    ) : gitHistoryHeader.section === "actions" ? (
+                      ` · ${gitHistoryHeader.actionRunCount ?? "…"} workflow runs${gitHistoryHeader.activeActionRunCount ? ` · ${gitHistoryHeader.activeActionRunCount} active` : ""}`
                     ) : gitHistoryHeader.section !== "history" ? (
                       ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} ${gitHistoryHeader.section === "prs" ? "PRs" : "issues"}`
                     ) : (

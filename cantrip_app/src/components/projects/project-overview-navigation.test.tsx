@@ -20,6 +20,7 @@ describe("project overview navigation", () => {
     expect(markup.indexOf(">Tasks<")).toBeLessThan(markup.indexOf(">History<"));
     expect(markup).toContain(">Issues<");
     expect(markup).toContain(">PRs<");
+    expect(markup).toContain(">Actions<");
     expect(markup).toContain(">Graph<");
   });
 

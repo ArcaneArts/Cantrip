@@ -58,7 +58,10 @@ import {
   EmptyStateIcon,
   EmptyStateTitle,
 } from "@/components/ui/empty-state";
-import { resolveStandaloneChatFilePath } from "@/lib/api";
+import {
+  resolveStandaloneChatFilePath,
+  saveChatComposerDraft,
+} from "@/lib/api";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { cn } from "@/lib/utils";
@@ -592,13 +595,29 @@ export function GlobalContentHost({
                   ? setProjectOverviewSection
                   : undefined
               }
-              onCreateChat={(worktreeId) =>
-                newChat.mutate({
+              onCreateChat={async (worktreeId, draft) => {
+                if (!draft) {
+                  newChat.mutate({
+                    projectId: displayedGitProject.id,
+                    worktreeId,
+                    worktreeMode: "pinned",
+                  });
+                  return;
+                }
+                const chat = await newChat.mutateAsync({
+                  open: false,
                   projectId: displayedGitProject.id,
+                  title: draft.title,
                   worktreeId,
                   worktreeMode: "pinned",
-                })
-              }
+                });
+                await saveChatComposerDraft(chat.id, {
+                  mode: "default",
+                  reasoningEffort: null,
+                  text: draft.prompt,
+                });
+                openCreatedTab(chat.projectId, "chat", chat.id);
+              }}
               onCreateTerminal={(worktreeId) =>
                 newTerminal.mutate({
                   projectId: displayedGitProject.id,

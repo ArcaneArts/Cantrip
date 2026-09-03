@@ -161,6 +161,9 @@ import {
   githubReleaseCreateSchema,
   githubInboxListSchema,
   githubIssueCreateSchema,
+  githubActionsOverviewSchema,
+  githubActionsRunDetailSchema,
+  githubActionsRunCheckoutPreparedSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestDetailSchema,
@@ -2325,6 +2328,119 @@ describe("Cantrip protocol", () => {
         number: 44,
       }),
     ).toMatchObject({ number: checkout.pullRequest.number });
+  });
+
+  it("validates GitHub Actions runs, jobs, runners, and mutations", () => {
+    const run = {
+      id: 42,
+      workflowId: 7,
+      name: "CI",
+      displayTitle: "Fix the build",
+      event: "pull_request",
+      status: "completed" as const,
+      conclusion: "failure",
+      headBranch: "feature/actions",
+      headSha: "a".repeat(40),
+      pullRequestNumber: 12,
+      runNumber: 18,
+      runAttempt: 2,
+      actor: "cantrip-test",
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T01:00:00.000Z",
+      url: "https://github.com/ArcaneArts/Cantrip/actions/runs/42",
+    };
+    expect(
+      githubActionsOverviewSchema.parse({
+        workflows: [
+          {
+            id: 7,
+            name: "CI",
+            path: ".github/workflows/ci.yml",
+            state: "active",
+            url: "https://github.com/ArcaneArts/Cantrip/actions/workflows/ci.yml",
+            badgeUrl: null,
+          },
+        ],
+        workflowsTruncated: false,
+        runs: [run],
+        totalRunCount: 1,
+        nextPage: null,
+        runners: [
+          {
+            id: 4,
+            name: "build-mac",
+            os: "macOS",
+            status: "online",
+            busy: true,
+            labels: ["self-hosted", "ARM64"],
+          },
+        ],
+        runnerAccess: "available",
+        warnings: [],
+      }).runs[0]?.runNumber,
+    ).toBe(18);
+    expect(
+      githubActionsRunDetailSchema.parse({
+        run,
+        jobs: [
+          {
+            id: 9,
+            name: "test",
+            status: "completed",
+            conclusion: "failure",
+            url: `${run.url}/job/9`,
+            startedAt: run.createdAt,
+            completedAt: run.updatedAt,
+            runnerName: "build-mac",
+            runnerGroupName: "Default",
+            steps: [
+              {
+                number: 1,
+                name: "Run tests",
+                status: "completed",
+                conclusion: "failure",
+                startedAt: run.createdAt,
+                completedAt: run.updatedAt,
+              },
+            ],
+            stepsTruncated: false,
+          },
+        ],
+        jobsTruncated: false,
+        artifacts: [],
+        artifactsTruncated: false,
+        warnings: [],
+      }).jobs[0]?.runnerName,
+    ).toBe("build-mac");
+    expect(
+      workerCommandSchema.parse({
+        type: "github.actions.workflow.dispatch",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        request: {
+          workflowId: 7,
+          ref: "main",
+          inputs: { environment: "staging" },
+        },
+      }).request.inputs,
+    ).toEqual({ environment: "staging" });
+    expect(
+      workerCommandSchema.parse({
+        type: "github.actions.run.action",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        request: { runId: 42, action: "rerun-failed" },
+      }).request.action,
+    ).toBe("rerun-failed");
+    expect(
+      githubActionsRunCheckoutPreparedSchema.parse({
+        run,
+        branch: "cantrip/actions/18-aaaaaaaa",
+        name: "Actions #18 Fix the build",
+        headSha: run.headSha,
+        remote: "origin",
+      }).headSha,
+    ).toBe(run.headSha);
   });
 
   it("validates reviewed commit actions and resumable conflict state", () => {

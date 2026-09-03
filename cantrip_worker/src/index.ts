@@ -2295,6 +2295,44 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.cwd,
           command.number,
         );
+      case "github.actions.overview":
+        return github.listActionsOverview(
+          command.repository,
+          command.cwd,
+          command.page,
+          command.limit,
+        );
+      case "github.actions.run.get":
+        return github.getActionsRun(
+          command.repository,
+          command.cwd,
+          command.runId,
+        );
+      case "github.actions.run.logs":
+        return github.readActionsRunLogs(
+          command.repository,
+          command.cwd,
+          command.runId,
+          command.jobId,
+        );
+      case "github.actions.workflow.dispatch":
+        return github.dispatchActionsWorkflow(
+          command.repository,
+          command.cwd,
+          command.request,
+        );
+      case "github.actions.run.action":
+        return github.runActionsRunAction(
+          command.repository,
+          command.cwd,
+          command.request,
+        );
+      case "github.actions.run.checkout.prepare":
+        return github.prepareActionsRunCheckout(
+          command.repository,
+          command.cwd,
+          command.runId,
+        );
       case "github.releases.list":
         return github.listReleases(command.repository);
       case "github.release.get":

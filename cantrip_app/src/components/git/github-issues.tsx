@@ -74,6 +74,7 @@ import {
 import { GithubIssueCreateDialog } from "./github-issue-create-dialog";
 import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
 import { GithubPullRequestDialog } from "./github-pull-request-dialog";
+import type { GithubActionsTarget } from "./github-actions-model";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -531,6 +532,7 @@ export function GithubIssuesView({
   kind,
   onFiltersChange,
   onLoadMore,
+  onOpenActionsRun,
   onViewChange,
   onSelectWorktree,
   project,
@@ -551,6 +553,7 @@ export function GithubIssuesView({
   kind: GithubIssueKind;
   onFiltersChange(filters: GithubIssueListFilters): void;
   onLoadMore(): void;
+  onOpenActionsRun(target: GithubActionsTarget): void;
   onViewChange(view: GithubInboxView): void;
   onSelectWorktree(worktreeId: string): void;
   project: ProjectSummary;
@@ -1112,6 +1115,10 @@ export function GithubIssuesView({
           projectId={project.id}
           worktreeId={worktreeId}
           onCheckedOut={onSelectWorktree}
+          onOpenActionsRun={(target) => {
+            setSelectedIssue(null);
+            onOpenActionsRun(target);
+          }}
           onOpenChange={(open) => {
             if (!open) setSelectedIssue(null);
           }}

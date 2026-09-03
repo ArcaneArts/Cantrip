@@ -38,6 +38,8 @@ import {
   githubPullRequestInlineCommentCreateSchema,
   githubPullRequestLifecycleActionSchema,
   githubPullRequestLifecycleApplySchema,
+  githubActionsWorkflowDispatchSchema,
+  githubActionsRunActionSchema,
   githubReleaseCreateSchema,
 } from "./github.js";
 import {
@@ -201,6 +203,44 @@ export const workerGithubProjectCommandSchemas = [
     cwd: z.string().min(1).max(8_192),
     repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal("github.actions.overview"),
+    cwd: z.string().min(1).max(8_192),
+    repository: workerRepositoryNameSchema,
+    page: z.number().int().positive().default(1),
+    limit: z.number().int().min(1).max(100).default(50),
+  }),
+  z.object({
+    type: z.literal("github.actions.run.get"),
+    cwd: z.string().min(1).max(8_192),
+    repository: workerRepositoryNameSchema,
+    runId: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal("github.actions.run.logs"),
+    cwd: z.string().min(1).max(8_192),
+    repository: workerRepositoryNameSchema,
+    runId: z.number().int().positive(),
+    jobId: z.number().int().positive().nullable().default(null),
+  }),
+  z.object({
+    type: z.literal("github.actions.workflow.dispatch"),
+    cwd: z.string().min(1).max(8_192),
+    repository: workerRepositoryNameSchema,
+    request: githubActionsWorkflowDispatchSchema,
+  }),
+  z.object({
+    type: z.literal("github.actions.run.action"),
+    cwd: z.string().min(1).max(8_192),
+    repository: workerRepositoryNameSchema,
+    request: githubActionsRunActionSchema,
+  }),
+  z.object({
+    type: z.literal("github.actions.run.checkout.prepare"),
+    cwd: z.string().min(1).max(8_192),
+    repository: workerRepositoryNameSchema,
+    runId: z.number().int().positive(),
   }),
   z.object({
     type: z.literal("github.releases.list"),

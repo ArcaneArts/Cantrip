@@ -13,6 +13,7 @@ import {
   type GithubIssueState,
   type GithubIssueSummary,
   type GithubPullRequestSummary,
+  type GithubActionsRun,
   type ProjectSummary,
   type ProjectWorktreeCreate,
   type ProjectWorktreeSummary,
@@ -43,6 +44,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createProjectWorktree,
+  checkoutGithubActionsRun,
   getGithubInbox,
   getGithubIssues,
   getGithubPullRequests,
@@ -113,6 +115,11 @@ import {
 } from "./git-history-drawer";
 import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
+import { GithubActionsView } from "./github-actions";
+import type {
+  GithubActionsTarget,
+  GithubActionsViewStatus,
+} from "./github-actions-model";
 import { githubInboxViewIsAvailable } from "./github-inbox";
 import { GitWorkbenchToolbar } from "./git-workbench-toolbar";
 import { GitHistoryMobileDrawer } from "./git-history-mobile-drawer";
@@ -431,6 +438,8 @@ function WorktreeWipGraph({
 }
 
 export interface GitHistoryHeaderState {
+  actionRunCount: number | null;
+  activeActionRunCount: number;
   branch: string;
   canPush: boolean;
   commitsLoaded: number;
@@ -446,7 +455,12 @@ export interface GitHistoryHeaderState {
   refresh(): void;
 }
 
-export type GitViewSection = "history" | "issues" | "prs" | "graph";
+export type GitViewSection = "history" | "issues" | "prs" | "actions" | "graph";
+
+export interface GitAgentDraft {
+  prompt: string;
+  title: string;
+}
 
 export function GitHistoryView({
   activeSection,
@@ -475,7 +489,7 @@ export function GitHistoryView({
   chats: ChatSummary[];
   contentScrolled?: boolean;
   includeOverviewTab?: boolean;
-  onCreateChat(worktreeId: string): void;
+  onCreateChat(worktreeId: string, draft?: GitAgentDraft): Promise<void> | void;
   onCreateExplorer(worktreeId: string): void;
   onCreateHistory(worktreeId: string): void;
   onCreateTerminal(worktreeId: string): void;
@@ -533,6 +547,11 @@ export function GitHistoryView({
     "pull-request": defaultGithubListFilters,
   });
   const [issueRefreshEpoch, setIssueRefreshEpoch] = useState(0);
+  const [actionsRefreshEpoch, setActionsRefreshEpoch] = useState(0);
+  const [actionsStatus, setActionsStatus] =
+    useState<GithubActionsViewStatus | null>(null);
+  const [actionsTarget, setActionsTarget] =
+    useState<GithubActionsTarget | null>(null);
   const [graphRefreshEpoch, setGraphRefreshEpoch] = useState(0);
   const [graphRevision, setGraphRevision] = useState<string | null>(null);
   const [graphStatus, setGraphStatus] =
@@ -835,7 +854,11 @@ export function GitHistoryView({
           ? history.isFetching || reconcile.isPending
           : section === "graph"
             ? (graphStatus?.isFetching ?? false)
-            : issuesRefreshing,
+            : section === "actions"
+              ? (actionsStatus?.isFetching ?? false)
+              : issuesRefreshing,
+      actionRunCount: actionsStatus?.runCount ?? null,
+      activeActionRunCount: actionsStatus?.activeRunCount ?? 0,
       issueCount: githubTotal,
       issueState,
       isGitActionPending: gitAction.isPending,
@@ -850,6 +873,8 @@ export function GitHistoryView({
           });
         } else if (section === "graph") {
           setGraphRefreshEpoch((epoch) => epoch + 1);
+        } else if (section === "actions") {
+          setActionsRefreshEpoch((epoch) => epoch + 1);
         } else {
           refreshIssues();
         }
@@ -857,6 +882,9 @@ export function GitHistoryView({
     });
   }, [
     commits.length,
+    actionsStatus?.activeRunCount,
+    actionsStatus?.isFetching,
+    actionsStatus?.runCount,
     firstPage,
     history.isFetching,
     history.refetch,
@@ -1142,16 +1170,20 @@ export function GitHistoryView({
                   ? history.isFetching || reconcile.isPending
                   : section === "graph"
                     ? (graphStatus?.isFetching ?? false)
-                    : issuesRefreshing
+                    : section === "actions"
+                      ? (actionsStatus?.isFetching ?? false)
+                      : issuesRefreshing
               }
               onClick={() =>
                 section === "history"
                   ? reconcile.mutate()
                   : section === "graph"
                     ? setGraphRefreshEpoch((epoch) => epoch + 1)
-                    : refreshIssues()
+                    : section === "actions"
+                      ? setActionsRefreshEpoch((epoch) => epoch + 1)
+                      : refreshIssues()
               }
-              title={`Refresh ${section === "history" ? "Git history" : section === "graph" ? "repository graph" : section === "prs" ? "pull requests" : "issues"}`}
+              title={`Refresh ${section === "history" ? "Git history" : section === "graph" ? "repository graph" : section === "actions" ? "GitHub Actions" : section === "prs" ? "pull requests" : "issues"}`}
             >
               <RefreshCw
                 className={cn(
@@ -1160,7 +1192,9 @@ export function GitHistoryView({
                     ? history.isFetching || reconcile.isPending
                     : section === "graph"
                       ? graphStatus?.isFetching
-                      : issuesRefreshing) && "animate-spin",
+                      : section === "actions"
+                        ? actionsStatus?.isFetching
+                        : issuesRefreshing) && "animate-spin",
                 )}
               />
               <span className="sr-only">Refresh</span>
@@ -1202,6 +1236,34 @@ export function GitHistoryView({
           onOpenCommit={openCommitDrawer}
           onStatusChange={setGraphStatus}
         />
+      ) : section === "actions" ? (
+        <GithubActionsView
+          defaultRef={status?.branch ?? selectedWorktree?.branch ?? "main"}
+          projectId={project.id}
+          refreshEpoch={actionsRefreshEpoch}
+          target={actionsTarget}
+          worktreeId={worktreeId}
+          onStatusChange={setActionsStatus}
+          onFixRun={async (run: GithubActionsRun, prompt: string) => {
+            const result = await checkoutGithubActionsRun(
+              project.id,
+              worktreeId,
+              run.id,
+            );
+            queryClient.setQueryData<ProjectWorktreeSummary[]>(
+              ["worktrees", project.id],
+              (current = []) => [
+                ...current.filter(({ id }) => id !== result.worktree.id),
+                result.worktree,
+              ],
+            );
+            onSelectWorktree(result.worktree.id);
+            await onCreateChat(result.worktree.id, {
+              title: `Fix Actions #${run.runNumber}`,
+              prompt,
+            });
+          }}
+        />
       ) : section !== "history" ? (
         <GithubIssuesView
           key={`${issueKind}:${inboxView}`}
@@ -1221,6 +1283,10 @@ export function GitHistoryView({
           onViewChange={setInboxView}
           onFiltersChange={setIssueFilters}
           onSelectWorktree={onSelectWorktree}
+          onOpenActionsRun={(target) => {
+            setActionsTarget(target);
+            setSection("actions");
+          }}
           view={inboxView}
         />
       ) : (

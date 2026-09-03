@@ -40,6 +40,8 @@ const runtime = {
 
 function gitHeader(canPush = true): GitHistoryHeaderState {
   return {
+    actionRunCount: null,
+    activeActionRunCount: 0,
     branch: "main",
     canPush,
     commitsLoaded: 100,

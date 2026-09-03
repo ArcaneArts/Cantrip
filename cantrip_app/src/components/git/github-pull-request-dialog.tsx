@@ -56,6 +56,10 @@ import {
   gitMobileInspectorClassName,
 } from "./git-mobile-inspector";
 import { GithubPullRequestLifecycleDialog } from "./github-pull-request-lifecycle-dialog";
+import {
+  parseGithubActionsUrl,
+  type GithubActionsTarget,
+} from "./github-actions-model";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -724,10 +728,12 @@ function Commits({ detail }: { detail: GithubPullRequestCommits }) {
 
 function Checks({
   detail,
+  onOpenActionsRun,
   onSummarize,
   summarizing,
 }: {
   detail: GithubPullRequestChecks;
+  onOpenActionsRun(target: GithubActionsTarget): void;
   onSummarize(): void;
   summarizing: boolean;
 }) {
@@ -760,33 +766,51 @@ function Checks({
           Showing the first 200 check and status results.
         </TruncatedNotice>
       ) : null}
-      {detail.checks.map((check) => (
-        <article
-          key={`${check.source}:${check.id}`}
-          className="flex min-h-12 items-start gap-3 px-4 py-3 odd:bg-muted/[0.035]"
-        >
-          <CheckIcon check={check} />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{check.name}</p>
-            <p className="mt-0.5 text-xs capitalize text-muted-foreground">
-              {pullRequestCheckLabel(check)} · {check.source.replace("-", " ")}
-            </p>
-            {check.summary ? (
-              <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-xs text-muted-foreground">
-                {check.summary}
+      {detail.checks.map((check) => {
+        const actionsTarget = parseGithubActionsUrl(check.url);
+        return (
+          <article
+            key={`${check.source}:${check.id}`}
+            className="flex min-h-12 items-start gap-3 px-4 py-3 odd:bg-muted/[0.035]"
+          >
+            <CheckIcon check={check} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{check.name}</p>
+              <p className="mt-0.5 text-xs capitalize text-muted-foreground">
+                {pullRequestCheckLabel(check)} ·{" "}
+                {check.source.replace("-", " ")}
               </p>
-            ) : null}
-          </div>
-          {check.url ? (
-            <Button variant="ghost" size="icon" className="size-7" asChild>
-              <a href={check.url} target="_blank" rel="noreferrer">
-                <ExternalLink className="size-3.5" />
-                <span className="sr-only">Open check details</span>
-              </a>
-            </Button>
-          ) : null}
-        </article>
-      ))}
+              {check.summary ? (
+                <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-xs text-muted-foreground">
+                  {check.summary}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {actionsTarget ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7"
+                  onClick={() => onOpenActionsRun(actionsTarget)}
+                >
+                  View in Actions
+                </Button>
+              ) : null}
+              {check.url ? (
+                <Button variant="ghost" size="icon" className="size-7" asChild>
+                  <a href={check.url} target="_blank" rel="noreferrer">
+                    <ExternalLink className="size-3.5" />
+                    <span className="sr-only">
+                      Open check details on GitHub
+                    </span>
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+          </article>
+        );
+      })}
       {detail.checks.length === 0 ? (
         <div className="grid min-h-48 place-items-center text-sm text-muted-foreground">
           No checks reported for this commit.
@@ -798,12 +822,14 @@ function Checks({
 
 export function GithubPullRequestDialog({
   onCheckedOut,
+  onOpenActionsRun,
   onOpenChange,
   projectId,
   pullRequestNumber,
   worktreeId,
 }: {
   onCheckedOut(worktreeId: string): void;
+  onOpenActionsRun(target: GithubActionsTarget): void;
   onOpenChange(open: boolean): void;
   projectId: string;
   pullRequestNumber: number | null;
@@ -1103,6 +1129,7 @@ export function GithubPullRequestDialog({
               checks.data ? (
                 <Checks
                   detail={checks.data}
+                  onOpenActionsRun={onOpenActionsRun}
                   summarizing={failedCheckSummary.isPending}
                   onSummarize={() => {
                     setAgentOpen(true);
