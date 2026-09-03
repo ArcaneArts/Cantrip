@@ -25,8 +25,9 @@ of relying on a manually maintained count. See
 ## Security goal and threat model
 
 The first security target is precise: an attacker who obtains the complete
-Cantrip server database, but does not know the user's password and does not
-possess an authorized client or worker private key, cannot decrypt protected
+Cantrip server database, but lacks the applicable unlock material—the account
+password for password/account custody, an authorized client or worker private
+key, or the matching anonymous recovery artifact—cannot decrypt protected
 payloads.
 
 This protects against database leaks, leaked backups, and passive inspection of
@@ -97,27 +98,31 @@ content-bearing paths were classified and closed.
 The login password hash must never be reused as encryption key material.
 Password hashes are authentication verifiers, not recoverable encryption keys.
 
-The encryption hierarchy should work as follows:
+The encryption hierarchy works as follows:
 
 1. A trusted client generates a random 256-bit Account Master Key.
-2. The client derives a temporary key-encryption key from the user's password
-   with Argon2id, an independent random salt, versioned parameters, and an
-   explicit Cantrip encryption context.
-3. The client uses that key-encryption key only to wrap the Account Master Key,
-   verifies the wrapper locally, and erases the derived key from memory as soon
-   as practical.
-4. Each client and worker generates its own public/private encryption keypair.
-5. The Account Master Key is separately wrapped to authorized client public
-   keys. A client can therefore unlock future sessions without repeatedly
-   sending or deriving from the password.
-6. Versioned component keys are derived beneath the Account Master Key with
+2. For password/account custody, the client derives a temporary key-encryption
+   key from the user's password with Argon2id, an independent random salt,
+   versioned parameters, and an explicit Cantrip encryption context.
+3. The password/account client uses that key-encryption key only to wrap the
+   Account Master Key, verifies the wrapper locally, and erases the derived key
+   from memory as soon as practical.
+4. Anonymous custody skips the password KDF and wrapper. It wraps the same
+   random Account Master Key to the initial installation public key and places
+   a second copy, encrypted under a random recovery secret, in a user-held
+   recovery artifact.
+5. Each client and worker generates its own public/private encryption keypair.
+6. The Account Master Key is separately wrapped to authorized client public
+   keys. An authorized client can therefore unlock future sessions from its
+   device key without repeating the initial custody path.
+7. Versioned component keys are derived beneath the Account Master Key with
    HKDF and distinct domains for chats, tasks, attachments, credentials,
    workspace names, and later data classes.
-7. Each worker receives only the component keys it needs, wrapped to that
+8. Each worker receives only the component keys it needs, wrapped to that
    worker's public key with a standard public-key envelope construction. The
    worker can fetch and unwrap those envelopes after a restart without a client
-   resending the password.
-8. Each payload uses authenticated encryption and binds its owner, component,
+   repeating its unlock flow.
+9. Each payload uses authenticated encryption and binds its owner, component,
    table, row ID, field name, format version, and key revision as associated
    data.
 
@@ -174,9 +179,9 @@ the authenticated routes in
 stores:
 
 - one versioned encryption profile per owner, including the active Account
-  Master Key revision, independent password KDF record, password-wrapped
-  Account Master Key, explicit initialization state, payload-migration state,
-  and optimistic revision;
+  Master Key revision; nullable password KDF and wrapped Account Master Key
+  fields present only for password-based custody; explicit initialization and
+  payload-migration states; and an optimistic revision;
 - client and worker principals with public keys, approval state, optimistic
   revisions, and revocation metadata; and
 - client Account Master Key wrappers or scoped worker component-key grants as
@@ -725,26 +730,28 @@ authorize a new client or replace the account password wrapper.
 
 ### Database-compromise property
 
-A complete database contains both the authentication verifier and the
-password-wrapped Account Master Key. The authentication hash bytes are not a
-decryption key and cannot directly unwrap the Account Master Key because the
-encryption KDF uses an independent salt, context, and output.
+For password/account custody, a complete database contains both the
+authentication verifier and the password-wrapped Account Master Key. The
+authentication hash bytes are not a decryption key and cannot directly unwrap
+the Account Master Key because the encryption KDF uses an independent salt,
+context, and output.
 
-The database still permits offline password guessing: an attacker who guesses
-the actual password can derive the encryption key-encryption key and attempt to
-open the master-key wrapper. Argon2id raises the cost of each guess but cannot
-make a weak password strong. This limitation must be stated anywhere the
-database-compromise guarantee is described.
+Those password-based profiles still permit offline password guessing: an
+attacker who guesses the actual password can derive the encryption
+key-encryption key and attempt to open the master-key wrapper. Argon2id raises
+the cost of each guess but cannot make a weak password strong. This limitation
+must be stated anywhere the password-based database-compromise guarantee is
+described.
 
 ## Feasibility and rollout ledger
 
-This 47-row table is the original checked rollout ledger. The generated audit
+This 39-row table is the checked rollout ledger. The generated audit
 now supplements it with explicit classifications for every discovered durable
 table, every current application route, agent operation, worker command, live
 resource/client-control command, CLI command, tunnel frame kind, and external
 server transport. Reviewed contract-set digests make a newly added boundary
 fail closed as unclassified even if someone regenerates the inventory. The
-original ledger and the post-closure tracker are both closed; the generated
+ledger and the post-closure tracker are both closed; the generated
 inventory currently reports no remaining planned rows.
 
 | Data class                                                                                     | Current protection                                                                                                                                                                              | Rollout status                                   | E2EE feasibility     | Complexity  | What the server loses                                                                                                                                                                  |
@@ -2166,11 +2173,10 @@ payload encryption in the current database-compromise target.
 
 The generated
 [server boundary inventory](security/server-route-inventory.json) treats this
-original ledger as a checked closure contract rather than a narrative
-checklist. It
-parses and classifies every one of the 47 rows: 37 endpoint-protected
-foundation or payload rows, four E2EE/minimized operational-metadata
-rows, one hashed authentication-material row, and five intentionally plaintext
+ledger as a checked closure contract rather than a narrative checklist. It
+parses and classifies every one of the 39 rows: 32 endpoint-protected
+foundation or payload rows, two minimized operational metadata rows, one hashed
+authentication-material row, and four intentionally plaintext
 control-plane/public-state rows. The audit fails if a rollout status returns to
 planned, partial, pending, lazy, or incomplete, or if plaintext protection is
 not explicitly classified.
@@ -2188,8 +2194,8 @@ The closure pass removed the final plaintext compatibility state from workspace
 names. The only workspace row that may temporarily omit ciphertext is the
 deterministic system-default sentinel, which contains no user-controlled name;
 the unlocked client immediately seals its fixed presentation using the same
-password-rooted account key hierarchy. There are no remaining planned or
-partially protected user-payload rows in that original ledger.
+Account Master Key hierarchy. There are no remaining planned or partially
+protected user-payload rows in that ledger.
 
 That result closes the named baseline, not the whole current product. A source
 review after Run, tunnel, skill-management, and customization features landed
@@ -2232,11 +2238,12 @@ change the original database-dump guarantee.
 | Client-control notification title and message                                                      | Worker-sealed `client-control-content` ciphertext crosses the server and live hub; the relay sees project/worker/operation routing and bounded timing only                                                                                   | Operation-bound endpoint ciphertext opened only by the selected authorized client                                                                                                           | E2EE complete              | P1       | Low-Medium  |
 | Session IP-address and user-agent hashes                                                           | No longer collected or persisted; session and CSRF token hashes remain only as one-way authentication validators                                                                                                                             | Keep request fingerprints absent unless a future abuse-control design explicitly justifies a bounded, non-enumerable representation                                                         | Minimization complete      | P2       | Low         |
 
-The protected content system uses the existing password-rooted Account Master
-Key hierarchy. `run-content`, `customization-content`, `tunnel-content`, and
+The protected content system uses the existing Account Master Key hierarchy.
+`run-content`, `customization-content`, `tunnel-content`, and
 `client-control-content` component keys are derived under the Account Master Key
-and granted to only the workers that need them. Users do not receive another
-password, recovery secret, or manual key-management step.
+and granted to only the workers that need them. No feature-specific credential
+or manual key-management step is introduced; anonymous accounts retain their
+existing recovery artifact.
 
 The four component domains now exist in the versioned protocol and key
 hierarchy. A shared endpoint-content envelope authenticates the domain, server,
@@ -2672,7 +2679,8 @@ counts, worker presence, model-route choices, and traffic patterns.
     the selected authorized client decrypts only after validating that bound
     context. Plaintext notification fields are absent from the server operation
     and live-control contracts, and worker grants are refreshed through the
-    existing password-rooted key hierarchy without another user secret.
+    existing account-encryption hierarchy without a new feature-specific
+    credential.
 29. **Session request-fingerprint minimization and whole-product closure —
     complete:** login no longer hashes or stores request IP addresses or user
     agents. [Migration 0149](../cantrip_server/drizzle/0149_nebulous_meggan.sql)
