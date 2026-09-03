@@ -13,7 +13,7 @@ import {
 import { request as requestHttp } from "node:http";
 import { createServer } from "node:net";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type {
   CodeAgentTurnNotificationResult,
@@ -98,7 +98,9 @@ export interface CodeProxyTarget {
   codeTabId: string;
   connectionToken: string;
   editorOrigin: string;
+  initialFileUri: string | null;
   processInstanceId: string;
+  workspaceRootUri: string;
   workspaceUri: string;
 }
 
@@ -906,6 +908,42 @@ export class CodeSupervisor {
     });
   }
 
+  async authorizeStartupFileUri(
+    sessionId: string,
+    requestedFileUri: string,
+  ): Promise<string> {
+    const session = this.#requireSession(sessionId);
+    if (session.kind !== "workspace") {
+      throw new Error("Cantrip Code settings sessions cannot open files.");
+    }
+    let requestedPath: string;
+    try {
+      const requestedFile = new URL(requestedFileUri);
+      if (
+        requestedFile.protocol !== "file:" ||
+        requestedFile.search !== "" ||
+        requestedFile.hash !== ""
+      ) {
+        throw new Error("invalid file URI");
+      }
+      requestedPath = fileURLToPath(requestedFile);
+    } catch {
+      throw new Error("Cantrip Code received an invalid startup file URI.");
+    }
+    const relativePath = path
+      .relative(session.workspaceRootPath, requestedPath)
+      .split(path.sep)
+      .join("/");
+    const authorizedPath = await this.#authorizedRelativeFile(
+      session.workspaceRootPath,
+      relativePath,
+    );
+    this.#touch(session);
+    return pathToFileURL(
+      path.resolve(session.workspaceRootPath, authorizedPath),
+    ).href;
+  }
+
   async setPresentation(
     sessionId: string,
     presentation: CodePresentation,
@@ -1184,7 +1222,13 @@ export class CodeSupervisor {
       codeTabId: session.codeTabId,
       connectionToken: profile.connectionToken,
       editorOrigin: `http://127.0.0.1:${profile.port}`,
+      initialFileUri: session.initialFile
+        ? pathToFileURL(
+            path.resolve(session.workspaceRootPath, session.initialFile),
+          ).href
+        : null,
       processInstanceId: profile.instanceId,
+      workspaceRootUri: session.workspaceRootUri,
       workspaceUri: session.workspaceUri,
     };
   }
@@ -2104,6 +2148,11 @@ export class CodeSupervisor {
     return {
       sessionId: session.sessionId,
       sessionIncarnationId: session.workspaceIncarnation,
+      initialFileUri: session.initialFile
+        ? pathToFileURL(
+            path.resolve(session.workspaceRootPath, session.initialFile),
+          ).href
+        : null,
       workspaceUri: session.workspaceUri,
       status: session.status,
       editorBuild: this.#installation!.editorBuild,

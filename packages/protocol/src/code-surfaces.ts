@@ -224,6 +224,7 @@ export const codeWorkbenchStateSchema = z.object({
 export const codeRuntimeStatusSchema = z.object({
   sessionId: z.string().min(1),
   sessionIncarnationId: z.string().uuid().nullable().optional(),
+  initialFileUri: z.string().min(1).max(16_384).nullable().optional(),
   workspaceUri: z.string().min(1).max(16_384).optional(),
   status: codeSessionStatusSchema,
   editorBuild: codeEditorBuildSchema,

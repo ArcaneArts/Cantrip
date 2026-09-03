@@ -30,6 +30,7 @@ import {
   getClientSession,
   onClientSessionIdentityChanged,
 } from "@/lib/client-session";
+import { configureCodeStartupUrl } from "@/lib/code-startup-url";
 import {
   getActiveServerConnection,
   getActiveServerUrl,
@@ -65,6 +66,7 @@ const RECONNECT_GRACE_MS = 15_000;
 const RECONNECT_RETRY_MS = 250;
 const RELAY_ERROR_CLOSE_CLASSIFICATION_MS = 75;
 const SERVICE_WORKER_PATH = "/cantrip-code-service-worker.js";
+const BROWSER_CODE_REMOTE_AUTHORITY = "cantrip-code.local";
 const SOCKET_EVENT = "cantrip-code-websocket-event-v1";
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -1608,7 +1610,7 @@ function serializeHttpRequest(
     return !blocked.has(name.toLowerCase());
   });
   headers.push(
-    ["Host", "cantrip-code.local"],
+    ["Host", BROWSER_CODE_REMOTE_AUTHORITY],
     ["Connection", "close"],
     ["Accept-Encoding", "identity"],
     ["X-Cantrip-Code-Base-Path", `/__cantrip_code/${request.adapterId}/code`],
@@ -1887,7 +1889,7 @@ class BrowserCodeSocket {
     const key = btoa(keyBinary);
     const protocols = request.protocols ?? [];
     const handshake = textEncoder.encode(
-      `GET ${path} HTTP/1.1\r\nHost: cantrip-code.local\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\nOrigin: ${window.location.origin}\r\nX-Cantrip-Code-Base-Path: /__cantrip_code/${request.adapterId}/code\r\n${protocols.length ? `Sec-WebSocket-Protocol: ${protocols.join(", ")}\r\n` : ""}\r\n`,
+      `GET ${path} HTTP/1.1\r\nHost: ${BROWSER_CODE_REMOTE_AUTHORITY}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\nOrigin: ${window.location.origin}\r\nX-Cantrip-Code-Base-Path: /__cantrip_code/${request.adapterId}/code\r\n${protocols.length ? `Sec-WebSocket-Protocol: ${protocols.join(", ")}\r\n` : ""}\r\n`,
     );
     try {
       await awaitWithSignal(
@@ -2565,12 +2567,7 @@ class BrowserCodeSession {
       `/__cantrip_code/${adapterId}/code/`,
       window.location.origin,
     );
-    if (wire.runtime.workspaceUri) {
-      const workspace = new URL(wire.runtime.workspaceUri);
-      if (workspace.protocol !== "file:")
-        throw new Error("Cantrip Code supplied an invalid workspace URI.");
-      url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
-    }
+    configureCodeStartupUrl(url, wire.runtime, BROWSER_CODE_REMOTE_AUTHORITY);
     const tunnel = await BrowserTunnelClient.open(wire.tunnelId, signal);
     let adapterPort: BrowserCodeAdapterPort | null = null;
     try {
@@ -2620,13 +2617,11 @@ class BrowserCodeSession {
       `/__cantrip_code/${adapterId}/code/`,
       window.location.origin,
     );
-    if (owned.attachment.session.runtime.workspaceUri) {
-      const workspace = new URL(owned.attachment.session.runtime.workspaceUri);
-      if (workspace.protocol !== "file:") {
-        throw new Error("Cantrip Code supplied an invalid workspace URI.");
-      }
-      url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
-    }
+    configureCodeStartupUrl(
+      url,
+      owned.attachment.session.runtime,
+      BROWSER_CODE_REMOTE_AUTHORITY,
+    );
     const lease = await acquireBrowserCodeTransport(owned, signal);
     let adapterPort: BrowserCodeAdapterPort | null = null;
     try {

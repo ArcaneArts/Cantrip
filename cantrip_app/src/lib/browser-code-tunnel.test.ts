@@ -913,6 +913,30 @@ describe("shared browser Code transport pooling", () => {
     expect(browserCodeTunnelRuntime(hotState)).toBe(first);
   });
 
+  it("places the initial file payload beside the protected root lease", async () => {
+    const owned = sharedOwned(0);
+    owned.attachment.session.runtime.initialFileUri =
+      "file:///worker/src/example%20file.ts";
+
+    const opened = await startSharedBrowserCodeAttachment(owned);
+    const url = new URL(opened.attachment.url);
+
+    expect(url.searchParams.get("cantripRootLease")).toMatch(
+      /^[A-Za-z0-9_-]{16,128}$/u,
+    );
+    expect(url.searchParams.get("workspace")).toBe(
+      "/worker/project.code-workspace",
+    );
+    expect(JSON.parse(url.searchParams.get("payload")!)).toEqual([
+      [
+        "openFile",
+        "vscode-remote://cantrip-code.local/worker/src/example%20file.ts",
+      ],
+    ]);
+
+    await stopSharedBrowserCodeAttachment(owned, opened.leaseId);
+  });
+
   it("updates an old service-worker controller without replacing the relay", async () => {
     const oldWorker = fakeServiceWorkerEndpoint(false);
     const replacement = fakeServiceWorkerEndpoint();
@@ -1537,6 +1561,21 @@ describe("browser Code attachment terminal state", () => {
       openConnection: vi.fn().mockResolvedValue(connection),
     };
 
+    const requestUrl = new URL(
+      "https://cantrip.example/__cantrip_code/33333333-3333-4333-8333-333333333333/code/",
+    );
+    requestUrl.searchParams.set("cantripFrameNonce", "frame_nonce_123456");
+    requestUrl.searchParams.set("cantripRootLease", "root_lease_123456");
+    requestUrl.searchParams.set("workspace", "/worker/project.code-workspace");
+    requestUrl.searchParams.set(
+      "payload",
+      JSON.stringify([
+        [
+          "openFile",
+          "vscode-remote://cantrip-code.local/worker/src/example.ts",
+        ],
+      ]),
+    );
     const result = await proxyBrowserCodeHttp(tunnel as never, {
       adapterId: "33333333-3333-4333-8333-333333333333",
       body: null,
@@ -1544,13 +1583,18 @@ describe("browser Code attachment terminal state", () => {
       method: "GET",
       requestId: "request-1",
       type: "cantrip-code-http-request-v1",
-      url: "https://cantrip.example/__cantrip_code/33333333-3333-4333-8333-333333333333/code/?cantripFrameNonce=frame_nonce_123456&cantripRootLease=root_lease_123456",
+      url: requestUrl.toString(),
     });
 
     expect(connection.send).toHaveBeenCalledOnce();
     const requestBytes = connection.send.mock.calls[0]![0];
     const requestText = new TextDecoder().decode(requestBytes);
     expect(requestText).toContain("cantripFrameNonce=frame_nonce_123456");
+    expect(requestText).toContain(
+      "workspace=%2Fworker%2Fproject.code-workspace",
+    );
+    expect(requestText).toContain("payload=");
+    expect(requestText).toContain("Host: cantrip-code.local");
     expect(requestText).not.toContain("cantripRootLease");
     expect(requestText).not.toContain("root_lease_123456");
     expect(connection.halfClose).not.toHaveBeenCalled();

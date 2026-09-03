@@ -42,6 +42,8 @@ import {
 } from "../logger.js";
 import type { CodeSupervisor } from "./supervisor.js";
 import {
+  codeEditorPublicAuthority,
+  codeEditorPublicStartupSelection,
   codeEditorRequestHeaders,
   codeEditorResponseHeaders,
   codeEditorTargetUrl,
@@ -801,7 +803,7 @@ export class CodeDirectEndpointManager {
       );
       response.once("close", unregisterRouteRequest);
       response.once("finish", unregisterRouteRequest);
-      this.#proxyHttp(endpoint, requestContext, request, response);
+      void this.#proxyHttp(endpoint, requestContext, request, response);
     });
     endpoint.server.on("upgrade", (request, socket, head) => {
       const requestContext = this.#requestContext(endpoint, request);
@@ -840,7 +842,7 @@ export class CodeDirectEndpointManager {
       socket.once("close", () => endpoint.sockets.delete(socket));
       requestContext.route?.sockets.add(socket);
       socket.once("close", () => requestContext.route?.sockets.delete(socket));
-      this.#proxyWebSocket(endpoint, requestContext, socket, request);
+      void this.#proxyWebSocket(endpoint, requestContext, socket, request);
     });
     endpoint.server.on("connection", (socket) => {
       endpoint.tcpSockets.add(socket);
@@ -1471,12 +1473,12 @@ export class CodeDirectEndpointManager {
     return `code-direct:${transport}:${context.diagnosticTraceId ?? "untraced"}:${context.tunnelId}:${reasonCode}`;
   }
 
-  #proxyHttp(
+  async #proxyHttp(
     endpoint: Endpoint,
     context: CodeEndpointContext,
     request: IncomingMessage,
     response: ServerResponse,
-  ): void {
+  ): Promise<void> {
     const {
       basePath,
       route: _route,
@@ -1569,11 +1571,62 @@ export class CodeDirectEndpointManager {
       };
       releaseStream = endStream;
       failureReason = "invalid-editor-target";
+      const requestHeaders = rawHeaders(request);
+      const publicAuthority = codeEditorPublicAuthority(requestHeaders);
+      const startupSelection = codeEditorPublicStartupSelection(
+        request.url ?? `${basePath}/`,
+        basePath,
+        proxy.workspaceUri,
+        publicAuthority,
+      );
+      if (!startupSelection.authorized) {
+        endStream();
+        releaseStream = null;
+        response
+          .writeHead(400, {
+            "cache-control": "no-store",
+            "content-type": "text/plain; charset=utf-8",
+          })
+          .end("Cantrip Code rejected invalid startup selectors.");
+        return;
+      }
+      let initialFileUri = proxy.initialFileUri;
+      if (startupSelection.initialFileUri) {
+        try {
+          initialFileUri = await this.supervisor.authorizeStartupFileUri(
+            sessionId,
+            startupSelection.initialFileUri,
+          );
+        } catch {
+          endStream();
+          releaseStream = null;
+          response
+            .writeHead(400, {
+              "cache-control": "no-store",
+              "content-type": "text/plain; charset=utf-8",
+            })
+            .end("Cantrip Code rejected invalid startup selectors.");
+          return;
+        }
+      }
+      if (
+        request.aborted ||
+        request.destroyed ||
+        response.destroyed ||
+        response.writableEnded
+      ) {
+        endStream();
+        releaseStream = null;
+        return;
+      }
+      this.#assertRouteActive(context);
       const target = codeEditorTargetUrl(
         proxy.editorOrigin,
         request.url ?? `${basePath}/`,
         basePath,
         proxy.workspaceUri,
+        initialFileUri,
+        publicAuthority,
       );
       failureReason = "editor-request-start-failed";
       let incomingResponse: IncomingMessage | null = null;
@@ -1583,7 +1636,7 @@ export class CodeDirectEndpointManager {
         {
           method: request.method ?? "GET",
           headers: codeEditorRequestHeaders(
-            rawHeaders(request),
+            requestHeaders,
             target,
             publicBasePath(request, basePath),
             proxy.connectionToken,
@@ -2174,12 +2227,12 @@ export class CodeDirectEndpointManager {
     }
   }
 
-  #proxyWebSocket(
+  async #proxyWebSocket(
     endpoint: Endpoint,
     context: CodeEndpointContext,
     client: WebSocket,
     request: IncomingMessage,
-  ): void {
+  ): Promise<void> {
     const {
       basePath,
       route: _route,
@@ -2207,17 +2260,67 @@ export class CodeDirectEndpointManager {
       };
       releaseStream = endStream;
       failureReason = "invalid-editor-target";
+      const requestHeaders = rawHeaders(request);
+      const publicAuthority = codeEditorPublicAuthority(requestHeaders);
+      const rejectStartupSelectors = () => {
+        endStream();
+        releaseStream = null;
+        workerLogger.rateLimited(
+          this.#failureKey("websocket", context, "invalid-startup-selectors"),
+          "warn",
+          "Cantrip Code direct WebSocket selectors rejected",
+          {
+            event: "code.direct.websocket-rejected",
+            subsystem: "code",
+            operation: "open-websocket",
+            reasonCode: "invalid-startup-selectors",
+            status: "rejected",
+            ...details,
+          },
+        );
+        client.close(1008, "Invalid Code startup selectors");
+      };
+      const startupSelection = codeEditorPublicStartupSelection(
+        request.url ?? `${basePath}/`,
+        basePath,
+        proxy.workspaceUri,
+        publicAuthority,
+      );
+      if (!startupSelection.authorized) {
+        rejectStartupSelectors();
+        return;
+      }
+      let initialFileUri = proxy.initialFileUri;
+      if (startupSelection.initialFileUri) {
+        try {
+          initialFileUri = await this.supervisor.authorizeStartupFileUri(
+            sessionId,
+            startupSelection.initialFileUri,
+          );
+        } catch {
+          rejectStartupSelectors();
+          return;
+        }
+      }
+      if (client.readyState !== WebSocket.OPEN) {
+        endStream();
+        releaseStream = null;
+        return;
+      }
+      this.#assertRouteActive(context);
       const target = codeEditorTargetUrl(
         proxy.editorOrigin,
         request.url ?? `${basePath}/`,
         basePath,
         proxy.workspaceUri,
+        initialFileUri,
+        publicAuthority,
       );
       target.protocol = "ws:";
       failureReason = "editor-websocket-start-failed";
       const upstream = new WebSocket(target, protocols(request.headers), {
         headers: codeEditorRequestHeaders(
-          rawHeaders(request).filter(
+          requestHeaders.filter(
             ([name]) => name.toLowerCase() !== "sec-websocket-protocol",
           ),
           target,

@@ -83,8 +83,8 @@ merged and the result has been observed on `main`.
 
 - Branch: `codex/code-fix-early-bridge`
 - Pull request: #1644
-- Merge commit: pending
-- Status: pull request open; squash auto-merge pending
+- Merge commit: `cc515c53362d3d94a8f273e2551582006727da0b`
+- Status: merged
 - Behavior: the workbench extension now begins its authenticated WebSocket
   connection immediately after command registration, before it awaits
   presentation/layout commands. Git initialization retains its existing order.
@@ -105,6 +105,62 @@ merged and the result has been observed on `main`.
 - Manual verification: compare cold launch bridge-open timing after all cycles
   land.
 
+### Cycle 4 — worker-authorized initial file payload
+
+- Branch: `codex/code-fix-initial-file-payload`
+- Pull request: pending
+- Merge commit: pending
+- Status: implementation verified locally; pull request pending
+- Behavior: a worker-authorized initial file is translated into OpenVSCode's
+  supported `openFile` startup payload when each Tauri or browser attachment URL
+  is created, allowing file loading to overlap workbench boot without another
+  network hop. Renderer-supplied workspace, empty-window, and payload selectors
+  are structurally parsed, then the requested file is resolved through the
+  worker's existing canonical realpath, regular-file, and workspace-containment
+  authorization before OpenVSCode is served. A validated attachment URL remains
+  stable when later file navigation mutates the session, and forwarded authority
+  headers are derived only from the sanitized public `Host` value.
+- Subsystem: worker Code session proxy target, direct/shared Code HTTP proxy,
+  OpenVSCode startup query construction, and proxy authority isolation.
+- Tests run:
+  - Focused proxy, direct/shared endpoint, protected transport, and supervisor
+    suite passed: 4 files, 84 tests.
+  - Focused app startup URL, desktop attachment, and browser tunnel suite passed:
+    3 files, 105 tests.
+  - Complete worker suite passed with four workers: 153 files passed, 1
+    skipped; 1,017 tests passed, 2 skipped. Default-concurrency reruns
+    intermittently hit the existing supervisor process-start timing tests;
+    both timing tests passed together in isolation before the bounded full run.
+  - Worker typecheck passed.
+  - Worker build passed.
+  - App typecheck passed.
+  - App production build passed after building its required `@cantrip/glitch`
+    workspace dependency.
+  - Protocol tests reached the pre-existing public-surface compatibility count
+    mismatch (expected 1,843 exports, current clean baseline exposes 1,845) in
+    both source and built-surface variants. The same failure reproduces on the
+    clean primary checkout and is unrelated to this cycle's optional runtime
+    field.
+  - Prettier and `git diff --check` passed.
+- Verified result: tests prove Tauri direct/shared and browser shared attachment
+  URLs contain the authorized `vscode-remote` initial file, the browser root
+  lease remains present while the payload crosses the service-worker adapter,
+  spoofed renderer selectors are rejected, spoofed forwarded hosts and ports do
+  not reach OpenVSCode, mismatched HTTP and WebSocket startup selectors never
+  reach the upstream editor, the payload authority matches OpenVSCode's
+  forwarded authority, Windows drive and UNC paths are preserved, path changes
+  update the worker-owned initial file URI, and an attachment created for file A
+  can still reload file A after the session later navigates to file B. Revoking
+  a shared HTTP or WebSocket route while canonical authorization is pending
+  releases the stream exactly once and opens no late upstream connection.
+- Remaining work: authenticated initial-navigation acknowledgement and fallback,
+  end-to-end regression audit, and documentation reconciliation.
+- Known risks: older clients omit the optional startup payload and continue
+  through the existing acknowledged bridge open; that fallback remains in place
+  until Cycle 5 proves and deduplicates the initial navigation.
+- Manual verification: compare the initial file paint and bridge-open timing on
+  both local-direct Tauri and browser-relay routes after all cycles land.
+
 ## Required completion matrix
 
 | Requirement                                     | Status      | Evidence                  |
@@ -113,7 +169,7 @@ merged and the result has been observed on `main`.
 | First and post-pin selection reuse              | In progress | Cycle 1 plus final traces |
 | Ordinary inactive editors remain dormant        | Complete    | Cycle 1 / PR #1642        |
 | Sidebar tree remains mounted during pin         | Complete    | Cycle 2 / PR #1643        |
-| Bridge connects before presentation setup       | In progress | Cycle 3                   |
-| Authorized initial-file startup payload         | Pending     | Future cycle              |
+| Bridge connects before presentation setup       | Complete    | Cycle 3 / PR #1644        |
+| Authorized initial-file startup payload         | In progress | Cycle 4                   |
 | Authenticated acknowledgement and safe fallback | Pending     | Future cycle              |
 | Tauri/browser and full regression validation    | Pending     | Final audit               |
