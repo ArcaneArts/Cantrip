@@ -36,6 +36,7 @@
     "managed-runtime:playwright:build": "node scripts/managed-runtimes/build-playwright.mjs",
     "managed-runtime:playwright:test": "node --test scripts/managed-runtimes/*.test.mjs",
     "managed-runtime:web:release": "node scripts/managed-runtimes/release-web-runtimes.mjs",
+    "testflight:feedback:collect": "node scripts/testflight-feedback.mjs collect",
     "version:show": "node scripts/version.mjs",
     "verify:installation-compatibility": "node scripts/installation-update-compatibility.mjs && pnpm verify:workflow-removal",
     "verify:workflow-removal": "node scripts/verify-workflow-removal.mjs",
