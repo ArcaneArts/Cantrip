@@ -374,12 +374,29 @@ function RefLabel({
   );
 }
 
+export function gitHistoryGraphGeometry(narrowViewport: boolean): {
+  bottom: number;
+  center: number;
+  height: number;
+  top: number;
+} {
+  const height = narrowViewport ? 64 : 32;
+  return {
+    bottom: height + 1,
+    center: height / 2,
+    height,
+    top: -1,
+  };
+}
+
 function CommitGraph({
   connectFromTop = false,
+  geometry,
   row,
   width,
 }: {
   connectFromTop?: boolean;
+  geometry: ReturnType<typeof gitHistoryGraphGeometry>;
   row: GraphRow;
   width: number;
 }) {
@@ -387,13 +404,13 @@ function CommitGraph({
   return (
     <svg
       width={width}
-      height="32"
+      height={geometry.height}
       className="block overflow-visible"
       aria-hidden="true"
     >
       {!row.introduced || connectFromTop ? (
         <path
-          d={`M ${x(row.lane)} -1 L ${x(row.lane)} 16`}
+          d={`M ${x(row.lane)} ${geometry.top} L ${x(row.lane)} ${geometry.center}`}
           fill="none"
           stroke={row.nodeColor}
           strokeWidth="2"
@@ -402,7 +419,12 @@ function CommitGraph({
       {row.passthrough.map((edge, index) => (
         <path
           key={`p:${index}`}
-          d={graphCurvePath(x(edge.from), x(edge.to), -1, 33)}
+          d={graphCurvePath(
+            x(edge.from),
+            x(edge.to),
+            geometry.top,
+            geometry.bottom,
+          )}
           fill="none"
           stroke={edge.color}
           strokeLinecap="round"
@@ -413,7 +435,12 @@ function CommitGraph({
       {row.edges.map((edge, index) => (
         <path
           key={`e:${index}`}
-          d={graphCurvePath(x(edge.from), x(edge.to), 16, 33)}
+          d={graphCurvePath(
+            x(edge.from),
+            x(edge.to),
+            geometry.center,
+            geometry.bottom,
+          )}
           fill="none"
           stroke={edge.color}
           strokeLinecap="round"
@@ -423,14 +450,19 @@ function CommitGraph({
       ))}
       <circle
         cx={x(row.lane)}
-        cy="16"
+        cy={geometry.center}
         r={row.commit.isHead ? 5 : 4}
         fill="var(--background)"
         stroke={row.nodeColor}
         strokeWidth={row.commit.isHead ? 3 : 2}
       />
       {row.commit.isHead ? (
-        <circle cx={x(row.lane)} cy="16" r="1.5" fill={row.nodeColor} />
+        <circle
+          cx={x(row.lane)}
+          cy={geometry.center}
+          r="1.5"
+          fill={row.nodeColor}
+        />
       ) : null}
     </svg>
   );
@@ -439,11 +471,13 @@ function CommitGraph({
 function WorktreeWipGraph({
   color,
   connectFromTop,
+  geometry,
   lane,
   width,
 }: {
   color: string;
   connectFromTop: boolean;
+  geometry: ReturnType<typeof gitHistoryGraphGeometry>;
   lane: number;
   width: number;
 }) {
@@ -451,13 +485,13 @@ function WorktreeWipGraph({
   return (
     <svg
       width={width}
-      height="32"
+      height={geometry.height}
       className="block overflow-visible"
       aria-hidden="true"
     >
       {connectFromTop ? (
         <path
-          d={`M ${x} -1 L ${x} 16`}
+          d={`M ${x} ${geometry.top} L ${x} ${geometry.center}`}
           fill="none"
           stroke={color}
           strokeWidth="2"
@@ -465,7 +499,7 @@ function WorktreeWipGraph({
         />
       ) : null}
       <path
-        d={`M ${x} 16 L ${x} 33`}
+        d={`M ${x} ${geometry.center} L ${x} ${geometry.bottom}`}
         fill="none"
         stroke={color}
         strokeWidth="2"
@@ -473,7 +507,7 @@ function WorktreeWipGraph({
       />
       <circle
         cx={x}
-        cy="16"
+        cy={geometry.center}
         r="5"
         fill="var(--background)"
         stroke={color}
@@ -1236,6 +1270,7 @@ export function GitHistoryView({
     [graph.rows],
   );
   const graphWidth = Math.max(42, graph.maxLanes * 16 + 12);
+  const graphGeometry = gitHistoryGraphGeometry(narrowViewport);
   const graphAreaWidth = Math.min(260, Math.max(160, graphWidth + 126));
   const historyColumns = `${graphAreaWidth}px minmax(320px, 1fr) 150px 82px`;
   const firstPage = history.data?.pages[0];
@@ -1989,6 +2024,7 @@ export function GitHistoryView({
                                 displayRows[index - 1]?.graph.commit.hash ===
                                   row.commit.hash
                               }
+                              geometry={graphGeometry}
                               lane={row.lane}
                               width={
                                 narrowViewport
@@ -2106,6 +2142,7 @@ export function GitHistoryView({
                         <div className="relative h-full min-w-0 overflow-hidden md:h-8 md:overflow-visible">
                           <div className="absolute inset-y-0 left-0 z-[1] flex items-center">
                             <CommitGraph
+                              geometry={graphGeometry}
                               row={row}
                               width={
                                 narrowViewport
