@@ -205,6 +205,8 @@ describe("Codex rich event normalization", () => {
       {
         thread: {
           id: "thread-1",
+          model: "gpt-5.6-sol",
+          reasoningEffort: "high",
           turns: [
             {
               id: "turn-1",
@@ -2156,6 +2158,12 @@ describe("parseCodexRpcMessage", () => {
     expect(
       isKnownCodexNotificationMethod("mcpServer/event/stream/notification"),
     ).toBe(true);
+    expect(
+      isKnownCodexNotificationMethod("modelProvider/authRecoveryStarted"),
+    ).toBe(true);
+    expect(
+      isKnownCodexNotificationMethod("modelProvider/authRecoveryCompleted"),
+    ).toBe(true);
     expect(isKnownCodexNotificationMethod("thread/realtime/item/started")).toBe(
       true,
     );
@@ -2455,7 +2463,7 @@ describe("Codex runtime compatibility enforcement", () => {
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.151\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.153\.0/u);
   });
 
   it("uses the dedicated workflow entry point for unavailable runtimes", async () => {
@@ -2498,7 +2506,7 @@ describe("Codex runtime compatibility enforcement", () => {
           apiKey: null,
         },
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.151\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.153\.0/u);
   });
 });
 

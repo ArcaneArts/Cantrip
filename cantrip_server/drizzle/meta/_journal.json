@@ -1331,6 +1331,13 @@
       "when": 1788438655311,
       "tag": "0189_little_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1788445357913,
+      "tag": "0190_curly_wrecker",
+      "breakpoints": true
     }
   ]
 }
