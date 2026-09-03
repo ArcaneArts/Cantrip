@@ -200,6 +200,7 @@ async function retireExplorerCodeAttachment(
 export function ExplorerCodeEditor({
   active = true,
   appearance,
+  backgroundWarmup = false,
   explorerId,
   onLifecycleChange,
   onReady,
@@ -210,6 +211,7 @@ export function ExplorerCodeEditor({
 }: {
   active?: boolean;
   appearance: CodeAppearance;
+  backgroundWarmup?: boolean;
   explorerId: string;
   onLifecycleChange?(actions: ExplorerCodeEditorLifecycleActions | null): void;
   onReady?: () => void;
@@ -218,6 +220,7 @@ export function ExplorerCodeEditor({
   workerId: string;
   workerOnline?: boolean;
 }) {
+  const startupEligible = active || backgroundWarmup;
   const editorInstanceId = useRef(crypto.randomUUID()).current;
   const editorIdentityRef = useRef({ explorerId, workerId, worktreeId });
   editorIdentityRef.current = { explorerId, workerId, worktreeId };
@@ -237,7 +240,7 @@ export function ExplorerCodeEditor({
   const [themeRecoveryAttempt, setThemeRecoveryAttempt] = useState(0);
   const [sharedTransportRecoveryAttempt, setSharedTransportRecoveryAttempt] =
     useState(0);
-  const activeRef = useRef(active);
+  const startupEligibleRef = useRef(startupEligible);
   const appearanceRef = useRef(appearance);
   const connectionInFlightRef = useRef(false);
   const connectionRetryCountRef = useRef(0);
@@ -279,7 +282,7 @@ export function ExplorerCodeEditor({
     attachmentId: string;
   } | null>(null);
   const previousWorkerOnlineRef = useRef(workerOnline);
-  const previousActiveRef = useRef(active);
+  const previousStartupEligibleRef = useRef(startupEligible);
   const previousPathRef = useRef(path);
   const onReadyRef = useRef(onReady);
   const workerOnlineRef = useRef(workerOnline);
@@ -370,7 +373,7 @@ export function ExplorerCodeEditor({
   const preferredAttachmentRef = useRef(preferredAttachment);
   const frameMountRef = useRef(frameMount);
   useLayoutEffect(() => {
-    activeRef.current = active;
+    startupEligibleRef.current = startupEligible;
     appearanceRef.current = appearance;
     bindingKeyRef.current = bindingKey;
     frameMountRef.current = frameMount;
@@ -379,7 +382,7 @@ export function ExplorerCodeEditor({
     preferredAttachmentRef.current = preferredAttachment;
     workerOnlineRef.current = workerOnline;
   }, [
-    active,
+    startupEligible,
     appearance,
     bindingKey,
     frameMount,
@@ -418,6 +421,7 @@ export function ExplorerCodeEditor({
   );
   const editorDiagnosticStateRef = useRef({
     active,
+    backgroundWarmup,
     closing,
     hasAttachment: preferredAttachment !== null,
     pathPresent: path !== null,
@@ -425,6 +429,7 @@ export function ExplorerCodeEditor({
   });
   editorDiagnosticStateRef.current = {
     active,
+    backgroundWarmup,
     closing,
     hasAttachment: preferredAttachment !== null,
     pathPresent: path !== null,
@@ -454,8 +459,8 @@ export function ExplorerCodeEditor({
   );
 
   useLayoutEffect(() => {
-    if (active) startLaunchTiming(path, "request-superseded");
-  }, [active, path, startLaunchTiming]);
+    if (startupEligible) startLaunchTiming(path, "request-superseded");
+  }, [path, startLaunchTiming, startupEligible]);
 
   useEffect(() => {
     const effectLease = editorUnmountCleanupRef.current!.retain();
@@ -510,6 +515,7 @@ export function ExplorerCodeEditor({
     });
   }, [
     active,
+    backgroundWarmup,
     closing,
     editorInstanceId,
     explorerId,
@@ -560,7 +566,7 @@ export function ExplorerCodeEditor({
     (expectedBindingKey: string): boolean => {
       if (
         closingRef.current ||
-        !activeRef.current ||
+        !startupEligibleRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         connectionRetryCountRef.current >= EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT
       ) {
@@ -577,7 +583,7 @@ export function ExplorerCodeEditor({
       if (closingRef.current || bindingKeyRef.current !== expectedBindingKey) {
         return false;
       }
-      if (!activeRef.current) {
+      if (!startupEligibleRef.current) {
         pendingConnectionWakeRef.current = true;
         return false;
       }
@@ -614,7 +620,7 @@ export function ExplorerCodeEditor({
     (expectedBindingKey: string, expectedNonce: string | null): boolean => {
       if (
         closingRef.current ||
-        !activeRef.current ||
+        !startupEligibleRef.current ||
         bindingKeyRef.current !== expectedBindingKey ||
         expectedNonce === null ||
         frameMountRef.current?.nonce !== expectedNonce ||
@@ -659,7 +665,7 @@ export function ExplorerCodeEditor({
       frameRetryPendingRef.current = true;
       if (
         frameRetryTimerRef.current ||
-        !activeRef.current ||
+        !startupEligibleRef.current ||
         !workerOnlineRef.current
       ) {
         return;
@@ -713,7 +719,7 @@ export function ExplorerCodeEditor({
     preferredAppearanceRef.current = null;
 
     const connect = async () => {
-      if (!activeRef.current) {
+      if (!startupEligibleRef.current) {
         connectionRetryableRef.current = true;
         pendingConnectionWakeRef.current = true;
         return;
@@ -845,7 +851,7 @@ export function ExplorerCodeEditor({
               "Cantrip Code could not open this file.",
             ),
           );
-          if (retryable && !activeRef.current) {
+          if (retryable && !startupEligibleRef.current) {
             willRetry = true;
             pendingConnectionWakeRef.current = true;
           } else if (
@@ -934,7 +940,7 @@ export function ExplorerCodeEditor({
     if (closingRef.current) return;
     const wasOnline = previousWorkerOnlineRef.current;
     previousWorkerOnlineRef.current = workerOnline;
-    if (!activeRef.current) return;
+    if (!startupEligibleRef.current) return;
     if (
       !wasOnline &&
       workerOnline &&
@@ -987,9 +993,9 @@ export function ExplorerCodeEditor({
 
   useEffect(() => {
     if (closingRef.current) return;
-    const wasActive = previousActiveRef.current;
-    previousActiveRef.current = active;
-    if (wasActive || !active) return;
+    const wasStartupEligible = previousStartupEligibleRef.current;
+    previousStartupEligibleRef.current = startupEligible;
+    if (wasStartupEligible || !startupEligible) return;
     if (
       sharedTransportUnavailableRef.current &&
       preferredAttachment?.sharedOwnedAttachment
@@ -1003,12 +1009,12 @@ export function ExplorerCodeEditor({
     }
     requestFrameRetry(bindingKey, frameMount?.nonce ?? null);
   }, [
-    active,
     bindingKey,
     frameMount?.nonce,
     preferredAttachment,
     requestConnectionRetry,
     requestFrameRetry,
+    startupEligible,
   ]);
 
   useEffect(() => {
@@ -1096,7 +1102,7 @@ export function ExplorerCodeEditor({
           sharedTransportUnavailableRef.current = true;
           setReadyKey(null);
           setError(null);
-          if (activeRef.current) {
+          if (startupEligibleRef.current) {
             setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
           }
           return;
@@ -1113,7 +1119,7 @@ export function ExplorerCodeEditor({
   useEffect(() => {
     if (
       closing ||
-      !active ||
+      !startupEligible ||
       !workerOnline ||
       sharedTransportRecoveryAttempt === 0 ||
       sharedTransportRecoveryAttempt <= lastSharedRecoveryAttemptRef.current
@@ -1173,11 +1179,11 @@ export function ExplorerCodeEditor({
       );
     };
   }, [
-    active,
     bindingKey,
     closing,
     preferredAttachment,
     sharedTransportRecoveryAttempt,
+    startupEligible,
     workerOnline,
   ]);
 
@@ -1321,10 +1327,19 @@ export function ExplorerCodeEditor({
         workbenchReadyTimingRef.current = null;
       }
       setFrameReadyNonce(frameMount.nonce);
+      if (pathRef.current === null) {
+        const preferred = preferredAttachmentRef.current;
+        launchTimingRef.current?.complete({
+          attachmentId: preferred?.attachment.attachmentId,
+          prewarmed: true,
+          sessionId: preferred?.attachment.sessionId,
+          transportKind: preferred?.transportKind,
+        });
+      }
     };
     window.addEventListener("message", receiveReady);
     let timeout: ReturnType<typeof setTimeout> | null = null;
-    if (active && !settled) {
+    if (startupEligible && !settled) {
       timeout = setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -1349,7 +1364,6 @@ export function ExplorerCodeEditor({
       window.removeEventListener("message", receiveReady);
     };
   }, [
-    active,
     bindingKey,
     editorInstanceId,
     explorerId,
@@ -1357,6 +1371,7 @@ export function ExplorerCodeEditor({
     frameMount,
     frameReadyNonce,
     scheduleFrameRetry,
+    startupEligible,
     workerId,
     worktreeId,
   ]);
@@ -1596,7 +1611,7 @@ export function ExplorerCodeEditor({
             frameFailureNonceRef.current = null;
             setReadyKey(null);
             setError(null);
-            if (!activeRef.current) {
+            if (!startupEligibleRef.current) {
               frameRetryPendingRef.current = true;
               return;
             }

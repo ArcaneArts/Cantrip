@@ -7,13 +7,16 @@ vi.mock("@/components/explorer/explorer-code-editor", async () => {
   return {
     ExplorerCodeEditor: ({
       active,
+      backgroundWarmup,
       path,
     }: {
       active: boolean;
+      backgroundWarmup: boolean;
       path: string | null;
     }) =>
       createMockElement("div", {
         "data-editor-active": active,
+        "data-editor-background-warmup": backgroundWarmup,
         "data-editor-path": path,
         "data-mock-code-editor": true,
       }),
@@ -30,6 +33,7 @@ import { INLINE_CODE_WORKBENCH_RETENTION_MS } from "./use-retained-inline-workbe
 const baseProps = {
   appearance: "dark" as const,
   explorerId: "explorer-1",
+  prewarm: false,
   visible: true,
   retained: true,
   workerOnline: true,
@@ -151,6 +155,81 @@ describe("RetainedExplorerCodeEditor", () => {
       mountedEditor,
     );
     expect(mountedEditor.props["data-editor-active"]).toBe(false);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("mounts one hidden pathless prewarm and reuses it on first activation", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          path: null,
+          prewarm: true,
+          visible: false,
+        }),
+      );
+    });
+    const mountedEditor = renderer.root.findByProps({
+      "data-mock-code-editor": true,
+    });
+    expect(mountedEditor.props["data-editor-active"]).toBe(false);
+    expect(mountedEditor.props["data-editor-background-warmup"]).toBe(true);
+    expect(mountedEditor.props["data-editor-path"]).toBeNull();
+
+    await act(async () => {
+      renderer.update(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          path: "src/first.ts",
+          prewarm: false,
+          visible: true,
+        }),
+      );
+    });
+
+    expect(renderer.root.findByProps({ "data-mock-code-editor": true })).toBe(
+      mountedEditor,
+    );
+    expect(mountedEditor.props["data-editor-active"]).toBe(true);
+    expect(mountedEditor.props["data-editor-background-warmup"]).toBe(false);
+    expect(mountedEditor.props["data-editor-path"]).toBe("src/first.ts");
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("releases a hidden pathless editor when its prewarm role is revoked", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          path: null,
+          prewarm: true,
+          visible: false,
+        }),
+      );
+    });
+    expect(
+      renderer.root.findAllByProps({ "data-mock-code-editor": true }),
+    ).toHaveLength(1);
+
+    await act(async () => {
+      renderer.update(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          path: null,
+          prewarm: false,
+          retained: true,
+          visible: false,
+        }),
+      );
+    });
+
+    expect(
+      renderer.root.findAllByProps({ "data-mock-code-editor": true }),
+    ).toHaveLength(0);
 
     await act(async () => renderer.unmount());
   });
