@@ -27,6 +27,7 @@ import {
   subscribeBrowserCodeAttachmentUnavailable,
 } from "@/lib/browser-code-tunnel";
 import { clientLogger } from "@/lib/client-log-relay";
+import { configureCodeStartupUrl } from "@/lib/code-startup-url";
 import {
   acquireDesktopCodeTransport,
   listDesktopTunnelsWithOptions,
@@ -706,13 +707,7 @@ export async function preferProtectedCodeAttachment(
     const url = new URL(
       `http://${forward.localHost}:${forward.localPort}/code/`,
     );
-    if (wire.runtime.workspaceUri) {
-      const workspace = new URL(wire.runtime.workspaceUri);
-      if (workspace.protocol !== "file:") {
-        throw new Error("Cantrip Code supplied an invalid workspace URI.");
-      }
-      url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
-    }
+    configureCodeStartupUrl(url, wire.runtime, url.host);
     const attachment = {
       attachmentId: wire.attachmentId,
       sessionId: wire.sessionId,
@@ -827,16 +822,7 @@ export async function preferSharedProtectedCodeAttachment(
         basePath,
         `http://${forward.localHost}:${forward.localPort}`,
       );
-      if (wire.session.runtime.workspaceUri) {
-        const workspace = new URL(wire.session.runtime.workspaceUri);
-        if (workspace.protocol !== "file:") {
-          throw new Error("Cantrip Code supplied an invalid workspace URI.");
-        }
-        url.searchParams.set(
-          "workspace",
-          decodeURIComponent(workspace.pathname),
-        );
-      }
+      configureCodeStartupUrl(url, wire.session.runtime, url.host);
       const attachment = {
         attachmentId: wire.session.attachmentId,
         sessionId: wire.session.sessionId,

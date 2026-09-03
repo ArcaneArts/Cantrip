@@ -12,7 +12,10 @@ const BLOCKED_REQUEST_HEADERS = new Set([
   "transfer-encoding",
   "upgrade",
   "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-port",
   "x-forwarded-prefix",
+  "x-original-host",
   "x-cantrip-code-base-path",
 ]);
 const BLOCKED_RESPONSE_HEADERS = new Set([
@@ -91,17 +94,16 @@ export function codeEditorRequestHeaders(
   connectionToken: string,
 ): Record<string, string | string[]> {
   const output = new Map<string, string[]>();
-  let publicHost: string | undefined;
   for (const [rawName, value] of headers) {
     const name = rawName.toLowerCase();
-    if (name === "host" && publicHost === undefined) publicHost = value;
     if (BLOCKED_REQUEST_HEADERS.has(name)) continue;
     const values = output.get(name) ?? [];
     values.push(value);
     output.set(name, values);
   }
-  if (!output.has("x-forwarded-host") && publicHost) {
-    output.set("x-forwarded-host", [publicHost]);
+  const publicAuthority = codeEditorPublicAuthority(headers);
+  if (publicAuthority) {
+    output.set("x-forwarded-host", [publicAuthority]);
   }
   output.set("cookie", [`vscode-tkn=${encodeURIComponent(connectionToken)}`]);
   output.set("host", [target.host]);
@@ -112,6 +114,28 @@ export function codeEditorRequestHeaders(
       values.length === 1 ? values[0]! : values,
     ]),
   );
+}
+
+export function codeEditorPublicAuthority(
+  headers: Array<[string, string]>,
+): string | undefined {
+  const host = headers.find(([name]) => name.toLowerCase() === "host")?.[1];
+  if (!host) return undefined;
+  try {
+    const parsed = new URL(`http://${host}`);
+    if (
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      parsed.pathname !== "/" ||
+      parsed.search !== "" ||
+      parsed.hash !== ""
+    ) {
+      return undefined;
+    }
+    return parsed.host;
+  } catch {
+    return undefined;
+  }
 }
 
 export function codeEditorResponseHeaders(
@@ -132,11 +156,109 @@ export function codeEditorResponseHeaders(
   return headers;
 }
 
+export type CodeEditorPublicStartupSelection =
+  { authorized: false } | { authorized: true; initialFileUri?: string };
+
+export function codeEditorPublicStartupSelection(
+  rawPath: string,
+  basePath: string,
+  workspaceUri: string,
+  publicAuthority?: string,
+): CodeEditorPublicStartupSelection {
+  const publicUrl = new URL(rawPath, "http://cantrip-surface.invalid");
+  if (
+    publicUrl.pathname !== basePath &&
+    publicUrl.pathname !== `${basePath}/`
+  ) {
+    return { authorized: true };
+  }
+  let workspace: URL;
+  let workspacePath: string;
+  try {
+    workspace = new URL(workspaceUri);
+    if (
+      workspace.protocol !== "file:" ||
+      workspace.search !== "" ||
+      workspace.hash !== ""
+    ) {
+      return { authorized: false };
+    }
+    workspacePath = workspace.host
+      ? `//${workspace.host}${decodeURIComponent(workspace.pathname)}`
+      : decodeURIComponent(workspace.pathname);
+  } catch {
+    return { authorized: false };
+  }
+  if (
+    publicUrl.searchParams.has("folder") ||
+    publicUrl.searchParams.has("ew") ||
+    publicUrl.searchParams.getAll("workspace").length > 1 ||
+    (publicUrl.searchParams.has("workspace") &&
+      publicUrl.searchParams.get("workspace") !== workspacePath)
+  ) {
+    return { authorized: false };
+  }
+  const payloads = publicUrl.searchParams.getAll("payload");
+  if (payloads.length === 0) return { authorized: true };
+  if (payloads.length !== 1 || !publicAuthority) {
+    return { authorized: false };
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(payloads[0]!);
+  } catch {
+    return { authorized: false };
+  }
+  if (
+    !Array.isArray(payload) ||
+    payload.length !== 1 ||
+    !Array.isArray(payload[0]) ||
+    payload[0].length !== 2 ||
+    payload[0][0] !== "openFile" ||
+    typeof payload[0][1] !== "string"
+  ) {
+    return { authorized: false };
+  }
+  let remoteFile: URL;
+  try {
+    remoteFile = new URL(payload[0][1]);
+  } catch {
+    return { authorized: false };
+  }
+  if (
+    remoteFile.protocol !== "vscode-remote:" ||
+    remoteFile.host !== publicAuthority.toLowerCase() ||
+    remoteFile.username !== "" ||
+    remoteFile.password !== "" ||
+    remoteFile.search !== "" ||
+    remoteFile.hash !== ""
+  ) {
+    return { authorized: false };
+  }
+  let initialFileUri: string;
+  try {
+    if (remoteFile.pathname.startsWith("//")) {
+      const hostBoundary = remoteFile.pathname.indexOf("/", 2);
+      if (hostBoundary < 3) return { authorized: false };
+      const host = remoteFile.pathname.slice(2, hostBoundary);
+      const filePath = remoteFile.pathname.slice(hostBoundary);
+      initialFileUri = new URL(`file://${host}${filePath}`).href;
+    } else {
+      initialFileUri = new URL(`file://${remoteFile.pathname}`).href;
+    }
+  } catch {
+    return { authorized: false };
+  }
+  return { authorized: true, initialFileUri };
+}
+
 export function codeEditorTargetUrl(
   editorOrigin: string,
   rawPath: string,
   basePath: string,
   workspaceUri: string,
+  initialFileUri: string | null = null,
+  publicAuthority?: string,
 ): URL {
   const publicUrl = new URL(rawPath, "http://cantrip-surface.invalid");
   if (
@@ -152,7 +274,9 @@ export function codeEditorTargetUrl(
   // allow a renderer-controlled URL to replace that binding, including on
   // secondary HTTP or WebSocket requests that OpenVSCode may interpret.
   target.searchParams.delete("folder");
+  target.searchParams.delete("payload");
   target.searchParams.delete("workspace");
+  target.searchParams.delete("ew");
   if (
     publicUrl.pathname === basePath ||
     publicUrl.pathname === `${basePath}/`
@@ -160,7 +284,6 @@ export function codeEditorTargetUrl(
     const workspace = new URL(workspaceUri);
     if (
       workspace.protocol !== "file:" ||
-      workspace.host !== "" ||
       workspace.search !== "" ||
       workspace.hash !== ""
     ) {
@@ -168,8 +291,35 @@ export function codeEditorTargetUrl(
     }
     target.searchParams.set(
       "workspace",
-      decodeURIComponent(workspace.pathname),
+      workspace.host
+        ? `//${workspace.host}${decodeURIComponent(workspace.pathname)}`
+        : decodeURIComponent(workspace.pathname),
     );
+    if (initialFileUri) {
+      if (!publicAuthority) {
+        throw new Error(
+          "Cantrip Code could not establish its public editor authority.",
+        );
+      }
+      const initialFile = new URL(initialFileUri);
+      if (
+        initialFile.protocol !== "file:" ||
+        initialFile.search !== "" ||
+        initialFile.hash !== ""
+      ) {
+        throw new Error("Cantrip Code supplied an invalid initial file URI.");
+      }
+      const remotePath = initialFile.host
+        ? `//${initialFile.host}${initialFile.pathname}`
+        : initialFile.pathname;
+      const remoteFile = new URL(
+        `vscode-remote://${publicAuthority}${remotePath}`,
+      );
+      target.searchParams.set(
+        "payload",
+        JSON.stringify([["openFile", remoteFile.href]]),
+      );
+    }
   }
   return target;
 }

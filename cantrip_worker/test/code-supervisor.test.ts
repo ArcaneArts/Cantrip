@@ -1976,6 +1976,9 @@ describe("Cantrip Code supervisor", () => {
       presentation: "workbench",
     });
     const target = supervisor.proxyTarget("editor");
+    expect(target.initialFileUri).toBe(
+      pathToFileURL(path.join(canonicalRepository, "example.ts")).href,
+    );
     let workspace = JSON.parse(
       await readFile(new URL(target.workspaceUri), "utf8"),
     ) as { settings: Record<string, unknown> };
@@ -2125,6 +2128,9 @@ describe("Cantrip Code supervisor", () => {
         (session) => session.sessionId === "durable-navigation",
       )?.initialFile,
     ).toBe("second.ts");
+    expect(supervisor.proxyTarget("durable-navigation").initialFileUri).toBe(
+      pathToFileURL(path.join(await realpath(repository), "second.ts")).href,
+    );
     socket.close();
   });
 
@@ -2203,6 +2209,42 @@ describe("Cantrip Code supervisor", () => {
         ...openCommand("escaping-link", repository, "primary"),
         initialFile: "outside-link.ts",
       }),
+    ).rejects.toThrow("outside the authorized worktree");
+  });
+
+  it("canonically authorizes startup file URIs before proxying them", async () => {
+    const { repository, supervisor } = await fixture();
+    const outside = path.join(path.dirname(repository), "startup-outside.ts");
+    const inside = path.join(repository, "inside.ts");
+    const outsideLink = path.join(repository, "startup-outside-link.ts");
+    await writeFile(inside, "inside\n");
+    await writeFile(outside, "outside\n");
+    await symlink(outside, outsideLink);
+    await supervisor.open(openCommand("startup-uri", repository, "primary"));
+    const canonicalRepository = await realpath(repository);
+    const canonicalInside = path.join(canonicalRepository, "inside.ts");
+    const canonicalOutsideLink = path.join(
+      canonicalRepository,
+      "startup-outside-link.ts",
+    );
+
+    await expect(
+      supervisor.authorizeStartupFileUri(
+        "startup-uri",
+        pathToFileURL(canonicalInside).href,
+      ),
+    ).resolves.toBe(pathToFileURL(canonicalInside).href);
+    await expect(
+      supervisor.authorizeStartupFileUri(
+        "startup-uri",
+        `${pathToFileURL(canonicalRepository).href}/%2e%2e%2fstartup-outside.ts`,
+      ),
+    ).rejects.toThrow("invalid startup file URI");
+    await expect(
+      supervisor.authorizeStartupFileUri(
+        "startup-uri",
+        pathToFileURL(canonicalOutsideLink).href,
+      ),
     ).rejects.toThrow("outside the authorized worktree");
   });
 

@@ -1245,13 +1245,18 @@ describe("preferProtectedCodeAttachment", () => {
       sessionId: "22222222-2222-4222-8222-222222222222",
       expiresAt: "2026-08-13T12:00:00.000Z",
       runtime: {
+        initialFileUri: "file:///worker/src/example.ts",
         workspaceUri: "file:///worker/project.code-workspace",
       },
     } as never);
 
-    expect(preferred.attachment.url).toBe(
-      "http://127.0.0.1:52345/code/?workspace=%2Fworker%2Fproject.code-workspace",
+    const attachmentUrl = new URL(preferred.attachment.url);
+    expect(attachmentUrl.searchParams.get("workspace")).toBe(
+      "/worker/project.code-workspace",
     );
+    expect(JSON.parse(attachmentUrl.searchParams.get("payload")!)).toEqual([
+      ["openFile", "vscode-remote://127.0.0.1:52345/worker/src/example.ts"],
+    ]);
     expect(preferred.directTunnelId).toBe(
       "11111111-1111-4111-8111-111111111111",
     );
