@@ -166,9 +166,12 @@ fallbacks outside request-owned account operations.
   normalized identity. Missing and incorrect accounts return the same error.
 - Request logging redacts cookies, authorization, CSRF/bootstrap tokens,
   passwords, and response cookies.
-- Public registration is independently configurable. With it disabled, the
-  first owner requires a 32+ character bootstrap token; later registration is
-  denied.
+- With license whitelisting enabled, the configured administrator creates the
+  first account and later registrants must be whitelisted; no bootstrap token
+  is involved. Setting `CANTRIP_LICENSE_WHITELIST_ENABLED=false` allows open
+  registration. `CANTRIP_PUBLIC_REGISTRATION` and the first-owner bootstrap
+  token remain only for older programmatic configurations that omit whitelist
+  policy.
 
 ## 4. Complete boundary inventory
 
@@ -334,7 +337,7 @@ deltas remain worker-local. Revision-checked authoring never changes Git state.
 
 Path, race, process-tree, binding, response-limit, offline/restart, and client
 surface threats are mapped to controls in
-[the Run environment threat model](RUN_CONFIGURATIONS.md#threat-model).
+[the Run safety contract](RUN_CONFIGURATIONS.md#safety-and-failure-semantics).
 
 ## 7. Database ownership
 
@@ -422,12 +425,12 @@ verification procedure live in
 
 The append-only `audit_events` ledger records authentication decisions, session
 revocation, worker enrollment outcomes, project access, Git requests, and
-provider/MCP/worker/project configuration mutations. Events carry the actor and
-owner IDs, resource identity, result, request correlation ID, and hashes of the
-client address and user agent. Metadata is deliberately bounded and allowlisted
-by call sites; request bodies, credentials, email addresses, prompts, terminal
-content, and source content are never copied into the ledger. Accounts can list
-only their own events through `/api/account/audit-events`; owner/admin roles can
+provider/MCP/worker/project configuration mutations. Events carry owner, actor,
+and actor-session IDs; action and result; resource type and ID; request ID; and
+timestamp. The ledger stores no arbitrary metadata, client-address hash, or
+user-agent hash. Request bodies, credentials, email addresses, prompts, terminal
+content, and source content are never copied into it. Accounts can list only
+their own events through `/api/account/audit-events`; owner/admin roles can
 inspect the global stream through `/api/admin/audit-events`. Both APIs use
 descending cursor pagination. `/api/account/sessions` similarly exposes active
 session metadata without any stored token, CSRF, address, or user-agent hash.

@@ -21,7 +21,7 @@ browser state, and disposable runtime caches remain on the assigned worker.
 
 ## 1. Decision
 
-Cantrip will provide three related capabilities:
+Cantrip provides three related capabilities:
 
 1. **Web search** through a worker-supervised portable SearXNG process.
 2. **Static page reading** through a hardened Node-based fetch and readability
@@ -29,7 +29,7 @@ Cantrip will provide three related capabilities:
 3. **Rendered and interactive browsing** through a worker-supervised portable
    Playwright and Chromium runtime.
 
-The managed Cantrip MCP will expose a small purpose-built tool catalog instead
+The managed Cantrip MCP exposes a small purpose-built tool catalog instead
 of injecting the complete upstream Playwright MCP server. This keeps schemas
 small, preserves the existing binding and permission model, and lets Cantrip
 apply consistent network, encryption, result-size, and lifecycle policies.

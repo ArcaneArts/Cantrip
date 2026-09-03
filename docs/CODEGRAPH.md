@@ -35,10 +35,10 @@ into another.
 
 ## 1. Decision
 
-Cantrip will treat CodeGraph as a worker-managed development runtime, not as a
+Cantrip treats CodeGraph as a worker-managed development runtime, not as a
 user-configured MCP server or a dependency of `cantrip_server`.
 
-Every supported worker will:
+Every supported worker:
 
 1. check the upstream GitHub release channel once during each process startup;
 2. install or update the correct standalone CodeGraph release for its operating
@@ -52,15 +52,15 @@ Every supported worker will:
 7. inject an immutable, worker-managed CodeGraph MCP server into every
    filesystem-backed Cantrip agent runtime.
 
-Cantrip will **not** run `codegraph install`. The upstream installer is useful
+Cantrip does **not** run `codegraph install`. The upstream installer is useful
 for a standalone Codex CLI installation, but it writes agent configuration such
 as `~/.codex/config.toml`. Cantrip already materializes MCP configuration for
 each native Codex thread and must not change the worker user's global agent
 configuration or add instructions to a repository.
 
-The server will remain the control plane and the app will continue to talk only
-to the server. Source code, graph databases, watcher state, and CodeGraph
-processes remain on the worker that owns the checkout.
+The server remains the control plane and the app continues to talk only to the
+server. Source code, graph databases, watcher state, and CodeGraph processes
+remain on the worker that owns the checkout.
 
 ## 2. Goals
 
@@ -182,7 +182,7 @@ flowchart LR
 
 ### Storage layout
 
-CodeGraph should live under the configured worker data directory so a worker
+CodeGraph lives under the configured worker data directory so a worker
 upgrade does not replace it and the install cannot collide with a user-managed
 CodeGraph binary.
 
@@ -192,11 +192,11 @@ CodeGraph binary.
 │   ├── codegraph                 # stable Cantrip launcher (or .cmd on Windows)
 │   └── current.json              # atomically replaced version pointer
 ├── versions/
-│   ├── v1.5.0/<extracted bundle>
+│   ├── <version>-<archive-sha-prefix>/<extracted bundle>
 │   └── <previous verified version>/
-├── downloads/                    # incomplete files only
-├── release-cache.json            # ETag, latest tag, retry metadata
-└── health.json                   # last prepare/update/telemetry result
+├── downloads/                    # transient archive and checksum files
+├── staging/                      # transient extraction and MCP probes
+└── release-cache.json            # ETag and latest validated release record
 ```
 
 The launcher resolves `current.json` on every invocation. Existing MCP daemon
@@ -296,7 +296,7 @@ not set `DO_NOT_TRACK=1` globally for every command in the user's terminal.
 ## 8. Terminal and command availability
 
 `TerminalManager`, terminal services, project automation, and other worker-owned
-command runners will prepend the worker's CodeGraph launcher directory to
+command runners prepend the worker's CodeGraph launcher directory to
 `PATH`. An existing user-managed CodeGraph remains untouched and Cantrip's
 launcher wins only inside Cantrip-owned process environments.
 
@@ -311,8 +311,8 @@ Cantrip-owned lifecycle commands need explicit behavior:
   the user explicitly needs it for an external agent.
 - `codegraph uninstall` must not remove Cantrip's managed launcher or MCP
   integration. Project-level `uninit` remains available for diagnosis, but the
-  supervisor will mark the project uninitialized and may rebuild it according
-  to managed policy.
+  supervisor marks the project uninitialized and may rebuild it according to
+  managed policy.
 
 The exact interception surface belongs in the launcher, with focused tests, so
 upstream self-management cannot corrupt the worker-owned install.
@@ -450,11 +450,14 @@ inventory identifies the injected server by its reserved name and the app adds
 `Managed by Cantrip` and `Read only` badges. This avoids persisting a fake MCP
 row or forcing older apps to understand a new user-MCP schema variant.
 
-Reserve the case-insensitive name `codegraph` in create, update, copy, and
-delete routes. The server must reject a conflicting user definition even if an
-older client bypasses the UI. Effective user MCP merging occurs first; the
-worker then appends the authoritative managed entry so database state can never
-shadow it.
+The trusted client rejects the case-insensitive managed names `codegraph` and
+`cantrip` before encrypting create or update requests, and rejects discovered
+imports after decrypting and validating their identity binding. The server sees
+only endpoint-encrypted configuration plus a key-derived blind index, so it does
+not claim plaintext reserved-name enforcement. At runtime the worker decrypts
+configured rows, filters any managed-name collision, and then appends the
+authoritative managed entries. A legacy or nonconforming encrypted row therefore
+cannot shadow either managed server.
 
 Settings display:
 
@@ -668,10 +671,13 @@ The integration is implemented across these areas:
 - `cantrip_worker/src/worktrees.ts` and replica reconciliation hooks for index
   lifecycle;
 - `cantrip_worker/src/codex/app-server.ts` for the final managed MCP injection;
-- `packages/protocol/src/index.ts` for capability, status, managed MCP, and
-  worker-command schemas;
-- `cantrip_server/src/app.ts` and `cantrip_server/src/db/repository.ts` for
-  routing, reserved-name enforcement, and synthesized managed status;
-- `cantrip_app/src/components/settings/mcp-server-settings.tsx` and project/chat
-  status surfaces for immutable presentation; and
+- `packages/protocol/src/mcp-configurations.ts`, worker capability/status, and
+  worker-command modules for the managed-name and status contracts;
+- `cantrip_server/src/app/routes/worker-maintenance.ts` and
+  `cantrip_server/src/db/repository/mcp.ts` for server-authorized actions and
+  opaque user MCP persistence;
+- `cantrip_app/src/lib/protected-secrets.ts`,
+  `cantrip_app/src/components/settings/mcp-server-settings.tsx`, and project/chat
+  status surfaces for plaintext reserved-name validation and immutable
+  presentation; and
 - focused worker, server, protocol, and app tests beside those modules.

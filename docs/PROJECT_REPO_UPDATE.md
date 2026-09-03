@@ -139,9 +139,10 @@ the user and external tools, not a second execution root.
 - promising full functionality on a filesystem that cannot provide the
   required rename, link, locking, or canonicalization semantics.
 
-## Baseline behavior
+## Historical pre-feature baseline
 
-The current GitHub project creation flow is:
+Before customizable placement shipped, the baseline GitHub project creation
+flow was:
 
 1. `RepositoryImporter` or the command bar submits a `GithubProjectCreate`.
 2. The app protects repository identity through the selected worker.
@@ -896,10 +897,12 @@ Final acceptance runs `pnpm check` and the focused worktree validation matrix in
 [WORKTREES.md](WORKTREES.md#development-validation). Platform-specific link
 behavior requires Windows coverage rather than inference from POSIX tests.
 
-## Delivery plan
+## Historical delivery plan
 
-Follow the Manual Change Protocol with sequential, independently mergeable
-worktrees and squash-auto-merged pull requests. Do not use an omnibus branch.
+The feature was delivered through sequential, independently mergeable
+worktrees and squash-auto-merged pull requests under the Manual Change
+Protocol. The cycle-specific availability statements below record intermediate
+rollout state rather than current product limits.
 
 ### Cycle 1 — Domain, protocol, capabilities, and migration
 
@@ -991,22 +994,31 @@ paths are fenced, even though the app still does not request it.
 - Full protocol, server, worker, app, security, recovery, and platform matrices
   pass before the capability is exposed by default.
 
-## Primary implementation touchpoints
+## Current implementation touchpoints
 
-- `cantrip_app/src/App.tsx` — main repository importer and durable progress.
-- `cantrip_app/src/components/app/app-command-bar.tsx` — duplicate import entry
-  point to replace with the shared dialog.
+- `cantrip_app/src/components/projects/repository-importer.tsx` — main
+  repository importer.
+- `cantrip_app/src/components/app/global-content-host.tsx` — durable progress
+  presentation and importer mounting.
+- `cantrip_app/src/components/app/application-shell.tsx` — application-level
+  import orchestration.
+- `cantrip_app/src/components/app/app-command-bar.tsx` — command-bar import
+  entry point using the shared `RepositoryImportOptionsDialog`.
 - `cantrip_app/src/components/projects/project-replica-settings.tsx` —
   per-worker placement, ownership, repair, and removal UX.
 - `cantrip_app/src/lib/project-encryption.ts` — raw-path registration and
   encrypted GitHub project creation.
 - `cantrip_app/src/lib/api.ts` — protected metadata operations and project/
   replica mutations.
-- `packages/protocol/src/index.ts` — public/encrypted schemas, worker commands,
-  results, summaries, errors, and capabilities.
+- `packages/protocol/src/projects.ts`, `project-provisioning.ts`,
+  `worker-capabilities.ts`, and `worker-command-github-project.ts` —
+  public/encrypted schemas, worker commands, results, summaries, errors, and
+  capabilities.
 - `packages/protocol/src/repository-operation.ts` — protected placement metadata
   allowlist.
-- `cantrip_server/src/app.ts` — project and replica API authorization.
+- `cantrip_server/src/app/routes/project-github-import.ts`,
+  `project-replicas.ts`, `project-catalog-and-placement.ts`, and
+  `project-route-registry.ts` — project and replica API authorization.
 - `cantrip_server/src/db/schema.ts` and migrations — durable job/source
   placement fields.
 - `cantrip_server/src/db/project-replica-jobs.ts` — idempotency, claim,

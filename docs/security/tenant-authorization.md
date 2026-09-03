@@ -54,11 +54,13 @@ their mutations.
 
 ## Application session boundary
 
-The app selects a server before it has access to account state. A server profile
-stores only a human-readable name and HTTP(S) origin. Passwords, bootstrap
-tokens, raw session tokens, and CSRF tokens are never written to browser
-storage. The server session stays in its HttpOnly cookie and the current CSRF
-token stays in application memory.
+The app selects a server before it has access to account state. A remote server
+profile stores a human-readable name, HTTP(S) origin, and nullable last/pinned
+account ID. Passwords, bootstrap tokens, raw session tokens, and CSRF tokens are
+never written to browser storage. One profile is bound to one active account;
+a conflicting authenticated identity fails closed and returns to sign-in. The
+server session stays in its HttpOnly cookie and the current CSRF token stays in
+application memory.
 
 Bootstrap and `/api/auth/session` complete before React Query resources or the
 application live socket mount. A server change performs a full application

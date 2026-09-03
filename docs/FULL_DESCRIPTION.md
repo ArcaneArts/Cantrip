@@ -179,7 +179,9 @@ The app:
 - attaches to worker-owned streams only through server-authorized transports;
 - does not directly read repositories or launch Codex/Git/PTY processes;
 - keeps optimistic UI bounded by server versions, placement, and conflict
-  tokens.
+  tokens;
+- lets the native Tauri shell own desktop release discovery, update state,
+  signature-verified download/installation, shutdown, and relaunch.
 
 ### Server
 
@@ -198,7 +200,7 @@ PGlite for local operation or PostgreSQL for hosted operation. It owns:
 - quota, token, behavior, audit, and operations telemetry;
 - schedules and project automations;
 - GitHub-facing metadata and user-authorized control-plane actions;
-- update metadata and the packaged local-stack update flow.
+- active local-work inventory used by the packaged desktop update safety check.
 
 In a multi-server deployment, PostgreSQL remains authoritative and Redis carries
 ephemeral routing, live invalidations, worker command/response correlation, and
@@ -587,7 +589,8 @@ navigation.
 Selecting a file replaces the Explorer browser surface with a persistent
 full-content file surface:
 
-- files open in Preview by default;
+- recognized editable text opens in Edit by default, while Markdown/MDX and
+  media or otherwise non-editable files open in Preview;
 - a compact eye/pencil-style mode menu switches Preview, Edit, or a supported
   structured/visual view;
 - close-file control appears beside the Explorer/worktree title;
@@ -988,17 +991,20 @@ dashboards. Major sections are:
 
 ### Project settings
 
-Project settings include:
+Every project's settings include:
 
 - General;
 - Archive;
 - Automations;
-- Replicas;
-- Worktrees;
 - Tunnels;
 - Policies, including direct assignments and inherited/Mandatory sources;
 - Skills;
 - MCP.
+
+Replicas appears only when the project advertises replica capability and is
+labeled **Sources** for a local Git project. Worktrees appears only when the
+project advertises worktree capability. Non-Git folder projects expose neither
+section.
 
 Project overview can show runtime/replica health and aggregate token usage.
 
@@ -1087,7 +1093,7 @@ origin, and a pairing code—not the user's password or a reusable session.
   placement, leases;
 - project automations;
 - policies, bootstrap state, and workspace/project policy assignments;
-- telemetry, audit, and update metadata.
+- telemetry and audit records.
 
 ### Worker-owned state
 
@@ -1208,10 +1214,10 @@ Runtime source/build helpers:
     pnpm code:dev
     pnpm code:clean
 
-Development preparation verifies that pinned Codex and Cantrip Code artifacts
-match their source stamps. A missing/stale Code bundle is a deliberate hard
-failure with guidance to run pnpm code:build; preparation/build scripts should
-rebuild automatically when the project command promises a ready dev stack.
+Development preparation runs `pnpm codex:build` and `pnpm code:build`. Matching
+caches are reused; missing or stale artifacts are rebuilt automatically.
+`pnpm code:ready` is the verification-only check that fails when the expected
+Code build is absent or stale.
 
 Packaging/release scripts cover:
 
@@ -1222,10 +1228,10 @@ Packaging/release scripts cover:
 - Tauri application;
 - complete bundle/release assembly.
 
-Release targets include macOS ARM64, Windows x64, Android APK, and iOS/TestFlight
-lanes as configured. macOS output is signed, notarized, and stapled; updater
-artifacts are signed. The checked-in Capacitor native projects are part of the
-mobile build.
+Release targets include macOS ARM64, Windows x64, a signed Android App Bundle
+and APK, and iOS/TestFlight. macOS output is signed, notarized, and stapled;
+desktop updater artifacts are signed. The checked-in Capacitor native projects
+are part of the mobile build.
 
 ## Cantrip CLI
 

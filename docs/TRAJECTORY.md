@@ -99,7 +99,7 @@ a second one.
   paginated history merged with the cursor-deduplicated live overlay.
 - `cantrip_app/src/lib/app-live-query.ts` applies live chat-message upserts and
   recovery invalidation.
-- `packages/protocol/src/index.ts` defines stable activity IDs, statuses,
+- `packages/protocol/src/agent-activity.ts` defines stable activity IDs, statuses,
   lifecycle timestamps, and Codex thread/turn/item correlation.
 - `cantrip_worker/src/codex/app-server.ts` normalizes Codex lifecycle events at
   the worker boundary.

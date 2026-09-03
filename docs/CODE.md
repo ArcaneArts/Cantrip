@@ -82,11 +82,11 @@ Cantrip/
 │   └── protocol/
 ├── scripts/
 │   └── cantrip-code/
-│       ├── fetch-upstream
-│       ├── merge-upstream
-│       ├── apply-patches
-│       ├── verify-upstream
-│       └── report-divergence
+│       ├── fetch-upstream.mjs
+│       ├── merge-upstream.mjs
+│       ├── apply-patches.mjs
+│       ├── verify-upstream.mjs
+│       └── report-divergence.mjs
 └── pnpm-workspace.yaml
 ```
 
@@ -109,9 +109,14 @@ patch-set version:
 
 ```json
 {
-  "openvscodeServer": "<commit SHA>",
-  "vscode": "<commit SHA>",
-  "cantripPatchset": 1
+  "schemaVersion": 1,
+  "source": "https://github.com/gitpod-io/openvscode-server",
+  "version": "<OpenVSCode version>",
+  "ref": "<OpenVSCode release ref>",
+  "openvscodeServerCommit": "<commit SHA>",
+  "vscodeCommit": "<commit SHA>",
+  "patchset": 1,
+  "registry": "https://open-vsx.org"
 }
 ```
 
@@ -203,7 +208,8 @@ Future worker updates carry Cantrip Code updates through the same signed worker
 artifact and rollback mechanism. This preserves a tested compatibility unit and
 prevents an upstream editor release from breaking an already-installed worker.
 
-Expected packaging commands should converge on a target-oriented interface:
+Packaging uses a target-oriented interface. Each native target must be built
+on a matching host:
 
 ```bash
 pnpm build
@@ -228,7 +234,7 @@ pnpm code:clean
 pnpm code:verify
 ```
 
-`pnpm dev` and `pnpm devtop` should:
+`pnpm dev` and `pnpm devtop`:
 
 1. Determine the required Cantrip Code build fingerprint.
 2. Reuse a matching cached build when present.
@@ -444,7 +450,7 @@ Required controls include:
 - isolate editor content from Cantrip API and cookie authority despite the
   same-origin virtual URL;
 - never forward Cantrip application cookies to the editor;
-- preserve workspace trust instead of silently disabling it;
+- disable Workspace Trust prompts and treat Cantrip-selected roots as trusted;
 - log session lifecycle without logging tokens or extension secrets; and
 - revoke attachments when the tab, account session, worker, or editor session
   is stopped.
@@ -859,7 +865,10 @@ profile, extension, or workspace state. Every editor runs beneath a detached
 process guard that terminates the complete editor process group if its worker
 parent disappears, including abrupt supervisor or desktop-shell termination.
 
-## 18. Implementation phases
+## 18. Historical implementation phases
+
+The following phases record the delivery plan used before the current Cantrip
+Code implementation. They are not a current feature inventory or an open gate.
 
 ### Phase 0: licensing, import, and prototype gate
 
@@ -906,7 +915,10 @@ parent disappears, including abrupt supervisor or desktop-shell termination.
 - Test simultaneous app, desktop pop-out, web, and mobile clients.
 - Measure tunnel backpressure, process limits, idle eviction, and recovery.
 
-## 19. Prototype acceptance gate
+## 19. Historical prototype acceptance gate
+
+This gate records the prototype criteria used during implementation. Current
+upstream updates are governed by the live acceptance gate in section 20.
 
 The project should not proceed beyond the prototype until it demonstrates:
 

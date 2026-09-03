@@ -58,13 +58,11 @@ automation content; clients fetch the authorized server-owned summary.
 
 ### Deferred protocol upgrades
 
-- `observeCustomizationStatus` in the server still reads pending MCP OAuth and
-  external-import status from the worker at one second, with a bounded
-  15-minute lifetime and exponential error backoff. Removing it safely needs a
-  correlated worker notification with chat/provider ownership validation,
-  bounded observation retention, reconnect replay, and terminal expiry. It is
-  not suitable for a low-risk polling cleanup because a bare notification
-  would allow one runtime's status to be attributed to the wrong chat.
+- While the Customization panel is open, the app polls MCP OAuth and
+  external-import status every second only while the returned status is
+  pending. Each server endpoint performs a scoped worker request. Replacing
+  this client polling requires correlated, ownership-validated worker
+  notifications and reconnect recovery.
 - The worker automation scheduler fetches its authorized schedule every ten
   seconds. This is execution discovery and crash/offline recovery rather than
   a client read or a server-to-worker command. Replacing it requires a durable

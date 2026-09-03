@@ -31,10 +31,10 @@ behavior. It is retained as the evidence and design record for the fix.
 
 ## Executive verdict
 
-The 5–8 second wait is not caused by an offline worker, slow routing, tunnel setup,
-encryption, retries, or a new OpenVSCode server process. It happens because every
-new sidebar preview Explorer currently creates a fresh embedded OpenVSCode browser
-workbench only after the user clicks a file.
+The 5–8 second wait was not caused by an offline worker, slow routing, tunnel setup,
+encryption, retries, or a new OpenVSCode server process. At the analyzed baseline,
+it happened because every new sidebar preview Explorer created a fresh embedded
+OpenVSCode browser workbench only after the user clicked a file.
 
 Cantrip still creates a bounded pool of two sidebar preview Explorer surfaces, but
 those surfaces no longer prewarm Cantrip Code. They prewarm only the outer Explorer
@@ -127,27 +127,27 @@ the retained editor, changed the retained-editor render condition to require a
 path, initialized retention from active state only, and added inactive connection
 guards.
 
-The current ownership test in
-`cantrip_app/src/components/explorer/__tests__/persistent-explorer-code-ownership.test.tsx`
-asserts that a prewarm Explorer creates no Code owner. It therefore codifies the
+At the analyzed baseline, the ownership test now located at
+`cantrip_app/src/components/explorer/persistent-explorer-code-ownership.test.tsx`
+asserted that a prewarm Explorer creates no Code owner. It therefore codified the
 regression instead of protecting the intended click latency.
 
-The lifecycle test in
-`cantrip_app/src/components/explorer/__tests__/explorer-code-editor-lifecycle.test.tsx`
-named for pathless prewarming mounts the editor with its default active state. It
-proves that a pathless editor can warm and later reuse one attachment and frame,
-but it does not exercise a hidden sidebar prewarm owner.
+The analyzed lifecycle test, now located at
+`cantrip_app/src/components/explorer/explorer-code-editor-lifecycle.test.tsx`
+named for pathless prewarming mounted the editor with its default active state. It
+proved that a pathless editor could warm and later reuse one attachment and frame,
+but it did not exercise a hidden sidebar prewarm owner.
 
-Project documentation is currently contradictory. Pass 4 of
+At the analyzed baseline, project documentation was contradictory. Pass 4 of
 `docs/CODE_EDITOR_SIMPLIFICATION_PROGRESS.md` records the removal of hidden
 prewarming, while `docs/CODE.md` still describes an actual sidebar workbench being
 prewarmed without a selected file.
 
 ### 4. The cold file-open tail is real but secondary
 
-The server authorizes `initialFile`, and the worker retains it on the attachment,
-but the worker currently starts OpenVSCode with only the workspace URI. Cantrip
-waits for the generic patched workbench-ready signal and then sends a separate
+The server authorized `initialFile`, and the worker retained it on the attachment,
+but the analyzed worker started OpenVSCode with only the workspace URI. Cantrip
+waited for the generic patched workbench-ready signal and then sent a separate
 open-file command through the extension bridge.
 
 On a fresh workbench, the bridge connects only after shell readiness and awaited
@@ -192,11 +192,12 @@ inactive tab.
 
 ### Required UI fix: keep the file tree mounted while pinning
 
-`cantrip_app/src/components/app/shell-sidebar.tsx` currently includes
-`pinSidebarFileMutation.isPending` in the whole-tree `fileTreeLoading` value.
-`cantrip_app/src/components/app/project-sidebar-file-tree.tsx` replaces all rows
-with a spinner whenever that value is true. This is the visible tree replay during
-the otherwise-fast pin.
+At the analyzed baseline, `cantrip_app/src/components/app/shell-sidebar.tsx`
+included `pinSidebarFileMutation.isPending` in the whole-tree `fileTreeLoading`
+value. The component now located at
+`cantrip_app/src/components/sidebar/project-sidebar-file-tree.tsx` replaced all
+rows with a spinner whenever that value was true. This was the visible tree replay
+during the otherwise-fast pin.
 
 Remove pin pending from the whole-tree loading condition while valid tree data is
 present. Keep the existing path-level `fileTreePinningPath` progress indicator and

@@ -22,8 +22,8 @@ without reconstructing or balancing them:
 - `reported_total_tokens` is the runtime's total verbatim. It may legitimately
   differ from `input_tokens + output_tokens` under a provider's accounting
   rules.
-- `sanitized_raw_usage` contains only numeric usage fields and must never carry
-  prompts, responses, credentials, headers, or account secrets.
+- No raw usage payload column is stored. Token usage retains only normalized
+  counters plus attribution and timing fields.
 
 Consequently, cached, cache-write, and reasoning counters must not be summed as
 independent consumption on top of input/output. Analytics should display them as
@@ -92,14 +92,10 @@ be labeled as heuristic in analysis.
 
 ## Historical model catalogs
 
-Every catalog reconciliation writes a content-addressed metadata snapshot
-before updating the current catalog projection. The SHA-256 hash is computed
-from recursively key-sorted JSON containing only the already-sanitized model
-catalog record. Identical metadata for the same provider, availability scope,
-and native model is deduplicated; a changed record produces a new immutable
-snapshot. Provider and model names are retained with the snapshot so later
-renames or removal do not erase the historical series. Catalog snapshots never
-contain API keys, account credentials, request headers, prompts, or responses.
+Catalog metadata is normalized, sensitive-key-filtered, and hashed before
+persistence. Snapshot rows retain only provider, account, and worker IDs;
+availability scope; metadata source and hash; and timestamps. Provider/model
+names and catalog bodies are not retained in the historical snapshot table.
 
 ## Change detection
 
@@ -136,9 +132,10 @@ are the purpose of the ledger. Retention is owner-controlled:
 - the same dialog can explicitly and permanently delete that provider's quota,
   token, behavior, and catalog history without deleting the provider itself.
 
-Exports contain stable identifiers, timestamps, numeric counters, runtime
-versions, sanitized rate-limit/usage payloads, and sanitized catalog metadata.
-They state that message content is excluded. Telemetry collection must never
+Exports contain stable opaque identifiers, timestamps, normalized numeric
+counters, runtime versions, and catalog metadata hashes. Raw or sanitized
+provider payloads and catalog bodies are neither stored nor exported. The
+export states that message content is excluded. Telemetry collection must never
 add prompts, responses, file contents, command text/output, credentials,
 authentication payloads, access tokens, request headers, or other secrets.
 Existing conversation storage remains separate and is not copied into an
