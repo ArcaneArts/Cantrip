@@ -4311,34 +4311,11 @@ export async function runGithubPullRequestReviewAction(
   pullRequestNumber: number,
   action: GithubPullRequestReviewAction,
 ) {
-  const operation =
-    action.type === "comment"
-      ? {
-          type: "github.pull-request.comment" as const,
-          arguments: { number: pullRequestNumber, body: action.body },
-        }
-      : action.type === "submit-review"
-        ? {
-            type: "github.pull-request.review.submit" as const,
-            arguments: { number: pullRequestNumber, review: action.review },
-          }
-        : action.type === "inline-comment"
-          ? {
-              type: "github.pull-request.review.comment" as const,
-              arguments: { number: pullRequestNumber, comment: action.comment },
-            }
-          : {
-              type: "github.pull-request.review.reply" as const,
-              arguments: {
-                number: pullRequestNumber,
-                commentId: action.commentId,
-                body: action.body,
-              },
-            };
   return runProtectedRepositoryOperation({
     projectId,
     worktreeId,
-    ...operation,
+    type: "github.pull-request.review.mutate",
+    arguments: { number: pullRequestNumber, action },
     resultSchema: githubPullRequestDetailSchema,
   });
 }

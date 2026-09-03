@@ -39,6 +39,23 @@ describe("pull request lifecycle confirmation", () => {
     expect(pullRequestLifecycleLabel({ type: "mark-ready" })).toBe(
       "Mark ready for review",
     );
+    expect(pullRequestLifecycleLabel({ type: "convert-draft" })).toBe(
+      "Convert pull request to draft",
+    );
+    expect(pullRequestLifecycleLabel({ type: "update-branch" })).toBe(
+      "Update pull request branch",
+    );
+    expect(
+      pullRequestLifecycleLabel({
+        type: "enable-auto-merge",
+        method: "squash",
+        commitTitle: null,
+        commitMessage: null,
+      }),
+    ).toBe("Enable auto-merge");
+    expect(pullRequestLifecycleLabel({ type: "enqueue-merge-queue" })).toBe(
+      "Enter merge queue",
+    );
     expect(pullRequestLifecycleLabel(preview.action)).toBe(
       "Squash pull request",
     );

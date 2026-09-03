@@ -4002,6 +4002,12 @@ describe("Cantrip protocol", () => {
         headSha: "1".repeat(40),
         baseRef: "main",
         baseSha: "2".repeat(40),
+        nodeId: "PR_node_44",
+        viewerLogin: "octocat",
+        pendingReview: null,
+        autoMerge: null,
+        mergeQueueEnabled: true,
+        mergeQueueEntry: null,
         comments: [],
         commentsTruncated: false,
         requestedReviewers: ["reviewer"],
@@ -4062,6 +4068,36 @@ describe("Cantrip protocol", () => {
         },
       }).success,
     ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "github.pull-request.review.mutate",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+        action: {
+          type: "set-thread-resolved",
+          threadId: "PRRT_thread",
+          resolved: true,
+        },
+      }),
+    ).toMatchObject({ action: { resolved: true } });
+    expect(
+      workerCommandSchema.parse({
+        type: "github.pull-request.review.mutate",
+        cwd: "/repo",
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+        action: {
+          type: "update-details",
+          details: {
+            title: "Updated review",
+            body: "New description",
+            labels: ["feature"],
+            reviewers: ["octocat"],
+          },
+        },
+      }),
+    ).toMatchObject({ action: { type: "update-details" } });
     expect(
       workerCommandSchema.safeParse({
         type: "github.pull-request.review.submit",

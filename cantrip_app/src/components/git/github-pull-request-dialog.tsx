@@ -20,6 +20,8 @@ import {
   ChevronDown,
   CircleDot,
   Clock3,
+  Eye,
+  EyeOff,
   ExternalLink,
   FileDiff,
   GitCommitHorizontal,
@@ -28,7 +30,9 @@ import {
   MessageSquare,
   Send,
   ShieldCheck,
+  SkipForward,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -66,6 +70,8 @@ import {
   type GithubActionsTarget,
 } from "./github-actions-model";
 import type { GithubAgentWorkflowCleanupInput } from "./github-agent-workflow";
+import { GithubPullRequestActionsMenu } from "./github-pull-request-actions-menu";
+import { GithubPullRequestEditDialog } from "./github-pull-request-edit-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -100,6 +106,20 @@ export function mergeCheckedOutWorktree(
   worktree: ProjectWorktreeSummary,
 ): ProjectWorktreeSummary[] {
   return [...current.filter(({ id }) => id !== worktree.id), worktree];
+}
+
+export function nextUnresolvedReviewThread(
+  currentThreadId: string | null,
+  reviewThreads: GithubPullRequestOverview["reviewThreads"],
+) {
+  const unresolved = reviewThreads.filter(
+    (thread) => thread.resolved !== true && !thread.outdated,
+  );
+  if (unresolved.length === 0) return null;
+  const currentIndex = unresolved.findIndex(
+    (thread) => thread.id === currentThreadId,
+  );
+  return unresolved[(currentIndex + 1) % unresolved.length] ?? unresolved[0]!;
 }
 
 function CheckIcon({ check }: { check: GithubPullRequestCheck }) {
@@ -241,6 +261,17 @@ function Overview({
         )}
       </section>
 
+      {detail.pendingReview ? (
+        <section className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+          <p className="font-medium">Pending review</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {detail.pendingReview.commentCount} inline comment
+            {detail.pendingReview.commentCount === 1 ? "" : "s"} will be
+            published together when you submit this review.
+          </p>
+        </section>
+      ) : null}
+
       <section>
         <h3 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <ShieldCheck className="size-3.5" /> Reviews ({detail.reviews.length})
@@ -284,11 +315,47 @@ function Overview({
         <div className="space-y-3">
           {detail.reviewThreads.map((thread) => (
             <article key={thread.id} className="rounded-lg bg-muted/25 p-3">
-              <p className="mb-2 font-mono text-xs text-muted-foreground">
-                {thread.path}
-                {thread.line ? `:${thread.line}` : ""}
-                {thread.side ? ` · ${thread.side.toLowerCase()}` : ""}
-              </p>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <p className="min-w-0 flex-1 font-mono text-xs text-muted-foreground">
+                  {thread.path}
+                  {thread.startLine && thread.line !== thread.startLine
+                    ? `:${thread.startLine}-${thread.line}`
+                    : thread.line
+                      ? `:${thread.line}`
+                      : ""}
+                  {thread.side ? ` · ${thread.side.toLowerCase()}` : ""}
+                </p>
+                {thread.resolved ? (
+                  <Badge variant="outline">Resolved</Badge>
+                ) : null}
+                {thread.outdated ? (
+                  <Badge variant="outline">Outdated</Badge>
+                ) : null}
+                {thread.comments.some((comment) => comment.pending) ? (
+                  <Badge variant="secondary">Pending</Badge>
+                ) : null}
+                {(
+                  thread.resolved
+                    ? thread.viewerCanUnresolve
+                    : thread.viewerCanResolve
+                ) ? (
+                  <Button
+                    className="h-7"
+                    disabled={pending}
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      void onAction({
+                        type: "set-thread-resolved",
+                        threadId: thread.id,
+                        resolved: !thread.resolved,
+                      }).catch(() => undefined)
+                    }
+                  >
+                    {thread.resolved ? "Reopen" : "Resolve"}
+                  </Button>
+                ) : null}
+              </div>
               <div className="space-y-3">
                 {thread.comments.map((comment) => (
                   <div key={comment.id}>
@@ -413,6 +480,19 @@ function Overview({
             <Button
               size="sm"
               variant="outline"
+              disabled={pending || (!draft.trim() && !detail.pendingReview)}
+              onClick={() =>
+                submit({
+                  type: "submit-review",
+                  review: { event: "comment", body: draft.trim() },
+                })
+              }
+            >
+              <Send className="size-3.5" /> Submit review
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               disabled={pending}
               onClick={() =>
                 submit({
@@ -437,6 +517,17 @@ function Overview({
             >
               <AlertCircle className="size-3.5" /> Request changes
             </Button>
+            {detail.pendingReview ? (
+              <Button
+                aria-label="Discard pending review"
+                disabled={pending}
+                size="icon"
+                variant="ghost"
+                onClick={() => submit({ type: "discard-review" })}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -461,6 +552,7 @@ export function PullRequestFiles({
     detail.files[0]?.path ?? null,
   );
   const [filePickerOpen, setFilePickerOpen] = useState(false);
+  const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
   const [commentTarget, setCommentTarget] = useState<{
     line: number;
     path: string;
@@ -474,6 +566,12 @@ export function PullRequestFiles({
     ? (detail.files.find((file) => file.path === selectedPath) ??
       detail.files[0])
     : undefined;
+  const unresolvedCount = reviewThreads.filter(
+    (thread) => thread.resolved !== true && !thread.outdated,
+  ).length;
+  const focusedThread = reviewThreads.find(
+    (thread) => thread.id === focusedThreadId,
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <button
@@ -491,6 +589,50 @@ export function PullRequestFiles({
         <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
       </button>
       <DataWarnings warnings={detail.warnings} />
+      <div className="flex min-h-10 shrink-0 items-center justify-end gap-2 border-b px-3">
+        {unresolvedCount > 0 ? (
+          <Button
+            className="h-7"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              const next = nextUnresolvedReviewThread(
+                focusedThreadId,
+                reviewThreads,
+              );
+              if (next) {
+                setSelectedPath(next.path);
+                setFocusedThreadId(next.id);
+              }
+            }}
+          >
+            <SkipForward className="size-3.5" /> Next unresolved (
+            {unresolvedCount})
+          </Button>
+        ) : null}
+        {selected && selected.viewed !== null ? (
+          <Button
+            className="h-7"
+            disabled={pending}
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              void onAction({
+                type: "set-file-viewed",
+                path: selected.path,
+                viewed: !selected.viewed,
+              }).catch(() => undefined)
+            }
+          >
+            {selected.viewed ? (
+              <EyeOff className="size-3.5" />
+            ) : (
+              <Eye className="size-3.5" />
+            )}
+            {selected.viewed ? "Mark unviewed" : "Mark viewed"}
+          </Button>
+        ) : null}
+      </div>
       {commentTarget ? (
         <form
           className="flex shrink-0 flex-col items-stretch gap-2 border-b bg-muted/20 p-3 md:flex-row md:items-start"
@@ -571,7 +713,7 @@ export function PullRequestFiles({
               size="sm"
               disabled={pending || !commentBody.trim()}
             >
-              <Send className="size-3.5" /> Comment
+              <Send className="size-3.5" /> Add to review
             </Button>
           </div>
         </form>
@@ -587,7 +729,10 @@ export function PullRequestFiles({
             <button
               key={file.path}
               type="button"
-              onClick={() => setSelectedPath(file.path)}
+              onClick={() => {
+                setSelectedPath(file.path);
+                setFocusedThreadId(null);
+              }}
               className={cn(
                 "flex h-10 w-full items-center gap-2 px-3 text-left text-xs hover:bg-muted/50",
                 selected?.path === file.path && "bg-muted",
@@ -600,6 +745,9 @@ export function PullRequestFiles({
               <span className="shrink-0 text-[10px] text-muted-foreground">
                 +{file.additions} −{file.deletions}
               </span>
+              {file.viewed ? (
+                <CheckCircle2 className="size-3.5 text-emerald-500" />
+              ) : null}
             </button>
           ))}
         </div>
@@ -612,6 +760,11 @@ export function PullRequestFiles({
                 : [],
             )}
             error={null}
+            focusCommentTarget={
+              focusedThread?.line && focusedThread.side
+                ? { line: focusedThread.line, side: focusedThread.side }
+                : null
+            }
             loading={false}
             newFile={
               gitDiffImagePreviewFromUrl(selected.path, selected.rawUrl) ??
@@ -667,6 +820,7 @@ export function PullRequestFiles({
                 type="button"
                 onClick={() => {
                   setSelectedPath(file.path);
+                  setFocusedThreadId(null);
                   setFilePickerOpen(false);
                 }}
                 className={cn(
@@ -681,6 +835,9 @@ export function PullRequestFiles({
                 <span className="shrink-0 text-[10px] text-muted-foreground">
                   +{file.additions} −{file.deletions}
                 </span>
+                {file.viewed ? (
+                  <CheckCircle2 className="size-3.5 text-emerald-500" />
+                ) : null}
               </button>
             ))}
           </div>
@@ -956,6 +1113,7 @@ export function GithubPullRequestDialog({
     useState<GithubPullRequestLifecycleAction | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const queryClient = useQueryClient();
   const pullRequestKey = [
     "github-pull-request",
@@ -1043,6 +1201,7 @@ export function GithubPullRequestDialog({
     setAgentOpen(false);
     setCleanupOpen(false);
     startAgent.reset();
+    setEditOpen(false);
     failedCheckSummary.reset();
   }, [pullRequestNumber]);
 
@@ -1082,6 +1241,19 @@ export function GithubPullRequestDialog({
                 <span className="text-xs text-muted-foreground">
                   {overview.data.headRef} → {overview.data.baseRef}
                 </span>
+                {overview.data.autoMerge ? (
+                  <Badge variant="outline">
+                    Auto-merge · {overview.data.autoMerge.method}
+                  </Badge>
+                ) : null}
+                {overview.data.mergeQueueEntry ? (
+                  <Badge variant="outline">
+                    Queue
+                    {overview.data.mergeQueueEntry.position !== null
+                      ? ` #${overview.data.mergeQueueEntry.position}`
+                      : ""}
+                  </Badge>
+                ) : null}
               </div>
               <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start">
                 <div className="min-w-0 flex-1">
@@ -1151,15 +1323,6 @@ export function GithubPullRequestDialog({
                     )}
                     Checkout
                   </Button>
-                  {overview.data.state === "open" && overview.data.draft ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setLifecycleAction({ type: "mark-ready" })}
-                    >
-                      Ready
-                    </Button>
-                  ) : null}
                   {overview.data.state === "open" &&
                   !overview.data.draft &&
                   !overview.data.merged ? (
@@ -1177,25 +1340,14 @@ export function GithubPullRequestDialog({
                       Merge
                     </Button>
                   ) : null}
-                  {overview.data.state === "open" && !overview.data.merged ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                      onClick={() => setLifecycleAction({ type: "close" })}
-                    >
-                      Close
-                    </Button>
-                  ) : null}
-                  {overview.data.state === "closed" && !overview.data.merged ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setLifecycleAction({ type: "reopen" })}
-                    >
-                      Reopen
-                    </Button>
-                  ) : null}
+                  <GithubPullRequestActionsMenu
+                    detail={overview.data}
+                    onEdit={() => {
+                      action.reset();
+                      setEditOpen(true);
+                    }}
+                    onLifecycle={setLifecycleAction}
+                  />
                   <Button size="sm" variant="outline" asChild>
                     <a
                       href={overview.data.url}
@@ -1347,31 +1499,45 @@ export function GithubPullRequestDialog({
         task="summarize-failed-checks"
       />
       {pullRequestNumber !== null ? (
-        <GithubPullRequestLifecycleDialog
-          action={lifecycleAction}
-          onOpenChange={(open) => {
-            if (!open) setLifecycleAction(null);
-          }}
-          projectId={projectId}
-          worktreeId={worktreeId}
-          pullRequestNumber={pullRequestNumber}
-          onApplied={(updated) => {
-            queryClient.setQueryData(overviewKey, updated);
-            void queryClient.invalidateQueries({ queryKey: pullRequestKey });
-            void queryClient.invalidateQueries({
-              queryKey: ["github-issues", projectId, "pull-request"],
-            });
-            void queryClient.invalidateQueries({
-              queryKey: ["github-inbox", projectId, "pull-request"],
-            });
-            if (
-              updated.merged &&
-              (relatedChats.length || relatedWorktrees.length)
-            ) {
-              setCleanupOpen(true);
-            }
-          }}
-        />
+        <>
+          <GithubPullRequestLifecycleDialog
+            action={lifecycleAction}
+            onOpenChange={(open) => {
+              if (!open) setLifecycleAction(null);
+            }}
+            projectId={projectId}
+            worktreeId={worktreeId}
+            pullRequestNumber={pullRequestNumber}
+            onApplied={(updated) => {
+              queryClient.setQueryData(overviewKey, updated);
+              void queryClient.invalidateQueries({ queryKey: pullRequestKey });
+              void queryClient.invalidateQueries({
+                queryKey: ["github-issues", projectId, "pull-request"],
+              });
+              void queryClient.invalidateQueries({
+                queryKey: ["github-inbox", projectId, "pull-request"],
+              });
+              if (
+                updated.merged &&
+                (relatedChats.length || relatedWorktrees.length)
+              ) {
+                setCleanupOpen(true);
+              }
+            }}
+          />
+          {overview.data ? (
+            <GithubPullRequestEditDialog
+              detail={overview.data}
+              error={action.error}
+              onOpenChange={setEditOpen}
+              onSave={async (details) => {
+                await action.mutateAsync({ type: "update-details", details });
+              }}
+              open={editOpen}
+              pending={action.isPending}
+            />
+          ) : null}
+        </>
       ) : null}
       <GithubAgentCleanupDialog
         chatIds={relatedChats.map(({ id }) => id)}

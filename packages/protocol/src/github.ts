@@ -341,6 +341,7 @@ export const githubPullRequestFileSchema = z.object({
   rawUrl: z.url().nullable(),
   patch: z.string().max(1_000_000).nullable(),
   patchTruncated: z.boolean(),
+  viewed: z.boolean().nullable().default(null),
 });
 
 export const githubPullRequestCheckSchema = z.object({
@@ -389,6 +390,7 @@ export const githubPullRequestReviewCommentSchema = z.object({
   inReplyToId: z.number().int().positive().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  pending: z.boolean().default(false),
 });
 
 export const githubPullRequestReviewThreadSchema = z.object({
@@ -396,8 +398,29 @@ export const githubPullRequestReviewThreadSchema = z.object({
   path: z.string().min(1).max(8_192),
   line: z.number().int().positive().nullable(),
   side: z.enum(["LEFT", "RIGHT"]).nullable(),
-  resolved: z.boolean().nullable(),
+  startLine: z.number().int().positive().nullable().default(null),
+  startSide: z.enum(["LEFT", "RIGHT"]).nullable().default(null),
+  resolved: z.boolean().nullable().default(null),
+  outdated: z.boolean().default(false),
+  viewerCanResolve: z.boolean().default(false),
+  viewerCanUnresolve: z.boolean().default(false),
   comments: z.array(githubPullRequestReviewCommentSchema).min(1).max(100),
+});
+
+export const githubPullRequestPendingReviewSchema = z.object({
+  id: z.string().min(1).max(256),
+  commentCount: z.number().int().nonnegative(),
+});
+
+export const githubPullRequestAutoMergeSchema = z.object({
+  enabledAt: z.string().datetime(),
+  method: z.enum(["merge", "squash", "rebase"]),
+});
+
+export const githubPullRequestMergeQueueEntrySchema = z.object({
+  id: z.string().min(1).max(256),
+  position: z.number().int().nonnegative().nullable(),
+  state: z.string().min(1).max(100),
 });
 
 const githubPullRequestReviewPathSchema = z
@@ -415,7 +438,7 @@ const githubPullRequestReviewPathSchema = z
 
 export const githubPullRequestReviewSubmitSchema = z
   .object({
-    event: z.enum(["approve", "request-changes"]),
+    event: z.enum(["comment", "approve", "request-changes"]),
     body: z.string().trim().max(65_536).default(""),
   })
   .superRefine((request, context) => {
@@ -427,6 +450,22 @@ export const githubPullRequestReviewSubmitSchema = z
       });
     }
   });
+
+export const githubPullRequestDetailsUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(256),
+  body: z.string().max(1_000_000),
+  labels: z.array(z.string().trim().min(1).max(100)).max(100),
+  reviewers: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(100)
+        .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/u),
+    )
+    .max(100),
+});
 
 export const githubPullRequestInlineCommentCreateSchema = z
   .object({
@@ -474,8 +513,41 @@ export const githubPullRequestReviewActionSchema = z.discriminatedUnion(
       commentId: z.number().int().positive(),
       body: githubIssueCommentCreateSchema.shape.body,
     }),
+    z.object({ type: z.literal("discard-review") }),
+    z.object({
+      type: z.literal("set-thread-resolved"),
+      threadId: z.string().min(1).max(256),
+      resolved: z.boolean(),
+    }),
+    z.object({
+      type: z.literal("set-file-viewed"),
+      path: githubPullRequestReviewPathSchema,
+      viewed: z.boolean(),
+    }),
+    z.object({
+      type: z.literal("update-details"),
+      details: githubPullRequestDetailsUpdateSchema,
+    }),
   ],
 );
+
+export const githubPullRequestMergeMethodSchema = z.enum([
+  "merge",
+  "squash",
+  "rebase",
+]);
+
+const githubPullRequestMergeConfigurationSchema = z.object({
+  method: githubPullRequestMergeMethodSchema,
+  commitTitle: z.string().trim().min(1).max(256).nullable().default(null),
+  commitMessage: z
+    .string()
+    .trim()
+    .min(1)
+    .max(1_000_000)
+    .nullable()
+    .default(null),
+});
 
 export const githubPullRequestLifecycleActionSchema = z.discriminatedUnion(
   "type",
@@ -483,18 +555,17 @@ export const githubPullRequestLifecycleActionSchema = z.discriminatedUnion(
     z.object({ type: z.literal("close") }),
     z.object({ type: z.literal("reopen") }),
     z.object({ type: z.literal("mark-ready") }),
-    z.object({
-      type: z.literal("merge"),
-      method: z.enum(["merge", "squash", "rebase"]),
-      commitTitle: z.string().trim().min(1).max(256).nullable().default(null),
-      commitMessage: z
-        .string()
-        .trim()
-        .min(1)
-        .max(1_000_000)
-        .nullable()
-        .default(null),
-    }),
+    z.object({ type: z.literal("convert-draft") }),
+    z.object({ type: z.literal("update-branch") }),
+    z
+      .object({ type: z.literal("merge") })
+      .extend(githubPullRequestMergeConfigurationSchema.shape),
+    z
+      .object({ type: z.literal("enable-auto-merge") })
+      .extend(githubPullRequestMergeConfigurationSchema.shape),
+    z.object({ type: z.literal("disable-auto-merge") }),
+    z.object({ type: z.literal("enqueue-merge-queue") }),
+    z.object({ type: z.literal("dequeue-merge-queue") }),
   ],
 );
 
@@ -553,6 +624,16 @@ export const githubPullRequestDataWarningSchema = z.object({
 
 export const githubPullRequestOverviewSchema =
   githubPullRequestSummarySchema.extend({
+    nodeId: z.string().min(1).max(256).nullable().default(null),
+    viewerLogin: z.string().min(1).max(100).nullable().default(null),
+    pendingReview: githubPullRequestPendingReviewSchema
+      .nullable()
+      .default(null),
+    autoMerge: githubPullRequestAutoMergeSchema.nullable().default(null),
+    mergeQueueEnabled: z.boolean().default(false),
+    mergeQueueEntry: githubPullRequestMergeQueueEntrySchema
+      .nullable()
+      .default(null),
     comments: z.array(githubIssueCommentSchema).max(100),
     commentsTruncated: z.boolean(),
     requestedReviewers: z.array(z.string().min(1)).max(100),
@@ -903,6 +984,14 @@ export type GithubPullRequestReviewComment = z.infer<
 
 export type GithubPullRequestReviewThread = z.infer<
   typeof githubPullRequestReviewThreadSchema
+>;
+
+export type GithubPullRequestPendingReview = z.infer<
+  typeof githubPullRequestPendingReviewSchema
+>;
+
+export type GithubPullRequestDetailsUpdate = z.infer<
+  typeof githubPullRequestDetailsUpdateSchema
 >;
 
 export type GithubPullRequestReviewSubmit = z.infer<
