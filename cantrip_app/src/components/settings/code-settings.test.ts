@@ -5,7 +5,13 @@ import {
 } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { selectCodeSettingsWorker } from "./code-settings";
+import {
+  CODE_SETTINGS_FRAME_CLASS_NAME,
+  CODE_SETTINGS_LOADING_COVER_CLASS_NAME,
+  CODE_SETTINGS_SURFACE_BACKGROUND,
+  CODE_SETTINGS_SURFACE_CLASS_NAME,
+  selectCodeSettingsWorker,
+} from "./code-settings";
 
 const now = "2026-08-23T12:00:00.000Z";
 
@@ -107,5 +113,18 @@ describe("Code settings worker selection", () => {
         null,
       ),
     ).toBeNull();
+  });
+});
+
+describe("Code settings background ownership", () => {
+  it("leaves the surface, iframe, and loading cover transparent", () => {
+    expect(CODE_SETTINGS_SURFACE_BACKGROUND).toBe("transparent");
+    for (const className of [
+      CODE_SETTINGS_SURFACE_CLASS_NAME,
+      CODE_SETTINGS_FRAME_CLASS_NAME,
+      CODE_SETTINGS_LOADING_COVER_CLASS_NAME,
+    ]) {
+      expect(className.split(/\s+/u)).not.toContain("bg-background");
+    }
   });
 });

@@ -23,6 +23,7 @@ import {
   useState,
 } from "react";
 
+import { CODE_WORKBENCH_FRAME_BACKGROUND } from "@/components/code/code-view";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
@@ -58,6 +59,13 @@ import { cn } from "@/lib/utils";
 
 const WORKER_REFRESH_MS = 5_000;
 const SETTINGS_STATUS_REFRESH_MS = 3_000;
+export const CODE_SETTINGS_SURFACE_CLASS_NAME =
+  "h-full min-h-0 min-w-0 overflow-hidden";
+export const CODE_SETTINGS_FRAME_CLASS_NAME =
+  "size-full min-h-0 min-w-0 border-0";
+export const CODE_SETTINGS_LOADING_COVER_CLASS_NAME =
+  "absolute inset-0 z-10 grid place-items-center p-6 text-center";
+export const CODE_SETTINGS_SURFACE_BACKGROUND = CODE_WORKBENCH_FRAME_BACKGROUND;
 
 function workerCanHostCodeSettings(worker: WorkerSummary): boolean {
   return (
@@ -426,7 +434,7 @@ export function CodeSettings({
       aria-hidden={!active}
       data-slot="code-settings-surface"
       className={cn(
-        "h-full min-h-0 min-w-0 overflow-hidden bg-background",
+        CODE_SETTINGS_SURFACE_CLASS_NAME,
         active ? "flex flex-col" : "hidden",
       )}
     >
@@ -516,7 +524,7 @@ export function CodeSettings({
             key={frameMount.nonce}
             allow="clipboard-read; clipboard-write"
             aria-hidden={!ready || settingsConflict}
-            className="size-full min-h-0 min-w-0 border-0 bg-background"
+            className={CODE_SETTINGS_FRAME_CLASS_NAME}
             onError={() =>
               setFrameError(
                 "The embedded Code customization document failed to load.",
@@ -530,13 +538,17 @@ export function CodeSettings({
             ref={frameRef}
             referrerPolicy="no-referrer"
             src={frameMount.url}
+            style={{ backgroundColor: CODE_SETTINGS_SURFACE_BACKGROUND }}
             tabIndex={active && ready && !settingsConflict ? 0 : -1}
             title="VS Code settings and extensions"
           />
         ) : null}
 
         {!ready || settingsConflict || connectionError || frameError ? (
-          <div className="absolute inset-0 z-10 grid place-items-center bg-background p-6 text-center">
+          <div
+            className={CODE_SETTINGS_LOADING_COVER_CLASS_NAME}
+            style={{ backgroundColor: CODE_SETTINGS_SURFACE_BACKGROUND }}
+          >
             <div className="grid max-w-lg justify-items-center gap-3">
               {settingsConflict || connectionError || frameError || noWorker ? (
                 <AlertTriangle className="size-6 text-destructive" />
