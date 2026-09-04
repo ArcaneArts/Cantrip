@@ -66,12 +66,18 @@ export interface SurfaceCrudOperations {
   };
 }
 
+export interface SurfaceViewOperations {
+  close: MutationOperation<ProjectSurface>;
+}
+
 export function createSurfaceCommandController({
   creation,
   crud,
+  views,
 }: {
   creation: SurfaceCreationOperations;
   crud: SurfaceCrudOperations;
+  views: SurfaceViewOperations;
 }) {
   const createProjectSurface = (
     projectId: string,
@@ -112,7 +118,10 @@ export function createSurfaceCommandController({
       crud.projectView.rename.mutate({ viewId: surface.tabId, title });
     }
   };
-  const deleteSurface = (surface: ProjectSurface) => {
+  const closeSurfaceView = (surface: ProjectSurface) => {
+    views.close.mutate(surface);
+  };
+  const deleteSurfaceResource = (surface: ProjectSurface) => {
     if (surface.kind === "chat") crud.chat.delete.mutate(surface.tabId);
     else if (surface.kind === "terminal")
       crud.terminal.delete.mutate(surface.tabId);
@@ -122,13 +131,6 @@ export function createSurfaceCommandController({
       crud.browser.delete.mutate(surface.tabId);
     else if (surface.kind === "code") crud.code.delete.mutate(surface.tabId);
     else crud.projectView.delete.mutate(surface.tabId);
-  };
-  const deleteSurfaceImmediately = (surface: ProjectSurface) => {
-    if (surface.kind === "explorer") {
-      crud.explorer.delete.mutate(surface.tabId);
-      return;
-    }
-    deleteSurface(surface);
   };
   const creatingSurfaceKinds = new Set<ProjectSurfaceCreateKind>([
     ...(creation.chat.isPending ? (["chat"] as const) : []),
@@ -179,8 +181,8 @@ export function createSurfaceCommandController({
   return {
     createProjectSurface,
     creatingSurfaceKinds,
-    deleteSurface,
-    deleteSurfaceImmediately,
+    closeSurfaceView,
+    deleteSurfaceResource,
     renameSurface,
     surfaceCreationFailure,
   } as const;

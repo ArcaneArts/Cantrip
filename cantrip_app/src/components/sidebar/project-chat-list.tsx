@@ -11,6 +11,8 @@ import type {
   ExplorerSummary,
   ProjectFolderSetupJobSummary,
   ProjectSummary,
+  ProjectSurfaceResourceRef,
+  ProjectTabKind,
   ProjectReplicaJobSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
@@ -76,6 +78,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ProjectSurface } from "@/lib/project-surface";
+import { projectSurfaceResourceRefForTab } from "@/lib/project-surface-registry";
 import {
   type WorkspaceDndData,
   workspaceSidebarDropId,
@@ -130,9 +133,11 @@ function SortableChat({
   worktreeStatus?: WorktreeStatusMap[string];
 }) {
   const actions = {
+    deleteLabel: "Archive Resource",
     deleteDisabled:
       chat.status === "running" || chat.status === "waiting-for-approval",
     onDelete,
+    onClose,
     onDuplicate,
     onRename,
     worktree: worktreeActions,
@@ -198,7 +203,7 @@ function StandardSidebarSurfaceTab({
   editing: boolean;
   icon: ReactNode;
   onClose(): void;
-  onDelete(): void;
+  onDelete?: () => void;
   onRename?: () => void;
   onSelect(): void;
   renameValue: string;
@@ -214,6 +219,7 @@ function StandardSidebarSurfaceTab({
       actions={
         <SurfaceActionsMenu
           title={title}
+          onClose={onClose}
           onDelete={onDelete}
           onRename={onRename}
           contentClassName="min-w-36"
@@ -382,13 +388,14 @@ export function ProjectChatList({
   onDeleteBrowser,
   onDeleteCode,
   onDeleteExplorer,
-  onCloseExplorer,
+  onCloseSurface,
   onDeleteProjectView,
   onDuplicateChat,
   onOpenChatExplorer,
   onOpenChatHistory,
   onOpenChatTerminal,
   onOpenProjectSettings,
+  onOpenSurface,
   onRevealProject,
   onDeleteTerminal,
   onStopAndCloseRunTerminal,
@@ -466,13 +473,14 @@ export function ProjectChatList({
   onDeleteBrowser(browserId: string): void;
   onDeleteCode(codeTabId: string): void;
   onDeleteExplorer(explorerId: string): void;
-  onCloseExplorer(explorerId: string): void;
+  onCloseSurface(surface: ProjectSurface): void;
   onDeleteProjectView(viewId: string): void;
   onDuplicateChat(chatId: string): void;
   onOpenChatExplorer(chat: ChatSummary): void;
   onOpenChatHistory(chat: ChatSummary): void;
   onOpenChatTerminal(chat: ChatSummary): void;
   onOpenProjectSettings(projectId: string): void;
+  onOpenSurface(surfaceRef: ProjectSurfaceResourceRef): void;
   onRevealProject?: (
     project: ProjectSummary,
     localFolder: boolean,
@@ -603,6 +611,40 @@ export function ProjectChatList({
     })),
   ];
   const tabByKey = new Map(tabs.map((tab) => [tab.id, tab]));
+  const openTabKeys = new Set(surfaces.map(({ tabKey }) => tabKey));
+  const closedTabs = tabs.filter(({ id }) => !openTabKeys.has(id));
+  const resourceRefForTab = (tab: SidebarTab) => {
+    const kind: ProjectTabKind = tab.kind === "view" ? tab.view.kind : tab.kind;
+    const resourceId =
+      tab.kind === "chat"
+        ? tab.chat.id
+        : tab.kind === "terminal"
+          ? tab.terminal.id
+          : tab.kind === "explorer"
+            ? tab.explorer.id
+            : tab.kind === "browser"
+              ? tab.browser.id
+              : tab.kind === "code"
+                ? tab.codeTab.id
+                : tab.view.id;
+    return projectSurfaceResourceRefForTab(kind, resourceId, {
+      file: tab.kind === "explorer" && tab.explorer.selectedPath !== null,
+    });
+  };
+  const labelForTab = (tab: SidebarTab) =>
+    tab.kind === "chat"
+      ? tab.chat.title
+      : tab.kind === "terminal"
+        ? tab.terminal.title
+        : tab.kind === "explorer"
+          ? tab.explorer.title
+          : tab.kind === "browser"
+            ? tab.browser.title
+            : tab.kind === "code"
+              ? tab.codeTab.title
+              : tab.view.title;
+  const iconKindForTab = (tab: SidebarTab) =>
+    tab.kind === "view" ? tab.view.kind : tab.kind;
   const sidebarSurfaceRows = surfaces.flatMap((surface, lanePosition) => {
     const tab = tabByKey.get(surface.tabKey);
     return tab ? [{ lanePosition, surface, tab }] : [];
@@ -688,27 +730,6 @@ export function ProjectChatList({
     const title = renameValue.trim();
     setEditingProjectViewId(null);
     if (title && title !== view.title) onRenameProjectView(view.id, title);
-  };
-  const closeTabImmediately = (tab: SidebarTab) => {
-    if (
-      tab.kind === "chat" &&
-      (tab.chat.status === "running" ||
-        tab.chat.status === "waiting-for-approval")
-    ) {
-      setDeleteTarget(tab.chat);
-    } else if (tab.kind === "chat") onDeleteChat(tab.chat.id);
-    else if (
-      tab.kind === "terminal" &&
-      tab.terminal.kind === "run-configuration" &&
-      tab.terminal.status === "running"
-    ) {
-      setDeleteTerminalError(null);
-      setDeleteTerminalTarget(tab.terminal);
-    } else if (tab.kind === "terminal") onDeleteTerminal(tab.terminal.id);
-    else if (tab.kind === "explorer") onCloseExplorer(tab.explorer.id);
-    else if (tab.kind === "browser") onDeleteBrowser(tab.browser.id);
-    else if (tab.kind === "code") onDeleteCode(tab.codeTab.id);
-    else onDeleteProjectView(tab.view.id);
   };
   const sidebarDrop = useDroppable({
     id: workspaceSidebarDropId(selectedProjectId ?? "none"),
@@ -816,7 +837,7 @@ export function ProjectChatList({
                               onSelect={selectTab}
                               onRename={() => beginRename(tab.chat)}
                               onDuplicate={() => onDuplicateChat(tab.chat.id)}
-                              onClose={() => closeTabImmediately(tab)}
+                              onClose={() => onCloseSurface(surface)}
                               onDelete={() => setDeleteTarget(tab.chat)}
                               workers={workers}
                               worktree={worktreeById.get(
@@ -895,7 +916,7 @@ export function ProjectChatList({
                                   ? undefined
                                   : () => beginTerminalRename(tab.terminal)
                               }
-                              onClose={() => closeTabImmediately(tab)}
+                              onClose={() => onCloseSurface(surface)}
                               onDelete={() =>
                                 setDeleteTerminalTarget(tab.terminal)
                               }
@@ -935,7 +956,7 @@ export function ProjectChatList({
                               }
                               onSelect={selectTab}
                               onRename={() => beginExplorerRename(tab.explorer)}
-                              onClose={() => closeTabImmediately(tab)}
+                              onClose={() => onCloseSurface(surface)}
                               onDelete={() =>
                                 setDeleteExplorerTarget(tab.explorer)
                               }
@@ -969,7 +990,7 @@ export function ProjectChatList({
                               }
                               onSelect={selectTab}
                               onRename={() => beginBrowserRename(tab.browser)}
-                              onClose={() => closeTabImmediately(tab)}
+                              onClose={() => onCloseSurface(surface)}
                               onDelete={() =>
                                 setDeleteBrowserTarget(tab.browser)
                               }
@@ -1008,7 +1029,7 @@ export function ProjectChatList({
                               submitRename={() => finishCodeRename(tab.codeTab)}
                               onSelect={selectTab}
                               onRename={() => beginCodeRename(tab.codeTab)}
-                              onClose={() => closeTabImmediately(tab)}
+                              onClose={() => onCloseSurface(surface)}
                               onDelete={() => setDeleteCodeTarget(tab.codeTab)}
                               trailing={
                                 project.capabilities.worktrees ? (
@@ -1045,10 +1066,16 @@ export function ProjectChatList({
                                 finishProjectViewRename(tab.view)
                               }
                               onSelect={selectTab}
-                              onRename={() => beginProjectViewRename(tab.view)}
-                              onClose={() => closeTabImmediately(tab)}
-                              onDelete={() =>
-                                setDeleteProjectViewTarget(tab.view)
+                              onRename={
+                                tab.view.kind === "remote-desktop"
+                                  ? () => beginProjectViewRename(tab.view)
+                                  : undefined
+                              }
+                              onClose={() => onCloseSurface(surface)}
+                              onDelete={
+                                tab.view.kind === "remote-desktop"
+                                  ? () => setDeleteProjectViewTarget(tab.view)
+                                  : undefined
                               }
                               trailing={
                                 tab.view.kind === "history" ? (
@@ -1072,6 +1099,34 @@ export function ProjectChatList({
                         },
                       )}
                     </SortableContext>
+                    {closedTabs.length > 0 ? (
+                      <details className="mt-1 rounded-md border border-border/50 px-1 py-0.5">
+                        <summary className="cursor-pointer select-none px-1 py-1 text-[11px] font-medium text-muted-foreground">
+                          Closed views ({closedTabs.length})
+                        </summary>
+                        <div className="flex flex-col pb-1">
+                          {closedTabs.map((tab) => (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              data-closed-surface-view={tab.id}
+                              className="flex min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                              onClick={() =>
+                                onOpenSurface(resourceRefForTab(tab))
+                              }
+                            >
+                              <ProjectSurfaceIcon
+                                className="size-3.5 shrink-0"
+                                kind={iconKindForTab(tab)}
+                              />
+                              <span className="truncate">
+                                {labelForTab(tab)}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
                     <ProjectSidebarFileTree
                       activePath={filePreviewPath}
                       error={fileTreeError}
@@ -1176,12 +1231,12 @@ export function ProjectChatList({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete agent?</DialogTitle>
+            <DialogTitle>Archive agent resource?</DialogTitle>
             <DialogDescription>
               {deleteTarget?.status === "running" ||
               deleteTarget?.status === "waiting-for-approval"
-                ? "Stop the active agent before removing this tab."
-                : `“${deleteTarget?.title ?? "This agent"}” will move to Archive for 90 days if it has conversation history. Empty agents are deleted immediately.`}
+                ? "Stop the active agent before archiving this resource."
+                : `“${deleteTarget?.title ?? "This agent"}” will move to Archive for 90 days if it has conversation history. Empty agent resources are deleted immediately.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1199,7 +1254,7 @@ export function ProjectChatList({
                 setDeleteTarget(null);
               }}
             >
-              Remove
+              Archive Resource
             </Button>
           </DialogFooter>
         </DialogContent>

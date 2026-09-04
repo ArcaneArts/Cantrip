@@ -235,6 +235,50 @@ export type {
   TabGroupMemberMove,
 } from "./project-tabs.js";
 
+export {
+  PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS,
+  PROJECT_SURFACE_DEFINITIONS,
+  projectSurfaceDefinitionIdSchema,
+  projectBuiltinSurfaceDefinitionIdSchema,
+  surfaceScopeSchema,
+  surfaceCardinalitySchema,
+  surfacePlacementRegionSchema,
+  surfaceCapabilitySchema,
+  surfaceCategorySchema,
+  surfaceLauncherLocationSchema,
+  projectSurfaceDefinitionSchema,
+  projectSurfaceRegistrySchema,
+  projectSurfaceResourceRefSchema,
+  projectSurfaceViewId,
+  projectSurfaceTabKind,
+  projectSurfaceViewSchema,
+  projectTabPlacementSchema,
+  projectPaneSchema,
+  projectSurfaceLauncherTargetSchema,
+  projectSurfaceLauncherSchema,
+  projectSurfaceViewOpenSchema,
+  projectSurfaceViewCloseSchema,
+  projectSurfaceViewOpenResultSchema,
+  projectSurfaceViewCloseResultSchema,
+} from "./project-surfaces.js";
+
+export type {
+  ProjectSurfaceDefinition,
+  ProjectSurfaceDefinitionId,
+  ProjectBuiltInSurfaceDefinitionId,
+  ProjectSurfaceResourceRef,
+  SurfacePlacementRegion,
+  ProjectSurfaceView,
+  ProjectTabPlacement,
+  ProjectPane,
+  ProjectSurfaceLauncherTarget,
+  ProjectSurfaceLauncher,
+  ProjectSurfaceViewOpen,
+  ProjectSurfaceViewClose,
+  ProjectSurfaceViewOpenResult,
+  ProjectSurfaceViewCloseResult,
+} from "./project-surfaces.js";
+
 export type {
   ChatExecutionLaneActor,
   ChatExecutionLaneState,

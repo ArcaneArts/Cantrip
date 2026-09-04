@@ -6,6 +6,7 @@ import {
   createSurfaceCommandController,
   type SurfaceCreationOperations,
   type SurfaceCrudOperations,
+  type SurfaceViewOperations,
 } from "./surface-commands";
 
 function creationMutation() {
@@ -43,7 +44,10 @@ function operations() {
     },
     terminal: { delete: { mutate: vi.fn() }, rename: { mutate: vi.fn() } },
   } as unknown as SurfaceCrudOperations;
-  return { creation, crud };
+  const views = {
+    close: { mutate: vi.fn() },
+  } satisfies SurfaceViewOperations;
+  return { creation, crud, views };
 }
 
 describe("surface command controller", () => {
@@ -86,7 +90,7 @@ describe("surface command controller", () => {
     );
   });
 
-  it("requests Explorer confirmation unless deletion is explicitly immediate", () => {
+  it("keeps Close View separate from deleting an Explorer resource", () => {
     const operationSet = operations();
     const controller = createSurfaceCommandController(operationSet);
     const explorer = {
@@ -94,14 +98,13 @@ describe("surface command controller", () => {
       tabId: "explorer-1",
     } as ProjectSurface;
 
-    controller.deleteSurface(explorer);
-    controller.deleteSurfaceImmediately(explorer);
+    controller.closeSurfaceView(explorer);
+    controller.deleteSurfaceResource(explorer);
 
+    expect(operationSet.views.close.mutate).toHaveBeenCalledWith(explorer);
     expect(operationSet.crud.explorer.requestDelete).toHaveBeenCalledWith(
       "explorer-1",
     );
-    expect(operationSet.crud.explorer.delete.mutate).toHaveBeenCalledWith(
-      "explorer-1",
-    );
+    expect(operationSet.crud.explorer.delete.mutate).not.toHaveBeenCalled();
   });
 });

@@ -1,10 +1,42 @@
+import { DndContext } from "@dnd-kit/core";
 import { chatSummarySchema } from "@cantrip/protocol";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import TestRenderer, { act } from "react-test-renderer";
+import type { ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
 
-import { ProjectOverviewTab } from "./project-chat-list";
+import { ProjectChatList, ProjectOverviewTab } from "./project-chat-list";
+
+vi.mock("@/components/chat/chat-menu", () => ({
+  ChatContextMenu: ({ children }: { children: ReactNode }) => children,
+  ChatDropdownMenu: () => null,
+}));
+vi.mock("@/components/projects/project-actions-menu", () => ({
+  ProjectContextMenu: ({ children }: { children: ReactNode }) => children,
+  ProjectDropdownMenu: ({ children }: { children: ReactNode }) => children,
+}));
+vi.mock("@/components/projects/project-removal-dialog", () => ({
+  ProjectRemovalDialog: () => null,
+}));
+vi.mock("@/components/sidebar/project-sidebar-file-tree", () => ({
+  ProjectSidebarFileTree: () => null,
+}));
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({ children }: { children: ReactNode }) => children,
+  DialogClose: ({ children }: { children: ReactNode }) => children,
+  DialogContent: ({ children }: { children: ReactNode }) => children,
+  DialogDescription: ({ children }: { children: ReactNode }) => children,
+  DialogFooter: ({ children }: { children: ReactNode }) => children,
+  DialogHeader: ({ children }: { children: ReactNode }) => children,
+  DialogTitle: ({ children }: { children: ReactNode }) => children,
+}));
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const chat = chatSummarySchema.parse({
   id: "chat-1",
@@ -64,5 +96,100 @@ describe("project overview sidebar tab", () => {
     expect(markup).toContain(">Overview</span>");
     expect(markup).toContain("h-8");
     expect(markup).not.toContain(">BileTools</span>");
+  });
+});
+
+describe("closed surface views", () => {
+  it("keeps an unplaced resource discoverable and reopens its existing identity", async () => {
+    const onOpenSurface = vi.fn();
+    const props = {
+      browsers: [],
+      chats: [chat],
+      codeTabs: [],
+      explorers: [],
+      fileExplorer: null,
+      filePreviewPath: null,
+      fileGraphAvailable: false,
+      fileTreeLoading: false,
+      fileTreeWorkerId: null,
+      fileTreeWorkerOnline: false,
+      folderSetupJobs: new Map(),
+      onChangeChatWorktree: vi.fn(),
+      onCloseSurface: vi.fn(),
+      onDeleteBrowser: vi.fn(),
+      onDeleteChat: vi.fn(),
+      onDeleteCode: vi.fn(),
+      onDeleteExplorer: vi.fn(),
+      onDeleteProjectView: vi.fn(),
+      onDeleteTerminal: vi.fn(),
+      onDuplicateChat: vi.fn(),
+      onFileCreateFolder: vi.fn(),
+      onFileDelete: vi.fn(),
+      onFileOpenGraph: vi.fn(),
+      onFileOpenNative: vi.fn(),
+      onFileOpenNativeRoot: vi.fn(),
+      onFileOpenTerminal: vi.fn(),
+      onFilePin: vi.fn(),
+      onFilePreview: vi.fn(),
+      onFileRename: vi.fn(),
+      onOpenChatExplorer: vi.fn(),
+      onOpenChatHistory: vi.fn(),
+      onOpenChatTerminal: vi.fn(),
+      onOpenProjectSettings: vi.fn(),
+      onOpenSurface,
+      onRemoveProject: vi.fn(),
+      onRenameBrowser: vi.fn(),
+      onRenameChat: vi.fn(),
+      onRenameCode: vi.fn(),
+      onRenameExplorer: vi.fn(),
+      onRenameProjectView: vi.fn(),
+      onRenameTerminal: vi.fn(),
+      onRequestChatWorktreeCreate: vi.fn(),
+      onRevealProject: vi.fn(),
+      onSelectProject: vi.fn(),
+      onSelectTab: vi.fn(),
+      onStopAndCloseRunTerminal: vi.fn(),
+      overviewSelected: false,
+      projects: [
+        {
+          capabilities: { worktrees: false },
+          id: "project-1",
+          name: "Cantrip",
+          setupStatus: "ready",
+          source: null,
+        },
+      ],
+      projectSetupJobs: new Map(),
+      projectViews: [],
+      selectedProjectId: "project-1",
+      selectedTabKey: null,
+      surfaces: [],
+      tabLayout: { groups: [], projectId: "project-1", revision: 2 },
+      terminals: [],
+      workers: [],
+      worktrees: [],
+      worktreeStatuses: {},
+    } as unknown as Parameters<typeof ProjectChatList>[0];
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={new QueryClient()}>
+          <DndContext>
+            <ProjectChatList {...props} />
+          </DndContext>
+        </QueryClientProvider>,
+      );
+    });
+
+    const closed = renderer.root.findByProps({
+      "data-closed-surface-view": "chat:chat-1",
+    });
+    await act(async () => closed.props.onClick());
+    expect(onOpenSurface).toHaveBeenCalledWith({
+      kind: "entity",
+      definitionId: "project.agent",
+      resourceId: "chat-1",
+    });
+    await act(async () => renderer.unmount());
   });
 });

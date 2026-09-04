@@ -61,7 +61,10 @@ import {
   useProjectSetupOperations,
 } from "@/components/app/project-operations";
 import { useProjectWorkspaceResources } from "@/components/app/project-workspace-resources";
-import { useProjectSurfaceCloseCoordinator } from "@/components/app/project-surface-close";
+import {
+  useProjectSurfaceCloseCoordinator,
+  useProjectSurfaceViewOperations,
+} from "@/components/app/project-surface-close";
 import {
   projectWorkspaceSurfaceSelection,
   useActiveProjectWorkspace,
@@ -233,6 +236,16 @@ export function App() {
     setWorkspaceSelection,
     workspaceSelection,
   } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
+  const surfaceOpenRequestRef = useRef(0);
+  const setPendingSurfaceSelectionWithOpenCancellation = useCallback<
+    typeof setPendingSurfaceSelection
+  >(
+    (update) => {
+      if (update === null) surfaceOpenRequestRef.current += 1;
+      setPendingSurfaceSelection(update);
+    },
+    [setPendingSurfaceSelection],
+  );
   const projectSurfaceClose = useProjectSurfaceCloseCoordinator({
     queryClient,
     setWorkspaceSelection,
@@ -424,6 +437,20 @@ export function App() {
     sidebarExplorerCreationKeyRef,
     sidebarFilePreviewLifecycleRef,
   } = explorerLifecycle;
+  const { closeSurfaceViewMutation } = useProjectSurfaceViewOperations({
+    beforeClose: async (surface) => {
+      if (surface.kind === "explorer") {
+        await explorerLifecycleRef.current.get(surface.tabId)?.prepareClose();
+      }
+    },
+    onCloseError: (surface) => {
+      if (surface.kind === "explorer") {
+        explorerLifecycleRef.current.get(surface.tabId)?.cancelClose();
+      }
+    },
+    queryClient,
+    surfaceClose: projectSurfaceClose,
+  });
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
@@ -446,6 +473,7 @@ export function App() {
     closeProjectTask,
     openCreatedProject,
     openCreatedTab,
+    openOrFocusSurface,
     openProjectCreateSource,
     openProjectSettings,
     openProjectTask,
@@ -469,9 +497,10 @@ export function App() {
     setDesktopSidebarDrawerOpen,
     setFolderProjectDialogMode,
     setFolderProjectDialogOpen,
-    setPendingSurfaceSelection,
+    setPendingSurfaceSelection: setPendingSurfaceSelectionWithOpenCancellation,
     setProjectTaskChatIds,
     setSidebarFilePreview,
+    surfaceOpenRequestRef,
     setWorkspaceSelection,
   });
   const applicationInventory = useApplicationInventory({
@@ -724,7 +753,7 @@ export function App() {
     pendingSurfaceSelection,
     queryClient,
     selectedProjectId,
-    setPendingSurfaceSelection,
+    setPendingSurfaceSelection: setPendingSurfaceSelectionWithOpenCancellation,
     setSelectedProjectId,
     setShowProjectSettings,
     setWorkspaceSelection,
@@ -1582,7 +1611,7 @@ export function App() {
     setDesktopSidebarDrawerOpen,
     setDetachedGroupId,
     setFolderProjectDialogOpen,
-    setPendingSurfaceSelection,
+    setPendingSurfaceSelection: setPendingSurfaceSelectionWithOpenCancellation,
     setSidebarFilePreview,
     setWorkspaceSelection,
     settings: settings.data,
@@ -1688,10 +1717,10 @@ export function App() {
       worktrees: worktrees.data,
     });
   const {
+    closeSurfaceView,
     createProjectSurface,
     creatingSurfaceKinds,
-    deleteSurface,
-    deleteSurfaceImmediately,
+    deleteSurfaceResource,
     renameSurface,
     surfaceCreationFailure,
   } = createSurfaceCommandController({
@@ -1725,6 +1754,7 @@ export function App() {
         rename: renameTerminalMutation,
       },
     },
+    views: { close: closeSurfaceViewMutation },
   });
 
   const selectedPlacementContext: ProjectSurfacePlacementContext | undefined =
@@ -1759,7 +1789,7 @@ export function App() {
     completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
-    deleteSurface, deleteSurfaceImmediately, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
+    closeSurfaceView, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
     desktopSidebarDrawerOpen, dismissedLongPathFailure, displayTerminals, displayedGitProject, executeAppAction,
     explorerDisplayPath, explorerFileTarget, explorerGraphRequest, explorers, finishSidebarResize,
     focusDetachedGroup, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,
@@ -1770,7 +1800,7 @@ export function App() {
     newProjectView, newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
     openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
-    openExplorerFileWindow, openExplorers, openProjectCreateSource, openProjectExplorerFile, ownedTerminals,
+    openExplorerFileWindow, openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, ownedTerminals,
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
