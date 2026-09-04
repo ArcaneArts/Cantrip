@@ -108,12 +108,13 @@ A pane owns:
 
 - an ordered list of tab placements;
 - one locally active tab;
-- tab-strip presentation;
+- center tab-strip or dock-rail presentation;
 - mounting and parking behavior for inactive surfaces; and
 - an owning workspace region or split node.
 
-The tab strip normally appears at the top of its pane. "Top" is therefore a
-pane presentation edge, not a global tab location.
+Center panes present their placements in a tab strip at the top of the pane.
+Right and bottom dock panes do not render a second tab strip: their rail is the
+placement selector, creation control, and drag target.
 
 ### Launcher
 
@@ -198,6 +199,9 @@ but it should remain distinct from the persistent project/resource inventory.
 Each dock contains one pane in the first implementation. Multiple tabs may
 share that pane, but only one is active at a time.
 
+- The dock rail is the pane's tab selector; the pane body has no tab strip.
+- The rail owns the add-surface control and is the drop target for tabs moved
+  from center panes.
 - Clicking a closed rail launcher opens or focuses its tab in that dock.
 - Clicking an already-open launcher focuses the tab and reveals its dock.
 - An optional repeated click may collapse the dock without closing the tab,
@@ -567,10 +571,10 @@ because its view placement is deduplicated.
 - Stop creating duplicate History and Issues project-view resources.
 - Add capability-aware unavailable states and launcher pinning.
 
-### Milestone 3: panes and unified tab strips
+### Milestone 3: panes and unified center tab strips
 
 - Evolve tab groups into explicit panes.
-- Render one mixed surface tab strip per pane.
+- Render one mixed surface tab strip per center pane.
 - Keep file tabs visible when Agents, Terminals, Browsers, or built-ins are
   active in the same pane.
 - Persist region and allow cross-kind moves.
@@ -579,6 +583,8 @@ because its view placement is deduplicated.
 ### Milestone 4: right and bottom docks
 
 - Add the stable content-frame topology.
+- Use each dock rail as its pane selector, add-surface control, and tab drop
+  target without rendering an internal dock tab strip.
 - Open right-rail tabs into the upper-right split.
 - Open bottom-rail tabs across the full lower width.
 - Support both docks simultaneously.

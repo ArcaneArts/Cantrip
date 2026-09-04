@@ -61,11 +61,9 @@ export function projectWorkspaceGridModel({
   if (fullRegion) {
     return {
       gridTemplateAreas:
-        fullRegion === "right"
-          ? '"right-tabs" "right-body"'
-          : '"bottom-tabs" "bottom-body"',
+        fullRegion === "right" ? '"right-body"' : '"bottom-body"',
       gridTemplateColumns: "minmax(0, 1fr)",
-      gridTemplateRows: "40px minmax(0, 1fr)",
+      gridTemplateRows: "minmax(0, 1fr)",
       hasUpper: fullRegion === "right",
       showBottomDivider: false,
       showRightDivider: false,
@@ -76,23 +74,23 @@ export function projectWorkspaceGridModel({
   const splitUpper = center && right;
   return {
     gridTemplateAreas: splitUpper
-      ? '"center-root right-divider right-tabs" "center-root right-divider right-body" "bottom-divider bottom-divider bottom-divider" "bottom-tabs bottom-tabs bottom-tabs" "bottom-body bottom-body bottom-body"'
+      ? '"center-root right-divider right-body" "bottom-divider bottom-divider bottom-divider" "bottom-body bottom-body bottom-body"'
       : center
-        ? '"center-root" "center-root" "bottom-divider" "bottom-tabs" "bottom-body"'
+        ? '"center-root" "bottom-divider" "bottom-body"'
         : right
-          ? '"right-tabs" "right-body" "bottom-divider" "bottom-tabs" "bottom-body"'
-          : '"empty-upper-tabs" "empty-upper-body" "bottom-divider" "bottom-tabs" "bottom-body"',
+          ? '"right-body" "bottom-divider" "bottom-body"'
+          : '"empty-upper-body" "bottom-divider" "bottom-body"',
     gridTemplateColumns: splitUpper
       ? `minmax(0, calc(${(1 - rightFraction) * 100}% - 3px)) 6px minmax(0, calc(${rightFraction * 100}% - 3px))`
       : "minmax(0, 1fr)",
     gridTemplateRows:
       hasUpper && bottom
-        ? `40px minmax(0, calc(${(1 - bottomFraction) * 100}% - 43px)) 6px 40px minmax(0, calc(${bottomFraction * 100}% - 43px))`
+        ? `minmax(0, calc(${(1 - bottomFraction) * 100}% - 3px)) 6px minmax(0, calc(${bottomFraction * 100}% - 3px))`
         : hasUpper
-          ? "40px minmax(0, 1fr) 0 0 0"
+          ? "minmax(0, 1fr) 0 0"
           : bottom
-            ? "0 0 0 40px minmax(0, 1fr)"
-            : "0 minmax(0, 1fr) 0 0 0",
+            ? "0 0 minmax(0, 1fr)"
+            : "0 minmax(0, 1fr) 0",
     hasUpper,
     showBottomDivider: hasUpper && bottom,
     showRightDivider: splitUpper,
