@@ -263,7 +263,7 @@ describe("workspace frame topology", () => {
     expect(model.gridTemplateAreas).toContain(
       '"bottom-body bottom-body bottom-body"',
     );
-    expect(model.gridTemplateRows).toContain("calc(32% - 43px)");
+    expect(model.gridTemplateRows).toContain("calc(32% - 3px)");
   });
 
   it("clamps a narrow three-pane workspace without rewriting saved desktop sizes", () => {
@@ -307,15 +307,34 @@ describe("workspace frame topology", () => {
       });
       expect(model.visibleRegions).toEqual([fullRegion]);
       expect(model.gridTemplateColumns).toBe("minmax(0, 1fr)");
-      expect(model.gridTemplateRows).toBe("40px minmax(0, 1fr)");
+      expect(model.gridTemplateRows).toBe("minmax(0, 1fr)");
       expect(model.showRightDivider).toBe(false);
       expect(model.showBottomDivider).toBe(false);
+      expect(model.gridTemplateAreas).not.toContain("tabs");
       expect(model.gridTemplateAreas).not.toContain("center");
       expect(model.gridTemplateAreas).not.toContain(
         fullRegion === "right" ? "bottom" : "right",
       );
     },
   );
+
+  it("uses rails as dock selectors without reserving pane tab rows", () => {
+    const model = projectWorkspaceGridModel({
+      bottom: true,
+      bottomFraction: 0.32,
+      center: true,
+      right: true,
+      rightFraction: 0.32,
+    });
+
+    expect(model.gridTemplateAreas).toBe(
+      '"center-root right-divider right-body" "bottom-divider bottom-divider bottom-divider" "bottom-body bottom-body bottom-body"',
+    );
+    expect(model.gridTemplateRows).toBe(
+      "minmax(0, calc(68% - 3px)) 6px minmax(0, calc(32% - 3px))",
+    );
+    expect(model.gridTemplateAreas).not.toContain("tabs");
+  });
 });
 
 describe("dock rail launchers", () => {

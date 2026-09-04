@@ -2,13 +2,14 @@ import { useDroppable } from "@dnd-kit/core";
 import {
   PROJECT_SURFACE_DEFINITIONS,
   projectBuiltinSurfaceDefinitionIdSchema,
+  type ExecutionTarget,
   type ProjectDockPresentationPreference,
   type ProjectSurfaceLauncher,
   type ProjectPaneRegion,
   type ProjectPaneSummary,
 } from "@cantrip/protocol";
 import { useQueries } from "@tanstack/react-query";
-import { PanelBottom, PanelRight } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   useMemo,
   useCallback,
@@ -51,7 +52,11 @@ import {
   type DockRegion,
 } from "@/components/app/project-dock-presentation";
 import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
-import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
+import {
+  ProjectSurfaceCreateMenu,
+  type ProjectSurfaceCreateKind,
+  type ProjectSurfacePlacementContext,
+} from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
 import {
@@ -82,22 +87,28 @@ function VisibleChatLiveScope({ chatId }: { chatId: string }) {
 export function DockRail({
   activeTabKey,
   allSurfaces,
+  creatingKinds,
   launchers,
+  onCreate,
   onOpenLauncher,
   onSelect,
   pending,
   pane,
+  placement,
   projectId,
   region,
   surfaces,
 }: {
   activeTabKey: string | null;
   allSurfaces: readonly ProjectSurface[];
+  creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   launchers: readonly ProjectSurfaceLauncher[];
+  onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenLauncher(launcher: ProjectSurfaceLauncher): void;
   onSelect(surface: ProjectSurface): void;
   pending: boolean;
   pane: ProjectPaneSummary | undefined;
+  placement?: ProjectSurfacePlacementContext;
   projectId: string;
   region: DockRegion;
   surfaces: readonly ProjectSurface[];
@@ -113,7 +124,6 @@ export function DockRail({
       },
     } satisfies WorkspaceDndData,
   });
-  const Icon = region === "right" ? PanelRight : PanelBottom;
   const tooltipSide = region === "right" ? "left" : "top";
   const regionLaunchers = launchers.filter(
     (launcher) =>
@@ -153,17 +163,31 @@ export function DockRail({
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <div
-            className={cn(
-              "grid size-10 shrink-0 place-items-center text-muted-foreground",
-              region === "right" ? "border-b" : "border-r",
-            )}
-          >
-            <Icon className="size-4" />
-          </div>
+          <span className="inline-flex size-10 shrink-0">
+            <ProjectSurfaceCreateMenu
+              align={region === "right" ? "end" : "start"}
+              allowedKinds={createKindsForPaneRegion(region)}
+              creatingKinds={creatingKinds}
+              onCreate={onCreate}
+              placement={placement}
+              trigger={
+                <button
+                  aria-label={`Add surface to ${region} dock`}
+                  className={cn(
+                    "grid size-10 shrink-0 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+                    region === "right" ? "border-b" : "border-r",
+                  )}
+                  disabled={pending}
+                  type="button"
+                >
+                  <Plus className="size-4" />
+                </button>
+              }
+            />
+          </span>
         </TooltipTrigger>
         <TooltipContent side={tooltipSide}>
-          Drop a tab into the {region} dock
+          Add surface to {region} dock
         </TooltipContent>
       </Tooltip>
       {surfaces.map((surface) =>
@@ -669,12 +693,11 @@ export function ProjectWorkspaceFrame({
     },
     [],
   );
-  const tabStrip = (presentation: VisibleProjectPane, gridArea?: string) => (
+  const tabStrip = (presentation: VisibleProjectPane) => (
     <div
       className="min-w-0 overflow-hidden border-b"
       data-project-pane-id={presentation.pane.id}
       key={`${presentation.pane.id}:tabs`}
-      style={gridArea ? { gridArea } : undefined}
     >
       <ProjectPaneTabStrip
         activeTabKey={presentation.activeTabKey}
@@ -928,16 +951,6 @@ export function ProjectWorkspaceFrame({
             />
           </div>
         ) : null}
-        {docked &&
-        right &&
-        renderedPresentations.some(({ pane }) => pane.id === right.pane.id)
-          ? tabStrip(right!, "right-tabs")
-          : null}
-        {docked &&
-        bottom &&
-        renderedPresentations.some(({ pane }) => pane.id === bottom.pane.id)
-          ? tabStrip(bottom!, "bottom-tabs")
-          : null}
         {docked
           ? resizeControl(right, rightPreference, "right", rightFraction)
           : null}
@@ -987,11 +1000,22 @@ export function ProjectWorkspaceFrame({
         <DockRail
           activeTabKey={right?.activeTabKey ?? null}
           allSurfaces={bindings.projectSurfaces}
+          creatingKinds={bindings.creatingSurfaceKinds}
           launchers={bindings.surfaceLaunchers.data ?? []}
+          onCreate={(kind, target) =>
+            bindings.createProjectSurface(
+              bindings.selectedProject.id,
+              kind,
+              right?.pane.id,
+              target,
+              right ? undefined : "right",
+            )
+          }
           onOpenLauncher={(launcher) => openRailLauncher(launcher, "right")}
           onSelect={focusAndRevealSurface}
           pending={presentationMutationPending}
           pane={right?.pane}
+          placement={bindings.selectedPlacementContext}
           projectId={bindings.selectedProject.id}
           region="right"
           surfaces={right?.surfaces ?? []}
@@ -1001,11 +1025,22 @@ export function ProjectWorkspaceFrame({
         <DockRail
           activeTabKey={bottom?.activeTabKey ?? null}
           allSurfaces={bindings.projectSurfaces}
+          creatingKinds={bindings.creatingSurfaceKinds}
           launchers={bindings.surfaceLaunchers.data ?? []}
+          onCreate={(kind, target) =>
+            bindings.createProjectSurface(
+              bindings.selectedProject.id,
+              kind,
+              bottom?.pane.id,
+              target,
+              bottom ? undefined : "bottom",
+            )
+          }
           onOpenLauncher={(launcher) => openRailLauncher(launcher, "bottom")}
           onSelect={focusAndRevealSurface}
           pending={presentationMutationPending}
           pane={bottom?.pane}
+          placement={bindings.selectedPlacementContext}
           projectId={bindings.selectedProject.id}
           region="bottom"
           surfaces={bottom?.surfaces ?? []}

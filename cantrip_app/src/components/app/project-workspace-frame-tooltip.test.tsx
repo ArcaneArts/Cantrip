@@ -45,6 +45,7 @@ function renderRail(region: "right" | "bottom") {
           activeTabKey={null}
           allSurfaces={[surface]}
           launchers={[launcher]}
+          onCreate={vi.fn()}
           pending={false}
           pane={undefined}
           projectId="project-1"
@@ -64,11 +65,14 @@ describe("dock rail tooltips", () => {
     (region) => {
       const markup = renderRail(region);
 
-      expect(markup.match(/data-state="closed"/gu)).toHaveLength(3);
+      expect(markup.match(/data-state="closed"/gu)).toHaveLength(4);
       expect(markup).toContain(
         `aria-label="Focus Agent chat in ${region} dock"`,
       );
+      expect(markup).toContain(`aria-label="Add surface to ${region} dock"`);
       expect(markup).toContain(`aria-label="Open History in ${region} dock"`);
+      expect(markup).toContain('aria-haspopup="menu"');
+      expect(markup).not.toContain('role="tablist"');
       expect(markup).not.toContain(" title=");
     },
   );
