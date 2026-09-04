@@ -14,6 +14,7 @@ import {
   Plus,
   SquareTerminal,
   Trash2,
+  X,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -27,6 +28,7 @@ import { cn } from "@/lib/utils";
 interface Actions {
   deleteLabel?: string;
   deleteDisabled?: boolean;
+  onClose?: () => void;
   onDelete(): void;
   onDuplicate(): void;
   onRename(): void;
@@ -130,6 +132,7 @@ function ContextWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
 function ContextItems({
   deleteLabel = "Delete",
   deleteDisabled,
+  onClose,
   onDelete,
   onDuplicate,
   onRename,
@@ -144,6 +147,11 @@ function ContextItems({
         <CopyPlus className="size-4" /> Duplicate
       </ContextMenuPrimitive.Item>
       {worktree ? <ContextWorktreeItems actions={worktree} /> : null}
+      {onClose ? (
+        <ContextMenuPrimitive.Item className={itemClass} onSelect={onClose}>
+          <X className="size-4" /> Close View
+        </ContextMenuPrimitive.Item>
+      ) : null}
       <ContextMenuPrimitive.Separator className="my-1 h-px bg-border" />
       <ContextMenuPrimitive.Item
         className={cn(itemClass, "text-destructive focus:bg-destructive/10")}
@@ -240,6 +248,7 @@ function DropdownWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
 function DropdownItems({
   deleteLabel = "Delete",
   deleteDisabled,
+  onClose,
   onDelete,
   onDuplicate,
   onRename,
@@ -254,6 +263,11 @@ function DropdownItems({
         <CopyPlus className="size-4" /> Duplicate
       </DropdownMenuPrimitive.Item>
       {worktree ? <DropdownWorktreeItems actions={worktree} /> : null}
+      {onClose ? (
+        <DropdownMenuPrimitive.Item className={itemClass} onSelect={onClose}>
+          <X className="size-4" /> Close View
+        </DropdownMenuPrimitive.Item>
+      ) : null}
       <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
       <DropdownMenuPrimitive.Item
         className={cn(itemClass, "text-destructive focus:bg-destructive/10")}

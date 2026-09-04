@@ -6,7 +6,14 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FileCode2, MoreHorizontal, Pencil, Plus, X } from "lucide-react";
+import {
+  FileCode2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { ExecutionTarget } from "@cantrip/protocol";
 import { useState, type ReactNode } from "react";
 
@@ -179,10 +186,9 @@ export function ProjectTabBar({
                         )}
                         {!editing ? (
                           <SurfaceActionsMenu
-                            deleteIcon={<X className="size-4" />}
-                            deleteLabel="Close"
-                            deleteTone="default"
+                            deleteLabel="Delete Resource"
                             title={surface.title}
+                            onClose={() => closeImmediately(surface)}
                             onDelete={() => setDeleteTarget(surface)}
                             onRename={() => beginRename(surface)}
                             trigger={
@@ -214,9 +220,16 @@ export function ProjectTabBar({
                         </StyledContextMenuItem>
                         <ContextMenu.Separator className="my-1 h-px bg-border" />
                         <StyledContextMenuItem
+                          onSelect={() => closeImmediately(surface)}
+                        >
+                          <X className="size-4" /> Close View
+                        </StyledContextMenuItem>
+                        <ContextMenu.Separator className="my-1 h-px bg-border" />
+                        <StyledContextMenuItem
+                          className="text-destructive focus:bg-destructive/10"
                           onSelect={() => setDeleteTarget(surface)}
                         >
-                          <X className="size-4" /> Close
+                          <Trash2 className="size-4" /> Delete Resource
                         </StyledContextMenuItem>
                       </StyledContextMenuContent>
                     </ContextMenu.Portal>
@@ -292,25 +305,17 @@ export function ProjectTabBar({
           />
         </div>
       </div>
-
       <ConfirmDialog
-        confirmLabel="Close"
-        confirmVariant="default"
-        description="This closes the pinned file tab and removes its Cantrip-owned view state. The project file is not deleted."
+        confirmLabel="Delete Resource"
+        confirmVariant="destructive"
+        description="This permanently deletes Cantrip's file-view resource and its saved view state. The project file on disk is not deleted."
         onConfirm={() => {
-          if (deleteTarget) {
-            const nextTabKey = nextProjectTabAfterRemoval(
-              surfaces,
-              deleteTarget.tabKey,
-            );
-            if (nextTabKey) onSelect(nextTabKey);
-            onDelete(deleteTarget);
-          }
+          if (deleteTarget) onDelete(deleteTarget);
           setDeleteTarget(null);
         }}
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`Close ${deleteTarget?.title ?? "file tab"}?`}
+        title={`Delete ${deleteTarget?.title ?? "file-view resource"}?`}
       />
     </>
   );

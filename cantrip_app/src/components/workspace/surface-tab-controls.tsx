@@ -1,5 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CopyPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { CopyPlus, MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -56,8 +56,9 @@ export function SurfaceActionsMenu({
   contentClassName,
   deleteDisabled = false,
   deleteIcon,
-  deleteLabel = "Delete",
+  deleteLabel = "Delete Resource",
   deleteTone = "destructive",
+  onClose,
   onDelete,
   onDuplicate,
   onRename,
@@ -71,7 +72,8 @@ export function SurfaceActionsMenu({
   deleteIcon?: ReactNode;
   deleteLabel?: ReactNode;
   deleteTone?: "default" | "destructive";
-  onDelete(): void;
+  onClose?: () => void;
+  onDelete?: () => void;
   onDuplicate?: () => void;
   onRename?: () => void;
   title: string;
@@ -111,18 +113,27 @@ export function SurfaceActionsMenu({
               <CopyPlus className="size-4" /> Duplicate
             </StyledDropdownMenuItem>
           ) : null}
-          <DropdownMenu.Separator className="my-1 h-px bg-border" />
-          <StyledDropdownMenuItem
-            className={cn(
-              deleteTone === "destructive" &&
-                "text-destructive focus:bg-destructive/10",
-            )}
-            disabled={deleteDisabled}
-            onSelect={onDelete}
-          >
-            {deleteIcon ?? <Trash2 className="size-4" />}
-            {deleteDisabled ? "Stop agent before deleting" : deleteLabel}
-          </StyledDropdownMenuItem>
+          {onClose ? (
+            <StyledDropdownMenuItem onSelect={onClose}>
+              <X className="size-4" /> Close View
+            </StyledDropdownMenuItem>
+          ) : null}
+          {onDelete ? (
+            <>
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+              <StyledDropdownMenuItem
+                className={cn(
+                  deleteTone === "destructive" &&
+                    "text-destructive focus:bg-destructive/10",
+                )}
+                disabled={deleteDisabled}
+                onSelect={onDelete}
+              >
+                {deleteIcon ?? <Trash2 className="size-4" />}
+                {deleteDisabled ? "Stop agent before deleting" : deleteLabel}
+              </StyledDropdownMenuItem>
+            </>
+          ) : null}
         </StyledDropdownMenuContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

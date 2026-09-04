@@ -206,13 +206,13 @@ describe("mobile project navigation", () => {
 
     const contextCloseItems = renderer.root
       .findAllByProps({ "data-context-menu-item": true })
-      .filter((item) => textContent(item).trim() === "Close");
+      .filter((item) => textContent(item).trim() === "Close View");
     contextCloseItems[1]!.props.onClick();
     expect(onClose).toHaveBeenCalledWith(surfaces[1]);
 
     const actionMenus = renderer.root.findAllByType(SurfaceActionsMenu);
     onClose.mockClear();
-    actionMenus[1]!.props.onDelete();
+    actionMenus[1]!.props.onClose();
     expect(onClose).toHaveBeenCalledWith(surfaces[1]);
 
     await act(async () => renderer.unmount());

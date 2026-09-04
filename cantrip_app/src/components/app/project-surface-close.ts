@@ -1,14 +1,19 @@
 import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
-import type { QueryClient } from "@tanstack/react-query";
+import { useMutation, type QueryClient } from "@tanstack/react-query";
 import {
   useCallback,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
 } from "react";
 
 import { removeProjectTabFromLayout } from "@/lib/project-tab-layout-optimistic";
-import { projectSurfaceTabKey } from "@/lib/project-surface";
+import {
+  projectSurfaceTabKey,
+  type ProjectSurface,
+} from "@/lib/project-surface";
+import { closeProjectSurfaceView } from "@/lib/api";
 import {
   reconcileWorkspaceSelection,
   type WorkspaceSelection,
@@ -26,6 +31,10 @@ export interface ProjectSurfaceCloseInput {
 export interface ProjectSurfaceCloseCoordinator {
   begin(input: ProjectSurfaceCloseInput): void;
   commit(input: ProjectSurfaceCloseInput): void;
+  commitView(
+    input: ProjectSurfaceCloseInput,
+    layout: ProjectTabLayoutSummary,
+  ): void;
   pendingTabKeys: ReadonlySet<string>;
   rollback(input: ProjectSurfaceCloseInput): void;
 }
@@ -63,6 +72,12 @@ export function useProjectSurfaceCloseCoordinator({
   const [pendingTabKeys, setPendingTabKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const selectionBeforeCloseRef = useRef(
+    new Map<
+      string,
+      { before: WorkspaceSelection; optimistic: WorkspaceSelection }
+    >(),
+  );
 
   const begin = useCallback(
     (input: ProjectSurfaceCloseInput) => {
@@ -78,9 +93,18 @@ export function useProjectSurfaceCloseCoordinator({
         queryClient.getQueryData<ProjectTabLayoutSummary>(layoutQueryKey);
       if (!layout) return;
       const projectedLayout = removeProjectTabFromLayout(layout, tabKey);
-      setWorkspaceSelection((current) =>
-        reconcileWorkspaceSelection(current, projectedLayout),
-      );
+      setWorkspaceSelection((current) => {
+        if (current.projectId !== input.projectId) return current;
+        const optimistic = reconcileWorkspaceSelection(
+          current,
+          projectedLayout,
+        );
+        selectionBeforeCloseRef.current.set(tabKey, {
+          before: current,
+          optimistic,
+        });
+        return optimistic;
+      });
     },
     [queryClient, setWorkspaceSelection],
   );
@@ -97,15 +121,99 @@ export function useProjectSurfaceCloseCoordinator({
         (current) =>
           current ? removeProjectTabFromLayout(current, tabKey) : current,
       );
+      selectionBeforeCloseRef.current.delete(tabKey);
       setPendingTabKeys((current) => removePendingTabKey(current, tabKey));
     },
     [queryClient],
   );
 
-  const rollback = useCallback((input: ProjectSurfaceCloseInput) => {
-    const tabKey = projectSurfaceTabKey(input.kind, input.tabId);
-    setPendingTabKeys((current) => removePendingTabKey(current, tabKey));
-  }, []);
+  const rollback = useCallback(
+    (input: ProjectSurfaceCloseInput) => {
+      const tabKey = projectSurfaceTabKey(input.kind, input.tabId);
+      const selection = selectionBeforeCloseRef.current.get(tabKey);
+      selectionBeforeCloseRef.current.delete(tabKey);
+      if (selection) {
+        setWorkspaceSelection((current) =>
+          current === selection.optimistic ? selection.before : current,
+        );
+      }
+      setPendingTabKeys((current) => removePendingTabKey(current, tabKey));
+    },
+    [setWorkspaceSelection],
+  );
 
-  return { begin, commit, pendingTabKeys, rollback };
+  const commitView = useCallback(
+    (input: ProjectSurfaceCloseInput, layout: ProjectTabLayoutSummary) => {
+      const tabKey = projectSurfaceTabKey(input.kind, input.tabId);
+      queryClient.setQueryData(["project-tab-layout", input.projectId], layout);
+      setWorkspaceSelection((current) =>
+        current.projectId === input.projectId
+          ? reconcileWorkspaceSelection(current, layout)
+          : current,
+      );
+      selectionBeforeCloseRef.current.delete(tabKey);
+      setPendingTabKeys((current) => removePendingTabKey(current, tabKey));
+    },
+    [queryClient, setWorkspaceSelection],
+  );
+
+  return { begin, commit, commitView, pendingTabKeys, rollback };
+}
+
+function closeInputForSurface(
+  surface: ProjectSurface,
+): ProjectSurfaceCloseInput {
+  return {
+    kind:
+      surface.kind === "history" ||
+      surface.kind === "issues" ||
+      surface.kind === "remote-desktop"
+        ? "view"
+        : surface.kind,
+    projectId: surface.projectId,
+    tabId: surface.tabId,
+  };
+}
+
+export function useProjectSurfaceViewOperations({
+  beforeClose,
+  onCloseError,
+  queryClient,
+  surfaceClose,
+}: {
+  beforeClose?: (surface: ProjectSurface) => Promise<void> | void;
+  onCloseError?: (surface: ProjectSurface) => void;
+  queryClient: QueryClient;
+  surfaceClose: ProjectSurfaceCloseCoordinator;
+}) {
+  const closeSurfaceViewMutation = useMutation({
+    mutationFn: (surface: ProjectSurface) => {
+      const layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
+        "project-tab-layout",
+        surface.projectId,
+      ]);
+      if (!layout) throw new Error("The project tab layout is not loaded.");
+      return closeProjectSurfaceView(
+        surface.projectId,
+        layout.revision,
+        surface.view.id,
+      );
+    },
+    onMutate: async (surface) => {
+      surfaceClose.begin(closeInputForSurface(surface));
+      await beforeClose?.(surface);
+    },
+    onError: (_error, surface) => {
+      surfaceClose.rollback(closeInputForSurface(surface));
+      onCloseError?.(surface);
+    },
+    onSuccess: (result, surface) => {
+      surfaceClose.commitView(closeInputForSurface(surface), result.layout);
+    },
+    onSettled: (_data, _error, surface) =>
+      queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", surface.projectId],
+      }),
+  });
+  return { closeSurfaceViewMutation } as const;
 }

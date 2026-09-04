@@ -1,5 +1,9 @@
 import {
   encryptedTabGroupUpdateSchema,
+  projectSurfaceViewCloseResultSchema,
+  projectSurfaceViewCloseSchema,
+  projectSurfaceViewOpenResultSchema,
+  projectSurfaceViewOpenSchema,
   projectTabLayoutWireSummarySchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
@@ -150,6 +154,66 @@ export function installTabLayoutRoutes(
         );
         return layout
           ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tab-groups/member/open",
+    async (request, reply) => {
+      const input = projectSurfaceViewOpenSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await repository.tabLayouts.openSurfaceView(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        return result
+          ? reply.send(projectSurfaceViewOpenResultSchema.parse(result))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tab-groups/member/close",
+    async (request, reply) => {
+      const input = projectSurfaceViewCloseSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await repository.tabLayouts.closeSurfaceView(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        return result
+          ? reply.send(projectSurfaceViewCloseResultSchema.parse(result))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (

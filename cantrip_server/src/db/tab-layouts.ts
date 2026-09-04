@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  ProjectSurfaceResourceRef,
+  ProjectSurfaceViewClose,
+  ProjectSurfaceViewCloseResult,
+  ProjectSurfaceViewOpen,
+  ProjectSurfaceViewOpenResult,
   ProjectTabKind,
   ProjectTabLayoutWireSummary,
   ProjectTabMemberWireSummary,
@@ -10,6 +15,7 @@ import type {
   TabGroupMemberOrder,
   TabGroupOrder,
 } from "@cantrip/protocol";
+import { projectSurfaceTabKind, projectSurfaceViewId } from "@cantrip/protocol";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
@@ -51,6 +57,21 @@ async function bumpRevision(
     .where(eq(schema.projects.id, projectId));
 }
 
+async function lockProjectLayout(
+  database: TabLayoutExecutor,
+  projectId: string,
+): Promise<void> {
+  const projects = await database
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(eq(schema.projects.id, projectId))
+    .for("update")
+    .limit(1);
+  if (!projects[0]) {
+    throw new TabLayoutInvariantError("The project no longer exists.");
+  }
+}
+
 async function claimRevision(
   database: TabLayoutExecutor,
   ownerId: string,
@@ -78,7 +99,7 @@ async function claimRevision(
   }
 }
 
-export async function attachProjectTab(
+async function attachProjectTabPlacement(
   database: TabLayoutExecutor,
   input: {
     projectId: string;
@@ -135,15 +156,28 @@ export async function attachProjectTab(
     tabId: input.tabId,
     position: memberPosition,
   });
-  await bumpRevision(database, input.projectId);
   return groupId;
 }
 
-export async function detachProjectTab(
+export async function attachProjectTab(
+  database: TabLayoutExecutor,
+  input: {
+    projectId: string;
+    tabGroupId?: string;
+    tabId: string;
+    tabKind: ProjectTabKind;
+  },
+): Promise<string> {
+  await bumpRevision(database, input.projectId);
+  const groupId = await attachProjectTabPlacement(database, input);
+  return groupId;
+}
+
+async function detachProjectTabPlacement(
   database: TabLayoutExecutor,
   projectId: string,
   tabKey: string,
-): Promise<void> {
+): Promise<boolean> {
   const members = await database
     .select({ member: schema.tabGroupMembers, group: schema.tabGroups })
     .from(schema.tabGroupMembers)
@@ -159,7 +193,7 @@ export async function detachProjectTab(
     )
     .limit(1);
   const selected = members[0];
-  if (!selected) return;
+  if (!selected) return false;
 
   await database
     .delete(schema.tabGroupMembers)
@@ -204,7 +238,101 @@ export async function detachProjectTab(
       remaining.map(({ tabKey: remainingTabKey }) => remainingTabKey),
     );
   }
-  await bumpRevision(database, projectId);
+  return true;
+}
+
+export async function detachProjectTab(
+  database: TabLayoutExecutor,
+  projectId: string,
+  tabKey: string,
+): Promise<void> {
+  await lockProjectLayout(database, projectId);
+  if (await detachProjectTabPlacement(database, projectId, tabKey)) {
+    await bumpRevision(database, projectId);
+  }
+}
+
+async function resolveEntitySurface(
+  database: TabLayoutExecutor,
+  projectId: string,
+  surface: ProjectSurfaceResourceRef,
+): Promise<{ tabId: string; tabKind: ProjectTabKind } | null> {
+  if (surface.kind !== "entity") return null;
+  const tabKind = projectSurfaceTabKind(surface);
+  if (!tabKind) return null;
+  const tabId = surface.resourceId;
+  let rows: Array<{ id: string }>;
+  if (tabKind === "chat") {
+    rows = await database
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.id, tabId),
+          eq(schema.chats.projectId, projectId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .limit(1);
+  } else if (tabKind === "terminal") {
+    rows = await database
+      .select({ id: schema.terminals.id })
+      .from(schema.terminals)
+      .where(
+        and(
+          eq(schema.terminals.id, tabId),
+          eq(schema.terminals.projectId, projectId),
+          isNull(schema.terminals.linkedChatId),
+        ),
+      )
+      .limit(1);
+  } else if (tabKind === "explorer") {
+    rows = await database
+      .select({ id: schema.explorers.id })
+      .from(schema.explorers)
+      .where(
+        and(
+          eq(schema.explorers.id, tabId),
+          eq(schema.explorers.projectId, projectId),
+        ),
+      )
+      .limit(1);
+  } else if (tabKind === "browser") {
+    rows = await database
+      .select({ id: schema.browsers.id })
+      .from(schema.browsers)
+      .where(
+        and(
+          eq(schema.browsers.id, tabId),
+          eq(schema.browsers.projectId, projectId),
+        ),
+      )
+      .limit(1);
+  } else if (tabKind === "code") {
+    rows = await database
+      .select({ id: schema.codeTabs.id })
+      .from(schema.codeTabs)
+      .where(
+        and(
+          eq(schema.codeTabs.id, tabId),
+          eq(schema.codeTabs.projectId, projectId),
+        ),
+      )
+      .limit(1);
+  } else {
+    rows = await database
+      .select({ id: schema.projectViews.id })
+      .from(schema.projectViews)
+      .where(
+        and(
+          eq(schema.projectViews.id, tabId),
+          eq(schema.projectViews.projectId, projectId),
+          eq(schema.projectViews.kind, tabKind),
+        ),
+      )
+      .limit(1);
+  }
+  return rows[0] ? { tabId, tabKind } : null;
 }
 
 async function updateGroupPositions(
@@ -689,6 +817,121 @@ export class ProjectTabLayoutRepository {
       await updateGroupPositions(transaction, nextGroupIds);
     });
     return this.get(ownerId, projectId);
+  }
+
+  async openSurfaceView(
+    ownerId: string,
+    projectId: string,
+    input: ProjectSurfaceViewOpen,
+  ): Promise<ProjectSurfaceViewOpenResult | null> {
+    const current = await this.get(ownerId, projectId);
+    if (!current) return null;
+    const viewId = projectSurfaceViewId({
+      projectId,
+      resource: input.surfaceRef,
+    });
+    if (input.surfaceRef.kind !== "entity") {
+      throw new TabLayoutInvariantError(
+        "Built-in surfaces are not placeable until the built-in migration completes.",
+      );
+    }
+    const expectedTabKind = projectSurfaceTabKind(input.surfaceRef);
+    if (!expectedTabKind) {
+      throw new TabLayoutInvariantError(
+        "The surface definition is not currently entity-backed.",
+      );
+    }
+    const existingPane = current.groups.find(({ members }) =>
+      members.some(({ tabKey }) => tabKey === viewId),
+    );
+    const existingMember = existingPane?.members.find(
+      ({ tabKey }) => tabKey === viewId,
+    );
+    if (existingPane && existingMember) {
+      if (
+        existingMember.tabKind !== expectedTabKind ||
+        existingMember.tabId !== input.surfaceRef.resourceId ||
+        !(await resolveEntitySurface(
+          this.database,
+          projectId,
+          input.surfaceRef,
+        ))
+      ) {
+        throw new TabLayoutInvariantError(
+          "The open view does not match the requested surface resource.",
+        );
+      }
+      return {
+        disposition: "focused",
+        viewId,
+        paneId: existingPane.id,
+        layout: current,
+      };
+    }
+
+    let paneId = "";
+    await this.database.transaction(async (transaction) => {
+      await claimRevision(transaction, ownerId, projectId, input.revision);
+      const resolved = await resolveEntitySurface(
+        transaction,
+        projectId,
+        input.surfaceRef,
+      );
+      if (!resolved) {
+        throw new TabLayoutInvariantError(
+          "The surface resource is unavailable in this project.",
+        );
+      }
+      paneId = await attachProjectTabPlacement(transaction, {
+        projectId,
+        tabGroupId: input.targetPaneId,
+        tabId: resolved.tabId,
+        tabKind: resolved.tabKind,
+      });
+    });
+    const layout = await this.get(ownerId, projectId);
+    if (!layout) {
+      throw new TabLayoutInvariantError(
+        "The project disappeared while its surface view was opening.",
+      );
+    }
+    return { disposition: "opened", viewId, paneId, layout };
+  }
+
+  async closeSurfaceView(
+    ownerId: string,
+    projectId: string,
+    input: ProjectSurfaceViewClose,
+  ): Promise<ProjectSurfaceViewCloseResult | null> {
+    const current = await this.get(ownerId, projectId);
+    if (!current) return null;
+    const existing = current.groups.some(({ members }) =>
+      members.some(({ tabKey }) => tabKey === input.viewId),
+    );
+    if (!existing) {
+      return {
+        disposition: "already-closed",
+        viewId: input.viewId,
+        layout: current,
+      };
+    }
+    await this.database.transaction(async (transaction) => {
+      await claimRevision(transaction, ownerId, projectId, input.revision);
+      if (
+        !(await detachProjectTabPlacement(transaction, projectId, input.viewId))
+      ) {
+        throw new TabLayoutConflictError(
+          "The project tab layout changed. Refresh it and try again.",
+        );
+      }
+    });
+    const layout = await this.get(ownerId, projectId);
+    if (!layout) {
+      throw new TabLayoutInvariantError(
+        "The project disappeared while its surface view was closing.",
+      );
+    }
+    return { disposition: "closed", viewId: input.viewId, layout };
   }
 
   async nextProjectTabPosition(projectId: string): Promise<number> {

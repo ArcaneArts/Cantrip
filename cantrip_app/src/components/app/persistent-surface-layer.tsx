@@ -27,11 +27,11 @@ export function PersistentSurfaceLayer({
     codeAppearance,
     codeSurfaceVisible,
     compactShell,
+    closeSurfaceView,
     completeSidebarFilePinHandoff,
     createProjectSurface,
     creatingSurfaceKinds,
-    deleteSurface,
-    deleteSurfaceImmediately,
+    deleteSurfaceResource,
     desktopRuntime,
     explorerGraphRequest,
     explorerSurfaceVisible,
@@ -114,8 +114,8 @@ export function PersistentSurfaceLayer({
               createProjectSurface(selectedProject.id, kind, groupId, target);
             }
           }}
-          onClose={deleteSurfaceImmediately}
-          onDelete={deleteSurface}
+          onClose={closeSurfaceView}
+          onDelete={deleteSurfaceResource}
           onRename={renameSurface}
           onSelect={selectTopTab}
           placement={selectedPlacementContext}

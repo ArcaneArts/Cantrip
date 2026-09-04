@@ -6,9 +6,14 @@ import type {
   ProjectTabKind,
   ProjectTabLayoutSummary,
   ProjectTabMemberSummary,
+  ProjectTabPlacement,
+  ProjectSurfaceDefinition,
+  ProjectSurfaceResourceRef,
+  ProjectSurfaceView,
   ProjectViewSummary,
   TerminalSummary,
 } from "@cantrip/protocol";
+import { projectSurfaceIdentityForTab } from "./project-surface-registry";
 
 export type ProjectSurface =
   | ProjectSurfaceBase<"chat", ChatSummary>
@@ -23,14 +28,21 @@ export type ProjectSurface =
 export type ProjectFileSurface = Extract<ProjectSurface, { kind: "explorer" }>;
 
 export interface ProjectSurfaceBase<Kind extends ProjectTabKind, Entity> {
+  definition: ProjectSurfaceDefinition;
   entity: Entity;
   groupId: string;
   kind: Kind;
   member: ProjectTabMemberSummary;
+  placement: ProjectTabPlacement;
   projectId: string;
+  resource: {
+    entity: Entity;
+    ref: ProjectSurfaceResourceRef;
+  };
   tabId: string;
   tabKey: string;
   title: string;
+  view: ProjectSurfaceView;
 }
 
 export interface ProjectSurfaceCollections {
@@ -111,46 +123,73 @@ function surfaceForMember(
     terminals: Map<string, TerminalSummary>;
   },
 ): ProjectSurface | null {
-  const base = {
-    groupId: member.groupId,
-    member,
-    projectId: member.projectId,
-    tabId: member.tabId,
-    tabKey: member.tabKey,
+  const placedSurface = <Kind extends ProjectTabKind, Entity>(
+    kind: Kind,
+    entity: Entity,
+    title: string,
+    file = false,
+  ): ProjectSurfaceBase<Kind, Entity> => {
+    const identity = projectSurfaceIdentityForTab({
+      kind,
+      projectId: member.projectId,
+      resourceId: member.tabId,
+      file,
+    });
+    return {
+      definition: identity.definition,
+      entity,
+      groupId: member.groupId,
+      kind,
+      member,
+      placement: {
+        paneId: member.groupId,
+        position: member.position,
+        viewId: identity.viewId,
+      },
+      projectId: member.projectId,
+      resource: { entity, ref: identity.resource },
+      tabId: member.tabId,
+      tabKey: member.tabKey,
+      title,
+      view: {
+        id: identity.viewId,
+        projectId: member.projectId,
+        resource: identity.resource,
+      },
+    };
   };
   if (member.tabKind === "chat") {
     const entity = entities.chats.get(member.tabId);
-    return entity
-      ? { ...base, entity, kind: "chat", title: entity.title }
-      : null;
+    return entity ? placedSurface("chat", entity, entity.title) : null;
   }
   if (member.tabKind === "terminal") {
     const entity = entities.terminals.get(member.tabId);
     return entity && entity.linkedChatId === null
-      ? { ...base, entity, kind: "terminal", title: entity.title }
+      ? placedSurface("terminal", entity, entity.title)
       : null;
   }
   if (member.tabKind === "explorer") {
     const entity = entities.explorers.get(member.tabId);
     return entity
-      ? { ...base, entity, kind: "explorer", title: entity.title }
+      ? placedSurface(
+          "explorer",
+          entity,
+          entity.title,
+          entity.selectedPath !== null,
+        )
       : null;
   }
   if (member.tabKind === "browser") {
     const entity = entities.browsers.get(member.tabId);
-    return entity
-      ? { ...base, entity, kind: "browser", title: entity.title }
-      : null;
+    return entity ? placedSurface("browser", entity, entity.title) : null;
   }
   if (member.tabKind === "code") {
     const entity = entities.codeTabs.get(member.tabId);
-    return entity
-      ? { ...base, entity, kind: "code", title: entity.title }
-      : null;
+    return entity ? placedSurface("code", entity, entity.title) : null;
   }
   const entity = entities.projectViews.get(member.tabId);
   return entity && entity.kind === member.tabKind
-    ? { ...base, entity, kind: member.tabKind, title: entity.title }
+    ? placedSurface(member.tabKind, entity, entity.title)
     : null;
 }
 

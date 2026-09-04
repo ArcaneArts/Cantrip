@@ -159,15 +159,15 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 450,
+    "application-principal": 452,
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 13,
-    "http": 463,
+    "http": 465,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 398,
-    "total": 470,
+    "requestPrincipalRoutes": 400,
+    "total": 472,
     "websocket": 7,
     "workerCredentialRoutes": 13,
     "durableTables": 86,
@@ -177,9 +177,9 @@
     "clientControlCommands": 4,
     "cliCommands": 35,
     "tunnelFrameKinds": 9,
-    "repositoryMethods": 356,
+    "repositoryMethods": 358,
     "repositoryOwnerEvidence": {
-      "explicit-owner": 287,
+      "explicit-owner": 289,
       "owner-parameter-unused": 18,
       "worker-scoped": 8,
       "system-lifecycle": 9,
@@ -188,7 +188,7 @@
   },
   "contractSetDigests": {
     "agentOperations": "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
-    "applicationRoutes": "0e99c956028a15d3f895c4ae0427899cddf68391c5e362b9b20ee4de70b04e16",
+    "applicationRoutes": "54babb1dc7f85d756c87ff4d129d30360165b8a1394f0a4e5a7faea0c3218192",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
@@ -3764,7 +3764,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 26,
+      "line": 30,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups",
@@ -3777,7 +3777,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 76,
+      "line": 80,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/:groupId",
@@ -3790,7 +3790,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 107,
+      "line": 111,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/:groupId/members/order",
@@ -3803,7 +3803,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 138,
+      "line": 142,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/member",
@@ -3816,7 +3816,33 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 46,
+      "line": 202,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/tab-groups/member/close",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (POST /api/projects/:projectId/tab-groups/member/close)"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 172,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/tab-groups/member/open",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (POST /api/projects/:projectId/tab-groups/member/open)"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 50,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/order",
@@ -11208,43 +11234,55 @@
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 251,
+      "line": 379,
       "method": "get",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 418,
+      "line": 546,
       "method": "updateGroup",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 463,
+      "line": 591,
       "method": "reorderGroups",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 489,
+      "line": 617,
       "method": "reorderMembers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 531,
+      "line": 659,
       "method": "moveMember",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 694,
+      "line": 822,
+      "method": "openSurfaceView",
+      "ownerEvidence": "explicit-owner"
+    },
+    {
+      "file": "cantrip_server/src/db/tab-layouts.ts",
+      "line": 901,
+      "method": "closeSurfaceView",
+      "ownerEvidence": "explicit-owner"
+    },
+    {
+      "file": "cantrip_server/src/db/tab-layouts.ts",
+      "line": 937,
       "method": "nextProjectTabPosition",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 741,
+      "line": 984,
       "method": "reorderProjects",
       "ownerEvidence": "explicit-owner"
     }

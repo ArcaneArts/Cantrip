@@ -8,6 +8,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectFileSurface } from "@/lib/project-surface";
+import { projectSurfaceIdentityForTab } from "@/lib/project-surface-registry";
 
 import { ProjectTabBar } from "./project-tab-bar";
 
@@ -63,19 +64,26 @@ vi.mock("@/components/ui/confirm-dialog", () => ({
   ConfirmDialog: ({
     confirmLabel,
     confirmVariant,
+    onConfirm,
+    open,
     title,
   }: {
     confirmLabel: string;
     confirmVariant?: string;
+    onConfirm(): void;
+    open: boolean;
     title: string;
-  }) => (
-    <div
-      data-confirm-label={confirmLabel}
-      data-confirm-variant={confirmVariant}
-    >
-      {title}
-    </div>
-  ),
+  }) =>
+    open ? (
+      <button
+        data-confirm-label={confirmLabel}
+        data-confirm-variant={confirmVariant}
+        onClick={onConfirm}
+        type="button"
+      >
+        {title}
+      </button>
+    ) : null,
 }));
 vi.mock("./project-surface-create-menu", () => ({
   ProjectSurfaceCreateMenu: () => null,
@@ -124,15 +132,33 @@ function fileSurface(): ProjectFileSurface {
     createdAt: now,
     updatedAt: now,
   });
+  const identity = projectSurfaceIdentityForTab({
+    kind: "explorer",
+    projectId: explorer.projectId,
+    resourceId: explorer.id,
+    file: true,
+  });
   return {
+    definition: identity.definition,
     entity: explorer,
     groupId: member.groupId,
     kind: "explorer",
     member,
+    placement: {
+      paneId: member.groupId,
+      position: member.position,
+      viewId: identity.viewId,
+    },
     projectId: explorer.projectId,
+    resource: { entity: explorer, ref: identity.resource },
     tabId: explorer.id,
     tabKey: member.tabKey,
     title: explorer.title,
+    view: {
+      id: identity.viewId,
+      projectId: explorer.projectId,
+      resource: identity.resource,
+    },
   };
 }
 
@@ -303,15 +329,69 @@ describe("project tab bar", () => {
     expect(markup).toContain('aria-label="Project file tabs"');
   });
 
-  it("presents pinned file removal as a neutral Close action", () => {
+  it("presents Close View separately from destructive resource deletion", () => {
     const markup = renderTabs(fileSurface());
 
-    expect(markup.match(/Close/gu)?.length).toBeGreaterThanOrEqual(4);
+    expect(markup.match(/Close View/gu)?.length).toBeGreaterThanOrEqual(2);
+    expect(markup.match(/Delete Resource/gu)?.length).toBeGreaterThanOrEqual(2);
     expect(markup.match(/lucide-x/gu)).toHaveLength(2);
-    expect(markup).not.toContain("lucide-trash-2");
-    expect(markup).not.toContain("text-destructive");
-    expect(markup).toContain('data-confirm-label="Close"');
-    expect(markup).toContain('data-confirm-variant="default"');
-    expect(markup).toContain("Close file tab?");
+    expect(markup.match(/lucide-trash-2/gu)).toHaveLength(2);
+    expect(markup).not.toContain("Close file tab?");
+  });
+
+  it("routes middle-click and menu close through view lifecycle only", async () => {
+    const onClose = vi.fn();
+    const onDelete = vi.fn();
+    const surface = fileSurface();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DndContext>
+          <ProjectTabBar
+            activeTabKey={surface.tabKey}
+            onClose={onClose}
+            onCreate={vi.fn()}
+            onDelete={onDelete}
+            onRename={vi.fn()}
+            onSelect={vi.fn()}
+            surfaces={[surface]}
+          />
+        </DndContext>,
+      );
+    });
+
+    const frame = renderer.root.findByProps({
+      "data-project-tab-key": surface.tabKey,
+    });
+    frame.props.onAuxClick({
+      button: 1,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    });
+    expect(onClose).toHaveBeenCalledWith(surface);
+    expect(onDelete).not.toHaveBeenCalled();
+
+    onClose.mockClear();
+    const menuButtons = renderer.root.findAllByType("button");
+    menuButtons
+      .find((button) => textContent(button).trim() === "Close View")!
+      .props.onClick();
+    expect(onClose).toHaveBeenCalledWith(surface);
+    expect(onDelete).not.toHaveBeenCalled();
+
+    await act(async () =>
+      menuButtons
+        .find((button) => textContent(button).trim() === "Delete Resource")!
+        .props.onClick(),
+    );
+    expect(onDelete).not.toHaveBeenCalled();
+    const confirm = renderer.root.findByProps({
+      "data-confirm-label": "Delete Resource",
+    });
+    expect(confirm.props["data-confirm-variant"]).toBe("destructive");
+    await act(async () => confirm.props.onClick());
+    expect(onDelete).toHaveBeenCalledWith(surface);
+
+    await act(async () => renderer.unmount());
   });
 });

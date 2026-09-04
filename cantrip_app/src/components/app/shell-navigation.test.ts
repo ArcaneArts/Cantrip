@@ -4,10 +4,16 @@ import type {
 } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
+import * as api from "@/lib/api";
+import {
+  selectedWorkspaceTabKey,
+  type WorkspaceSelection,
+} from "@/lib/workspace-selection";
 
 import {
   createShellNavigationCommands,
   createShellProjectNavigationCommands,
+  openOrFocusProjectSurface,
   projectTabLayoutContainsTab,
   shellDestinationVisibility,
   updateShellDestinationVisibility,
@@ -195,6 +201,186 @@ describe("shell destination state", () => {
         (visible) => !visible,
       ),
     ).toEqual({ kind: "workspace" });
+  });
+});
+
+describe("surface view open-or-focus", () => {
+  const surfaceRef = {
+    kind: "entity",
+    definitionId: "project.agent",
+    resourceId: "agent-1",
+  } as const;
+  const layout = {
+    projectId: "project-1",
+    revision: 4,
+    groups: [
+      {
+        id: "group-1",
+        projectId: "project-1",
+        members: [{ tabKey: "chat:agent-1" }],
+      },
+    ],
+  } as ProjectTabLayoutSummary;
+
+  it("asks the server to focus an already-open view despite a cached placement", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["project-tab-layout", "project-1"], layout);
+    const open = vi.spyOn(api, "openProjectSurfaceView").mockResolvedValue({
+      disposition: "focused",
+      layout,
+      paneId: "group-1",
+      viewId: "chat:agent-1",
+    });
+
+    await expect(
+      openOrFocusProjectSurface({
+        projectId: "project-1",
+        queryClient,
+        surfaceRef,
+      }),
+    ).resolves.toMatchObject({ layout, viewId: "chat:agent-1" });
+    expect(open).toHaveBeenCalledWith("project-1", {
+      revision: 4,
+      surfaceRef,
+    });
+    open.mockRestore();
+  });
+
+  it("opens a closed view once and caches the authoritative layout", async () => {
+    const queryClient = new QueryClient();
+    const closed = { ...layout, groups: [], revision: 5 };
+    const reopened = { ...layout, revision: 6 };
+    queryClient.setQueryData(["project-tab-layout", "project-1"], closed);
+    const open = vi.spyOn(api, "openProjectSurfaceView").mockResolvedValue({
+      disposition: "opened",
+      layout: reopened,
+      paneId: "group-1",
+      viewId: "chat:agent-1",
+    });
+
+    const result = await openOrFocusProjectSurface({
+      projectId: "project-1",
+      queryClient,
+      surfaceRef,
+    });
+
+    expect(open).toHaveBeenCalledWith("project-1", {
+      revision: 5,
+      surfaceRef,
+    });
+    expect(result.layout).toBe(reopened);
+    expect(
+      queryClient.getQueryData(["project-tab-layout", "project-1"]),
+    ).toEqual(reopened);
+    open.mockRestore();
+  });
+
+  it("lets the latest surface-open intent win when responses arrive out of order", async () => {
+    type ProjectCommandOptions = Parameters<
+      typeof createShellProjectNavigationCommands
+    >[0];
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["project-tab-layout", "project-1"], layout);
+    const setPendingSurfaceSelection = vi.fn();
+    const setWorkspaceSelection = vi.fn();
+    let resolveFirst!: (
+      value: Awaited<ReturnType<typeof api.openProjectSurfaceView>>,
+    ) => void;
+    let resolveSecond!: (
+      value: Awaited<ReturnType<typeof api.openProjectSurfaceView>>,
+    ) => void;
+    const first = new Promise<
+      Awaited<ReturnType<typeof api.openProjectSurfaceView>>
+    >((resolve) => {
+      resolveFirst = resolve;
+    });
+    const second = new Promise<
+      Awaited<ReturnType<typeof api.openProjectSurfaceView>>
+    >((resolve) => {
+      resolveSecond = resolve;
+    });
+    const open = vi
+      .spyOn(api, "openProjectSurfaceView")
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => second);
+    const options = {
+      compactShell: false,
+      getActiveProjectWorkspaceId: () => "workspace-1",
+      navigation: {
+        setAppMode: vi.fn(),
+        setProjectOverviewSection: vi.fn(),
+        setProjectSettingsSection: vi.fn(),
+        setSelectedProjectId: vi.fn(),
+        setShowImporter: vi.fn(),
+        setShowProjectSettings: vi.fn(),
+        setShowServerAdmin: vi.fn(),
+        setShowSettings: vi.fn(),
+      },
+      persistAppDestination: vi.fn().mockResolvedValue(undefined),
+      queryClient,
+      setCreatedRepositoryOnboarding: vi.fn(),
+      setDesktopSidebarDrawerOpen: vi.fn(),
+      setFolderProjectDialogMode: vi.fn(),
+      setFolderProjectDialogOpen: vi.fn(),
+      setPendingSurfaceSelection,
+      setProjectTaskChatIds: vi.fn(),
+      setSidebarFilePreview: vi.fn(),
+      setWorkspaceSelection,
+      surfaceOpenRequestRef: { current: 0 },
+    } as unknown as ProjectCommandOptions;
+    const commands = createShellProjectNavigationCommands(options);
+    const secondRef = { ...surfaceRef, resourceId: "agent-2" } as const;
+    const secondLayout = {
+      ...layout,
+      revision: 5,
+      groups: [
+        {
+          ...layout.groups[0]!,
+          anchorTabKey: "chat:agent-2",
+          members: [{ tabKey: "chat:agent-2" }],
+        },
+      ],
+    } as ProjectTabLayoutSummary;
+
+    commands.openOrFocusSurface("project-1", surfaceRef);
+    commands.openOrFocusSurface("project-1", secondRef);
+    resolveSecond({
+      disposition: "opened",
+      layout: secondLayout,
+      paneId: "group-1",
+      viewId: "chat:agent-2",
+    });
+    await vi.waitFor(() =>
+      expect(setWorkspaceSelection).toHaveBeenCalledOnce(),
+    );
+    resolveFirst({
+      disposition: "focused",
+      layout,
+      paneId: "group-1",
+      viewId: "chat:agent-1",
+    });
+    await Promise.resolve();
+
+    expect(setWorkspaceSelection).toHaveBeenCalledOnce();
+    const selectLatest = setWorkspaceSelection.mock.calls[0]?.[0] as (
+      current: WorkspaceSelection,
+    ) => WorkspaceSelection;
+    expect(
+      selectedWorkspaceTabKey(
+        selectLatest({
+          activeTabByGroup: {},
+          destination: "overview",
+          projectId: "project-1",
+          selectedGroupId: null,
+        }),
+      ),
+    ).toBe("chat:agent-2");
+    expect(
+      setPendingSurfaceSelection.mock.calls.filter(
+        ([selection]) => selection === null,
+      ),
+    ).toHaveLength(1);
+    open.mockRestore();
   });
 });
 

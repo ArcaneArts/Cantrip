@@ -114,10 +114,7 @@ export function MobileBottomNavigation({
                     </button>
                     <SurfaceActionsMenu
                       align="center"
-                      deleteIcon={<X className="size-4" />}
-                      deleteLabel="Close"
-                      deleteTone="default"
-                      onDelete={() => onClose(surface)}
+                      onClose={() => onClose(surface)}
                       title={label}
                       trigger={
                         <button
@@ -135,7 +132,7 @@ export function MobileBottomNavigation({
                 <ContextMenu.Portal>
                   <StyledContextMenuContent className="min-w-40">
                     <StyledContextMenuItem onSelect={() => onClose(surface)}>
-                      <X className="size-4" /> Close
+                      <X className="size-4" /> Close View
                     </StyledContextMenuItem>
                   </StyledContextMenuContent>
                 </ContextMenu.Portal>

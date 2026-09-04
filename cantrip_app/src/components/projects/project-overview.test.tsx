@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectSurface } from "@/lib/project-surface";
+import { projectSurfaceIdentityForTab } from "@/lib/project-surface-registry";
 
 import {
   formatByteCount,
@@ -171,7 +172,13 @@ function chatSurface(status: ChatSummary["status"]): ProjectSurface {
     createdAt: now,
     updatedAt: now,
   } satisfies ChatSummary;
+  const identity = projectSurfaceIdentityForTab({
+    kind: "chat",
+    projectId: project.id,
+    resourceId: chat.id,
+  });
   return {
+    definition: identity.definition,
     entity: chat,
     groupId: "group-1",
     kind: "chat",
@@ -186,10 +193,21 @@ function chatSurface(status: ChatSummary["status"]): ProjectSurface {
       createdAt: now,
       updatedAt: now,
     },
+    placement: {
+      paneId: "group-1",
+      position: 0,
+      viewId: identity.viewId,
+    },
     projectId: project.id,
+    resource: { entity: chat, ref: identity.resource },
     tabId: chat.id,
     tabKey: `chat:${chat.id}`,
     title: chat.title,
+    view: {
+      id: identity.viewId,
+      projectId: project.id,
+      resource: identity.resource,
+    },
   };
 }
 

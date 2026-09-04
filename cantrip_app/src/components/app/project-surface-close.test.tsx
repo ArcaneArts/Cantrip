@@ -1,15 +1,23 @@
 import type { ChatSummary, ProjectTabLayoutSummary } from "@cantrip/protocol";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TestRenderer, { act } from "react-test-renderer";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import { closeProjectSurfaceView } from "@/lib/api";
+import type { ProjectSurface } from "@/lib/project-surface";
 
 import {
   selectedWorkspaceTabKey,
   type WorkspaceSelection,
 } from "@/lib/workspace-selection";
 
-import { useProjectSurfaceCloseCoordinator } from "./project-surface-close";
+import {
+  useProjectSurfaceCloseCoordinator,
+  useProjectSurfaceViewOperations,
+} from "./project-surface-close";
+
+vi.mock("@/lib/api", () => ({ closeProjectSurfaceView: vi.fn() }));
 
 const timestamp = "2026-09-03T12:00:00.000Z";
 const projectId = "project-1";
@@ -83,8 +91,35 @@ function CloseHarness({ queryClient }: { queryClient: QueryClient }) {
     <>
       <button id="begin" onClick={() => close.begin(closeInput)} />
       <button id="commit" onClick={() => close.commit(closeInput)} />
+      <button
+        id="commit-view"
+        onClick={() =>
+          close.commitView(closeInput, {
+            ...layout,
+            revision: layout.revision + 1,
+            groups: layout.groups.map((group) => ({
+              ...group,
+              members: group.members.filter(
+                ({ tabKey }) => tabKey !== "chat:agent-1",
+              ),
+            })),
+          })
+        }
+      />
       <button id="rollback" onClick={() => close.rollback(closeInput)} />
+      <button
+        id="switch-project"
+        onClick={() =>
+          setSelection({
+            activeTabByGroup: {},
+            destination: "overview",
+            projectId: "project-2",
+            selectedGroupId: null,
+          })
+        }
+      />
       <span id="pending">{[...close.pendingTabKeys].join(",")}</span>
+      <span id="project">{selection.projectId}</span>
       <span id="selected">{selectedWorkspaceTabKey(selection)}</span>
     </>
   );
@@ -151,6 +186,35 @@ describe("project surface close coordinator", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("commits Close View without removing the resource cache", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["chats", projectId], [chat]);
+    queryClient.setQueryData(["project-tab-layout", projectId], layout);
+    const renderer = await renderHarness(queryClient);
+
+    await act(async () =>
+      renderer.root.findByProps({ id: "begin" }).props.onClick(),
+    );
+    await act(async () =>
+      renderer.root.findByProps({ id: "commit-view" }).props.onClick(),
+    );
+
+    expect(text(renderer, "pending")).toBe("");
+    expect(
+      queryClient.getQueryData<ChatSummary[]>(["chats", projectId]),
+    ).toEqual([chat]);
+    expect(
+      queryClient
+        .getQueryData<ProjectTabLayoutSummary>([
+          "project-tab-layout",
+          projectId,
+        ])
+        ?.groups[0]?.members.map(({ tabKey }) => tabKey),
+    ).toEqual(["terminal:terminal-1"]);
+
+    await act(async () => renderer.unmount());
+  });
+
   it("restores visibility without changing caches when deletion fails", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["chats", projectId], [chat]);
@@ -165,6 +229,7 @@ describe("project surface close coordinator", () => {
     );
 
     expect(text(renderer, "pending")).toBe("");
+    expect(text(renderer, "selected")).toBe("chat:agent-1");
     expect(
       queryClient.getQueryData<ChatSummary[]>(["chats", projectId]),
     ).toEqual([chat]);
@@ -172,6 +237,91 @@ describe("project surface close coordinator", () => {
       layout,
     );
 
+    await act(async () => renderer.unmount());
+  });
+
+  it("does not reconcile another project's active selection on completion", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["chats", projectId], [chat]);
+    queryClient.setQueryData(["project-tab-layout", projectId], layout);
+    const renderer = await renderHarness(queryClient);
+
+    await act(async () =>
+      renderer.root.findByProps({ id: "begin" }).props.onClick(),
+    );
+    await act(async () =>
+      renderer.root.findByProps({ id: "switch-project" }).props.onClick(),
+    );
+    await act(async () =>
+      renderer.root.findByProps({ id: "commit-view" }).props.onClick(),
+    );
+
+    expect(text(renderer, "project")).toBe("project-2");
+    expect(text(renderer, "selected")).toBeNull();
+    await act(async () => renderer.unmount());
+  });
+});
+
+describe("project surface view operations", () => {
+  it("hides the view before awaiting Explorer attachment retirement", async () => {
+    const order: string[] = [];
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["project-tab-layout", projectId], layout);
+    vi.mocked(closeProjectSurfaceView).mockImplementation(async () => {
+      order.push("server-close");
+      return {
+        disposition: "closed",
+        layout: { ...layout, revision: 2, groups: [] },
+        viewId: "explorer:explorer-1",
+      };
+    });
+    const surfaceClose = {
+      begin: vi.fn(() => order.push("hide-view")),
+      commit: vi.fn(),
+      commitView: vi.fn(),
+      pendingTabKeys: new Set<string>(),
+      rollback: vi.fn(),
+    };
+    const surface = {
+      kind: "explorer",
+      projectId,
+      tabId: "explorer-1",
+      view: { id: "explorer:explorer-1" },
+    } as ProjectSurface;
+
+    function ViewCloseHarness() {
+      const operations = useProjectSurfaceViewOperations({
+        beforeClose: async () => {
+          order.push("retire-attachment");
+        },
+        queryClient,
+        surfaceClose,
+      });
+      return (
+        <button
+          id="close-view"
+          onClick={() => operations.closeSurfaceViewMutation.mutate(surface)}
+        />
+      );
+    }
+
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <ViewCloseHarness />
+        </QueryClientProvider>,
+      );
+    });
+    await act(async () => {
+      renderer.root.findByProps({ id: "close-view" }).props.onClick();
+      await vi.waitFor(() =>
+        expect(closeProjectSurfaceView).toHaveBeenCalledOnce(),
+      );
+    });
+
+    expect(order).toEqual(["hide-view", "retire-attachment", "server-close"]);
+    expect(surfaceClose.commitView).toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
 });

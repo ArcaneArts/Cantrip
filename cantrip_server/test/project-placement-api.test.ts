@@ -6,12 +6,16 @@ import path from "node:path";
 import {
   browserWireSummarySchema,
   cantripCliCommandResultSchema,
+  chatWireListSchema,
+  chatWireSummarySchema,
   directAttachmentTicketSchema,
   explorerWireSummarySchema,
   executionPlacementResolutionSchema,
   executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
   projectTabLayoutWireSummarySchema,
+  projectSurfaceViewCloseResultSchema,
+  projectSurfaceViewOpenResultSchema,
   protectedScriptCommandListSchema,
   remoteDesktopWireSummarySchema,
   serverBootstrapSchema,
@@ -2135,6 +2139,301 @@ describe.sequential("project execution placement API", () => {
         .find(({ id }) => id === groupId)
         ?.members.some(({ tabId }) => tabId === sidebar.id),
     ).toBe(true);
+  });
+
+  it("closes and reopens a surface view without destroying its Chat resource", async () => {
+    const chatResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: {
+        ...protectedChatFields(),
+        target: {
+          kind: "worktree",
+          projectId,
+          worktreeId: alphaWorktreeId,
+        },
+      },
+    });
+    expect(chatResponse.statusCode, chatResponse.body).toBe(201);
+    const chat = chatWireSummarySchema.parse(chatResponse.json());
+    const viewId = `chat:${chat.id}`;
+    let layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(
+      layout.groups
+        .flatMap(({ members }) => members)
+        .filter(({ tabKey }) => tabKey === viewId),
+    ).toHaveLength(1);
+
+    const closeRevision = layout.revision;
+    const closeResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tab-groups/member/close`,
+      payload: { revision: closeRevision, viewId },
+    });
+    expect(closeResponse.statusCode, closeResponse.body).toBe(200);
+    const closed = projectSurfaceViewCloseResultSchema.parse(
+      closeResponse.json(),
+    );
+    expect(closed).toMatchObject({ disposition: "closed", viewId });
+    expect(closed.layout.revision).toBe(closeRevision + 1);
+    expect(
+      closed.layout.groups
+        .flatMap(({ members }) => members)
+        .some(({ tabKey }) => tabKey === viewId),
+    ).toBe(false);
+    expect(
+      chatWireListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/chats`,
+          })
+        ).json(),
+      ),
+    ).toContainEqual(expect.objectContaining({ id: chat.id }));
+
+    const repeatedCloseResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tab-groups/member/close`,
+      payload: { revision: closeRevision, viewId },
+    });
+    expect(repeatedCloseResponse.statusCode, repeatedCloseResponse.body).toBe(
+      200,
+    );
+    const repeatedClose = projectSurfaceViewCloseResultSchema.parse(
+      repeatedCloseResponse.json(),
+    );
+    expect(repeatedClose).toMatchObject({
+      disposition: "already-closed",
+      viewId,
+    });
+    expect(repeatedClose.layout.revision).toBe(closed.layout.revision);
+
+    const staleOpen = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tab-groups/member/open`,
+      payload: {
+        revision: closeRevision,
+        surfaceRef: {
+          kind: "entity",
+          definitionId: "project.agent",
+          resourceId: chat.id,
+        },
+      },
+    });
+    expect(staleOpen.statusCode).toBe(409);
+
+    const openRequest = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/tab-groups/member/open`,
+        payload: {
+          revision: repeatedClose.layout.revision,
+          surfaceRef: {
+            kind: "entity",
+            definitionId: "project.agent",
+            resourceId: chat.id,
+          },
+        },
+      });
+    const concurrentOpenResponses = await Promise.all([
+      openRequest(),
+      openRequest(),
+    ]);
+    expect(
+      concurrentOpenResponses.every(({ statusCode }) =>
+        [200, 409].includes(statusCode),
+      ),
+    ).toBe(true);
+    const successfulOpens = concurrentOpenResponses
+      .filter(({ statusCode }) => statusCode === 200)
+      .map((response) =>
+        projectSurfaceViewOpenResultSchema.parse(response.json()),
+      );
+    expect(
+      successfulOpens.filter(({ disposition }) => disposition === "opened"),
+    ).toHaveLength(1);
+    const openResponse = concurrentOpenResponses.find(
+      (response) =>
+        response.statusCode === 200 &&
+        projectSurfaceViewOpenResultSchema.parse(response.json())
+          .disposition === "opened",
+    )!;
+    expect(openResponse.statusCode, openResponse.body).toBe(200);
+    const opened = projectSurfaceViewOpenResultSchema.parse(
+      openResponse.json(),
+    );
+    expect(opened).toMatchObject({ disposition: "opened", viewId });
+    expect(opened.layout.revision).toBe(repeatedClose.layout.revision + 1);
+    expect(
+      opened.layout.groups
+        .flatMap(({ members }) => members)
+        .filter(({ tabKey }) => tabKey === viewId),
+    ).toHaveLength(1);
+
+    const focusedResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tab-groups/member/open`,
+      payload: {
+        revision: repeatedClose.layout.revision,
+        surfaceRef: {
+          kind: "entity",
+          definitionId: "project.agent",
+          resourceId: chat.id,
+        },
+      },
+    });
+    expect(focusedResponse.statusCode, focusedResponse.body).toBe(200);
+    const focused = projectSurfaceViewOpenResultSchema.parse(
+      focusedResponse.json(),
+    );
+    expect(focused).toMatchObject({ disposition: "focused", viewId });
+    expect(focused.layout.revision).toBe(opened.layout.revision);
+
+    const staleClose = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tab-groups/member/close`,
+      payload: { revision: repeatedClose.layout.revision, viewId },
+    });
+    expect(staleClose.statusCode).toBe(409);
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(
+      layout.groups
+        .flatMap(({ members }) => members)
+        .filter(({ tabKey }) => tabKey === viewId),
+    ).toHaveLength(1);
+  });
+
+  it("rejects a surface reference whose definition mismatches an open ProjectView", async () => {
+    const fields = protectedDisplayLabelFields("project-view");
+    const view = await database.repository.createProjectView(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        id: fields.id,
+        kind: "issues",
+        titleProtection: fields.titleProtection,
+      },
+    );
+    expect(view).not.toBeNull();
+    const layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+
+    const mismatch = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tab-groups/member/open`,
+      payload: {
+        revision: layout.revision,
+        surfaceRef: {
+          kind: "entity",
+          definitionId: "project.git-history",
+          resourceId: view!.id,
+        },
+      },
+    });
+    expect(mismatch.statusCode, mismatch.body).toBe(400);
+
+    const focused = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tab-groups/member/open`,
+      payload: {
+        revision: layout.revision,
+        surfaceRef: {
+          kind: "entity",
+          definitionId: "project.github-issues",
+          resourceId: view!.id,
+        },
+      },
+    });
+    expect(focused.statusCode, focused.body).toBe(200);
+    expect(
+      projectSurfaceViewOpenResultSchema.parse(focused.json()),
+    ).toMatchObject({ disposition: "focused", viewId: `view:${view!.id}` });
+  });
+
+  it("serializes reopen against resource deletion without orphaning the layout", async () => {
+    const chatResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: {
+        ...protectedChatFields(),
+        target: {
+          kind: "worktree",
+          projectId,
+          worktreeId: alphaWorktreeId,
+        },
+      },
+    });
+    expect(chatResponse.statusCode, chatResponse.body).toBe(201);
+    const chat = chatWireSummarySchema.parse(chatResponse.json());
+    const viewId = `chat:${chat.id}`;
+    let layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+    const closed = projectSurfaceViewCloseResultSchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/tab-groups/member/close`,
+          payload: { revision: layout.revision, viewId },
+        })
+      ).json(),
+    );
+
+    const [reopen, deleted] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/tab-groups/member/open`,
+        payload: {
+          revision: closed.layout.revision,
+          surfaceRef: {
+            kind: "entity",
+            definitionId: "project.agent",
+            resourceId: chat.id,
+          },
+        },
+      }),
+      app.inject({ method: "DELETE", url: `/api/chats/${chat.id}` }),
+    ]);
+    expect([200, 400]).toContain(reopen.statusCode);
+    expect(deleted.statusCode, deleted.body).toBe(204);
+
+    const layoutResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/tab-groups`,
+    });
+    expect(layoutResponse.statusCode, layoutResponse.body).toBe(200);
+    layout = projectTabLayoutWireSummarySchema.parse(layoutResponse.json());
+    expect(
+      layout.groups
+        .flatMap(({ members }) => members)
+        .some(({ tabKey }) => tabKey === viewId),
+    ).toBe(false);
   });
 
   it("keeps custom tab-group labels opaque through rename, reorder, split, and merge", async () => {

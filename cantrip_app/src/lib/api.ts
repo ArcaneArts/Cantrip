@@ -295,6 +295,11 @@ import {
   workspaceRepositoryDiscoveryStartSchema,
   workspaceRepositoryImportStartSchema,
   projectTabLayoutWireSummarySchema,
+  projectSurfaceViewCloseResultSchema,
+  projectSurfaceViewCloseSchema,
+  projectSurfaceViewOpenResultSchema,
+  projectSurfaceViewOpenSchema,
+  type ProjectSurfaceResourceRef,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
   serviceLogReadResultSchema,
@@ -5312,6 +5317,43 @@ export async function moveProjectTabGroupMember(
       ),
     ),
   );
+}
+
+export async function openProjectSurfaceView(
+  projectId: string,
+  input: {
+    revision: number;
+    surfaceRef: ProjectSurfaceResourceRef;
+    targetPaneId?: string;
+  },
+) {
+  const wire = projectSurfaceViewOpenResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/member/open`,
+      projectSurfaceViewOpenSchema.parse(input),
+    ),
+  );
+  return {
+    ...wire,
+    layout: await chatTitleEncryption.openTabLayout(wire.layout),
+  };
+}
+
+export async function closeProjectSurfaceView(
+  projectId: string,
+  revision: number,
+  viewId: string,
+) {
+  const wire = projectSurfaceViewCloseResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/member/close`,
+      projectSurfaceViewCloseSchema.parse({ revision, viewId }),
+    ),
+  );
+  return {
+    ...wire,
+    layout: await chatTitleEncryption.openTabLayout(wire.layout),
+  };
 }
 
 export async function createChat(

@@ -95,6 +95,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     bootstrap,
     browsers,
     chats,
+    closeSurfaceView,
     codeTabs,
     createProjectSurface,
     createSidebarExplorerMutation,
@@ -122,6 +123,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     openChatExplorerHere,
     openChatHistoryHere,
     openChatTerminalHere,
+    openOrFocusSurface,
     openProjectCreateSource,
     openProjectSettings,
     openServerAdmin,
@@ -525,8 +527,11 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                       renameExplorerMutation.mutate({ explorerId, title })
                     }
                     onDeleteExplorer={requestDeleteExplorer}
-                    onCloseExplorer={(explorerId) =>
-                      deleteExplorerMutation.mutate(explorerId)
+                    onCloseSurface={closeSurfaceView}
+                    onOpenSurface={(surfaceRef) =>
+                      selectedProjectId
+                        ? openOrFocusSurface(selectedProjectId, surfaceRef)
+                        : undefined
                     }
                     onRenameProjectView={(viewId, title) =>
                       renameProjectViewMutation.mutate({ viewId, title })
