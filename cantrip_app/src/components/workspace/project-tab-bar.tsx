@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 
 import {
   ProjectSurfaceCreateMenu,
@@ -25,6 +25,10 @@ import {
 import { InlineRenameLabel, SurfaceActionsMenu } from "./surface-tab-controls";
 import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
+import {
+  useWorkspaceDndState,
+  WorkspaceDropPlaceholder,
+} from "@/components/workspace/workspace-dnd-state";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -40,6 +44,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
+  workspaceSurfaceDropPreview,
   workspaceSurfaceDragId,
   workspacePaneStripDropId,
 } from "@/lib/workspace-dnd-model";
@@ -128,9 +133,23 @@ export function ProjectPaneTabStrip({
     surfaces[0]?.projectId ??
     previewFile?.projectId ??
     "empty";
+  const workspaceDnd = useWorkspaceDndState();
+  const crossPaneDrag =
+    workspaceDnd.activeDrag?.type === "surface" &&
+    workspaceDnd.activeDrag.paneId !== paneId
+      ? workspaceDnd.activeDrag
+      : null;
+  const dropPreview = workspaceSurfaceDropPreview({
+    decision: workspaceDnd.decision,
+    drag: workspaceDnd.activeDrag,
+    drop: workspaceDnd.dropTarget,
+    memberCount: surfaces.length,
+    paneId,
+    region: paneRegion,
+  });
   const paneStripDrop = useDroppable({
     id: workspacePaneStripDropId(paneId),
-    disabled: surfaces.length === 0,
+    disabled: paneId === "empty" || projectId === "empty",
     data: {
       drop: {
         type: "pane-strip",
@@ -183,145 +202,168 @@ export function ProjectPaneTabStrip({
               const canRename = surfaceCanRename(surface);
               const canDelete = surfaceCanDelete(surface);
               return (
-                <SortableProjectTabFrame
-                  disabled={editing}
-                  key={surface.tabKey}
-                  memberPosition={memberPosition}
-                  surface={surface}
-                >
-                  <ContextMenu.Root>
-                    <ContextMenu.Trigger asChild>
-                      <div
-                        data-project-tab-key={surface.tabKey}
-                        onAuxClick={(event) =>
-                          closeTabOnMiddleClick(event, () =>
-                            closeImmediately(surface),
-                          )
-                        }
-                        onMouseDown={preventMiddleMouseDefault}
-                        className={cn(
-                          "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                          active && "bg-muted text-foreground",
-                        )}
-                      >
-                        {editing ? (
-                          <InlineRenameLabel
-                            ariaLabel={`Rename ${surface.title}`}
-                            className="mx-1 h-7 w-36 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-                            value={renameValue}
-                            onCancel={() => setEditingTabKey(null)}
-                            onChange={setRenameValue}
-                            onSubmit={() => finishRename(surface)}
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={active}
-                            className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
-                            onClick={() => onSelect(surface.tabKey)}
-                            onDoubleClick={(event) => {
-                              event.preventDefault();
-                              if (canRename) beginRename(surface);
-                            }}
-                          >
-                            <SurfaceTabIcon surface={surface} />
-                            <span className="truncate">{surface.title}</span>
-                          </button>
-                        )}
-                        {!editing ? (
-                          <SurfaceActionsMenu
-                            deleteLabel={surfaceDeleteLabel(surface)}
-                            title={surface.title}
-                            onClose={() => closeImmediately(surface)}
-                            onDelete={
-                              canDelete
-                                ? () => setDeleteTarget(surface)
-                                : undefined
-                            }
-                            onRename={
-                              canRename ? () => beginRename(surface) : undefined
-                            }
-                            trigger={
-                              <button
-                                type="button"
-                                className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-0 hover:bg-background/70 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-                                aria-label={`Actions for ${surface.title}`}
-                              >
-                                <MoreHorizontal className="size-3.5" />
-                              </button>
-                            }
-                          />
-                        ) : null}
-                        <span
-                          aria-hidden="true"
+                <Fragment key={surface.tabKey}>
+                  {crossPaneDrag ? (
+                    <WorkspaceDropPlaceholder
+                      active={dropPreview?.memberPosition === memberPosition}
+                      label={crossPaneDrag.label}
+                      orientation="horizontal"
+                      paneId={paneId}
+                      tabKey={crossPaneDrag.tabKey}
+                      visualKind={crossPaneDrag.visualKind}
+                    />
+                  ) : null}
+                  <SortableProjectTabFrame
+                    disabled={editing}
+                    memberPosition={memberPosition}
+                    surface={surface}
+                  >
+                    <ContextMenu.Root>
+                      <ContextMenu.Trigger asChild>
+                        <div
+                          data-project-tab-key={surface.tabKey}
+                          onAuxClick={(event) =>
+                            closeTabOnMiddleClick(event, () =>
+                              closeImmediately(surface),
+                            )
+                          }
+                          onMouseDown={preventMiddleMouseDefault}
                           className={cn(
-                            "absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
-                            active ? "opacity-100" : "opacity-0",
+                            "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                            active && "bg-muted text-foreground",
                           )}
-                        />
-                      </div>
-                    </ContextMenu.Trigger>
-                    <ContextMenu.Portal>
-                      <StyledContextMenuContent className="min-w-40">
-                        {canRename ? (
-                          <StyledContextMenuItem
-                            onSelect={() => beginRename(surface)}
-                          >
-                            <Pencil className="size-4" /> Rename
-                          </StyledContextMenuItem>
-                        ) : null}
-                        {canRename ? (
-                          <ContextMenu.Separator className="my-1 h-px bg-border" />
-                        ) : null}
-                        {onMoveToRegion
-                          ? (["center", "right", "bottom"] as const)
-                              .filter(
-                                (region) =>
-                                  region !== paneRegion &&
-                                  surface.definition.supportedPlacements.includes(
-                                    region,
-                                  ),
-                              )
-                              .map((region) => (
-                                <StyledContextMenuItem
-                                  key={region}
-                                  onSelect={() =>
-                                    onMoveToRegion(surface, region)
-                                  }
-                                >
-                                  Move to{" "}
-                                  {region === "center"
-                                    ? "Center"
-                                    : region === "right"
-                                      ? "Right"
-                                      : "Bottom"}
-                                </StyledContextMenuItem>
-                              ))
-                          : null}
-                        <StyledContextMenuItem
-                          onSelect={() => closeImmediately(surface)}
                         >
-                          <X className="size-4" /> Close View
-                        </StyledContextMenuItem>
-                        {canDelete ? (
-                          <ContextMenu.Separator className="my-1 h-px bg-border" />
-                        ) : null}
-                        {canDelete ? (
+                          {editing ? (
+                            <InlineRenameLabel
+                              ariaLabel={`Rename ${surface.title}`}
+                              className="mx-1 h-7 w-36 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
+                              value={renameValue}
+                              onCancel={() => setEditingTabKey(null)}
+                              onChange={setRenameValue}
+                              onSubmit={() => finishRename(surface)}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              role="tab"
+                              aria-selected={active}
+                              className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
+                              onClick={() => onSelect(surface.tabKey)}
+                              onDoubleClick={(event) => {
+                                event.preventDefault();
+                                if (canRename) beginRename(surface);
+                              }}
+                            >
+                              <SurfaceTabIcon surface={surface} />
+                              <span className="truncate">{surface.title}</span>
+                            </button>
+                          )}
+                          {!editing ? (
+                            <SurfaceActionsMenu
+                              deleteLabel={surfaceDeleteLabel(surface)}
+                              title={surface.title}
+                              onClose={() => closeImmediately(surface)}
+                              onDelete={
+                                canDelete
+                                  ? () => setDeleteTarget(surface)
+                                  : undefined
+                              }
+                              onRename={
+                                canRename
+                                  ? () => beginRename(surface)
+                                  : undefined
+                              }
+                              trigger={
+                                <button
+                                  type="button"
+                                  className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-0 hover:bg-background/70 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                                  aria-label={`Actions for ${surface.title}`}
+                                >
+                                  <MoreHorizontal className="size-3.5" />
+                                </button>
+                              }
+                            />
+                          ) : null}
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
+                              active ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                        </div>
+                      </ContextMenu.Trigger>
+                      <ContextMenu.Portal>
+                        <StyledContextMenuContent className="min-w-40">
+                          {canRename ? (
+                            <StyledContextMenuItem
+                              onSelect={() => beginRename(surface)}
+                            >
+                              <Pencil className="size-4" /> Rename
+                            </StyledContextMenuItem>
+                          ) : null}
+                          {canRename ? (
+                            <ContextMenu.Separator className="my-1 h-px bg-border" />
+                          ) : null}
+                          {onMoveToRegion
+                            ? (["center", "right", "bottom"] as const)
+                                .filter(
+                                  (region) =>
+                                    region !== paneRegion &&
+                                    surface.definition.supportedPlacements.includes(
+                                      region,
+                                    ),
+                                )
+                                .map((region) => (
+                                  <StyledContextMenuItem
+                                    key={region}
+                                    onSelect={() =>
+                                      onMoveToRegion(surface, region)
+                                    }
+                                  >
+                                    Move to{" "}
+                                    {region === "center"
+                                      ? "Center"
+                                      : region === "right"
+                                        ? "Right"
+                                        : "Bottom"}
+                                  </StyledContextMenuItem>
+                                ))
+                            : null}
                           <StyledContextMenuItem
-                            className="text-destructive focus:bg-destructive/10"
-                            onSelect={() => setDeleteTarget(surface)}
+                            onSelect={() => closeImmediately(surface)}
                           >
-                            <Trash2 className="size-4" />
-                            {surfaceDeleteLabel(surface)}
+                            <X className="size-4" /> Close View
                           </StyledContextMenuItem>
-                        ) : null}
-                      </StyledContextMenuContent>
-                    </ContextMenu.Portal>
-                  </ContextMenu.Root>
-                </SortableProjectTabFrame>
+                          {canDelete ? (
+                            <ContextMenu.Separator className="my-1 h-px bg-border" />
+                          ) : null}
+                          {canDelete ? (
+                            <StyledContextMenuItem
+                              className="text-destructive focus:bg-destructive/10"
+                              onSelect={() => setDeleteTarget(surface)}
+                            >
+                              <Trash2 className="size-4" />
+                              {surfaceDeleteLabel(surface)}
+                            </StyledContextMenuItem>
+                          ) : null}
+                        </StyledContextMenuContent>
+                      </ContextMenu.Portal>
+                    </ContextMenu.Root>
+                  </SortableProjectTabFrame>
+                </Fragment>
               );
             })}
+            {crossPaneDrag ? (
+              <WorkspaceDropPlaceholder
+                active={dropPreview?.memberPosition === surfaces.length}
+                label={crossPaneDrag.label}
+                orientation="horizontal"
+                paneId={paneId}
+                tabKey={crossPaneDrag.tabKey}
+                visualKind={crossPaneDrag.visualKind}
+              />
+            ) : null}
           </SortableContext>
 
           {previewFile ? (

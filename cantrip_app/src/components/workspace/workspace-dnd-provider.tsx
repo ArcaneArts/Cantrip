@@ -25,6 +25,7 @@ import {
 } from "react";
 
 import { ProjectSurfaceIcon } from "./project-surface-icon";
+import { WorkspaceDndStateProvider } from "./workspace-dnd-state";
 import {
   decideWorkspaceDrop,
   type WorkspaceDndData,
@@ -63,22 +64,30 @@ export function filterWorkspacePointerCollisions(
   pointerCollisions: Collision[],
 ): Collision[] {
   if (pointerCollisions.length > 0) {
-    const paneEdges = pointerCollisions.filter((collision) => {
+    for (const targetType of [
+      "pane-edge",
+      "pane-tab",
+      "pane-target",
+      "region",
+      "pane-strip",
+    ] as const) {
+      const matches = pointerCollisions.filter((collision) => {
+        const drop = (
+          collision.data?.droppableContainer.data.current as
+            WorkspaceDndData | undefined
+        )?.drop;
+        return drop?.type === targetType;
+      });
+      if (matches.length > 0) return matches;
+    }
+    const typed = pointerCollisions.filter((collision) => {
       const drop = (
         collision.data?.droppableContainer.data.current as
           WorkspaceDndData | undefined
       )?.drop;
-      return drop?.type === "pane-edge";
+      return Boolean(drop);
     });
-    if (paneEdges.length > 0) return paneEdges;
-    const specific = pointerCollisions.filter((collision) => {
-      const drop = (
-        collision.data?.droppableContainer.data.current as
-          WorkspaceDndData | undefined
-      )?.drop;
-      return drop?.type !== "pane-strip";
-    });
-    return specific.length > 0 ? specific : pointerCollisions;
+    return typed.length > 0 ? typed : pointerCollisions;
   }
   return [];
 }
@@ -98,6 +107,7 @@ export function WorkspaceDragPreview({
     <div
       className="flex w-56 items-center gap-2 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl"
       data-drop-status={decision?.status}
+      data-workspace-drag-preview={drag.type}
     >
       {drag.type === "project" ? (
         <FolderGit2 className="size-4 shrink-0" />
@@ -237,9 +247,13 @@ export function WorkspaceDndProvider({
   );
   const [activeDrag, setActiveDrag] = useState<WorkspaceDragItem | null>(null);
   const [decision, setDecision] = useState<WorkspaceDropDecision | null>(null);
+  const [dropTarget, setDropTarget] = useState<WorkspaceDropTarget | null>(
+    null,
+  );
   const clear = () => {
     setActiveDrag(null);
     setDecision(null);
+    setDropTarget(null);
   };
 
   return (
@@ -250,16 +264,19 @@ export function WorkspaceDndProvider({
         const drag = dragData(event, layout, projects);
         setActiveDrag(drag ?? null);
         setDecision(null);
+        setDropTarget(null);
       }}
-      onDragOver={(event) =>
+      onDragOver={(event) => {
+        const drop = dropData(event, layout) ?? null;
+        setDropTarget(drop);
         setDecision(
           decideWorkspaceDrop(
             layout,
             dragData(event, layout, projects) ?? activeDrag,
-            dropData(event, layout) ?? null,
+            drop,
           ),
-        )
-      }
+        );
+      }}
       onDragCancel={clear}
       onDragEnd={(event) => {
         const nextDecision = decideWorkspaceDrop(
@@ -267,41 +284,43 @@ export function WorkspaceDndProvider({
           dragData(event, layout, projects) ?? activeDrag,
           dropData(event, layout) ?? null,
         );
+        clear();
         if (nextDecision.status === "valid") {
           onOperation(nextDecision.operation);
         }
-        clear();
       }}
     >
-      <main
-        className={className}
-        data-slot="app-shell"
-        data-tauri-titlebar={tauriTitlebar}
-      >
-        {children}
-      </main>
-      <DragOverlay>
-        {activeDrag ? (
-          <WorkspaceDragPreview drag={activeDrag} decision={decision} />
-        ) : null}
-      </DragOverlay>
-      {activeDrag?.type === "surface" && (layout?.panes.length ?? 0) > 1 ? (
-        <aside
-          aria-label="Move tab to pane"
-          className="fixed inset-x-0 bottom-4 z-[80] mx-auto flex w-fit max-w-[calc(100vw-2rem)] gap-2 overflow-x-auto rounded-lg border bg-background/95 p-2 shadow-xl backdrop-blur"
+      <WorkspaceDndStateProvider value={{ activeDrag, decision, dropTarget }}>
+        <main
+          className={className}
+          data-slot="app-shell"
+          data-tauri-titlebar={tauriTitlebar}
         >
-          {layout?.panes.map((pane) => (
-            <PaneDropTarget
-              activePaneId={activeDrag.paneId}
-              key={pane.id}
-              pane={pane}
-            />
-          ))}
-        </aside>
-      ) : null}
-      <span className="sr-only" aria-live="polite">
-        {decision?.status === "invalid" ? decision.reason : ""}
-      </span>
+          {children}
+        </main>
+        <DragOverlay dropAnimation={null} zIndex={1000}>
+          {activeDrag ? (
+            <WorkspaceDragPreview drag={activeDrag} decision={decision} />
+          ) : null}
+        </DragOverlay>
+        {activeDrag?.type === "surface" && (layout?.panes.length ?? 0) > 1 ? (
+          <aside
+            aria-label="Move tab to pane"
+            className="fixed inset-x-0 bottom-4 z-[80] mx-auto flex w-fit max-w-[calc(100vw-2rem)] gap-2 overflow-x-auto rounded-lg border bg-background/95 p-2 shadow-xl backdrop-blur"
+          >
+            {layout?.panes.map((pane) => (
+              <PaneDropTarget
+                activePaneId={activeDrag.paneId}
+                key={pane.id}
+                pane={pane}
+              />
+            ))}
+          </aside>
+        ) : null}
+        <span className="sr-only" aria-live="polite">
+          {decision?.status === "invalid" ? decision.reason : ""}
+        </span>
+      </WorkspaceDndStateProvider>
     </DndContext>
   );
 }

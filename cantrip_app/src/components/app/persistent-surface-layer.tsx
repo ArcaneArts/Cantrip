@@ -173,6 +173,8 @@ export function PersistentSurfaceLayer({
           onDelete={deleteSurfaceResource}
           onRename={renameSurface}
           onSelect={selectTopTab}
+          paneId={selectedPane?.id}
+          paneRegion={selectedPane?.region}
           placement={selectedPlacementContext}
           previewFile={
             showSidebarPreviewTab && sidebarFilePreview
@@ -194,6 +196,7 @@ export function PersistentSurfaceLayer({
                 }
               : undefined
           }
+          projectId={selectedProject.id}
         />
       ) : null}
 

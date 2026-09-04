@@ -34,6 +34,16 @@ export function partitionVisibleWorkspacePanes(
   } as const;
 }
 
+export function legacyTopStripPresentation(
+  presentations: readonly VisibleProjectPane[],
+): VisibleProjectPane | undefined {
+  return (
+    presentations.find(
+      ({ focused, pane }) => focused && pane.region === "center",
+    ) ?? presentations.find(({ pane }) => pane.region === "center")
+  );
+}
+
 export const definitionIdByCreateKind = {
   browser: "project.browser",
   chat: "project.agent",

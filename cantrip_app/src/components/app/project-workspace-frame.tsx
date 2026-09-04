@@ -19,6 +19,7 @@ import {
 import { useQueries } from "@tanstack/react-query";
 import { Plus, Trash2, X } from "lucide-react";
 import {
+  Fragment,
   useMemo,
   useCallback,
   useEffect,
@@ -41,6 +42,7 @@ import { projectPaneRenderBindings } from "@/components/app/project-pane-render-
 import {
   createKindsForPaneRegion,
   definitionIdByCreateKind,
+  legacyTopStripPresentation,
   partitionVisibleWorkspacePanes,
   railLauncherDisposition,
   responsiveProjectWorkspaceGridModel,
@@ -71,6 +73,10 @@ import {
   type ProjectSurfacePlacementContext,
 } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
+import {
+  useWorkspaceDndState,
+  WorkspaceDropPlaceholder,
+} from "@/components/workspace/workspace-dnd-state";
 import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
 import {
   StyledContextMenuContent,
@@ -100,6 +106,7 @@ import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
   workspaceRegionDropId,
+  workspaceSurfaceDropPreview,
   workspaceSurfaceDragId,
 } from "@/lib/workspace-dnd-model";
 
@@ -312,6 +319,20 @@ export function DockRail({
       },
     } satisfies WorkspaceDndData,
   });
+  const workspaceDnd = useWorkspaceDndState();
+  const crossPaneDrag =
+    workspaceDnd.activeDrag?.type === "surface" &&
+    workspaceDnd.activeDrag.paneId !== (pane?.id ?? null)
+      ? workspaceDnd.activeDrag
+      : null;
+  const dropPreview = workspaceSurfaceDropPreview({
+    decision: workspaceDnd.decision,
+    drag: workspaceDnd.activeDrag,
+    drop: workspaceDnd.dropTarget,
+    memberCount: surfaces.length,
+    paneId: pane?.id ?? null,
+    region,
+  });
   const tooltipSide = region === "right" ? "left" : "top";
   const regionLaunchers = launchers.filter((launcher) => {
     if (
@@ -416,25 +437,48 @@ export function DockRail({
           }
         >
           {surfaces.map((surface, memberPosition) => (
-            <SortableDockRailTab
-              active={surface.tabKey === activeTabKey}
-              disabled={pending}
-              key={surface.tabKey}
-              memberPosition={memberPosition}
-              onClose={() => closeImmediately(surface)}
-              onDelete={() => onDelete(surface)}
-              onMoveToRegion={
-                onMoveToRegion
-                  ? (targetRegion) => onMoveToRegion(surface, targetRegion)
-                  : undefined
-              }
-              onSelect={() =>
-                onSelect(surface, surface.tabKey === activeTabKey)
-              }
-              region={region}
-              surface={surface}
-            />
+            <Fragment key={surface.tabKey}>
+              {crossPaneDrag ? (
+                <WorkspaceDropPlaceholder
+                  active={dropPreview?.memberPosition === memberPosition}
+                  compact
+                  label={crossPaneDrag.label}
+                  orientation={region === "right" ? "vertical" : "horizontal"}
+                  paneId={pane?.id ?? null}
+                  tabKey={crossPaneDrag.tabKey}
+                  visualKind={crossPaneDrag.visualKind}
+                />
+              ) : null}
+              <SortableDockRailTab
+                active={surface.tabKey === activeTabKey}
+                disabled={pending}
+                memberPosition={memberPosition}
+                onClose={() => closeImmediately(surface)}
+                onDelete={() => onDelete(surface)}
+                onMoveToRegion={
+                  onMoveToRegion
+                    ? (targetRegion) => onMoveToRegion(surface, targetRegion)
+                    : undefined
+                }
+                onSelect={() =>
+                  onSelect(surface, surface.tabKey === activeTabKey)
+                }
+                region={region}
+                surface={surface}
+              />
+            </Fragment>
           ))}
+          {crossPaneDrag ? (
+            <WorkspaceDropPlaceholder
+              active={dropPreview?.memberPosition === surfaces.length}
+              compact
+              label={crossPaneDrag.label}
+              orientation={region === "right" ? "vertical" : "horizontal"}
+              paneId={pane?.id ?? null}
+              tabKey={crossPaneDrag.tabKey}
+              visualKind={crossPaneDrag.visualKind}
+            />
+          ) : null}
         </SortableContext>
         {regionLaunchers.map((launcher) => {
           if (launcher.target.kind !== "definition") return null;
@@ -1153,6 +1197,24 @@ export function ProjectWorkspaceFrame({
     bindings.dockPresentationMutation.isPending ||
     bindings.tabLayoutMutation.isPending,
   );
+  const legacyTopStrip = legacyTopStripPresentation(presentations);
+  const persistentSurfaceBindings = docked
+    ? {
+        ...bindings,
+        dockPanePresentations: livePresentations,
+        excludedPersistentSurfaceIds,
+      }
+    : railsVisible
+      ? {
+          ...bindings,
+          selectedPane: legacyTopStrip?.pane,
+          selectedPaneOwnedElsewhere: legacyTopStrip
+            ? Boolean(bindings.paneOwnedElsewhere?.(legacyTopStrip.pane.id))
+            : false,
+          selectedPaneSurfaces: legacyTopStrip?.surfaces ?? [],
+          selectedTabKey: legacyTopStrip?.activeTabKey ?? null,
+        }
+      : bindings;
 
   return (
     <div
@@ -1255,15 +1317,7 @@ export function ProjectWorkspaceFrame({
             )
           : null}
         <PersistentSurfaceLayer
-          bindings={
-            docked
-              ? {
-                  ...bindings,
-                  dockPanePresentations: livePresentations,
-                  excludedPersistentSurfaceIds,
-                }
-              : bindings
-          }
+          bindings={persistentSurfaceBindings}
           key="persistent-surface-layer"
         />
         {!docked ? <GlobalContentHost bindings={bindings} /> : null}

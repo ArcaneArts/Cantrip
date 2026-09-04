@@ -1,9 +1,16 @@
-import type { ProjectSurfaceLauncher } from "@cantrip/protocol";
+import type {
+  ProjectPaneSummary,
+  ProjectSurfaceLauncher,
+} from "@cantrip/protocol";
 import type { ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectSurface } from "@/lib/project-surface";
+import {
+  WorkspaceDndStateProvider,
+  type WorkspaceDndState,
+} from "@/components/workspace/workspace-dnd-state";
 
 import { DockRail } from "./project-workspace-frame";
 
@@ -150,8 +157,10 @@ function renderRail({
   onClose = vi.fn(),
   onDelete = vi.fn(),
   onSelect = vi.fn(),
+  pane,
   region = "right",
   surfaces,
+  workspaceDndState,
 }: {
   activeTabKey: string | null;
   allSurfaces: readonly ProjectSurface[];
@@ -159,10 +168,12 @@ function renderRail({
   onClose?(surface: ProjectSurface): void;
   onDelete?(surface: ProjectSurface): void;
   onSelect?(surface: ProjectSurface, active: boolean): void;
+  pane?: ProjectPaneSummary;
   region?: "right" | "bottom";
   surfaces: readonly ProjectSurface[];
+  workspaceDndState?: WorkspaceDndState;
 }) {
-  return TestRenderer.create(
+  const rail = (
     <DockRail
       activeTabKey={activeTabKey}
       allSurfaces={allSurfaces}
@@ -173,12 +184,21 @@ function renderRail({
       onMoveToRegion={vi.fn()}
       onOpenLauncher={vi.fn()}
       onSelect={onSelect}
-      pane={undefined}
+      pane={pane}
       pending={false}
       projectId="project-1"
       region={region}
       surfaces={surfaces}
-    />,
+    />
+  );
+  return TestRenderer.create(
+    workspaceDndState ? (
+      <WorkspaceDndStateProvider value={workspaceDndState}>
+        {rail}
+      </WorkspaceDndStateProvider>
+    ) : (
+      rail
+    ),
   );
 }
 
@@ -402,6 +422,68 @@ describe("dock rail tabs", () => {
           node.props["aria-label"] === "Add surface to bottom dock",
       ),
     ).toHaveLength(1);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("shows a live insertion placeholder for a cross-rail drag", async () => {
+    const browser = surface("browser", "one", "Browser", 0);
+    const terminal = surface("terminal", "two", "Terminal", 0);
+    terminal.paneId = "pane-bottom";
+    terminal.member.paneId = "pane-bottom";
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = renderRail({
+        activeTabKey: browser.tabKey,
+        allSurfaces: [browser, terminal],
+        pane: {
+          id: "pane-right",
+          region: "right",
+        } as ProjectPaneSummary,
+        surfaces: [browser],
+        workspaceDndState: {
+          activeDrag: {
+            type: "surface",
+            projectId: "project-1",
+            paneId: "pane-bottom",
+            tabKey: terminal.tabKey,
+            label: terminal.title,
+            position: 0,
+            supportedRegions: ["center", "right", "bottom"],
+            visualKind: "terminal",
+          },
+          decision: {
+            status: "valid",
+            operation: {
+              type: "tab-layout",
+              projectId: "project-1",
+              command: {
+                type: "move-member",
+                tabKey: terminal.tabKey,
+                targetPaneId: "pane-right",
+                targetMemberPosition: 0,
+              },
+            },
+          },
+          dropTarget: {
+            type: "pane-tab",
+            projectId: "project-1",
+            paneId: "pane-right",
+            tabKey: browser.tabKey,
+            memberPosition: 0,
+          },
+        },
+      });
+    });
+
+    const placeholder = renderer.root.findByProps({
+      "data-workspace-drop-placeholder": terminal.tabKey,
+    });
+    expect(placeholder.props["data-workspace-drop-placeholder-pane"]).toBe(
+      "pane-right",
+    );
+    expect(placeholder.props.style).toMatchObject({ height: 40, width: 40 });
 
     await act(async () => renderer.unmount());
   });

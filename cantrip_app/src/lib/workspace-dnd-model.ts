@@ -105,6 +105,13 @@ export type WorkspaceDropDecision =
   | { status: "invalid"; reason: string }
   | { status: "noop" };
 
+export interface WorkspaceSurfaceDropPreview {
+  label: string;
+  memberPosition: number;
+  tabKey: string;
+  visualKind: ProjectSurface["kind"];
+}
+
 function moved<T>(items: readonly T[], from: number, to: number): T[] {
   if (from < 0 || from >= items.length) return [...items];
   const next = [...items];
@@ -320,6 +327,54 @@ export function decideWorkspaceDrop(
         ),
       },
     },
+  };
+}
+
+export function workspaceSurfaceDropPreview({
+  decision,
+  drag,
+  drop,
+  memberCount,
+  paneId,
+  region,
+}: {
+  decision: WorkspaceDropDecision | null | undefined;
+  drag: WorkspaceDragItem | null | undefined;
+  drop: WorkspaceDropTarget | null | undefined;
+  memberCount: number;
+  paneId: string | null;
+  region: ProjectPaneRegion;
+}): WorkspaceSurfaceDropPreview | null {
+  if (
+    drag?.type !== "surface" ||
+    decision?.status !== "valid" ||
+    !drop ||
+    drag.paneId === paneId
+  ) {
+    return null;
+  }
+
+  let memberPosition: number;
+  if (
+    drop.type === "pane-tab" ||
+    drop.type === "pane-strip" ||
+    drop.type === "pane-target"
+  ) {
+    if (drop.paneId !== paneId) return null;
+    memberPosition =
+      drop.type === "pane-target" ? memberCount : drop.memberPosition;
+  } else if (drop.type === "region") {
+    if (drop.region !== region || drop.paneId !== paneId) return null;
+    memberPosition = memberCount;
+  } else {
+    return null;
+  }
+
+  return {
+    label: drag.label,
+    memberPosition: Math.max(0, Math.min(memberPosition, memberCount)),
+    tabKey: drag.tabKey,
+    visualKind: drag.visualKind,
   };
 }
 

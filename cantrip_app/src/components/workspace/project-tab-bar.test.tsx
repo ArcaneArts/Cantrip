@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectFileSurface, ProjectSurface } from "@/lib/project-surface";
 import { projectSurfaceIdentityForTab } from "@/lib/project-surface-registry";
+import { WorkspaceDndStateProvider } from "./workspace-dnd-state";
 
 import { ProjectPaneTabStrip } from "./project-tab-bar";
 
@@ -439,6 +440,70 @@ describe("project pane tab strip", () => {
         "data-project-tab-frame": second.tabKey,
       }).props["data-project-tab-position"],
     ).toBe(1);
+    await act(async () => renderer.unmount());
+  });
+
+  it("shows a live center insertion placeholder for a dock tab", async () => {
+    const first = fileSurface();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DndContext>
+          <WorkspaceDndStateProvider
+            value={{
+              activeDrag: {
+                type: "surface",
+                projectId: "project-1",
+                paneId: "pane-bottom",
+                tabKey: "terminal:shell",
+                label: "Terminal",
+                position: 0,
+                supportedRegions: ["center", "right", "bottom"],
+                visualKind: "terminal",
+              },
+              decision: {
+                status: "valid",
+                operation: {
+                  type: "tab-layout",
+                  projectId: "project-1",
+                  command: {
+                    type: "move-member",
+                    tabKey: "terminal:shell",
+                    targetPaneId: "pane-1",
+                    targetMemberPosition: 0,
+                  },
+                },
+              },
+              dropTarget: {
+                type: "pane-tab",
+                projectId: "project-1",
+                paneId: "pane-1",
+                tabKey: first.tabKey,
+                memberPosition: 0,
+              },
+            }}
+          >
+            <ProjectPaneTabStrip
+              activeTabKey={first.tabKey}
+              onClose={vi.fn()}
+              onCreate={vi.fn()}
+              onDelete={vi.fn()}
+              onRename={vi.fn()}
+              onSelect={vi.fn()}
+              paneId="pane-1"
+              projectId="project-1"
+              surfaces={[first]}
+            />
+          </WorkspaceDndStateProvider>
+        </DndContext>,
+      );
+    });
+
+    const placeholder = renderer.root.findByProps({
+      "data-workspace-drop-placeholder": "terminal:shell",
+    });
+    expect(placeholder.props.style).toMatchObject({ height: 40, width: 160 });
+
     await act(async () => renderer.unmount());
   });
 
