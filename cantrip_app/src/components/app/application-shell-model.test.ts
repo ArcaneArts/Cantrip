@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   codeAppearanceFor,
   modelDisplayName,
+  preferredProjectCenterPaneId,
   projectOverviewSectionLabel,
-  projectToolSectionRequiresSurfaceBridge,
 } from "./application-shell-model";
 
 describe("application shell model", () => {
@@ -28,10 +28,19 @@ describe("application shell model", () => {
     expect(projectOverviewSectionLabel("issues")).toBe("Issues");
   });
 
-  it("does not turn the startup Overview destination into a tab placement", () => {
-    expect(projectToolSectionRequiresSurfaceBridge("overview")).toBe(false);
-    expect(projectToolSectionRequiresSurfaceBridge("tasks")).toBe(true);
-    expect(projectToolSectionRequiresSurfaceBridge("history")).toBe(true);
+  it("targets the focused center pane and falls back to the first center pane", () => {
+    const layout = {
+      panes: [
+        { id: "center-a", region: "center" },
+        { id: "right", region: "right" },
+        { id: "center-b", region: "center" },
+      ],
+    } as Parameters<typeof preferredProjectCenterPaneId>[0];
+
+    expect(preferredProjectCenterPaneId(layout, "center-b")).toBe("center-b");
+    expect(preferredProjectCenterPaneId(layout, "right")).toBe("center-a");
+    expect(preferredProjectCenterPaneId(layout, null)).toBe("center-a");
+    expect(preferredProjectCenterPaneId(null, "center-b")).toBeUndefined();
   });
 
   it("resolves every appearance dimension without changing precedence", () => {

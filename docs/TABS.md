@@ -130,9 +130,9 @@ navigation surface without violating the one-placement invariant.
 - A pane belongs to one workspace region, split node, or detached window.
 - Moving a placement is revision-checked and atomic.
 - Opening an already-open singleton focuses its existing placement.
-- Restoring a project at its Overview destination does not create an Overview
-  placement or center split. Overview opens as a tab only after an explicit
-  launcher or navigation action requests that surface.
+- Startup and project-navigator surface launches join the focused center pane,
+  falling back to the first center pane. Opening Overview or Tasks must not
+  synthesize a new center split.
 - Closing a view removes its placement but does not delete its resource.
 - Deleting a resource is a distinct, explicitly destructive action.
 - Built-in singleton surfaces cannot be deleted.

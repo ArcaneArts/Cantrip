@@ -3,6 +3,7 @@ import type {
   ExplorerSummary,
   ModelProfileSummary,
   ProjectBuiltInSurfaceDefinitionId,
+  ProjectTabLayoutSummary,
 } from "@cantrip/protocol";
 
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
@@ -48,10 +49,17 @@ export function projectOverviewSectionLabel(
   return `${section.slice(0, 1).toUpperCase()}${section.slice(1)}`;
 }
 
-export function projectToolSectionRequiresSurfaceBridge(
-  section: ProjectOverviewSection,
-): boolean {
-  return section !== "overview";
+export function preferredProjectCenterPaneId(
+  layout: ProjectTabLayoutSummary | null | undefined,
+  focusedPaneId: string | null | undefined,
+): string | undefined {
+  const focusedCenterPane = layout?.panes.find(
+    ({ id, region }) => id === focusedPaneId && region === "center",
+  );
+  return (
+    focusedCenterPane?.id ??
+    layout?.panes.find(({ region }) => region === "center")?.id
+  );
 }
 
 export function codeAppearanceFor(

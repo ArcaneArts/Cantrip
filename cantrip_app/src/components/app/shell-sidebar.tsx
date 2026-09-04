@@ -123,7 +123,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     openChatExplorerHere,
     openChatHistoryHere,
     openChatTerminalHere,
-    openOrFocusSurface,
+    openProjectNavigatorSurface,
     openProjectCreateSource,
     openProjectSettings,
     openServerAdmin,
@@ -533,7 +533,10 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     onCloseSurface={closeSurfaceView}
                     onOpenSurface={(surfaceRef) =>
                       selectedProjectId
-                        ? openOrFocusSurface(selectedProjectId, surfaceRef)
+                        ? openProjectNavigatorSurface(
+                            selectedProjectId,
+                            surfaceRef,
+                          )
                         : undefined
                     }
                     onPinProjectTool={(definitionId, pinned) => {

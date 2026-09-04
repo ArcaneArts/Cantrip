@@ -10,7 +10,7 @@ import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuratio
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  projectToolSectionRequiresSurfaceBridge,
+  preferredProjectCenterPaneId,
   type WorktreeBindingTarget,
 } from "@/components/app/application-shell-model";
 import { ApplicationShellRender } from "@/components/app/application-shell-render";
@@ -756,13 +756,25 @@ export function App() {
     queryClient,
     setWorktreeActionError,
   });
+  const openProjectNavigatorSurface = useCallback(
+    (projectId: string, surfaceRef: Parameters<typeof openOrFocusSurface>[1]) =>
+      openOrFocusSurface(
+        projectId,
+        surfaceRef,
+        preferredProjectCenterPaneId(
+          tabLayout.data?.projectId === projectId ? tabLayout.data : null,
+          workspaceSelection.focusedPaneId,
+        ),
+      ),
+    [openOrFocusSurface, tabLayout.data, workspaceSelection.focusedPaneId],
+  );
   const openProjectToolSurface = useCallback(
     async (
       projectId: string,
       section: typeof projectOverviewSection,
       worktreeId?: string,
     ) => {
-      const opened = await openOrFocusSurface(
+      const opened = await openProjectNavigatorSurface(
         projectId,
         projectBuiltInSurfaceResourceRef(
           projectBuiltInDefinitionForSection(section),
@@ -778,7 +790,7 @@ export function App() {
         worktreeId,
       });
     },
-    [bindWorktreeMutation, openOrFocusSurface],
+    [bindWorktreeMutation, openProjectNavigatorSurface],
   );
   const openProjectToolSection = useCallback(
     (section: typeof projectOverviewSection, worktreeId?: string) => {
@@ -794,23 +806,17 @@ export function App() {
       !selectedProjectId ||
       !tabLayout.isSuccess ||
       workspaceSelection.destination !== "overview" ||
-      selectedBuiltInDefinitionId ||
-      !projectToolSectionRequiresSurfaceBridge(projectOverviewSection)
+      selectedBuiltInDefinitionId
     ) {
       return;
     }
     const attempt = `${selectedProjectId}:${tabLayout.data.revision}`;
     if (projectToolBridgeAttemptRef.current === attempt) return;
     projectToolBridgeAttemptRef.current = attempt;
-    void openOrFocusSurface(
-      selectedProjectId,
-      projectBuiltInSurfaceResourceRef(
-        projectBuiltInDefinitionForSection(projectOverviewSection),
-      ),
-    );
+    void openProjectToolSurface(selectedProjectId, projectOverviewSection);
   }, [
     isPopout,
-    openOrFocusSurface,
+    openProjectToolSurface,
     projectOverviewSection,
     selectedBuiltInDefinitionId,
     selectedProjectId,
@@ -1784,7 +1790,7 @@ export function App() {
       returnToLegacyCompactProjectOverview();
       return;
     }
-    openOrFocusSurface(
+    void openProjectNavigatorSurface(
       selectedProjectId,
       projectBuiltInSurfaceResourceRef("project.overview"),
     );
@@ -2003,7 +2009,7 @@ export function App() {
     newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
     openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
-    openExplorerFileWindow, openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectToolSection, ownedTerminals,
+    openExplorerFileWindow, openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, ownedTerminals,
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
