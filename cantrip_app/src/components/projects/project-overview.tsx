@@ -379,7 +379,7 @@ export function ProjectOverview({
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-7">
+        <section className="grid grid-cols-2 gap-3 xl:grid-cols-7">
           <MetricCard
             eliteKey={`${eliteKeyPrefix}:metric:open-tabs`}
             icon={<Rows3 className="size-3.5" />}
@@ -483,7 +483,7 @@ export function ProjectOverview({
         <section
           className={cn(
             "grid gap-5",
-            !compact && "lg:grid-cols-[minmax(0,1fr)_18rem]",
+            !compact && "xl:grid-cols-[minmax(0,1fr)_18rem]",
           )}
         >
           {!compact ? (
