@@ -55,12 +55,6 @@ export type WorkspaceDropTarget =
       paneId: string;
     }
   | {
-      type: "pane-edge";
-      edge: "left" | "right" | "top" | "bottom";
-      projectId: string;
-      paneId: string;
-    }
-  | {
       type: "region";
       projectId: string;
       region: Extract<ProjectPaneRegion, "right" | "bottom">;
@@ -197,36 +191,6 @@ export function decideWorkspaceDrop(
 
   if (drop.type === "pane") {
     return { status: "invalid", reason: "Drop the tab on the pane target." };
-  }
-
-  if (drop.type === "pane-edge") {
-    const sourcePane = layout.panes.find(({ id }) => id === drag.paneId);
-    const targetPane = layout.panes.find(({ id }) => id === drop.paneId);
-    if (!sourcePane || !targetPane || targetPane.region !== "center") {
-      return { status: "invalid", reason: "The center pane is unavailable." };
-    }
-    if (drag.supportedRegions && !drag.supportedRegions.includes("center")) {
-      return {
-        status: "invalid",
-        reason: `${drag.label} cannot open in a center split.`,
-      };
-    }
-    if (sourcePane.id === targetPane.id && sourcePane.members.length === 1) {
-      return { status: "noop" };
-    }
-    return {
-      status: "valid",
-      operation: {
-        type: "tab-layout",
-        projectId: drag.projectId,
-        command: {
-          type: "split-member",
-          edge: drop.edge,
-          tabKey: drag.tabKey,
-          targetPaneId: targetPane.id,
-        },
-      },
-    };
   }
 
   const sourcePane = layout.panes.find(({ id }) => id === drag.paneId);
@@ -396,13 +360,6 @@ export function workspacePaneStripDropId(paneId: string): string {
 
 export function workspacePaneTargetDropId(paneId: string): string {
   return `workspace:pane-target:${paneId}`;
-}
-
-export function workspacePaneEdgeDropId(
-  paneId: string,
-  edge: "left" | "right" | "top" | "bottom",
-): string {
-  return `workspace:pane-edge:${paneId}:${edge}`;
 }
 
 export function workspaceRegionDropId(
