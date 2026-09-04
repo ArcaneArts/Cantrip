@@ -131,7 +131,8 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-03b-install-lifecycle`, based on merged cycle 3 (`9e8ded7d6`).
 - PR: [#1736](https://github.com/ArcaneArts/Cantrip/pull/1736).
-  Initial implementation commit: `49e4a4b7`; merge not yet observed.
+  Initial implementation commit: `49e4a4b7`; merged 2026-09-04 as
+  `cbfa5df6d4f9308947bd485dc8d980caed323829` (observed via GitHub).
 - Implemented: preserve lock-holder lifecycle observation after acquisition;
   cancel smoke and refuse subsequent commit steps after actual lock loss.
   Correct POSIX-mode test assertions to use the actual host platform while
@@ -140,12 +141,54 @@ is the authoritative merge record until the next ledger update.
   Clippy/formatting, and diff checks pass locally. Actual-child lock-loss
   regression preserves prior binary/configuration; cancellation disposes active
   smoke processes. Independent focused review found no additional defects.
-  Native CI rerun remains pending.
-- Platforms/manual status: macOS fake runtime locally; CI rerun pending for
-  macOS/Windows/Linux. No new native capture or TCC claims.
+  CI run `33927937100` passed all macOS, Windows, and Linux CUA jobs.
+- Platforms/manual status: macOS fake runtime locally and actual fake runtime
+  execution in macOS/Windows/Linux CI. No new native capture or TCC claims.
 - Risks/remaining: cycle-3 standalone-worker signing, baseline script failures,
   and first-tranche worker/server/client/native/MCP/policy/Trajectory integration
   remain unchanged. Deferred later-tranche work remains unchanged.
+
+### Tranche cycle 4 — Lazy worker service and private process transport
+
+- Branch: `codex/cua-04-worker-service`, based on merged cycle 3b (`cbfa5df6d`).
+- PR: [#1738](https://github.com/ArcaneArts/Cantrip/pull/1738).
+  Initial implementation commit: `b972ff20`; merge not yet observed.
+- Implemented: inert worker service construction; actual framed handshake on
+  first authorized use; immutable execution/account ownership; per-session
+  serialized operations; raw PNG validation; immediate local scope revocation;
+  cancellation with explicit unknown-outcome reporting; exactly one explicit
+  crash restart without mutation replay or old-session revival. Worker interrupt,
+  relocation, terminal disconnect/reconnect, and shutdown own lifecycle cleanup.
+  No public routing, MCP access, native permission request, or Remote Desktop
+  change is introduced.
+- Build/development: module-relative packaged helper selection; explicit binary
+  override; stable named-profile projection for browser/direct worker and desktop
+  development; preserved tsx watch and exact orphan-process cleanup behavior.
+  `pnpm cua:test:worker` and portable CI execute the actual worker/Rust boundary.
+- Validation: 122 focused worker tests pass, including 11 real-Rust integration
+  tests; 50 Rust and 30 CUA script tests pass; 13 existing development/profile
+  tests pass; worker typecheck/build and CUA Clippy/format pass. Full worker suite
+  initially reported 1,136 passes, 13 skips, and one goal-streaming timing failure
+  (empty final text); that unchanged test passes in isolation on Primary. The
+  complete rerun passed 1,137 tests with 13 expected skips (including the 11
+  separately executed Rust-artifact tests). New platform CI remains pending.
+- Review fixes verified: synchronous launch failure is terminal; cancellation
+  while awaiting a shared handshake/queued operation settles promptly without
+  cancelling other callers; disconnect cannot publish a just-completed protected
+  target inventory; completed-but-cancelled mutations cannot revive a session.
+  Transport admission counts pending cancellation correlations and reserves
+  16 additional slots for lifecycle cleanup, so cancellation saturation cannot
+  crowd out Stop/session-close requests.
+- Platform/manual: actual fake helper/service on local macOS arm64; new Windows
+  and Linux worker integration CI pending. No product/native/TCC verification
+  claimed; helper still defaults to unavailable native capture.
+- Risks/remaining: encrypted shared routing, worker capability publication,
+  client preview, native capture, persistent JS/MCP, durable approvals, protected
+  Trajectory, and full end-to-end/packaged verification remain required.
+  Turn-specific JS teardown awaits real runtime-turn ownership in the MCP cycle.
+  Prior standalone-worker signing and baseline script failures remain open.
+- Deferred: native input/mutations, human event taps, other native operating
+  systems, arbitrary cursor assets, continuous video, and cross-worker control.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

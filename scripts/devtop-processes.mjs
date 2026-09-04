@@ -67,6 +67,9 @@ function pathIsWithin(root, candidate) {
   );
 }
 
+const CUA_DEVELOPMENT_LAUNCHER =
+  /(?:^|[\s/])scripts\/cantrip-cua\/development-launch\.mjs(?:\s|$)/u;
+
 function isCantripDevelopmentCommand(process, repositoryRoots) {
   const normalizedCommand = process.command.replaceAll("\\", "/");
   if (
@@ -95,6 +98,8 @@ function isCantripDevelopmentCommand(process, repositoryRoots) {
   }
   const normalizedCwd = process.cwd.replaceAll("\\", "/");
   return (
+    (CUA_DEVELOPMENT_LAUNCHER.test(normalizedCommand) &&
+      /\/cantrip_worker$/u.test(normalizedCwd)) ||
     (/\b(?:tsx(?:\.cmd)?|cli\.mjs)\s+watch\s+src\/index\.ts(?:\s|$)/u.test(
       normalizedCommand,
     ) &&
@@ -181,8 +186,11 @@ function processWorkingDirectory(pid) {
 }
 
 function commandMayNeedWorkingDirectory(command) {
-  return /(?:^|[\\/\s])(?:concurrently|pnpm|tauri|tsc|tsx|vite)(?:\.cmd)?(?:[\\/\s]|$)|cantrip-app/u.test(
-    command,
+  return (
+    CUA_DEVELOPMENT_LAUNCHER.test(command.replaceAll("\\", "/")) ||
+    /(?:^|[\\/\s])(?:concurrently|pnpm|tauri|tsc|tsx|vite)(?:\.cmd)?(?:[\\/\s]|$)|cantrip-app/u.test(
+      command,
+    )
   );
 }
 

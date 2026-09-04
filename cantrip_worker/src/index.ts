@@ -131,6 +131,7 @@ import { chatGptExternalAuthCapabilityError } from "./codex/external-chatgpt-aut
 import { workerGlobalCodexSkillsRoot } from "./codex/global-skills.js";
 import { interruptChatAcrossRuntimes } from "./codex/runtime.js";
 import { CantripCliBroker } from "./cli-broker.js";
+import { CantripCuaService } from "./computer-use/service.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
@@ -691,6 +692,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerProcessGeneration,
   });
   const cliBroker = new CantripCliBroker(config);
+  // Construction is inert: no process, capture permission, or discovery probe.
+  const computerUse = new CantripCuaService({ workerId: config.workerId });
   const mcpBroker = new CantripMcpBroker(config);
   const mcpHost = cantripMcpHostInvocation();
   const terminals = new TerminalManager({
@@ -5342,6 +5345,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: command.threadId,
         });
       case "chat.interrupt":
+        computerUse.cancelChat(command.chatId, command.threadId);
         return interruptChatAcrossRuntimes(
           codexRuntimes.values(),
           command.chatId,
@@ -5546,6 +5550,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       }
       case "chat.relocation.thread.release":
+        if (command.threadId) computerUse.cancelThread(command.threadId);
         if (command.discard && command.threadId) {
           await runtimeFor({
             model: command.model,
@@ -5684,6 +5689,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       directBroker.revokeAll();
       void workerLinkGateway.revokeAll("endpoint-disconnected");
       codeDirectEndpoints.disconnect();
+      computerUse.disconnect();
     },
     undefined,
     (serverControlPlaneGeneration) => {
@@ -5695,6 +5701,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         codeDirectEndpoints.invalidateControlPlaneGeneration();
       }
       codeDirectEndpoints.reconnect();
+      computerUse.reconnect();
       providerAuthObserver.reemitAll();
       if (codeSettingsSynchronizer) {
         void codeSettingsSynchronizer.synchronize({
@@ -5924,6 +5931,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    const computerUseClosed = computerUse.close();
     requestRuntimeRestart = null;
     process.off("SIGINT", handleSigint);
     process.off("SIGTERM", handleSigterm);
@@ -5943,6 +5951,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     await (
       codeSettingsSynchronizer ?? openingCodeSettingsSynchronizer
     )?.close();
+    await computerUseClosed;
     workerEncryption.lock();
     automationScheduler.close();
     codegraphProjects?.close();

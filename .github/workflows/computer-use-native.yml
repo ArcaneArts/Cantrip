@@ -6,6 +6,10 @@ on:
       - ".github/workflows/computer-use-native.yml"
       - ".github/workflows/native-release.yml"
       - "cantrip_cua/**"
+      - "cantrip_worker/src/computer-use/**"
+      - "cantrip_worker/src/index.ts"
+      - "cantrip_worker/package.json"
+      - "pnpm-lock.yaml"
       - "scripts/cantrip-cua/**"
       - "scripts/verify-packaged-worker-cua.mjs"
       - "scripts/package-distributions.mjs"
@@ -54,3 +58,6 @@ jobs:
       - run: node --test scripts/cantrip-cua/*.test.mjs
       - run: node scripts/cantrip-cua/smoke.mjs
       - run: node scripts/cantrip-cua/build.mjs --release
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm cua:test:worker
