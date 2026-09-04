@@ -179,7 +179,7 @@ export function ProjectPaneTabStrip({
 
   return (
     <>
-      <div className="relative z-20 flex h-10 shrink-0 items-stretch bg-background">
+      <div className="relative z-20 flex h-10 shrink-0 items-stretch">
         <div
           ref={paneStripDrop.setNodeRef}
           className={cn(

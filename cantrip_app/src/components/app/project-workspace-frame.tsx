@@ -376,7 +376,7 @@ export function DockRail({
       <aside
         aria-label={`${region === "right" ? "Right" : "Bottom"} dock rail`}
         className={cn(
-          "z-40 flex shrink-0 border-border bg-background",
+          "z-40 flex shrink-0 border-border",
           region === "right"
             ? "min-h-0 w-10 flex-col overflow-y-auto border-l [scrollbar-width:none]"
             : "h-10 min-w-0 flex-row overflow-x-auto border-t [scrollbar-width:none]",

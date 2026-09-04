@@ -243,6 +243,31 @@ function renderTabs(surface: ProjectFileSurface) {
 }
 
 describe("project pane tab strip", () => {
+  it("leaves the strip background transparent for the app shell", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DndContext>
+          <ProjectPaneTabStrip
+            activeTabKey=""
+            onClose={vi.fn()}
+            onCreate={vi.fn()}
+            onDelete={vi.fn()}
+            onRename={vi.fn()}
+            onSelect={vi.fn()}
+            surfaces={[fileSurface()]}
+          />
+        </DndContext>,
+      );
+    });
+
+    const tablist = renderer.root.findByProps({ role: "tablist" });
+    expect(tablist.parent?.props.className.split(/\s+/u)).not.toContain(
+      "bg-background",
+    );
+    await act(async () => renderer.unmount());
+  });
+
   it("selects the full tab title and disables dragging while renaming", async () => {
     const select = vi.fn();
     const surface = fileSurface();

@@ -230,6 +230,8 @@ describe("dock rail tabs", () => {
         });
       });
 
+      const rail = renderer.root.findByProps({ "data-dock-rail": region });
+      expect(rail.props.className.split(/\s+/u)).not.toContain("bg-background");
       expect(sortableState.contexts.at(-1)).toEqual({
         items: [
           `workspace:surface:${browser.tabKey}`,
