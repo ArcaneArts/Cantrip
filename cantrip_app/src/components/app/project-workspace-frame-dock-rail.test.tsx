@@ -272,7 +272,7 @@ describe("dock rail tabs", () => {
     );
     expect(closeBrowser).toBeDefined();
     await act(async () => closeBrowser?.props.onClick());
-    expect(onSelect).toHaveBeenCalledWith(terminal, false);
+    expect(onSelect).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledWith(browser);
 
     const deleteBrowser = menuItems().find((item) =>
@@ -288,16 +288,20 @@ describe("dock rail tabs", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("closes a rail view on middle click", async () => {
+  it("closes a rail view on middle click without selecting another view first", async () => {
     const browser = surface("browser", "one", "Browser", 0);
+    const terminal = surface("terminal", "two", "Terminal", 1);
     const onClose = vi.fn<(surface: ProjectSurface) => void>();
+    const onSelect =
+      vi.fn<(surface: ProjectSurface, active: boolean) => void>();
     let renderer!: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
       renderer = renderRail({
         activeTabKey: browser.tabKey,
         onClose,
-        surfaces: [browser],
+        onSelect,
+        surfaces: [browser, terminal],
       });
     });
 
@@ -324,6 +328,7 @@ describe("dock rail tabs", () => {
     );
     expect(auxPreventDefault).toHaveBeenCalledOnce();
     expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(onSelect).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledWith(browser);
 
     await act(async () => renderer.unmount());
