@@ -195,7 +195,8 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 5 — Shared encrypted contract and isolated routing
 
 - Branch: `codex/cua-05-protected-routing`, based on merged cycle 4 (`16218ed0d`).
-- PR/commit: not yet created; merge not yet observed.
+- PR: [#1739](https://github.com/ArcaneArts/Cantrip/pull/1739).
+  Initial implementation commit: `9c8b442fe`; merge not yet observed.
 - Implemented: one browser-safe shared CUA schema; strict worker command/event
   contracts; endpoint-only control/result encryption and sequential 256 KiB
   screenshot chunks (16 MiB total); raw-byte adapters using existing component
@@ -224,8 +225,11 @@ is the authoritative merge record until the next ledger update.
   synthetically on Primary. These remain final-hardening follow-ups, not CUA
   regressions hidden by skipped tests. Full server reported 794 passes and
   20 failing assertions/8 failed suites; baseline comparison is in progress.
-  Portable CI remains pending. Native capture, live app entry points, real
-  policy prompts and MCP are not claimed by this factory integration.
+  First portable CI run `33931195514` passed the Rust round-trip tests on all
+  three platforms but exposed a missing logging-package build prerequisite in
+  the new server test command; the command now builds its workspace dependencies
+  explicitly. Portable CI rerun remains pending. Native capture, live app entry
+  points, real policy prompts and MCP are not claimed by this factory integration.
 - Sequencing decision: existing durable interactions are Codex RPC-owned and
   currently require a real native thread; they are not a generic CUA approval
   owner. Enabling a route using authentication or YOLO alone would omit the

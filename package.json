@@ -32,7 +32,7 @@
     "cua:install:dev": "node scripts/cantrip-cua/build.mjs --install-dev",
     "cua:profile": "node scripts/cantrip-cua/development.mjs",
     "cua:test": "cargo test --locked --manifest-path cantrip_cua/Cargo.toml && node --test scripts/cantrip-cua/*.test.mjs && pnpm cua:test:worker",
-    "cua:test:worker": "pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/crypto build && node scripts/cantrip-cua/worker-test.mjs",
+    "cua:test:worker": "pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/crypto build && node scripts/cantrip-cua/worker-test.mjs",
     "cua:check": "cargo fmt --manifest-path cantrip_cua/Cargo.toml -- --check && cargo clippy --locked --manifest-path cantrip_cua/Cargo.toml --all-targets -- -D warnings",
     "cua:smoke": "node scripts/cantrip-cua/smoke.mjs",
     "check:large-files": "node scripts/check-large-files.mjs",
