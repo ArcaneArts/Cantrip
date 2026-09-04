@@ -80,11 +80,11 @@ function surfaceCanRename(surface: ProjectSurface): boolean {
   );
 }
 
-function surfaceCanDelete(surface: ProjectSurface): boolean {
+export function surfaceCanDelete(surface: ProjectSurface): boolean {
   return surface.kind !== "builtin" && surface.definition.deletable;
 }
 
-function surfaceDeleteLabel(surface: ProjectSurface): string {
+export function surfaceDeleteLabel(surface: ProjectSurface): string {
   return surface.kind === "chat" ? "Archive Resource" : "Delete Resource";
 }
 

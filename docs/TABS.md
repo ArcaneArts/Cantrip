@@ -202,6 +202,15 @@ share that pane, but only one is active at a time.
 - The dock rail is the pane's tab selector; the pane body has no tab strip.
 - The rail owns the add-surface control and is the drop target for tabs moved
   from center panes.
+- Open rail tabs follow the pane's persisted member order. Dragging one along
+  the rail smoothly displaces its neighbors and commits the reordered member
+  list when dropped.
+- An open rail tab has the same close and destructive resource actions as a
+  center tab. Its context menu closes the view or, when the surface definition
+  permits it, confirms deletion or archival of the underlying resource.
+- Static rail launchers do not participate in sorting or deletion. Once a
+  launcher opens a placement in that dock, the placement becomes the sortable,
+  actionable rail tab and the duplicate launcher is hidden there.
 - Clicking a closed rail launcher opens or focuses its tab in that dock.
 - Clicking an already-open launcher focuses the tab and reveals its dock.
 - An optional repeated click may collapse the dock without closing the tab,
