@@ -2,7 +2,8 @@
 
 Worker-owned Rust computer-use library and executable. The portable
 process/session/image/cursor core and build-chain integration use an explicit
-deterministic test backend. Native capture, worker/server/app integration, managed JavaScript,
+deterministic test backend. A lazy worker service owns the actual process and
+private protocol. Native capture, server/app integration, managed JavaScript,
 permissions, and Trajectory are subsequent cycles in
 [the CUA plan](../docs/planned/CUA.md). Nothing launches this crate from ordinary
 Cantrip worker startup yet. Development preparation builds, installs, and smoke
@@ -14,6 +15,7 @@ tests the helper without capturing a real desktop or requesting capture permissi
 pnpm cua:build
 pnpm cua:build:release
 pnpm cua:test
+pnpm cua:test:worker
 pnpm cua:check
 pnpm cua:smoke
 ```
@@ -47,6 +49,47 @@ node scripts/verify-packaged-worker-cua.mjs /absolute/path/to/worker
 No screenshot pixels or native target details are printed. Fake image metadata
 and digests are public deterministic test results. Native smoke is not yet
 implemented; the later macOS adapter cycle owns that validation.
+
+### Worker ownership and lifecycle
+
+`cantrip_worker/src/computer-use/service.ts` is the only worker process owner.
+Construction, status inspection, idle disconnect, and shutdown perform no CUA
+launch, filesystem lookup, or native permission request. First authorized use
+launches one helper and performs its actual capability handshake. The worker
+uses `CANTRIP_CUA_BIN` verbatim when supplied, otherwise its own module-relative
+`bin/cantrip-cua` (`.exe` on Windows). An explicit broken override fails; it never
+selects a different installation based on cached metadata or existence checks.
+Browser/direct-worker development and `devtop` project the stable named profile
+path into this override before starting the worker.
+
+The service retains immutable server/account/worker/chat/task/thread/turn
+ownership and generates session IDs. A shared target can be observed repeatedly
+without resetting the cursor. Requests include target ID and generation, and
+responses are validated against the original binding. Snapshot bytes remain
+binary and are checked against bounded PNG metadata and SHA-256; neither target
+details nor pixels are written to logs or retained as a second audit store.
+
+Each session serializes its operations. Cancellation of a queued request settles
+without sending it; cancellation after sending reports an unknown outcome and
+invalidates that session, rather than replaying a possibly completed mutation.
+Interrupt, thread relocation, terminal server disconnect, and worker shutdown
+revoke matching scopes immediately. Stop is local and does not wait for a child
+response. Transport cancellation acknowledgments and process shutdown are
+bounded; pending work never retries itself.
+
+One unexpected helper crash permits one new launch on a **fresh explicit
+request**. Old session IDs remain invalid. A second crash, a launch failure, or
+an incompatible protocol is terminal until the worker is restarted. Ordinary
+native errors such as denied capture permission do not count as crashes.
+
+`pnpm cua:test:worker` builds the actual Rust artifact and passes that exact path
+to worker tests. It covers the real worker-service/process boundary, both fake
+targets, all cursor styles, binary observations, ownership, cancellation,
+disconnect, and crash restart. Generic worker unit runs skip these explicit
+artifact tests; the dedicated CUA command and portable CI run them without a
+native desktop. This is not yet client/server/MCP end-to-end or native capture QA.
+The worker service has no public command or managed MCP entry point in this pass;
+authenticated encrypted routing and permission policy precede product exposure.
 
 ### Stable development helper
 

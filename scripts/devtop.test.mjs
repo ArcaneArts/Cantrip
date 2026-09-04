@@ -193,6 +193,24 @@ test("legacy cleanup collapses nested Cantrip launchers to the owning root", () 
   );
 });
 
+test("legacy cleanup recognizes only the exact CUA worker launcher in known worktrees", () => {
+  const roots = ["/workspace/Cantrip"];
+  const command = "node ../scripts/cantrip-cua/development-launch.mjs";
+  const processes = [
+    { pid: 10, ppid: 1, command, cwd: "/workspace/Cantrip/cantrip_worker" },
+    { pid: 20, ppid: 1, command, cwd: "/workspace/Other/cantrip_worker" },
+    { pid: 30, ppid: 1, command, cwd: "/workspace/Cantrip/cantrip_server" },
+    {
+      pid: 40,
+      ppid: 1,
+      command: `${command}.other`,
+      cwd: "/workspace/Cantrip/cantrip_worker",
+    },
+    { pid: 50, ppid: 1, command },
+  ];
+  assert.deepEqual(findLegacyDevtopRootPids(processes, roots), [10]);
+});
+
 test("hard process-tree cleanup sends SIGKILL without a graceful signal", () => {
   const processes = [
     { pid: 100, ppid: 1, command: "parent" },

@@ -20,6 +20,7 @@ import {
   parseDevtopProfileArguments,
 } from "./devtop-tauri-config.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
+import { developmentWorkerEnvironment } from "./cantrip-cua/development-launch.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -31,6 +32,10 @@ const developmentProfile = parseDevtopProfileArguments();
 // Project the selected named profile into preparation and worker children.
 // Native helper installation must not accidentally use default for --profile.
 process.env.CANTRIP_DEV_PROFILE = developmentProfile;
+Object.assign(
+  process.env,
+  developmentWorkerEnvironment({ profileName: developmentProfile }),
+);
 const stateDirectory = developmentProfileStateDirectory(
   repositoryRoot,
   developmentProfile,

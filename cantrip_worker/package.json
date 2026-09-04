@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/index.ts",
+    "dev": "node ../scripts/cantrip-cua/development-launch.mjs",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/crypto build && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
