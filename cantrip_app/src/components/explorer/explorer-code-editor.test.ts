@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EXPLORER_CODE_EDITOR_CLASS_NAME,
+  EXPLORER_CODE_LOADING_COVER_CLASS_NAME,
+  EXPLORER_CODE_SURFACE_BACKGROUND,
   explorerCodeEditorBindingKey,
   isRetryableExplorerCodeConnectionError,
 } from "./explorer-code-editor";
@@ -25,6 +28,18 @@ describe("Explorer Code editor readiness identity", () => {
     expect(binding({ worktreeId: "worktree-two" })).not.toBe(current);
     expect(binding({ workerId: "worker-two" })).not.toBe(current);
     expect(binding({ reloadVersion: 1 })).not.toBe(current);
+  });
+});
+
+describe("Explorer Code editor background ownership", () => {
+  it("leaves the persistent surface, iframe, and loading cover transparent", () => {
+    expect(EXPLORER_CODE_SURFACE_BACKGROUND).toBe("transparent");
+    for (const className of [
+      EXPLORER_CODE_EDITOR_CLASS_NAME,
+      EXPLORER_CODE_LOADING_COVER_CLASS_NAME,
+    ]) {
+      expect(className.split(/\s+/u)).not.toContain("bg-background");
+    }
   });
 });
 

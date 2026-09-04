@@ -73,6 +73,7 @@ const logging = vi.hoisted(() => ({
 }));
 
 vi.mock("@/components/code/code-view", () => ({
+  CODE_WORKBENCH_FRAME_BACKGROUND: "transparent",
   codeWorkbenchFrameClassName: (ready: boolean) =>
     ready ? "frame-ready" : "frame-loading",
   isDarkCodeAppearance: (appearance: CodeAppearance) =>

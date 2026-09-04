@@ -96,6 +96,8 @@ export function codeWorkbenchFrameClassName(ready: boolean): string {
 
 export const CODE_VIEW_CLASS_NAME = "relative min-h-0 flex-1 overflow-hidden";
 export const CODE_WORKBENCH_FRAME_BACKGROUND = "transparent";
+export const CODE_WORKBENCH_LOADING_BACKGROUND =
+  CODE_WORKBENCH_FRAME_BACKGROUND;
 
 export function codeAttachmentUrlForLog(rawUrl: string): string {
   try {
@@ -740,7 +742,6 @@ export function CodeView({
       frameReadyNonce === frameMount?.nonce
     : false;
   const darkWorkbench = isDarkCodeAppearance(appearance);
-  const workbenchBackdrop = darkWorkbench ? "#000000" : "#ffffff";
   const workbenchForeground = darkWorkbench ? "#f4f4f5" : "#18181b";
   const workbenchMuted = darkWorkbench ? "#a1a1aa" : "#71717a";
 
@@ -808,7 +809,7 @@ export function CodeView({
               className="absolute inset-0 z-10 grid place-items-center p-6 text-center"
               data-slot="code-workbench-startup-cover"
               style={{
-                backgroundColor: workbenchBackdrop,
+                backgroundColor: CODE_WORKBENCH_LOADING_BACKGROUND,
                 color: workbenchForeground,
               }}
             >

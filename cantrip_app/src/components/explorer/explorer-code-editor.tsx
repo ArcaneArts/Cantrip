@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import {
+  CODE_WORKBENCH_FRAME_BACKGROUND,
   codeWorkbenchFrameClassName,
   isDarkCodeAppearance,
 } from "@/components/code/code-view";
@@ -71,6 +72,11 @@ const SHARED_TRANSPORT_RECOVERY_FAILED_MESSAGE =
 export const EXPLORER_CODE_RETRY_BASE_DELAY_MS = 500;
 export const EXPLORER_CODE_RETRY_MAX_DELAY_MS = 15_000;
 export const EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT = 6;
+export const EXPLORER_CODE_EDITOR_CLASS_NAME =
+  "relative flex min-h-0 flex-1 overflow-hidden";
+export const EXPLORER_CODE_LOADING_COVER_CLASS_NAME =
+  "absolute inset-0 grid place-items-center p-6";
+export const EXPLORER_CODE_SURFACE_BACKGROUND = CODE_WORKBENCH_FRAME_BACKGROUND;
 
 export function explorerCodeEditorRetryDelayMs(attempt: number): number {
   return Math.min(
@@ -1549,7 +1555,7 @@ export function ExplorerCodeEditor({
 
   return (
     <section
-      className="relative flex min-h-0 flex-1 overflow-hidden bg-background"
+      className={EXPLORER_CODE_EDITOR_CLASS_NAME}
       data-slot="explorer-code-editor"
     >
       {!closing && preferredAttachment ? (
@@ -1620,6 +1626,7 @@ export function ExplorerCodeEditor({
           ref={frameRef}
           referrerPolicy="no-referrer"
           src={frameMount?.url}
+          style={{ backgroundColor: EXPLORER_CODE_SURFACE_BACKGROUND }}
           tabIndex={ready ? 0 : -1}
           title={path ? `Cantrip Code — ${path}` : "Cantrip Code"}
         />
@@ -1627,10 +1634,11 @@ export function ExplorerCodeEditor({
 
       {!closing && !ready ? (
         <div
-          className="absolute inset-0 grid place-items-center bg-background p-6"
+          className={EXPLORER_CODE_LOADING_COVER_CLASS_NAME}
           data-code-editor-cover={
             isDarkCodeAppearance(appearance) ? "dark" : "light"
           }
+          style={{ backgroundColor: EXPLORER_CODE_SURFACE_BACKGROUND }}
         >
           {error ? (
             <div className="flex max-w-lg flex-col items-center gap-4 text-center">
