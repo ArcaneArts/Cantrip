@@ -72,7 +72,12 @@ describe("project pane render bindings", () => {
     const unfocused = projectPaneRenderBindings(shell, presentation(false));
     expect(unfocused.setCodeHeader).toBeUndefined();
     expect(unfocused.setExplorerHeader).toBeUndefined();
-    expect(unfocused.setGitHistoryHeader).toBeUndefined();
+    expect(unfocused.setGitHistoryHeader).toBeTypeOf("function");
+    unfocused.setGitHistoryHeader(null);
+    expect(shell.setGitHistoryHeader).not.toHaveBeenCalled();
+    expect(
+      projectPaneRenderBindings(shell, presentation(false)).setGitHistoryHeader,
+    ).toBe(unfocused.setGitHistoryHeader);
   });
 
   it.each(["github.issues", "github.pull-requests", "github.actions"] as const)(

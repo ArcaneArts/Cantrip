@@ -8,6 +8,8 @@ import {
   runTerminalTargetLabel,
 } from "@/lib/run-terminal-model";
 
+const ignoreGitHistoryHeaderChange = (_state: unknown): void => undefined;
+
 /**
  * Adapts the focused-shell bindings for a simultaneously visible pane. The
  * focused selection remains authoritative for global header/actions, while a
@@ -180,7 +182,9 @@ export function projectPaneRenderBindings(
       ) ?? bindings.selectedWorker,
     setCodeHeader: focused ? bindings.setCodeHeader : undefined,
     setExplorerHeader: focused ? bindings.setExplorerHeader : undefined,
-    setGitHistoryHeader: focused ? bindings.setGitHistoryHeader : undefined,
+    setGitHistoryHeader: focused
+      ? bindings.setGitHistoryHeader
+      : ignoreGitHistoryHeaderChange,
     showSidebarPreviewTab: false,
     sidebarFilePreview: null,
     sidebarFilePreviewVisible: false,
