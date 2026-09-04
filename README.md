@@ -146,26 +146,21 @@ including reset times; an omitted zero-valued SuperGrok reading is treated as
 
 The app can switch between the structured chat view and the linked live Codex console. A newly opened console initializes the Codex CLI with the model selected in the composer, so a conversation can begin in either interface.
 
-### Persistent tab groups
+### Persistent project tabs
 
-Project surfaces are organized into server-owned tab groups. In the desktop and
-wide-browser layout, each group is one sidebar row and has a horizontal top bar;
-a singleton is simply a one-member group. Drag a singleton sidebar row into the visible top bar to
-join it, drag top tabs to reorder them, or drag a top tab back to the sidebar to
-split it. These interactions use revision-checked server mutations, so compact
-and mobile clients observe the same membership and order even though their
-bottom navigation selects surfaces directly and does not expose grouping drag
-and drop. The active member inside each group remains local to each window.
+Project surfaces currently use server-owned, revision-checked tab groups so
+desktop, browser, and compact clients observe the same durable membership and
+order. The replacement design evolves those groups into panes: each open
+surface has one tab placement, panes own mixed tab strips, and explicit center,
+right, bottom, split, and detached regions determine presentation rather than
+surface kind.
 
-On Tauri, the pop-out action opens the complete group rather than one isolated
-surface. A group has at most one local pop-out owner; selecting its row in the
-main sidebar focuses that window. Closing an ordinary pop-out never deletes its
-group or tabs. Tab dragging is intentionally scoped to the current window on
-every platform: dragging outside a Tauri window neither creates a new pop-out
-nor docks into another window. Use the explicit pop-out action when a group
-needs its own desktop window. See
-[docs/TAB_GROUPS.md](docs/TAB_GROUPS.md) for the model, failure semantics, and
-QA matrix.
+The plan also unifies built-in project tools such as Overview, Tasks, History,
+Issues, PRs, Actions, and Graph as singleton surfaces; separates closing a view
+from deleting its resource; and defines resizable dock, full-view snap, future
+center splitting, and pop-out ownership semantics. See
+[docs/TABS.md](docs/TABS.md) for the target model, migration stages, and QA
+matrix.
 
 ## Architecture
 
