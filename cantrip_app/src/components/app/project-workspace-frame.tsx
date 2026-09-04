@@ -113,6 +113,8 @@ export function DockRail({
   region: DockRegion;
   surfaces: readonly ProjectSurface[];
 }) {
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createTooltipOpen, setCreateTooltipOpen] = useState(false);
   const drop = useDroppable({
     id: workspaceRegionDropId(region),
     data: {
@@ -161,7 +163,10 @@ export function DockRail({
           : { gridColumn: "1 / -1", gridRow: 2 }
       }
     >
-      <Tooltip>
+      <Tooltip
+        onOpenChange={(open) => setCreateTooltipOpen(open && !createMenuOpen)}
+        open={createTooltipOpen && !createMenuOpen}
+      >
         <TooltipTrigger asChild>
           <span className="inline-flex size-10 shrink-0">
             <ProjectSurfaceCreateMenu
@@ -169,6 +174,10 @@ export function DockRail({
               allowedKinds={createKindsForPaneRegion(region)}
               creatingKinds={creatingKinds}
               onCreate={onCreate}
+              onOpenChange={(open) => {
+                setCreateMenuOpen(open);
+                if (open) setCreateTooltipOpen(false);
+              }}
               placement={placement}
               trigger={
                 <button
