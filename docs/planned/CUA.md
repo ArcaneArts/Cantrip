@@ -151,7 +151,8 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 4 — Lazy worker service and private process transport
 
 - Branch: `codex/cua-04-worker-service`, based on merged cycle 3b (`cbfa5df6d`).
-- PR/commit: pending creation; merge not yet observed.
+- PR: [#1738](https://github.com/ArcaneArts/Cantrip/pull/1738).
+  Initial implementation commit: `b972ff20`; merge not yet observed.
 - Implemented: inert worker service construction; actual framed handshake on
   first authorized use; immutable execution/account ownership; per-session
   serialized operations; raw PNG validation; immediate local scope revocation;
