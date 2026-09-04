@@ -863,10 +863,11 @@ export function App() {
     showProjectSettings,
     workspaceSelection,
   });
-  const { renamePaneMutation, tabLayoutMutation } = useTabLayoutOperations({
-    queryClient,
-    setWorkspaceDragError,
-  });
+  const { dockPresentationMutation, renamePaneMutation, tabLayoutMutation } =
+    useTabLayoutOperations({
+      queryClient,
+      setWorkspaceDragError,
+    });
 
   const onlineWorker = workers.data?.find((worker) => worker.online) ?? null;
   const { activeProjectWorkspace, visibleProjects } = useActiveProjectWorkspace(
@@ -1957,7 +1958,7 @@ export function App() {
     chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
     codeHeader, codeTabs, commandBarOpen, compactManagedHeader, compactShell,
     completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder,
-    createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation,
+    createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
     closeSurfaceView, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
     desktopSidebarDrawerOpen, dismissedLongPathFailure, displayTerminals, displayedGitProject, executeAppAction,

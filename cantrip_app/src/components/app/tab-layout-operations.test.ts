@@ -4,6 +4,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  applyDockPresentationToLayout,
   createWorkspaceDropHandler,
   prepareOptimisticTabLayoutMutation,
 } from "./tab-layout-operations";
@@ -42,6 +43,24 @@ const layout: ProjectTabLayoutSummary = {
 };
 
 describe("workspace drop operations", () => {
+  it("optimistically updates only the addressed tab presentation", () => {
+    const preference = {
+      preferredMode: "full",
+      restoreFraction: 0.38,
+      splitFraction: 0.38,
+    } as const;
+    const updated = applyDockPresentationToLayout(
+      layout,
+      "chat:second",
+      preference,
+    );
+
+    expect(updated.revision).toBe(layout.revision);
+    expect(updated.panes[0]?.members[0]?.dockPresentation).toBeUndefined();
+    expect(updated.panes[0]?.members[1]?.dockPresentation).toEqual(preference);
+    expect(layout.panes[0]?.members[1]?.dockPresentation).toBeUndefined();
+  });
+
   it("publishes the destination layout before query cancellation finishes", async () => {
     const queryClient = new QueryClient();
     const queryKey = ["project-tab-layout", layout.projectId] as const;

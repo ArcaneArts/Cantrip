@@ -5,7 +5,6 @@ import type { ProjectSurface } from "@/lib/project-surface";
 
 import {
   createKindsForPaneRegion,
-  dockDividerFractionForKey,
   projectWorkspaceGridModel,
   railLauncherDisposition,
   visibleWorkspacePanes,
@@ -177,17 +176,17 @@ describe("workspace frame topology", () => {
       right: true,
       bottom: true,
       area: "bottom-body bottom-body bottom-body",
-      columns: "68% 6px minmax(0, 1fr)",
+      columns: "minmax(0, calc(68% - 3px)) 6px minmax(0, calc(32% - 3px))",
     },
   ])(
     "lays out center=$center right=$right bottom=$bottom without residual tracks",
     ({ area, bottom, center, columns, right }) => {
       const model = projectWorkspaceGridModel({
         bottom,
-        bottomFraction: 0.68,
+        bottomFraction: 0.32,
         center,
         right,
-        rightFraction: 0.68,
+        rightFraction: 0.32,
       });
       expect(model.gridTemplateAreas).toContain(area);
       expect(model.gridTemplateColumns).toBe(columns);
@@ -196,17 +195,42 @@ describe("workspace frame topology", () => {
     },
   );
 
-  it("supports arrow, Home, and End keyboard divider controls", () => {
-    expect(dockDividerFractionForKey("vertical", 0.5, "ArrowLeft")).toBe(0.45);
-    expect(dockDividerFractionForKey("vertical", 0.5, "ArrowRight")).toBe(0.55);
-    expect(dockDividerFractionForKey("horizontal", 0.5, "ArrowUp")).toBe(0.45);
-    expect(dockDividerFractionForKey("horizontal", 0.5, "ArrowDown")).toBe(
-      0.55,
+  it("measures the bottom dock against the full frame and spans every column", () => {
+    const model = projectWorkspaceGridModel({
+      bottom: true,
+      bottomFraction: 0.32,
+      center: true,
+      right: true,
+      rightFraction: 0.32,
+    });
+    expect(model.gridTemplateAreas).toContain(
+      '"bottom-body bottom-body bottom-body"',
     );
-    expect(dockDividerFractionForKey("vertical", 0.5, "Home")).toBe(0.2);
-    expect(dockDividerFractionForKey("vertical", 0.5, "End")).toBe(0.8);
-    expect(dockDividerFractionForKey("vertical", 0.5, "Enter")).toBeNull();
+    expect(model.gridTemplateRows).toContain("calc(32% - 43px)");
   });
+
+  it.each(["right", "bottom"] as const)(
+    "renders only the %s pane in full mode with no residual split track",
+    (fullRegion) => {
+      const model = projectWorkspaceGridModel({
+        bottom: true,
+        bottomFraction: 0.32,
+        center: true,
+        fullRegion,
+        right: true,
+        rightFraction: 0.32,
+      });
+      expect(model.visibleRegions).toEqual([fullRegion]);
+      expect(model.gridTemplateColumns).toBe("minmax(0, 1fr)");
+      expect(model.gridTemplateRows).toBe("40px minmax(0, 1fr)");
+      expect(model.showRightDivider).toBe(false);
+      expect(model.showBottomDivider).toBe(false);
+      expect(model.gridTemplateAreas).not.toContain("center");
+      expect(model.gridTemplateAreas).not.toContain(
+        fullRegion === "right" ? "bottom" : "right",
+      );
+    },
+  );
 });
 
 describe("dock rail launchers", () => {

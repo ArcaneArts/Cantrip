@@ -214,6 +214,8 @@ import {
   projectPaneMemberMoveSchema,
   projectPaneMemberOrderSchema,
   projectPaneOrderSchema,
+  projectDockPresentationPreferenceSchema,
+  projectDockPresentationUpdateSchema,
   encryptedProjectPaneUpdateSchema,
   encryptedProjectViewCreateSchema,
   legacyProjectTabLayoutWireSummarySchema,
@@ -6198,6 +6200,37 @@ describe("Cantrip protocol", () => {
 
   it("validates revisioned project tab layouts and unique order mutations", () => {
     expect(
+      projectDockPresentationPreferenceSchema.parse({
+        preferredMode: "full",
+        splitFraction: 0.34,
+        restoreFraction: 0.32,
+      }),
+    ).toEqual({
+      preferredMode: "full",
+      splitFraction: 0.34,
+      restoreFraction: 0.32,
+    });
+    for (const fraction of [-1, 0, 0.049, 0.951, 1, Number.NaN]) {
+      expect(
+        projectDockPresentationUpdateSchema.safeParse({
+          revision: 3,
+          tabKey: "browser:browser-1",
+          preferredMode: "split",
+          splitFraction: fraction,
+          restoreFraction: 0.32,
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      projectDockPresentationUpdateSchema.safeParse({
+        revision: 3,
+        tabKey: "browser:browser-1",
+        preferredMode: "maximized",
+        splitFraction: 0.32,
+        restoreFraction: 0.32,
+      }).success,
+    ).toBe(false);
+    expect(
       projectTabLayoutSummarySchema.parse({
         projectId: "project-1",
         revision: 3,
@@ -6322,6 +6355,49 @@ describe("Cantrip protocol", () => {
         projectId: "project-1",
         revision: 3,
         panes: [wireGroup],
+      }).success,
+    ).toBe(true);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        panes: [
+          {
+            ...wireGroup,
+            members: [
+              {
+                ...wireGroup.members[0],
+                dockPresentation: {
+                  preferredMode: "split",
+                  splitFraction: 0.32,
+                  restoreFraction: 0.32,
+                },
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        panes: [
+          {
+            ...wireGroup,
+            region: "right",
+            members: [
+              {
+                ...wireGroup.members[0],
+                dockPresentation: {
+                  preferredMode: "split",
+                  splitFraction: 0.32,
+                  restoreFraction: 0.32,
+                },
+              },
+            ],
+          },
+        ],
       }).success,
     ).toBe(true);
     expect(

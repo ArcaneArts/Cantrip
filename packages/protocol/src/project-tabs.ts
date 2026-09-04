@@ -71,6 +71,28 @@ export const projectBuiltInSurfaceStateSchema = z
   })
   .strict();
 
+export const projectDockPresentationModeSchema = z.enum([
+  "closed",
+  "split",
+  "full",
+]);
+
+export const projectDockSplitFractionSchema = z.number().min(0.05).max(0.95);
+
+export const projectDockPresentationPreferenceSchema = z
+  .object({
+    preferredMode: projectDockPresentationModeSchema,
+    splitFraction: projectDockSplitFractionSchema,
+    restoreFraction: projectDockSplitFractionSchema,
+  })
+  .strict();
+
+export const projectDockPresentationUpdateSchema =
+  projectDockPresentationPreferenceSchema.extend({
+    revision: z.number().int().nonnegative(),
+    tabKey: z.string().min(1),
+  });
+
 const projectTabMemberSummaryBaseSchema = z.object({
   tabKey: z.string().min(1),
   paneId: z.string().min(1),
@@ -78,6 +100,9 @@ const projectTabMemberSummaryBaseSchema = z.object({
   tabKind: projectTabKindSchema,
   tabId: z.string().min(1),
   builtInState: projectBuiltInSurfaceStateSchema.nullable().optional(),
+  dockPresentation: projectDockPresentationPreferenceSchema
+    .nullable()
+    .optional(),
   position: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -200,7 +225,12 @@ function validatePaneMembership(
   pane: {
     id: string;
     projectId: string;
-    members: Array<{ paneId: string; projectId: string }>;
+    region?: z.infer<typeof projectPaneRegionSchema>;
+    members: Array<{
+      paneId: string;
+      projectId: string;
+      dockPresentation?: unknown | null;
+    }>;
   },
   context: z.RefinementCtx,
 ) {
@@ -217,6 +247,18 @@ function validatePaneMembership(
         code: "custom",
         message: "Pane members must belong to the pane project.",
         path: ["members", index, "projectId"],
+      });
+    }
+    if (
+      pane.region !== undefined &&
+      pane.region !== "right" &&
+      pane.region !== "bottom" &&
+      member.dockPresentation != null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Dock presentation is only valid in right or bottom panes.",
+        path: ["members", index, "dockPresentation"],
       });
     }
   }
@@ -561,6 +603,15 @@ export type ProjectViewWireSummary = z.infer<
 export type ProjectTabKind = z.infer<typeof projectTabKindSchema>;
 export type ProjectBuiltInSurfaceState = z.infer<
   typeof projectBuiltInSurfaceStateSchema
+>;
+export type ProjectDockPresentationMode = z.infer<
+  typeof projectDockPresentationModeSchema
+>;
+export type ProjectDockPresentationPreference = z.infer<
+  typeof projectDockPresentationPreferenceSchema
+>;
+export type ProjectDockPresentationUpdate = z.infer<
+  typeof projectDockPresentationUpdateSchema
 >;
 export type ProjectTabMemberSummary = z.infer<
   typeof projectTabMemberSummarySchema

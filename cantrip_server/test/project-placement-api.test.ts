@@ -3139,4 +3139,251 @@ describe.sequential("project execution placement API", () => {
       ).toEqual(expectedIds);
     }
   });
+
+  it("persists independent dock presentation preferences across moves and close/reopen", async () => {
+    const createBrowser = async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/browsers`,
+        payload: {
+          ...protectedBrowserFields(),
+          target: { kind: "worker", projectId, workerId: "worker-alpha" },
+          targetRegion: "right",
+        },
+      });
+      expect(response.statusCode, response.body).toBe(201);
+      return browserWireSummarySchema.parse(response.json());
+    };
+    const primaryBrowser = await createBrowser();
+    const peerBrowser = await createBrowser();
+    const primaryTabKey = `browser:${primaryBrowser.id}`;
+    const memberIn = (
+      layout: ReturnType<typeof projectTabLayoutWireSummarySchema.parse>,
+      region: "center" | "right" | "bottom",
+      tabKey: string,
+    ) =>
+      layout.panes
+        .filter((pane) => pane.region === region)
+        .flatMap((pane) => pane.members)
+        .find((member) => member.tabKey === tabKey);
+
+    let layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    expect(memberIn(layout, "right", primaryTabKey)?.dockPresentation).toEqual({
+      preferredMode: "split",
+      splitFraction: 0.32,
+      restoreFraction: 0.32,
+    });
+    expect(
+      memberIn(layout, "right", `browser:${peerBrowser.id}`)?.dockPresentation,
+    ).toMatchObject({ preferredMode: "split", splitFraction: 0.32 });
+
+    const rightUpdateRevision = layout.revision;
+    const rightUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member/presentation`,
+      payload: {
+        revision: rightUpdateRevision,
+        tabKey: primaryTabKey,
+        preferredMode: "full",
+        splitFraction: 0.41,
+        restoreFraction: 0.36,
+      },
+    });
+    expect(rightUpdate.statusCode, rightUpdate.body).toBe(200);
+    layout = projectTabLayoutWireSummarySchema.parse(rightUpdate.json());
+    expect(memberIn(layout, "right", primaryTabKey)?.dockPresentation).toEqual({
+      preferredMode: "full",
+      splitFraction: 0.41,
+      restoreFraction: 0.36,
+    });
+    expect(
+      memberIn(layout, "right", `browser:${peerBrowser.id}`)?.dockPresentation,
+    ).toMatchObject({ preferredMode: "split", splitFraction: 0.32 });
+
+    const staleUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member/presentation`,
+      payload: {
+        revision: rightUpdateRevision,
+        tabKey: primaryTabKey,
+        preferredMode: "split",
+        splitFraction: 0.5,
+        restoreFraction: 0.5,
+      },
+    });
+    expect(staleUpdate.statusCode).toBe(409);
+    const invalidFraction = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member/presentation`,
+      payload: {
+        revision: layout.revision,
+        tabKey: primaryTabKey,
+        preferredMode: "split",
+        splitFraction: 0.01,
+        restoreFraction: 0.5,
+      },
+    });
+    expect(invalidFraction.statusCode).toBe(400);
+
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/projects/${projectId}/panes/member`,
+          payload: {
+            revision: layout.revision,
+            tabKey: primaryTabKey,
+            targetPaneId: null,
+            targetRegion: "bottom",
+            targetMemberPosition: 0,
+          },
+        })
+      ).json(),
+    );
+    expect(memberIn(layout, "bottom", primaryTabKey)?.dockPresentation).toEqual(
+      {
+        preferredMode: "split",
+        splitFraction: 0.32,
+        restoreFraction: 0.32,
+      },
+    );
+    const bottomUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member/presentation`,
+      payload: {
+        revision: layout.revision,
+        tabKey: primaryTabKey,
+        preferredMode: "closed",
+        splitFraction: 0.28,
+        restoreFraction: 0.26,
+      },
+    });
+    expect(bottomUpdate.statusCode, bottomUpdate.body).toBe(200);
+    layout = projectTabLayoutWireSummarySchema.parse(bottomUpdate.json());
+
+    const movedRight = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member`,
+      payload: {
+        revision: layout.revision,
+        tabKey: primaryTabKey,
+        targetPaneId: null,
+        targetRegion: "right",
+        targetMemberPosition: 0,
+      },
+    });
+    expect(movedRight.statusCode, movedRight.body).toBe(200);
+    layout = projectTabLayoutWireSummarySchema.parse(movedRight.json());
+    expect(memberIn(layout, "right", primaryTabKey)?.dockPresentation).toEqual({
+      preferredMode: "full",
+      splitFraction: 0.41,
+      restoreFraction: 0.36,
+    });
+
+    const closed = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/panes/member/close`,
+      payload: { revision: layout.revision, viewId: primaryTabKey },
+    });
+    expect(closed.statusCode, closed.body).toBe(200);
+    layout = projectSurfaceViewCloseResultSchema.parse(closed.json()).layout;
+    expect(
+      layout.panes
+        .flatMap((pane) => pane.members)
+        .some(({ tabKey }) => tabKey === primaryTabKey),
+    ).toBe(false);
+
+    const reopened = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/panes/member/open`,
+      payload: {
+        revision: layout.revision,
+        surfaceRef: {
+          kind: "entity",
+          definitionId: "project.browser",
+          resourceId: primaryBrowser.id,
+        },
+        targetRegion: "right",
+      },
+    });
+    expect(reopened.statusCode, reopened.body).toBe(200);
+    layout = projectSurfaceViewOpenResultSchema.parse(reopened.json()).layout;
+    expect(memberIn(layout, "right", primaryTabKey)?.dockPresentation).toEqual({
+      preferredMode: "full",
+      splitFraction: 0.41,
+      restoreFraction: 0.36,
+    });
+
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/projects/${projectId}/panes/member`,
+          payload: {
+            revision: layout.revision,
+            tabKey: primaryTabKey,
+            targetPaneId: null,
+            targetRegion: "bottom",
+            targetMemberPosition: 0,
+          },
+        })
+      ).json(),
+    );
+    expect(memberIn(layout, "bottom", primaryTabKey)?.dockPresentation).toEqual(
+      {
+        preferredMode: "closed",
+        splitFraction: 0.28,
+        restoreFraction: 0.26,
+      },
+    );
+
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/projects/${projectId}/panes/member`,
+          payload: {
+            revision: layout.revision,
+            tabKey: primaryTabKey,
+            targetPaneId: null,
+            targetRegion: "center",
+            targetMemberPosition: 0,
+            targetPanePosition: 0,
+          },
+        })
+      ).json(),
+    );
+    expect(
+      memberIn(layout, "center", primaryTabKey)?.dockPresentation,
+    ).toBeNull();
+    const centerRevision = layout.revision;
+    const centerUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member/presentation`,
+      payload: {
+        revision: centerRevision,
+        tabKey: primaryTabKey,
+        preferredMode: "split",
+        splitFraction: 0.4,
+        restoreFraction: 0.4,
+      },
+    });
+    expect(centerUpdate.statusCode).toBe(400);
+    const afterRejectedCenterUpdate = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    expect(afterRejectedCenterUpdate.revision).toBe(centerRevision);
+  });
 });

@@ -2,6 +2,7 @@ import { useDroppable } from "@dnd-kit/core";
 import {
   PROJECT_SURFACE_DEFINITIONS,
   projectBuiltinSurfaceDefinitionIdSchema,
+  type ProjectDockPresentationPreference,
   type ProjectSurfaceLauncher,
   type ProjectPaneRegion,
   type ProjectPaneSummary,
@@ -25,12 +26,24 @@ import { projectPaneRenderBindings } from "@/components/app/project-pane-render-
 import {
   createKindsForPaneRegion,
   definitionIdByCreateKind,
-  dockDividerFractionForKey,
   projectWorkspaceGridModel,
   railLauncherDisposition,
   visibleWorkspacePanes,
   type VisibleProjectPane,
 } from "@/components/app/project-workspace-frame-model";
+import {
+  DEFAULT_DOCK_PRESENTATION,
+  dockIsRendered,
+  dockPresentationForKey,
+  dockPresentationForPane,
+  dockResizeCandidate,
+  effectiveDockFraction,
+  resizeDockPresentation,
+  revealDockPresentation,
+  restoreDockPresentation,
+  temporarySplitFraction,
+  type DockRegion,
+} from "@/components/app/project-dock-presentation";
 import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
@@ -49,52 +62,71 @@ import {
   workspaceRegionDropId,
 } from "@/lib/workspace-dnd-model";
 
-type DockRegion = Extract<ProjectPaneRegion, "right" | "bottom">;
-
 function VisibleChatLiveScope({ chatId }: { chatId: string }) {
   useAppLiveScope({ kind: "chat", chatId });
   return null;
 }
 
-function DockSeparator({
+function DockResizeControl({
   direction,
   fraction,
   label,
-  onFractionChange,
+  mode,
+  onDoubleClick,
+  onKeyChange,
   onPointerBegin,
   onPointerMove,
   onPointerEnd,
+  onPointerCancel,
   style,
 }: {
   direction: "horizontal" | "vertical";
   fraction: number;
   label: string;
-  onFractionChange(fraction: number): void;
+  mode: ProjectDockPresentationPreference["preferredMode"];
+  onDoubleClick(): void;
+  onKeyChange(key: string): void;
   onPointerBegin(event: PointerEvent<HTMLDivElement>): void;
   onPointerMove(event: PointerEvent<HTMLDivElement>): void;
   onPointerEnd(event: PointerEvent<HTMLDivElement>): void;
+  onPointerCancel(event: PointerEvent<HTMLDivElement>): void;
   style: CSSProperties;
 }) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const next = dockDividerFractionForKey(direction, fraction, event.key);
-    if (next === null) return;
+    if (
+      ![
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+        "Home",
+        "End",
+        "Enter",
+        " ",
+      ].includes(event.key)
+    ) {
+      return;
+    }
     event.preventDefault();
-    onFractionChange(next);
+    onKeyChange(event.key);
   };
   return (
     <div
       aria-label={label}
       aria-orientation={direction}
-      aria-valuemax={80}
-      aria-valuemin={20}
+      aria-valuemax={95}
+      aria-valuemin={5}
       aria-valuenow={Math.round(fraction * 100)}
+      aria-valuetext={`${label} ${mode === "closed" ? "closed" : mode === "full" ? "full view" : `${Math.round(fraction * 100)} percent`}`}
       className={cn(
         "group relative z-30 bg-border outline-none focus-visible:bg-ring",
         direction === "vertical" ? "cursor-col-resize" : "cursor-row-resize",
       )}
+      data-dock-resize-mode={mode}
+      onDoubleClick={onDoubleClick}
       onKeyDown={onKeyDown}
       onLostPointerCapture={onPointerEnd}
-      onPointerCancel={onPointerEnd}
+      onPointerCancel={onPointerCancel}
       onPointerDown={onPointerBegin}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
@@ -121,6 +153,7 @@ function DockRail({
   launchers,
   onOpenLauncher,
   onSelect,
+  pending,
   pane,
   projectId,
   region,
@@ -130,7 +163,8 @@ function DockRail({
   allSurfaces: readonly ProjectSurface[];
   launchers: readonly ProjectSurfaceLauncher[];
   onOpenLauncher(launcher: ProjectSurfaceLauncher): void;
-  onSelect(tabKey: string): void;
+  onSelect(surface: ProjectSurface): void;
+  pending: boolean;
   pane: ProjectPaneSummary | undefined;
   projectId: string;
   region: DockRegion;
@@ -206,7 +240,8 @@ function DockRail({
               surface.tabKey === activeTabKey && "bg-muted text-foreground",
             )}
             key={surface.tabKey}
-            onClick={() => onSelect(surface.tabKey)}
+            disabled={pending}
+            onClick={() => onSelect(surface)}
             title={surface.title}
             type="button"
           >
@@ -240,6 +275,7 @@ function DockRail({
               surface?.tabKey === activeTabKey && "bg-muted text-foreground",
             )}
             key={launcher.id}
+            disabled={pending}
             onClick={() => onOpenLauncher(launcher)}
             title={definition?.label}
             type="button"
@@ -266,12 +302,6 @@ function DockRail({
       })}
     </aside>
   );
-}
-
-function clampFraction(value: number, total: number, minimum: number): number {
-  if (total <= minimum * 2) return 0.5;
-  const minimumFraction = minimum / total;
-  return Math.max(minimumFraction, Math.min(1 - minimumFraction, value));
 }
 
 function genericPaneBody(
@@ -322,15 +352,24 @@ export function ProjectWorkspaceFrame({
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const resizePointerRef = useRef<{
+    latestPreference: ProjectDockPresentationPreference;
+    moved: boolean;
     pointerId: number;
-    separator: DockRegion;
+    region: DockRegion;
+    startClientX: number;
+    startClientY: number;
+    startPreference: ProjectDockPresentationPreference;
+    tabKey: string;
   } | null>(null);
   const resizeBodyStyleRef = useRef<{
     cursor: string;
     userSelect: string;
   } | null>(null);
-  const [rightFraction, setRightFraction] = useState(0.68);
-  const [bottomFraction, setBottomFraction] = useState(0.68);
+  const [frameSize, setFrameSize] = useState({ height: 0, width: 0 });
+  const [resizeDraft, setResizeDraft] = useState<{
+    preference: ProjectDockPresentationPreference;
+    tabKey: string;
+  } | null>(null);
   const [visiblePaneIdByRegion, setVisiblePaneIdByRegion] = useState<
     Partial<Record<ProjectPaneRegion, string>>
   >({});
@@ -339,6 +378,17 @@ export function ProjectWorkspaceFrame({
       ({ id }: { id: string }) =>
         id === bindings.workspaceSelection.focusedPaneId,
     );
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const update = () =>
+      setFrameSize({ height: frame.clientHeight, width: frame.clientWidth });
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (!focusedPane) return;
     setVisiblePaneIdByRegion((current) =>
@@ -367,7 +417,45 @@ export function ProjectWorkspaceFrame({
   const center = presentations.find(({ pane }) => pane.region === "center");
   const right = presentations.find(({ pane }) => pane.region === "right");
   const bottom = presentations.find(({ pane }) => pane.region === "bottom");
-  const remotePresentations = presentations.filter(
+  const preferenceFor = (presentation: VisibleProjectPane | undefined) =>
+    presentation && resizeDraft?.tabKey === presentation.activeTabKey
+      ? resizeDraft.preference
+      : dockPresentationForPane(presentation);
+  const rightPreference = preferenceFor(right);
+  const bottomPreference = preferenceFor(bottom);
+  const fullRegion: DockRegion | null =
+    right?.focused && rightPreference?.preferredMode === "full"
+      ? "right"
+      : bottom?.focused && bottomPreference?.preferredMode === "full"
+        ? "bottom"
+        : null;
+  const rightRendered = Boolean(right && dockIsRendered(rightPreference));
+  const bottomRendered = Boolean(bottom && dockIsRendered(bottomPreference));
+  const rightFraction = rightPreference
+    ? effectiveDockFraction(
+        temporarySplitFraction(rightPreference, fullRegion === "right"),
+        frameSize.width,
+        240,
+        240,
+      )
+    : 0.32;
+  const bottomFraction = bottomPreference
+    ? effectiveDockFraction(
+        temporarySplitFraction(bottomPreference, fullRegion === "bottom"),
+        frameSize.height,
+        180,
+        180,
+      )
+    : 0.32;
+  const renderedPresentations = fullRegion
+    ? presentations.filter(({ pane }) => pane.region === fullRegion)
+    : presentations.filter(
+        ({ pane }) =>
+          pane.region === "center" ||
+          (pane.region === "right" && rightRendered) ||
+          (pane.region === "bottom" && bottomRendered),
+      );
+  const remotePresentations = renderedPresentations.filter(
     ({ activeSurface }) => activeSurface?.kind === "remote-desktop",
   );
   const remoteDesktopQueries = useQueries({
@@ -384,7 +472,7 @@ export function ProjectWorkspaceFrame({
       remoteDesktopQueries[index],
     ]),
   );
-  const overviewPresentation = presentations.find(
+  const overviewPresentation = renderedPresentations.find(
     ({ activeSurface }) =>
       activeSurface?.kind === "builtin" &&
       activeSurface.entity.definitionId === "project.overview",
@@ -424,23 +512,60 @@ export function ProjectWorkspaceFrame({
     }
     return bindings;
   };
-  const setClampedRightFraction = (value: number) =>
-    setRightFraction(
-      clampFraction(value, frameRef.current?.clientWidth ?? 0, 240),
-    );
-  const setClampedBottomFraction = (value: number) =>
-    setBottomFraction(
-      clampFraction(value, frameRef.current?.clientHeight ?? 0, 180),
-    );
+  const commitDockPresentation = (
+    projectId: string,
+    tabKey: string,
+    preference: ProjectDockPresentationPreference,
+  ) => {
+    if (
+      bindings.dockPresentationMutation.isPending ||
+      bindings.tabLayoutMutation.isPending
+    ) {
+      return false;
+    }
+    bindings.dockPresentationMutation.mutate({
+      presentation: preference,
+      projectId,
+      tabKey,
+    });
+    return true;
+  };
+  const restoreResizeBodyStyles = () => {
+    const previous = resizeBodyStyleRef.current;
+    resizeBodyStyleRef.current = null;
+    if (!previous) return;
+    document.body.style.cursor = previous.cursor;
+    document.body.style.userSelect = previous.userSelect;
+  };
   const beginResize =
-    (separator: DockRegion) => (event: PointerEvent<HTMLDivElement>) => {
-      resizePointerRef.current = { pointerId: event.pointerId, separator };
+    (
+      region: DockRegion,
+      presentation: VisibleProjectPane,
+      preference: ProjectDockPresentationPreference,
+    ) =>
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (
+        bindings.dockPresentationMutation.isPending ||
+        bindings.tabLayoutMutation.isPending
+      ) {
+        return;
+      }
+      resizePointerRef.current = {
+        latestPreference: preference,
+        moved: false,
+        pointerId: event.pointerId,
+        region,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startPreference: preference,
+        tabKey: presentation.activeTabKey,
+      };
       resizeBodyStyleRef.current = {
         cursor: document.body.style.cursor,
         userSelect: document.body.style.userSelect,
       };
       document.body.style.cursor =
-        separator === "right" ? "col-resize" : "row-resize";
+        region === "right" ? "col-resize" : "row-resize";
       document.body.style.userSelect = "none";
       event.currentTarget.setPointerCapture(event.pointerId);
       event.preventDefault();
@@ -450,31 +575,59 @@ export function ProjectWorkspaceFrame({
     const frame = frameRef.current;
     if (!resize || resize.pointerId !== event.pointerId || !frame) return;
     const bounds = frame.getBoundingClientRect();
-    if (resize.separator === "right") {
-      setClampedRightFraction((event.clientX - bounds.left) / bounds.width);
-    } else {
-      setClampedBottomFraction((event.clientY - bounds.top) / bounds.height);
-    }
+    const total = resize.region === "right" ? bounds.width : bounds.height;
+    if (total <= 0) return;
+    const candidate = dockResizeCandidate({
+      currentCoordinate:
+        resize.region === "right" ? event.clientX : event.clientY,
+      leadingEdge: resize.region === "right" ? bounds.left : bounds.top,
+      preference: resize.startPreference,
+      startCoordinate:
+        resize.region === "right" ? resize.startClientX : resize.startClientY,
+      trailingEdge: resize.region === "right" ? bounds.right : bounds.bottom,
+    });
+    const preference = resizeDockPresentation(
+      resize.latestPreference,
+      candidate,
+    );
+    resize.latestPreference = preference;
+    resize.moved = true;
+    setResizeDraft({ preference, tabKey: resize.tabKey });
   };
   const endResize = (event: PointerEvent<HTMLDivElement>) => {
+    const resize = resizePointerRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    resizePointerRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    restoreResizeBodyStyles();
+    setResizeDraft(null);
+    if (resize.moved) {
+      const presentation = presentations.find(
+        ({ activeTabKey }) => activeTabKey === resize.tabKey,
+      );
+      if (presentation) {
+        commitDockPresentation(
+          presentation.pane.projectId,
+          presentation.activeTabKey,
+          resize.latestPreference,
+        );
+      }
+    }
+  };
+  const cancelResize = (event: PointerEvent<HTMLDivElement>) => {
     if (resizePointerRef.current?.pointerId !== event.pointerId) return;
     resizePointerRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    const previous = resizeBodyStyleRef.current;
-    resizeBodyStyleRef.current = null;
-    if (previous) {
-      document.body.style.cursor = previous.cursor;
-      document.body.style.userSelect = previous.userSelect;
-    }
+    restoreResizeBodyStyles();
+    setResizeDraft(null);
   };
   useEffect(
     () => () => {
-      const previous = resizeBodyStyleRef.current;
-      if (!previous) return;
-      document.body.style.cursor = previous.cursor;
-      document.body.style.userSelect = previous.userSelect;
+      restoreResizeBodyStyles();
     },
     [],
   );
@@ -510,6 +663,24 @@ export function ProjectWorkspaceFrame({
       />
     </div>
   );
+  const focusAndRevealSurface = (surface: ProjectSurface) => {
+    const pane = bindings.tabLayout.data?.panes.find(
+      ({ id }: { id: string }) => id === surface.paneId,
+    );
+    const preference =
+      surface.member.dockPresentation ?? DEFAULT_DOCK_PRESENTATION;
+    if (
+      (pane?.region === "right" || pane?.region === "bottom") &&
+      preference.preferredMode === "closed"
+    ) {
+      commitDockPresentation(
+        surface.projectId,
+        surface.tabKey,
+        revealDockPresentation(preference),
+      );
+    }
+    bindings.selectTopTab(surface.tabKey);
+  };
   const openRailLauncher = (
     launcher: ProjectSurfaceLauncher,
     region: DockRegion,
@@ -520,7 +691,10 @@ export function ProjectWorkspaceFrame({
     );
     if (disposition.type === "unavailable") return;
     if (disposition.type === "focus") {
-      bindings.selectTopTab(disposition.tabKey);
+      const surface = bindings.projectSurfaces.find(
+        ({ tabKey }: ProjectSurface) => tabKey === disposition.tabKey,
+      );
+      if (surface) focusAndRevealSurface(surface);
       return;
     }
     const definitionId = disposition.definitionId;
@@ -553,12 +727,85 @@ export function ProjectWorkspaceFrame({
   };
 
   const grid = projectWorkspaceGridModel({
-    bottom: Boolean(bottom),
+    bottom: bottomRendered,
     bottomFraction,
     center: Boolean(center),
-    right: Boolean(right),
+    fullRegion,
+    right: rightRendered,
     rightFraction,
   });
+  const resizeControl = (
+    presentation: VisibleProjectPane | undefined,
+    preference: ProjectDockPresentationPreference | null,
+    region: DockRegion,
+    fraction: number,
+  ) => {
+    if (!presentation || !preference || (fullRegion && fullRegion !== region)) {
+      return null;
+    }
+    const mode =
+      fullRegion === region
+        ? "full"
+        : preference.preferredMode === "closed"
+          ? "closed"
+          : "split";
+    const direction = region === "right" ? "vertical" : "horizontal";
+    const dividerAvailable =
+      region === "right" ? grid.showRightDivider : grid.showBottomDivider;
+    const activeResize = resizePointerRef.current?.region === region;
+    if (mode === "split" && !dividerAvailable && !activeResize) {
+      return null;
+    }
+    const placementMode =
+      mode === "split" && !dividerAvailable && activeResize
+        ? resizePointerRef.current?.startPreference.preferredMode
+        : mode;
+    const style: CSSProperties =
+      placementMode === "split"
+        ? { gridArea: `${region}-divider` }
+        : region === "right"
+          ? {
+              bottom: 0,
+              left: placementMode === "full" ? 0 : undefined,
+              position: "absolute",
+              right: placementMode === "closed" ? 0 : undefined,
+              top: 0,
+              width: 6,
+            }
+          : {
+              bottom: placementMode === "closed" ? 0 : undefined,
+              height: 6,
+              left: 0,
+              position: "absolute",
+              right: 0,
+              top: placementMode === "full" ? 0 : undefined,
+            };
+    const commit = (next: ProjectDockPresentationPreference) =>
+      commitDockPresentation(
+        presentation.pane.projectId,
+        presentation.activeTabKey,
+        next,
+      );
+    return (
+      <DockResizeControl
+        direction={direction}
+        fraction={mode === "closed" ? 0.05 : mode === "full" ? 0.95 : fraction}
+        key={`${region}-resize-control`}
+        label={`${region === "right" ? "Right" : "Bottom"} dock size`}
+        mode={mode}
+        onDoubleClick={() => commit(restoreDockPresentation(preference))}
+        onKeyChange={(key) => {
+          const next = dockPresentationForKey(direction, preference, key);
+          if (next) commit(next);
+        }}
+        onPointerBegin={beginResize(region, presentation, preference)}
+        onPointerCancel={cancelResize}
+        onPointerEnd={endResize}
+        onPointerMove={moveResize}
+        style={style}
+      />
+    );
+  };
   const focusPaneFromTarget = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return;
     const paneId = target.closest<HTMLElement>("[data-project-pane-id]")
@@ -567,6 +814,10 @@ export function ProjectWorkspaceFrame({
     const presentation = presentations.find(({ pane }) => pane.id === paneId);
     if (presentation) bindings.selectTopTab(presentation.activeTabKey);
   };
+  const presentationMutationPending = Boolean(
+    bindings.dockPresentationMutation.isPending ||
+    bindings.tabLayoutMutation.isPending,
+  );
 
   return (
     <div
@@ -581,7 +832,7 @@ export function ProjectWorkspaceFrame({
     >
       <div
         className={cn(
-          "min-h-0 min-w-0 overflow-hidden",
+          "relative min-h-0 min-w-0 overflow-hidden",
           docked ? "grid" : "flex flex-1 flex-col",
         )}
         data-project-workspace-frame
@@ -600,35 +851,23 @@ export function ProjectWorkspaceFrame({
             : { gridColumn: 1, gridRow: 1 }
         }
       >
-        {docked && center ? tabStrip(center, "center-tabs") : null}
-        {docked && right ? tabStrip(right, "right-tabs") : null}
-        {docked && bottom ? tabStrip(bottom, "bottom-tabs") : null}
-        {docked && grid.showRightDivider ? (
-          <DockSeparator
-            direction="vertical"
-            fraction={rightFraction}
-            label="Right dock divider position"
-            onFractionChange={setClampedRightFraction}
-            onPointerBegin={beginResize("right")}
-            onPointerEnd={endResize}
-            onPointerMove={moveResize}
-            style={{ gridArea: "right-divider" }}
-          />
-        ) : null}
-        {docked && grid.showBottomDivider ? (
-          <DockSeparator
-            direction="horizontal"
-            fraction={bottomFraction}
-            label="Bottom dock divider position"
-            onFractionChange={setClampedBottomFraction}
-            onPointerBegin={beginResize("bottom")}
-            onPointerEnd={endResize}
-            onPointerMove={moveResize}
-            style={{ gridArea: "bottom-divider" }}
-          />
-        ) : null}
+        {docked && renderedPresentations.includes(center!)
+          ? tabStrip(center!, "center-tabs")
+          : null}
+        {docked && renderedPresentations.includes(right!)
+          ? tabStrip(right!, "right-tabs")
+          : null}
+        {docked && renderedPresentations.includes(bottom!)
+          ? tabStrip(bottom!, "bottom-tabs")
+          : null}
         {docked
-          ? presentations.map((presentation) =>
+          ? resizeControl(right, rightPreference, "right", rightFraction)
+          : null}
+        {docked
+          ? resizeControl(bottom, bottomPreference, "bottom", bottomFraction)
+          : null}
+        {docked
+          ? renderedPresentations.map((presentation) =>
               genericPaneBody(
                 bindingsForPresentation(presentation),
                 presentation,
@@ -636,7 +875,7 @@ export function ProjectWorkspaceFrame({
             )
           : null}
         {docked
-          ? presentations.flatMap(({ activeSurface }) =>
+          ? renderedPresentations.flatMap(({ activeSurface }) =>
               activeSurface?.kind === "chat"
                 ? [
                     <VisibleChatLiveScope
@@ -650,7 +889,7 @@ export function ProjectWorkspaceFrame({
         <PersistentSurfaceLayer
           bindings={
             docked
-              ? { ...bindings, dockPanePresentations: presentations }
+              ? { ...bindings, dockPanePresentations: renderedPresentations }
               : bindings
           }
           key="persistent-surface-layer"
@@ -663,7 +902,8 @@ export function ProjectWorkspaceFrame({
           allSurfaces={bindings.projectSurfaces}
           launchers={bindings.surfaceLaunchers.data ?? []}
           onOpenLauncher={(launcher) => openRailLauncher(launcher, "right")}
-          onSelect={bindings.selectTopTab}
+          onSelect={focusAndRevealSurface}
+          pending={presentationMutationPending}
           pane={right?.pane}
           projectId={bindings.selectedProject.id}
           region="right"
@@ -676,7 +916,8 @@ export function ProjectWorkspaceFrame({
           allSurfaces={bindings.projectSurfaces}
           launchers={bindings.surfaceLaunchers.data ?? []}
           onOpenLauncher={(launcher) => openRailLauncher(launcher, "bottom")}
-          onSelect={bindings.selectTopTab}
+          onSelect={focusAndRevealSurface}
+          pending={presentationMutationPending}
           pane={bottom?.pane}
           projectId={bindings.selectedProject.id}
           region="bottom"
