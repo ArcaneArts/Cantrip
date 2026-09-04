@@ -1,13 +1,27 @@
 # Cantrip CUA runtime
 
-Worker-owned Rust computer-use library and executable. This cycle implements
-the portable process/session/image/cursor core with an explicit deterministic
-test backend. Native capture, worker/server/app integration, managed JavaScript,
+Worker-owned Rust computer-use library and executable. The portable
+process/session/image/cursor core and build-chain integration use an explicit
+deterministic test backend. Native capture, worker/server/app integration, managed JavaScript,
 permissions, and Trajectory are subsequent cycles in
 [the CUA plan](../docs/planned/CUA.md). Nothing launches this crate from ordinary
-Cantrip startup yet.
+Cantrip worker startup yet. Development preparation builds, installs, and smoke
+tests the helper without capturing a real desktop or requesting capture permission.
 
 ## Build and verify
+
+```sh
+pnpm cua:build
+pnpm cua:build:release
+pnpm cua:test
+pnpm cua:check
+pnpm cua:smoke
+```
+
+The commands use the locked standalone Cargo manifest. `cua:build` reports the
+**actual executable emitted by Cargo**, including custom `.cargo/config.toml`,
+`CARGO_TARGET_DIR`, and `CARGO_BUILD_TARGET` settings. `--target <triple>` and
+`--target-dir <directory>` are also accepted. Direct equivalents:
 
 ```sh
 cargo build --locked --manifest-path cantrip_cua/Cargo.toml
@@ -20,7 +34,92 @@ cargo clippy --locked --manifest-path cantrip_cua/Cargo.toml --all-targets -- -D
 The `process` integration tests launch the actual executable, send framed
 requests, decode its PNG output, verify a configured crosshair at its logical
 hotspot, and close the session/process. No permission or desktop content is
-needed. Root `cua:*` and distribution integration belong to the next cycle.
+needed. `cua:smoke` builds the helper when no binary is specified, then performs
+the real framed handshake, both fake target captures, every cursor style, PNG
+dimensions/digest checks, deterministic repeat capture, detach, and shutdown.
+To test an exact copied or signed executable without rebuilding it:
+
+```sh
+pnpm cua:smoke --binary /absolute/path/to/cantrip-cua
+node scripts/verify-packaged-worker-cua.mjs /absolute/path/to/worker
+```
+
+No screenshot pixels or native target details are printed. Fake image metadata
+and digests are public deterministic test results. Native smoke is not yet
+implemented; the later macOS adapter cycle owns that validation.
+
+### Stable development helper
+
+`pnpm dev`, `pnpm dev:postgres`, and `pnpm devtop` preparation runs
+`pnpm cua:install:dev`. This builds, stages, optionally signs, smoke tests, and
+atomically replaces the development executable. Normal worker startup still
+does not launch CUA. To install or inspect separately:
+
+```sh
+pnpm cua:install:dev
+pnpm cua:profile
+```
+
+The location is native user application data under
+`art.cantrip.cua/development/<profile>/cantrip-cua[.exe]`. On macOS, the default
+is `~/Library/Application Support/art.cantrip.cua/development/default/`.
+`CANTRIP_DEV_PROFILE` selects the existing named development profile; `devtop
+--profile <name>` passes that selection to its preparation and worker children.
+The helper location does not depend on repository, worktree, branch, Cargo
+output, Tauri target, or WebView origin. A separate test profile uses a separate
+directory, without changing Cantrip account keys or installation catalogs.
+
+For stable macOS code-signing identity, explicitly select an available
+certificate once at installation time:
+
+```sh
+CANTRIP_CUA_SIGNING_IDENTITY='Apple Development: Your Name (TEAMID)' pnpm cua:install:dev
+```
+
+The non-secret signing choice is retained in `installation.json`; subsequent
+builds without the environment variable reuse it instead of silently downgrading
+to unsigned. The development signing identifier is `art.cantrip.cua.dev`.
+Unsigned builds are allowed for fake-backend development but do **not** establish
+stable Screen Recording approval across rebuilds. Ad-hoc signing is not offered
+as a substitute for a stable certificate. Signing may use macOS signing tooling
+at build time; CUA runtime startup never accesses Keychain.
+
+Concurrent installers use `--installation-lock <file>`, a build-only mode of the
+fresh executable that holds a kernel file lock until its stdin closes. Another
+installer fails precisely while that lock is held; process exit automatically
+releases it. The small `.installation.lock` file is not a stale-lock indicator
+and must not be removed while an installer runs. A failed signing/smoke step
+leaves the previous installed executable intact. A crash after installation
+configuration commits but before executable replacement is safe to rerun.
+
+To reset only this helper deliberately, stop development processes, inspect the
+exact directory with `cua:profile`, and move that named helper directory to a
+backup. Reinstall with the desired certificate. Do not remove the entire Cantrip
+application-data directory or encryption profile. Moving/resetting the helper or
+changing its certificate can require new native authorization. Signing identity
+and successful fake smoke alone do not prove TCC permission continuity; actual
+native tests remain required after the macOS capture adapter lands.
+
+### Distribution and CI
+
+Worker/services packaging builds CUA once and bundles it in `worker/bin`.
+Server-only packaging does not build CUA. Desktop runtime packaging inherits the
+worker binary; `--from-artifacts` executes the extracted helper rather than
+building or substituting a local one. Both paths execute the final-layout fake
+smoke. Root build/test/check commands include the Rust crate and script tests.
+
+The desktop macOS runtime signer explicitly uses `art.cantrip.cua`, hardened
+runtime, and the distribution's existing certificate. It does not grant CUA JIT
+entitlements. Final `.app` verification checks the helper's signature/identifier
+and executes its real protocol. Its normal installed location is
+`Cantrip.app/Contents/Resources/runtime/worker/bin/cantrip-cua`; moving/translocating
+the outer app can change the absolute path. The standalone worker artifact is
+not yet certificate-signed by its release job; do not treat desktop signing
+coverage as standalone-worker signing coverage.
+
+The CUA native CI matrix runs actual fake-backend tests on macOS, Windows, and
+Linux. Windows/Linux native capture remains unavailable. Fake CI intentionally
+does not request Screen Recording or claim permission/capture verification.
 
 Default execution advertises an unavailable native backend and returns a real
 `unsupported` result for capture. `--backend fake` explicitly selects two fixture

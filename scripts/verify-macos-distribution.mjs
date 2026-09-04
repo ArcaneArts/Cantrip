@@ -3,6 +3,8 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { CUA_SIGNING_IDENTIFIER } from "./cantrip-cua/build.mjs";
+import { verifyPackagedWorkerCua } from "./verify-packaged-worker-cua.mjs";
 
 import {
   findMachOBinaries,
@@ -78,6 +80,7 @@ export async function verifyMacosDistribution({
   bundleDirectory,
   requireNotarization = false,
   runCommand = run,
+  verifyCua = verifyPackagedWorkerCua,
 }) {
   const { apps, dmgs } = await findMacosArtifacts(bundleDirectory);
   if (apps.length === 0) {
@@ -131,6 +134,16 @@ export async function verifyMacosDistribution({
       runtimeBinaryCount += 1;
       runCommand("codesign", ["--verify", "--strict", "--verbose=2", binary]);
       const binaryDetails = runCommand("codesign", ["-dvvv", binary]);
+      if (
+        path.basename(binary) === "cantrip-cua" &&
+        !binaryDetails
+          .split(/\r?\n/u)
+          .includes(`Identifier=${CUA_SIGNING_IDENTIFIER}`)
+      ) {
+        throw new Error(
+          `${binary} does not use the stable ${CUA_SIGNING_IDENTIFIER} signing identifier.`,
+        );
+      }
       assertSigningIdentity(binaryDetails, binary, {
         allowAdhoc,
         requireDeveloperId: requireNotarization,
@@ -155,6 +168,7 @@ export async function verifyMacosDistribution({
         }
       }
     }
+    await verifyCua(path.join(runtime, "worker"));
   }
   if (runtimeBinaryCount === 0) {
     throw new Error(

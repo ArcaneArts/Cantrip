@@ -28,6 +28,9 @@ const repositoryRoot = path.resolve(
 const repositoryCommonDirectory =
   resolveRepositoryCommonDirectory(repositoryRoot);
 const developmentProfile = parseDevtopProfileArguments();
+// Project the selected named profile into preparation and worker children.
+// Native helper installation must not accidentally use default for --profile.
+process.env.CANTRIP_DEV_PROFILE = developmentProfile;
 const stateDirectory = developmentProfileStateDirectory(
   repositoryRoot,
   developmentProfile,

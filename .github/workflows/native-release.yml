@@ -126,7 +126,9 @@ jobs:
         with:
           cache-on-failure: true
           shared-key: worker-${{ matrix.target }}
-          workspaces: cantrip_cli -> target
+          workspaces: |
+            cantrip_cli -> target
+            cantrip_cua -> target
       - name: Restore verified Codex runtime
         id: codex-runtime-cache
         uses: actions/cache/restore@v4
@@ -178,6 +180,8 @@ jobs:
           key: cantrip-codex-rusty-v8-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
       - name: Build Cantrip CLI
         run: pnpm cli:build:release
+      - name: Verify portable CUA runtime
+        run: pnpm cua:check && pnpm cua:test
       - name: Build Cantrip Code
         run: pnpm code:build --target ${{ matrix.target }}
       - name: Save verified Cantrip Code distribution
@@ -198,6 +202,8 @@ jobs:
         run: pnpm package:worker --target ${{ matrix.target }}
       - name: Verify packaged worker MCP
         run: node scripts/verify-packaged-worker-mcp.mjs artifacts/cantrip-worker-${{ matrix.target }}
+      - name: Verify packaged worker CUA
+        run: node scripts/verify-packaged-worker-cua.mjs artifacts/cantrip-worker-${{ matrix.target }}
       - run: node scripts/archive-distribution.mjs worker --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:

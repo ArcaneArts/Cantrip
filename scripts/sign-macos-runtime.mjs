@@ -3,6 +3,7 @@ import { open, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { CUA_SIGNING_IDENTIFIER } from "./cantrip-cua/build.mjs";
 
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -80,6 +81,9 @@ export async function signMacosRuntime({
   }
   for (const binary of binaries) {
     const arguments_ = ["--force", "--sign", identity];
+    if (path.basename(binary) === "cantrip-cua") {
+      arguments_.push("--identifier", CUA_SIGNING_IDENTIFIER);
+    }
     if (identity !== "-") arguments_.push("--timestamp");
     // Packagers may strip the executable bit from helper binaries while
     // preserving their Mach-O executable file type. Apple evaluates the

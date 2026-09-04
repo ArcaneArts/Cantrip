@@ -32,3 +32,10 @@ The supported Linux container is headless: repository, Codex, terminal, and
 Code capabilities work, but host GUI browser/desktop capture does not. Persist
 the entire worker data directory and never clone it to manufacture another
 worker identity.
+
+The worker package also includes `bin/cantrip-cua` (`.exe` on Windows), the
+first-party computer-use helper. Packaging executes its actual private protocol
+and deterministic capture smoke. Native capture and worker CUA service activation
+are not available yet; this build-chain milestone does not start the helper
+during ordinary worker startup. The desktop distribution signs its nested macOS
+helper separately from the standalone worker artifact.
