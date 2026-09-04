@@ -130,7 +130,8 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 3b — Installer lifetime and Windows test follow-up
 
 - Branch: `codex/cua-03b-install-lifecycle`, based on merged cycle 3 (`9e8ded7d6`).
-- PR/commit: pending validation and creation.
+- PR: [#1736](https://github.com/ArcaneArts/Cantrip/pull/1736).
+  Initial implementation commit: `49e4a4b7`; merge not yet observed.
 - Implemented: preserve lock-holder lifecycle observation after acquisition;
   cancel smoke and refuse subsequent commit steps after actual lock loss.
   Correct POSIX-mode test assertions to use the actual host platform while
