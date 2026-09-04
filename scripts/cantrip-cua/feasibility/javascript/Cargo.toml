@@ -1,0 +1,10 @@
+[package]
+name = "cantrip-cua-javascript-feasibility"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rquickjs = { version = "=0.12.2", default-features = false, features = ["std"] }
+
+[workspace]
