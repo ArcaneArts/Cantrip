@@ -65,6 +65,6 @@ console.log(
   `Verified Cantrip Code ${config.version} (${config.openvscodeServerCommit})`,
 );
 console.log(
-  `${divergence.actual.files.length} pristine upstream files and ` +
+  `${divergence.actual.files.length} recorded vendored files and ` +
     `${(await readPatchSeries()).length} patches verified`,
 );

@@ -14,9 +14,12 @@ import { mainWindow } from '../../base/browser/window.js';
 
 registerThemingParticipant((theme, collector) => {
 
-	// Background (helps for subpixel-antialiasing on Windows)
+	// Cantrip owns the background behind its embedded workbench. Keeping this
+	// layer transparent lets the ordinary app fill show through outside Pro Mode
+	// and exposes the native window backdrop while Pro Mode is active.
 	const workbenchBackground = WORKBENCH_BACKGROUND(theme);
-	collector.addRule(`.monaco-workbench { background-color: ${workbenchBackground}; }`);
+	collector.addRule('.monaco-workbench { background-color: transparent; }');
+	collector.addRule('.monaco-workbench .part.titlebar { background-color: transparent !important; }');
 
 	// Selection (do NOT remove - https://github.com/microsoft/vscode/issues/169662)
 	const windowSelectionBackground = theme.getColor(selectionBackground);

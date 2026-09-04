@@ -88,15 +88,15 @@ test("keeps the active line number visible in high-contrast themes", async () =>
   }
 });
 
-test("keeps OLED surfaces pure while softening structural contrast", async () => {
+test("keeps high-contrast structure transparent while preserving borders", async () => {
   const dark = (await theme("cantrip-hc-dark.json")).colors;
   const light = (await theme("cantrip-hc-light.json")).colors;
 
-  assert.equal(dark["editor.background"], "#000000");
-  assert.equal(dark["sideBar.background"], "#000000");
+  assert.equal(dark["editor.background"], "#00000000");
+  assert.equal(dark["sideBar.background"], "#00000000");
   assert.equal(dark.contrastBorder, "#FFFFFF26");
-  assert.equal(light["editor.background"], "#FFFFFF");
-  assert.equal(light["sideBar.background"], "#FFFFFF");
+  assert.equal(light["editor.background"], "#00000000");
+  assert.equal(light["sideBar.background"], "#00000000");
   assert.equal(light.contrastBorder, "#00000026");
 });
 
@@ -128,8 +128,12 @@ test("uses subtle fills instead of extreme high-contrast focus outlines", async 
   }
 });
 
-test("uses transparent structural surfaces for Pro Mode themes", async () => {
+test("uses transparent structural surfaces for every Cantrip theme", async () => {
   const names = [
+    "cantrip-dark.json",
+    "cantrip-light.json",
+    "cantrip-hc-dark.json",
+    "cantrip-hc-light.json",
     "cantrip-pro-dark.json",
     "cantrip-pro-light.json",
     "cantrip-pro-hc-dark.json",
@@ -139,12 +143,19 @@ test("uses transparent structural surfaces for Pro Mode themes", async () => {
     "editor.background",
     "editorGroup.emptyBackground",
     "editorGroupHeader.tabsBackground",
+    "tab.inactiveBackground",
+    "tab.unfocusedInactiveBackground",
     "sideBar.background",
+    "sideBarSectionHeader.background",
     "activityBar.background",
     "titleBar.activeBackground",
+    "titleBar.inactiveBackground",
     "statusBar.background",
+    "statusBar.noFolderBackground",
     "panel.background",
+    "panelSectionHeader.background",
     "terminal.background",
+    "breadcrumb.background",
     "input.background",
   ];
 
@@ -153,6 +164,17 @@ test("uses transparent structural surfaces for Pro Mode themes", async () => {
     for (const color of structuralColors) {
       assert.equal(colors[color], "#00000000", `${name}: ${color}`);
     }
+  }
+});
+
+test("uses translucent interactions for Pro Mode themes", async () => {
+  for (const name of [
+    "cantrip-pro-dark.json",
+    "cantrip-pro-light.json",
+    "cantrip-pro-hc-dark.json",
+    "cantrip-pro-hc-light.json",
+  ]) {
+    const colors = (await theme(name)).colors;
     assert.match(colors["list.activeSelectionBackground"], /^(?:#.{8})$/u);
     assert.notEqual(colors["list.activeSelectionBackground"].slice(-2), "FF");
   }

@@ -1,15 +1,16 @@
 # Cantrip Code
 
-Cantrip Code is Cantrip's pinned, browser-native Code OSS distribution. The
-real OpenVSCode Server source is committed under [`upstream/`](upstream/), while
-Cantrip-owned extensions, resources, patch metadata, and build tooling live
-beside that immutable snapshot.
+Cantrip Code is Cantrip's browser-native Code OSS fork. The vendored OpenVSCode
+Server source and permanent Cantrip source changes are committed under
+[`upstream/`](upstream/), while Cantrip-owned extensions, resources, patch
+metadata, and build tooling live beside that recorded source tree.
 
-The current source is recorded in [`upstream.json`](upstream.json). It never
-advances implicitly and a running worker never downloads or updates the editor.
-An upstream change is produced explicitly with the repository scripts, reviewed
-as a Cantrip pull request, compiled during worker packaging, and released as an
-immutable part of that worker.
+The upstream provenance is recorded in [`upstream.json`](upstream.json), and the
+exact vendored fork is recorded in [`upstream.files.json`](upstream.files.json).
+It never advances implicitly and a running worker never downloads or updates the
+editor. Every Cantrip Code source change is reviewed as a Cantrip pull request,
+compiled during worker packaging, and released as an immutable part of that
+worker.
 
 ## Source maintenance
 
@@ -32,10 +33,11 @@ pnpm code:merge -- \
   --confirm
 ```
 
-The merge command replaces only `cantrip_code/upstream/`, writes the pinned
-metadata and source manifest, and leaves all Cantrip-owned paths intact. Direct
-patches are applied later to a prepared build tree, never destructively to the
-committed pristine upstream snapshot.
+The merge command replaces `cantrip_code/upstream/`, writes the pinned metadata
+and source manifest, and leaves Cantrip-owned sibling paths intact. Because the
+vendored tree is a permanent fork, an intentional upstream import must preserve
+or reapply its reviewed Cantrip source changes. Build-time patches remain useful
+for isolated changes that should stay distinct from the vendored source.
 
 ## Build and development
 
@@ -58,7 +60,7 @@ packager. It writes only ignored build and cache directories. A valid build is
 reused until an input changes. Git worktrees share the repository-level
 `.cantrip-code/cache` so sequential PR cycles reuse the same immutable artifact;
 set `CANTRIP_CODE_CACHE_DIR` to place this build cache on another volume.
-`code:source:verify` verifies the vendored source and patch manifest.
+`code:source:verify` verifies the recorded vendored fork and patch manifest.
 `code:verify` validates source/build identity, required entrypoints, and bundled
 Workbench compatibility; `code:ready` is the intentionally cheaper startup
 check. `code:dev` hosts the cached editor on `127.0.0.1:9888` with isolated
