@@ -150,6 +150,7 @@ export function ProjectSurfaceCreateMenu({
   contentClassName,
   creatingKinds = noCreatingKinds,
   onCreate,
+  onOpenChange,
   placement,
   trigger,
 }: {
@@ -158,6 +159,7 @@ export function ProjectSurfaceCreateMenu({
   contentClassName?: string;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
+  onOpenChange?(open: boolean): void;
   placement?: ProjectSurfacePlacementContext;
   trigger: ReactNode;
 }) {
@@ -171,7 +173,7 @@ export function ProjectSurfaceCreateMenu({
       ({ kind }) => !allowedKinds || allowedKinds.has(kind),
     );
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <StyledDropdownMenuContent
