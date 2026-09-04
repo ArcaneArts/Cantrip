@@ -41,6 +41,7 @@ import {
   stopDirectCodeAttachment,
   subscribePreferredCodeAttachmentUnavailable,
 } from "@/lib/desktop-code";
+import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
 import {
   retireAttachmentBestEffort,
   SerializedAttachmentLifecycle,
@@ -95,9 +96,14 @@ export function codeWorkbenchFrameClassName(ready: boolean): string {
 }
 
 export const CODE_VIEW_CLASS_NAME = "relative min-h-0 flex-1 overflow-hidden";
-export const CODE_WORKBENCH_FRAME_BACKGROUND = "transparent";
-export const CODE_WORKBENCH_LOADING_BACKGROUND =
-  CODE_WORKBENCH_FRAME_BACKGROUND;
+
+export function codeWorkbenchSurfaceBackground(
+  nativeTransparencyAvailable = isMacosDesktopRuntime(),
+): string {
+  // Transparent iframe pixels reach WebView2's white default surface on
+  // Windows. Only the macOS desktop runtime provides a native backdrop.
+  return nativeTransparencyAvailable ? "transparent" : "var(--background)";
+}
 
 export function codeAttachmentUrlForLog(rawUrl: string): string {
   try {
@@ -744,6 +750,7 @@ export function CodeView({
   const darkWorkbench = isDarkCodeAppearance(appearance);
   const workbenchForeground = darkWorkbench ? "#f4f4f5" : "#18181b";
   const workbenchMuted = darkWorkbench ? "#a1a1aa" : "#71717a";
+  const workbenchSurfaceBackground = codeWorkbenchSurfaceBackground();
 
   return (
     <div
@@ -762,7 +769,7 @@ export function CodeView({
             referrerPolicy="no-referrer"
             ref={frameRef}
             src={frameMount?.url}
-            style={{ backgroundColor: CODE_WORKBENCH_FRAME_BACKGROUND }}
+            style={{ backgroundColor: workbenchSurfaceBackground }}
             title={`${codeTab.title} — Cantrip Code`}
             onError={() => {
               if (!frameMount) return;
@@ -809,7 +816,7 @@ export function CodeView({
               className="absolute inset-0 z-10 grid place-items-center p-6 text-center"
               data-slot="code-workbench-startup-cover"
               style={{
-                backgroundColor: CODE_WORKBENCH_LOADING_BACKGROUND,
+                backgroundColor: workbenchSurfaceBackground,
                 color: workbenchForeground,
               }}
             >

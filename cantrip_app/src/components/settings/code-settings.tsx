@@ -23,7 +23,7 @@ import {
   useState,
 } from "react";
 
-import { CODE_WORKBENCH_FRAME_BACKGROUND } from "@/components/code/code-view";
+import { codeWorkbenchSurfaceBackground } from "@/components/code/code-view";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
@@ -65,7 +65,6 @@ export const CODE_SETTINGS_FRAME_CLASS_NAME =
   "size-full min-h-0 min-w-0 border-0";
 export const CODE_SETTINGS_LOADING_COVER_CLASS_NAME =
   "absolute inset-0 z-10 grid place-items-center p-6 text-center";
-export const CODE_SETTINGS_SURFACE_BACKGROUND = CODE_WORKBENCH_FRAME_BACKGROUND;
 
 function workerCanHostCodeSettings(worker: WorkerSummary): boolean {
   return (
@@ -428,6 +427,7 @@ export function CodeSettings({
   const ready = openedFrameNonce === frameMount?.nonce;
   const settingsConflict = synchronization?.state === "conflict";
   const noWorker = !workers.isLoading && eligibleWorkers.length === 0;
+  const workbenchSurfaceBackground = codeWorkbenchSurfaceBackground();
 
   return (
     <section
@@ -538,7 +538,7 @@ export function CodeSettings({
             ref={frameRef}
             referrerPolicy="no-referrer"
             src={frameMount.url}
-            style={{ backgroundColor: CODE_SETTINGS_SURFACE_BACKGROUND }}
+            style={{ backgroundColor: workbenchSurfaceBackground }}
             tabIndex={active && ready && !settingsConflict ? 0 : -1}
             title="VS Code settings and extensions"
           />
@@ -547,7 +547,7 @@ export function CodeSettings({
         {!ready || settingsConflict || connectionError || frameError ? (
           <div
             className={CODE_SETTINGS_LOADING_COVER_CLASS_NAME}
-            style={{ backgroundColor: CODE_SETTINGS_SURFACE_BACKGROUND }}
+            style={{ backgroundColor: workbenchSurfaceBackground }}
           >
             <div className="grid max-w-lg justify-items-center gap-3">
               {settingsConflict || connectionError || frameError || noWorker ? (

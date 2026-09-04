@@ -4,10 +4,9 @@ import { CantripApiError } from "@/lib/api";
 
 import {
   CODE_VIEW_CLASS_NAME,
-  CODE_WORKBENCH_FRAME_BACKGROUND,
-  CODE_WORKBENCH_LOADING_BACKGROUND,
   codeAttachmentUrlForLog,
   codeWorkbenchFrameClassName,
+  codeWorkbenchSurfaceBackground,
   codeReconnectDelayMs,
   isDarkCodeAppearance,
   isCodeSessionUnavailableError,
@@ -98,9 +97,9 @@ describe("Cantrip Code reconnect delay", () => {
     );
   });
 
-  it("lets Cantrip own the background behind the embedded workbench", () => {
-    expect(CODE_WORKBENCH_FRAME_BACKGROUND).toBe("transparent");
-    expect(CODE_WORKBENCH_LOADING_BACKGROUND).toBe("transparent");
+  it("uses an opaque app backing when native transparency is unavailable", () => {
+    expect(codeWorkbenchSurfaceBackground(true)).toBe("transparent");
+    expect(codeWorkbenchSurfaceBackground(false)).toBe("var(--background)");
     expect(CODE_VIEW_CLASS_NAME.split(/\s+/u)).not.toContain("bg-background");
   });
 

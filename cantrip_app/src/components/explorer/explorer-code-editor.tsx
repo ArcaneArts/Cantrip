@@ -13,8 +13,8 @@ import {
 } from "react";
 
 import {
-  CODE_WORKBENCH_FRAME_BACKGROUND,
   codeWorkbenchFrameClassName,
+  codeWorkbenchSurfaceBackground,
   isDarkCodeAppearance,
 } from "@/components/code/code-view";
 import {
@@ -76,7 +76,6 @@ export const EXPLORER_CODE_EDITOR_CLASS_NAME =
   "relative flex min-h-0 flex-1 overflow-hidden";
 export const EXPLORER_CODE_LOADING_COVER_CLASS_NAME =
   "absolute inset-0 grid place-items-center p-6";
-export const EXPLORER_CODE_SURFACE_BACKGROUND = CODE_WORKBENCH_FRAME_BACKGROUND;
 
 export function explorerCodeEditorRetryDelayMs(attempt: number): number {
   return Math.min(
@@ -1553,6 +1552,8 @@ export function ExplorerCodeEditor({
     closeCommitResolverRef.current = null;
   }, [closing]);
 
+  const workbenchSurfaceBackground = codeWorkbenchSurfaceBackground();
+
   return (
     <section
       className={EXPLORER_CODE_EDITOR_CLASS_NAME}
@@ -1626,7 +1627,7 @@ export function ExplorerCodeEditor({
           ref={frameRef}
           referrerPolicy="no-referrer"
           src={frameMount?.url}
-          style={{ backgroundColor: EXPLORER_CODE_SURFACE_BACKGROUND }}
+          style={{ backgroundColor: workbenchSurfaceBackground }}
           tabIndex={ready ? 0 : -1}
           title={path ? `Cantrip Code — ${path}` : "Cantrip Code"}
         />
@@ -1638,7 +1639,7 @@ export function ExplorerCodeEditor({
           data-code-editor-cover={
             isDarkCodeAppearance(appearance) ? "dark" : "light"
           }
-          style={{ backgroundColor: EXPLORER_CODE_SURFACE_BACKGROUND }}
+          style={{ backgroundColor: workbenchSurfaceBackground }}
         >
           {error ? (
             <div className="flex max-w-lg flex-col items-center gap-4 text-center">
