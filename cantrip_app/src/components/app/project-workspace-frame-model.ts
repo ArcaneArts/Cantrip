@@ -12,6 +12,7 @@ import {
   type CenterLayoutNode,
 } from "@/components/app/center-split-layout";
 import type { ProjectSurface } from "@/lib/project-surface";
+import { effectiveDockFraction } from "./project-dock-presentation";
 
 export interface VisibleProjectPane {
   activeSurface: ProjectSurface | undefined;
@@ -21,6 +22,16 @@ export interface VisibleProjectPane {
   pane: ProjectPaneSummary;
   portalTarget?: Element | null;
   surfaces: readonly ProjectSurface[];
+}
+
+export function partitionVisibleWorkspacePanes(
+  presentations: readonly VisibleProjectPane[],
+  paneOwnedElsewhere: (paneId: string) => boolean,
+) {
+  return {
+    detached: presentations.filter(({ pane }) => paneOwnedElsewhere(pane.id)),
+    live: presentations.filter(({ pane }) => !paneOwnedElsewhere(pane.id)),
+  } as const;
 }
 
 export const definitionIdByCreateKind = {
@@ -90,6 +101,51 @@ export function projectWorkspaceGridModel({
       ...(right ? (["right"] as const) : []),
       ...(bottom ? (["bottom"] as const) : []),
     ],
+  } as const;
+}
+
+export function responsiveProjectWorkspaceGridModel({
+  bottom,
+  center,
+  frameHeight,
+  frameWidth,
+  fullRegion = null,
+  right,
+  savedBottomFraction,
+  savedRightFraction,
+}: {
+  bottom: boolean;
+  center: boolean;
+  frameHeight: number;
+  frameWidth: number;
+  fullRegion?: "right" | "bottom" | null;
+  right: boolean;
+  savedBottomFraction: number;
+  savedRightFraction: number;
+}) {
+  const rightFraction = effectiveDockFraction(
+    savedRightFraction,
+    frameWidth,
+    240,
+    240,
+  );
+  const bottomFraction = effectiveDockFraction(
+    savedBottomFraction,
+    frameHeight,
+    180,
+    180,
+  );
+  return {
+    bottomFraction,
+    grid: projectWorkspaceGridModel({
+      bottom,
+      bottomFraction,
+      center,
+      fullRegion,
+      right,
+      rightFraction,
+    }),
+    rightFraction,
   } as const;
 }
 

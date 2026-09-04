@@ -1,5 +1,7 @@
 import type { ProjectSurface } from "@/lib/project-surface";
 
+export const MAX_MOBILE_PROJECT_SURFACES = 5;
+
 export function mobileProjectSurfaces(
   surfaces: readonly ProjectSurface[],
   activeTabKey: string | null,
@@ -21,12 +23,22 @@ export function mobileProjectSurfaces(
       explorerByWorktree.set(surface.entity.worktreeId, surface);
     }
   }
-  return surfaces.filter(
+  const deduplicated = surfaces.filter(
     (surface) =>
       surface.kind !== "explorer" ||
       explorerByWorktree.get(surface.entity.worktreeId)?.tabKey ===
         surface.tabKey,
   );
+  if (deduplicated.length <= MAX_MOBILE_PROJECT_SURFACES) return deduplicated;
+  const active = deduplicated.find(({ tabKey }) => tabKey === activeTabKey);
+  const recent = deduplicated
+    .filter(({ tabKey }) => tabKey !== active?.tabKey)
+    .slice(-(MAX_MOBILE_PROJECT_SURFACES - (active ? 1 : 0)));
+  const visibleKeys = new Set([
+    ...recent.map(({ tabKey }) => tabKey),
+    ...(active ? [active.tabKey] : []),
+  ]);
+  return deduplicated.filter(({ tabKey }) => visibleKeys.has(tabKey));
 }
 
 export function mobileProjectShellModel({

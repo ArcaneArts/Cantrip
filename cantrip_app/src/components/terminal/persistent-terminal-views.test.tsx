@@ -89,6 +89,7 @@ function render(
   selectedTerminal: TerminalSummary | null,
   ownedTerminals: TerminalSummary[],
   active = true,
+  excludedIds: ReadonlySet<string> = new Set(),
 ) {
   return createElement(PersistentTerminalViews, {
     active,
@@ -101,6 +102,7 @@ function render(
     pendingInputs: [],
     selectedTerminal,
     servicePanelTerminalId: null,
+    excludedIds,
   });
 }
 
@@ -183,6 +185,26 @@ describe("Persistent terminal views", () => {
 
     await act(async () => renderer.unmount());
     expect(lifecycle.released).toEqual([first.id, second.id]);
+  });
+
+  it("releases a retained terminal owner when its pane transfers to a pop-out", async () => {
+    const detached = terminal("terminal-detached");
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(render(detached, [detached]));
+    });
+    expect(lifecycle.created).toEqual([detached.id]);
+
+    await act(async () =>
+      renderer.update(
+        render(detached, [detached], true, new Set([detached.id])),
+      ),
+    );
+
+    expect(lifecycle.released).toEqual([detached.id]);
+    expect(
+      renderer.root.findAllByProps({ "data-mock-terminal-view": true }),
+    ).toHaveLength(0);
   });
 
   it("keeps a bounded least-recently-selected pool", () => {

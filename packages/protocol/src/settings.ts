@@ -10,6 +10,7 @@ import {
   modelProviderWireListSchema,
   reasoningEffortSchema,
 } from "./providers.js";
+import { workspaceLayoutProfileSchema } from "./workspace-layout-profiles.js";
 
 export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
 
@@ -50,6 +51,7 @@ export const userSettingsSchema = z.object({
     DEFAULT_ELITE_REVEAL_CONFIG,
   ),
   sidebarWidth: sidebarWidthPreferenceSchema,
+  workspaceLayoutProfile: workspaceLayoutProfileSchema.default("hybrid"),
   showChatPromptOverlay: z.boolean().default(true),
   randomAgentNames: z.boolean().default(false),
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
@@ -114,6 +116,7 @@ export const userSettingsUpdateSchema = userSettingsSchema
     automaticReplicaSynchronization: z
       .enum(["off", "verify-only", "fast-forward-primary"])
       .optional(),
+    workspaceLayoutProfile: workspaceLayoutProfileSchema.optional(),
     mobileProjectTabConfigurations:
       mobileProjectTabConfigurationsSchema.optional(),
   });

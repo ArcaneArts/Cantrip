@@ -3,6 +3,7 @@
   "identifier": "popouts",
   "description": "Capabilities for secondary Cantrip desktop windows",
   "windows": [
+    "cantrip-pane-*",
     "cantrip-group-*",
     "cantrip-editor-*",
     "synthetic-build-progress"

@@ -5,6 +5,7 @@ import { CodeView, type CodeHeaderState } from "./code-view";
 import { PersistentSurfacePortal } from "@/components/app/persistent-surface-portal";
 
 export const MAX_RETAINED_CODE_VIEWS = 8;
+const EMPTY_EXCLUDED_CODE_IDS: ReadonlySet<string> = new Set();
 
 export function retainCodeSurfaceTabs(
   retained: CodeTabSummary[],
@@ -21,11 +22,13 @@ export function PersistentCodeViews({
   onChanged,
   onHeaderChange,
   visiblePlacements,
+  excludedIds = EMPTY_EXCLUDED_CODE_IDS,
 }: {
   activeTab: CodeTabSummary | null;
   appearance: CodeAppearance;
   onChanged?(codeTab: CodeTabSummary): void;
   onHeaderChange?(state: CodeHeaderState | null): void;
+  excludedIds?: ReadonlySet<string>;
   visiblePlacements?: readonly {
     focused: boolean;
     gridArea: string;
@@ -37,28 +40,29 @@ export function PersistentCodeViews({
   const [retainedTabs, setRetainedTabs] = useState<CodeTabSummary[]>([]);
   const requestedTabs = useMemo(
     () =>
-      visiblePlacements?.map(({ tab }) => tab) ??
-      (activeTab ? [activeTab] : []),
-    [activeTab, visiblePlacements],
+      (
+        visiblePlacements?.map(({ tab }) => tab) ??
+        (activeTab ? [activeTab] : [])
+      ).filter(({ id }) => !excludedIds.has(id)),
+    [activeTab, excludedIds, visiblePlacements],
   );
 
   useEffect(() => {
-    if (requestedTabs.length === 0) return;
     setRetainedTabs((current) =>
       requestedTabs.reduce(
         (retained, tab) => retainCodeSurfaceTabs(retained, tab),
-        current,
+        current.filter(({ id }) => !excludedIds.has(id)),
       ),
     );
-  }, [requestedTabs]);
+  }, [excludedIds, requestedTabs]);
 
   const renderedTabs = useMemo(
     () =>
       requestedTabs.reduce(
         (retained, tab) => retainCodeSurfaceTabs(retained, tab),
-        retainedTabs,
+        retainedTabs.filter(({ id }) => !excludedIds.has(id)),
       ),
-    [requestedTabs, retainedTabs],
+    [excludedIds, requestedTabs, retainedTabs],
   );
   const placementById = new Map(
     visiblePlacements?.map((placement) => [placement.tab.id, placement]) ?? [],

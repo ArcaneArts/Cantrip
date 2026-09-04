@@ -93,7 +93,6 @@ export function createSidebarExplorerCommands({
   revealWorkspace,
   selectedPane,
   setDesktopSidebarDrawerOpen,
-  setDetachedGroupId,
   setPopoutError,
   setWorkspaceSelection,
   sidebarExplorerCreationInput,
@@ -136,7 +135,6 @@ export function createSidebarExplorerCommands({
   revealWorkspace: () => void;
   selectedPane: ProjectPaneSummary | undefined;
   setDesktopSidebarDrawerOpen: (open: boolean) => void;
-  setDetachedGroupId: (groupId: string | null) => void;
   setPopoutError: (error: string | null) => void;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
   sidebarExplorerCreationInput: {
@@ -255,7 +253,6 @@ export function createSidebarExplorerCommands({
       projectId: explorer.projectId,
     });
     setDesktopSidebarDrawerOpen(false);
-    setDetachedGroupId(null);
     revealWorkspace();
   };
   const openSidebarFilePreview = (
@@ -723,7 +720,6 @@ export function createSidebarExplorerCommands({
     setSidebarFilePreview((current) =>
       current ? { ...current, active: true } : null,
     );
-    setDetachedGroupId(null);
     revealWorkspace();
   };
   const retrySidebarFileTree = () => {

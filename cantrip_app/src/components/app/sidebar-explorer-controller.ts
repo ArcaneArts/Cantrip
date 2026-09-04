@@ -584,7 +584,7 @@ export function createProjectExplorerFileOpening({
 }
 
 export function useSidebarExplorerModel({
-  detachedGroupId,
+  unavailablePaneIds,
   environment,
   explorers,
   fileState,
@@ -594,7 +594,7 @@ export function useSidebarExplorerModel({
   tabLayout,
   worktrees,
 }: {
-  detachedGroupId: string | null;
+  unavailablePaneIds: ReadonlySet<string>;
   environment: Pick<
     ShellEnvironment,
     "explorerFileTarget" | "popoutTarget" | "projectOverviewPopoutTarget"
@@ -651,18 +651,18 @@ export function useSidebarExplorerModel({
     if (projectOverviewPopoutTarget || explorerFileTarget) {
       return new Set<string>();
     }
-    if (popoutTarget) return new Set([popoutTarget.groupId]);
+    if (popoutTarget) return new Set([popoutTarget.paneId]);
     return new Set(
       tabLayout?.panes
-        .filter(({ id }) => id !== detachedGroupId)
+        .filter(({ id }) => !unavailablePaneIds.has(id))
         .map(({ id }) => id) ?? [],
     );
   }, [
-    detachedGroupId,
     explorerFileTarget,
     popoutTarget,
     projectOverviewPopoutTarget,
     tabLayout,
+    unavailablePaneIds,
   ]);
   const openExplorerIds = useMemo(
     () => tabbedExplorerIds(tabLayout, connectedExplorerPaneIds),

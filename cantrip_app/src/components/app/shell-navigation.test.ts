@@ -55,7 +55,6 @@ function commandHarness(
     setActiveProjectWorkspaceId: vi.fn(),
     setCommandBarOpen: vi.fn(),
     setDesktopSidebarDrawerOpen: vi.fn(),
-    setDetachedGroupId: vi.fn(),
     setFolderProjectDialogOpen: vi.fn(),
     setPendingSurfaceSelection: vi.fn(),
     setSidebarFilePreview: vi.fn(),

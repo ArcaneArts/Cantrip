@@ -12,6 +12,16 @@ import {
 
 const timestamp = "2026-08-09T12:00:00.000Z";
 
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      deepFreeze(child);
+    }
+  }
+  return value;
+}
+
 function layout(
   groups: Array<{
     anchor: string;
@@ -262,5 +272,56 @@ describe("workspace selection", () => {
     selected = selectWorkspaceGroup(selected, initialLayout, "group-2");
     selected = selectWorkspaceGroup(selected, initialLayout, "group-1");
     expect(selectedWorkspaceTabKey(selected)).toBe("terminal:one");
+  });
+
+  it("keeps desktop placement and size memory immutable during compact selection", () => {
+    const desktopLayout = layout([
+      {
+        id: "center-pane",
+        anchor: "chat:one",
+        members: [{ key: "chat:one", kind: "chat" }],
+      },
+      {
+        id: "right-pane",
+        anchor: "chat:right",
+        members: [{ key: "chat:right", kind: "chat" }],
+      },
+      {
+        id: "bottom-pane",
+        anchor: "terminal:bottom",
+        members: [{ key: "terminal:bottom", kind: "terminal" }],
+      },
+    ]);
+    desktopLayout.revision = 27;
+    desktopLayout.centerRoot = { kind: "pane", paneId: "center-pane" };
+    desktopLayout.panes[1]!.region = "right";
+    desktopLayout.panes[1]!.members[0]!.dockPresentation = {
+      preferredMode: "split",
+      restoreFraction: 0.36,
+      splitFraction: 0.36,
+    };
+    desktopLayout.panes[2]!.region = "bottom";
+    desktopLayout.panes[2]!.members[0]!.dockPresentation = {
+      preferredMode: "full",
+      restoreFraction: 0.29,
+      splitFraction: 0.29,
+    };
+    const before = structuredClone(desktopLayout);
+    deepFreeze(desktopLayout);
+
+    const selected = selectWorkspaceTab(
+      emptyWorkspaceSelection("project-1"),
+      desktopLayout,
+      "terminal:bottom",
+    );
+
+    expect(selectedWorkspaceTabKey(selected)).toBe("terminal:bottom");
+    expect(selected.focusedPaneId).toBe("bottom-pane");
+    expect(desktopLayout).toEqual(before);
+    expect(desktopLayout.revision).toBe(27);
+    expect(desktopLayout.centerRoot).toEqual(before.centerRoot);
+    expect(
+      desktopLayout.panes.map(({ members }) => members[0]?.dockPresentation),
+    ).toEqual(before.panes.map(({ members }) => members[0]?.dockPresentation));
   });
 });

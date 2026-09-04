@@ -6,7 +6,9 @@ import type { ProjectSurface } from "@/lib/project-surface";
 import {
   createKindsForPaneRegion,
   projectWorkspaceGridModel,
+  partitionVisibleWorkspacePanes,
   railLauncherDisposition,
+  responsiveProjectWorkspaceGridModel,
   visibleWorkspacePanes,
 } from "./project-workspace-frame-model";
 
@@ -94,6 +96,26 @@ describe("visible workspace panes", () => {
     expect(
       visible(panes).map(({ gridArea, pane: entry }) => [entry.id, gridArea]),
     ).toEqual(expected);
+  });
+
+  it("keeps detached center, right, and bottom panes out of the live-owner set", () => {
+    const presentations = visible([
+      pane("center", "center"),
+      pane("right", "right"),
+      pane("bottom", "bottom"),
+    ]);
+    const ownership = partitionVisibleWorkspacePanes(
+      presentations,
+      (paneId) => paneId === "center" || paneId === "bottom",
+    );
+
+    expect(ownership.detached.map(({ pane: entry }) => entry.id)).toEqual([
+      "center",
+      "bottom",
+    ]);
+    expect(ownership.live.map(({ pane: entry }) => entry.id)).toEqual([
+      "right",
+    ]);
   });
 
   it("keeps the remembered pane visible in every region while another region is focused", () => {
@@ -242,6 +264,34 @@ describe("workspace frame topology", () => {
       '"bottom-body bottom-body bottom-body"',
     );
     expect(model.gridTemplateRows).toContain("calc(32% - 43px)");
+  });
+
+  it("clamps a narrow three-pane workspace without rewriting saved desktop sizes", () => {
+    const saved = Object.freeze({ bottom: 0.28, right: 0.36 });
+    const mutation = { dock: 0, layout: 0 };
+
+    const responsive = responsiveProjectWorkspaceGridModel({
+      bottom: true,
+      center: true,
+      frameHeight: 320,
+      frameWidth: 420,
+      right: true,
+      savedBottomFraction: saved.bottom,
+      savedRightFraction: saved.right,
+    });
+
+    expect(responsive.bottomFraction).toBe(0.5);
+    expect(responsive.rightFraction).toBe(0.5);
+    expect(responsive.grid.visibleRegions).toEqual([
+      "center",
+      "right",
+      "bottom",
+    ]);
+    expect(responsive.grid.gridTemplateAreas).toContain(
+      '"bottom-body bottom-body bottom-body"',
+    );
+    expect(saved).toEqual({ bottom: 0.28, right: 0.36 });
+    expect(mutation).toEqual({ dock: 0, layout: 0 });
   });
 
   it.each(["right", "bottom"] as const)(

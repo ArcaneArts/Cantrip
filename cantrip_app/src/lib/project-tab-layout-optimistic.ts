@@ -25,7 +25,6 @@ const paneRegionOrder: readonly ProjectPaneRegion[] = [
   "right",
   "bottom",
   "left",
-  "detached",
 ];
 
 function insertedInRegion(

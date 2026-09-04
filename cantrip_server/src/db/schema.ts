@@ -1065,6 +1065,9 @@ export const userSettings = pgTable(
         },
       }),
     sidebarWidth: integer("sidebar_width").notNull().default(288),
+    workspaceLayoutProfile: text("workspace_layout_profile")
+      .notNull()
+      .default("hybrid"),
     showChatPromptOverlay: boolean("show_chat_prompt_overlay")
       .notNull()
       .default(true),
@@ -1137,6 +1140,10 @@ export const userSettings = pgTable(
     check(
       "user_settings_pro_mode_opacity_check",
       sql`${table.proModeOpacity} BETWEEN 0 AND 100`,
+    ),
+    check(
+      "user_settings_workspace_layout_profile_check",
+      sql`${table.workspaceLayoutProfile} IN ('agent', 'hybrid', 'ide')`,
     ),
     check(
       "user_settings_replica_synchronization_check",
@@ -2390,7 +2397,7 @@ export const tabGroups = pgTable(
     ),
     check(
       "tab_groups_region_check",
-      sql`${table.region} IN ('center', 'right', 'bottom', 'left', 'detached')`,
+      sql`${table.region} IN ('center', 'right', 'bottom', 'left')`,
     ),
   ],
 );

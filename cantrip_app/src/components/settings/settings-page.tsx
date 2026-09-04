@@ -9,6 +9,7 @@ import type {
   ProviderModelCatalogResult,
   ThemePreference,
   UserSettings,
+  WorkspaceLayoutProfile,
   TunnelSummary,
 } from "@cantrip/protocol";
 import {
@@ -190,6 +191,12 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       description: "Permissions and behavior",
       icon: SlidersHorizontal,
       searchItems: [
+        {
+          id: "workspace-layout-profile",
+          label: "Project workspace profile",
+          description: "First-open destinations for new project tabs.",
+          keywords: ["agent hybrid ide layout tabs panes docks"],
+        },
         {
           id: "agent-permissions",
           label: "Default agent permissions",
@@ -1606,6 +1613,12 @@ export function SettingsPage({
       generalSearch,
       "default new agent standalone chat ide permissions sandbox read only workspace full access yolo approvals",
     );
+  const workspaceLayoutProfileMatches =
+    !generalSearch ||
+    matchesSearch(
+      generalSearch,
+      "project workspace profile layout agent hybrid ide tabs panes first open destinations docks",
+    );
   const agentNamingMatches =
     !generalSearch ||
     matchesSearch(
@@ -1676,7 +1689,8 @@ export function SettingsPage({
       ? providersMatch || modelsMatch
       : section === "appearance"
         ? appearanceMatches
-        : permissionDefaultsMatch ||
+        : workspaceLayoutProfileMatches ||
+          permissionDefaultsMatch ||
           agentNamingMatches ||
           chatDisplayMatches ||
           desktopStreamingMatches ||
@@ -1834,6 +1848,47 @@ export function SettingsPage({
 
                 {section === "general" && encryptionRecoveryMatches ? (
                   <EncryptionRecoverySettings />
+                ) : null}
+
+                {section === "general" && workspaceLayoutProfileMatches ? (
+                  <section>
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Layers3 className="size-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <h2 className="text-sm font-semibold">
+                            Project workspace profile
+                          </h2>
+                          <p className="text-xs text-muted-foreground">
+                            Chooses destinations only for newly opened tabs.
+                            Existing tab placements never move.
+                          </p>
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">Profile</span>
+                        <NativeSelect
+                          aria-label="Project workspace profile"
+                          size="sm"
+                          value={
+                            settings.data?.preferences.workspaceLayoutProfile ??
+                            "hybrid"
+                          }
+                          disabled={preferences.isPending}
+                          onChange={(event) =>
+                            preferences.mutate({
+                              workspaceLayoutProfile: event.target
+                                .value as WorkspaceLayoutProfile,
+                            })
+                          }
+                        >
+                          <option value="agent">Agent</option>
+                          <option value="hybrid">Hybrid</option>
+                          <option value="ide">IDE</option>
+                        </NativeSelect>
+                      </label>
+                    </div>
+                  </section>
                 ) : null}
 
                 {section === "general" && chatDisplayMatches ? (

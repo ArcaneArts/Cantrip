@@ -1300,6 +1300,7 @@ mod tests {
         assert!(windows
             .iter()
             .any(|window| window == "synthetic-build-progress"));
+        assert!(windows.iter().any(|window| window == "cantrip-pane-*"));
         assert!(permissions
             .iter()
             .any(|permission| permission == "core:default"));

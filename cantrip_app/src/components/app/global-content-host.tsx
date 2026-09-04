@@ -81,7 +81,7 @@ function ProjectOverviewHost({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function DetachedGroupPlaceholder({ onFocus }: { onFocus(): void }) {
+export function DetachedPanePlaceholder({ onFocus }: { onFocus(): void }) {
   return (
     <EmptyState>
       <EmptyStateContent>
@@ -90,7 +90,7 @@ function DetachedGroupPlaceholder({ onFocus }: { onFocus(): void }) {
         </EmptyStateIcon>
         <EmptyStateTitle as="h1">Open in another window</EmptyStateTitle>
         <EmptyStateDescription>
-          This tab group is attached to its desktop pop-out.
+          This pane is attached to its desktop pop-out.
         </EmptyStateDescription>
         <EmptyStateActions>
           <Button variant="outline" onClick={onFocus}>
@@ -136,9 +136,9 @@ export function GlobalContentHost({
     displayTerminals,
     displayedGitProject,
     explorers,
-    focusDetachedGroup,
+    focusDetachedPane,
     folderSetupJobs,
-    groupOwnedElsewhere,
+    selectedPaneOwnedElsewhere,
     isPopout,
     mobileNavigationSurfaces,
     mobileProjectSelectorOpen,
@@ -470,9 +470,9 @@ export function GlobalContentHost({
           workers={workers.data ?? []}
           workspaces={projectWorkspaces.data ?? []}
         />
-      ) : groupOwnedElsewhere && selectedPane ? (
-        <DetachedGroupPlaceholder
-          onFocus={() => focusDetachedGroup(selectedPane.id)}
+      ) : selectedPaneOwnedElsewhere && selectedPane ? (
+        <DetachedPanePlaceholder
+          onFocus={() => focusDetachedPane(selectedPane.id)}
         />
       ) : (
         <ProjectSurfaceHost>

@@ -216,6 +216,8 @@ import {
   projectCenterSplitResizeSchema,
   projectPaneMemberOrderSchema,
   projectPaneOrderSchema,
+  projectPaneRegionSchema,
+  PROJECT_SURFACE_DEFINITIONS,
   projectDockPresentationPreferenceSchema,
   projectDockPresentationUpdateSchema,
   encryptedProjectPaneUpdateSchema,
@@ -229,6 +231,8 @@ import {
   DEFAULT_ELITE_REVEAL_CONFIG,
   userSettingsSchema,
   userSettingsUpdateSchema,
+  workspaceLayoutProfilePlacement,
+  workspaceLayoutProfileSchema,
   workerCommandSchema,
   workerEventSchema,
   inferenceProgressSnapshotSchema,
@@ -6045,7 +6049,46 @@ describe("Cantrip protocol", () => {
       automaticReplicaProvisioning: false,
       automaticReplicaSynchronization: "off",
       mobileProjectTabConfigurations: {},
+      workspaceLayoutProfile: "hybrid",
     });
+    expect(workspaceLayoutProfileSchema.options).toEqual([
+      "agent",
+      "hybrid",
+      "ide",
+    ]);
+    expect(
+      userSettingsUpdateSchema.parse({ workspaceLayoutProfile: "agent" }),
+    ).toEqual({ workspaceLayoutProfile: "agent" });
+    expect(
+      userSettingsUpdateSchema.safeParse({ workspaceLayoutProfile: "wide" })
+        .success,
+    ).toBe(false);
+    expect(workspaceLayoutProfilePlacement("agent", "project.browser")).toBe(
+      "center",
+    );
+    expect(workspaceLayoutProfilePlacement("hybrid", "project.browser")).toBe(
+      "right",
+    );
+    expect(workspaceLayoutProfilePlacement("ide", "project.agent")).toBe(
+      "right",
+    );
+    expect(workspaceLayoutProfilePlacement("ide", "project.terminal")).toBe(
+      "bottom",
+    );
+    expect(projectPaneRegionSchema.safeParse("detached").success).toBe(false);
+    expect(
+      PROJECT_SURFACE_DEFINITIONS.every(
+        ({ supportedPlacements }) =>
+          !supportedPlacements.includes("detached" as never),
+      ),
+    ).toBe(true);
+    expect(
+      projectSurfaceViewOpenSchema.safeParse({
+        revision: 0,
+        surfaceRef: { definitionId: "project.overview", kind: "builtin" },
+        targetRegion: "detached",
+      }).success,
+    ).toBe(false);
     expect(
       userSettingsSchema.safeParse({
         theme: "system",

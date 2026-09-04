@@ -1,4 +1,7 @@
-import type { ProjectDockPresentationPreference } from "@cantrip/protocol";
+import {
+  projectTabLayoutSummarySchema,
+  type ProjectDockPresentationPreference,
+} from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import type { VisibleProjectPane } from "@/components/app/project-workspace-frame-model";
@@ -75,6 +78,65 @@ describe("dock presentation preferences", () => {
     );
     expect(preference).toEqual(split(0.1));
     expect(effectiveDockFraction(0.32, 300, 240, 240)).toBe(0.5);
+  });
+
+  it("rehydrates independent dock memories before applying local clamps", () => {
+    const timestamp = "2026-09-04T12:00:00.000Z";
+    const preferenceByRegion = {
+      right: split(0.24),
+      bottom: {
+        preferredMode: "full",
+        restoreFraction: 0.43,
+        splitFraction: 0.43,
+      } as const,
+    };
+    const persisted = projectTabLayoutSummarySchema.parse({
+      panes: (["right", "bottom"] as const).map((region, position) => {
+        const tabKey = `browser:${region}`;
+        return {
+          anchorTabKey: tabKey,
+          createdAt: timestamp,
+          id: `${region}-pane`,
+          members: [
+            {
+              createdAt: timestamp,
+              dockPresentation: preferenceByRegion[region],
+              paneId: `${region}-pane`,
+              position: 0,
+              projectId: "project-1",
+              tabId: region,
+              tabKey,
+              tabKind: "browser",
+              title: region,
+              updatedAt: timestamp,
+            },
+          ],
+          position,
+          projectId: "project-1",
+          region,
+          title: region,
+          updatedAt: timestamp,
+        };
+      }),
+      projectId: "project-1",
+      revision: 19,
+    });
+    const reloaded = projectTabLayoutSummarySchema.parse(
+      JSON.parse(JSON.stringify(persisted)),
+    );
+    const right = reloaded.panes[0]!.members[0]!.dockPresentation!;
+    const bottom = reloaded.panes[1]!.members[0]!.dockPresentation!;
+
+    expect(reloaded.revision).toBe(19);
+    expect(right).toEqual(preferenceByRegion.right);
+    expect(bottom).toEqual(preferenceByRegion.bottom);
+    expect(effectiveDockFraction(right.splitFraction, 600, 240, 240)).toBe(0.4);
+    expect(effectiveDockFraction(bottom.restoreFraction, 300, 180, 180)).toBe(
+      0.5,
+    );
+    expect(
+      reloaded.panes.map(({ members }) => members[0]!.dockPresentation),
+    ).toEqual([preferenceByRegion.right, preferenceByRegion.bottom]);
   });
 
   it("snaps with hysteresis and retains the last useful restore fraction", () => {

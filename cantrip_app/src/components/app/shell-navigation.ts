@@ -677,7 +677,6 @@ export function createShellNavigationCommands({
   setActiveProjectWorkspaceId,
   setCommandBarOpen,
   setDesktopSidebarDrawerOpen,
-  setDetachedGroupId,
   setFolderProjectDialogOpen,
   setPendingSurfaceSelection,
   setSidebarFilePreview,
@@ -713,7 +712,6 @@ export function createShellNavigationCommands({
   setActiveProjectWorkspaceId: Dispatch<SetStateAction<string | null>>;
   setCommandBarOpen: Dispatch<SetStateAction<boolean>>;
   setDesktopSidebarDrawerOpen: Dispatch<SetStateAction<boolean>>;
-  setDetachedGroupId: Dispatch<SetStateAction<string | null>>;
   setFolderProjectDialogOpen: Dispatch<SetStateAction<boolean>>;
   setPendingSurfaceSelection: Dispatch<
     SetStateAction<PendingSurfaceSelection | null>
@@ -854,7 +852,6 @@ export function createShellNavigationCommands({
     setProjectOverviewWorktreeId(null);
     setWorkspaceSelection(emptyWorkspaceSelection(projectId));
     setPendingSurfaceSelection(null);
-    setDetachedGroupId(null);
     revealWorkspace();
     void persistAppDestination({
       lastAppMode: "ide",
@@ -882,7 +879,6 @@ export function createShellNavigationCommands({
     setSelectedProjectId(null);
     setWorkspaceSelection(emptyWorkspaceSelection());
     setPendingSurfaceSelection(null);
-    setDetachedGroupId(null);
     setShowImporter(false);
     setShowSettings(false);
     setShowArchivedStandaloneChats(false);
