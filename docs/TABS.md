@@ -381,6 +381,10 @@ The project navigator may list resources under compact sections such as:
 - Recent
 - Archived
 
+It does not render a generic "Closed views" section for every resource without
+an open tab. Durable resources remain discoverable through their purpose-built
+navigator or launcher surfaces instead of accumulating in a second tab list.
+
 Opening a resource creates or focuses its one tab placement. Closing that tab
 does not delete or archive the conversation. This prevents the sidebar from
 becoming an unbounded list of every open view while keeping durable resources
