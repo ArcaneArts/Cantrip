@@ -211,7 +211,9 @@ share that pane, but only one is active at a time.
 - An open rail tab has the same close and destructive resource actions as a
   center tab. Its context menu closes the view or, when the surface definition
   permits it, confirms deletion or archival of the underlying resource.
-- Static rail launchers do not participate in sorting or deletion. Once a
+- Static rail launchers are reserved for singleton tools and do not participate
+  in sorting or deletion. Multi-instance resources such as Terminals and
+  Browsers are created from the rail's add-surface control. Once a singleton
   launcher opens a placement in that dock, the placement becomes the sortable,
   actionable rail tab and the duplicate launcher is hidden there.
 - Clicking a closed rail launcher opens or focuses its tab in that dock.

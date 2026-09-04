@@ -299,11 +299,19 @@ export function DockRail({
     } satisfies WorkspaceDndData,
   });
   const tooltipSide = region === "right" ? "left" : "top";
-  const regionLaunchers = launchers.filter(
-    (launcher) =>
-      launcher.location === `${region}-rail` &&
-      launcher.target.kind === "definition",
-  );
+  const regionLaunchers = launchers.filter((launcher) => {
+    if (
+      launcher.location !== `${region}-rail` ||
+      launcher.target.kind !== "definition"
+    ) {
+      return false;
+    }
+    const definitionId = launcher.target.definitionId;
+    return (
+      PROJECT_SURFACE_DEFINITIONS.find(({ id }) => id === definitionId)
+        ?.cardinality === "singleton"
+    );
+  });
   const launcherSurface = (launcher: ProjectSurfaceLauncher) => {
     if (launcher.target.kind === "definition") {
       const definitionId = launcher.target.definitionId;

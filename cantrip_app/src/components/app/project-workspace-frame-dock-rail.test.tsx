@@ -330,4 +330,42 @@ describe("dock rail tabs", () => {
 
     await act(async () => renderer.unmount());
   });
+
+  it("does not render a synthetic launcher for multi-instance rail resources", async () => {
+    const launcher = {
+      id: "launcher-terminal",
+      location: "bottom-rail",
+      pinned: false,
+      projectId: "project-1",
+      target: { definitionId: "project.terminal", kind: "definition" },
+    } as ProjectSurfaceLauncher;
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = renderRail({
+        activeTabKey: null,
+        allSurfaces: [],
+        launchers: [launcher],
+        region: "bottom",
+        surfaces: [],
+      });
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node) =>
+          node.type === "button" &&
+          node.props["aria-label"] === "Open Terminal in bottom dock",
+      ),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAll(
+        (node) =>
+          node.type === "button" &&
+          node.props["aria-label"] === "Add surface to bottom dock",
+      ),
+    ).toHaveLength(1);
+
+    await act(async () => renderer.unmount());
+  });
 });
