@@ -39,6 +39,10 @@ import { ChatRelocationStatus } from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
 import { SubagentTranscriptPanel } from "@/components/chat/subagent-transcript-panel";
 import { containsGithubReference } from "@/components/chat/github-mentions";
+import {
+  dataTransferHasFiles,
+  filesFromDataTransfer,
+} from "@/components/chat/file-drop";
 import { PromptQueue } from "@/components/chat/prompt-queue";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { Badge } from "@/components/ui/badge";
@@ -219,7 +223,7 @@ export function ChatTranscriptView({
         if (
           !effectiveInspectOnly &&
           !relocationActive &&
-          event.dataTransfer.types.includes("Files")
+          dataTransferHasFiles(event.dataTransfer)
         ) {
           event.preventDefault();
           setDraggingFiles(true);
@@ -234,14 +238,14 @@ export function ChatTranscriptView({
         if (
           !effectiveInspectOnly &&
           !relocationActive &&
-          event.dataTransfer.types.includes("Files")
+          dataTransferHasFiles(event.dataTransfer)
         ) {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
         }
       }}
       onDrop={(event) => {
-        const droppedFiles = [...event.dataTransfer.files];
+        const droppedFiles = filesFromDataTransfer(event.dataTransfer);
         if (droppedFiles.length === 0) return;
         event.preventDefault();
         setDraggingFiles(false);
