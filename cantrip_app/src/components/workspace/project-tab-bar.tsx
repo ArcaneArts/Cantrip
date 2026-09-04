@@ -23,14 +23,16 @@ import {
   type ProjectSurfacePlacementContext,
 } from "./project-surface-create-menu";
 import { InlineRenameLabel, SurfaceActionsMenu } from "./surface-tab-controls";
+import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
+import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   StyledContextMenuContent,
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
-import { nextProjectTabAfterRemoval } from "@/lib/project-tab-group";
-import type { ProjectFileSurface } from "@/lib/project-surface";
+import { nextProjectTabAfterRemoval } from "@/lib/project-pane";
+import type { ProjectSurface } from "@/lib/project-surface";
 import {
   closeTabOnMiddleClick,
   preventMiddleMouseDefault,
@@ -39,16 +41,16 @@ import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
   workspaceSurfaceDragId,
-  workspaceTopBarDropId,
+  workspacePaneStripDropId,
 } from "@/lib/workspace-dnd-model";
 
-export interface ProjectTabBarProps {
+export interface ProjectPaneTabStripProps {
   activeTabKey: string;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
-  onClose(surface: ProjectFileSurface): void;
-  onDelete(surface: ProjectFileSurface): void;
-  onRename(surface: ProjectFileSurface, title: string): void;
+  onClose(surface: ProjectSurface): void;
+  onDelete(surface: ProjectSurface): void;
+  onRename(surface: ProjectSurface, title: string): void;
   onSelect(tabKey: string): void;
   placement?: ProjectSurfacePlacementContext;
   previewFile?: {
@@ -60,10 +62,38 @@ export interface ProjectTabBarProps {
     onPin(): void;
     onSelect(): void;
   };
-  surfaces: readonly ProjectFileSurface[];
+  surfaces: readonly ProjectSurface[];
 }
 
-export function ProjectTabBar({
+function surfaceCanRename(surface: ProjectSurface): boolean {
+  return !(
+    surface.kind === "builtin" ||
+    (surface.kind === "terminal" && surface.entity.kind === "run-configuration")
+  );
+}
+
+function surfaceCanDelete(surface: ProjectSurface): boolean {
+  return surface.kind !== "builtin" && surface.definition.deletable;
+}
+
+function surfaceDeleteLabel(surface: ProjectSurface): string {
+  return surface.kind === "chat" ? "Archive Resource" : "Delete Resource";
+}
+
+function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
+  return surface.kind === "builtin" ? (
+    <ProjectBuiltInSurfaceIcon
+      className="size-3.5 shrink-0"
+      definitionId={surface.entity.definitionId}
+    />
+  ) : surface.kind === "explorer" && surface.entity.selectedPath ? (
+    <FileCode2 className="size-3.5 shrink-0" />
+  ) : (
+    <ProjectSurfaceIcon className="size-3.5 shrink-0" kind={surface.kind} />
+  );
+}
+
+export function ProjectPaneTabStrip({
   activeTabKey,
   creatingKinds,
   onCreate,
@@ -74,40 +104,36 @@ export function ProjectTabBar({
   placement,
   previewFile,
   surfaces,
-}: ProjectTabBarProps) {
+}: ProjectPaneTabStripProps) {
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<ProjectFileSurface | null>(
-    null,
-  );
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
   const lastSurface = surfaces.at(-1);
-  const groupId = lastSurface?.groupId ?? "empty";
+  const paneId = lastSurface?.paneId ?? "empty";
   const projectId = surfaces[0]?.projectId ?? previewFile?.projectId ?? "empty";
-  const topBarDrop = useDroppable({
-    id: workspaceTopBarDropId(groupId),
+  const paneStripDrop = useDroppable({
+    id: workspacePaneStripDropId(paneId),
     disabled: surfaces.length === 0,
     data: {
       drop: {
-        type: "top-bar",
+        type: "pane-strip",
         projectId,
-        groupId,
-        tabKey: lastSurface?.tabKey ?? "empty",
-        lanePosition: surfaces.length,
-        memberPosition: (lastSurface?.member.position ?? -1) + 1,
+        paneId,
+        memberPosition: surfaces.length,
       },
     } satisfies WorkspaceDndData,
   });
 
-  const beginRename = (surface: ProjectFileSurface) => {
+  const beginRename = (surface: ProjectSurface) => {
     setEditingTabKey(surface.tabKey);
     setRenameValue(surface.title);
   };
-  const finishRename = (surface: ProjectFileSurface) => {
+  const finishRename = (surface: ProjectSurface) => {
     const title = renameValue.trim();
     setEditingTabKey(null);
     if (title && title !== surface.title) onRename(surface, title);
   };
-  const closeImmediately = (surface: ProjectFileSurface) => {
+  const closeImmediately = (surface: ProjectSurface) => {
     if (surface.tabKey === activeTabKey) {
       const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
       if (nextTabKey) onSelect(nextTabKey);
@@ -119,13 +145,13 @@ export function ProjectTabBar({
     <>
       <div className="relative z-20 flex h-10 shrink-0 items-stretch bg-background">
         <div
-          ref={topBarDrop.setNodeRef}
+          ref={paneStripDrop.setNodeRef}
           className={cn(
             "flex min-w-0 flex-1 items-stretch overflow-x-auto overscroll-x-contain px-1 transition-colors [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            topBarDrop.isOver && "bg-muted/30",
+            paneStripDrop.isOver && "bg-muted/30",
           )}
           role="tablist"
-          aria-label="Project file tabs"
+          aria-label="Project pane tabs"
         >
           <SortableContext
             items={surfaces.map((surface) =>
@@ -133,15 +159,17 @@ export function ProjectTabBar({
             )}
             strategy={horizontalListSortingStrategy}
           >
-            {surfaces.map((surface, lanePosition) => {
+            {surfaces.map((surface, memberPosition) => {
               const active =
                 !previewFile?.active && surface.tabKey === activeTabKey;
               const editing = editingTabKey === surface.tabKey;
+              const canRename = surfaceCanRename(surface);
+              const canDelete = surfaceCanDelete(surface);
               return (
                 <SortableProjectTabFrame
                   disabled={editing}
                   key={surface.tabKey}
-                  lanePosition={lanePosition}
+                  memberPosition={memberPosition}
                   surface={surface}
                 >
                   <ContextMenu.Root>
@@ -177,20 +205,26 @@ export function ProjectTabBar({
                             onClick={() => onSelect(surface.tabKey)}
                             onDoubleClick={(event) => {
                               event.preventDefault();
-                              beginRename(surface);
+                              if (canRename) beginRename(surface);
                             }}
                           >
-                            <FileCode2 className="size-3.5 shrink-0" />
+                            <SurfaceTabIcon surface={surface} />
                             <span className="truncate">{surface.title}</span>
                           </button>
                         )}
                         {!editing ? (
                           <SurfaceActionsMenu
-                            deleteLabel="Delete Resource"
+                            deleteLabel={surfaceDeleteLabel(surface)}
                             title={surface.title}
                             onClose={() => closeImmediately(surface)}
-                            onDelete={() => setDeleteTarget(surface)}
-                            onRename={() => beginRename(surface)}
+                            onDelete={
+                              canDelete
+                                ? () => setDeleteTarget(surface)
+                                : undefined
+                            }
+                            onRename={
+                              canRename ? () => beginRename(surface) : undefined
+                            }
                             trigger={
                               <button
                                 type="button"
@@ -213,24 +247,33 @@ export function ProjectTabBar({
                     </ContextMenu.Trigger>
                     <ContextMenu.Portal>
                       <StyledContextMenuContent className="min-w-40">
-                        <StyledContextMenuItem
-                          onSelect={() => beginRename(surface)}
-                        >
-                          <Pencil className="size-4" /> Rename
-                        </StyledContextMenuItem>
-                        <ContextMenu.Separator className="my-1 h-px bg-border" />
+                        {canRename ? (
+                          <StyledContextMenuItem
+                            onSelect={() => beginRename(surface)}
+                          >
+                            <Pencil className="size-4" /> Rename
+                          </StyledContextMenuItem>
+                        ) : null}
+                        {canRename ? (
+                          <ContextMenu.Separator className="my-1 h-px bg-border" />
+                        ) : null}
                         <StyledContextMenuItem
                           onSelect={() => closeImmediately(surface)}
                         >
                           <X className="size-4" /> Close View
                         </StyledContextMenuItem>
-                        <ContextMenu.Separator className="my-1 h-px bg-border" />
-                        <StyledContextMenuItem
-                          className="text-destructive focus:bg-destructive/10"
-                          onSelect={() => setDeleteTarget(surface)}
-                        >
-                          <Trash2 className="size-4" /> Delete Resource
-                        </StyledContextMenuItem>
+                        {canDelete ? (
+                          <ContextMenu.Separator className="my-1 h-px bg-border" />
+                        ) : null}
+                        {canDelete ? (
+                          <StyledContextMenuItem
+                            className="text-destructive focus:bg-destructive/10"
+                            onSelect={() => setDeleteTarget(surface)}
+                          >
+                            <Trash2 className="size-4" />
+                            {surfaceDeleteLabel(surface)}
+                          </StyledContextMenuItem>
+                        ) : null}
                       </StyledContextMenuContent>
                     </ContextMenu.Portal>
                   </ContextMenu.Root>
@@ -306,16 +349,22 @@ export function ProjectTabBar({
         </div>
       </div>
       <ConfirmDialog
-        confirmLabel="Delete Resource"
+        confirmLabel={
+          deleteTarget ? surfaceDeleteLabel(deleteTarget) : "Delete Resource"
+        }
         confirmVariant="destructive"
-        description="This permanently deletes Cantrip's file-view resource and its saved view state. The project file on disk is not deleted."
+        description={
+          deleteTarget?.kind === "chat"
+            ? "This closes the tab and archives the Agent resource."
+            : "This permanently deletes the resource and its saved view state."
+        }
         onConfirm={() => {
           if (deleteTarget) onDelete(deleteTarget);
           setDeleteTarget(null);
         }}
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`Delete ${deleteTarget?.title ?? "file-view resource"}?`}
+        title={`${deleteTarget?.kind === "chat" ? "Archive" : "Delete"} ${deleteTarget?.title ?? "resource"}?`}
       />
     </>
   );
@@ -324,13 +373,13 @@ export function ProjectTabBar({
 function SortableProjectTabFrame({
   children,
   disabled,
-  lanePosition,
+  memberPosition,
   surface,
 }: {
   children: ReactNode;
   disabled: boolean;
-  lanePosition: number;
-  surface: ProjectFileSurface;
+  memberPosition: number;
+  surface: ProjectSurface;
 }) {
   const sortable = useSortable({
     disabled,
@@ -338,26 +387,25 @@ function SortableProjectTabFrame({
     data: {
       drag: {
         type: "surface",
-        lane: "file-tabs",
         projectId: surface.projectId,
-        groupId: surface.groupId,
+        paneId: surface.paneId,
         tabKey: surface.tabKey,
         label: surface.title,
-        lanePosition,
+        position: memberPosition,
         visualKind: surface.kind,
       },
       drop: {
-        type: "top-tab",
+        type: "pane-tab",
         projectId: surface.projectId,
-        groupId: surface.groupId,
+        paneId: surface.paneId,
         tabKey: surface.tabKey,
-        lanePosition,
-        memberPosition: surface.member.position,
+        memberPosition,
       },
     } satisfies WorkspaceDndData,
   });
   return (
     <div
+      data-project-tab-position={memberPosition}
       data-project-tab-frame={surface.tabKey}
       ref={sortable.setNodeRef}
       style={{
@@ -373,3 +421,6 @@ function SortableProjectTabFrame({
     </div>
   );
 }
+
+/** @deprecated Use ProjectPaneTabStrip. */
+export const ProjectTabBar = ProjectPaneTabStrip;

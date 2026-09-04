@@ -15,8 +15,8 @@ interface CreationMutation<Input> extends MutationOperation<Input> {
 }
 
 interface SurfaceCreateInput {
+  paneId?: string;
   projectId: string;
-  tabGroupId?: string;
   target?: ExecutionTarget;
 }
 
@@ -76,11 +76,11 @@ export function createSurfaceCommandController({
   const createProjectSurface = (
     projectId: string,
     kind: ProjectSurfaceCreateKind,
-    tabGroupId?: string,
+    paneId?: string,
     target?: ExecutionTarget,
   ) => {
     const input: SurfaceCreateInput = { projectId };
-    if (tabGroupId) input.tabGroupId = tabGroupId;
+    if (paneId) input.paneId = paneId;
     if (target) input.target = target;
     if (kind === "chat") creation.chat.mutate(input);
     else if (kind === "terminal") creation.terminal.mutate(input);
@@ -88,7 +88,7 @@ export function createSurfaceCommandController({
     else if (kind === "browser") creation.browser.mutate(input);
     else if (kind === "code") creation.code.mutate(input);
     else if (kind === "remote-desktop") {
-      if (!tabGroupId) creation.remoteDesktop.reset();
+      if (!paneId) creation.remoteDesktop.reset();
       creation.remoteDesktop.mutate(input);
     }
   };

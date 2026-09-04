@@ -7,13 +7,13 @@ export type ProjectScriptCommandDestination =
     }
   | {
       kind: "new-terminal";
-      tabGroupId?: string;
+      paneId?: string;
       worktreeId?: string;
     };
 
 export function projectScriptCommandDestination(input: {
   activeWorktreeId: string | null;
-  currentSurface: { groupId: string; kind: string } | null;
+  currentSurface: { paneId: string; kind: string } | null;
   selectedTerminal: Pick<TerminalSummary, "id" | "status"> | null;
 }): ProjectScriptCommandDestination {
   if (
@@ -28,9 +28,7 @@ export function projectScriptCommandDestination(input: {
 
   return {
     kind: "new-terminal",
-    ...(input.currentSurface
-      ? { tabGroupId: input.currentSurface.groupId }
-      : {}),
+    ...(input.currentSurface ? { paneId: input.currentSurface.paneId } : {}),
     ...(input.activeWorktreeId ? { worktreeId: input.activeWorktreeId } : {}),
   };
 }

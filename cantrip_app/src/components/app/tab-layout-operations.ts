@@ -6,10 +6,10 @@ import { useMutation, type QueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 
 import {
-  moveProjectTabGroupMember,
-  reorderProjectTabGroupMembers,
-  reorderProjectTabGroups,
-  updateProjectTabGroup,
+  moveProjectPaneMember,
+  reorderProjectPaneMembers,
+  reorderProjectPanes,
+  updateProjectPane,
 } from "@/lib/api";
 import { errorMessage as errorText } from "@/lib/error-message";
 import {
@@ -71,29 +71,30 @@ export function useTabLayoutOperations({
         projectId,
       ]);
       if (!current) throw new Error("The project tab layout is not loaded.");
-      if (command.type === "reorder-groups") {
-        return reorderProjectTabGroups(
+      if (command.type === "reorder-panes") {
+        return reorderProjectPanes(
           projectId,
           current.revision,
-          command.groupIds,
+          command.region,
+          command.paneIds,
         );
       }
       if (command.type === "reorder-members") {
-        return reorderProjectTabGroupMembers(
+        return reorderProjectPaneMembers(
           projectId,
-          command.groupId,
+          command.paneId,
           current.revision,
           command.tabKeys,
         );
       }
-      return moveProjectTabGroupMember(projectId, {
+      return moveProjectPaneMember(projectId, {
         revision: current.revision,
         tabKey: command.tabKey,
-        targetGroupId: command.targetGroupId,
+        targetPaneId: command.targetPaneId,
         targetMemberPosition: command.targetMemberPosition,
-        ...(command.targetGroupPosition === undefined
+        ...(command.targetPanePosition === undefined
           ? {}
-          : { targetGroupPosition: command.targetGroupPosition }),
+          : { targetPanePosition: command.targetPanePosition }),
       });
     },
     onMutate: async (input: TabLayoutMutationInput) => {
@@ -130,13 +131,13 @@ export function useTabLayoutOperations({
       baseTabLayoutMutation.mutate(input);
     },
   };
-  const renameTabGroupMutation = useMutation({
+  const renamePaneMutation = useMutation({
     mutationFn: ({
-      groupId,
+      paneId,
       projectId,
       title,
     }: {
-      groupId: string;
+      paneId: string;
       projectId: string;
       title: string;
     }) => {
@@ -145,7 +146,7 @@ export function useTabLayoutOperations({
         projectId,
       ]);
       if (!current) throw new Error("The project tab layout is not loaded.");
-      return updateProjectTabGroup(projectId, groupId, current.revision, title);
+      return updateProjectPane(projectId, paneId, current.revision, title);
     },
     onSuccess: (layout) =>
       queryClient.setQueryData(
@@ -157,7 +158,7 @@ export function useTabLayoutOperations({
         queryKey: ["project-tab-layout", input.projectId],
       }),
   });
-  return { renameTabGroupMutation, tabLayoutMutation } as const;
+  return { renamePaneMutation, tabLayoutMutation } as const;
 }
 
 interface WorkspaceDropMutation<Input> {

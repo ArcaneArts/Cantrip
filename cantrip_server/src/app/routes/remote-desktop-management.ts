@@ -174,7 +174,7 @@ export function installRemoteDesktopManagementRoutes(
           input.data.titleProtection,
           workerId,
           input.data.stateProtection,
-          input.data.tabGroupId,
+          input.data.paneId ?? input.data.tabGroupId,
         );
         if (!desktop) {
           return reply

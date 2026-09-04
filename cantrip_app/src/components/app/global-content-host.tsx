@@ -216,7 +216,7 @@ export function GlobalContentHost({
     selectedRunTargetLabel,
     selectedStandaloneChat,
     selectedTabKey,
-    selectedTabGroup,
+    selectedPane,
     selectedTerminal,
     selectedWorker,
     setAgentInspectOpen,
@@ -470,9 +470,9 @@ export function GlobalContentHost({
           workers={workers.data ?? []}
           workspaces={projectWorkspaces.data ?? []}
         />
-      ) : groupOwnedElsewhere && selectedTabGroup ? (
+      ) : groupOwnedElsewhere && selectedPane ? (
         <DetachedGroupPlaceholder
-          onFocus={() => focusDetachedGroup(selectedTabGroup.id)}
+          onFocus={() => focusDetachedGroup(selectedPane.id)}
         />
       ) : (
         <ProjectSurfaceHost>
@@ -497,7 +497,7 @@ export function GlobalContentHost({
                   ) =>
                     newRemoteDesktop.mutate({
                       projectId: remoteDesktop.data.projectId,
-                      tabGroupId: selectedTabGroup?.id,
+                      paneId: selectedPane?.id,
                       target: {
                         kind: "worker",
                         projectId: remoteDesktop.data.projectId,
@@ -683,7 +683,7 @@ export function GlobalContentHost({
                 onOpenService={(service: BrowserFleetService) =>
                   newBrowser.mutate({
                     projectId: selectedBrowser.projectId,
-                    tabGroupId: selectedTabGroup?.id,
+                    paneId: selectedPane?.id,
                     target: {
                       kind: "worker",
                       projectId: selectedBrowser.projectId,

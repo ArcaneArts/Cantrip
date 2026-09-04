@@ -9,7 +9,7 @@ import type { ProjectSurface } from "./project-surface";
 export interface SidebarFilePreviewState {
   active: boolean;
   explorerId: string;
-  groupId: string | null;
+  paneId: string | null;
   path: string;
   projectId: string;
 }
@@ -23,7 +23,7 @@ export function sidebarFilePreviewMatches(
   return Boolean(
     preview?.active &&
     preview.explorerId === target.explorerId &&
-    preview.groupId === target.groupId &&
+    preview.paneId === target.paneId &&
     preview.path === target.path &&
     preview.projectId === target.projectId,
   );
@@ -65,22 +65,22 @@ export function sidebarFilePreviewViewKey(
   return `sidebar-file-preview:${preview.explorerId}`;
 }
 
-export function sidebarFileTargetGroupId({
-  activeGroupId,
+export function sidebarFileTargetPaneId({
+  activePaneId,
   explorerId,
-  fallbackGroupId,
+  fallbackPaneId,
   preview,
 }: {
-  activeGroupId: string | null | undefined;
+  activePaneId: string | null | undefined;
   explorerId: string;
-  fallbackGroupId: string | null | undefined;
+  fallbackPaneId: string | null | undefined;
   preview: SidebarFilePreviewState | null;
 }): string | null {
-  if (activeGroupId) return activeGroupId;
-  if (preview?.explorerId === explorerId && preview.groupId) {
-    return preview.groupId;
+  if (activePaneId) return activePaneId;
+  if (preview?.explorerId === explorerId && preview.paneId) {
+    return preview.paneId;
   }
-  return fallbackGroupId ?? null;
+  return fallbackPaneId ?? null;
 }
 
 export function sidebarFilePreviewIsVisible({
@@ -110,13 +110,13 @@ export function sidebarFilePreviewIsVisible({
 
 export function tabbedExplorerIds(
   layout: ProjectTabLayoutSummary | null | undefined,
-  groupIds?: ReadonlySet<string>,
+  paneIds?: ReadonlySet<string>,
 ): ReadonlySet<string> {
   return new Set(
-    layout?.groups.flatMap((group) =>
-      groupIds && !groupIds.has(group.id)
+    layout?.panes.flatMap((pane) =>
+      paneIds && !paneIds.has(pane.id)
         ? []
-        : group.members.flatMap((member) =>
+        : pane.members.flatMap((member) =>
             member.tabKind === "explorer" ? [member.tabId] : [],
           ),
     ) ?? [],

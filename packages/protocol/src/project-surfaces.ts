@@ -6,7 +6,9 @@ import {
 import {
   projectTabKindSchema,
   projectTabLayoutWireSummarySchema,
+  legacyProjectTabLayoutWireSummarySchema,
 } from "./project-tabs.js";
+import { projectPaneRegionSchema } from "./project-pane-identifiers.js";
 
 export {
   PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS,
@@ -39,13 +41,7 @@ export const surfaceScopeSchema = z.enum([
   "global",
 ]);
 export const surfaceCardinalitySchema = z.enum(["singleton", "multi-instance"]);
-export const surfacePlacementRegionSchema = z.enum([
-  "center",
-  "right",
-  "bottom",
-  "left",
-  "detached",
-]);
+export const surfacePlacementRegionSchema = projectPaneRegionSchema;
 export const surfaceCapabilitySchema = z.enum([
   "worker",
   "worktrees",
@@ -603,6 +599,11 @@ export const projectSurfaceViewOpenResultSchema = z
   })
   .strict();
 
+export const legacyProjectSurfaceViewOpenResultSchema =
+  projectSurfaceViewOpenResultSchema.extend({
+    layout: legacyProjectTabLayoutWireSummarySchema,
+  });
+
 export const projectSurfaceViewCloseResultSchema = z
   .object({
     disposition: z.enum(["closed", "already-closed"]),
@@ -610,6 +611,11 @@ export const projectSurfaceViewCloseResultSchema = z
     layout: projectTabLayoutWireSummarySchema,
   })
   .strict();
+
+export const legacyProjectSurfaceViewCloseResultSchema =
+  projectSurfaceViewCloseResultSchema.extend({
+    layout: legacyProjectTabLayoutWireSummarySchema,
+  });
 
 export type ProjectSurfaceDefinitionId = z.infer<
   typeof projectSurfaceDefinitionIdSchema

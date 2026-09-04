@@ -26,6 +26,7 @@ import type {
   ModelReasoningEffortOption,
   PrivateDisplayLabelOpaque,
   ProjectBuiltInSurfaceDefinitionId,
+  ProjectPaneRegion,
   SurfacePrivateStateOpaque,
   SurfaceLauncherLocation,
   TerminalKind,
@@ -2362,6 +2363,10 @@ export const tabGroups = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     protectedLabel: jsonb("protected_label").$type<PrivateDisplayLabelOpaque>(),
+    region: text("region")
+      .$type<ProjectPaneRegion>()
+      .notNull()
+      .default("center"),
     position: integer("position").notNull().default(0),
     anchorTabKey: text("anchor_tab_key").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -2375,7 +2380,12 @@ export const tabGroups = pgTable(
     uniqueIndex("tab_groups_id_project_unique").on(table.id, table.projectId),
     index("tab_groups_project_position_index").on(
       table.projectId,
+      table.region,
       table.position,
+    ),
+    check(
+      "tab_groups_region_check",
+      sql`${table.region} IN ('center', 'right', 'bottom', 'left', 'detached')`,
     ),
   ],
 );

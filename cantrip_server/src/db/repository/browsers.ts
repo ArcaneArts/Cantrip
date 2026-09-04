@@ -141,7 +141,7 @@ export class BrowserRepository {
       });
       await attachProjectTab(transaction, {
         projectId,
-        tabGroupId: input.tabGroupId,
+        paneId: input.paneId ?? input.tabGroupId,
         tabId: browser.id,
         tabKind: "browser",
       });

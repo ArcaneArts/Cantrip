@@ -135,7 +135,7 @@ export class TerminalRepository {
       const terminal = firstOrThrow(result, "creating a terminal");
       await attachProjectTab(transaction, {
         projectId,
-        tabGroupId: input.tabGroupId,
+        paneId: input.paneId ?? input.tabGroupId,
         tabId: terminal.id,
         tabKind: "terminal",
       });

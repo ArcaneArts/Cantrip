@@ -47,19 +47,20 @@ function builtInSurface(
   const layout: ProjectTabLayoutSummary = {
     projectId: "project-1",
     revision: 1,
-    groups: [
+    panes: [
       {
         id: `group-${definitionId}`,
         projectId: "project-1",
         title: definitionId,
         position: 0,
+        region: "center",
         anchorTabKey: tabKey,
         createdAt: timestamp,
         updatedAt: timestamp,
         members: [
           {
             tabKey,
-            groupId: `group-${definitionId}`,
+            paneId: `group-${definitionId}`,
             projectId: "project-1",
             tabKind: "builtin",
             tabId: definitionId,

@@ -195,7 +195,7 @@ export class CodeSurfaceRepository {
       const codeTab = firstOrThrow(result, "creating a Code tab");
       await attachProjectTab(transaction, {
         projectId,
-        tabGroupId: input.tabGroupId,
+        paneId: input.paneId ?? input.tabGroupId,
         tabId: codeTab.id,
         tabKind: "code",
       });

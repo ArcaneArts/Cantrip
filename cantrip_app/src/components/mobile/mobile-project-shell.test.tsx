@@ -78,14 +78,14 @@ function surface(
       kind === "chat"
         ? { experience: "chat", status: "idle" }
         : { status: "running" },
-    groupId: `group-${tabKey}`,
+    paneId: `group-${tabKey}`,
     kind,
     member: {},
     projectId: "project-1",
     tabId: tabKey.split(":")[1]!,
     tabKey,
     title,
-  } as ProjectSurface;
+  } as unknown as ProjectSurface;
 }
 
 const surfaces = [

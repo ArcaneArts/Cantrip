@@ -62,8 +62,8 @@ describe("surface command controller", () => {
     });
 
     expect(operationSet.creation.browser.mutate).toHaveBeenCalledWith({
+      paneId: "group-1",
       projectId: "project-1",
-      tabGroupId: "group-1",
       target: {
         kind: "worker",
         projectId: "project-1",
@@ -86,7 +86,7 @@ describe("surface command controller", () => {
     );
     expect(operationSet.creation.remoteDesktop.mutate).toHaveBeenNthCalledWith(
       2,
-      { projectId: "project-1", tabGroupId: "group-1" },
+      { paneId: "group-1", projectId: "project-1" },
     );
   });
 

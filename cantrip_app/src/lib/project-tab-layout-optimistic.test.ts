@@ -13,17 +13,18 @@ const timestamp = "2026-08-09T12:00:00.000Z";
 const layout: ProjectTabLayoutSummary = {
   projectId: "project-1",
   revision: 4,
-  groups: [
+  panes: [
     {
       id: "group-a",
       projectId: "project-1",
       title: "Chat a",
       position: 0,
+      region: "center",
       anchorTabKey: "chat:a",
       createdAt: timestamp,
       updatedAt: timestamp,
       members: ["chat:a", "terminal:a"].map((tabKey, position) => ({
-        groupId: "group-a",
+        paneId: "group-a",
         projectId: "project-1",
         tabKind: position === 0 ? "chat" : "terminal",
         tabId: tabKey.split(":")[1]!,
@@ -39,12 +40,13 @@ const layout: ProjectTabLayoutSummary = {
       projectId: "project-1",
       title: "Explorer b",
       position: 1,
+      region: "center",
       anchorTabKey: "explorer:b",
       createdAt: timestamp,
       updatedAt: timestamp,
       members: [
         {
-          groupId: "group-b",
+          paneId: "group-b",
           projectId: "project-1",
           tabKind: "explorer",
           tabId: "b",
@@ -63,12 +65,12 @@ describe("optimistic tab layouts", () => {
   it("removes a member and immediately promotes the remaining tab", () => {
     const next = removeProjectTabFromLayout(layout, "chat:a");
 
-    expect(next.groups[0]).toMatchObject({
+    expect(next.panes[0]).toMatchObject({
       anchorTabKey: "terminal:a",
       position: 0,
       title: "terminal:a",
     });
-    expect(next.groups[0]?.members).toMatchObject([
+    expect(next.panes[0]?.members).toMatchObject([
       { position: 0, tabKey: "terminal:a" },
     ]);
   });
@@ -76,39 +78,68 @@ describe("optimistic tab layouts", () => {
   it("removes and repositions an emptied tab group", () => {
     const next = removeProjectTabFromLayout(layout, "explorer:b");
 
-    expect(next.groups).toHaveLength(1);
-    expect(next.groups[0]).toMatchObject({ id: "group-a", position: 0 });
+    expect(next.panes).toHaveLength(1);
+    expect(next.panes[0]).toMatchObject({ id: "group-a", position: 0 });
   });
 
   it("promotes the first remaining member when splitting the anchor", () => {
     const next = applyOptimisticTabLayoutCommand(layout, {
       type: "move-member",
       tabKey: "chat:a",
-      targetGroupId: null,
+      targetPaneId: null,
       targetMemberPosition: 0,
-      targetGroupPosition: 1,
+      targetPanePosition: 1,
     });
-    expect(next.groups[0]?.anchorTabKey).toBe("terminal:a");
-    expect(next.groups[0]?.title).toBe("terminal:a");
-    expect(next.groups[1]?.anchorTabKey).toBe("chat:a");
-    expect(next.groups[1]?.title).toBe("chat:a");
-    expect(next.groups.map(({ position }) => position)).toEqual([0, 1, 2]);
+    expect(next.panes[0]?.anchorTabKey).toBe("terminal:a");
+    expect(next.panes[0]?.title).toBe("terminal:a");
+    expect(next.panes[1]?.anchorTabKey).toBe("chat:a");
+    expect(next.panes[1]?.title).toBe("chat:a");
+    expect(next.panes.map(({ position }) => position)).toEqual([0, 1, 2]);
+  });
+
+  it("inserts split panes at a region-local position", () => {
+    const rightPane = {
+      ...layout.panes[1]!,
+      id: "group-right",
+      region: "right" as const,
+      position: 0,
+    };
+    const mixedLayout = {
+      ...layout,
+      panes: [layout.panes[0]!, layout.panes[1]!, rightPane],
+    };
+
+    const next = applyOptimisticTabLayoutCommand(mixedLayout, {
+      type: "move-member",
+      tabKey: "chat:a",
+      targetPaneId: null,
+      targetMemberPosition: 0,
+      targetPanePosition: 1,
+    });
+
+    expect(next.panes.map(({ id }) => id)).toEqual([
+      "group-a",
+      "optimistic:chat:a",
+      "group-b",
+      "group-right",
+    ]);
+    expect(next.panes.map(({ position }) => position)).toEqual([0, 1, 2, 0]);
   });
 
   it("removes an emptied singleton group when joining another group", () => {
     const next = applyOptimisticTabLayoutCommand(layout, {
       type: "move-member",
       tabKey: "explorer:b",
-      targetGroupId: "group-a",
+      targetPaneId: "group-a",
       targetMemberPosition: 1,
     });
-    expect(next.groups).toHaveLength(1);
-    expect(next.groups[0]?.members.map(({ tabKey }) => tabKey)).toEqual([
+    expect(next.panes).toHaveLength(1);
+    expect(next.panes[0]?.members.map(({ tabKey }) => tabKey)).toEqual([
       "chat:a",
       "explorer:b",
       "terminal:a",
     ]);
-    expect(next.groups[0]?.title).toBe("Chat a");
+    expect(next.panes[0]?.title).toBe("Chat a");
   });
 
   it("restores the authoritative snapshot after a rejected mutation", () => {
@@ -121,12 +152,12 @@ describe("optimistic tab layouts", () => {
       {
         type: "move-member",
         tabKey: "explorer:b",
-        targetGroupId: "group-a",
+        targetPaneId: "group-a",
         targetMemberPosition: 1,
       },
     );
     expect(
-      queryClient.getQueryData<ProjectTabLayoutSummary>(queryKey)?.groups,
+      queryClient.getQueryData<ProjectTabLayoutSummary>(queryKey)?.panes,
     ).toHaveLength(1);
 
     restoreOptimisticTabLayoutCache(queryClient, snapshot);

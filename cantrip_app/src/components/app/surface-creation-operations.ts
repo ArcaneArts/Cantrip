@@ -80,7 +80,7 @@ export function useProjectChatCreationOperation({
   return useMutation({
     mutationFn: ({
       projectId,
-      tabGroupId,
+      paneId,
       title,
       worktreeId,
       worktreeMode,
@@ -94,7 +94,7 @@ export function useProjectChatCreationOperation({
       startInitialDraft?: boolean;
       open?: boolean;
       projectId: string;
-      tabGroupId?: string;
+      paneId?: string;
       title?: string;
       worktreeId?: string;
       worktreeMode?: "agent-managed" | "pinned";
@@ -115,7 +115,7 @@ export function useProjectChatCreationOperation({
         title ?? newAgentChatTitle(existingTitles, randomAgentNames),
         worktreeId,
         worktreeMode,
-        tabGroupId,
+        paneId,
         target,
         githubAgentContext,
       ).then(async (chat) => {
@@ -337,13 +337,13 @@ export function useProjectTaskCreationOperation({
   return useMutation({
     mutationFn: ({
       projectId,
-      tabGroupId,
+      paneId,
       worktreeId,
       worktreeMode,
       target,
     }: {
       projectId: string;
-      tabGroupId?: string;
+      paneId?: string;
       worktreeId?: string;
       worktreeMode?: "agent-managed" | "pinned";
       target?: ExecutionTarget;
@@ -353,7 +353,7 @@ export function useProjectTaskCreationOperation({
         "New task",
         worktreeId,
         worktreeMode,
-        tabGroupId,
+        paneId,
         target,
       ),
     onSuccess: ({ chat, task }) => {
@@ -389,7 +389,7 @@ export function useTerminalCreationOperation({
     mutationFn: ({
       projectId,
       directoryPath,
-      tabGroupId,
+      paneId,
       title,
       worktreeId,
       target,
@@ -398,7 +398,7 @@ export function useTerminalCreationOperation({
       initialInput?: string;
       projectId: string;
       directoryPath?: string;
-      tabGroupId?: string;
+      paneId?: string;
       title?: string;
       worktreeId?: string;
       target?: ExecutionTarget;
@@ -407,7 +407,7 @@ export function useTerminalCreationOperation({
         projectId,
         title ?? "Terminal",
         worktreeId,
-        tabGroupId,
+        paneId,
         target,
         directoryPath,
       ),
@@ -486,15 +486,15 @@ export function useExplorerCreationOperations({
   const newExplorer = useMutation({
     mutationFn: ({
       projectId,
-      tabGroupId,
+      paneId,
       worktreeId,
       target,
     }: {
       projectId: string;
-      tabGroupId?: string;
+      paneId?: string;
       worktreeId?: string;
       target?: ExecutionTarget;
-    }) => createExplorer(projectId, "Explorer", worktreeId, tabGroupId, target),
+    }) => createExplorer(projectId, "Explorer", worktreeId, paneId, target),
     onSuccess: (explorer) => {
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", explorer.projectId],
@@ -513,17 +513,17 @@ export function useExplorerCreationOperations({
     mutationFn: ({
       explorer,
       entry,
-      tabGroupId,
+      paneId,
     }: {
       explorer: ExplorerSummary;
       entry: ExplorerEntry;
-      tabGroupId?: string;
+      paneId?: string;
     }) =>
       createExplorer(
         explorer.projectId,
         `Graph · ${entry.name}`,
         explorer.worktreeId,
-        tabGroupId,
+        paneId,
         {
           kind: "worktree",
           projectId: explorer.projectId,
@@ -564,17 +564,17 @@ export function useBrowserCodeViewCreationOperations({
   const newBrowser = useMutation({
     mutationFn: ({
       projectId,
-      tabGroupId,
+      paneId,
       target,
       title,
       url,
     }: {
       projectId: string;
-      tabGroupId?: string;
+      paneId?: string;
       target?: ExecutionTarget;
       title?: string;
       url?: string;
-    }) => createBrowser(projectId, title ?? "Browser", tabGroupId, target, url),
+    }) => createBrowser(projectId, title ?? "Browser", paneId, target, url),
     onSuccess: (browser) => {
       queryClient.setQueryData<BrowserSummary[]>(
         ["browsers", browser.projectId],
@@ -592,15 +592,15 @@ export function useBrowserCodeViewCreationOperations({
   const newCodeTab = useMutation({
     mutationFn: ({
       projectId,
-      tabGroupId,
+      paneId,
       worktreeId,
       target,
     }: {
       projectId: string;
-      tabGroupId?: string;
+      paneId?: string;
       worktreeId?: string;
       target?: ExecutionTarget;
-    }) => createCodeTab(projectId, "Code", worktreeId, tabGroupId, target),
+    }) => createCodeTab(projectId, "Code", worktreeId, paneId, target),
     onSuccess: (codeTab) => {
       queryClient.setQueryData<CodeTabSummary[]>(
         ["code-tabs", codeTab.projectId],
@@ -628,15 +628,15 @@ export function useRemoteDesktopCreationOperation({
   return useMutation({
     mutationFn: ({
       projectId,
-      tabGroupId,
+      paneId,
       target,
       desktopTarget,
     }: {
       projectId: string;
-      tabGroupId?: string;
+      paneId?: string;
       target?: ExecutionTarget;
       desktopTarget?: RemoteDesktopTarget;
-    }) => createRemoteDesktop(projectId, tabGroupId, target, desktopTarget),
+    }) => createRemoteDesktop(projectId, paneId, target, desktopTarget),
     onSuccess: (desktop) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
         ["project-views", desktop.projectId],

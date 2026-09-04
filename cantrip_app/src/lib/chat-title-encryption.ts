@@ -173,10 +173,10 @@ export class ChatTitleEncryptionAdapter {
   ): Promise<ProjectTabLayoutSummary> {
     return projectTabLayoutSummarySchema.parse({
       ...layout,
-      groups: await Promise.all(
-        layout.groups.map(async ({ titleProtection, ...group }) => {
+      panes: await Promise.all(
+        layout.panes.map(async ({ titleProtection, ...pane }) => {
           const members = await Promise.all(
-            group.members.map(async ({ titleProtection, ...member }) => ({
+            pane.members.map(async ({ titleProtection, ...member }) => ({
               ...member,
               title: titleProtection
                 ? await decodePrivateDisplayLabelForClient({
@@ -197,19 +197,19 @@ export class ChatTitleEncryptionAdapter {
             })),
           );
           const anchor = members.find(
-            ({ tabKey }) => tabKey === group.anchorTabKey,
+            ({ tabKey }) => tabKey === pane.anchorTabKey,
           );
           if (!anchor) {
-            throw new Error("The tab group anchor is not one of its members.");
+            throw new Error("The pane anchor is not one of its members.");
           }
           return {
-            ...group,
+            ...pane,
             title: titleProtection
               ? await decodePrivateDisplayLabelForClient({
                   identity: this.identity(),
                   opaque: titleProtection,
                   recordKind: "tab-group",
-                  rowId: group.id,
+                  rowId: pane.id,
                   service: this.service,
                 })
               : anchor.title,

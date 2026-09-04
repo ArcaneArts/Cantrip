@@ -137,7 +137,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     pinSidebarFile,
     pinSidebarFileMutation,
     projectOverviewSelected,
-    projectSidebarSurfaces,
+    projectInventorySurfaces,
     projectRevealButtonLabel,
     projectRevealLabel,
     projectSetupJobs,
@@ -439,7 +439,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     codeTabs={codeTabs.data ?? []}
                     explorers={explorers.data ?? []}
                     projectViews={projectViews.data ?? []}
-                    surfaces={projectSidebarSurfaces}
+                    surfaces={projectInventorySurfaces}
                     surfaceLaunchers={surfaceLaunchers.data ?? []}
                     terminals={displayTerminals}
                     workers={workers.data ?? []}

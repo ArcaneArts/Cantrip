@@ -14,7 +14,6 @@ import { useAppLiveScope } from "@/lib/app-live-react";
 import {
   buildProjectSurfaceIndex,
   omitProjectSurfaceTabs,
-  projectSurfaceIsFile,
   projectSurfaceTabId,
 } from "@/lib/project-surface";
 import {
@@ -42,7 +41,7 @@ export function useProjectWorkspaceSelectionState({
     useState<PendingSurfaceSelection | null>(
       popoutTarget
         ? {
-            groupId: popoutTarget.groupId,
+            paneId: popoutTarget.groupId,
             projectId: popoutTarget.projectId,
             tabKey: popoutTarget.activeTabKey,
           }
@@ -118,16 +117,16 @@ export function useWorkspaceSelectionReconciliation({
       return;
     }
     if (!layout || layout.projectId !== selectedProjectId) return;
-    const pendingGroup = pendingSurfaceSelection?.groupId
-      ? layout.groups.find(({ id }) => id === pendingSurfaceSelection.groupId)
+    const pendingPane = pendingSurfaceSelection?.paneId
+      ? layout.panes.find(({ id }) => id === pendingSurfaceSelection.paneId)
       : undefined;
     const pendingTabKey =
       pendingSurfaceSelection?.projectId === selectedProjectId &&
-      layout.groups.some(({ members }) =>
+      layout.panes.some(({ members }) =>
         members.some(({ tabKey }) => tabKey === pendingSurfaceSelection.tabKey),
       )
         ? pendingSurfaceSelection.tabKey
-        : (pendingGroup?.anchorTabKey ?? null);
+        : (pendingPane?.anchorTabKey ?? null);
     setWorkspaceSelection((current) => {
       const reconciled = reconcileWorkspaceSelection(
         current,
@@ -234,7 +233,7 @@ export function useProjectSurfaceSelection({
   } as const;
 }
 
-export function workspaceGroupSelection({
+export function workspacePaneSelection({
   projectSurfaceIndex,
   sidebarFilePreview,
   tabLayout,
@@ -246,28 +245,24 @@ export function workspaceGroupSelection({
   workspaceSelection: WorkspaceSelection;
 }) {
   const orderedProjectSurfaces =
-    tabLayout?.groups.flatMap(
-      ({ id }) => projectSurfaceIndex.byGroupId.get(id) ?? [],
+    tabLayout?.panes.flatMap(
+      ({ id }) => projectSurfaceIndex.byPaneId.get(id) ?? [],
     ) ?? [];
-  const selectedTabGroup = tabLayout?.groups.find(
-    (group) => group.id === workspaceSelection.selectedGroupId,
+  const selectedPane = tabLayout?.panes.find(
+    (pane) => pane.id === workspaceSelection.focusedPaneId,
   );
-  const selectedGroupSurfaces = workspaceSelection.selectedGroupId
-    ? (projectSurfaceIndex.byGroupId.get(workspaceSelection.selectedGroupId) ??
-      [])
+  const selectedPaneSurfaces = workspaceSelection.focusedPaneId
+    ? (projectSurfaceIndex.byPaneId.get(workspaceSelection.focusedPaneId) ?? [])
     : [];
   return {
-    projectSidebarSurfaces: orderedProjectSurfaces.filter(
-      (surface) => !projectSurfaceIsFile(surface),
-    ),
-    projectTabBarSurfaces: orderedProjectSurfaces.filter(projectSurfaceIsFile),
-    selectedGroupSurfaces,
-    selectedTabGroup,
+    orderedProjectSurfaces,
+    selectedPaneSurfaces,
+    selectedPane,
     showSidebarPreviewTab: Boolean(
       sidebarFilePreview &&
       (sidebarFilePreview.active ||
-        (sidebarFilePreview.groupId !== null &&
-          sidebarFilePreview.groupId === workspaceSelection.selectedGroupId)),
+        (sidebarFilePreview.paneId !== null &&
+          sidebarFilePreview.paneId === workspaceSelection.focusedPaneId)),
     ),
   } as const;
 }

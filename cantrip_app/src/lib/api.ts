@@ -361,11 +361,11 @@ import {
   standaloneChatShareAttachmentWireSchema,
   type StandaloneChatSummary,
   systemHealthSchema,
-  tabGroupMemberMoveSchema,
-  tabGroupMemberOrderSchema,
-  tabGroupOrderSchema,
-  encryptedTabGroupUpdateSchema,
-  tabGroupUpdateSchema,
+  projectPaneMemberMoveSchema,
+  projectPaneMemberOrderSchema,
+  projectPaneOrderSchema,
+  encryptedProjectPaneUpdateSchema,
+  projectPaneUpdateSchema,
   taskWireCreateResultSchema,
   taskImplementationDashboardSchema,
   taskImplementationOpaqueDashboardSchema,
@@ -5224,26 +5224,25 @@ export async function cancelChatRelocation(
 export async function getProjectTabLayout(projectId: string) {
   return chatTitleEncryption.openTabLayout(
     projectTabLayoutWireSummarySchema.parse(
-      await request(
-        `/api/projects/${encodeURIComponent(projectId)}/tab-groups`,
-      ),
+      await request(`/api/projects/${encodeURIComponent(projectId)}/panes`),
     ),
   );
 }
 
-export async function reorderProjectTabGroups(
+export async function reorderProjectPanes(
   projectId: string,
   revision: number,
-  groupIds: string[],
+  region: "center" | "right" | "bottom" | "left" | "detached",
+  paneIds: string[],
 ) {
   return chatTitleEncryption.openTabLayout(
     projectTabLayoutWireSummarySchema.parse(
       await request(
-        `/api/projects/${encodeURIComponent(projectId)}/tab-groups/order`,
+        `/api/projects/${encodeURIComponent(projectId)}/panes/order`,
         {
           method: "PATCH",
           body: JSON.stringify(
-            tabGroupOrderSchema.parse({ revision, groupIds }),
+            projectPaneOrderSchema.parse({ revision, region, paneIds }),
           ),
         },
       ),
@@ -5251,25 +5250,25 @@ export async function reorderProjectTabGroups(
   );
 }
 
-export async function updateProjectTabGroup(
+export async function updateProjectPane(
   projectId: string,
-  groupId: string,
+  paneId: string,
   revision: number,
   title: string,
 ) {
-  const input = tabGroupUpdateSchema.parse({ revision, title });
+  const input = projectPaneUpdateSchema.parse({ revision, title });
   const titleProtection = await chatTitleEncryption.protectTabGroup(
-    groupId,
+    paneId,
     input.title,
   );
   return chatTitleEncryption.openTabLayout(
     projectTabLayoutWireSummarySchema.parse(
       await request(
-        `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}`,
+        `/api/projects/${encodeURIComponent(projectId)}/panes/${encodeURIComponent(paneId)}`,
         {
           method: "PATCH",
           body: JSON.stringify(
-            encryptedTabGroupUpdateSchema.parse({
+            encryptedProjectPaneUpdateSchema.parse({
               revision: input.revision,
               titleProtection,
             }),
@@ -5280,20 +5279,20 @@ export async function updateProjectTabGroup(
   );
 }
 
-export async function reorderProjectTabGroupMembers(
+export async function reorderProjectPaneMembers(
   projectId: string,
-  groupId: string,
+  paneId: string,
   revision: number,
   tabKeys: string[],
 ) {
   return chatTitleEncryption.openTabLayout(
     projectTabLayoutWireSummarySchema.parse(
       await request(
-        `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}/members/order`,
+        `/api/projects/${encodeURIComponent(projectId)}/panes/${encodeURIComponent(paneId)}/members/order`,
         {
           method: "PATCH",
           body: JSON.stringify(
-            tabGroupMemberOrderSchema.parse({ revision, tabKeys }),
+            projectPaneMemberOrderSchema.parse({ revision, tabKeys }),
           ),
         },
       ),
@@ -5301,23 +5300,23 @@ export async function reorderProjectTabGroupMembers(
   );
 }
 
-export async function moveProjectTabGroupMember(
+export async function moveProjectPaneMember(
   projectId: string,
   input: {
     revision: number;
     tabKey: string;
-    targetGroupId: string | null;
+    targetPaneId: string | null;
     targetMemberPosition: number;
-    targetGroupPosition?: number;
+    targetPanePosition?: number;
   },
 ) {
   return chatTitleEncryption.openTabLayout(
     projectTabLayoutWireSummarySchema.parse(
       await request(
-        `/api/projects/${encodeURIComponent(projectId)}/tab-groups/member`,
+        `/api/projects/${encodeURIComponent(projectId)}/panes/member`,
         {
           method: "PATCH",
-          body: JSON.stringify(tabGroupMemberMoveSchema.parse(input)),
+          body: JSON.stringify(projectPaneMemberMoveSchema.parse(input)),
         },
       ),
     ),
@@ -5334,7 +5333,7 @@ export async function openProjectSurfaceView(
 ) {
   const wire = projectSurfaceViewOpenResultSchema.parse(
     await post(
-      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/member/open`,
+      `/api/projects/${encodeURIComponent(projectId)}/panes/member/open`,
       projectSurfaceViewOpenSchema.parse(input),
     ),
   );
@@ -5351,7 +5350,7 @@ export async function closeProjectSurfaceView(
 ) {
   const wire = projectSurfaceViewCloseResultSchema.parse(
     await post(
-      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/member/close`,
+      `/api/projects/${encodeURIComponent(projectId)}/panes/member/close`,
       projectSurfaceViewCloseSchema.parse({ revision, viewId }),
     ),
   );
@@ -5407,7 +5406,7 @@ export async function createChat(
   title: string,
   worktreeId?: string,
   worktreeMode?: "agent-managed" | "pinned",
-  tabGroupId?: string,
+  paneId?: string,
   target?: ExecutionTarget,
   githubAgentContext?: GithubAgentWorkflowContext,
 ) {
@@ -5419,7 +5418,7 @@ export async function createChat(
         titleProtection: await chatTitleEncryption.protect(id, title),
         ...(worktreeId ? { worktreeId } : {}),
         ...(worktreeMode ? { worktreeMode } : {}),
-        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(paneId ? { paneId } : {}),
         ...(target ? { target } : {}),
         ...(githubAgentContext ? { githubAgentContext } : {}),
       }),
@@ -5447,7 +5446,7 @@ export async function createTask(
   title: string,
   worktreeId?: string,
   worktreeMode?: "agent-managed" | "pinned",
-  tabGroupId?: string,
+  paneId?: string,
   target?: ExecutionTarget,
 ) {
   const chatId = crypto.randomUUID();
@@ -5460,7 +5459,7 @@ export async function createTask(
       titleProtection: await chatTitleEncryption.protect(chatId, title),
       ...(worktreeId ? { worktreeId } : {}),
       ...(worktreeMode ? { worktreeMode } : {}),
-      ...(tabGroupId ? { tabGroupId } : {}),
+      ...(paneId ? { paneId } : {}),
       ...(target ? { target } : {}),
     }),
   );
@@ -5664,7 +5663,7 @@ export async function createTerminal(
   projectId: string,
   title: string,
   worktreeId?: string,
-  tabGroupId?: string,
+  paneId?: string,
   target?: ExecutionTarget,
   directoryPath?: string,
 ) {
@@ -5690,7 +5689,7 @@ export async function createTerminal(
         titleProtection,
         stateProtection,
         ...placement,
-        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(paneId ? { paneId } : {}),
       }),
     ),
   );
@@ -5781,7 +5780,7 @@ export async function createExplorer(
   projectId: string,
   title: string,
   worktreeId?: string,
-  tabGroupId?: string,
+  paneId?: string,
   target?: ExecutionTarget,
   options: {
     attachToTabLayout?: boolean;
@@ -5809,7 +5808,7 @@ export async function createExplorer(
         titleProtection,
         stateProtection,
         ...(worktreeId ? { worktreeId } : {}),
-        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(paneId ? { paneId } : {}),
         ...(target ? { target } : {}),
         ...(initialViewState ? { fileMode: initialViewState.fileMode } : {}),
         attachToTabLayout: options.attachToTabLayout ?? true,
@@ -5822,7 +5821,7 @@ export async function pinExplorer(
   explorerId: string,
   title: string,
   viewState: ExplorerViewStateUpdate,
-  tabGroupId?: string,
+  paneId?: string,
 ) {
   const state = explorerViewStateUpdateSchema.parse(viewState);
   const titleProtection = await surfaceTitleEncryption.protect(
@@ -5840,7 +5839,7 @@ export async function pinExplorer(
         titleProtection,
         stateProtection,
         fileMode: state.fileMode,
-        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(paneId ? { paneId } : {}),
       }),
     ),
   );
@@ -6039,7 +6038,7 @@ export async function ensureBrowserTunnel(
 export async function createBrowser(
   projectId: string,
   title: string,
-  tabGroupId?: string,
+  paneId?: string,
   target?: ExecutionTarget,
   url?: string,
 ) {
@@ -6060,7 +6059,7 @@ export async function createBrowser(
         id,
         titleProtection,
         stateProtection,
-        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(paneId ? { paneId } : {}),
         ...(target ? { target } : {}),
       }),
     ),
@@ -6187,7 +6186,7 @@ const remoteDesktopUpdateChains = new Map<string, Promise<void>>();
 
 export async function createRemoteDesktop(
   projectId: string,
-  tabGroupId?: string,
+  paneId?: string,
   target?: ExecutionTarget,
   desktopTarget?: RemoteDesktopTarget,
 ) {
@@ -6216,7 +6215,7 @@ export async function createRemoteDesktop(
           id,
           stateProtection,
           titleProtection,
-          ...(tabGroupId ? { tabGroupId } : {}),
+          ...(paneId ? { paneId } : {}),
           ...(target ? { target } : {}),
         },
       ),
@@ -6309,7 +6308,7 @@ export async function createCodeTab(
   projectId: string,
   title = "Code",
   worktreeId?: string,
-  tabGroupId?: string,
+  paneId?: string,
   target?: ExecutionTarget,
 ) {
   const id = crypto.randomUUID();
@@ -6324,7 +6323,7 @@ export async function createCodeTab(
         id,
         titleProtection,
         ...(worktreeId ? { worktreeId } : {}),
-        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(paneId ? { paneId } : {}),
         ...(target ? { target } : {}),
       }),
     ),
@@ -6882,7 +6881,7 @@ export async function createProjectView(
   kind: ProjectViewKind,
   title: string,
   worktreeId?: string,
-  tabGroupId?: string,
+  paneId?: string,
 ) {
   const id = crypto.randomUUID();
   const titleProtection = await surfaceTitleEncryption.protect(
@@ -6897,7 +6896,7 @@ export async function createProjectView(
         titleProtection,
         kind,
         ...(worktreeId ? { worktreeId } : {}),
-        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(paneId ? { paneId } : {}),
       }),
     ),
   );

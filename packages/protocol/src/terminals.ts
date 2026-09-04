@@ -8,15 +8,32 @@ import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import { terminalPrivateStateOpaqueSchema } from "./surface-private-state.js";
 import { executionTargetSchema } from "./execution-targets.js";
 import { repositoryRelativePathSchema } from "./repository-paths.js";
+import {
+  hasUnambiguousProjectPaneDestination,
+  projectPaneDestinationShape,
+} from "./project-pane-identifiers.js";
 
 const terminalPlacementSchema = z
   .object({
     worktreeId: z.string().min(1).optional(),
-    tabGroupId: z.string().min(1).optional(),
+    ...projectPaneDestinationShape,
     target: executionTargetSchema.optional(),
   })
-  .refine((input) => !(input.worktreeId && input.target), {
-    message: "Choose either a legacy worktreeId or an execution target.",
+  .superRefine((input, context) => {
+    if (input.worktreeId && input.target) {
+      context.addIssue({
+        code: "custom",
+        message: "Choose either a legacy worktreeId or an execution target.",
+      });
+    }
+    if (!hasUnambiguousProjectPaneDestination(input)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Specify either paneId or the deprecated tabGroupId, not both.",
+        path: ["paneId"],
+      });
+    }
   });
 
 export const terminalCreateSchema = terminalPlacementSchema.safeExtend({

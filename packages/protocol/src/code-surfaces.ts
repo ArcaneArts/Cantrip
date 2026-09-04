@@ -10,6 +10,10 @@ import {
 } from "./execution-targets.js";
 import { tunnelResourceIdSchema } from "./tunnels.js";
 import { repositoryRelativePathSchema } from "./repository-paths.js";
+import {
+  hasUnambiguousProjectPaneDestination,
+  projectPaneDestinationShape,
+} from "./project-pane-identifiers.js";
 
 export const codeThemeModeSchema = z.enum(["follow-cantrip", "independent"]);
 export const codePresentationSchema = z.enum([
@@ -50,11 +54,24 @@ const codeTabCreateBaseSchema = z
     worktreeId: z.string().min(1).optional(),
     profileId: z.string().trim().min(1).max(200).default("default"),
     themeMode: codeThemeModeSchema.default("follow-cantrip"),
-    tabGroupId: z.string().min(1).optional(),
+    ...projectPaneDestinationShape,
     target: executionTargetSchema.optional(),
   })
-  .refine((input) => !(input.worktreeId && input.target), {
-    message: "Choose either a legacy worktreeId or an execution target.",
+  .superRefine((input, context) => {
+    if (input.worktreeId && input.target) {
+      context.addIssue({
+        code: "custom",
+        message: "Choose either a legacy worktreeId or an execution target.",
+      });
+    }
+    if (!hasUnambiguousProjectPaneDestination(input)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Specify either paneId or the deprecated tabGroupId, not both.",
+        path: ["paneId"],
+      });
+    }
   });
 
 export const codeTabCreateSchema = codeTabCreateBaseSchema.safeExtend({

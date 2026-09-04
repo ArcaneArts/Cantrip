@@ -73,7 +73,10 @@ export function mutationLiveResources(
   ) {
     return ["project"];
   }
-  if (route.startsWith("/api/projects/:projectId/tab-groups")) {
+  if (
+    route.startsWith("/api/projects/:projectId/tab-groups") ||
+    route.startsWith("/api/projects/:projectId/panes")
+  ) {
     return ["project", "project-tab-layout"];
   }
   if (route.includes("/worktrees")) return ["worktree"];

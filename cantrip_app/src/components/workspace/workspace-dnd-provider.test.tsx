@@ -39,7 +39,7 @@ describe("workspace pointer drag activation", () => {
 
 function collision(
   id: string,
-  type?: "top-bar" | "sidebar-project" | "sidebar-group",
+  type?: "pane-strip" | "pane-tab" | "pane-target",
 ): Collision {
   return {
     id,
@@ -54,28 +54,30 @@ describe("workspace pointer collision filtering", () => {
     expect(filterWorkspacePointerCollisions([])).toEqual([]);
   });
 
-  it("prefers precise tab and sidebar rows over their enclosing containers", () => {
-    const row = collision("row", "sidebar-group");
+  it("prefers precise pane tabs and targets over their enclosing strip", () => {
+    const tab = collision("tab", "pane-tab");
+    const target = collision("target", "pane-target");
     expect(
       filterWorkspacePointerCollisions([
-        collision("bar", "top-bar"),
-        collision("project", "sidebar-project"),
-        row,
+        collision("strip", "pane-strip"),
+        tab,
+        target,
       ]),
-    ).toEqual([row]);
+    ).toEqual([tab, target]);
   });
 
-  it("keeps an enclosing bar when it is the only pointer target", () => {
-    const bar = collision("bar", "top-bar");
-    expect(filterWorkspacePointerCollisions([bar])).toEqual([bar]);
+  it("keeps an enclosing strip when it is the only pointer target", () => {
+    const strip = collision("strip", "pane-strip");
+    expect(filterWorkspacePointerCollisions([strip])).toEqual([strip]);
   });
 });
 
 describe("workspace drag preview", () => {
   const drag = {
-    type: "group" as const,
+    type: "pane" as const,
+    paneId: "group-1",
     projectId: "project-1",
-    groupId: "group-1",
+    region: "center" as const,
     label: "Terminal",
     visualKind: "terminal" as const,
   };

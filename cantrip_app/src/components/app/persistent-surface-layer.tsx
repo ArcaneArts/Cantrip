@@ -7,7 +7,7 @@ import {
   PersistentTerminalViews,
 } from "@/components/app/application-shell-surfaces";
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
-import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
+import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import {
   sidebarExplorerPrewarmTarget,
@@ -51,7 +51,7 @@ export function PersistentSurfaceLayer({
     ownedTerminals,
     pendingTerminalInputs,
     pinSidebarFilePath,
-    projectTabBarSurfaces,
+    selectedPaneSurfaces,
     projects,
     queryClient,
     renameSurface,
@@ -62,7 +62,7 @@ export function PersistentSurfaceLayer({
     selectedProject,
     selectedProjectId,
     selectedSurface,
-    selectedTabGroup,
+    selectedPane,
     selectedTabKey,
     selectedTerminal,
     setChatConsoleOpen,
@@ -101,17 +101,17 @@ export function PersistentSurfaceLayer({
       !showProjectSettings &&
       !groupOwnedElsewhere &&
       Boolean(selectedProject) &&
-      (projectTabBarSurfaces.length > 0 || showSidebarPreviewTab) ? (
-        <ProjectTabBar
+      (selectedPaneSurfaces.length > 0 || showSidebarPreviewTab) ? (
+        <ProjectPaneTabStrip
           activeTabKey={selectedTabKey ?? ""}
           creatingKinds={creatingSurfaceKinds}
-          surfaces={projectTabBarSurfaces}
+          surfaces={selectedPaneSurfaces}
           onCreate={(kind, target) => {
-            const groupId = sidebarFilePreview?.active
-              ? sidebarFilePreview.groupId
-              : (selectedTabGroup?.id ?? projectTabBarSurfaces.at(-1)?.groupId);
+            const paneId = sidebarFilePreview?.active
+              ? sidebarFilePreview.paneId
+              : (selectedPane?.id ?? selectedPaneSurfaces.at(-1)?.paneId);
             if (selectedProject) {
-              createProjectSurface(selectedProject.id, kind, groupId, target);
+              createProjectSurface(selectedProject.id, kind, paneId, target);
             }
           }}
           onClose={closeSurfaceView}
@@ -293,7 +293,7 @@ export function PersistentSurfaceLayer({
             newTerminal.mutate({
               projectId: explorer.projectId,
               directoryPath: entry.path,
-              tabGroupId: selectedSurface.groupId,
+              paneId: selectedSurface.paneId,
               title: `Terminal · ${entry.name}`,
               target: {
                 kind: "worktree",

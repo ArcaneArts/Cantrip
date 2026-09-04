@@ -3,9 +3,9 @@ import type {
   ExplorerEntry,
   ExplorerSummary,
   ProjectSummary,
+  ProjectPaneSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
-  TabGroupSummary,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 import type { Dispatch, SetStateAction } from "react";
@@ -37,11 +37,11 @@ import {
   pinnedExplorerForPath,
   sidebarExplorerCanOwnPreview,
   sidebarFilePreviewMatches,
-  sidebarFileTargetGroupId,
+  sidebarFileTargetPaneId,
   sidebarPathAtOrBelow,
 } from "@/lib/sidebar-file-tabs";
 import {
-  selectWorkspaceGroup,
+  selectWorkspacePane,
   type WorkspaceSelection,
 } from "@/lib/workspace-selection";
 
@@ -91,7 +91,7 @@ export function createSidebarExplorerCommands({
   projects,
   queryClient,
   revealWorkspace,
-  selectedTabGroup,
+  selectedPane,
   setDesktopSidebarDrawerOpen,
   setDetachedGroupId,
   setPopoutError,
@@ -119,12 +119,12 @@ export function createSidebarExplorerCommands({
   newGraphExplorer: MutationOperation<{
     entry: ExplorerEntry;
     explorer: ExplorerSummary;
-    tabGroupId?: string;
+    paneId?: string;
   }>;
   newTerminal: MutationOperation<{
     directoryPath?: string;
     projectId: string;
-    tabGroupId?: string;
+    paneId?: string;
     target?: ExecutionTarget;
     title?: string;
     worktreeId?: string;
@@ -134,7 +134,7 @@ export function createSidebarExplorerCommands({
   projects: ProjectSummary[] | undefined;
   queryClient: QueryClient;
   revealWorkspace: () => void;
-  selectedTabGroup: TabGroupSummary | undefined;
+  selectedPane: ProjectPaneSummary | undefined;
   setDesktopSidebarDrawerOpen: (open: boolean) => void;
   setDetachedGroupId: (groupId: string | null) => void;
   setPopoutError: (error: string | null) => void;
@@ -159,11 +159,11 @@ export function createSidebarExplorerCommands({
     sidebarExplorerCreationKeyRef,
     sidebarFilePreviewLifecycleRef,
   } = lifecycle;
-  const sidebarFileGroupId = (explorer: ExplorerSummary): string | null => {
-    return sidebarFileTargetGroupId({
-      activeGroupId: selectedTabGroup?.id,
+  const sidebarFilePaneId = (explorer: ExplorerSummary): string | null => {
+    return sidebarFileTargetPaneId({
+      activePaneId: selectedPane?.id,
       explorerId: explorer.id,
-      fallbackGroupId: tabLayout?.groups[0]?.id,
+      fallbackPaneId: tabLayout?.panes[0]?.id,
       preview: sidebarFilePreview,
     });
   };
@@ -217,11 +217,11 @@ export function createSidebarExplorerCommands({
       focusPinnedSidebarFile(pinned);
       return;
     }
-    const groupId = sidebarFileGroupId(explorer);
+    const paneId = sidebarFilePaneId(explorer);
     if (
       sidebarFilePreviewMatches(sidebarFilePreview, {
         explorerId: explorer.id,
-        groupId,
+        paneId,
         path,
         projectId: explorer.projectId,
       })
@@ -241,16 +241,16 @@ export function createSidebarExplorerCommands({
     ) {
       return;
     }
-    if (tabLayout && groupId) {
+    if (tabLayout && paneId) {
       setWorkspaceSelection((current) =>
-        selectWorkspaceGroup(current, tabLayout, groupId),
+        selectWorkspacePane(current, tabLayout, paneId),
       );
     }
     sidebarFilePreviewLifecycleRef.current = null;
     setSidebarFilePreview({
       active: true,
       explorerId: explorer.id,
-      groupId,
+      paneId,
       path,
       projectId: explorer.projectId,
     });
@@ -416,7 +416,7 @@ export function createSidebarExplorerCommands({
     });
     pinSidebarFileMutation.mutate({
       destinationExplorerId: handoff.destinationExplorerId,
-      groupId: sidebarFileGroupId(explorer),
+      paneId: sidebarFilePaneId(explorer),
       path,
       transactionId: handoff.transactionId,
     });
@@ -660,7 +660,7 @@ export function createSidebarExplorerCommands({
     newTerminal.mutate({
       projectId: explorer.projectId,
       directoryPath: entry.path,
-      tabGroupId: sidebarFileGroupId(explorer) ?? undefined,
+      paneId: sidebarFilePaneId(explorer) ?? undefined,
       title: `Terminal · ${entry.name}`,
       target: {
         kind: "worktree",
@@ -676,7 +676,7 @@ export function createSidebarExplorerCommands({
     newGraphExplorer.mutate({
       explorer,
       entry,
-      tabGroupId: sidebarFileGroupId(explorer) ?? undefined,
+      paneId: sidebarFilePaneId(explorer) ?? undefined,
     });
   };
   const closeSidebarFilePreview = () => {
@@ -715,9 +715,9 @@ export function createSidebarExplorerCommands({
       samePath: true,
     });
     if (sidebarFilePreview.active) return;
-    if (tabLayout && sidebarFilePreview.groupId) {
+    if (tabLayout && sidebarFilePreview.paneId) {
       setWorkspaceSelection((current) =>
-        selectWorkspaceGroup(current, tabLayout, sidebarFilePreview.groupId!),
+        selectWorkspacePane(current, tabLayout, sidebarFilePreview.paneId!),
       );
     }
     setSidebarFilePreview((current) =>

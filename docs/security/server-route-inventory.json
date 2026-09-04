@@ -159,15 +159,15 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 455,
+    "application-principal": 462,
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 13,
-    "http": 468,
+    "http": 475,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 402,
-    "total": 475,
+    "requestPrincipalRoutes": 409,
+    "total": 482,
     "websocket": 7,
     "workerCredentialRoutes": 13,
     "durableTables": 88,
@@ -188,7 +188,7 @@
   },
   "contractSetDigests": {
     "agentOperations": "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
-    "applicationRoutes": "b5ea5205bb57a9abd14d5751e367676a49bdee94248fb8d13e9c7c3e70d47661",
+    "applicationRoutes": "a5f648d3d3013758153bfdd43c059465d090770c5cd144b1d1fe366db21eab84",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
@@ -2955,7 +2955,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 93,
+      "line": 307,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/builtin-surfaces/:definitionId/worktree",
@@ -3409,6 +3409,97 @@
     },
     {
       "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 43,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/panes",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (GET /api/projects/:projectId/panes)"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 93,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/panes/:paneId",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (PATCH /api/projects/:projectId/panes/:paneId)"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 124,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/panes/:paneId/members/order",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (PATCH /api/projects/:projectId/panes/:paneId/members/order)"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 155,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/panes/member",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (PATCH /api/projects/:projectId/panes/member)"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 215,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/panes/member/close",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (POST /api/projects/:projectId/panes/member/close)"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 185,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/panes/member/open",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (POST /api/projects/:projectId/panes/member/open)"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/tab-layouts.ts",
+      "line": 63,
+      "method": "PATCH",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/panes/order",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "reviewed routing/authorization contract (PATCH /api/projects/:projectId/panes/order)"
+      }
+    },
+    {
+      "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-catalog-and-placement.ts",
       "line": 37,
       "method": "POST",
@@ -3787,7 +3878,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 55,
+      "line": 269,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/surface-launchers",
@@ -3800,7 +3891,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 68,
+      "line": 282,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/surface-launchers",
@@ -3813,7 +3904,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 35,
+      "line": 245,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups",
@@ -3826,7 +3917,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 161,
+      "line": 383,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/:groupId",
@@ -3839,7 +3930,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 192,
+      "line": 418,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/:groupId/members/order",
@@ -3852,7 +3943,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 223,
+      "line": 453,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/member",
@@ -3865,7 +3956,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 283,
+      "line": 530,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/member/close",
@@ -3878,7 +3969,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 253,
+      "line": 495,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/member/open",
@@ -3891,7 +3982,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/tab-layouts.ts",
-      "line": 131,
+      "line": 345,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/tab-groups/order",
@@ -11283,73 +11374,73 @@
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 404,
+      "line": 447,
       "method": "get",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 589,
-      "method": "updateGroup",
+      "line": 637,
+      "method": "updatePane",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 634,
-      "method": "reorderGroups",
+      "line": 682,
+      "method": "reorderPanes",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 660,
+      "line": 713,
       "method": "reorderMembers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 702,
+      "line": 755,
       "method": "moveMember",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 865,
+      "line": 934,
       "method": "openSurfaceView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 963,
+      "line": 1032,
       "method": "closeSurfaceView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 999,
+      "line": 1068,
       "method": "listSurfaceLaunchers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1042,
+      "line": 1111,
       "method": "setSurfaceLauncherPin",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1079,
+      "line": 1148,
       "method": "updateBuiltInSurfaceWorktree",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1130,
+      "line": 1199,
       "method": "nextProjectTabPosition",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1177,
+      "line": 1246,
       "method": "reorderProjects",
       "ownerEvidence": "explicit-owner"
     }
@@ -11629,6 +11720,7 @@
       "cantrip_server/src/app/routes/chat-runtime-configuration.ts",
       "cantrip_server/src/app/routes/chat-turn-contracts.ts",
       "cantrip_server/src/app/routes/project-network-shares.ts",
+      "cantrip_server/src/app/routes/tab-layouts.ts",
       "cantrip_server/src/app/runtime/agent-operation-runtime.ts",
       "cantrip_server/src/app/runtime/chat-turn-runtime.ts",
       "cantrip_server/src/app/runtime/interactive-surface-runtime.ts",
@@ -11779,34 +11871,34 @@
         "path": "/api/projects/:projectId/explorers"
       },
       {
-        "contract": "opaque-list",
-        "method": "GET",
-        "path": "/api/projects/:projectId/remote-desktops"
-      },
-      {
-        "contract": "encrypted-create",
-        "method": "POST",
-        "path": "/api/projects/:projectId/remote-desktops"
-      },
-      {
-        "contract": "opaque-list",
-        "method": "GET",
-        "path": "/api/projects/:projectId/remote-surfaces"
-      },
-      {
-        "contract": "encrypted-create",
-        "method": "POST",
-        "path": "/api/projects/:projectId/remote-surfaces"
-      },
-      {
         "contract": "opaque-layout",
         "method": "GET",
-        "path": "/api/projects/:projectId/tab-groups"
+        "path": "/api/projects/:projectId/panes"
       },
       {
         "contract": "encrypted-update",
         "method": "PATCH",
-        "path": "/api/projects/:projectId/tab-groups/:groupId"
+        "path": "/api/projects/:projectId/panes/:paneId"
+      },
+      {
+        "contract": "opaque-list",
+        "method": "GET",
+        "path": "/api/projects/:projectId/remote-desktops"
+      },
+      {
+        "contract": "encrypted-create",
+        "method": "POST",
+        "path": "/api/projects/:projectId/remote-desktops"
+      },
+      {
+        "contract": "opaque-list",
+        "method": "GET",
+        "path": "/api/projects/:projectId/remote-surfaces"
+      },
+      {
+        "contract": "encrypted-create",
+        "method": "POST",
+        "path": "/api/projects/:projectId/remote-surfaces"
       },
       {
         "contract": "encrypted-create",

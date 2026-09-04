@@ -66,7 +66,7 @@ function commandHarness({
       sidebarFilePreview: {
         active: true,
         explorerId: previewOwner.id,
-        groupId: "group-1",
+        paneId: "group-1",
         path: "src/first.ts",
         projectId: previewOwner.projectId,
       },
@@ -87,7 +87,7 @@ function commandHarness({
       setQueryData: vi.fn(),
     },
     revealWorkspace,
-    selectedTabGroup: layout.groups[0],
+    selectedPane: layout.panes[0],
     setDesktopSidebarDrawerOpen: vi.fn(),
     setDetachedGroupId: vi.fn(),
     setPopoutError: vi.fn(),
@@ -107,7 +107,7 @@ function commandHarness({
 
 function layout(tabbedExplorerIds: string[]): ProjectTabLayoutSummary {
   return {
-    groups: [
+    panes: [
       {
         id: "group-1",
         members: tabbedExplorerIds.map((tabId) => ({
@@ -116,7 +116,7 @@ function layout(tabbedExplorerIds: string[]): ProjectTabLayoutSummary {
         })),
       },
     ],
-  } as ProjectTabLayoutSummary;
+  } as unknown as ProjectTabLayoutSummary;
 }
 
 describe("sidebar Explorer ownership commands", () => {

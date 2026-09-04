@@ -1,5 +1,6 @@
 import { DndContext } from "@dnd-kit/core";
 import {
+  chatSummarySchema,
   explorerSummarySchema,
   projectTabMemberSummarySchema,
 } from "@cantrip/protocol";
@@ -7,10 +8,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProjectFileSurface } from "@/lib/project-surface";
+import type { ProjectFileSurface, ProjectSurface } from "@/lib/project-surface";
 import { projectSurfaceIdentityForTab } from "@/lib/project-surface-registry";
 
-import { ProjectTabBar } from "./project-tab-bar";
+import { ProjectPaneTabStrip } from "./project-tab-bar";
 
 vi.mock("@radix-ui/react-context-menu", async () => {
   const React = await import("react");
@@ -123,7 +124,7 @@ function fileSurface(): ProjectFileSurface {
   });
   const member = projectTabMemberSummarySchema.parse({
     tabKey: `explorer:${explorer.id}`,
-    groupId: "group-1",
+    paneId: "pane-1",
     projectId: explorer.projectId,
     tabKind: "explorer",
     tabId: explorer.id,
@@ -141,11 +142,11 @@ function fileSurface(): ProjectFileSurface {
   return {
     definition: identity.definition,
     entity: explorer,
-    groupId: member.groupId,
+    paneId: member.paneId,
     kind: "explorer",
     member,
     placement: {
-      paneId: member.groupId,
+      paneId: member.paneId,
       position: member.position,
       viewId: identity.viewId,
     },
@@ -162,10 +163,72 @@ function fileSurface(): ProjectFileSurface {
   };
 }
 
+function chatSurface(): Extract<ProjectSurface, { kind: "chat" }> {
+  const chat = chatSummarySchema.parse({
+    activeWorkerId: "worker-1",
+    activeWorktreeId: "worktree-1",
+    automationPaused: false,
+    createdAt: now,
+    experience: "agent",
+    hasPendingPlanQuestion: false,
+    hasUnreadCompletion: false,
+    id: "agent-1",
+    modelId: null,
+    permissionProfileId: null,
+    placementRevision: 1,
+    planMode: "default",
+    position: 1,
+    projectId: "project-1",
+    reasoningEffort: null,
+    status: "idle",
+    title: "Agent chat",
+    updatedAt: now,
+    worktreeMode: "agent-managed",
+  });
+  const member = projectTabMemberSummarySchema.parse({
+    createdAt: now,
+    paneId: "pane-1",
+    position: 1,
+    projectId: chat.projectId,
+    tabId: chat.id,
+    tabKey: `chat:${chat.id}`,
+    tabKind: "chat",
+    title: chat.title,
+    updatedAt: now,
+  });
+  const identity = projectSurfaceIdentityForTab({
+    kind: "chat",
+    projectId: chat.projectId,
+    resourceId: chat.id,
+  });
+  return {
+    definition: identity.definition,
+    entity: chat,
+    kind: "chat",
+    member,
+    paneId: member.paneId,
+    placement: {
+      paneId: member.paneId,
+      position: member.position,
+      viewId: identity.viewId,
+    },
+    projectId: chat.projectId,
+    resource: { entity: chat, ref: identity.resource },
+    tabId: chat.id,
+    tabKey: member.tabKey,
+    title: chat.title,
+    view: {
+      id: identity.viewId,
+      projectId: chat.projectId,
+      resource: identity.resource,
+    },
+  };
+}
+
 function renderTabs(surface: ProjectFileSurface) {
   return renderToStaticMarkup(
     <DndContext>
-      <ProjectTabBar
+      <ProjectPaneTabStrip
         activeTabKey=""
         onClose={vi.fn()}
         onCreate={vi.fn()}
@@ -178,7 +241,7 @@ function renderTabs(surface: ProjectFileSurface) {
   );
 }
 
-describe("project tab bar", () => {
+describe("project pane tab strip", () => {
   it("selects the full tab title and disables dragging while renaming", async () => {
     const select = vi.fn();
     const surface = fileSurface();
@@ -186,7 +249,7 @@ describe("project tab bar", () => {
     await act(async () => {
       renderer = TestRenderer.create(
         <DndContext>
-          <ProjectTabBar
+          <ProjectPaneTabStrip
             activeTabKey={surface.tabKey}
             onClose={vi.fn()}
             onCreate={vi.fn()}
@@ -234,7 +297,7 @@ describe("project tab bar", () => {
     await act(async () => {
       renderer = TestRenderer.create(
         <DndContext>
-          <ProjectTabBar
+          <ProjectPaneTabStrip
             activeTabKey=""
             onClose={vi.fn()}
             onCreate={vi.fn()}
@@ -280,7 +343,7 @@ describe("project tab bar", () => {
     await act(async () => {
       renderer = TestRenderer.create(
         <DndContext>
-          <ProjectTabBar
+          <ProjectPaneTabStrip
             activeTabKey=""
             onClose={vi.fn()}
             onCreate={vi.fn()}
@@ -326,7 +389,57 @@ describe("project tab bar", () => {
 
     expect(markup).toContain("lucide-file-code-corner");
     expect(markup).toContain("index.ts");
-    expect(markup).toContain('aria-label="Project file tabs"');
+    expect(markup).toContain('aria-label="Project pane tabs"');
+  });
+
+  it("renders file and agent surfaces together in one pane strip", () => {
+    const markup = renderToStaticMarkup(
+      <DndContext>
+        <ProjectPaneTabStrip
+          activeTabKey="chat:agent-1"
+          onClose={vi.fn()}
+          onCreate={vi.fn()}
+          onDelete={vi.fn()}
+          onRename={vi.fn()}
+          onSelect={vi.fn()}
+          surfaces={[fileSurface(), chatSurface()]}
+        />
+      </DndContext>,
+    );
+
+    expect(markup).toContain("index.ts");
+    expect(markup).toContain("Agent chat");
+    expect(markup.match(/role="tab"/gu)).toHaveLength(2);
+  });
+
+  it("uses visual indexes for drag targets when persisted positions are sparse", async () => {
+    const first = fileSurface();
+    const second = chatSurface();
+    second.member.position = 7;
+    second.placement.position = 7;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DndContext>
+          <ProjectPaneTabStrip
+            activeTabKey={first.tabKey}
+            onClose={vi.fn()}
+            onCreate={vi.fn()}
+            onDelete={vi.fn()}
+            onRename={vi.fn()}
+            onSelect={vi.fn()}
+            surfaces={[first, second]}
+          />
+        </DndContext>,
+      );
+    });
+
+    expect(
+      renderer.root.findByProps({
+        "data-project-tab-frame": second.tabKey,
+      }).props["data-project-tab-position"],
+    ).toBe(1);
+    await act(async () => renderer.unmount());
   });
 
   it("presents Close View separately from destructive resource deletion", () => {
@@ -347,7 +460,7 @@ describe("project tab bar", () => {
     await act(async () => {
       renderer = TestRenderer.create(
         <DndContext>
-          <ProjectTabBar
+          <ProjectPaneTabStrip
             activeTabKey={surface.tabKey}
             onClose={onClose}
             onCreate={vi.fn()}

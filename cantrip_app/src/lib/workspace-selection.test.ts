@@ -23,17 +23,18 @@ function layout(
   return {
     projectId,
     revision: 1,
-    groups: groups.map((group, groupPosition) => ({
+    panes: groups.map((group, groupPosition) => ({
       id: group.id,
       projectId,
       title: group.anchor,
       position: groupPosition,
+      region: "center",
       anchorTabKey: group.anchor,
       createdAt: timestamp,
       updatedAt: timestamp,
       members: group.members.map((member, position) => ({
         tabKey: member.key,
-        groupId: group.id,
+        paneId: group.id,
         projectId,
         tabKind: member.kind,
         tabId: member.key.split(":")[1]!,
@@ -70,7 +71,7 @@ describe("workspace selection", () => {
     );
     selection = selectWorkspaceTab(selection, initialLayout, "terminal:one");
     selection = selectWorkspaceTab(selection, initialLayout, "chat:two");
-    expect(selection.activeTabByGroup).toEqual({
+    expect(selection.activeTabByPane).toEqual({
       "group-1": "terminal:one",
       "group-2": "chat:two",
     });
@@ -114,7 +115,7 @@ describe("workspace selection", () => {
       initialLayout,
       "chat:two",
     );
-    expect(selection.selectedGroupId).toBe("group-2");
+    expect(selection.focusedPaneId).toBe("group-2");
     expect(selectedWorkspaceTabKey(selection)).toBe("chat:two");
   });
 
@@ -125,9 +126,9 @@ describe("workspace selection", () => {
     );
 
     expect(selection.destination).toBe("overview");
-    expect(selection.selectedGroupId).toBeNull();
+    expect(selection.focusedPaneId).toBeNull();
     expect(selectedWorkspaceTabKey(selection)).toBeNull();
-    expect(selection.activeTabByGroup).toEqual({
+    expect(selection.activeTabByPane).toEqual({
       "group-1": "chat:one",
       "group-2": "chat:two",
     });
@@ -155,8 +156,8 @@ describe("workspace selection", () => {
     expect(overview).toMatchObject({
       destination: "overview",
       projectId: "project-1",
-      selectedGroupId: null,
-      activeTabByGroup: {
+      focusedPaneId: null,
+      activeTabByPane: {
         "group-1": "terminal:one",
         "group-2": "chat:two",
       },
@@ -196,8 +197,8 @@ describe("workspace selection", () => {
     );
     expect(next).toMatchObject({
       projectId: "project-2",
-      selectedGroupId: "other-group",
-      activeTabByGroup: { "other-group": "chat:other" },
+      focusedPaneId: "other-group",
+      activeTabByPane: { "other-group": "chat:other" },
     });
   });
 

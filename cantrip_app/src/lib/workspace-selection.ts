@@ -1,28 +1,28 @@
 import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
 
 export interface WorkspaceSelection {
-  activeTabByGroup: Readonly<Record<string, string>>;
+  activeTabByPane: Readonly<Record<string, string>>;
   destination: "overview" | "surface";
   projectId: string | null;
-  selectedGroupId: string | null;
+  focusedPaneId: string | null;
 }
 
 export function emptyWorkspaceSelection(
   projectId: string | null = null,
 ): WorkspaceSelection {
   return {
-    activeTabByGroup: {},
+    activeTabByPane: {},
     destination: "overview",
     projectId,
-    selectedGroupId: null,
+    focusedPaneId: null,
   };
 }
 
 export function selectedWorkspaceTabKey(
   selection: WorkspaceSelection,
 ): string | null {
-  return selection.destination === "surface" && selection.selectedGroupId
-    ? (selection.activeTabByGroup[selection.selectedGroupId] ?? null)
+  return selection.destination === "surface" && selection.focusedPaneId
+    ? (selection.activeTabByPane[selection.focusedPaneId] ?? null)
     : null;
 }
 
@@ -35,7 +35,7 @@ export function selectWorkspaceOverview(
   return {
     ...selection,
     destination: "overview",
-    selectedGroupId: null,
+    focusedPaneId: null,
   };
 }
 
@@ -45,44 +45,44 @@ export function reconcileWorkspaceSelection(
   preferredTabKey?: string | null,
 ): WorkspaceSelection {
   if (!layout) return emptyWorkspaceSelection(selection.projectId);
-  if (layout.groups.length === 0) {
+  if (layout.panes.length === 0) {
     return emptyWorkspaceSelection(layout.projectId);
   }
   const projectChanged = selection.projectId !== layout.projectId;
   const overviewSelected =
     !projectChanged && !preferredTabKey && selection.destination === "overview";
-  const preferredGroup = preferredTabKey
-    ? layout.groups.find(({ members }) =>
+  const preferredPane = preferredTabKey
+    ? layout.panes.find(({ members }) =>
         members.some(({ tabKey }) => tabKey === preferredTabKey),
       )
     : undefined;
-  const selectedGroup =
+  const focusedPane =
     (!projectChanged
-      ? layout.groups.find(({ id }) => id === selection.selectedGroupId)
+      ? layout.panes.find(({ id }) => id === selection.focusedPaneId)
       : undefined) ??
-    preferredGroup ??
-    layout.groups[0];
-  const activeTabByGroup: Record<string, string> = {};
-  for (const group of layout.groups) {
+    preferredPane ??
+    layout.panes[0];
+  const activeTabByPane: Record<string, string> = {};
+  for (const pane of layout.panes) {
     const previous = projectChanged
       ? undefined
-      : selection.activeTabByGroup[group.id];
+      : selection.activeTabByPane[pane.id];
     const preferred =
-      preferredGroup?.id === group.id &&
-      group.members.some(({ tabKey }) => tabKey === preferredTabKey)
+      preferredPane?.id === pane.id &&
+      pane.members.some(({ tabKey }) => tabKey === preferredTabKey)
         ? preferredTabKey
         : undefined;
-    activeTabByGroup[group.id] =
+    activeTabByPane[pane.id] =
       preferred ??
-      (group.members.some(({ tabKey }) => tabKey === previous)
+      (pane.members.some(({ tabKey }) => tabKey === previous)
         ? previous!
-        : group.anchorTabKey);
+        : pane.anchorTabKey);
   }
   return {
-    activeTabByGroup,
+    activeTabByPane,
     destination: overviewSelected ? "overview" : "surface",
     projectId: layout.projectId,
-    selectedGroupId: overviewSelected ? null : (selectedGroup?.id ?? null),
+    focusedPaneId: overviewSelected ? null : (focusedPane?.id ?? null),
   };
 }
 
@@ -91,41 +91,44 @@ export function selectWorkspaceTab(
   layout: ProjectTabLayoutSummary,
   tabKey: string,
 ): WorkspaceSelection {
-  const group = layout.groups.find(({ members }) =>
+  const pane = layout.panes.find(({ members }) =>
     members.some((member) => member.tabKey === tabKey),
   );
-  if (!group || group.projectId !== layout.projectId) return selection;
+  if (!pane || pane.projectId !== layout.projectId) return selection;
   const reconciled = reconcileWorkspaceSelection(selection, layout);
   return {
     ...reconciled,
-    activeTabByGroup: {
-      ...reconciled.activeTabByGroup,
-      [group.id]: tabKey,
+    activeTabByPane: {
+      ...reconciled.activeTabByPane,
+      [pane.id]: tabKey,
     },
     destination: "surface",
-    selectedGroupId: group.id,
+    focusedPaneId: pane.id,
   };
 }
 
-export function selectWorkspaceGroup(
+export function selectWorkspacePane(
   selection: WorkspaceSelection,
   layout: ProjectTabLayoutSummary,
-  groupId: string,
+  paneId: string,
 ): WorkspaceSelection {
-  const group = layout.groups.find((candidate) => candidate.id === groupId);
-  if (!group) return selection;
-  const remembered = selection.activeTabByGroup[group.id];
+  const pane = layout.panes.find((candidate) => candidate.id === paneId);
+  if (!pane) return selection;
+  const remembered = selection.activeTabByPane[pane.id];
   const activeTabKey =
-    remembered && group.members.some((member) => member.tabKey === remembered)
+    remembered && pane.members.some((member) => member.tabKey === remembered)
       ? remembered
-      : group.anchorTabKey;
+      : pane.anchorTabKey;
   return {
-    activeTabByGroup: {
-      ...selection.activeTabByGroup,
-      [group.id]: activeTabKey,
+    activeTabByPane: {
+      ...selection.activeTabByPane,
+      [pane.id]: activeTabKey,
     },
     destination: "surface",
     projectId: layout.projectId,
-    selectedGroupId: group.id,
+    focusedPaneId: pane.id,
   };
 }
+
+/** @deprecated Pop-out compatibility until detached ownership migrates. */
+export const selectWorkspaceGroup = selectWorkspacePane;

@@ -194,7 +194,7 @@ export function useProjectWorkspaceResources({
         chats: chats.data.length,
         codeTabs: codeTabs.data.length,
         explorers: explorers.data.length,
-        tabGroups: tabLayout.data.groups.length,
+        panes: tabLayout.data.panes.length,
         terminals: terminals.data.length,
         views: projectViews.data.length,
         worktrees: (worktrees.data ?? []).length,

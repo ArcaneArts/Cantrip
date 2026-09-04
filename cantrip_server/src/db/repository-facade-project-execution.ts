@@ -1665,7 +1665,7 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     titleProtection: PrivateDisplayLabelOpaque,
     workerId: string,
     stateProtection: SurfacePrivateStateOpaque,
-    tabGroupId?: string,
+    paneId?: string,
   ): Promise<RemoteDesktopWireSummary | null> {
     return this.remoteSurfaces.createRemoteDesktop(
       ownerId,
@@ -1674,7 +1674,7 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
       titleProtection,
       workerId,
       stateProtection,
-      tabGroupId,
+      paneId,
     );
   }
   async listProjectViews(
