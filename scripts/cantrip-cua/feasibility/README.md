@@ -2,7 +2,7 @@
 
 These opt-in probes are not installed, packaged, or launched by Cantrip. They
 establish the native and evaluator choices for the implementation ledger in
-[CUA.md](../../../../docs/planned/CUA.md). No production CUA capability exists
+[CUA.md](../../../docs/planned/CUA.md). No production CUA capability exists
 yet. Generated executables and logs stay in the ignored `target/` directories.
 
 ## Native fixture and signing

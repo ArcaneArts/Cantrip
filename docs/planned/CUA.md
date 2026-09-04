@@ -15,7 +15,8 @@ implement later-tranche operations now.
 ### Tranche cycle 1 — Contracts and feasibility
 
 - Branch: `codex/cua-01-feasibility`, based on `6b7df74b1`.
-- PR/commit/merge: pending; no merged implementation claimed.
+- PR: [#1733](https://github.com/ArcaneArts/Cantrip/pull/1733).
+  Initial implementation commit: `3d1842785`; merge pending.
 - Implemented behavior: progress ledger and opt-in native/JavaScript
   [feasibility probes](../../scripts/cantrip-cua/feasibility/README.md).
   Product behavior remains unavailable; no startup or packaging changes.
