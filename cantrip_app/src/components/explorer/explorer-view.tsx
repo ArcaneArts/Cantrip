@@ -1187,7 +1187,7 @@ export function ExplorerView({
       aria-hidden={!active}
       inert={active ? undefined : true}
       className={cn(
-        "min-h-0 flex-1 overflow-hidden bg-background",
+        "min-h-0 flex-1 overflow-hidden",
         active ? "flex" : "pointer-events-none invisible absolute inset-0 flex",
       )}
       data-slot="explorer-view"
