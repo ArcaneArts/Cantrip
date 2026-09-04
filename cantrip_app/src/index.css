@@ -378,15 +378,14 @@
   }
 }
 
-/* The native window owns the Pro Mode tint. Structural surfaces and controls
-   stay transparent so nested backgrounds never compound the configured
-   opacity. Selection, card, and alternating-row tokens remain lightly tinted
-   above that single base layer. */
+/* The app shell owns the single Pro Mode tint over the native backdrop.
+   Structural surfaces and controls stay transparent so nested backgrounds
+   never compound the configured opacity. Selection, card, and alternating-row
+   tokens remain lightly tinted above that single base layer. */
 .pro-mode [data-slot="app-sidebar"],
 .pro-mode [data-slot="terminal-view"],
 .pro-mode [data-slot="terminal-service-panel-surface"],
 .pro-mode [data-slot="terminal-service-panel"],
-.pro-mode [data-slot="code-view"],
 .pro-mode [data-slot="app-shell"] > section > [class~="bg-background"] {
   background-color: transparent;
 }

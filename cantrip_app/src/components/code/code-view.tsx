@@ -94,6 +94,7 @@ export function codeWorkbenchFrameClassName(ready: boolean): string {
   return `min-h-0 w-full flex-1 border-0 ${ready ? "" : "pointer-events-none"}`;
 }
 
+export const CODE_VIEW_CLASS_NAME = "relative min-h-0 flex-1 overflow-hidden";
 export const CODE_WORKBENCH_FRAME_BACKGROUND = "transparent";
 
 export function codeAttachmentUrlForLog(rawUrl: string): string {
@@ -746,7 +747,7 @@ export function CodeView({
   return (
     <div
       aria-hidden={!active}
-      className={`relative min-h-0 flex-1 overflow-hidden bg-background ${active ? "flex" : "hidden"}`}
+      className={`${CODE_VIEW_CLASS_NAME} ${active ? "flex" : "hidden"}`}
       data-elite-global={active && workbenchReady ? "" : undefined}
       data-slot="code-view"
     >
