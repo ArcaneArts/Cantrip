@@ -295,6 +295,7 @@ import {
   workspaceRepositoryDiscoveryStartSchema,
   workspaceRepositoryImportStartSchema,
   projectTabLayoutWireSummarySchema,
+  projectCenterSplitResizeSchema,
   projectDockPresentationUpdateSchema,
   projectSurfaceViewCloseResultSchema,
   projectSurfaceViewCloseSchema,
@@ -364,6 +365,7 @@ import {
   systemHealthSchema,
   projectPaneMemberMoveSchema,
   projectPaneMemberOrderSchema,
+  projectPaneMemberSplitSchema,
   projectPaneOrderSchema,
   encryptedProjectPaneUpdateSchema,
   projectPaneUpdateSchema,
@@ -5319,6 +5321,50 @@ export async function moveProjectPaneMember(
         {
           method: "PATCH",
           body: JSON.stringify(projectPaneMemberMoveSchema.parse(input)),
+        },
+      ),
+    ),
+  );
+}
+
+export async function splitProjectPaneMember(
+  projectId: string,
+  input: {
+    edge: "left" | "right" | "top" | "bottom";
+    fraction?: number;
+    revision: number;
+    tabKey: string;
+    targetPaneId: string;
+  },
+) {
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/panes/member/split`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(projectPaneMemberSplitSchema.parse(input)),
+        },
+      ),
+    ),
+  );
+}
+
+export async function resizeProjectCenterSplit(
+  projectId: string,
+  splitId: string,
+  revision: number,
+  fraction: number,
+) {
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/panes/splits/${encodeURIComponent(splitId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(
+            projectCenterSplitResizeSchema.parse({ revision, fraction }),
+          ),
         },
       ),
     ),

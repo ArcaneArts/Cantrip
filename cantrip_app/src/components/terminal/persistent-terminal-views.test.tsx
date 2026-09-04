@@ -1,5 +1,5 @@
 import type { TerminalSummary } from "@cantrip/protocol";
-import { createElement, useEffect, useRef } from "react";
+import { createElement, useEffect, useRef, type ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,6 +35,25 @@ vi.mock("./terminal-view", () => ({
 vi.mock("@/lib/client-log-relay", () => ({
   clientLogger: { info: vi.fn() },
 }));
+vi.mock("react-dom", async () => {
+  const React = await import("react");
+  return {
+    createPortal: (
+      child: ReactNode,
+      target: { dataset?: { persistentSurfaceOwner?: string } },
+      key?: string,
+    ) =>
+      React.createElement(
+        "mock-portal",
+        {
+          "data-persistent-surface-owner":
+            target.dataset?.persistentSurfaceOwner,
+          key,
+        },
+        child,
+      ),
+  };
+});
 
 import {
   MAX_RETAINED_TERMINAL_VIEWS,
@@ -90,6 +109,14 @@ describe("Persistent terminal views", () => {
     lifecycle.created.length = 0;
     lifecycle.nextInstance = 0;
     lifecycle.released.length = 0;
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        className: "",
+        dataset: {} as Record<string, string>,
+        parentElement: null as unknown,
+        remove() {},
+      }),
+    });
   });
 
   it("preserves an emulator instance across tab switches and releases it only after ownership closes", async () => {
@@ -246,5 +273,70 @@ describe("Persistent terminal views", () => {
         "data-terminal-id": bottom.id,
       }).props.style,
     ).toEqual({ gridArea: "right-body" });
+  });
+
+  it("parks one center owner until its host exists and does not remount it for split-only rerenders", async () => {
+    const center = terminal("terminal-center-portal");
+    const attached: unknown[] = [];
+    const target = {
+      appendChild(child: { parentElement: unknown }) {
+        child.parentElement = target;
+        attached.push(child);
+      },
+    } as unknown as Element;
+    const renderPortal = (portalTarget: Element | null) =>
+      createElement(PersistentTerminalViews, {
+        active: false,
+        commandPaletteTerminalId: null,
+        onCommandPaletteOpenChange: vi.fn(),
+        onLinkedConsoleExit: vi.fn(),
+        onPendingInputSent: vi.fn(),
+        onServicePanelOpenChange: vi.fn(),
+        ownedTerminals: [center],
+        pendingInputs: [],
+        selectedTerminal: null,
+        servicePanelTerminalId: null,
+        visiblePlacements: [
+          {
+            focused: true,
+            gridArea: "center-body",
+            paneId: "pane-center",
+            portalTarget,
+            terminal: center,
+          },
+        ],
+      });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(renderPortal(null));
+    });
+    expect(lifecycle.created).toEqual([center.id]);
+    expect(attached).toHaveLength(0);
+
+    await act(async () => renderer.update(renderPortal(target)));
+    const instance = renderer.root.findByProps({
+      "data-mock-terminal-view": true,
+      "data-terminal-id": center.id,
+    }).props["data-instance"];
+    expect(
+      renderer.root.findByProps({
+        "data-persistent-surface-owner": center.id,
+      }).props,
+    ).toMatchObject({ "data-persistent-surface-owner": center.id });
+    expect(attached).toHaveLength(1);
+    expect(lifecycle.created).toEqual([center.id]);
+    expect(lifecycle.released).toEqual([]);
+
+    // The recursive split fraction changes outside the persistent manager;
+    // its paneId-keyed host and owner props remain stable.
+    await act(async () => renderer.update(renderPortal(target)));
+    expect(
+      renderer.root.findByProps({
+        "data-mock-terminal-view": true,
+        "data-terminal-id": center.id,
+      }).props["data-instance"],
+    ).toBe(instance);
+    expect(lifecycle.created).toEqual([center.id]);
+    expect(lifecycle.released).toEqual([]);
   });
 });

@@ -17,6 +17,9 @@ import type {
   LegacyProjectTabLayoutWireSummary,
   ProjectTabMemberWireSummary,
   ProjectPaneRegion,
+  ProjectCenterLayoutNode,
+  ProjectCenterSplitResize,
+  ProjectPaneMemberSplit,
   OrderedIds,
   EncryptedProjectPaneUpdate,
   ProjectPaneMemberMove,
@@ -26,6 +29,7 @@ import type {
 import { projectSurfaceTabKind, projectSurfaceViewId } from "@cantrip/protocol";
 import {
   PROJECT_SURFACE_DEFINITIONS,
+  projectCenterLayoutNodeSchema,
   projectBuiltinSurfaceDefinitionIdSchema,
   projectSurfaceLauncherId,
 } from "@cantrip/protocol";
@@ -33,21 +37,32 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
+import {
+  appendCenterPaneLeaf,
+  assertCenterLayoutExact,
+  persistCenterLayoutRoot,
+  readCenterLayoutRoot,
+  removeCenterPaneFromLayout,
+  replaceCenterLeafOrder,
+  replaceCenterPaneWithSplit,
+  resizeCenterSplit,
+} from "./center-layouts.js";
 import * as schema from "./schema.js";
+import {
+  TabLayoutConflictError,
+  TabLayoutInvariantError,
+} from "./tab-layout-errors.js";
+
+export {
+  TabLayoutConflictError,
+  TabLayoutInvariantError,
+} from "./tab-layout-errors.js";
 
 type TabLayoutDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 export type TabLayoutExecutor = Pick<
   TabLayoutDatabase,
   "delete" | "insert" | "select" | "update"
 >;
-
-export class TabLayoutConflictError extends Error {
-  readonly statusCode = 409;
-}
-
-export class TabLayoutInvariantError extends Error {
-  readonly statusCode = 400;
-}
 
 function surfaceDefinitionIdForTab(
   tabKind: ProjectTabKind,
@@ -266,6 +281,7 @@ async function attachProjectTabPlacement(
     input.region ??
     suggestedPlacementForTab(input.tabKind, input.tabId, input.definitionId);
   let memberPosition = 0;
+  let createdCenterPane = false;
 
   if (groupId) {
     const groups = await database
@@ -323,6 +339,7 @@ async function attachProjectTabPlacement(
         position: (regionPanes.at(-1)?.position ?? -1) + 1,
         anchorTabKey: tabKey,
       });
+      createdCenterPane = region === "center";
     }
   }
 
@@ -334,6 +351,9 @@ async function attachProjectTabPlacement(
     tabId: input.tabId,
     position: memberPosition,
   });
+  if (createdCenterPane) {
+    await appendCenterPaneLeaf(database, input.projectId, groupId);
+  }
   return groupId;
 }
 
@@ -390,6 +410,9 @@ async function detachProjectTabPlacement(
     await database
       .delete(schema.tabGroups)
       .where(eq(schema.tabGroups.id, selected.group.id));
+    if (selected.group.region === "center") {
+      await removeCenterPaneFromLayout(database, projectId, selected.group.id);
+    }
     const remainingGroups = await database
       .select({ id: schema.tabGroups.id })
       .from(schema.tabGroups)
@@ -578,6 +601,7 @@ export class ProjectTabLayoutRepository {
       .select({
         id: schema.projects.id,
         revision: schema.projects.tabLayoutRevision,
+        centerRoot: schema.projects.centerLayoutRoot,
       })
       .from(schema.projects)
       .where(
@@ -678,6 +702,29 @@ export class ProjectTabLayoutRepository {
         dockRegion,
       );
     }
+    const centerRoot =
+      project.centerRoot === null
+        ? null
+        : projectCenterLayoutNodeSchema.parse(project.centerRoot);
+    const centerLeafIds = await assertCenterLayoutExact(
+      this.database,
+      projectId,
+      centerRoot,
+    );
+    const centerPaneById = new Map(
+      panes
+        .filter(({ region }) => region === "center")
+        .map((pane) => [pane.id, pane] as const),
+    );
+    if (
+      centerLeafIds.some(
+        (paneId, position) => centerPaneById.get(paneId)?.position !== position,
+      )
+    ) {
+      throw new TabLayoutInvariantError(
+        "Center pane positions must match center layout leaf order.",
+      );
+    }
     const titles = new Map<
       string,
       Pick<ProjectTabMemberWireSummary, "builtInState" | "titleProtection">
@@ -770,6 +817,7 @@ export class ProjectTabLayoutRepository {
     return {
       projectId,
       revision: project.revision,
+      centerRoot,
       panes: panes.map((group) => {
         const groupedMembers = memberSummaries.get(group.id) ?? [];
         if (
@@ -924,7 +972,22 @@ export class ProjectTabLayoutRepository {
           "The pane order did not match this project's region.",
         );
       }
-      await updateGroupPositions(transaction, input.paneIds);
+      if (input.region === "center") {
+        const root = await readCenterLayoutRoot(transaction, projectId);
+        if (root === null) {
+          throw new TabLayoutInvariantError(
+            "The center layout root is missing.",
+          );
+        }
+        await assertCenterLayoutExact(transaction, projectId, root);
+        await persistCenterLayoutRoot(
+          transaction,
+          projectId,
+          replaceCenterLeafOrder(root, input.paneIds),
+        );
+      } else {
+        await updateGroupPositions(transaction, input.paneIds);
+      }
     });
     return this.get(ownerId, projectId);
   }
@@ -960,10 +1023,25 @@ export class ProjectTabLayoutRepository {
         "left",
         "detached",
       ] as const) {
-        await updateGroupPositions(
-          transaction,
-          input.paneIds.filter((id) => regionByPaneId.get(id) === region),
+        const regionPaneIds = input.paneIds.filter(
+          (id) => regionByPaneId.get(id) === region,
         );
+        if (region === "center" && regionPaneIds.length > 0) {
+          const root = await readCenterLayoutRoot(transaction, projectId);
+          if (root === null) {
+            throw new TabLayoutInvariantError(
+              "The center layout root is missing.",
+            );
+          }
+          await assertCenterLayoutExact(transaction, projectId, root);
+          await persistCenterLayoutRoot(
+            transaction,
+            projectId,
+            replaceCenterLeafOrder(root, regionPaneIds),
+          );
+        } else {
+          await updateGroupPositions(transaction, regionPaneIds);
+        }
       }
     });
     return this.get(ownerId, projectId);
@@ -1126,6 +1204,13 @@ export class ProjectTabLayoutRepository {
           .update(schema.tabGroups)
           .set({ region: targetRegion, position: 0, updatedAt: new Date() })
           .where(eq(schema.tabGroups.id, selected.group.id));
+        if (selected.group.region === "center") {
+          await removeCenterPaneFromLayout(
+            transaction,
+            projectId,
+            selected.group.id,
+          );
+        }
         await updateGroupPositions(
           transaction,
           sourceRegionPanes
@@ -1143,14 +1228,26 @@ export class ProjectTabLayoutRepository {
         const from = sourceRegionPanes.findIndex(
           ({ id }) => id === selected.group.id,
         );
-        await updateGroupPositions(
-          transaction,
-          movedTo(
-            sourceRegionPanes.map(({ id }) => id),
-            from,
-            input.targetPanePosition!,
-          ),
+        const nextPaneIds = movedTo(
+          sourceRegionPanes.map(({ id }) => id),
+          from,
+          input.targetPanePosition!,
         );
+        if (targetRegion === "center") {
+          const root = await readCenterLayoutRoot(transaction, projectId);
+          if (root === null) {
+            throw new TabLayoutInvariantError(
+              "The center layout root is missing.",
+            );
+          }
+          await persistCenterLayoutRoot(
+            transaction,
+            projectId,
+            replaceCenterLeafOrder(root, nextPaneIds),
+          );
+        } else {
+          await updateGroupPositions(transaction, nextPaneIds);
+        }
         return;
       }
 
@@ -1166,6 +1263,13 @@ export class ProjectTabLayoutRepository {
         await transaction
           .delete(schema.tabGroups)
           .where(eq(schema.tabGroups.id, selected.group.id));
+        if (selected.group.region === "center") {
+          await removeCenterPaneFromLayout(
+            transaction,
+            projectId,
+            selected.group.id,
+          );
+        }
         nextSourcePaneIds = nextSourcePaneIds.filter(
           (id) => id !== selected.group.id,
         );
@@ -1208,6 +1312,9 @@ export class ProjectTabLayoutRepository {
           position: 0,
           updatedAt: new Date(),
         });
+        if (targetRegion === "center") {
+          await appendCenterPaneLeaf(transaction, projectId, targetPaneId);
+        }
         if (targetRegion !== selected.group.region) {
           await updateGroupPositions(transaction, nextSourcePaneIds);
         }
@@ -1215,10 +1322,26 @@ export class ProjectTabLayoutRepository {
           targetRegion === selected.group.region
             ? nextSourcePaneIds
             : targetRegionPanes.map(({ id }) => id);
-        await updateGroupPositions(
-          transaction,
-          insertedAt(targetPaneIds, targetPaneId, targetPanePosition),
+        const nextTargetPaneIds = insertedAt(
+          targetPaneIds,
+          targetPaneId,
+          targetPanePosition,
         );
+        if (targetRegion === "center") {
+          const root = await readCenterLayoutRoot(transaction, projectId);
+          if (root === null) {
+            throw new TabLayoutInvariantError(
+              "The center layout root is missing.",
+            );
+          }
+          await persistCenterLayoutRoot(
+            transaction,
+            projectId,
+            replaceCenterLeafOrder(root, nextTargetPaneIds),
+          );
+        } else {
+          await updateGroupPositions(transaction, nextTargetPaneIds);
+        }
       } else {
         const targetMembers = await transaction
           .select({ tabKey: schema.tabGroupMembers.tabKey })
@@ -1247,6 +1370,199 @@ export class ProjectTabLayoutRepository {
           await updateGroupPositions(transaction, nextSourcePaneIds);
         }
       }
+    });
+    return this.get(ownerId, projectId);
+  }
+
+  async splitMember(
+    ownerId: string,
+    projectId: string,
+    input: ProjectPaneMemberSplit,
+  ): Promise<ProjectTabLayoutWireSummary | null> {
+    if (!(await this.get(ownerId, projectId))) return null;
+    await this.database.transaction(async (transaction) => {
+      await claimRevision(transaction, ownerId, projectId, input.revision);
+      const selectedRows = await transaction
+        .select({ member: schema.tabGroupMembers, group: schema.tabGroups })
+        .from(schema.tabGroupMembers)
+        .innerJoin(
+          schema.tabGroups,
+          eq(schema.tabGroups.id, schema.tabGroupMembers.groupId),
+        )
+        .where(
+          and(
+            eq(schema.tabGroupMembers.projectId, projectId),
+            eq(schema.tabGroupMembers.tabKey, input.tabKey),
+          ),
+        )
+        .limit(1);
+      const selected = selectedRows[0];
+      if (!selected) {
+        throw new TabLayoutInvariantError(
+          "The split tab does not belong to this project.",
+        );
+      }
+      const targetRows = await transaction
+        .select()
+        .from(schema.tabGroups)
+        .where(
+          and(
+            eq(schema.tabGroups.id, input.targetPaneId),
+            eq(schema.tabGroups.projectId, projectId),
+          ),
+        )
+        .limit(1);
+      const target = targetRows[0];
+      if (!target || target.region !== "center") {
+        throw new TabLayoutInvariantError(
+          "A center split must target a center pane in this project.",
+        );
+      }
+      assertTabSupportsRegion(
+        selected.member.tabKind as ProjectTabKind,
+        selected.member.tabId,
+        "center",
+      );
+      const currentRoot = await readCenterLayoutRoot(transaction, projectId);
+      if (currentRoot === null) {
+        throw new TabLayoutInvariantError("The center layout root is missing.");
+      }
+      await assertCenterLayoutExact(transaction, projectId, currentRoot);
+
+      const sourceMembers = await transaction
+        .select()
+        .from(schema.tabGroupMembers)
+        .where(eq(schema.tabGroupMembers.groupId, selected.group.id))
+        .orderBy(
+          asc(schema.tabGroupMembers.position),
+          asc(schema.tabGroupMembers.tabKey),
+        );
+      if (selected.group.id === target.id && sourceMembers.length === 1) {
+        throw new TabLayoutInvariantError(
+          "A pane's final tab cannot split that same pane.",
+        );
+      }
+
+      await transaction
+        .delete(schema.tabGroupMembers)
+        .where(eq(schema.tabGroupMembers.tabKey, input.tabKey));
+      const remainingSource = sourceMembers.filter(
+        ({ tabKey }) => tabKey !== input.tabKey,
+      );
+      if (remainingSource.length === 0) {
+        await transaction
+          .delete(schema.tabGroups)
+          .where(eq(schema.tabGroups.id, selected.group.id));
+        if (selected.group.region === "center") {
+          await removeCenterPaneFromLayout(
+            transaction,
+            projectId,
+            selected.group.id,
+          );
+        } else {
+          const sourcePanes = await panesInRegion(
+            transaction,
+            projectId,
+            selected.group.region,
+          );
+          await updateGroupPositions(
+            transaction,
+            sourcePanes.map(({ id }) => id),
+          );
+        }
+      } else {
+        await updateMemberPositions(
+          transaction,
+          selected.group.id,
+          remainingSource.map(({ tabKey }) => tabKey),
+        );
+        await transaction
+          .update(schema.tabGroups)
+          .set({
+            ...(selected.group.anchorTabKey === input.tabKey
+              ? { anchorTabKey: remainingSource[0]!.tabKey }
+              : {}),
+            ...(remainingSource.length === 1 ? { protectedLabel: null } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.tabGroups.id, selected.group.id));
+      }
+
+      const paneId = randomUUID();
+      const centerPanes = await panesInRegion(transaction, projectId, "center");
+      await transaction.insert(schema.tabGroups).values({
+        id: paneId,
+        projectId,
+        region: "center",
+        position: (centerPanes.at(-1)?.position ?? -1) + 1,
+        anchorTabKey: input.tabKey,
+      });
+      await transaction.insert(schema.tabGroupMembers).values({
+        ...selected.member,
+        groupId: paneId,
+        position: 0,
+        updatedAt: new Date(),
+      });
+
+      const root = await readCenterLayoutRoot(transaction, projectId);
+      if (root === null) {
+        throw new TabLayoutInvariantError(
+          "The split target disappeared from the center layout.",
+        );
+      }
+      const newLeaf: ProjectCenterLayoutNode = { kind: "pane", paneId };
+      const targetLeaf: ProjectCenterLayoutNode = {
+        kind: "pane",
+        paneId: input.targetPaneId,
+      };
+      const placeNewFirst = input.edge === "left" || input.edge === "top";
+      const split: Extract<ProjectCenterLayoutNode, { kind: "split" }> = {
+        kind: "split",
+        id: randomUUID(),
+        direction:
+          input.edge === "left" || input.edge === "right"
+            ? "horizontal"
+            : "vertical",
+        fraction: input.fraction,
+        first: placeNewFirst ? newLeaf : targetLeaf,
+        second: placeNewFirst ? targetLeaf : newLeaf,
+      };
+      const replaced = replaceCenterPaneWithSplit(
+        root,
+        input.targetPaneId,
+        split,
+      );
+      if (!replaced.replaced) {
+        throw new TabLayoutInvariantError(
+          "The split target is missing from the center layout.",
+        );
+      }
+      await persistCenterLayoutRoot(transaction, projectId, replaced.node);
+    });
+    return this.get(ownerId, projectId);
+  }
+
+  async resizeCenterSplit(
+    ownerId: string,
+    projectId: string,
+    splitId: string,
+    input: ProjectCenterSplitResize,
+  ): Promise<ProjectTabLayoutWireSummary | null> {
+    if (!(await this.get(ownerId, projectId))) return null;
+    await this.database.transaction(async (transaction) => {
+      await claimRevision(transaction, ownerId, projectId, input.revision);
+      const root = await readCenterLayoutRoot(transaction, projectId);
+      if (root === null) {
+        throw new TabLayoutInvariantError("The center layout root is missing.");
+      }
+      await assertCenterLayoutExact(transaction, projectId, root);
+      const resized = resizeCenterSplit(root, splitId, input.fraction);
+      if (!resized.resized) {
+        throw new TabLayoutInvariantError(
+          "The center split does not belong to this project.",
+        );
+      }
+      await persistCenterLayoutRoot(transaction, projectId, resized.node);
     });
     return this.get(ownerId, projectId);
   }

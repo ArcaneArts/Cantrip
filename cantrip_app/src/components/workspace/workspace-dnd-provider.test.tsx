@@ -39,7 +39,7 @@ describe("workspace pointer drag activation", () => {
 
 function collision(
   id: string,
-  type?: "pane-strip" | "pane-tab" | "pane-target",
+  type?: "pane-edge" | "pane-strip" | "pane-tab" | "pane-target",
 ): Collision {
   return {
     id,
@@ -69,6 +69,17 @@ describe("workspace pointer collision filtering", () => {
   it("keeps an enclosing strip when it is the only pointer target", () => {
     const strip = collision("strip", "pane-strip");
     expect(filterWorkspacePointerCollisions([strip])).toEqual([strip]);
+  });
+
+  it("prefers an explicit center edge over overlapping tab targets", () => {
+    const edge = collision("edge", "pane-edge");
+    expect(
+      filterWorkspacePointerCollisions([
+        collision("tab", "pane-tab"),
+        edge,
+        collision("strip", "pane-strip"),
+      ]),
+    ).toEqual([edge]);
   });
 });
 

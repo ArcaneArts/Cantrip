@@ -5,6 +5,13 @@ import type {
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 
+import {
+  appendCenterPaneToRoot,
+  removeCenterPaneFromRoot,
+  replaceCenterLeafOrder,
+  replaceCenterSplitFraction,
+  splitCenterPaneRoot,
+} from "@/components/app/center-split-layout";
 import type { TabLayoutCommand } from "./workspace-dnd-model";
 
 function inserted<T>(items: readonly T[], item: T, position: number): T[] {
@@ -97,11 +104,15 @@ export function removeProjectTabFromLayout(
   tabKey: string,
 ): ProjectTabLayoutSummary {
   let removed = false;
+  const removedCenterPaneIds: string[] = [];
   const panes = layout.panes.flatMap((pane) => {
     const members = pane.members.filter((member) => member.tabKey !== tabKey);
     if (members.length === pane.members.length) return [pane];
     removed = true;
-    if (members.length === 0) return [];
+    if (members.length === 0) {
+      if (pane.region === "center") removedCenterPaneIds.push(pane.id);
+      return [];
+    }
     return [
       {
         ...pane,
@@ -112,13 +123,37 @@ export function removeProjectTabFromLayout(
       },
     ];
   });
-  return removed ? { ...layout, panes: positionedPanes(panes) } : layout;
+  if (!removed) return layout;
+  const centerRoot =
+    layout.centerRoot === undefined
+      ? undefined
+      : removedCenterPaneIds.reduce(
+          (root, paneId) => removeCenterPaneFromRoot(root, paneId),
+          layout.centerRoot,
+        );
+  return {
+    ...layout,
+    ...(centerRoot === undefined ? {} : { centerRoot }),
+    panes: positionedPanes(panes),
+  };
 }
 
 export function applyOptimisticTabLayoutCommand(
   layout: ProjectTabLayoutSummary,
   command: TabLayoutCommand,
 ): ProjectTabLayoutSummary {
+  if (command.type === "resize-center-split") {
+    return layout.centerRoot
+      ? {
+          ...layout,
+          centerRoot: replaceCenterSplitFraction(
+            layout.centerRoot,
+            command.splitId,
+            command.fraction,
+          ),
+        }
+      : layout;
+  }
   if (command.type === "reorder-panes") {
     const byId = new Map(layout.panes.map((pane) => [pane.id, pane]));
     const reorderedRegion = command.paneIds.flatMap((id) => {
@@ -126,15 +161,26 @@ export function applyOptimisticTabLayoutCommand(
       return pane && pane.region === command.region ? [pane] : [];
     });
     let regionIndex = 0;
+    const panes = positionedPanes(
+      layout.panes.map((pane) =>
+        pane.region === command.region
+          ? (reorderedRegion[regionIndex++] ?? pane)
+          : pane,
+      ),
+    );
     return {
       ...layout,
-      panes: positionedPanes(
-        layout.panes.map((pane) =>
-          pane.region === command.region
-            ? (reorderedRegion[regionIndex++] ?? pane)
-            : pane,
-        ),
-      ),
+      ...(command.region === "center" && layout.centerRoot
+        ? {
+            centerRoot: replaceCenterLeafOrder(
+              layout.centerRoot,
+              panes
+                .filter(({ region }) => region === "center")
+                .map(({ id }) => id),
+            ),
+          }
+        : {}),
+      panes,
     };
   }
   if (command.type === "reorder-members") {
@@ -166,16 +212,118 @@ export function applyOptimisticTabLayoutCommand(
   );
   if (!sourcePane || !movedMember) return layout;
 
-  if (command.targetPaneId === null && sourcePane.members.length === 1) {
-    const remaining = layout.panes.filter(({ id }) => id !== sourcePane.id);
-    const movedPane = command.targetRegion
-      ? { ...sourcePane, region: command.targetRegion }
-      : sourcePane;
+  if (command.type === "split-member") {
+    const targetPane = layout.panes.find(
+      ({ id, region }) => id === command.targetPaneId && region === "center",
+    );
+    if (
+      !targetPane ||
+      !layout.centerRoot ||
+      (sourcePane.id === targetPane.id && sourcePane.members.length === 1)
+    ) {
+      return layout;
+    }
+    const sourceMembers = sourcePane.members.filter(
+      ({ tabKey }) => tabKey !== command.tabKey,
+    );
+    const paneId = `optimistic:pane:${command.tabKey}`;
+    const panes = layout.panes.flatMap((pane) => {
+      if (pane.id !== sourcePane.id) return [pane];
+      if (sourceMembers.length === 0) return [];
+      return [
+        {
+          ...pane,
+          ...(sourceMembers.length === 1
+            ? { title: sourceMembers[0]!.title }
+            : {}),
+          anchorTabKey:
+            pane.anchorTabKey === command.tabKey
+              ? sourceMembers[0]!.tabKey
+              : pane.anchorTabKey,
+          members: sourceMembers,
+        },
+      ];
+    });
+    const newPane: ProjectPaneSummary = {
+      id: paneId,
+      projectId: layout.projectId,
+      title: movedMember.title,
+      position: panes.filter(({ region }) => region === "center").length,
+      region: "center",
+      anchorTabKey: command.tabKey,
+      members: [
+        {
+          ...movedMember,
+          paneId,
+          dockPresentation: null,
+          position: 0,
+        },
+      ],
+      createdAt: movedMember.createdAt,
+      updatedAt: movedMember.updatedAt,
+    };
+    const rootWithoutEmptySource =
+      sourceMembers.length === 0 && sourcePane.region === "center"
+        ? removeCenterPaneFromRoot(layout.centerRoot, sourcePane.id)
+        : layout.centerRoot;
+    if (!rootWithoutEmptySource) return layout;
     return {
       ...layout,
-      panes: positionedPanes(
-        insertedInRegion(remaining, movedPane, command.targetPanePosition ?? 0),
-      ),
+      centerRoot: splitCenterPaneRoot(rootWithoutEmptySource, {
+        edge: command.edge,
+        fraction: command.fraction ?? 0.5,
+        newPaneId: paneId,
+        splitId: `optimistic:split:${command.tabKey}`,
+        targetPaneId: command.targetPaneId,
+      }),
+      panes: positionedPanes([...panes, newPane]),
+    };
+  }
+
+  if (command.targetPaneId === null && sourcePane.members.length === 1) {
+    const remaining = layout.panes.filter(({ id }) => id !== sourcePane.id);
+    const targetRegion = command.targetRegion ?? sourcePane.region;
+    const movedPane = command.targetRegion
+      ? {
+          ...sourcePane,
+          region: targetRegion,
+          members: sourcePane.members.map((member) => ({
+            ...member,
+            dockPresentation:
+              targetRegion === "center" ? null : member.dockPresentation,
+          })),
+        }
+      : sourcePane;
+    let centerRoot = layout.centerRoot;
+    if (centerRoot !== undefined && sourcePane.region !== targetRegion) {
+      if (sourcePane.region === "center") {
+        centerRoot = removeCenterPaneFromRoot(centerRoot, sourcePane.id);
+      }
+      if (targetRegion === "center") {
+        centerRoot = appendCenterPaneToRoot(
+          centerRoot,
+          sourcePane.id,
+          `optimistic:split:${command.tabKey}`,
+        );
+      }
+    }
+    const panes = positionedPanes(
+      insertedInRegion(remaining, movedPane, command.targetPanePosition ?? 0),
+    );
+    if (
+      centerRoot &&
+      sourcePane.region === "center" &&
+      targetRegion === "center"
+    ) {
+      centerRoot = replaceCenterLeafOrder(
+        centerRoot,
+        panes.filter(({ region }) => region === "center").map(({ id }) => id),
+      );
+    }
+    return {
+      ...layout,
+      ...(centerRoot === undefined ? {} : { centerRoot }),
+      panes,
     };
   }
 
@@ -211,7 +359,17 @@ export function applyOptimisticTabLayoutCommand(
         position: command.targetPanePosition ?? panes.length,
         region: command.targetRegion ?? sourcePane.region,
         anchorTabKey: command.tabKey,
-        members: [{ ...movedMember, paneId, position: 0 }],
+        members: [
+          {
+            ...movedMember,
+            paneId,
+            dockPresentation:
+              (command.targetRegion ?? sourcePane.region) === "center"
+                ? null
+                : movedMember.dockPresentation,
+            position: 0,
+          },
+        ],
         createdAt: movedMember.createdAt,
         updatedAt: movedMember.updatedAt,
       },
@@ -224,12 +382,52 @@ export function applyOptimisticTabLayoutCommand(
             ...pane,
             members: inserted(
               pane.members,
-              { ...movedMember, paneId: pane.id },
+              {
+                ...movedMember,
+                paneId: pane.id,
+                dockPresentation:
+                  pane.region === "center"
+                    ? null
+                    : movedMember.dockPresentation,
+              },
               command.targetMemberPosition,
             ),
           }
         : pane,
     );
   }
-  return { ...layout, panes: positionedPanes(panes) };
+  let centerRoot = layout.centerRoot;
+  if (
+    centerRoot !== undefined &&
+    sourceMembers.length === 0 &&
+    sourcePane.region === "center"
+  ) {
+    centerRoot = removeCenterPaneFromRoot(centerRoot, sourcePane.id);
+  }
+  if (centerRoot !== undefined && command.targetPaneId === null) {
+    const newPane = panes.find(
+      ({ anchorTabKey }) => anchorTabKey === command.tabKey,
+    );
+    if (newPane?.region === "center") {
+      centerRoot = appendCenterPaneToRoot(
+        centerRoot,
+        newPane.id,
+        `optimistic:split:${command.tabKey}`,
+      );
+    }
+  }
+  const positioned = positionedPanes(panes);
+  if (centerRoot && command.targetPaneId === null) {
+    centerRoot = replaceCenterLeafOrder(
+      centerRoot,
+      positioned
+        .filter(({ region }) => region === "center")
+        .map(({ id }) => id),
+    );
+  }
+  return {
+    ...layout,
+    ...(centerRoot === undefined ? {} : { centerRoot }),
+    panes: positioned,
+  };
 }

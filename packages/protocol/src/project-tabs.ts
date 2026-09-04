@@ -79,6 +79,53 @@ export const projectDockPresentationModeSchema = z.enum([
 
 export const projectDockSplitFractionSchema = z.number().min(0.05).max(0.95);
 
+export const projectCenterSplitDirectionSchema = z.enum([
+  "horizontal",
+  "vertical",
+]);
+
+export const projectCenterSplitEdgeSchema = z.enum([
+  "left",
+  "right",
+  "top",
+  "bottom",
+]);
+
+export const projectCenterSplitFractionSchema = z.number().min(0.1).max(0.9);
+
+export type ProjectCenterLayoutNode =
+  | { kind: "pane"; paneId: string }
+  | {
+      kind: "split";
+      id: string;
+      direction: z.infer<typeof projectCenterSplitDirectionSchema>;
+      fraction: number;
+      first: ProjectCenterLayoutNode;
+      second: ProjectCenterLayoutNode;
+    };
+
+export const projectCenterLayoutNodeSchema: z.ZodType<ProjectCenterLayoutNode> =
+  z.lazy(() =>
+    z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("pane"),
+          paneId: z.string().min(1),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("split"),
+          id: z.string().min(1),
+          direction: projectCenterSplitDirectionSchema,
+          fraction: projectCenterSplitFractionSchema,
+          first: projectCenterLayoutNodeSchema,
+          second: projectCenterLayoutNodeSchema,
+        })
+        .strict(),
+    ]),
+  );
+
 export const projectDockPresentationPreferenceSchema = z
   .object({
     preferredMode: projectDockPresentationModeSchema,
@@ -320,9 +367,12 @@ function validatePaneLayout(
   layout: {
     projectId: string;
     panes: Array<{
+      id?: string;
       projectId: string;
+      region?: z.infer<typeof projectPaneRegionSchema>;
       members: Array<{ tabKey: string }>;
     }>;
+    centerRoot?: ProjectCenterLayoutNode | null;
   },
   context: z.RefinementCtx,
 ) {
@@ -346,6 +396,86 @@ function validatePaneLayout(
       tabKeys.add(member.tabKey);
     }
   }
+
+  // Old clients may omit the topology field. Once present, it is authoritative
+  // and must contain every center pane exactly once.
+  if (layout.centerRoot === undefined) return;
+
+  const centerPaneIds = new Set(
+    layout.panes
+      .filter(
+        (pane): pane is typeof pane & { id: string; region: "center" } =>
+          pane.region === "center" && pane.id !== undefined,
+      )
+      .map(({ id }) => id),
+  );
+  if (layout.centerRoot === null) {
+    if (centerPaneIds.size > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "A center layout root is required when center panes exist.",
+        path: ["centerRoot"],
+      });
+    }
+    return;
+  }
+
+  const leafPaneIds = new Set<string>();
+  const splitIds = new Set<string>();
+  let nodeCount = 0;
+  const visit = (
+    node: ProjectCenterLayoutNode,
+    path: (string | number)[],
+    depth: number,
+  ) => {
+    nodeCount += 1;
+    if (depth > 32 || nodeCount > 255) {
+      context.addIssue({
+        code: "custom",
+        message: "The center layout exceeds its supported topology bounds.",
+        path,
+      });
+      return;
+    }
+    if (node.kind === "pane") {
+      if (leafPaneIds.has(node.paneId)) {
+        context.addIssue({
+          code: "custom",
+          message: "A center pane may appear in the layout tree only once.",
+          path: [...path, "paneId"],
+        });
+      }
+      leafPaneIds.add(node.paneId);
+      if (!centerPaneIds.has(node.paneId)) {
+        context.addIssue({
+          code: "custom",
+          message: "Center layout leaves must reference center panes.",
+          path: [...path, "paneId"],
+        });
+      }
+      return;
+    }
+    if (splitIds.has(node.id)) {
+      context.addIssue({
+        code: "custom",
+        message: "Center split ids must be unique.",
+        path: [...path, "id"],
+      });
+    }
+    splitIds.add(node.id);
+    visit(node.first, [...path, "first"], depth + 1);
+    visit(node.second, [...path, "second"], depth + 1);
+  };
+  visit(layout.centerRoot, ["centerRoot"], 1);
+  for (const paneId of centerPaneIds) {
+    if (!leafPaneIds.has(paneId)) {
+      context.addIssue({
+        code: "custom",
+        message: "Every center pane must appear in the layout tree.",
+        path: ["centerRoot"],
+      });
+    }
+  }
 }
 
 export const projectTabLayoutSummarySchema = z
@@ -353,6 +483,7 @@ export const projectTabLayoutSummarySchema = z
     projectId: z.string().min(1),
     revision: z.number().int().nonnegative(),
     panes: z.array(projectPaneSummarySchema),
+    centerRoot: projectCenterLayoutNodeSchema.nullable().optional(),
   })
   .superRefine(validatePaneLayout);
 
@@ -361,6 +492,7 @@ export const projectTabLayoutWireSummarySchema = z
     projectId: z.string().min(1),
     revision: z.number().int().nonnegative(),
     panes: z.array(projectPaneWireSummarySchema),
+    centerRoot: projectCenterLayoutNodeSchema.nullable().optional(),
   })
   .superRefine(validatePaneLayout);
 
@@ -416,6 +548,23 @@ export const projectPaneMemberMoveSchema = z
       });
     }
   });
+
+export const projectPaneMemberSplitSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    tabKey: z.string().min(1),
+    targetPaneId: z.string().min(1),
+    edge: projectCenterSplitEdgeSchema,
+    fraction: projectCenterSplitFractionSchema.default(0.5),
+  })
+  .strict();
+
+export const projectCenterSplitResizeSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    fraction: projectCenterSplitFractionSchema,
+  })
+  .strict();
 
 const legacyTabGroupSummaryBaseSchema = projectPaneSummaryBaseSchema.omit({
   region: true,
@@ -632,6 +781,12 @@ export type ProjectPaneMemberOrder = z.infer<
   typeof projectPaneMemberOrderSchema
 >;
 export type ProjectPaneMemberMove = z.infer<typeof projectPaneMemberMoveSchema>;
+export type ProjectPaneMemberSplit = z.infer<
+  typeof projectPaneMemberSplitSchema
+>;
+export type ProjectCenterSplitResize = z.infer<
+  typeof projectCenterSplitResizeSchema
+>;
 export type LegacyProjectTabMemberSummary = z.infer<
   typeof legacyProjectTabMemberSummarySchema
 >;

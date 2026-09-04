@@ -97,6 +97,57 @@ describe("workspace selection", () => {
     expect(selectedWorkspaceTabKey(selection)).toBe("chat:one");
   });
 
+  it("follows a focused split tab from its optimistic pane to its authoritative pane", () => {
+    const selected = selectWorkspaceTab(
+      reconcileWorkspaceSelection(emptyWorkspaceSelection(), initialLayout),
+      initialLayout,
+      "terminal:one",
+    );
+    const optimistic = layout([
+      {
+        id: "group-1",
+        anchor: "chat:one",
+        members: [{ key: "chat:one", kind: "chat" }],
+      },
+      {
+        id: "optimistic:pane:terminal:one",
+        anchor: "terminal:one",
+        members: [{ key: "terminal:one", kind: "terminal" }],
+      },
+    ]);
+    const optimisticSelection = reconcileWorkspaceSelection(
+      selected,
+      optimistic,
+    );
+    expect(optimisticSelection.focusedPaneId).toBe(
+      "optimistic:pane:terminal:one",
+    );
+
+    const authoritative = layout([
+      {
+        id: "group-1",
+        anchor: "chat:one",
+        members: [{ key: "chat:one", kind: "chat" }],
+      },
+      {
+        id: "server-pane",
+        anchor: "terminal:one",
+        members: [{ key: "terminal:one", kind: "terminal" }],
+      },
+    ]);
+    const authoritativeSelection = reconcileWorkspaceSelection(
+      optimisticSelection,
+      authoritative,
+    );
+    expect(authoritativeSelection.focusedPaneId).toBe("server-pane");
+    expect(selectedWorkspaceTabKey(authoritativeSelection)).toBe(
+      "terminal:one",
+    );
+    expect(authoritativeSelection.activeTabByPane).not.toHaveProperty(
+      "optimistic:pane:terminal:one",
+    );
+  });
+
   it("returns to the project overview when the last tab disappears", () => {
     const selected = selectWorkspaceTab(
       reconcileWorkspaceSelection(emptyWorkspaceSelection(), initialLayout),

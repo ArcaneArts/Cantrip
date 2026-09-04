@@ -63,6 +63,14 @@ export function filterWorkspacePointerCollisions(
   pointerCollisions: Collision[],
 ): Collision[] {
   if (pointerCollisions.length > 0) {
+    const paneEdges = pointerCollisions.filter((collision) => {
+      const drop = (
+        collision.data?.droppableContainer.data.current as
+          WorkspaceDndData | undefined
+      )?.drop;
+      return drop?.type === "pane-edge";
+    });
+    if (paneEdges.length > 0) return paneEdges;
     const specific = pointerCollisions.filter((collision) => {
       const drop = (
         collision.data?.droppableContainer.data.current as

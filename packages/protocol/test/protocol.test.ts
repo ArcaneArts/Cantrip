@@ -212,6 +212,8 @@ import {
   terminalSummarySchema,
   terminalServerMessageSchema,
   projectPaneMemberMoveSchema,
+  projectPaneMemberSplitSchema,
+  projectCenterSplitResizeSchema,
   projectPaneMemberOrderSchema,
   projectPaneOrderSchema,
   projectDockPresentationPreferenceSchema,
@@ -6283,6 +6285,29 @@ describe("Cantrip protocol", () => {
       }).success,
     ).toBe(false);
     expect(
+      projectPaneMemberSplitSchema.parse({
+        revision: 3,
+        tabKey: "chat:chat-1",
+        targetPaneId: "pane-1",
+        edge: "right",
+      }),
+    ).toMatchObject({ edge: "right", fraction: 0.5 });
+    for (const fraction of [0.09, 0.91, Number.NaN]) {
+      expect(
+        projectPaneMemberSplitSchema.safeParse({
+          revision: 3,
+          tabKey: "chat:chat-1",
+          targetPaneId: "pane-1",
+          edge: "bottom",
+          fraction,
+        }).success,
+      ).toBe(false);
+      expect(
+        projectCenterSplitResizeSchema.safeParse({ revision: 3, fraction })
+          .success,
+      ).toBe(false);
+    }
+    expect(
       projectPaneMemberMoveSchema.parse({
         revision: 3,
         tabKey: "chat:chat-1",
@@ -6357,6 +6382,45 @@ describe("Cantrip protocol", () => {
         panes: [wireGroup],
       }).success,
     ).toBe(true);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        centerRoot: { kind: "pane", paneId: "pane-1" },
+        panes: [wireGroup],
+      }).success,
+    ).toBe(true);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        centerRoot: null,
+        panes: [wireGroup],
+      }).success,
+    ).toBe(false);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        centerRoot: { kind: "pane", paneId: "missing-pane" },
+        panes: [wireGroup],
+      }).success,
+    ).toBe(false);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        centerRoot: {
+          kind: "split",
+          id: "split-1",
+          direction: "horizontal",
+          fraction: 0.5,
+          first: { kind: "pane", paneId: "pane-1" },
+          second: { kind: "pane", paneId: "pane-1" },
+        },
+        panes: [wireGroup],
+      }).success,
+    ).toBe(false);
     expect(
       projectTabLayoutWireSummarySchema.safeParse({
         projectId: "project-1",

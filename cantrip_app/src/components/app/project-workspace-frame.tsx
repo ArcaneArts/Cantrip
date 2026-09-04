@@ -11,6 +11,7 @@ import { useQueries } from "@tanstack/react-query";
 import { PanelBottom, PanelRight } from "lucide-react";
 import {
   useMemo,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -21,6 +22,8 @@ import {
 } from "react";
 
 import { GlobalContentHost } from "@/components/app/global-content-host";
+import { resolvedCenterLayoutRoot } from "@/components/app/center-split-layout";
+import { CenterSplitWorkspace } from "@/components/app/center-split-workspace";
 import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-layer";
 import { projectPaneRenderBindings } from "@/components/app/project-pane-render-bindings";
 import {
@@ -307,6 +310,7 @@ function DockRail({
 function genericPaneBody(
   bindings: Readonly<Record<string, any>>,
   presentation: VisibleProjectPane,
+  nested = false,
 ): ReactNode {
   const kind = presentation.activeSurface?.kind;
   if (
@@ -320,9 +324,12 @@ function genericPaneBody(
   if (!presentation.activeSurface) {
     return (
       <div
-        className="grid min-h-0 min-w-0 place-items-center text-sm text-muted-foreground"
+        className={cn(
+          "grid min-h-0 min-w-0 place-items-center text-sm text-muted-foreground",
+          nested && "flex-1",
+        )}
         data-project-pane-id={presentation.pane.id}
-        style={{ gridArea: presentation.gridArea }}
+        style={nested ? undefined : { gridArea: presentation.gridArea }}
       >
         Loading pane…
       </div>
@@ -330,15 +337,47 @@ function genericPaneBody(
   }
   return (
     <div
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden"
+      className={cn(
+        "flex min-h-0 min-w-0 flex-col overflow-hidden",
+        nested && "flex-1",
+      )}
       data-project-pane-body={presentation.pane.id}
       data-project-pane-id={presentation.pane.id}
       key={presentation.pane.id}
-      style={{ gridArea: presentation.gridArea }}
+      style={nested ? undefined : { gridArea: presentation.gridArea }}
     >
       <GlobalContentHost
         bindings={projectPaneRenderBindings(bindings, presentation)}
       />
+    </div>
+  );
+}
+
+function PaneBodyHost({
+  bindings,
+  presentation,
+}: {
+  bindings: Readonly<Record<string, any>>;
+  presentation: VisibleProjectPane;
+}) {
+  const portalTarget = presentation.portalTarget;
+  const attachPortalTarget = useCallback(
+    (host: HTMLDivElement | null) => {
+      if (host && portalTarget && portalTarget.parentElement !== host) {
+        host.appendChild(portalTarget);
+      }
+    },
+    [portalTarget],
+  );
+  return (
+    <div
+      className="relative flex min-h-0 min-w-0 overflow-hidden"
+      data-project-pane-body={presentation.pane.id}
+      data-project-pane-id={presentation.pane.id}
+      ref={attachPortalTarget}
+      style={{ gridArea: presentation.gridArea }}
+    >
+      {genericPaneBody(bindings, presentation, true)}
     </div>
   );
 }
@@ -370,6 +409,7 @@ export function ProjectWorkspaceFrame({
     preference: ProjectDockPresentationPreference;
     tabKey: string;
   } | null>(null);
+  const panePortalTargetsRef = useRef(new Map<string, HTMLDivElement>());
   const [visiblePaneIdByRegion, setVisiblePaneIdByRegion] = useState<
     Partial<Record<ProjectPaneRegion, string>>
   >({});
@@ -378,6 +418,23 @@ export function ProjectWorkspaceFrame({
       ({ id }: { id: string }) =>
         id === bindings.workspaceSelection.focusedPaneId,
     );
+  const centerRoot = resolvedCenterLayoutRoot({
+    centerPaneIds: (bindings.tabLayout.data?.panes ?? [])
+      .filter(({ region }: ProjectPaneSummary) => region === "center")
+      .map(({ id }: ProjectPaneSummary) => id),
+    preferredPaneId:
+      focusedPane?.region === "center" ? focusedPane.id : undefined,
+    root: bindings.tabLayout.data?.centerRoot,
+  });
+  const panePortalTarget = (paneId: string) => {
+    const current = panePortalTargetsRef.current.get(paneId);
+    if (current || typeof document === "undefined") return current ?? null;
+    const target = document.createElement("div");
+    target.className = "contents";
+    target.dataset.persistentSurfacePaneHost = paneId;
+    panePortalTargetsRef.current.set(paneId, target);
+    return target;
+  };
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
@@ -401,6 +458,7 @@ export function ProjectWorkspaceFrame({
     () =>
       visibleWorkspacePanes({
         activeTabByPane: bindings.workspaceSelection.activeTabByPane,
+        centerRoot: bindings.tabLayout.data?.centerRoot,
         focusedPaneId: bindings.workspaceSelection.focusedPaneId,
         panes: bindings.tabLayout.data?.panes ?? [],
         surfaceByPaneId: bindings.projectSurfaceIndex.byPaneId,
@@ -408,13 +466,14 @@ export function ProjectWorkspaceFrame({
       }),
     [
       bindings.projectSurfaceIndex,
+      bindings.tabLayout.data?.centerRoot,
       bindings.tabLayout.data?.panes,
       bindings.workspaceSelection.activeTabByPane,
       bindings.workspaceSelection.focusedPaneId,
       visiblePaneIdByRegion,
     ],
   );
-  const center = presentations.find(({ pane }) => pane.region === "center");
+  const centers = presentations.filter(({ pane }) => pane.region === "center");
   const right = presentations.find(({ pane }) => pane.region === "right");
   const bottom = presentations.find(({ pane }) => pane.region === "bottom");
   const preferenceFor = (presentation: VisibleProjectPane | undefined) =>
@@ -447,14 +506,19 @@ export function ProjectWorkspaceFrame({
         180,
       )
     : 0.32;
-  const renderedPresentations = fullRegion
-    ? presentations.filter(({ pane }) => pane.region === fullRegion)
-    : presentations.filter(
-        ({ pane }) =>
-          pane.region === "center" ||
-          (pane.region === "right" && rightRendered) ||
-          (pane.region === "bottom" && bottomRendered),
-      );
+  const renderedPresentations = (
+    fullRegion
+      ? presentations.filter(({ pane }) => pane.region === fullRegion)
+      : presentations.filter(
+          ({ pane }) =>
+            pane.region === "center" ||
+            (pane.region === "right" && rightRendered) ||
+            (pane.region === "bottom" && bottomRendered),
+        )
+  ).map((presentation) => ({
+    ...presentation,
+    portalTarget: panePortalTarget(presentation.pane.id),
+  }));
   const remotePresentations = renderedPresentations.filter(
     ({ activeSurface }) => activeSurface?.kind === "remote-desktop",
   );
@@ -631,12 +695,12 @@ export function ProjectWorkspaceFrame({
     },
     [],
   );
-  const tabStrip = (presentation: VisibleProjectPane, gridArea: string) => (
+  const tabStrip = (presentation: VisibleProjectPane, gridArea?: string) => (
     <div
       className="min-w-0 overflow-hidden border-b"
       data-project-pane-id={presentation.pane.id}
       key={`${presentation.pane.id}:tabs`}
-      style={{ gridArea }}
+      style={gridArea ? { gridArea } : undefined}
     >
       <ProjectPaneTabStrip
         activeTabKey={presentation.activeTabKey}
@@ -729,11 +793,24 @@ export function ProjectWorkspaceFrame({
   const grid = projectWorkspaceGridModel({
     bottom: bottomRendered,
     bottomFraction,
-    center: Boolean(center),
+    center: Boolean(centerRoot && centers.length > 0),
     fullRegion,
     right: rightRendered,
     rightFraction,
   });
+  const commitCenterSplitResize = (splitId: string, fraction: number) => {
+    if (
+      bindings.tabLayoutMutation.isPending ||
+      bindings.dockPresentationMutation.isPending ||
+      bindings.tabLayout.data?.centerRoot === undefined
+    ) {
+      return;
+    }
+    bindings.tabLayoutMutation.mutate({
+      command: { type: "resize-center-split", splitId, fraction },
+      projectId: bindings.selectedProject.id,
+    });
+  };
   const resizeControl = (
     presentation: VisibleProjectPane | undefined,
     preference: ProjectDockPresentationPreference | null,
@@ -851,13 +928,48 @@ export function ProjectWorkspaceFrame({
             : { gridColumn: 1, gridRow: 1 }
         }
       >
-        {docked && renderedPresentations.includes(center!)
-          ? tabStrip(center!, "center-tabs")
-          : null}
-        {docked && renderedPresentations.includes(right!)
+        {docked && centerRoot && !fullRegion ? (
+          <div
+            className="grid min-h-0 min-w-0 overflow-hidden"
+            data-center-layout-root
+            style={{ gridArea: "center-root" }}
+          >
+            <CenterSplitWorkspace
+              controlsEnabled={
+                bindings.tabLayout.data?.centerRoot !== undefined &&
+                !bindings.tabLayoutMutation.isPending
+              }
+              node={centerRoot}
+              onResize={commitCenterSplitResize}
+              presentationByPaneId={
+                new Map(
+                  renderedPresentations
+                    .filter(({ pane }) => pane.region === "center")
+                    .map((presentation) => [
+                      presentation.pane.id,
+                      presentation,
+                    ]),
+                )
+              }
+              renderPaneBody={(presentation) =>
+                genericPaneBody(
+                  bindingsForPresentation(presentation),
+                  presentation,
+                  true,
+                )
+              }
+              renderTabStrip={(presentation) => tabStrip(presentation)}
+            />
+          </div>
+        ) : null}
+        {docked &&
+        right &&
+        renderedPresentations.some(({ pane }) => pane.id === right.pane.id)
           ? tabStrip(right!, "right-tabs")
           : null}
-        {docked && renderedPresentations.includes(bottom!)
+        {docked &&
+        bottom &&
+        renderedPresentations.some(({ pane }) => pane.id === bottom.pane.id)
           ? tabStrip(bottom!, "bottom-tabs")
           : null}
         {docked
@@ -867,11 +979,16 @@ export function ProjectWorkspaceFrame({
           ? resizeControl(bottom, bottomPreference, "bottom", bottomFraction)
           : null}
         {docked
-          ? renderedPresentations.map((presentation) =>
-              genericPaneBody(
-                bindingsForPresentation(presentation),
-                presentation,
-              ),
+          ? renderedPresentations.flatMap((presentation) =>
+              presentation.pane.region === "center"
+                ? []
+                : [
+                    <PaneBodyHost
+                      bindings={bindingsForPresentation(presentation)}
+                      key={`${presentation.pane.id}:body`}
+                      presentation={presentation}
+                    />,
+                  ],
             )
           : null}
         {docked
