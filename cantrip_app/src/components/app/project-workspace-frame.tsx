@@ -456,7 +456,7 @@ function genericPaneBody(
     );
   }
   if (
-    bindings.sidebarFilePreviewVisible &&
+    bindings.sidebarFilePreviewPaneVisible &&
     sidebarFilePreviewForPane(presentation, bindings.sidebarFilePreview)?.active
   ) {
     return null;
@@ -1036,7 +1036,15 @@ export function ProjectWorkspaceFrame({
       ?.dataset.projectPaneId;
     if (!paneId || paneId === bindings.workspaceSelection.focusedPaneId) return;
     const presentation = presentations.find(({ pane }) => pane.id === paneId);
-    if (presentation) bindings.selectTopTab(presentation.activeTabKey);
+    if (!presentation) return;
+    if (
+      bindings.sidebarFilePreview?.active &&
+      bindings.sidebarFilePreview.paneId === paneId
+    ) {
+      bindings.activateSidebarFilePreview();
+      return;
+    }
+    bindings.selectTopTab(presentation.activeTabKey);
   };
   const presentationMutationPending = Boolean(
     bindings.dockPresentationMutation.isPending ||

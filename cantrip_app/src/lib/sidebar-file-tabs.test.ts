@@ -12,6 +12,8 @@ import {
   moveSidebarPath,
   sidebarExplorerCanOwnPreview,
   sidebarExplorerPrewarmTarget,
+  sidebarFilePreviewAfterPaneSelection,
+  sidebarFilePreviewHasPaneFocus,
   sidebarFileName,
   sidebarFilePreviewMatches,
   sidebarFilePreviewIsVisible,
@@ -61,6 +63,47 @@ describe("sidebar file tabs", () => {
     ).toBe(false);
     expect(
       sidebarFilePreviewMatches({ ...preview, active: false }, preview),
+    ).toBe(false);
+  });
+
+  it("keeps an active preview when another pane is selected", () => {
+    const preview = {
+      active: true,
+      explorerId: "explorer-1",
+      paneId: "center",
+      path: "src/index.ts",
+      projectId: "project-1",
+    };
+
+    expect(sidebarFilePreviewAfterPaneSelection(preview, "right")).toBe(
+      preview,
+    );
+    expect(sidebarFilePreviewAfterPaneSelection(preview, "bottom")).toBe(
+      preview,
+    );
+    expect(sidebarFilePreviewAfterPaneSelection(preview, "center")).toEqual({
+      ...preview,
+      active: false,
+    });
+  });
+
+  it("treats an active preview as focused only in its assigned pane", () => {
+    const preview = {
+      active: true,
+      explorerId: "explorer-1",
+      paneId: "center",
+      path: "src/index.ts",
+      projectId: "project-1",
+    };
+
+    expect(
+      sidebarFilePreviewHasPaneFocus({ focusedPaneId: "center", preview }),
+    ).toBe(true);
+    expect(
+      sidebarFilePreviewHasPaneFocus({ focusedPaneId: "right", preview }),
+    ).toBe(false);
+    expect(
+      sidebarFilePreviewHasPaneFocus({ focusedPaneId: "bottom", preview }),
     ).toBe(false);
   });
 

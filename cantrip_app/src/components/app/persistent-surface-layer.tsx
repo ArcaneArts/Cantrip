@@ -83,6 +83,7 @@ export function PersistentSurfaceLayer({
     showSidebarPreviewTab,
     sidebarFilePinHandoff,
     sidebarFilePreview,
+    sidebarFilePreviewPaneVisible,
     sidebarFilePreviewVisible,
     sidebarInlineExplorer,
     sidebarPreviewSuccessorExplorer,
@@ -101,9 +102,9 @@ export function PersistentSurfaceLayer({
       dockPresentationsForSidebarPreview(
         dockPanePresentations,
         sidebarFilePreview,
-        sidebarFilePreviewVisible,
+        sidebarFilePreviewPaneVisible,
       ),
-    [dockPanePresentations, sidebarFilePreview, sidebarFilePreviewVisible],
+    [dockPanePresentations, sidebarFilePreview, sidebarFilePreviewPaneVisible],
   );
   const dockCodePlacements = useMemo(
     () =>
@@ -308,7 +309,7 @@ export function PersistentSurfaceLayer({
       >
         <PersistentExplorerViews
           activeExplorer={
-            appMode === "ide" && sidebarFilePreviewVisible
+            appMode === "ide" && sidebarFilePreviewPaneVisible
               ? (sidebarPreviewExplorer ?? null)
               : explorerSurfaceVisible
                 ? (selectedExplorer ?? null)

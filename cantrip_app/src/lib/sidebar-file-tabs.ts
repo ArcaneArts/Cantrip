@@ -30,6 +30,29 @@ export function sidebarFilePreviewMatches(
   );
 }
 
+export function sidebarFilePreviewAfterPaneSelection(
+  preview: SidebarFilePreviewState | null,
+  selectedPaneId: string | null,
+): SidebarFilePreviewState | null {
+  if (!preview?.active) return preview;
+  if (preview.paneId && selectedPaneId && preview.paneId !== selectedPaneId) {
+    return preview;
+  }
+  return { ...preview, active: false };
+}
+
+export function sidebarFilePreviewHasPaneFocus({
+  focusedPaneId,
+  preview,
+}: {
+  focusedPaneId: string | null;
+  preview: SidebarFilePreviewState | null;
+}): boolean {
+  return Boolean(
+    preview?.active && (!preview.paneId || preview.paneId === focusedPaneId),
+  );
+}
+
 export function sidebarExplorerPrewarmTarget({
   isPopout,
   sidebarExplorer,

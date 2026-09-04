@@ -151,7 +151,11 @@ import {
   runtimeForRunTerminal,
   runTerminalTargetLabel,
 } from "@/lib/run-terminal-model";
-import { sidebarFilePreviewIsVisible } from "@/lib/sidebar-file-tabs";
+import {
+  sidebarFilePreviewAfterPaneSelection,
+  sidebarFilePreviewHasPaneFocus,
+  sidebarFilePreviewIsVisible,
+} from "@/lib/sidebar-file-tabs";
 import { projectScriptCommandDestination } from "@/lib/project-script-command";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
@@ -386,8 +390,12 @@ export function App() {
   const selectedBuiltInDefinitionId = selectedProjectId
     ? projectBuiltInDefinitionIdFromViewId(selectedProjectId, selectedTabKey)
     : null;
+  const sidebarFilePreviewFocused = sidebarFilePreviewHasPaneFocus({
+    focusedPaneId: workspaceSelection.focusedPaneId,
+    preview: sidebarFilePreview,
+  });
   const projectOverviewSelected =
-    !sidebarFilePreview?.active &&
+    !sidebarFilePreviewFocused &&
     !showImporter &&
     !showSettings &&
     !showArchivedStandaloneChats &&
@@ -1005,7 +1013,7 @@ export function App() {
     () => mobileProjectSurfaces(projectSurfaces, selectedTabKey),
     [projectSurfaces, selectedTabKey],
   );
-  const sidebarFilePreviewVisible = sidebarFilePreviewIsVisible({
+  const sidebarFilePreviewPaneVisible = sidebarFilePreviewIsVisible({
     previewActive: sidebarFilePreview?.active ?? false,
     previewExplorerAvailable: Boolean(sidebarPreviewExplorer),
     showImporter,
@@ -1013,6 +1021,8 @@ export function App() {
     showServerAdmin,
     showSettings,
   });
+  const sidebarFilePreviewVisible =
+    sidebarFilePreviewPaneVisible && sidebarFilePreviewFocused;
   const {
     orderedProjectSurfaces: projectInventorySurfaces,
     selectedPaneSurfaces,
@@ -1794,10 +1804,14 @@ export function App() {
     showAppToast,
   });
   const selectTopTab = (tabKey: string) => {
-    setSidebarFilePreview((current) =>
-      current ? { ...current, active: false } : null,
-    );
     const layout = tabLayout.data;
+    const targetPaneId =
+      layout?.panes.find(({ members }) =>
+        members.some((member) => member.tabKey === tabKey),
+      )?.id ?? null;
+    setSidebarFilePreview((current) =>
+      sidebarFilePreviewAfterPaneSelection(current, targetPaneId),
+    );
     if (layout) {
       setWorkspaceSelection((current) =>
         selectWorkspaceTab(current, layout, tabKey),
@@ -2028,7 +2042,7 @@ export function App() {
     settings, settingsPolicyId, settingsSection, showAppToast, showArchivedStandaloneChats,
     showChatConsole, showContentTitlebar, showCustomizations, showImporter, showProjectSettings,
     showServerAdmin, showSettings, showSidebarPreviewTab, sidebarCollapsed, sidebarExplorer,
-    sidebarFilePinHandoff, sidebarFilePreview, sidebarFilePreviewVisible, sidebarFileWorkerId, sidebarFileWorkerOnline,
+    sidebarFilePinHandoff, sidebarFilePreview, sidebarFilePreviewPaneVisible, sidebarFilePreviewVisible, sidebarFileWorkerId, sidebarFileWorkerOnline,
     sidebarInlineExplorer, sidebarPreviewExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,

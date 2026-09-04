@@ -53,6 +53,7 @@ function commandHarness({
   const setSidebarFilePreview = vi.fn();
   const pinMutation = { isPending: false, mutate: vi.fn(), reset: vi.fn() };
   const revealWorkspace = vi.fn();
+  const setWorkspaceSelection = vi.fn();
   const input = {
     abandonSidebarFilePinHandoff: vi.fn(),
     createSidebarExplorerMutation: {
@@ -92,7 +93,7 @@ function commandHarness({
     selectedPane,
     setDesktopSidebarDrawerOpen: vi.fn(),
     setPopoutError: vi.fn(),
-    setWorkspaceSelection: vi.fn(),
+    setWorkspaceSelection,
     sidebarExplorerCreationInput: null,
     sidebarExplorerCreationKey: null,
     tabLayout: layout,
@@ -103,6 +104,7 @@ function commandHarness({
     pinMutation,
     revealWorkspace,
     setSidebarFilePreview,
+    setWorkspaceSelection,
   };
 }
 
@@ -219,6 +221,32 @@ describe("sidebar Explorer ownership commands", () => {
       path: entry.path,
       projectId: previewOwner.projectId,
     });
+  });
+
+  it("refocuses an active preview after a dock pane was selected", () => {
+    const center = {
+      id: "group-1",
+      region: "center",
+      members: [],
+    } as unknown as ProjectTabLayoutSummary["panes"][number];
+    const right = {
+      id: "right-pane",
+      region: "right",
+      members: [],
+    } as unknown as ProjectTabLayoutSummary["panes"][number];
+    const dockLayout = {
+      panes: [center, right],
+    } as unknown as ProjectTabLayoutSummary;
+    const harness = commandHarness({
+      layout: dockLayout,
+      selectedPane: right,
+    });
+
+    harness.commands.activateSidebarFilePreview();
+
+    expect(harness.setWorkspaceSelection).toHaveBeenCalledTimes(1);
+    expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
+    expect(harness.revealWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("does not pin the active preview until its warm successor is ready", async () => {
