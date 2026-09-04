@@ -9,6 +9,8 @@
     "focusBorder": "#526C91",
     "errorForeground": "#B4232C",
     "editor.background": "#00000000",
+    "editorStickyScroll.background": "#F8F9FB80",
+    "editorStickyScrollGutter.background": "#F8F9FB80",
     "editorGroup.emptyBackground": "#00000000",
     "editorGroupHeader.tabsBackground": "#00000000",
     "tab.activeBackground": "#00000018",

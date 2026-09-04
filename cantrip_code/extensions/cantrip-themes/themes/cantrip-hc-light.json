@@ -11,6 +11,8 @@
     "settings.focusedRowBackground": "#0000000D",
     "settings.focusedRowBorder": "#00000000",
     "editor.background": "#00000000",
+    "editorStickyScroll.background": "#FFFFFF80",
+    "editorStickyScrollGutter.background": "#FFFFFF80",
     "editorGroup.emptyBackground": "#00000000",
     "editorGroupHeader.tabsBackground": "#00000000",
     "tab.activeBackground": "#0000001F",
