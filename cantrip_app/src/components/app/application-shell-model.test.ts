@@ -4,6 +4,7 @@ import {
   codeAppearanceFor,
   modelDisplayName,
   projectOverviewSectionLabel,
+  projectToolSectionRequiresSurfaceBridge,
 } from "./application-shell-model";
 
 describe("application shell model", () => {
@@ -25,6 +26,12 @@ describe("application shell model", () => {
   it("uses the product label for pull requests", () => {
     expect(projectOverviewSectionLabel("prs")).toBe("Pull requests");
     expect(projectOverviewSectionLabel("issues")).toBe("Issues");
+  });
+
+  it("does not turn the startup Overview destination into a tab placement", () => {
+    expect(projectToolSectionRequiresSurfaceBridge("overview")).toBe(false);
+    expect(projectToolSectionRequiresSurfaceBridge("tasks")).toBe(true);
+    expect(projectToolSectionRequiresSurfaceBridge("history")).toBe(true);
   });
 
   it("resolves every appearance dimension without changing precedence", () => {
