@@ -95,6 +95,7 @@ import {
 } from "@/lib/tab-middle-click";
 import { useAppLiveScope } from "@/lib/app-live-react";
 import { nextProjectTabAfterRemoval } from "@/lib/project-pane";
+import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
@@ -580,9 +581,11 @@ function PaneBodyHost({
 export function ProjectWorkspaceFrame({
   bindings,
   docked,
+  railsVisible,
 }: {
   bindings: Readonly<Record<string, any>>;
   docked: boolean;
+  railsVisible: boolean;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const resizePointerRef = useRef<{
@@ -909,37 +912,66 @@ export function ProjectWorkspaceFrame({
     },
     [],
   );
-  const tabStrip = (presentation: VisibleProjectPane) => (
-    <div
-      className="min-w-0 overflow-hidden border-b"
-      data-project-pane-id={presentation.pane.id}
-      key={`${presentation.pane.id}:tabs`}
-    >
-      <ProjectPaneTabStrip
-        activeTabKey={presentation.activeTabKey}
-        allowedCreateKinds={createKindsForPaneRegion(presentation.pane.region)}
-        creatingKinds={bindings.creatingSurfaceKinds}
-        onCreate={(kind, target) =>
-          bindings.createProjectSurface(
-            presentation.pane.projectId,
-            kind,
-            presentation.pane.id,
-            target,
-          )
-        }
-        onClose={bindings.closeSurfaceView}
-        onDelete={bindings.deleteSurfaceResource}
-        onMoveToRegion={bindings.moveSurfaceToRegion}
-        onRename={bindings.renameSurface}
-        onSelect={bindings.selectTopTab}
-        paneId={presentation.pane.id}
-        paneRegion={presentation.pane.region}
-        placement={bindings.selectedPlacementContext}
-        projectId={presentation.pane.projectId}
-        surfaces={presentation.surfaces}
-      />
-    </div>
-  );
+  const tabStrip = (presentation: VisibleProjectPane) => {
+    const sidebarPreview =
+      bindings.showSidebarPreviewTab &&
+      bindings.sidebarFilePreview?.paneId === presentation.pane.id
+        ? bindings.sidebarFilePreview
+        : null;
+    return (
+      <div
+        className="min-w-0 overflow-hidden border-b"
+        data-project-pane-id={presentation.pane.id}
+        key={`${presentation.pane.id}:tabs`}
+      >
+        <ProjectPaneTabStrip
+          activeTabKey={presentation.activeTabKey}
+          allowedCreateKinds={createKindsForPaneRegion(
+            presentation.pane.region,
+          )}
+          creatingKinds={bindings.creatingSurfaceKinds}
+          onCreate={(kind, target) =>
+            bindings.createProjectSurface(
+              presentation.pane.projectId,
+              kind,
+              presentation.pane.id,
+              target,
+            )
+          }
+          onClose={bindings.closeSurfaceView}
+          onDelete={bindings.deleteSurfaceResource}
+          onMoveToRegion={bindings.moveSurfaceToRegion}
+          onRename={bindings.renameSurface}
+          onSelect={bindings.selectTopTab}
+          paneId={presentation.pane.id}
+          paneRegion={presentation.pane.region}
+          placement={bindings.selectedPlacementContext}
+          previewFile={
+            sidebarPreview
+              ? {
+                  active: sidebarPreview.active,
+                  onClose: bindings.closeSidebarFilePreview,
+                  onPin: () => {
+                    if (bindings.sidebarPreviewExplorer) {
+                      void bindings.pinSidebarFilePath(
+                        bindings.sidebarPreviewExplorer,
+                        sidebarPreview.path,
+                      );
+                    }
+                  },
+                  onSelect: bindings.activateSidebarFilePreview,
+                  path: sidebarPreview.path,
+                  projectId: sidebarPreview.projectId,
+                  title: sidebarFileName(sidebarPreview.path),
+                }
+              : undefined
+          }
+          projectId={presentation.pane.projectId}
+          surfaces={presentation.surfaces}
+        />
+      </div>
+    );
+  };
   const focusAndRevealSurface = (surface: ProjectSurface) => {
     const pane = bindings.tabLayout.data?.panes.find(
       ({ id }: { id: string }) => id === surface.paneId,
@@ -1126,11 +1158,14 @@ export function ProjectWorkspaceFrame({
     <div
       className="grid min-h-0 min-w-0 flex-1 overflow-hidden"
       data-docked={docked ? "true" : "false"}
+      data-rails-visible={railsVisible ? "true" : "false"}
       style={{
-        gridTemplateColumns: docked
+        gridTemplateColumns: railsVisible
           ? "minmax(0, 1fr) 2.5rem"
           : "minmax(0, 1fr) 0",
-        gridTemplateRows: docked ? "minmax(0, 1fr) 2.5rem" : "minmax(0, 1fr) 0",
+        gridTemplateRows: railsVisible
+          ? "minmax(0, 1fr) 2.5rem"
+          : "minmax(0, 1fr) 0",
       }}
     >
       <div
@@ -1233,7 +1268,7 @@ export function ProjectWorkspaceFrame({
         />
         {!docked ? <GlobalContentHost bindings={bindings} /> : null}
       </div>
-      {docked ? (
+      {railsVisible ? (
         <DockRail
           activeTabKey={right?.activeTabKey ?? null}
           allSurfaces={bindings.projectSurfaces}
@@ -1261,7 +1296,7 @@ export function ProjectWorkspaceFrame({
           surfaces={right?.surfaces ?? []}
         />
       ) : null}
-      {docked ? (
+      {railsVisible ? (
         <DockRail
           activeTabKey={bottom?.activeTabKey ?? null}
           allSurfaces={bindings.projectSurfaces}
