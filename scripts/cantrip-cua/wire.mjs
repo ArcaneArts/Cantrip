@@ -227,7 +227,7 @@ export class FramedCuaProcess {
 
   constructor(
     binary,
-    { args = [], timeoutMs = 15_000, cwd, env = process.env } = {},
+    { args = [], timeoutMs = 15_000, cwd, env = process.env, signal } = {},
   ) {
     if (
       !Number.isSafeInteger(timeoutMs) ||
@@ -301,6 +301,16 @@ export class FramedCuaProcess {
       () => this.#fail(new Error("CUA smoke process deadline exceeded.")),
       timeoutMs,
     );
+    if (signal) {
+      const abort = () => this.#fail(new Error("CUA smoke was cancelled."));
+      if (signal.aborted) abort();
+      else {
+        signal.addEventListener("abort", abort, { once: true });
+        this.#child.once("close", () =>
+          signal.removeEventListener("abort", abort),
+        );
+      }
+    }
   }
 
   get eventCount() {

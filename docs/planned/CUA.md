@@ -85,7 +85,8 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-03-build-chain`, based on merged cycle 2 (`c6982b46d`).
 - PR: [#1735](https://github.com/ArcaneArts/Cantrip/pull/1735).
-  Initial implementation commit: `e3f320d2`; merge not yet observed.
+  Initial implementation commit: `e3f320d2`; merged 2026-09-04 as
+  `9e8ded7d6ab403be29208a3124391752d4467098` (observed via GitHub).
 - Implemented: root CUA build/check/test/smoke commands; Cargo-reported executable
   selection; worker and inherited desktop bundling; final-layout protocol smoke;
   explicit macOS signing identifiers; named user-data development installation
@@ -102,7 +103,10 @@ is the authoritative merge record until the next ledger update.
   unchanged Primary `c6982b46d`. They remain recorded baseline regression work,
   not claimed passing or silently bypassed.
 - Platform: local macOS arm64 fake execution; added macOS/Windows/Linux CI matrix,
-  with results pending. Native capture remains only cycle-1 prototype evidence.
+  macOS and Linux jobs passed in run `33927526148`; Windows Rust tests passed,
+  but one script test incorrectly asserted POSIX execute bits on Windows.
+  Follow-up cycle 3b corrects that host-specific assertion. Native capture
+  remains only cycle-1 prototype evidence.
 - Manual verification: named `cua-cycle-three-qa` development helper installed
   in native user data with Apple Development signing; debug and release builds
   both passed actual smoke with equal designated requirements. Developer ID
@@ -122,6 +126,26 @@ is the authoritative merge record until the next ledger update.
   capture, arbitrary cursor assets, continuous video, and cross-worker control.
 - Developer/build/inspection/reset instructions:
   [CUA runtime README](../../cantrip_cua/README.md#stable-development-helper).
+
+### Tranche cycle 3b — Installer lifetime and Windows test follow-up
+
+- Branch: `codex/cua-03b-install-lifecycle`, based on merged cycle 3 (`9e8ded7d6`).
+- PR: [#1736](https://github.com/ArcaneArts/Cantrip/pull/1736).
+  Initial implementation commit: `49e4a4b7`; merge not yet observed.
+- Implemented: preserve lock-holder lifecycle observation after acquisition;
+  cancel smoke and refuse subsequent commit steps after actual lock loss.
+  Correct POSIX-mode test assertions to use the actual host platform while
+  retaining cross-platform executable-name and copied-byte checks.
+- Validation: 50 Rust tests, 26 CUA script tests, actual-binary smoke, focused
+  Clippy/formatting, and diff checks pass locally. Actual-child lock-loss
+  regression preserves prior binary/configuration; cancellation disposes active
+  smoke processes. Independent focused review found no additional defects.
+  Native CI rerun remains pending.
+- Platforms/manual status: macOS fake runtime locally; CI rerun pending for
+  macOS/Windows/Linux. No new native capture or TCC claims.
+- Risks/remaining: cycle-3 standalone-worker signing, baseline script failures,
+  and first-tranche worker/server/client/native/MCP/policy/Trajectory integration
+  remain unchanged. Deferred later-tranche work remains unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
