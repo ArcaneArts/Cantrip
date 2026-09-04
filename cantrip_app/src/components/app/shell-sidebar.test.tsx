@@ -77,6 +77,7 @@ describe("desktop app mode menu", () => {
       projectSidebarSurfaces: [],
       projects: query,
       projectViews: query,
+      surfaceLaunchers: query,
       projectWorkspaces: query,
       selectedProject: null,
       selectedProjectId: "project-a",

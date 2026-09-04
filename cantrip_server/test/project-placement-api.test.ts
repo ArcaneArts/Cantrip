@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS,
   browserWireSummarySchema,
   cantripCliCommandResultSchema,
   chatWireListSchema,
@@ -14,8 +15,11 @@ import {
   executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
   projectTabLayoutWireSummarySchema,
+  projectSurfaceLauncherListSchema,
+  projectSurfaceLauncherSchema,
   projectSurfaceViewCloseResultSchema,
   projectSurfaceViewOpenResultSchema,
+  projectSurfaceViewId,
   protectedScriptCommandListSchema,
   remoteDesktopWireSummarySchema,
   serverBootstrapSchema,
@@ -2318,57 +2322,210 @@ describe.sequential("project execution placement API", () => {
     ).toHaveLength(1);
   });
 
-  it("rejects a surface reference whose definition mismatches an open ProjectView", async () => {
-    const fields = protectedDisplayLabelFields("project-view");
-    const view = await database.repository.createProjectView(
-      LOCAL_USER_ID,
-      projectId,
-      {
-        id: fields.id,
-        kind: "issues",
-        titleProtection: fields.titleProtection,
-      },
-    );
-    expect(view).not.toBeNull();
-    const layout = projectTabLayoutWireSummarySchema.parse(
+  it("opens each built-in singleton once per project and persists launcher pins outside layout revisions", async () => {
+    const createProject = async (
+      repositoryBlindIndex: string,
+      repositorySuffix: string,
+    ) =>
+      database.repository.createGithubProject(LOCAL_USER_ID, {
+        workerId: "worker-alpha",
+        ...protectedProjectFields(),
+        repositoryBlindIndex,
+        repositoryId: `placement-builtins-${repositorySuffix}`,
+        nameWithOwner: `ArcaneArts/Cantrip-${repositorySuffix}`,
+        url: `https://github.com/ArcaneArts/Cantrip-${repositorySuffix}`,
+      });
+    const firstProject = await createProject("B".repeat(43), "first");
+    const secondProject = await createProject("C".repeat(43), "second");
+
+    let firstLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${projectId}/tab-groups`,
+          url: `/api/projects/${firstProject.id}/tab-groups`,
         })
       ).json(),
     );
-
-    const mismatch = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/tab-groups/member/open`,
-      payload: {
-        revision: layout.revision,
-        surfaceRef: {
-          kind: "entity",
-          definitionId: "project.git-history",
-          resourceId: view!.id,
+    const openedViewIds: string[] = [];
+    for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
+      const openResponse = await app.inject({
+        method: "POST",
+        url: `/api/projects/${firstProject.id}/tab-groups/member/open`,
+        payload: {
+          revision: firstLayout.revision,
+          surfaceRef: { kind: "builtin", definitionId },
         },
-      },
-    });
-    expect(mismatch.statusCode, mismatch.body).toBe(400);
-
-    const focused = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/tab-groups/member/open`,
-      payload: {
-        revision: layout.revision,
-        surfaceRef: {
-          kind: "entity",
-          definitionId: "project.github-issues",
-          resourceId: view!.id,
-        },
-      },
-    });
-    expect(focused.statusCode, focused.body).toBe(200);
+      });
+      expect(openResponse.statusCode, openResponse.body).toBe(200);
+      const opened = projectSurfaceViewOpenResultSchema.parse(
+        openResponse.json(),
+      );
+      const expectedViewId = projectSurfaceViewId({
+        projectId: firstProject.id,
+        resource: { kind: "builtin", definitionId },
+      });
+      expect(opened).toMatchObject({
+        disposition: "opened",
+        viewId: expectedViewId,
+      });
+      expect(opened.layout.revision).toBe(firstLayout.revision + 1);
+      firstLayout = opened.layout;
+      openedViewIds.push(opened.viewId);
+    }
+    expect(new Set(openedViewIds).size).toBe(
+      PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length,
+    );
     expect(
-      projectSurfaceViewOpenResultSchema.parse(focused.json()),
-    ).toMatchObject({ disposition: "focused", viewId: `view:${view!.id}` });
+      firstLayout.groups
+        .flatMap(({ members }) => members)
+        .filter(({ tabKind }) => tabKind === "builtin"),
+    ).toHaveLength(PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length);
+
+    const revisionAfterOpening = firstLayout.revision;
+    for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
+      const focusResponse = await app.inject({
+        method: "POST",
+        url: `/api/projects/${firstProject.id}/tab-groups/member/open`,
+        payload: {
+          revision: revisionAfterOpening,
+          surfaceRef: { kind: "builtin", definitionId },
+        },
+      });
+      expect(focusResponse.statusCode, focusResponse.body).toBe(200);
+      expect(
+        projectSurfaceViewOpenResultSchema.parse(focusResponse.json()),
+      ).toMatchObject({
+        disposition: "focused",
+        viewId: projectSurfaceViewId({
+          projectId: firstProject.id,
+          resource: { kind: "builtin", definitionId },
+        }),
+        layout: { revision: revisionAfterOpening },
+      });
+    }
+
+    const secondLayout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${secondProject.id}/tab-groups`,
+        })
+      ).json(),
+    );
+    const secondOpenResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${secondProject.id}/tab-groups/member/open`,
+      payload: {
+        revision: secondLayout.revision,
+        surfaceRef: { kind: "builtin", definitionId: "project.overview" },
+      },
+    });
+    expect(secondOpenResponse.statusCode, secondOpenResponse.body).toBe(200);
+    const secondOpened = projectSurfaceViewOpenResultSchema.parse(
+      secondOpenResponse.json(),
+    );
+    expect(secondOpened).toMatchObject({
+      disposition: "opened",
+      viewId: projectSurfaceViewId({
+        projectId: secondProject.id,
+        resource: {
+          kind: "builtin",
+          definitionId: "project.overview",
+        },
+      }),
+    });
+    expect(secondOpened.viewId).not.toBe(
+      projectSurfaceViewId({
+        projectId: firstProject.id,
+        resource: {
+          kind: "builtin",
+          definitionId: "project.overview",
+        },
+      }),
+    );
+
+    const launcherListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${firstProject.id}/surface-launchers`,
+    });
+    expect(launcherListResponse.statusCode, launcherListResponse.body).toBe(
+      200,
+    );
+    const launchers = projectSurfaceLauncherListSchema.parse(
+      launcherListResponse.json(),
+    );
+    expect(
+      launchers.find(
+        ({ location, target }) =>
+          location === "project-navigator" &&
+          target.kind === "definition" &&
+          target.definitionId === "project.overview",
+      ),
+    ).toMatchObject({ pinned: true });
+
+    const pinResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${firstProject.id}/surface-launchers`,
+      payload: {
+        definitionId: "project.overview",
+        location: "project-navigator",
+        pinned: false,
+      },
+    });
+    expect(pinResponse.statusCode, pinResponse.body).toBe(200);
+    expect(
+      projectSurfaceLauncherSchema.parse(pinResponse.json()),
+    ).toMatchObject({
+      projectId: firstProject.id,
+      location: "project-navigator",
+      target: {
+        kind: "definition",
+        definitionId: "project.overview",
+      },
+      pinned: false,
+    });
+    const layoutAfterPin = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${firstProject.id}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(layoutAfterPin.revision).toBe(revisionAfterOpening);
+
+    const persistedLaunchers = projectSurfaceLauncherListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${firstProject.id}/surface-launchers`,
+        })
+      ).json(),
+    );
+    expect(
+      persistedLaunchers.find(
+        ({ location, target }) =>
+          location === "project-navigator" &&
+          target.kind === "definition" &&
+          target.definitionId === "project.overview",
+      ),
+    ).toMatchObject({ pinned: false });
+  });
+
+  it("rejects legacy History and Issues ProjectView creation", async () => {
+    const fields = protectedDisplayLabelFields("project-view");
+    for (const kind of ["history", "issues"] as const) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/views`,
+        payload: {
+          id: fields.id,
+          kind,
+          titleProtection: fields.titleProtection,
+        },
+      });
+      expect(response.statusCode, response.body).toBe(400);
+    }
   });
 
   it("serializes reopen against resource deletion without orphaning the layout", async () => {

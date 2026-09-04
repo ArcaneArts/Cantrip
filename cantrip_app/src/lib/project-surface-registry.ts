@@ -3,6 +3,7 @@ import {
   projectSurfaceViewId,
   type ProjectSurfaceDefinition,
   type ProjectSurfaceDefinitionId,
+  type ProjectBuiltInSurfaceDefinitionId,
   type ProjectSurfaceResourceRef,
   type ProjectTabKind,
 } from "@cantrip/protocol";
@@ -25,6 +26,9 @@ export function projectSurfaceDefinitionIdForTab(
   kind: ProjectTabKind,
   options: { file?: boolean } = {},
 ): ProjectSurfaceDefinitionId {
+  if (kind === "builtin") {
+    throw new Error("Built-in tabs carry their surface definition id.");
+  }
   if (kind === "chat") return "project.agent";
   if (kind === "terminal") return "project.terminal";
   if (kind === "explorer") {
@@ -35,6 +39,18 @@ export function projectSurfaceDefinitionIdForTab(
   if (kind === "history") return "project.git-history";
   if (kind === "issues") return "project.github-issues";
   return "project.remote-desktop";
+}
+
+export function projectBuiltInSurfaceIdentity(
+  projectId: string,
+  definitionId: ProjectBuiltInSurfaceDefinitionId,
+) {
+  const resource = { kind: "builtin" as const, definitionId };
+  return {
+    definition: projectSurfaceDefinition(definitionId),
+    resource,
+    viewId: projectSurfaceViewId({ projectId, resource }),
+  } as const;
 }
 
 export function projectSurfaceResourceRefForTab(

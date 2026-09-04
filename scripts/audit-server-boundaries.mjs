@@ -102,7 +102,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
   applicationRoutes:
-    "54babb1dc7f85d756c87ff4d129d30360165b8a1394f0a4e5a7faea0c3218192",
+    "b5ea5205bb57a9abd14d5751e367676a49bdee94248fb8d13e9c7c3e70d47661",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -193,6 +193,10 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   browsers: "endpoint-protected",
   remoteSurfaces: "endpoint-protected",
   projectViews: "endpoint-protected",
+  // Built-in surface state and launcher preferences store only project-scoped
+  // definition ids, placement-adjacent UI choices, and worktree references.
+  projectBuiltInSurfaceStates: "intentionally-public-control-plane",
+  projectSurfaceLauncherPreferences: "intentionally-public-control-plane",
   chatRuntimeSessions: "intentionally-public-control-plane",
   chatExecutionLanes: "intentionally-public-control-plane",
   agentInteractionRequests: "endpoint-protected",

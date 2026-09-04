@@ -1,18 +1,17 @@
 import { z } from "zod";
 import {
+  PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS,
+  projectBuiltinSurfaceDefinitionIdSchema,
+} from "./project-surface-identifiers.js";
+import {
   projectTabKindSchema,
   projectTabLayoutWireSummarySchema,
 } from "./project-tabs.js";
 
-export const PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS = [
-  "project.overview",
-  "project.tasks",
-  "git.history",
-  "git.graph",
-  "github.issues",
-  "github.pull-requests",
-  "github.actions",
-] as const;
+export {
+  PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS,
+  projectBuiltinSurfaceDefinitionIdSchema,
+};
 
 export const projectSurfaceDefinitionIdSchema = z.enum([
   "project.agent",
@@ -32,10 +31,6 @@ export const projectSurfaceDefinitionIdSchema = z.enum([
   "github.pull-requests",
   "github.actions",
 ]);
-
-export const projectBuiltinSurfaceDefinitionIdSchema = z.enum(
-  PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS,
-);
 
 export const surfaceScopeSchema = z.enum([
   "project",
@@ -474,6 +469,25 @@ export function projectSurfaceViewId(input: {
   return `${prefix}:${input.resource.resourceId}`;
 }
 
+export function projectBuiltInDefinitionIdFromViewId(
+  projectId: string,
+  viewId: string | null | undefined,
+): ProjectBuiltInSurfaceDefinitionId | null {
+  if (!viewId) return null;
+  for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
+    if (
+      viewId ===
+      projectSurfaceViewId({
+        projectId,
+        resource: { kind: "builtin", definitionId },
+      })
+    ) {
+      return definitionId;
+    }
+  }
+  return null;
+}
+
 export const projectSurfaceViewSchema = z
   .object({
     id: z.string().min(1),
@@ -545,6 +559,26 @@ export const projectSurfaceLauncherSchema = z
   })
   .strict();
 
+export const projectSurfaceLauncherListSchema = z.array(
+  projectSurfaceLauncherSchema,
+);
+
+export const projectSurfaceLauncherPinSchema = z
+  .object({
+    definitionId: projectBuiltinSurfaceDefinitionIdSchema,
+    location: surfaceLauncherLocationSchema,
+    pinned: z.boolean(),
+  })
+  .strict();
+
+export function projectSurfaceLauncherId(input: {
+  projectId: string;
+  definitionId: ProjectBuiltInSurfaceDefinitionId;
+  location: z.infer<typeof surfaceLauncherLocationSchema>;
+}): string {
+  return `launcher:${encodeURIComponent(input.projectId)}:${input.location}:${input.definitionId}`;
+}
+
 export const projectSurfaceViewOpenSchema = z
   .object({
     revision: z.number().int().nonnegative(),
@@ -586,6 +620,9 @@ export type ProjectBuiltInSurfaceDefinitionId = z.infer<
 export type SurfacePlacementRegion = z.infer<
   typeof surfacePlacementRegionSchema
 >;
+export type SurfaceLauncherLocation = z.infer<
+  typeof surfaceLauncherLocationSchema
+>;
 export type ProjectSurfaceView = z.infer<typeof projectSurfaceViewSchema>;
 export type ProjectTabPlacement = z.infer<typeof projectTabPlacementSchema>;
 export type ProjectPane = z.infer<typeof projectPaneSchema>;
@@ -594,6 +631,9 @@ export type ProjectSurfaceLauncher = z.infer<
 >;
 export type ProjectSurfaceLauncherTarget = z.infer<
   typeof projectSurfaceLauncherTargetSchema
+>;
+export type ProjectSurfaceLauncherPin = z.infer<
+  typeof projectSurfaceLauncherPinSchema
 >;
 export type ProjectSurfaceViewOpen = z.infer<
   typeof projectSurfaceViewOpenSchema

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
+import { projectBuiltinSurfaceDefinitionIdSchema } from "./project-surface-identifiers.js";
 
 export const projectViewKindSchema = z.enum([
   "history",
@@ -7,9 +8,11 @@ export const projectViewKindSchema = z.enum([
   "remote-desktop",
 ]);
 
+export const projectViewCreateKindSchema = z.literal("remote-desktop");
+
 export const projectViewCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
-  kind: projectViewKindSchema,
+  kind: projectViewCreateKindSchema,
   worktreeId: z.string().min(1).optional(),
   tabGroupId: z.string().min(1).optional(),
 });
@@ -39,7 +42,15 @@ export const projectTabKindSchema = z.enum([
   "history",
   "issues",
   "remote-desktop",
+  "builtin",
 ]);
+
+export const projectBuiltInSurfaceStateSchema = z
+  .object({
+    definitionId: projectBuiltinSurfaceDefinitionIdSchema,
+    worktreeId: z.string().min(1).nullable(),
+  })
+  .strict();
 
 const projectTabMemberSummaryBaseSchema = z.object({
   tabKey: z.string().min(1),
@@ -47,6 +58,7 @@ const projectTabMemberSummaryBaseSchema = z.object({
   projectId: z.string().min(1),
   tabKind: projectTabKindSchema,
   tabId: z.string().min(1),
+  builtInState: projectBuiltInSurfaceStateSchema.nullable().optional(),
   position: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -72,9 +84,11 @@ export const projectTabMemberWireSummarySchema =
                 ? "browser"
                 : member.tabKind === "code"
                   ? "code-tab"
-                  : "project-view";
+                  : member.tabKind === "builtin"
+                    ? null
+                    : "project-view";
       if (member.titleProtection === null) {
-        if (member.tabKind !== "terminal") {
+        if (member.tabKind !== "terminal" && member.tabKind !== "builtin") {
           context.addIssue({
             code: "custom",
             message:
@@ -83,6 +97,7 @@ export const projectTabMemberWireSummarySchema =
           });
         }
       } else if (
+        expectedRecordKind === null ||
         member.titleProtection.classification.recordKind !== expectedRecordKind
       ) {
         context.addIssue({
@@ -90,6 +105,37 @@ export const projectTabMemberWireSummarySchema =
           message:
             "Tab-member title classification must match its surface kind.",
           path: ["titleProtection", "classification", "recordKind"],
+        });
+      }
+      if (member.tabKind === "builtin") {
+        const definition = projectBuiltinSurfaceDefinitionIdSchema.safeParse(
+          member.tabId,
+        );
+        if (!definition.success) {
+          context.addIssue({
+            code: "custom",
+            message: "Built-in tab id must be a built-in surface definition.",
+            path: ["tabId"],
+          });
+        }
+        if (!member.builtInState) {
+          context.addIssue({
+            code: "custom",
+            message: "Built-in tabs must include their persisted state.",
+            path: ["builtInState"],
+          });
+        } else if (member.builtInState.definitionId !== member.tabId) {
+          context.addIssue({
+            code: "custom",
+            message: "Built-in tab state must match its definition id.",
+            path: ["builtInState", "definitionId"],
+          });
+        }
+      } else if (member.builtInState != null) {
+        context.addIssue({
+          code: "custom",
+          message: "Entity-backed tabs cannot include built-in state.",
+          path: ["builtInState"],
         });
       }
     });
@@ -263,6 +309,9 @@ export type ProjectViewWireSummary = z.infer<
   typeof projectViewWireSummarySchema
 >;
 export type ProjectTabKind = z.infer<typeof projectTabKindSchema>;
+export type ProjectBuiltInSurfaceState = z.infer<
+  typeof projectBuiltInSurfaceStateSchema
+>;
 export type ProjectTabMemberSummary = z.infer<
   typeof projectTabMemberSummarySchema
 >;

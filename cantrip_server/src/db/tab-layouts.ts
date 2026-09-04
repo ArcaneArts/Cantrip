@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  ProjectBuiltInSurfaceDefinitionId,
+  ProjectSurfaceLauncher,
+  ProjectSurfaceLauncherPin,
   ProjectSurfaceResourceRef,
   ProjectSurfaceViewClose,
   ProjectSurfaceViewCloseResult,
@@ -16,6 +19,12 @@ import type {
   TabGroupOrder,
 } from "@cantrip/protocol";
 import { projectSurfaceTabKind, projectSurfaceViewId } from "@cantrip/protocol";
+import {
+  PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS,
+  PROJECT_SURFACE_DEFINITIONS,
+  projectBuiltinSurfaceDefinitionIdSchema,
+  projectSurfaceLauncherId,
+} from "@cantrip/protocol";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
@@ -36,7 +45,23 @@ export class TabLayoutInvariantError extends Error {
   readonly statusCode = 400;
 }
 
-export function projectTabKey(kind: ProjectTabKind, tabId: string): string {
+export function projectTabKey(
+  kind: ProjectTabKind,
+  tabId: string,
+  projectId?: string,
+): string {
+  if (kind === "builtin") {
+    if (!projectId) {
+      throw new TabLayoutInvariantError(
+        "A project id is required for a built-in surface.",
+      );
+    }
+    const definitionId = projectBuiltinSurfaceDefinitionIdSchema.parse(tabId);
+    return projectSurfaceViewId({
+      projectId,
+      resource: { kind: "builtin", definitionId },
+    });
+  }
   const prefix =
     kind === "history" || kind === "issues" || kind === "remote-desktop"
       ? "view"
@@ -108,7 +133,7 @@ async function attachProjectTabPlacement(
     tabKind: ProjectTabKind;
   },
 ): Promise<string> {
-  const tabKey = projectTabKey(input.tabKind, input.tabId);
+  const tabKey = projectTabKey(input.tabKind, input.tabId, input.projectId);
   let groupId = input.tabGroupId;
   let memberPosition = 0;
 
@@ -405,6 +430,7 @@ export class ProjectTabLayoutRepository {
       browsers,
       code,
       views,
+      builtInStates,
     ] = await Promise.all([
       this.database
         .select()
@@ -461,34 +487,51 @@ export class ProjectTabLayoutRepository {
         })
         .from(schema.projectViews)
         .where(eq(schema.projectViews.projectId, projectId)),
+      this.database
+        .select()
+        .from(schema.projectBuiltInSurfaceStates)
+        .where(eq(schema.projectBuiltInSurfaceStates.projectId, projectId)),
     ]);
     const titles = new Map<
       string,
-      Pick<ProjectTabMemberWireSummary, "titleProtection">
+      Pick<ProjectTabMemberWireSummary, "builtInState" | "titleProtection">
     >([
       ...chats.map(
         ({ id, titleProtection }) =>
-          [`chat:${id}`, { titleProtection }] as const,
+          [`chat:${id}`, { builtInState: null, titleProtection }] as const,
       ),
       ...terminals.map(
         ({ id, titleProtection }) =>
-          [`terminal:${id}`, { titleProtection }] as const,
+          [`terminal:${id}`, { builtInState: null, titleProtection }] as const,
       ),
       ...explorers.map(
         ({ id, titleProtection }) =>
-          [`explorer:${id}`, { titleProtection }] as const,
+          [`explorer:${id}`, { builtInState: null, titleProtection }] as const,
       ),
       ...browsers.map(
         ({ id, titleProtection }) =>
-          [`browser:${id}`, { titleProtection }] as const,
+          [`browser:${id}`, { builtInState: null, titleProtection }] as const,
       ),
       ...code.map(
         ({ id, titleProtection }) =>
-          [`code:${id}`, { titleProtection }] as const,
+          [`code:${id}`, { builtInState: null, titleProtection }] as const,
       ),
       ...views.map(
         ({ id, titleProtection }) =>
-          [`view:${id}`, { titleProtection }] as const,
+          [`view:${id}`, { builtInState: null, titleProtection }] as const,
+      ),
+      ...builtInStates.map(
+        ({ definitionId, worktreeId }) =>
+          [
+            projectSurfaceViewId({
+              projectId,
+              resource: { kind: "builtin", definitionId },
+            }),
+            {
+              builtInState: { definitionId, worktreeId },
+              titleProtection: null,
+            },
+          ] as const,
       ),
     ]);
     const memberSummaries = new Map<string, ProjectTabMemberWireSummary[]>();
@@ -830,12 +873,10 @@ export class ProjectTabLayoutRepository {
       projectId,
       resource: input.surfaceRef,
     });
-    if (input.surfaceRef.kind !== "entity") {
-      throw new TabLayoutInvariantError(
-        "Built-in surfaces are not placeable until the built-in migration completes.",
-      );
-    }
-    const expectedTabKind = projectSurfaceTabKind(input.surfaceRef);
+    const expectedTabKind =
+      input.surfaceRef.kind === "builtin"
+        ? ("builtin" as const)
+        : projectSurfaceTabKind(input.surfaceRef);
     if (!expectedTabKind) {
       throw new TabLayoutInvariantError(
         "The surface definition is not currently entity-backed.",
@@ -848,14 +889,19 @@ export class ProjectTabLayoutRepository {
       ({ tabKey }) => tabKey === viewId,
     );
     if (existingPane && existingMember) {
+      const expectedTabId =
+        input.surfaceRef.kind === "builtin"
+          ? input.surfaceRef.definitionId
+          : input.surfaceRef.resourceId;
       if (
         existingMember.tabKind !== expectedTabKind ||
-        existingMember.tabId !== input.surfaceRef.resourceId ||
-        !(await resolveEntitySurface(
-          this.database,
-          projectId,
-          input.surfaceRef,
-        ))
+        existingMember.tabId !== expectedTabId ||
+        (input.surfaceRef.kind === "entity" &&
+          !(await resolveEntitySurface(
+            this.database,
+            projectId,
+            input.surfaceRef,
+          )))
       ) {
         throw new TabLayoutInvariantError(
           "The open view does not match the requested surface resource.",
@@ -872,21 +918,37 @@ export class ProjectTabLayoutRepository {
     let paneId = "";
     await this.database.transaction(async (transaction) => {
       await claimRevision(transaction, ownerId, projectId, input.revision);
-      const resolved = await resolveEntitySurface(
-        transaction,
-        projectId,
-        input.surfaceRef,
-      );
-      if (!resolved) {
-        throw new TabLayoutInvariantError(
-          "The surface resource is unavailable in this project.",
+      let tabId: string;
+      let tabKind: ProjectTabKind;
+      if (input.surfaceRef.kind === "builtin") {
+        tabId = input.surfaceRef.definitionId;
+        tabKind = "builtin";
+        await transaction
+          .insert(schema.projectBuiltInSurfaceStates)
+          .values({
+            projectId,
+            definitionId: input.surfaceRef.definitionId,
+          })
+          .onConflictDoNothing();
+      } else {
+        const resolved = await resolveEntitySurface(
+          transaction,
+          projectId,
+          input.surfaceRef,
         );
+        if (!resolved) {
+          throw new TabLayoutInvariantError(
+            "The surface resource is unavailable in this project.",
+          );
+        }
+        tabId = resolved.tabId;
+        tabKind = resolved.tabKind;
       }
       paneId = await attachProjectTabPlacement(transaction, {
         projectId,
         tabGroupId: input.targetPaneId,
-        tabId: resolved.tabId,
-        tabKind: resolved.tabKind,
+        tabId,
+        tabKind,
       });
     });
     const layout = await this.get(ownerId, projectId);
@@ -932,6 +994,137 @@ export class ProjectTabLayoutRepository {
       );
     }
     return { disposition: "closed", viewId: input.viewId, layout };
+  }
+
+  async listSurfaceLaunchers(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectSurfaceLauncher[] | null> {
+    const projects = await this.database
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    if (!projects[0]) return null;
+    const preferences = await this.database
+      .select()
+      .from(schema.projectSurfaceLauncherPreferences)
+      .where(eq(schema.projectSurfaceLauncherPreferences.projectId, projectId));
+    const preferenceByTarget = new Map(
+      preferences.map((preference) => [
+        `${preference.location}:${preference.definitionId}`,
+        preference.pinned,
+      ]),
+    );
+    const builtInIds = new Set<string>(PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS);
+    return PROJECT_SURFACE_DEFINITIONS.flatMap((definition) => {
+      if (!builtInIds.has(definition.id)) return [];
+      const definitionId = projectBuiltinSurfaceDefinitionIdSchema.parse(
+        definition.id,
+      );
+      return definition.launcherLocations.map((location) => ({
+        id: projectSurfaceLauncherId({ projectId, definitionId, location }),
+        projectId,
+        location,
+        target: { kind: "definition" as const, definitionId },
+        pinned:
+          preferenceByTarget.get(`${location}:${definitionId}`) ??
+          definition.launcherPinnedByDefault,
+      }));
+    });
+  }
+
+  async setSurfaceLauncherPin(
+    ownerId: string,
+    projectId: string,
+    input: ProjectSurfaceLauncherPin,
+  ): Promise<ProjectSurfaceLauncher | null> {
+    const launchers = await this.listSurfaceLaunchers(ownerId, projectId);
+    if (!launchers) return null;
+    const launcher = launchers.find(
+      ({ location, target }) =>
+        location === input.location &&
+        target.kind === "definition" &&
+        target.definitionId === input.definitionId,
+    );
+    if (!launcher) {
+      throw new TabLayoutInvariantError(
+        "This surface does not support the requested launcher location.",
+      );
+    }
+    await this.database
+      .insert(schema.projectSurfaceLauncherPreferences)
+      .values({
+        projectId,
+        location: input.location,
+        definitionId: input.definitionId,
+        pinned: input.pinned,
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.projectSurfaceLauncherPreferences.projectId,
+          schema.projectSurfaceLauncherPreferences.location,
+          schema.projectSurfaceLauncherPreferences.definitionId,
+        ],
+        set: { pinned: input.pinned, updatedAt: new Date() },
+      });
+    return { ...launcher, pinned: input.pinned };
+  }
+
+  async updateBuiltInSurfaceWorktree(
+    ownerId: string,
+    projectId: string,
+    definitionId: ProjectBuiltInSurfaceDefinitionId,
+    worktreeId: string,
+  ): Promise<ProjectTabLayoutWireSummary | null> {
+    if (
+      definitionId === "project.overview" ||
+      definitionId === "project.tasks"
+    ) {
+      throw new TabLayoutInvariantError(
+        "This built-in surface does not use a worktree.",
+      );
+    }
+    const worktrees = await this.database
+      .select({ id: schema.projectWorktrees.id })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projectWorktrees.id, worktreeId),
+          eq(schema.projectWorktrees.lifecycleState, "ready"),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .limit(1);
+    if (!worktrees[0]) return null;
+    await this.database
+      .insert(schema.projectBuiltInSurfaceStates)
+      .values({ projectId, definitionId, worktreeId })
+      .onConflictDoUpdate({
+        target: [
+          schema.projectBuiltInSurfaceStates.projectId,
+          schema.projectBuiltInSurfaceStates.definitionId,
+        ],
+        set: { worktreeId, updatedAt: new Date() },
+      });
+    return this.get(ownerId, projectId);
   }
 
   async nextProjectTabPosition(projectId: string): Promise<number> {

@@ -299,6 +299,11 @@ import {
   projectSurfaceViewCloseSchema,
   projectSurfaceViewOpenResultSchema,
   projectSurfaceViewOpenSchema,
+  projectSurfaceLauncherListSchema,
+  projectSurfaceLauncherPinSchema,
+  projectSurfaceLauncherSchema,
+  type ProjectBuiltInSurfaceDefinitionId,
+  type ProjectSurfaceLauncherPin,
   type ProjectSurfaceResourceRef,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
@@ -5354,6 +5359,47 @@ export async function closeProjectSurfaceView(
     ...wire,
     layout: await chatTitleEncryption.openTabLayout(wire.layout),
   };
+}
+
+export async function getProjectSurfaceLaunchers(projectId: string) {
+  return projectSurfaceLauncherListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/surface-launchers`,
+    ),
+  );
+}
+
+export async function updateProjectSurfaceLauncher(
+  projectId: string,
+  input: ProjectSurfaceLauncherPin,
+) {
+  return projectSurfaceLauncherSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/surface-launchers`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(projectSurfaceLauncherPinSchema.parse(input)),
+      },
+    ),
+  );
+}
+
+export async function updateBuiltInSurfaceWorktree(
+  projectId: string,
+  definitionId: ProjectBuiltInSurfaceDefinitionId,
+  worktreeId: string,
+) {
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/builtin-surfaces/${encodeURIComponent(definitionId)}/worktree`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ worktreeId }),
+        },
+      ),
+    ),
+  );
 }
 
 export async function createChat(

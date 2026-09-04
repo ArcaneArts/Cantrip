@@ -12,6 +12,8 @@ import type {
   ProjectFolderSetupJobSummary,
   ProjectSummary,
   ProjectSurfaceResourceRef,
+  ProjectSurfaceLauncher,
+  ProjectBuiltInSurfaceDefinitionId,
   ProjectTabKind,
   ProjectReplicaJobSummary,
   ProjectTabLayoutSummary,
@@ -60,6 +62,7 @@ import {
   type ExplorerFileMutationAuthorization,
 } from "@/components/sidebar/project-sidebar-file-tree";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
+import { ProjectToolLaunchers } from "@/components/sidebar/project-tool-launchers";
 import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
 import {
   ProjectContextMenu,
@@ -315,7 +318,7 @@ export function ProjectOverviewTab({
             ) : (
               <LayoutDashboard className="size-3.5 shrink-0 text-muted-foreground" />
             )}
-            <span className="truncate">Overview</span>
+            <span className="truncate">{project.name}</span>
             {settingUp || failed ? (
               <span
                 className={cn(
@@ -373,6 +376,7 @@ export function ProjectChatList({
   fileRevealLabel,
   onChangeChatWorktree,
   overviewSelected,
+  surfaceLaunchers = [],
   projectViews,
   onFilePin,
   onFileCreateFolder,
@@ -396,6 +400,7 @@ export function ProjectChatList({
   onOpenChatTerminal,
   onOpenProjectSettings,
   onOpenSurface,
+  onPinProjectTool,
   onRevealProject,
   onDeleteTerminal,
   onStopAndCloseRunTerminal,
@@ -441,6 +446,7 @@ export function ProjectChatList({
     mode: "agent-managed" | "pinned",
   ): void;
   overviewSelected: boolean;
+  surfaceLaunchers: ProjectSurfaceLauncher[];
   projectViews: ProjectViewSummary[];
   onFilePin(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFileCreateFolder(
@@ -481,6 +487,10 @@ export function ProjectChatList({
   onOpenChatTerminal(chat: ChatSummary): void;
   onOpenProjectSettings(projectId: string): void;
   onOpenSurface(surfaceRef: ProjectSurfaceResourceRef): void;
+  onPinProjectTool(
+    definitionId: ProjectBuiltInSurfaceDefinitionId,
+    pinned: boolean,
+  ): void;
   onRevealProject?: (
     project: ProjectSummary,
     localFolder: boolean,
@@ -604,11 +614,13 @@ export function ProjectChatList({
       kind: "code" as const,
       codeTab,
     })),
-    ...projectViews.map((view) => ({
-      id: viewId(view.id),
-      kind: "view" as const,
-      view,
-    })),
+    ...projectViews
+      .filter(({ kind }) => kind === "remote-desktop")
+      .map((view) => ({
+        id: viewId(view.id),
+        kind: "view" as const,
+        view,
+      })),
   ];
   const tabByKey = new Map(tabs.map((tab) => [tab.id, tab]));
   const openTabKeys = new Set(surfaces.map(({ tabKey }) => tabKey));
@@ -798,6 +810,18 @@ export function ProjectChatList({
                       sidebarDrop.isOver && "bg-muted/40",
                     )}
                   >
+                    <ProjectToolLaunchers
+                      capabilities={project.capabilities}
+                      launchers={surfaceLaunchers}
+                      selectedTabKey={selectedTabKey}
+                      surfaces={surfaces}
+                      onClose={onCloseSurface}
+                      onOpen={(definitionId) =>
+                        onOpenSurface({ kind: "builtin", definitionId })
+                      }
+                      onPin={onPinProjectTool}
+                      onSelect={onSelectTab}
+                    />
                     <SortableContext
                       items={sidebarSurfaceRows.map(({ tab }) => tab.id)}
                       strategy={verticalListSortingStrategy}

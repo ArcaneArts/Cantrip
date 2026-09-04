@@ -1,4 +1,4 @@
-import type { ExecutionTarget, ProjectViewKind } from "@cantrip/protocol";
+import type { ExecutionTarget } from "@cantrip/protocol";
 
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
@@ -25,12 +25,6 @@ export interface SurfaceCreationOperations {
   chat: CreationMutation<SurfaceCreateInput & { open?: boolean }>;
   code: CreationMutation<SurfaceCreateInput & { worktreeId?: string }>;
   explorer: CreationMutation<SurfaceCreateInput & { worktreeId?: string }>;
-  projectView: CreationMutation<{
-    kind: ProjectViewKind;
-    projectId: string;
-    tabGroupId?: string;
-    worktreeId?: string;
-  }>;
   remoteDesktop: CreationMutation<SurfaceCreateInput>;
   terminal: CreationMutation<SurfaceCreateInput>;
 }
@@ -96,11 +90,10 @@ export function createSurfaceCommandController({
     else if (kind === "remote-desktop") {
       if (!tabGroupId) creation.remoteDesktop.reset();
       creation.remoteDesktop.mutate(input);
-    } else {
-      creation.projectView.mutate({ projectId, tabGroupId, kind });
     }
   };
   const renameSurface = (surface: ProjectSurface, title: string) => {
+    if (surface.kind === "builtin") return;
     if (surface.kind === "chat") {
       crud.chat.rename.mutate({ chatId: surface.tabId, title });
     } else if (surface.kind === "terminal") {
@@ -122,6 +115,7 @@ export function createSurfaceCommandController({
     views.close.mutate(surface);
   };
   const deleteSurfaceResource = (surface: ProjectSurface) => {
+    if (surface.kind === "builtin") return;
     if (surface.kind === "chat") crud.chat.delete.mutate(surface.tabId);
     else if (surface.kind === "terminal")
       crud.terminal.delete.mutate(surface.tabId);
@@ -138,7 +132,6 @@ export function createSurfaceCommandController({
     ...(creation.explorer.isPending ? (["explorer"] as const) : []),
     ...(creation.browser.isPending ? (["browser"] as const) : []),
     ...(creation.code.isPending ? (["code"] as const) : []),
-    ...(creation.projectView.isPending ? (["history", "issues"] as const) : []),
     ...(creation.remoteDesktop.isPending ? (["remote-desktop"] as const) : []),
   ]);
   const surfaceCreationFailure = creation.chat.isError

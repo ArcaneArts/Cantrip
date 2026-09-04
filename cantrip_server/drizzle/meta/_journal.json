@@ -1345,6 +1345,13 @@
       "when": 1788451420461,
       "tag": "0191_wakeful_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1788519735480,
+      "tag": "0192_sudden_gateway",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import {
   getCodeTabs,
   getExplorers,
   getProjectRepositoryStats,
+  getProjectSurfaceLaunchers,
   getProjectTabLayout,
   getProjectTokenUsage,
   getProjectViews,
@@ -52,6 +53,11 @@ export function useProjectWorkspaceResources({
     queryFn: () => getProjectTabLayout(selectedProjectId!),
     queryKey: ["project-tab-layout", selectedProjectId],
     refetchInterval: projectResourcesLive ? false : 10_000,
+  });
+  const surfaceLaunchers = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => getProjectSurfaceLaunchers(selectedProjectId!),
+    queryKey: ["project-surface-launchers", selectedProjectId],
   });
   const worktrees = useQuery({
     enabled: Boolean(selectedProjectId),
@@ -268,6 +274,7 @@ export function useProjectWorkspaceResources({
     repositoryStats,
     runConfigurationRuntimes,
     runConfigurations,
+    surfaceLaunchers,
     tabLayout,
     terminals,
     worktreeStatuses,

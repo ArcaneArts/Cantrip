@@ -8,12 +8,29 @@ import type {
   ProjectTabMemberSummary,
   ProjectTabPlacement,
   ProjectSurfaceDefinition,
+  ProjectBuiltInSurfaceDefinitionId,
   ProjectSurfaceResourceRef,
   ProjectSurfaceView,
   ProjectViewSummary,
   TerminalSummary,
 } from "@cantrip/protocol";
-import { projectSurfaceIdentityForTab } from "./project-surface-registry";
+import {
+  projectBuiltinSurfaceDefinitionIdSchema,
+  projectSurfaceViewId,
+} from "@cantrip/protocol";
+import {
+  projectBuiltInSurfaceIdentity,
+  projectSurfaceIdentityForTab,
+} from "./project-surface-registry";
+
+export interface ProjectBuiltInSurfaceEntity {
+  id: string;
+  projectId: string;
+  definitionId: ProjectBuiltInSurfaceDefinitionId;
+  worktreeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type ProjectSurface =
   | ProjectSurfaceBase<"chat", ChatSummary>
@@ -23,7 +40,8 @@ export type ProjectSurface =
   | ProjectSurfaceBase<"code", CodeTabSummary>
   | ProjectSurfaceBase<"history", ProjectViewSummary>
   | ProjectSurfaceBase<"issues", ProjectViewSummary>
-  | ProjectSurfaceBase<"remote-desktop", ProjectViewSummary>;
+  | ProjectSurfaceBase<"remote-desktop", ProjectViewSummary>
+  | ProjectSurfaceBase<"builtin", ProjectBuiltInSurfaceEntity>;
 
 export type ProjectFileSurface = Extract<ProjectSurface, { kind: "explorer" }>;
 
@@ -90,7 +108,18 @@ export function projectSurfaceIsFile(
 export function projectSurfaceTabKey(
   kind: ProjectTabKind | "view",
   tabId: string,
+  projectId?: string,
 ): string {
+  if (kind === "builtin") {
+    if (!projectId) throw new Error("Built-in tab keys require a project id.");
+    return projectSurfaceViewId({
+      projectId,
+      resource: {
+        kind: "builtin",
+        definitionId: projectBuiltinSurfaceDefinitionIdSchema.parse(tabId),
+      },
+    });
+  }
   const prefix =
     kind === "history" || kind === "issues" || kind === "remote-desktop"
       ? "view"
@@ -123,6 +152,44 @@ function surfaceForMember(
     terminals: Map<string, TerminalSummary>;
   },
 ): ProjectSurface | null {
+  if (member.tabKind === "builtin") {
+    const definitionId = member.builtInState?.definitionId;
+    if (!definitionId || definitionId !== member.tabId) return null;
+    const identity = projectBuiltInSurfaceIdentity(
+      member.projectId,
+      definitionId,
+    );
+    const entity: ProjectBuiltInSurfaceEntity = {
+      id: identity.viewId,
+      projectId: member.projectId,
+      definitionId,
+      worktreeId: member.builtInState?.worktreeId ?? null,
+      createdAt: member.createdAt,
+      updatedAt: member.updatedAt,
+    };
+    return {
+      definition: identity.definition,
+      entity,
+      groupId: member.groupId,
+      kind: "builtin",
+      member,
+      placement: {
+        paneId: member.groupId,
+        position: member.position,
+        viewId: identity.viewId,
+      },
+      projectId: member.projectId,
+      resource: { entity, ref: identity.resource },
+      tabId: member.tabId,
+      tabKey: member.tabKey,
+      title: identity.definition.label,
+      view: {
+        id: identity.viewId,
+        projectId: member.projectId,
+        resource: identity.resource,
+      },
+    };
+  }
   const placedSurface = <Kind extends ProjectTabKind, Entity>(
     kind: Kind,
     entity: Entity,
