@@ -9,7 +9,10 @@ import {
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type WorktreeBindingTarget } from "@/components/app/application-shell-model";
+import {
+  projectToolSectionRequiresSurfaceBridge,
+  type WorktreeBindingTarget,
+} from "@/components/app/application-shell-model";
 import { ApplicationShellRender } from "@/components/app/application-shell-render";
 import {
   createDesktopPaneSelectionCommands,
@@ -784,20 +787,21 @@ export function App() {
     },
     [openProjectToolSurface, selectedProjectId],
   );
-  const overviewBridgeAttemptRef = useRef<string | null>(null);
+  const projectToolBridgeAttemptRef = useRef<string | null>(null);
   useEffect(() => {
     if (
       isPopout ||
       !selectedProjectId ||
       !tabLayout.isSuccess ||
       workspaceSelection.destination !== "overview" ||
-      selectedBuiltInDefinitionId
+      selectedBuiltInDefinitionId ||
+      !projectToolSectionRequiresSurfaceBridge(projectOverviewSection)
     ) {
       return;
     }
     const attempt = `${selectedProjectId}:${tabLayout.data.revision}`;
-    if (overviewBridgeAttemptRef.current === attempt) return;
-    overviewBridgeAttemptRef.current = attempt;
+    if (projectToolBridgeAttemptRef.current === attempt) return;
+    projectToolBridgeAttemptRef.current = attempt;
     void openOrFocusSurface(
       selectedProjectId,
       projectBuiltInSurfaceResourceRef(

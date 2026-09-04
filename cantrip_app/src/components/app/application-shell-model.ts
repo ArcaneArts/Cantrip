@@ -48,6 +48,12 @@ export function projectOverviewSectionLabel(
   return `${section.slice(0, 1).toUpperCase()}${section.slice(1)}`;
 }
 
+export function projectToolSectionRequiresSurfaceBridge(
+  section: ProjectOverviewSection,
+): boolean {
+  return section !== "overview";
+}
+
 export function codeAppearanceFor(
   dark: boolean,
   highContrast: boolean,
