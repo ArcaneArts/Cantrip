@@ -210,7 +210,9 @@ share that pane, but only one is active at a time.
   list when dropped.
 - An open rail tab has the same close and destructive resource actions as a
   center tab. Its context menu closes the view or, when the surface definition
-  permits it, confirms deletion or archival of the underlying resource.
+  permits it, immediately deletes or archives the underlying resource without
+  an additional confirmation dialog. Middle-click closes the tab placement
+  without deleting its resource.
 - Static rail launchers are reserved for singleton tools and do not participate
   in sorting or deletion. Multi-instance resources such as Terminals and
   Browsers are created from the rail's add-surface control. Once a singleton
