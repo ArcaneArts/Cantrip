@@ -124,7 +124,7 @@ export class AccountUsageMeter implements AccountUsageRecorder {
   readonly #now: () => Date;
   readonly #onFlushed?: AccountUsageMeterOptions["onFlushed"];
   readonly #onMeasurement?: AccountUsageMeterOptions["onMeasurement"];
-  readonly #timer: ReturnType<typeof setInterval>;
+  #timer: ReturnType<typeof setTimeout> | null = null;
   #bufferedBytes = 0n;
   #closed = false;
   #droppedBytes = 0n;
@@ -135,6 +135,7 @@ export class AccountUsageMeter implements AccountUsageRecorder {
   #flushScheduled = false;
   #lastFlushDurationMs: number | null = null;
   #lastFlushedAt: string | null = null;
+  #lastAutomaticFlushStartedAtMs: number | null = null;
   #pending: PendingFlush | null = null;
   #sequence = 0n;
 
@@ -164,8 +165,7 @@ export class AccountUsageMeter implements AccountUsageRecorder {
     ) {
       throw new Error("Account usage meter options are invalid.");
     }
-    this.#timer = setInterval(() => void this.flush(), this.#flushIntervalMs);
-    this.#timer.unref();
+    this.#scheduleIntervalFlush();
   }
 
   record(measurement: AccountUsageMeasurement): boolean {
@@ -283,7 +283,8 @@ export class AccountUsageMeter implements AccountUsageRecorder {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
-    clearInterval(this.#timer);
+    if (this.#timer) clearTimeout(this.#timer);
+    this.#timer = null;
     if (!(await this.flush()) && this.#pending) await this.flush();
   }
 
@@ -401,11 +402,38 @@ export class AccountUsageMeter implements AccountUsageRecorder {
   }
 
   #scheduleFlush(): void {
-    if (this.#closed || this.#flushScheduled) return;
+    if (this.#closed || this.#flushScheduled || !this.#automaticFlushIsDue()) {
+      return;
+    }
     this.#flushScheduled = true;
     queueMicrotask(() => {
       this.#flushScheduled = false;
-      void this.flush();
+      if (this.#automaticFlushIsDue()) this.#startAutomaticFlush();
     });
+  }
+
+  #automaticFlushIsDue(): boolean {
+    return (
+      this.#lastAutomaticFlushStartedAtMs === null ||
+      Date.now() - this.#lastAutomaticFlushStartedAtMs >= this.#flushIntervalMs
+    );
+  }
+
+  #startAutomaticFlush(): void {
+    if (this.#closed) return;
+    this.#scheduleIntervalFlush();
+    if (!this.#pending && this.#buffer.size === 0) return;
+    this.#lastAutomaticFlushStartedAtMs = Date.now();
+    void this.flush();
+  }
+
+  #scheduleIntervalFlush(): void {
+    if (this.#closed) return;
+    if (this.#timer) clearTimeout(this.#timer);
+    this.#timer = setTimeout(() => {
+      this.#timer = null;
+      this.#startAutomaticFlush();
+    }, this.#flushIntervalMs);
+    this.#timer.unref();
   }
 }
