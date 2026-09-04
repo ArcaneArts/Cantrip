@@ -42,6 +42,51 @@ describe("AccountUsageMeter", () => {
     await meter.close();
   });
 
+  it("coalesces repeated byte-threshold crossings until the next cadence", async () => {
+    vi.useFakeTimers();
+    const batches: AccountBandwidthFlushBatch[] = [];
+    const meter = new AccountUsageMeter(
+      {
+        async flushBandwidthBatch(batch) {
+          batches.push(batch);
+          return { applied: true, ownerIds: ["owner-1"] };
+        },
+      },
+      logger,
+      {
+        flushIntervalMs: 5_000,
+        flushThresholdBytes: 10,
+      },
+    );
+
+    meter.record({
+      ownerId: "owner-1",
+      direction: "ingress",
+      channel: "code-relay",
+      bytes: 10,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(batches).toHaveLength(1);
+
+    for (let index = 0; index < 20; index += 1) {
+      meter.record({
+        ownerId: "owner-1",
+        direction: "ingress",
+        channel: "code-relay",
+        bytes: 10,
+      });
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    expect(batches).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(batches).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(batches).toHaveLength(2);
+    expect(batches[1]!.entries[0]!.bytes).toBe(200n);
+    await meter.close();
+  });
+
   it("aggregates directions and channels into one retry-safe batch", async () => {
     const batches: AccountBandwidthFlushBatch[] = [];
     const sink: AccountBandwidthFlushSink = {
