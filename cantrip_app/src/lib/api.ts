@@ -5308,6 +5308,7 @@ export async function moveProjectPaneMember(
     targetPaneId: string | null;
     targetMemberPosition: number;
     targetPanePosition?: number;
+    targetRegion?: "center" | "right" | "bottom" | "left" | "detached";
   },
 ) {
   return chatTitleEncryption.openTabLayout(
@@ -5329,6 +5330,7 @@ export async function openProjectSurfaceView(
     revision: number;
     surfaceRef: ProjectSurfaceResourceRef;
     targetPaneId?: string;
+    targetRegion?: "center" | "right" | "bottom" | "left" | "detached";
   },
 ) {
   const wire = projectSurfaceViewOpenResultSchema.parse(

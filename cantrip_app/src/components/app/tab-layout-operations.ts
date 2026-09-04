@@ -95,6 +95,9 @@ export function useTabLayoutOperations({
         ...(command.targetPanePosition === undefined
           ? {}
           : { targetPanePosition: command.targetPanePosition }),
+        ...(command.targetRegion === undefined
+          ? {}
+          : { targetRegion: command.targetRegion }),
       });
     },
     onMutate: async (input: TabLayoutMutationInput) => {

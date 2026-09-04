@@ -123,7 +123,9 @@ export class ExplorerRepository {
       if (input.attachToTabLayout !== false) {
         await attachProjectTab(transaction, {
           projectId,
+          definitionId: "project.explorer",
           paneId: input.paneId ?? input.tabGroupId,
+          region: input.targetRegion,
           tabId: explorer.id,
           tabKind: "explorer",
         });
@@ -282,7 +284,9 @@ export class ExplorerRepository {
       const updated = firstOrThrow(updatedRows, "pinning an explorer");
       await attachProjectTab(transaction, {
         projectId: explorer.projectId,
+        definitionId: "project.file",
         paneId: input.paneId ?? input.tabGroupId,
+        region: input.targetRegion,
         tabId: explorerId,
         tabKind: "explorer",
       });

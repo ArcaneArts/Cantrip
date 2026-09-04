@@ -189,6 +189,7 @@ import {
   projectWorktreeSummarySchema,
   projectTabLayoutSummarySchema,
   projectTabLayoutWireSummarySchema,
+  projectSurfaceViewOpenSchema,
   projectTokenUsageSchema,
   remoteDesktopCreateSchema,
   encryptedRemoteDesktopCreateSchema,
@@ -1595,6 +1596,36 @@ describe("Cantrip protocol", () => {
       terminalCreateSchema.safeParse({
         worktreeId: "legacy-worktree",
         target,
+      }).success,
+    ).toBe(false);
+    expect(
+      terminalCreateSchema.safeParse({ targetRegion: "bottom" }).success,
+    ).toBe(true);
+    expect(
+      terminalCreateSchema.safeParse({
+        paneId: "pane-1",
+        targetRegion: "bottom",
+      }).success,
+    ).toBe(false);
+    expect(
+      projectSurfaceViewOpenSchema.safeParse({
+        revision: 2,
+        surfaceRef: {
+          kind: "builtin",
+          definitionId: "git.history",
+        },
+        targetRegion: "right",
+      }).success,
+    ).toBe(true);
+    expect(
+      projectSurfaceViewOpenSchema.safeParse({
+        revision: 2,
+        surfaceRef: {
+          kind: "builtin",
+          definitionId: "git.history",
+        },
+        targetPaneId: "pane-1",
+        targetRegion: "right",
       }).success,
     ).toBe(false);
   });
@@ -6227,6 +6258,24 @@ describe("Cantrip protocol", () => {
         targetPanePosition: 1,
       }),
     ).toMatchObject({ targetPaneId: null, targetPanePosition: 1 });
+    expect(
+      projectPaneMemberMoveSchema.safeParse({
+        revision: 3,
+        tabKey: "chat:chat-1",
+        targetPaneId: null,
+        targetRegion: "bottom",
+        targetMemberPosition: 0,
+      }).success,
+    ).toBe(true);
+    expect(
+      projectPaneMemberMoveSchema.safeParse({
+        revision: 3,
+        tabKey: "chat:chat-1",
+        targetPaneId: "pane-2",
+        targetRegion: "bottom",
+        targetMemberPosition: 0,
+      }).success,
+    ).toBe(false);
     expect(
       projectPaneUpdateSchema.parse({ revision: 3, title: "  Agents  " }),
     ).toEqual({ revision: 3, title: "Agents" });

@@ -455,6 +455,7 @@ export class ChatCatalogRepository {
         await attachProjectTab(transaction, {
           projectId,
           paneId: input.paneId ?? input.tabGroupId,
+          region: input.targetRegion,
           tabId: chat.id,
           tabKind: "chat",
         });

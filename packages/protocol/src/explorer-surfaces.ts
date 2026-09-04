@@ -28,7 +28,7 @@ const explorerCreateBaseSchema = z
       context.addIssue({
         code: "custom",
         message:
-          "Specify either paneId or the deprecated tabGroupId, not both.",
+          "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
         path: ["paneId"],
       });
     }
@@ -77,7 +77,8 @@ export const encryptedExplorerPinSchema = z
   })
   .strict()
   .refine(hasUnambiguousProjectPaneDestination, {
-    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    message:
+      "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
     path: ["paneId"],
   })
   .refine(

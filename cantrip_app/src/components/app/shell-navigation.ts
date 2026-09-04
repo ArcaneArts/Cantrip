@@ -4,6 +4,7 @@ import type {
   ChatSummary,
   ClientControlCommand,
   ProjectSummary,
+  ProjectPaneRegion,
   ProjectSurfaceResourceRef,
   ProjectTabLayoutSummary,
   ProjectWorkspaceSummary,
@@ -76,11 +77,13 @@ export async function openOrFocusProjectSurface({
   queryClient,
   surfaceRef,
   targetPaneId,
+  targetRegion,
 }: {
   projectId: string;
   queryClient: QueryClient;
   surfaceRef: ProjectSurfaceResourceRef;
   targetPaneId?: string;
+  targetRegion?: ProjectPaneRegion;
 }) {
   const viewId = projectSurfaceViewId({ projectId, resource: surfaceRef });
   let layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
@@ -94,6 +97,7 @@ export async function openOrFocusProjectSurface({
         revision: layout.revision,
         surfaceRef,
         ...(targetPaneId ? { targetPaneId } : {}),
+        ...(targetRegion ? { targetRegion } : {}),
       })
     ).layout;
   } catch (error) {
@@ -106,6 +110,7 @@ export async function openOrFocusProjectSurface({
         revision: layout.revision,
         surfaceRef,
         ...(targetPaneId ? { targetPaneId } : {}),
+        ...(targetRegion ? { targetRegion } : {}),
       })
     ).layout;
   }
@@ -1076,6 +1081,7 @@ export function createShellProjectNavigationCommands({
     projectId: string,
     surfaceRef: ProjectSurfaceResourceRef,
     targetPaneId?: string,
+    targetRegion?: ProjectPaneRegion,
   ) => {
     setAppMode("ide");
     setSidebarFilePreview((current) =>
@@ -1091,6 +1097,7 @@ export function createShellProjectNavigationCommands({
       queryClient,
       surfaceRef,
       ...(targetPaneId ? { targetPaneId } : {}),
+      ...(targetRegion ? { targetRegion } : {}),
     })
       .then(({ layout }) => {
         if (surfaceOpenRequestRef.current !== requestId) return true;

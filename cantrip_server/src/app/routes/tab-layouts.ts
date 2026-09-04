@@ -350,12 +350,11 @@ export function installTabLayoutRoutes(
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const layout = await repository.tabLayouts.reorderPanes(
+        const layout = await repository.tabLayouts.reorderLegacyPanes(
           applicationOwnerId(),
           request.params.projectId,
           {
             revision: input.data.revision,
-            region: "center",
             paneIds: input.data.groupIds,
           },
         );

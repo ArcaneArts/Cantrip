@@ -14,7 +14,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import type { ExecutionTarget } from "@cantrip/protocol";
+import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -46,11 +46,16 @@ import {
 
 export interface ProjectPaneTabStripProps {
   activeTabKey: string;
+  allowedCreateKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onClose(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface): void;
   onRename(surface: ProjectSurface, title: string): void;
+  onMoveToRegion?(
+    surface: ProjectSurface,
+    region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">,
+  ): void;
   onSelect(tabKey: string): void;
   placement?: ProjectSurfacePlacementContext;
   previewFile?: {
@@ -62,6 +67,9 @@ export interface ProjectPaneTabStripProps {
     onPin(): void;
     onSelect(): void;
   };
+  paneId?: string;
+  paneRegion?: ProjectPaneRegion;
+  projectId?: string;
   surfaces: readonly ProjectSurface[];
 }
 
@@ -95,22 +103,31 @@ function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
 
 export function ProjectPaneTabStrip({
   activeTabKey,
+  allowedCreateKinds,
   creatingKinds,
   onCreate,
   onClose,
   onDelete,
   onRename,
+  onMoveToRegion,
   onSelect,
   placement,
   previewFile,
+  paneId: explicitPaneId,
+  paneRegion = "center",
+  projectId: explicitProjectId,
   surfaces,
 }: ProjectPaneTabStripProps) {
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
   const lastSurface = surfaces.at(-1);
-  const paneId = lastSurface?.paneId ?? "empty";
-  const projectId = surfaces[0]?.projectId ?? previewFile?.projectId ?? "empty";
+  const paneId = explicitPaneId ?? lastSurface?.paneId ?? "empty";
+  const projectId =
+    explicitProjectId ??
+    surfaces[0]?.projectId ??
+    previewFile?.projectId ??
+    "empty";
   const paneStripDrop = useDroppable({
     id: workspacePaneStripDropId(paneId),
     disabled: surfaces.length === 0,
@@ -257,6 +274,31 @@ export function ProjectPaneTabStrip({
                         {canRename ? (
                           <ContextMenu.Separator className="my-1 h-px bg-border" />
                         ) : null}
+                        {onMoveToRegion
+                          ? (["center", "right", "bottom"] as const)
+                              .filter(
+                                (region) =>
+                                  region !== paneRegion &&
+                                  surface.definition.supportedPlacements.includes(
+                                    region,
+                                  ),
+                              )
+                              .map((region) => (
+                                <StyledContextMenuItem
+                                  key={region}
+                                  onSelect={() =>
+                                    onMoveToRegion(surface, region)
+                                  }
+                                >
+                                  Move to{" "}
+                                  {region === "center"
+                                    ? "Center"
+                                    : region === "right"
+                                      ? "Right"
+                                      : "Bottom"}
+                                </StyledContextMenuItem>
+                              ))
+                          : null}
                         <StyledContextMenuItem
                           onSelect={() => closeImmediately(surface)}
                         >
@@ -332,6 +374,7 @@ export function ProjectPaneTabStrip({
           ) : null}
 
           <ProjectSurfaceCreateMenu
+            allowedKinds={allowedCreateKinds}
             creatingKinds={creatingKinds}
             onCreate={onCreate}
             placement={placement}
@@ -392,6 +435,7 @@ function SortableProjectTabFrame({
         tabKey: surface.tabKey,
         label: surface.title,
         position: memberPosition,
+        supportedRegions: surface.definition.supportedPlacements,
         visualKind: surface.kind,
       },
       drop: {

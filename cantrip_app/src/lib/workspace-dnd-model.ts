@@ -23,6 +23,7 @@ export type WorkspaceDragItem =
       tabKey: string;
       label: string;
       position: number;
+      supportedRegions?: readonly ProjectPaneRegion[];
       visualKind: ProjectSurface["kind"];
     };
 
@@ -52,6 +53,12 @@ export type WorkspaceDropTarget =
       type: "pane-target";
       projectId: string;
       paneId: string;
+    }
+  | {
+      type: "region";
+      projectId: string;
+      region: Extract<ProjectPaneRegion, "right" | "bottom">;
+      paneId: string | null;
     };
 
 export interface WorkspaceDndData {
@@ -68,6 +75,7 @@ export type TabLayoutCommand =
       targetPaneId: string | null;
       targetMemberPosition: number;
       targetPanePosition?: number;
+      targetRegion?: ProjectPaneRegion;
     };
 
 export type WorkspaceDropOperation =
@@ -171,8 +179,11 @@ export function decideWorkspaceDrop(
   }
 
   const sourcePane = layout.panes.find(({ id }) => id === drag.paneId);
-  const targetPane = layout.panes.find(({ id }) => id === drop.paneId);
-  if (!sourcePane || !targetPane) {
+  const targetPane =
+    drop.type === "region"
+      ? layout.panes.find(({ id }) => id === drop.paneId)
+      : layout.panes.find(({ id }) => id === drop.paneId);
+  if (!sourcePane || (drop.type !== "region" && !targetPane)) {
     return { status: "invalid", reason: "The tab's pane no longer exists." };
   }
   const sourcePosition = sourcePane.members.findIndex(
@@ -182,11 +193,45 @@ export function decideWorkspaceDrop(
     return { status: "invalid", reason: "The dragged tab no longer exists." };
   }
   const requestedPosition =
-    drop.type === "pane-target"
-      ? targetPane.members.length
-      : drop.memberPosition;
+    drop.type === "region"
+      ? (targetPane?.members.length ?? 0)
+      : drop.type === "pane-target"
+        ? targetPane!.members.length
+        : drop.memberPosition;
 
-  if (sourcePane.id === targetPane.id) {
+  if (drop.type === "region") {
+    if (drag.supportedRegions && !drag.supportedRegions.includes(drop.region)) {
+      return {
+        status: "invalid",
+        reason: `${drag.label} cannot open in the ${drop.region} dock.`,
+      };
+    }
+    if (drop.paneId && targetPane?.region !== drop.region) {
+      return {
+        status: "invalid",
+        reason: "The dock target no longer matches its region.",
+      };
+    }
+    if (targetPane?.id === sourcePane.id || sourcePane.region === drop.region) {
+      return { status: "noop" };
+    }
+    return {
+      status: "valid",
+      operation: {
+        type: "tab-layout",
+        projectId: drag.projectId,
+        command: {
+          type: "move-member",
+          tabKey: drag.tabKey,
+          targetPaneId: targetPane?.id ?? null,
+          targetMemberPosition: requestedPosition,
+          ...(targetPane ? {} : { targetRegion: drop.region }),
+        },
+      },
+    };
+  }
+
+  if (sourcePane.id === targetPane!.id) {
     if (drop.type === "pane-target") return { status: "noop" };
     const targetPosition = Math.max(
       0,
@@ -224,10 +269,10 @@ export function decideWorkspaceDrop(
       command: {
         type: "move-member",
         tabKey: drag.tabKey,
-        targetPaneId: targetPane.id,
+        targetPaneId: targetPane!.id,
         targetMemberPosition: Math.max(
           0,
-          Math.min(requestedPosition, targetPane.members.length),
+          Math.min(requestedPosition, targetPane!.members.length),
         ),
       },
     },
@@ -252,4 +297,10 @@ export function workspacePaneStripDropId(paneId: string): string {
 
 export function workspacePaneTargetDropId(paneId: string): string {
   return `workspace:pane-target:${paneId}`;
+}
+
+export function workspaceRegionDropId(
+  region: Extract<ProjectPaneRegion, "right" | "bottom">,
+): string {
+  return `workspace:region:${region}`;
 }

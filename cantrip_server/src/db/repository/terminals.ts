@@ -136,6 +136,7 @@ export class TerminalRepository {
       await attachProjectTab(transaction, {
         projectId,
         paneId: input.paneId ?? input.tabGroupId,
+        region: input.targetRegion,
         tabId: terminal.id,
         tabKind: "terminal",
       });

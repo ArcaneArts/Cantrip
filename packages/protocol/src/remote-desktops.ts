@@ -33,7 +33,8 @@ const remoteDesktopCreateBaseSchema = z.object({
 export const remoteDesktopCreateSchema = remoteDesktopCreateBaseSchema
   .strict()
   .refine(hasUnambiguousProjectPaneDestination, {
-    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    message:
+      "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
     path: ["paneId"],
   });
 
@@ -45,7 +46,8 @@ export const encryptedRemoteDesktopCreateSchema = remoteDesktopCreateBaseSchema
   })
   .strict()
   .refine(hasUnambiguousProjectPaneDestination, {
-    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    message:
+      "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
     path: ["paneId"],
   })
   .refine(

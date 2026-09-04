@@ -196,6 +196,7 @@ export class CodeSurfaceRepository {
       await attachProjectTab(transaction, {
         projectId,
         paneId: input.paneId ?? input.tabGroupId,
+        region: input.targetRegion,
         tabId: codeTab.id,
         tabKind: "code",
       });

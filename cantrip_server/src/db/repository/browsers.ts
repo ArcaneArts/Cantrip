@@ -142,6 +142,7 @@ export class BrowserRepository {
       await attachProjectTab(transaction, {
         projectId,
         paneId: input.paneId ?? input.tabGroupId,
+        region: input.targetRegion,
         tabId: browser.id,
         tabKind: "browser",
       });

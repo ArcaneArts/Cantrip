@@ -4,6 +4,7 @@ import type {
   ProjectBuiltInSurfaceDefinitionId,
   ProjectSurfaceLauncher,
   ProjectSurfaceLauncherPin,
+  ProjectSurfaceDefinitionId,
   ProjectSurfaceResourceRef,
   ProjectSurfaceViewClose,
   ProjectSurfaceViewCloseResult,
@@ -22,7 +23,6 @@ import type {
 } from "@cantrip/protocol";
 import { projectSurfaceTabKind, projectSurfaceViewId } from "@cantrip/protocol";
 import {
-  PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS,
   PROJECT_SURFACE_DEFINITIONS,
   projectBuiltinSurfaceDefinitionIdSchema,
   projectSurfaceLauncherId,
@@ -45,6 +45,98 @@ export class TabLayoutConflictError extends Error {
 
 export class TabLayoutInvariantError extends Error {
   readonly statusCode = 400;
+}
+
+function surfaceDefinitionIdForTab(
+  tabKind: ProjectTabKind,
+  tabId: string,
+): ProjectSurfaceDefinitionId {
+  switch (tabKind) {
+    case "chat":
+      return "project.agent";
+    case "terminal":
+      return "project.terminal";
+    case "explorer":
+      return "project.explorer";
+    case "browser":
+      return "project.browser";
+    case "code":
+      return "project.code";
+    case "history":
+      return "project.git-history";
+    case "issues":
+      return "project.github-issues";
+    case "remote-desktop":
+      return "project.remote-desktop";
+    case "builtin":
+      return projectBuiltinSurfaceDefinitionIdSchema.parse(tabId);
+  }
+}
+
+function suggestedPlacementForTab(
+  tabKind: ProjectTabKind,
+  tabId: string,
+  definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
+): ProjectPaneRegion {
+  const definition = PROJECT_SURFACE_DEFINITIONS.find(
+    ({ id }) => id === definitionId,
+  );
+  if (!definition) {
+    throw new TabLayoutInvariantError(
+      `Surface definition ${definitionId} is unavailable.`,
+    );
+  }
+  return definition.suggestedPlacement;
+}
+
+function assertTabSupportsRegion(
+  tabKind: ProjectTabKind,
+  tabId: string,
+  region: ProjectPaneRegion,
+  definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
+): void {
+  const definition = PROJECT_SURFACE_DEFINITIONS.find(
+    ({ id }) => id === definitionId,
+  );
+  if (!definition?.supportedPlacements.includes(region)) {
+    throw new TabLayoutInvariantError(
+      `${definitionId} does not support the ${region} region.`,
+    );
+  }
+}
+
+function isSinglePaneDockRegion(
+  region: ProjectPaneRegion,
+): region is "right" | "bottom" {
+  return region === "right" || region === "bottom";
+}
+
+async function panesInRegion(
+  database: TabLayoutExecutor,
+  projectId: string,
+  region: ProjectPaneRegion,
+) {
+  return database
+    .select()
+    .from(schema.tabGroups)
+    .where(
+      and(
+        eq(schema.tabGroups.projectId, projectId),
+        eq(schema.tabGroups.region, region),
+      ),
+    )
+    .orderBy(asc(schema.tabGroups.position), asc(schema.tabGroups.id));
+}
+
+function assertSingleDockPane(
+  panes: Awaited<ReturnType<typeof panesInRegion>>,
+  region: ProjectPaneRegion,
+): void {
+  if (isSinglePaneDockRegion(region) && panes.length > 1) {
+    throw new TabLayoutInvariantError(
+      `The ${region} dock contains more than one pane.`,
+    );
+  }
 }
 
 export function legacyTabLayoutFromPaneLayout(
@@ -146,6 +238,7 @@ async function attachProjectTabPlacement(
   database: TabLayoutExecutor,
   input: {
     projectId: string;
+    definitionId?: ProjectSurfaceDefinitionId;
     paneId?: string;
     region?: ProjectPaneRegion;
     tabId: string;
@@ -154,12 +247,14 @@ async function attachProjectTabPlacement(
 ): Promise<string> {
   const tabKey = projectTabKey(input.tabKind, input.tabId, input.projectId);
   let groupId = input.paneId;
-  const region = input.region ?? "center";
+  const region =
+    input.region ??
+    suggestedPlacementForTab(input.tabKind, input.tabId, input.definitionId);
   let memberPosition = 0;
 
   if (groupId) {
     const groups = await database
-      .select({ id: schema.tabGroups.id })
+      .select({ id: schema.tabGroups.id, region: schema.tabGroups.region })
       .from(schema.tabGroups)
       .where(
         and(
@@ -173,6 +268,12 @@ async function attachProjectTabPlacement(
         "The destination pane does not belong to this project.",
       );
     }
+    assertTabSupportsRegion(
+      input.tabKind,
+      input.tabId,
+      groups[0].region,
+      input.definitionId,
+    );
     const positions = await database
       .select({ position: schema.tabGroupMembers.position })
       .from(schema.tabGroupMembers)
@@ -181,25 +282,33 @@ async function attachProjectTabPlacement(
       .limit(1);
     memberPosition = (positions[0]?.position ?? -1) + 1;
   } else {
-    groupId = randomUUID();
-    const groups = await database
-      .select({ position: schema.tabGroups.position })
-      .from(schema.tabGroups)
-      .where(
-        and(
-          eq(schema.tabGroups.projectId, input.projectId),
-          eq(schema.tabGroups.region, region),
-        ),
-      )
-      .orderBy(desc(schema.tabGroups.position))
-      .limit(1);
-    await database.insert(schema.tabGroups).values({
-      id: groupId,
-      projectId: input.projectId,
+    assertTabSupportsRegion(
+      input.tabKind,
+      input.tabId,
       region,
-      position: (groups[0]?.position ?? -1) + 1,
-      anchorTabKey: tabKey,
-    });
+      input.definitionId,
+    );
+    const regionPanes = await panesInRegion(database, input.projectId, region);
+    assertSingleDockPane(regionPanes, region);
+    if (isSinglePaneDockRegion(region) && regionPanes[0]) {
+      groupId = regionPanes[0].id;
+      const positions = await database
+        .select({ position: schema.tabGroupMembers.position })
+        .from(schema.tabGroupMembers)
+        .where(eq(schema.tabGroupMembers.groupId, groupId))
+        .orderBy(desc(schema.tabGroupMembers.position))
+        .limit(1);
+      memberPosition = (positions[0]?.position ?? -1) + 1;
+    } else {
+      groupId = randomUUID();
+      await database.insert(schema.tabGroups).values({
+        id: groupId,
+        projectId: input.projectId,
+        region,
+        position: (regionPanes.at(-1)?.position ?? -1) + 1,
+        anchorTabKey: tabKey,
+      });
+    }
   }
 
   await database.insert(schema.tabGroupMembers).values({
@@ -217,6 +326,7 @@ export async function attachProjectTab(
   database: TabLayoutExecutor,
   input: {
     projectId: string;
+    definitionId?: ProjectSurfaceDefinitionId;
     paneId?: string;
     region?: ProjectPaneRegion;
     tabId: string;
@@ -540,6 +650,12 @@ export class ProjectTabLayoutRepository {
         .from(schema.projectBuiltInSurfaceStates)
         .where(eq(schema.projectBuiltInSurfaceStates.projectId, projectId)),
     ]);
+    for (const dockRegion of ["right", "bottom"] as const) {
+      assertSingleDockPane(
+        panes.filter(({ region }) => region === dockRegion),
+        dockRegion,
+      );
+    }
     const titles = new Map<
       string,
       Pick<ProjectTabMemberWireSummary, "builtInState" | "titleProtection">
@@ -711,6 +827,46 @@ export class ProjectTabLayoutRepository {
     return this.get(ownerId, projectId);
   }
 
+  async reorderLegacyPanes(
+    ownerId: string,
+    projectId: string,
+    input: { revision: number; paneIds: string[] },
+  ): Promise<ProjectTabLayoutWireSummary | null> {
+    if (!(await this.get(ownerId, projectId))) return null;
+    await this.database.transaction(async (transaction) => {
+      await claimRevision(transaction, ownerId, projectId, input.revision);
+      const panes = await transaction
+        .select({ id: schema.tabGroups.id, region: schema.tabGroups.region })
+        .from(schema.tabGroups)
+        .where(eq(schema.tabGroups.projectId, projectId));
+      const expected = new Set(panes.map(({ id }) => id));
+      if (
+        expected.size !== input.paneIds.length ||
+        input.paneIds.some((id) => !expected.has(id))
+      ) {
+        throw new TabLayoutInvariantError(
+          "The pane order did not match this project.",
+        );
+      }
+      const regionByPaneId = new Map(
+        panes.map(({ id, region }) => [id, region] as const),
+      );
+      for (const region of [
+        "center",
+        "right",
+        "bottom",
+        "left",
+        "detached",
+      ] as const) {
+        await updateGroupPositions(
+          transaction,
+          input.paneIds.filter((id) => regionByPaneId.get(id) === region),
+        );
+      }
+    });
+    return this.get(ownerId, projectId);
+  }
+
   async reorderMembers(
     ownerId: string,
     projectId: string,
@@ -781,16 +937,11 @@ export class ProjectTabLayoutRepository {
           "The moved tab does not belong to this project.",
         );
       }
-      const groups = await transaction
-        .select()
-        .from(schema.tabGroups)
-        .where(
-          and(
-            eq(schema.tabGroups.projectId, projectId),
-            eq(schema.tabGroups.region, selected.group.region),
-          ),
-        )
-        .orderBy(asc(schema.tabGroups.position), asc(schema.tabGroups.id));
+      const sourceRegionPanes = await panesInRegion(
+        transaction,
+        projectId,
+        selected.group.region,
+      );
       const sourceMembers = await transaction
         .select()
         .from(schema.tabGroupMembers)
@@ -800,7 +951,53 @@ export class ProjectTabLayoutRepository {
           asc(schema.tabGroupMembers.tabKey),
         );
 
-      if (input.targetPaneId === selected.group.id) {
+      if (input.targetPaneId !== null && input.targetRegion !== undefined) {
+        throw new TabLayoutInvariantError(
+          "Specify either a target pane or a target region, not both.",
+        );
+      }
+
+      let targetRegion = input.targetRegion ?? selected.group.region;
+      let targetPane: (typeof sourceRegionPanes)[number] | null = null;
+      let targetRegionPanes = sourceRegionPanes;
+      if (input.targetPaneId !== null) {
+        const targetPanes = await transaction
+          .select()
+          .from(schema.tabGroups)
+          .where(
+            and(
+              eq(schema.tabGroups.id, input.targetPaneId),
+              eq(schema.tabGroups.projectId, projectId),
+            ),
+          )
+          .limit(1);
+        targetPane = targetPanes[0] ?? null;
+        if (!targetPane) {
+          throw new TabLayoutInvariantError(
+            "The destination pane does not belong to this project.",
+          );
+        }
+        targetRegion = targetPane.region;
+      } else if (targetRegion !== selected.group.region) {
+        targetRegionPanes = await panesInRegion(
+          transaction,
+          projectId,
+          targetRegion,
+        );
+      }
+      if (input.targetPaneId === null) {
+        assertSingleDockPane(targetRegionPanes, targetRegion);
+        if (isSinglePaneDockRegion(targetRegion)) {
+          targetPane = targetRegionPanes[0] ?? null;
+        }
+      }
+      assertTabSupportsRegion(
+        selected.member.tabKind as ProjectTabKind,
+        selected.member.tabId,
+        targetRegion,
+      );
+
+      if (targetPane?.id === selected.group.id) {
         const from = sourceMembers.findIndex(
           ({ tabKey }) => tabKey === input.tabKey,
         );
@@ -816,12 +1013,38 @@ export class ProjectTabLayoutRepository {
         return;
       }
 
-      if (input.targetPaneId === null && sourceMembers.length === 1) {
-        const from = groups.findIndex(({ id }) => id === selected.group.id);
+      if (
+        targetPane === null &&
+        isSinglePaneDockRegion(targetRegion) &&
+        targetRegion !== selected.group.region &&
+        targetRegionPanes.length === 0 &&
+        sourceMembers.length === 1
+      ) {
+        await transaction
+          .update(schema.tabGroups)
+          .set({ region: targetRegion, position: 0, updatedAt: new Date() })
+          .where(eq(schema.tabGroups.id, selected.group.id));
+        await updateGroupPositions(
+          transaction,
+          sourceRegionPanes
+            .filter(({ id }) => id !== selected.group.id)
+            .map(({ id }) => id),
+        );
+        return;
+      }
+
+      if (
+        targetPane === null &&
+        targetRegion === selected.group.region &&
+        sourceMembers.length === 1
+      ) {
+        const from = sourceRegionPanes.findIndex(
+          ({ id }) => id === selected.group.id,
+        );
         await updateGroupPositions(
           transaction,
           movedTo(
-            groups.map(({ id }) => id),
+            sourceRegionPanes.map(({ id }) => id),
             from,
             input.targetPanePosition!,
           ),
@@ -836,12 +1059,14 @@ export class ProjectTabLayoutRepository {
         .delete(schema.tabGroupMembers)
         .where(eq(schema.tabGroupMembers.tabKey, input.tabKey));
 
-      let nextGroupIds = groups.map(({ id }) => id);
+      let nextSourcePaneIds = sourceRegionPanes.map(({ id }) => id);
       if (remainingSource.length === 0) {
         await transaction
           .delete(schema.tabGroups)
           .where(eq(schema.tabGroups.id, selected.group.id));
-        nextGroupIds = nextGroupIds.filter((id) => id !== selected.group.id);
+        nextSourcePaneIds = nextSourcePaneIds.filter(
+          (id) => id !== selected.group.id,
+        );
       } else {
         await updateMemberPositions(
           transaction,
@@ -865,69 +1090,61 @@ export class ProjectTabLayoutRepository {
         }
       }
 
-      let targetGroupId = input.targetPaneId;
-      if (targetGroupId === null) {
-        targetGroupId = randomUUID();
+      if (targetPane === null) {
+        const targetPaneId = randomUUID();
+        const targetPanePosition = input.targetPanePosition ?? 0;
         await transaction.insert(schema.tabGroups).values({
-          id: targetGroupId,
+          id: targetPaneId,
           projectId,
-          region: selected.group.region,
-          position: input.targetPanePosition!,
+          region: targetRegion,
+          position: targetPanePosition,
           anchorTabKey: input.tabKey,
         });
-        nextGroupIds = insertedAt(
-          nextGroupIds,
-          targetGroupId,
-          input.targetPanePosition!,
-        );
         await transaction.insert(schema.tabGroupMembers).values({
           ...selected.member,
-          groupId: targetGroupId,
+          groupId: targetPaneId,
           position: 0,
           updatedAt: new Date(),
         });
-      } else {
-        const targetGroups = await transaction
-          .select()
-          .from(schema.tabGroups)
-          .where(
-            and(
-              eq(schema.tabGroups.id, targetGroupId),
-              eq(schema.tabGroups.projectId, projectId),
-            ),
-          )
-          .limit(1);
-        const targetGroup = targetGroups[0];
-        if (!targetGroup) {
-          throw new TabLayoutInvariantError(
-            "The destination pane does not belong to this project.",
-          );
+        if (targetRegion !== selected.group.region) {
+          await updateGroupPositions(transaction, nextSourcePaneIds);
         }
+        const targetPaneIds =
+          targetRegion === selected.group.region
+            ? nextSourcePaneIds
+            : targetRegionPanes.map(({ id }) => id);
+        await updateGroupPositions(
+          transaction,
+          insertedAt(targetPaneIds, targetPaneId, targetPanePosition),
+        );
+      } else {
         const targetMembers = await transaction
           .select({ tabKey: schema.tabGroupMembers.tabKey })
           .from(schema.tabGroupMembers)
-          .where(eq(schema.tabGroupMembers.groupId, targetGroupId))
+          .where(eq(schema.tabGroupMembers.groupId, targetPane.id))
           .orderBy(
             asc(schema.tabGroupMembers.position),
             asc(schema.tabGroupMembers.tabKey),
           );
         await transaction.insert(schema.tabGroupMembers).values({
           ...selected.member,
-          groupId: targetGroupId,
+          groupId: targetPane.id,
           position: input.targetMemberPosition,
           updatedAt: new Date(),
         });
         await updateMemberPositions(
           transaction,
-          targetGroupId,
+          targetPane.id,
           insertedAt(
             targetMembers.map(({ tabKey }) => tabKey),
             input.tabKey,
             input.targetMemberPosition,
           ),
         );
+        if (remainingSource.length === 0) {
+          await updateGroupPositions(transaction, nextSourcePaneIds);
+        }
       }
-      await updateGroupPositions(transaction, nextGroupIds);
     });
     return this.get(ownerId, projectId);
   }
@@ -1016,7 +1233,9 @@ export class ProjectTabLayoutRepository {
       }
       paneId = await attachProjectTabPlacement(transaction, {
         projectId,
+        definitionId: input.surfaceRef.definitionId,
         paneId: input.targetPaneId,
+        region: input.targetRegion,
         tabId,
         tabKind,
       });
@@ -1091,12 +1310,8 @@ export class ProjectTabLayoutRepository {
         preference.pinned,
       ]),
     );
-    const builtInIds = new Set<string>(PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS);
     return PROJECT_SURFACE_DEFINITIONS.flatMap((definition) => {
-      if (!builtInIds.has(definition.id)) return [];
-      const definitionId = projectBuiltinSurfaceDefinitionIdSchema.parse(
-        definition.id,
-      );
+      const definitionId = definition.id;
       return definition.launcherLocations.map((location) => ({
         id: projectSurfaceLauncherId({ projectId, definitionId, location }),
         projectId,

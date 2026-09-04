@@ -1,6 +1,7 @@
 import {
   projectBuiltInDefinitionIdFromViewId,
   type ProjectBuiltInSurfaceDefinitionId,
+  type ProjectPaneRegion,
   ChatSummary,
   ScriptCommand,
   TerminalSummary,
@@ -148,6 +149,7 @@ import {
 } from "@/lib/run-terminal-model";
 import { sidebarFilePreviewIsVisible } from "@/lib/sidebar-file-tabs";
 import { projectScriptCommandDestination } from "@/lib/project-script-command";
+import type { ProjectSurface } from "@/lib/project-surface";
 import {
   isWindowsLongPathSetupFailure,
   projectOwningWorkerId,
@@ -1779,6 +1781,40 @@ export function App() {
     setDetachedGroupId(null);
     revealWorkspace();
   };
+  const moveSurfaceToRegion = (
+    surface: ProjectSurface,
+    region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">,
+  ) => {
+    const layout = tabLayout.data;
+    if (!layout || tabLayoutMutation.isPending) return;
+    const sourcePane = layout.panes.find(({ id }) => id === surface.paneId);
+    if (!sourcePane || sourcePane.region === region) {
+      selectTopTab(surface.tabKey);
+      return;
+    }
+    const focusedPane = layout.panes.find(
+      ({ id }) => id === workspaceSelection.focusedPaneId,
+    );
+    const targetPane =
+      (region === "center" && focusedPane?.region === "center"
+        ? focusedPane
+        : undefined) ?? layout.panes.find((pane) => pane.region === region);
+    setPendingSurfaceSelection({
+      projectId: surface.projectId,
+      tabKey: surface.tabKey,
+    });
+    tabLayoutMutation.mutate({
+      command: {
+        type: "move-member",
+        tabKey: surface.tabKey,
+        targetMemberPosition: targetPane?.members.length ?? 0,
+        targetPaneId: targetPane?.id ?? null,
+        ...(targetPane ? {} : { targetRegion: region }),
+        ...(targetPane || region !== "center" ? {} : { targetPanePosition: 0 }),
+      },
+      projectId: surface.projectId,
+    });
+  };
   const { focusDetachedGroup, selectGroupFromSidebar } =
     createDesktopGroupSelectionCommands({
       desktopRuntime,
@@ -1929,7 +1965,7 @@ export function App() {
     focusDetachedGroup, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,
     forkChatMutation, forkStandaloneChat, gitHistoryHeader, gitHistoryProject, groupOwnedElsewhere,
     handleExplorerChanged, handleExplorerLifecycleChange, handleSidebarFilePreviewLifecycleChange, handleWorkspaceDrop, isPopout,
-    linkedConsoleChat, mobileNavigationSurfaces, mobileProjectSelectorOpen, moveSidebarResize,
+    linkedConsoleChat, mobileNavigationSurfaces, mobileProjectSelectorOpen, moveSidebarResize, moveSurfaceToRegion,
     narrowViewport, newBrowser, newChat, newCodeTab, newExplorer,
     newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
@@ -1940,7 +1976,7 @@ export function App() {
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
     pinSidebarFilePath, popOutActiveView, popOutProjectOverviewView, popoutError, popoutPending,
     prepareExplorerRebind, projectOverviewGitProject, projectOverviewGitSection, projectOverviewPopoutTarget, projectOverviewSelected,
-    projectInventorySurfaces, projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSurfaces,
+    projectInventorySurfaces, projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSurfaceIndex, projectSurfaces,
     projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
     projects, queryClient, remoteDesktop,
     removeProjectMutation, renameChatMutation, renameExplorerMutation, renameProjectViewMutation, renameSidebarFileEntry,

@@ -1,4 +1,4 @@
-import type { ExecutionTarget } from "@cantrip/protocol";
+import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
 
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
@@ -18,6 +18,7 @@ interface SurfaceCreateInput {
   paneId?: string;
   projectId: string;
   target?: ExecutionTarget;
+  targetRegion?: ProjectPaneRegion;
 }
 
 export interface SurfaceCreationOperations {
@@ -78,10 +79,12 @@ export function createSurfaceCommandController({
     kind: ProjectSurfaceCreateKind,
     paneId?: string,
     target?: ExecutionTarget,
+    targetRegion?: ProjectPaneRegion,
   ) => {
     const input: SurfaceCreateInput = { projectId };
     if (paneId) input.paneId = paneId;
     if (target) input.target = target;
+    if (targetRegion) input.targetRegion = targetRegion;
     if (kind === "chat") creation.chat.mutate(input);
     else if (kind === "terminal") creation.terminal.mutate(input);
     else if (kind === "explorer") creation.explorer.mutate(input);

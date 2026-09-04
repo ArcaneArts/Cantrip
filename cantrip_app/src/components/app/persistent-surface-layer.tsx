@@ -1,6 +1,6 @@
 import type { ProjectSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import {
   PersistentCodeViews,
   PersistentExplorerViews,
@@ -33,6 +33,7 @@ export function PersistentSurfaceLayer({
     creatingSurfaceKinds,
     deleteSurfaceResource,
     desktopRuntime,
+    dockPanePresentations,
     explorerGraphRequest,
     explorerSurfaceVisible,
     folderRevealLabel,
@@ -90,9 +91,59 @@ export function PersistentSurfaceLayer({
     worktreeStatuses,
     worktrees,
   } = bindings;
+  const dockCodePlacements = useMemo(
+    () =>
+      dockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "code"
+          ? [
+              {
+                focused: presentation.focused,
+                gridArea: presentation.gridArea,
+                paneId: presentation.pane.id,
+                tab: presentation.activeSurface.entity,
+              },
+            ]
+          : [],
+      ),
+    [dockPanePresentations],
+  );
+  const dockTerminalPlacements = useMemo(
+    () =>
+      dockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "terminal" &&
+        presentation.activeSurface.entity.kind !== "run-configuration"
+          ? [
+              {
+                focused: presentation.focused,
+                gridArea: presentation.gridArea,
+                paneId: presentation.pane.id,
+                terminal: presentation.activeSurface.entity,
+              },
+            ]
+          : [],
+      ),
+    [dockPanePresentations],
+  );
+  const dockExplorerPlacements = useMemo(
+    () =>
+      dockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "explorer"
+          ? [
+              {
+                explorer: presentation.activeSurface.entity,
+                focused: presentation.focused,
+                gridArea: presentation.gridArea,
+                paneId: presentation.pane.id,
+              },
+            ]
+          : [],
+      ),
+    [dockPanePresentations],
+  );
   return (
     <>
-      {appMode === "ide" &&
+      {!dockPanePresentations &&
+      appMode === "ide" &&
       !compactShell &&
       !showImporter &&
       !showSettings &&
@@ -144,7 +195,7 @@ export function PersistentSurfaceLayer({
 
       <Suspense
         fallback={
-          codeSurfaceVisible ? (
+          !dockPanePresentations && codeSurfaceVisible ? (
             <div className="grid flex-1 place-items-center text-muted-foreground">
               <Loader2 className="size-5 animate-spin" />
             </div>
@@ -160,12 +211,13 @@ export function PersistentSurfaceLayer({
             })
           }
           onHeaderChange={setCodeHeader}
+          visiblePlacements={dockCodePlacements}
         />
       </Suspense>
 
       <Suspense
         fallback={
-          terminalSurfaceVisible ? (
+          !dockPanePresentations && terminalSurfaceVisible ? (
             <div className="grid flex-1 place-items-center text-muted-foreground">
               <Loader2 className="size-5 animate-spin" />
             </div>
@@ -199,12 +251,13 @@ export function PersistentSurfaceLayer({
               : (selectedTerminal ?? null)
           }
           servicePanelTerminalId={terminalServiceTerminalId}
+          visiblePlacements={dockTerminalPlacements}
         />
       </Suspense>
 
       <Suspense
         fallback={
-          explorerSurfaceVisible ? (
+          !dockPanePresentations && explorerSurfaceVisible ? (
             <div className="grid flex-1 place-items-center text-muted-foreground">
               <Loader2 className="size-5 animate-spin" />
             </div>
@@ -286,6 +339,7 @@ export function PersistentSurfaceLayer({
           repositoryGraphAvailable={explorerRepositoryGraphAvailable(
             selectedProject?.capabilities,
           )}
+          visiblePlacements={dockExplorerPlacements}
           onOpenTerminal={(explorer, entry) => {
             if (!selectedSurface || selectedSurface.kind !== "explorer") {
               return;

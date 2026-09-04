@@ -10,6 +10,7 @@ import { errorMessage as errorText } from "@/lib/error-message";
 import { projectSurfaceTabKey } from "@/lib/project-surface";
 import { GlobalContentHost } from "@/components/app/global-content-host";
 import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-layer";
+import { ProjectWorkspaceFrame } from "@/components/app/project-workspace-frame";
 import { ShellHeader } from "@/components/app/shell-header";
 import { ShellOverlays } from "@/components/app/shell-overlays";
 import { ShellSidebar } from "@/components/app/shell-sidebar";
@@ -21,15 +22,56 @@ function ShellContent({
 }: {
   bindings: ApplicationShellRenderBindings;
 }) {
-  const { contentRootRef } = bindings;
+  const {
+    appMode,
+    compactShell,
+    contentRootRef,
+    groupOwnedElsewhere,
+    isPopout,
+    mobileProjectSelectorOpen,
+    selectedProject,
+    showArchivedStandaloneChats,
+    showImporter,
+    showProjectSettings,
+    showServerAdmin,
+    showSettings,
+    sidebarFilePreviewVisible,
+    tabLayout,
+    workspaceSelection,
+  } = bindings;
+  const desktopProjectFrame = Boolean(
+    appMode === "ide" &&
+    !compactShell &&
+    !isPopout &&
+    selectedProject &&
+    tabLayout.data,
+  );
+  const dockFrameVisible = Boolean(
+    desktopProjectFrame &&
+    !mobileProjectSelectorOpen &&
+    !showImporter &&
+    !showSettings &&
+    !showArchivedStandaloneChats &&
+    !showServerAdmin &&
+    !showProjectSettings &&
+    !sidebarFilePreviewVisible &&
+    workspaceSelection.destination !== "overview" &&
+    !groupOwnedElsewhere,
+  );
   return (
     <section
       ref={contentRootRef}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
       <ShellHeader bindings={bindings} />
-      <PersistentSurfaceLayer bindings={bindings} />
-      <GlobalContentHost bindings={bindings} />
+      {desktopProjectFrame ? (
+        <ProjectWorkspaceFrame bindings={bindings} docked={dockFrameVisible} />
+      ) : (
+        <>
+          <PersistentSurfaceLayer bindings={bindings} />
+          <GlobalContentHost bindings={bindings} />
+        </>
+      )}
     </section>
   );
 }

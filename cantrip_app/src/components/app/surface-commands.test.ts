@@ -90,6 +90,24 @@ describe("surface command controller", () => {
     );
   });
 
+  it("creates a surface directly in an explicit dock region", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+
+    controller.createProjectSurface(
+      "project-1",
+      "terminal",
+      undefined,
+      undefined,
+      "bottom",
+    );
+
+    expect(operationSet.creation.terminal.mutate).toHaveBeenCalledWith({
+      projectId: "project-1",
+      targetRegion: "bottom",
+    });
+  });
+
   it("keeps Close View separate from deleting an Explorer resource", () => {
     const operationSet = operations();
     const controller = createSurfaceCommandController(operationSet);
