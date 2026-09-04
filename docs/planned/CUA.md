@@ -50,7 +50,8 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 2 — Rust process, sessions, fake capture, and cursor
 
 - Branch: `codex/cua-02-rust-foundation`, based on merged cycle 1 (`1e2da3de9`).
-- PR/commit/merge: pending.
+- PR: [#1734](https://github.com/ArcaneArts/Cantrip/pull/1734).
+  Initial implementation commit: `67019f00a`; merge pending.
 - Implemented: standalone `cantrip_cua` library/executable and lockfile; bounded
   raw-binary protocol; independent cancellation reader; serialized session
   ownership; explicit fake monitor/window backend; PNG observations with digest;
