@@ -89,7 +89,6 @@ function commandHarness({
     revealWorkspace,
     selectedPane: layout.panes[0],
     setDesktopSidebarDrawerOpen: vi.fn(),
-    setDetachedGroupId: vi.fn(),
     setPopoutError: vi.fn(),
     setWorkspaceSelection: vi.fn(),
     sidebarExplorerCreationInput: null,

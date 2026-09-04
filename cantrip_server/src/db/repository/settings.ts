@@ -296,6 +296,8 @@ export class SettingsRepository {
       eliteMode: settings.eliteMode,
       eliteRevealConfig: settings.eliteRevealConfig,
       sidebarWidth: settings.sidebarWidth,
+      workspaceLayoutProfile:
+        settings.workspaceLayoutProfile as UserSettings["workspaceLayoutProfile"],
       showChatPromptOverlay: settings.showChatPromptOverlay,
       randomAgentNames: settings.randomAgentNames,
       desktopFrameRate:

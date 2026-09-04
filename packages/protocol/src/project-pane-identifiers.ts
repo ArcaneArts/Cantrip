@@ -5,7 +5,6 @@ export const projectPaneRegionSchema = z.enum([
   "right",
   "bottom",
   "left",
-  "detached",
 ]);
 
 export const projectPaneDestinationShape = {

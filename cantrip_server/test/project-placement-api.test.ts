@@ -411,6 +411,7 @@ beforeEach(async () => {
   connectedWorkers.add("worker-beta");
   await database.repository.updateSettings(LOCAL_USER_ID, {
     defaultWorkerId: "worker-alpha",
+    workspaceLayoutProfile: "hybrid",
   });
   await database.repository.updateProjectPreferredWorker(
     LOCAL_USER_ID,
@@ -2971,6 +2972,155 @@ describe.sequential("project execution placement API", () => {
       },
     });
     expect(targetClosed.statusCode, targetClosed.body).toBe(200);
+  });
+
+  it("applies layout profiles only to first-open placements", async () => {
+    const layoutBefore = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const profileUpdate = await app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      payload: { workspaceLayoutProfile: "agent" },
+    });
+    expect(profileUpdate.statusCode, profileUpdate.body).toBe(200);
+    const unchangedLayout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    expect(unchangedLayout).toEqual(layoutBefore);
+
+    const agentBrowserResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/browsers`,
+      payload: {
+        ...protectedBrowserFields(),
+        target: { kind: "worker", projectId, workerId: "worker-alpha" },
+      },
+    });
+    expect(agentBrowserResponse.statusCode, agentBrowserResponse.body).toBe(
+      201,
+    );
+    const agentBrowser = browserWireSummarySchema.parse(
+      agentBrowserResponse.json(),
+    );
+    let layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const agentBrowserPane = layout.panes.find(({ members }) =>
+      members.some(({ tabId }) => tabId === agentBrowser.id),
+    )!;
+    expect(agentBrowserPane.region).toBe("center");
+
+    const focused = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/panes/member/open`,
+      payload: {
+        revision: layout.revision,
+        surfaceRef: {
+          kind: "entity",
+          definitionId: "project.browser",
+          resourceId: agentBrowser.id,
+        },
+        targetRegion: "bottom",
+      },
+    });
+    expect(focused.statusCode, focused.body).toBe(200);
+    expect(
+      projectSurfaceViewOpenResultSchema.parse(focused.json()),
+    ).toMatchObject({
+      disposition: "focused",
+      paneId: agentBrowserPane.id,
+      layout: { revision: layout.revision },
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/api/settings",
+          payload: { workspaceLayoutProfile: "ide" },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const ideChatResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: {
+        ...protectedChatFields(),
+        target: { kind: "worktree", projectId, worktreeId: alphaWorktreeId },
+      },
+    });
+    expect(ideChatResponse.statusCode, ideChatResponse.body).toBe(201);
+    const ideChat = chatWireSummarySchema.parse(ideChatResponse.json());
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    expect(
+      layout.panes.find(({ members }) =>
+        members.some(({ tabId }) => tabId === ideChat.id),
+      )?.region,
+    ).toBe("right");
+
+    const explicitBrowserResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/browsers`,
+      payload: {
+        ...protectedBrowserFields(),
+        target: { kind: "worker", projectId, workerId: "worker-alpha" },
+        targetRegion: "bottom",
+      },
+    });
+    expect(
+      explicitBrowserResponse.statusCode,
+      explicitBrowserResponse.body,
+    ).toBe(201);
+    const explicitBrowser = browserWireSummarySchema.parse(
+      explicitBrowserResponse.json(),
+    );
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    expect(
+      layout.panes.find(({ members }) =>
+        members.some(({ tabId }) => tabId === explicitBrowser.id),
+      )?.region,
+    ).toBe("bottom");
+
+    const rawDetached = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/browsers`,
+      payload: {
+        ...protectedBrowserFields(),
+        target: { kind: "worker", projectId, workerId: "worker-alpha" },
+        targetRegion: "detached",
+      },
+    });
+    expect(rawDetached.statusCode, rawDetached.body).toBe(400);
   });
 
   it("places surfaces in singleton docks and keeps legacy pane ordering compatible", async () => {

@@ -7,12 +7,12 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
-  useRef,
   useState,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { projectOverviewSectionLabel } from "@/components/app/application-shell-model";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
@@ -21,21 +21,24 @@ import { getExplorers } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   closeCurrentDesktopWindow,
-  focusDesktopPopoutGroup,
-  openDesktopPopoutGroup,
+  discoverDesktopPopoutPaneIds,
+  focusDesktopPopoutPane,
+  openDesktopPopoutPane,
   openDesktopProjectOverviewPopout,
   updateDesktopWindowTitle,
-  watchDesktopPopoutGroup,
-  type DesktopPopoutGroupTarget,
+  watchDesktopPopoutPane,
+  type DesktopPopoutPaneTarget,
   type DesktopProjectOverviewTarget,
 } from "@/lib/desktop-popout";
 import { errorMessage as errorText } from "@/lib/error-message";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import {
-  selectWorkspaceGroup,
+  selectWorkspacePane,
   type WorkspaceSelection,
 } from "@/lib/workspace-selection";
+import type { DetachedDesktopPaneState } from "@/components/app/detached-pane-ownership";
+export { useDetachedDesktopPaneState } from "@/components/app/detached-pane-ownership";
 
 export function useDesktopPopoutStatusState() {
   const [popoutPending, setPopoutPending] = useState(false);
@@ -50,19 +53,31 @@ export function useDesktopPopoutStatusState() {
 
 type DesktopPopoutStatusState = ReturnType<typeof useDesktopPopoutStatusState>;
 
-export function useDetachedDesktopGroupState() {
-  const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
-  const detachedExplorerIdRef = useRef<string | null>(null);
-  return {
-    detachedExplorerIdRef,
-    detachedGroupId,
-    setDetachedGroupId,
-  } as const;
+export async function openOwnedDesktopPane({
+  claim,
+  complete,
+  open = openDesktopPopoutPane,
+  release,
+  target,
+  title,
+}: {
+  claim(): void;
+  complete(): void;
+  open?: typeof openDesktopPopoutPane;
+  release(): void;
+  target: DesktopPopoutPaneTarget;
+  title: string;
+}) {
+  flushSync(claim);
+  try {
+    const disposition = await open(target, title);
+    complete();
+    return disposition;
+  } catch (error) {
+    release();
+    throw error;
+  }
 }
-
-type DetachedDesktopGroupState = ReturnType<
-  typeof useDetachedDesktopGroupState
->;
 
 export function useDesktopPopoutModel({
   activeProjectOverviewSection,
@@ -77,13 +92,13 @@ export function useDesktopPopoutModel({
   selectedExplorer,
   selectedProject,
   selectedProjectId,
-  selectedTabGroupId,
+  selectedPaneId,
   status,
 }: {
   activeProjectOverviewSection: ProjectOverviewSection;
   currentSurface: { tabKey: string; title: string } | null;
   desktopRuntime: boolean;
-  detached: DetachedDesktopGroupState;
+  detached: DetachedDesktopPaneState;
   explorerLifecycleRef: MutableRefObject<Map<string, ExplorerLifecycleActions>>;
   isPopout: boolean;
   projectOverviewSelected: boolean;
@@ -92,7 +107,7 @@ export function useDesktopPopoutModel({
   selectedExplorer: ExplorerSummary | undefined;
   selectedProject: ProjectSummary | undefined;
   selectedProjectId: string | null;
-  selectedTabGroupId: string | null;
+  selectedPaneId: string | null;
   status: DesktopPopoutStatusState;
 }) {
   const activePopout =
@@ -100,11 +115,11 @@ export function useDesktopPopoutModel({
     !isPopout &&
     currentSurface &&
     selectedProject &&
-    selectedTabGroupId
+    selectedPaneId
       ? {
           target: {
             activeTabKey: currentSurface.tabKey,
-            groupId: selectedTabGroupId,
+            paneId: selectedPaneId,
             projectId: selectedProject.id,
           },
           title: currentSurface.title,
@@ -125,17 +140,25 @@ export function useDesktopPopoutModel({
           title: `${selectedProject.name} · ${projectOverviewSectionLabel(activeProjectOverviewSection)}`,
         }
       : null;
-  const groupOwnedElsewhere =
-    !isPopout &&
-    detached.detachedGroupId !== null &&
-    detached.detachedGroupId === selectedTabGroupId;
-  const resumeDetachedGroup = useCallback(
-    async (groupId: string) => {
-      const explorerId = detached.detachedExplorerIdRef.current;
+  const paneOwnedElsewhere = useCallback(
+    (paneId: string) =>
+      !isPopout &&
+      desktopRuntime &&
+      (detached.claims.has(paneId) || !detached.inspectedPaneIds.has(paneId)),
+    [desktopRuntime, detached.claims, detached.inspectedPaneIds, isPopout],
+  );
+  const selectedPaneOwnedElsewhere = Boolean(
+    selectedPaneId && paneOwnedElsewhere(selectedPaneId),
+  );
+  const resumeDetachedPane = useCallback(
+    async (paneId: string) => {
+      const claim = detached.claims.get(paneId);
+      const explorerId = claim?.explorerId ?? null;
+      const projectId = claim?.projectId ?? null;
       try {
-        if (explorerId && selectedProjectId) {
-          const refreshed = await getExplorers(selectedProjectId);
-          queryClient.setQueryData(["explorers", selectedProjectId], refreshed);
+        if (explorerId && projectId) {
+          const refreshed = await getExplorers(projectId);
+          queryClient.setQueryData(["explorers", projectId], refreshed);
           const persisted = refreshed.find(({ id }) => id === explorerId);
           const lifecycle = explorerLifecycleRef.current.get(explorerId);
           if (persisted && lifecycle) {
@@ -157,13 +180,10 @@ export function useDesktopPopoutModel({
           surfaceId: explorerId ?? undefined,
         });
       } finally {
-        detached.detachedExplorerIdRef.current = null;
-        detached.setDetachedGroupId((current) =>
-          current === groupId ? null : current,
-        );
+        detached.releasePane(paneId);
       }
     },
-    [queryClient, selectedProjectId],
+    [detached.claims, detached.releasePane, explorerLifecycleRef, queryClient],
   );
   const popOutActiveView = () => {
     if (!activePopout || status.popoutPending) return;
@@ -201,9 +221,19 @@ export function useDesktopPopoutModel({
       status.setPopoutPending(true);
       status.setPopoutError(null);
       try {
-        await openDesktopPopoutGroup(activePopout.target, activePopout.title);
-        detached.detachedExplorerIdRef.current = selectedExplorer?.id ?? null;
-        detached.setDetachedGroupId(activePopout.target.groupId);
+        await openOwnedDesktopPane({
+          claim: () =>
+            detached.claimPane(
+              activePopout.target.paneId,
+              activePopout.target.projectId,
+              selectedExplorer?.id ?? null,
+            ),
+          complete: () =>
+            detached.completePaneClaim(activePopout.target.paneId),
+          release: () => detached.releasePane(activePopout.target.paneId),
+          target: activePopout.target,
+          title: activePopout.title,
+        });
         clientLogger.info("Desktop pop-out opened", {
           durationMs: Math.round(performance.now() - startedAt),
           event: "window.popout.open.completed",
@@ -268,10 +298,11 @@ export function useDesktopPopoutModel({
   return {
     activePopout,
     activeProjectOverviewPopout,
-    groupOwnedElsewhere,
+    selectedPaneOwnedElsewhere,
+    paneOwnedElsewhere,
     popOutActiveView,
     popOutProjectOverviewView,
-    resumeDetachedGroup,
+    resumeDetachedPane,
   } as const;
 }
 
@@ -280,17 +311,19 @@ export function useDesktopPopoutEffects({
   desktopRuntime,
   detached,
   isPopout,
+  layoutPaneIds = [],
   model,
   projectOverviewPopoutTarget,
   selectedProject,
 }: {
   currentSurface: { tabKey: string; title: string } | null;
   desktopRuntime: boolean;
-  detached: DetachedDesktopGroupState;
+  detached: DetachedDesktopPaneState;
   isPopout: boolean;
   model: ReturnType<typeof useDesktopPopoutModel>;
   projectOverviewPopoutTarget: DesktopProjectOverviewTarget | null;
   selectedProject: ProjectSummary | undefined;
+  layoutPaneIds?: readonly string[];
 }) {
   useEffect(() => {
     const popoutContentTitle =
@@ -317,41 +350,78 @@ export function useDesktopPopoutEffects({
   }, [currentSurface, isPopout, projectOverviewPopoutTarget, selectedProject]);
 
   useEffect(() => {
-    if (!desktopRuntime || isPopout || !detached.detachedGroupId) return;
-    const observedGroupId = detached.detachedGroupId;
+    if (!desktopRuntime || isPopout || layoutPaneIds.length === 0) return;
     let mounted = true;
-    let stopObserving: (() => void) | null = null;
-    const resumeLocally = () => {
-      if (!mounted) return;
-      void model.resumeDetachedGroup(observedGroupId);
-    };
-    void watchDesktopPopoutGroup(observedGroupId, resumeLocally)
-      .then((stop) => {
-        if (mounted) stopObserving = stop;
-        else stop();
+    void discoverDesktopPopoutPaneIds(layoutPaneIds)
+      .then((discovered) => {
+        if (mounted && selectedProject) {
+          detached.reconcileDiscovery(
+            selectedProject.id,
+            layoutPaneIds,
+            discovered,
+          );
+        }
       })
       .catch((error: unknown) => {
         if (!mounted) return;
-        clientLogger.warn("Desktop pop-out observer failed", {
+        clientLogger.warn("Desktop pop-out discovery failed", {
           ...operationalErrorMetadata(error),
-          event: "window.popout.observe.failed",
-          operation: "observe-window",
+          event: "window.popout.discovery.failed",
+          operation: "discover-windows",
           reasonCode: "native-window-error",
           status: "recovering",
           subsystem: "desktop-window",
         });
-        resumeLocally();
       });
     return () => {
       mounted = false;
-      stopObserving?.();
     };
   }, [
     desktopRuntime,
-    detached.detachedGroupId,
+    detached.reconcileDiscovery,
     isPopout,
-    model.resumeDetachedGroup,
+    layoutPaneIds.join("\0"),
+    selectedProject?.id,
   ]);
+
+  const ownedPaneKey = [...detached.claims]
+    .filter(([, claim]) => claim.phase === "detached")
+    .map(([paneId]) => paneId)
+    .sort()
+    .join("\0");
+  useEffect(() => {
+    if (!desktopRuntime || isPopout || ownedPaneKey.length === 0) return;
+    let mounted = true;
+    const stopObservers: Array<() => void> = [];
+    for (const [paneId, claim] of detached.claims) {
+      if (claim.phase !== "detached") continue;
+      const resumeLocally = () => {
+        if (mounted) void model.resumeDetachedPane(paneId);
+      };
+      void watchDesktopPopoutPane(paneId, resumeLocally)
+        .then((stop) => {
+          if (mounted) stopObservers.push(stop);
+          else stop();
+        })
+        .catch((error: unknown) => {
+          if (!mounted) return;
+          clientLogger.warn("Desktop pop-out observer failed", {
+            ...operationalErrorMetadata(error),
+            event: "window.popout.observe.failed",
+            operation: "observe-window",
+            reasonCode: "native-window-error",
+            status: "recovering",
+            subsystem: "desktop-window",
+            surfaceId: paneId,
+          });
+          resumeLocally();
+        });
+    }
+    return () => {
+      mounted = false;
+      for (const stop of stopObservers) stop();
+    };
+  }, [desktopRuntime, isPopout, model.resumeDetachedPane, ownedPaneKey]);
 }
 
 export function useOrphanedDesktopPopoutEffect({
@@ -363,11 +433,11 @@ export function useOrphanedDesktopPopoutEffect({
   isLayoutMutationPending: boolean;
   layout: ProjectTabLayoutSummary | null | undefined;
   layoutIsSuccess: boolean;
-  popoutTarget: DesktopPopoutGroupTarget | null;
+  popoutTarget: DesktopPopoutPaneTarget | null;
 }) {
   useEffect(() => {
     if (!popoutTarget || !layoutIsSuccess || isLayoutMutationPending) return;
-    if (layout?.panes.some(({ id }) => id === popoutTarget.groupId)) return;
+    if (layout?.panes.some(({ id }) => id === popoutTarget.paneId)) return;
     void closeCurrentDesktopWindow().catch((error: unknown) => {
       clientLogger.warn("Orphaned desktop pop-out failed to close", {
         ...operationalErrorMetadata(error),
@@ -381,7 +451,7 @@ export function useOrphanedDesktopPopoutEffect({
   }, [popoutTarget, layout, layoutIsSuccess, isLayoutMutationPending]);
 }
 
-export function createDesktopGroupSelectionCommands({
+export function createDesktopPaneSelectionCommands({
   desktopRuntime,
   detached,
   isPopout,
@@ -393,7 +463,7 @@ export function createDesktopGroupSelectionCommands({
   setWorkspaceSelection,
 }: {
   desktopRuntime: boolean;
-  detached: DetachedDesktopGroupState;
+  detached: DetachedDesktopPaneState;
   isPopout: boolean;
   layout: ProjectTabLayoutSummary | null | undefined;
   model: ReturnType<typeof useDesktopPopoutModel>;
@@ -404,42 +474,45 @@ export function createDesktopGroupSelectionCommands({
   >;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
 }) {
-  const selectGroupFromSidebar = (groupId: string) => {
+  const selectPaneFromSidebar = (paneId: string) => {
     setSidebarFilePreview((current) =>
       current ? { ...current, active: false } : null,
     );
     if (!layout) return;
     const selectLocally = () => {
       setWorkspaceSelection((current) =>
-        selectWorkspaceGroup(current, layout, groupId),
+        selectWorkspacePane(current, layout, paneId),
       );
-      detached.setDetachedGroupId(null);
       revealWorkspace();
     };
     if (!desktopRuntime || isPopout) {
       selectLocally();
       return;
     }
-    void focusDesktopPopoutGroup(groupId)
+    if (!model.paneOwnedElsewhere(paneId)) {
+      selectLocally();
+      return;
+    }
+    void focusDesktopPopoutPane(paneId)
       .then((focused) => {
         if (focused) {
           setWorkspaceSelection((current) =>
-            selectWorkspaceGroup(current, layout, groupId),
+            selectWorkspacePane(current, layout, paneId),
           );
-          detached.setDetachedGroupId(groupId);
           revealWorkspace();
         } else {
+          void model.resumeDetachedPane(paneId);
           selectLocally();
         }
       })
       .catch(() => selectLocally());
   };
-  const focusDetachedGroup = (groupId: string) => {
-    void focusDesktopPopoutGroup(groupId)
+  const focusDetachedPane = (paneId: string) => {
+    void focusDesktopPopoutPane(paneId)
       .then((focused) => {
-        if (!focused) void model.resumeDetachedGroup(groupId);
+        if (!focused) void model.resumeDetachedPane(paneId);
       })
       .catch((error: unknown) => setPopoutError(errorText(error)));
   };
-  return { focusDetachedGroup, selectGroupFromSidebar } as const;
+  return { focusDetachedPane, selectPaneFromSidebar } as const;
 }

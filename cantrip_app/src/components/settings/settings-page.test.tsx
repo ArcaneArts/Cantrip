@@ -243,6 +243,14 @@ describe("account settings", () => {
     ).toEqual([
       expect.objectContaining({ id: "appearance", sectionId: "appearance" }),
     ]);
+    expect(
+      settingsSearchResults("hybrid panes", settingsNavigationSections),
+    ).toEqual([
+      expect.objectContaining({
+        id: "workspace-layout-profile",
+        sectionId: "general",
+      }),
+    ]);
   });
 
   it("exposes account usage as its own settings section", () => {
@@ -250,6 +258,17 @@ describe("account settings", () => {
 
     expect(markup).toContain(">Usage<");
     expect(markup).toContain("Loading account usage…");
+  });
+
+  it("indexes the project workspace profile", () => {
+    expect(
+      settingsSearchResults("hybrid panes", settingsNavigationSections),
+    ).toEqual([
+      expect.objectContaining({
+        id: "workspace-layout-profile",
+        sectionId: "general",
+      }),
+    ]);
   });
 
   it("mounts the retained Code settings workbench only after Code is activated", () => {
@@ -316,6 +335,18 @@ describe("account settings", () => {
     expect(markup).not.toContain(
       'aria-label="Use random agent names" checked=""',
     );
+  });
+
+  it("exposes prospective Agent, Hybrid, and IDE workspace profiles", () => {
+    const markup = renderSettings("general");
+
+    expect(markup).toContain('aria-label="Project workspace profile"');
+    expect(markup).toContain('<option value="agent">Agent</option>');
+    expect(markup).toContain(
+      '<option value="hybrid" selected="">Hybrid</option>',
+    );
+    expect(markup).toContain('<option value="ide">IDE</option>');
+    expect(markup).toContain("Existing tab placements never move.");
   });
 
   it("keeps the current prompt header enabled by default and exposes its toggle", () => {

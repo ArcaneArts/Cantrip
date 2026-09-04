@@ -25,8 +25,13 @@ import type {
   ProjectPaneMemberMove,
   ProjectPaneMemberOrder,
   ProjectPaneOrder,
+  WorkspaceLayoutProfile,
 } from "@cantrip/protocol";
-import { projectSurfaceTabKind, projectSurfaceViewId } from "@cantrip/protocol";
+import {
+  projectSurfaceTabKind,
+  projectSurfaceViewId,
+  workspaceLayoutProfilePlacement,
+} from "@cantrip/protocol";
 import {
   PROJECT_SURFACE_DEFINITIONS,
   projectCenterLayoutNodeSchema,
@@ -90,11 +95,11 @@ function surfaceDefinitionIdForTab(
   }
 }
 
-function suggestedPlacementForTab(
+function definitionForTab(
   tabKind: ProjectTabKind,
   tabId: string,
   definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
-): ProjectPaneRegion {
+): (typeof PROJECT_SURFACE_DEFINITIONS)[number] {
   const definition = PROJECT_SURFACE_DEFINITIONS.find(
     ({ id }) => id === definitionId,
   );
@@ -103,7 +108,28 @@ function suggestedPlacementForTab(
       `Surface definition ${definitionId} is unavailable.`,
     );
   }
-  return definition.suggestedPlacement;
+  return definition;
+}
+
+async function suggestedPlacementForTab(
+  database: TabLayoutExecutor,
+  projectId: string,
+  tabKind: ProjectTabKind,
+  tabId: string,
+  definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
+): Promise<ProjectPaneRegion> {
+  const definition = definitionForTab(tabKind, tabId, definitionId);
+  const rows = await database
+    .select({ profile: schema.userSettings.workspaceLayoutProfile })
+    .from(schema.projects)
+    .innerJoin(
+      schema.userSettings,
+      eq(schema.userSettings.userId, schema.projects.ownerId),
+    )
+    .where(eq(schema.projects.id, projectId))
+    .limit(1);
+  const profile = (rows[0]?.profile ?? "hybrid") as WorkspaceLayoutProfile;
+  return workspaceLayoutProfilePlacement(profile, definition.id);
 }
 
 function assertTabSupportsRegion(
@@ -277,9 +303,6 @@ async function attachProjectTabPlacement(
 ): Promise<string> {
   const tabKey = projectTabKey(input.tabKind, input.tabId, input.projectId);
   let groupId = input.paneId;
-  const region =
-    input.region ??
-    suggestedPlacementForTab(input.tabKind, input.tabId, input.definitionId);
   let memberPosition = 0;
   let createdCenterPane = false;
 
@@ -313,6 +336,15 @@ async function attachProjectTabPlacement(
       .limit(1);
     memberPosition = (positions[0]?.position ?? -1) + 1;
   } else {
+    const region =
+      input.region ??
+      (await suggestedPlacementForTab(
+        database,
+        input.projectId,
+        input.tabKind,
+        input.tabId,
+        input.definitionId,
+      ));
     assertTabSupportsRegion(
       input.tabKind,
       input.tabId,
@@ -586,8 +618,7 @@ const paneRegionOrder = sql<number>`CASE ${schema.tabGroups.region}
   WHEN 'right' THEN 1
   WHEN 'bottom' THEN 2
   WHEN 'left' THEN 3
-  WHEN 'detached' THEN 4
-  ELSE 5
+  ELSE 4
 END`;
 
 export class ProjectTabLayoutRepository {
@@ -1016,13 +1047,7 @@ export class ProjectTabLayoutRepository {
       const regionByPaneId = new Map(
         panes.map(({ id, region }) => [id, region] as const),
       );
-      for (const region of [
-        "center",
-        "right",
-        "bottom",
-        "left",
-        "detached",
-      ] as const) {
+      for (const region of ["center", "right", "bottom", "left"] as const) {
         const regionPaneIds = input.paneIds.filter(
           (id) => regionByPaneId.get(id) === region,
         );

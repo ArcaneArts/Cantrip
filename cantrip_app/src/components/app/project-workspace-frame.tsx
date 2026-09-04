@@ -15,22 +15,26 @@ import {
   useEffect,
   useRef,
   useState,
-  type KeyboardEvent,
   type PointerEvent,
   type CSSProperties,
   type ReactNode,
 } from "react";
 
-import { GlobalContentHost } from "@/components/app/global-content-host";
+import {
+  DetachedPanePlaceholder,
+  GlobalContentHost,
+} from "@/components/app/global-content-host";
 import { resolvedCenterLayoutRoot } from "@/components/app/center-split-layout";
 import { CenterSplitWorkspace } from "@/components/app/center-split-workspace";
+import { DockResizeControl } from "@/components/app/dock-resize-control";
 import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-layer";
 import { projectPaneRenderBindings } from "@/components/app/project-pane-render-bindings";
 import {
   createKindsForPaneRegion,
   definitionIdByCreateKind,
-  projectWorkspaceGridModel,
+  partitionVisibleWorkspacePanes,
   railLauncherDisposition,
+  responsiveProjectWorkspaceGridModel,
   visibleWorkspacePanes,
   type VisibleProjectPane,
 } from "@/components/app/project-workspace-frame-model";
@@ -40,7 +44,6 @@ import {
   dockPresentationForKey,
   dockPresentationForPane,
   dockResizeCandidate,
-  effectiveDockFraction,
   resizeDockPresentation,
   revealDockPresentation,
   restoreDockPresentation,
@@ -68,86 +71,6 @@ import {
 function VisibleChatLiveScope({ chatId }: { chatId: string }) {
   useAppLiveScope({ kind: "chat", chatId });
   return null;
-}
-
-function DockResizeControl({
-  direction,
-  fraction,
-  label,
-  mode,
-  onDoubleClick,
-  onKeyChange,
-  onPointerBegin,
-  onPointerMove,
-  onPointerEnd,
-  onPointerCancel,
-  style,
-}: {
-  direction: "horizontal" | "vertical";
-  fraction: number;
-  label: string;
-  mode: ProjectDockPresentationPreference["preferredMode"];
-  onDoubleClick(): void;
-  onKeyChange(key: string): void;
-  onPointerBegin(event: PointerEvent<HTMLDivElement>): void;
-  onPointerMove(event: PointerEvent<HTMLDivElement>): void;
-  onPointerEnd(event: PointerEvent<HTMLDivElement>): void;
-  onPointerCancel(event: PointerEvent<HTMLDivElement>): void;
-  style: CSSProperties;
-}) {
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (
-      ![
-        "ArrowLeft",
-        "ArrowRight",
-        "ArrowUp",
-        "ArrowDown",
-        "Home",
-        "End",
-        "Enter",
-        " ",
-      ].includes(event.key)
-    ) {
-      return;
-    }
-    event.preventDefault();
-    onKeyChange(event.key);
-  };
-  return (
-    <div
-      aria-label={label}
-      aria-orientation={direction}
-      aria-valuemax={95}
-      aria-valuemin={5}
-      aria-valuenow={Math.round(fraction * 100)}
-      aria-valuetext={`${label} ${mode === "closed" ? "closed" : mode === "full" ? "full view" : `${Math.round(fraction * 100)} percent`}`}
-      className={cn(
-        "group relative z-30 bg-border outline-none focus-visible:bg-ring",
-        direction === "vertical" ? "cursor-col-resize" : "cursor-row-resize",
-      )}
-      data-dock-resize-mode={mode}
-      onDoubleClick={onDoubleClick}
-      onKeyDown={onKeyDown}
-      onLostPointerCapture={onPointerEnd}
-      onPointerCancel={onPointerCancel}
-      onPointerDown={onPointerBegin}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      role="separator"
-      style={style}
-      tabIndex={0}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute bg-primary/40 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100",
-          direction === "vertical"
-            ? "inset-y-0 left-1/2 w-0.5 -translate-x-1/2"
-            : "inset-x-0 top-1/2 h-0.5 -translate-y-1/2",
-        )}
-      />
-    </div>
-  );
 }
 
 function DockRail({
@@ -312,6 +235,20 @@ function genericPaneBody(
   presentation: VisibleProjectPane,
   nested = false,
 ): ReactNode {
+  if (bindings.paneOwnedElsewhere?.(presentation.pane.id)) {
+    return (
+      <div
+        className={cn("min-h-0 min-w-0", nested && "flex-1")}
+        data-detached-pane-placeholder={presentation.pane.id}
+        data-project-pane-id={presentation.pane.id}
+        style={nested ? undefined : { gridArea: presentation.gridArea }}
+      >
+        <DetachedPanePlaceholder
+          onFocus={() => bindings.focusDetachedPane(presentation.pane.id)}
+        />
+      </div>
+    );
+  }
   const kind = presentation.activeSurface?.kind;
   if (
     kind === "code" ||
@@ -473,6 +410,20 @@ export function ProjectWorkspaceFrame({
       visiblePaneIdByRegion,
     ],
   );
+  const excludedPersistentSurfaceIds = useMemo(
+    () =>
+      new Set(
+        bindings.projectSurfaces
+          .filter(({ paneId }: ProjectSurface) =>
+            bindings.paneOwnedElsewhere?.(paneId),
+          )
+          .map(({ entity }: ProjectSurface) =>
+            "id" in entity ? entity.id : "",
+          )
+          .filter(Boolean),
+      ),
+    [bindings.paneOwnedElsewhere, bindings.projectSurfaces],
+  );
   const centers = presentations.filter(({ pane }) => pane.region === "center");
   const right = presentations.find(({ pane }) => pane.region === "right");
   const bottom = presentations.find(({ pane }) => pane.region === "bottom");
@@ -490,22 +441,21 @@ export function ProjectWorkspaceFrame({
         : null;
   const rightRendered = Boolean(right && dockIsRendered(rightPreference));
   const bottomRendered = Boolean(bottom && dockIsRendered(bottomPreference));
-  const rightFraction = rightPreference
-    ? effectiveDockFraction(
-        temporarySplitFraction(rightPreference, fullRegion === "right"),
-        frameSize.width,
-        240,
-        240,
-      )
-    : 0.32;
-  const bottomFraction = bottomPreference
-    ? effectiveDockFraction(
-        temporarySplitFraction(bottomPreference, fullRegion === "bottom"),
-        frameSize.height,
-        180,
-        180,
-      )
-    : 0.32;
+  const { bottomFraction, grid, rightFraction } =
+    responsiveProjectWorkspaceGridModel({
+      bottom: bottomRendered,
+      center: Boolean(centerRoot && centers.length > 0),
+      frameHeight: frameSize.height,
+      frameWidth: frameSize.width,
+      fullRegion,
+      right: rightRendered,
+      savedBottomFraction: bottomPreference
+        ? temporarySplitFraction(bottomPreference, fullRegion === "bottom")
+        : 0.32,
+      savedRightFraction: rightPreference
+        ? temporarySplitFraction(rightPreference, fullRegion === "right")
+        : 0.32,
+    });
   const renderedPresentations = (
     fullRegion
       ? presentations.filter(({ pane }) => pane.region === fullRegion)
@@ -517,9 +467,15 @@ export function ProjectWorkspaceFrame({
         )
   ).map((presentation) => ({
     ...presentation,
-    portalTarget: panePortalTarget(presentation.pane.id),
+    portalTarget: bindings.paneOwnedElsewhere?.(presentation.pane.id)
+      ? null
+      : panePortalTarget(presentation.pane.id),
   }));
-  const remotePresentations = renderedPresentations.filter(
+  const { live: livePresentations } = partitionVisibleWorkspacePanes(
+    renderedPresentations,
+    (paneId) => Boolean(bindings.paneOwnedElsewhere?.(paneId)),
+  );
+  const remotePresentations = livePresentations.filter(
     ({ activeSurface }) => activeSurface?.kind === "remote-desktop",
   );
   const remoteDesktopQueries = useQueries({
@@ -536,7 +492,7 @@ export function ProjectWorkspaceFrame({
       remoteDesktopQueries[index],
     ]),
   );
-  const overviewPresentation = renderedPresentations.find(
+  const overviewPresentation = livePresentations.find(
     ({ activeSurface }) =>
       activeSurface?.kind === "builtin" &&
       activeSurface.entity.definitionId === "project.overview",
@@ -790,14 +746,6 @@ export function ProjectWorkspaceFrame({
     }
   };
 
-  const grid = projectWorkspaceGridModel({
-    bottom: bottomRendered,
-    bottomFraction,
-    center: Boolean(centerRoot && centers.length > 0),
-    fullRegion,
-    right: rightRendered,
-    rightFraction,
-  });
   const commitCenterSplitResize = (splitId: string, fraction: number) => {
     if (
       bindings.tabLayoutMutation.isPending ||
@@ -992,7 +940,7 @@ export function ProjectWorkspaceFrame({
             )
           : null}
         {docked
-          ? renderedPresentations.flatMap(({ activeSurface }) =>
+          ? livePresentations.flatMap(({ activeSurface }) =>
               activeSurface?.kind === "chat"
                 ? [
                     <VisibleChatLiveScope
@@ -1006,7 +954,11 @@ export function ProjectWorkspaceFrame({
         <PersistentSurfaceLayer
           bindings={
             docked
-              ? { ...bindings, dockPanePresentations: renderedPresentations }
+              ? {
+                  ...bindings,
+                  dockPanePresentations: livePresentations,
+                  excludedPersistentSurfaceIds,
+                }
               : bindings
           }
           key="persistent-surface-layer"

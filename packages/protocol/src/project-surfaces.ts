@@ -127,12 +127,7 @@ const commonLauncherLocations = [
   "surface-catalog",
   "command-palette",
 ] as const;
-const centerAndDockPlacements = [
-  "center",
-  "right",
-  "bottom",
-  "detached",
-] as const;
+const centerAndDockPlacements = ["center", "right", "bottom"] as const;
 
 export const PROJECT_SURFACE_DEFINITIONS = projectSurfaceRegistrySchema.parse([
   {
@@ -174,7 +169,7 @@ export const PROJECT_SURFACE_DEFINITIONS = projectSurfaceRegistrySchema.parse([
     category: "resources",
     capabilityRequirements: ["worker"],
     suggestedPlacement: "center",
-    supportedPlacements: ["center", "left", "right", "bottom", "detached"],
+    supportedPlacements: ["center", "left", "right", "bottom"],
     deletable: true,
     archivable: false,
     launcherLocations: commonLauncherLocations,

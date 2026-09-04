@@ -12,11 +12,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type WorktreeBindingTarget } from "@/components/app/application-shell-model";
 import { ApplicationShellRender } from "@/components/app/application-shell-render";
 import {
-  createDesktopGroupSelectionCommands,
+  createDesktopPaneSelectionCommands,
   useDesktopPopoutEffects,
   useDesktopPopoutModel,
   useDesktopPopoutStatusState,
-  useDetachedDesktopGroupState,
+  useDetachedDesktopPaneState,
   useOrphanedDesktopPopoutEffect,
 } from "@/components/app/desktop-popout-lifecycle";
 import {
@@ -346,6 +346,16 @@ export function App() {
   const showAppToast = useCallback((toast: AppToastInput) => {
     setAppToast({ ...toast, id: crypto.randomUUID() });
   }, []);
+  const detachedDesktopPane = useDetachedDesktopPaneState();
+  const selectedWorkspacePaneOwnedElsewhere = Boolean(
+    desktopRuntime &&
+    !isPopout &&
+    workspaceSelection.focusedPaneId &&
+    (detachedDesktopPane.claims.has(workspaceSelection.focusedPaneId) ||
+      !detachedDesktopPane.inspectedPaneIds.has(
+        workspaceSelection.focusedPaneId,
+      )),
+  );
   const {
     selectedBrowserId,
     selectedChatId,
@@ -357,7 +367,7 @@ export function App() {
   } = projectWorkspaceSurfaceSelection(workspaceSelection);
   useWorkspaceLiveScopes({
     appMode,
-    selectedChatId,
+    selectedChatId: selectedWorkspacePaneOwnedElsewhere ? null : selectedChatId,
     selectedProjectId,
     selectedStandaloneChatId,
   });
@@ -446,8 +456,6 @@ export function App() {
       terminalId: string;
     }>
   >([]);
-  const detachedDesktopGroup = useDetachedDesktopGroupState();
-  const { detachedGroupId, setDetachedGroupId } = detachedDesktopGroup;
   const explorerLifecycle = useExplorerLifecycleRefs();
   const {
     explorerLifecycleRef,
@@ -593,6 +601,27 @@ export function App() {
     worktreeStatuses,
     worktrees,
   } = projectWorkspaceResources;
+  const unavailableDetachedPaneIds = useMemo(
+    () =>
+      new Set(
+        (tabLayout.data?.panes ?? [])
+          .filter(
+            ({ id }) =>
+              desktopRuntime &&
+              !isPopout &&
+              (detachedDesktopPane.claims.has(id) ||
+                !detachedDesktopPane.inspectedPaneIds.has(id)),
+          )
+          .map(({ id }) => id),
+      ),
+    [
+      desktopRuntime,
+      detachedDesktopPane.claims,
+      detachedDesktopPane.inspectedPaneIds,
+      isPopout,
+      tabLayout.data?.panes,
+    ],
+  );
   const updateSurfaceLauncherPin = useMutation({
     mutationFn: ({
       definitionId,
@@ -920,7 +949,7 @@ export function App() {
       selectedTabKey,
     });
   const sidebarExplorerModel = useSidebarExplorerModel({
-    detachedGroupId,
+    unavailablePaneIds: unavailableDetachedPaneIds,
     environment: {
       explorerFileTarget,
       popoutTarget,
@@ -1529,7 +1558,7 @@ export function App() {
     activeProjectOverviewSection,
     currentSurface,
     desktopRuntime,
-    detached: detachedDesktopGroup,
+    detached: detachedDesktopPane,
     explorerLifecycleRef,
     isPopout,
     projectOverviewSelected,
@@ -1538,13 +1567,14 @@ export function App() {
     selectedExplorer,
     selectedProject,
     selectedProjectId,
-    selectedTabGroupId: selectedPane?.id ?? null,
+    selectedPaneId: selectedPane?.id ?? null,
     status: desktopPopoutStatus,
   });
   const {
     activePopout,
     activeProjectOverviewPopout,
-    groupOwnedElsewhere,
+    selectedPaneOwnedElsewhere,
+    paneOwnedElsewhere,
     popOutActiveView,
     popOutProjectOverviewView,
   } = desktopPopout;
@@ -1565,8 +1595,9 @@ export function App() {
   useDesktopPopoutEffects({
     currentSurface,
     desktopRuntime,
-    detached: detachedDesktopGroup,
+    detached: detachedDesktopPane,
     isPopout,
+    layoutPaneIds: tabLayout.data?.panes.map(({ id }) => id),
     model: desktopPopout,
     projectOverviewPopoutTarget,
     selectedProject,
@@ -1737,7 +1768,6 @@ export function App() {
     setActiveProjectWorkspaceId,
     setCommandBarOpen,
     setDesktopSidebarDrawerOpen,
-    setDetachedGroupId,
     setFolderProjectDialogOpen,
     setPendingSurfaceSelection: setPendingSurfaceSelectionWithOpenCancellation,
     setSidebarFilePreview,
@@ -1779,7 +1809,6 @@ export function App() {
     } else if (selectedProjectId) {
       setPendingSurfaceSelection({ projectId: selectedProjectId, tabKey });
     }
-    setDetachedGroupId(null);
     revealWorkspace();
   };
   const moveSurfaceToRegion = (
@@ -1816,10 +1845,10 @@ export function App() {
       projectId: surface.projectId,
     });
   };
-  const { focusDetachedGroup, selectGroupFromSidebar } =
-    createDesktopGroupSelectionCommands({
+  const { focusDetachedPane, selectPaneFromSidebar } =
+    createDesktopPaneSelectionCommands({
       desktopRuntime,
-      detached: detachedDesktopGroup,
+      detached: detachedDesktopPane,
       isPopout,
       layout: tabLayout.data,
       model: desktopPopout,
@@ -1858,7 +1887,6 @@ export function App() {
     revealWorkspace,
     selectedPane,
     setDesktopSidebarDrawerOpen,
-    setDetachedGroupId,
     setPopoutError,
     setWorkspaceSelection,
     sidebarExplorerCreationInput,
@@ -1963,8 +1991,8 @@ export function App() {
     closeSurfaceView, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
     desktopSidebarDrawerOpen, dismissedLongPathFailure, displayTerminals, displayedGitProject, executeAppAction,
     explorerDisplayPath, explorerFileTarget, explorerGraphRequest, explorers, finishSidebarResize,
-    focusDetachedGroup, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,
-    forkChatMutation, forkStandaloneChat, gitHistoryHeader, gitHistoryProject, groupOwnedElsewhere,
+    focusDetachedPane, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,
+    forkChatMutation, forkStandaloneChat, gitHistoryHeader, gitHistoryProject, selectedPaneOwnedElsewhere, paneOwnedElsewhere,
     handleExplorerChanged, handleExplorerLifecycleChange, handleSidebarFilePreviewLifecycleChange, handleWorkspaceDrop, isPopout,
     linkedConsoleChat, mobileNavigationSurfaces, mobileProjectSelectorOpen, moveSidebarResize, moveSurfaceToRegion,
     narrowViewport, newBrowser, newChat, newCodeTab, newExplorer,
@@ -1985,7 +2013,7 @@ export function App() {
     requestBindWorktree, requestDeleteExplorer, resizeSidebarWithKeyboard, resolvedProjectOverviewWorktreeId, restoreStandaloneChat,
     retryFolderSetupMutation, retryLongPathSetupMutation, retrySidebarFileTree, returnToCompactProjectOverview, revealWorkspace,
     runConfigurationEditorId, runConfigurationRuntimes, runConfigurations, runProjectScriptCommand, scriptCommandWorktreeId,
-    selectGroupFromSidebar, selectProjectFromCommandBar,
+    selectPaneFromSidebar, selectProjectFromCommandBar,
     selectProjectFromSidebar, selectProjectWorkspace, selectStandaloneChat, selectTopTab, selectedBrowser,
     selectedBuiltInSurface, selectedChat, selectedCodeTab, selectedExplorer, selectedFolderSetupJob, selectedFolderSetupNeedsAttention,
     selectedLongPathFailure, selectedLongPathSetupJob, selectedPaneSurfaces, selectedPlacementContext, selectedProject,

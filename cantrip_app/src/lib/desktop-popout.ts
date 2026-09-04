@@ -20,6 +20,12 @@ export type DesktopPopoutGroupTarget = {
   projectId: string;
 };
 
+export type DesktopPopoutPaneTarget = {
+  activeTabKey: string;
+  paneId: string;
+  projectId: string;
+};
+
 export type DesktopProjectOverviewTarget = {
   projectId: string;
   section: ProjectOverviewSection;
@@ -48,6 +54,7 @@ export type DesktopExplorerFileLaunchContext = {
 };
 
 const groupParameter = "cantrip-popout-group";
+const paneParameter = "cantrip-popout-pane";
 const projectOverviewParameter = "cantrip-project-overview";
 const explorerFileParameter = "cantrip-explorer-file";
 const standaloneChatFileParameter = "cantrip-chat-file";
@@ -132,11 +139,35 @@ export function parseDesktopPopoutGroupTarget(
     : null;
 }
 
+export function parseDesktopPopoutPaneTarget(
+  search: string,
+): DesktopPopoutPaneTarget | null {
+  const parameters = new URLSearchParams(search);
+  const paneId =
+    parameters.get(paneParameter) ?? parameters.get(groupParameter);
+  const projectId = parameters.get("project");
+  const activeTabKey = parameters.get("active");
+  return paneId && projectId && activeTabKey
+    ? { activeTabKey, paneId, projectId }
+    : null;
+}
+
 export function desktopPopoutGroupSearch(
   target: DesktopPopoutGroupTarget,
 ): string {
   const parameters = new URLSearchParams({
     [groupParameter]: target.groupId,
+    active: target.activeTabKey,
+    project: target.projectId,
+  });
+  return `?${parameters.toString()}`;
+}
+
+export function desktopPopoutPaneSearch(
+  target: DesktopPopoutPaneTarget,
+): string {
+  const parameters = new URLSearchParams({
+    [paneParameter]: target.paneId,
     active: target.activeTabKey,
     project: target.projectId,
   });
@@ -222,6 +253,10 @@ export function desktopStandaloneChatFileSearch(
 
 export function desktopPopoutGroupWindowLabel(groupId: string): string {
   return `cantrip-group-${groupId.replace(/[^A-Za-z0-9-/:_]/g, "_")}`;
+}
+
+export function desktopPopoutPaneWindowLabel(paneId: string): string {
+  return `cantrip-pane-${paneId.replace(/[^A-Za-z0-9-/:_]/g, "_")}`;
 }
 
 function stableLabelHash(value: string): string {
@@ -527,6 +562,33 @@ export async function focusDesktopPopoutGroup(
     : false;
 }
 
+export async function focusDesktopPopoutPane(paneId: string): Promise<boolean> {
+  if (!isDesktopRuntime()) return false;
+  return (
+    (await focusWindow(desktopPopoutPaneWindowLabel(paneId))) ||
+    (await focusWindow(desktopPopoutGroupWindowLabel(paneId)))
+  );
+}
+
+export async function discoverDesktopPopoutPaneIds(
+  paneIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (!isDesktopRuntime()) return new Set();
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const found = await Promise.all(
+    paneIds.map(async (paneId) => {
+      const canonical = await WebviewWindow.getByLabel(
+        desktopPopoutPaneWindowLabel(paneId),
+      );
+      const legacy = canonical
+        ? null
+        : await WebviewWindow.getByLabel(desktopPopoutGroupWindowLabel(paneId));
+      return canonical || legacy ? paneId : null;
+    }),
+  );
+  return new Set(found.filter((paneId): paneId is string => paneId !== null));
+}
+
 export async function observeDesktopPopoutClosure(
   getWindow: () => Promise<DesktopPopoutWindowLifecycle | null>,
   onClosed: () => void,
@@ -579,6 +641,25 @@ export async function watchDesktopPopoutGroup(
   }, onClosed);
 }
 
+export async function watchDesktopPopoutPane(
+  paneId: string,
+  onClosed: () => void,
+): Promise<() => void> {
+  if (!isDesktopRuntime()) return noDesktopListener;
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  return observeDesktopPopoutClosure(async () => {
+    const popout =
+      (await WebviewWindow.getByLabel(desktopPopoutPaneWindowLabel(paneId))) ??
+      (await WebviewWindow.getByLabel(desktopPopoutGroupWindowLabel(paneId)));
+    return popout
+      ? {
+          listenDestroyed: (listener) =>
+            popout.once("tauri://destroyed", listener),
+        }
+      : null;
+  }, onClosed);
+}
+
 export async function observeDesktopWindowFocus(
   getWindow: () => Promise<DesktopWindowFocusLifecycle | null>,
   onFocused: () => void,
@@ -619,6 +700,20 @@ export async function openDesktopPopoutGroup(
   return openDesktopWindow(
     desktopPopoutGroupWindowLabel(target.groupId),
     desktopPopoutGroupSearch(target),
+    title,
+    position,
+  );
+}
+
+export async function openDesktopPopoutPane(
+  target: DesktopPopoutPaneTarget,
+  title: string,
+  position?: { x: number; y: number },
+): Promise<"created" | "focused"> {
+  if (await focusDesktopPopoutPane(target.paneId)) return "focused";
+  return openDesktopWindow(
+    desktopPopoutPaneWindowLabel(target.paneId),
+    desktopPopoutPaneSearch(target),
     title,
     position,
   );

@@ -36,8 +36,9 @@ export function PersistentSurfaceLayer({
     dockPanePresentations,
     explorerGraphRequest,
     explorerSurfaceVisible,
+    excludedPersistentSurfaceIds,
     folderRevealLabel,
-    groupOwnedElsewhere,
+    selectedPaneOwnedElsewhere,
     handleExplorerChanged,
     handleExplorerLifecycleChange,
     handleSidebarFilePreviewLifecycleChange,
@@ -153,7 +154,7 @@ export function PersistentSurfaceLayer({
       !showArchivedStandaloneChats &&
       !showServerAdmin &&
       !showProjectSettings &&
-      !groupOwnedElsewhere &&
+      !selectedPaneOwnedElsewhere &&
       Boolean(selectedProject) &&
       (selectedPaneSurfaces.length > 0 || showSidebarPreviewTab) ? (
         <ProjectPaneTabStrip
@@ -215,6 +216,7 @@ export function PersistentSurfaceLayer({
           }
           onHeaderChange={setCodeHeader}
           visiblePlacements={dockCodePlacements}
+          excludedIds={excludedPersistentSurfaceIds}
         />
       </Suspense>
 
@@ -255,6 +257,7 @@ export function PersistentSurfaceLayer({
           }
           servicePanelTerminalId={terminalServiceTerminalId}
           visiblePlacements={dockTerminalPlacements}
+          excludedIds={excludedPersistentSurfaceIds}
         />
       </Suspense>
 
@@ -343,6 +346,7 @@ export function PersistentSurfaceLayer({
             selectedProject?.capabilities,
           )}
           visiblePlacements={dockExplorerPlacements}
+          excludedIds={excludedPersistentSurfaceIds}
           onOpenTerminal={(explorer, entry) => {
             if (!selectedSurface || selectedSurface.kind !== "explorer") {
               return;

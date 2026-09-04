@@ -317,7 +317,7 @@ describe("sidebar preview ownership handoff", () => {
     } = { current: null };
     const Probe = ({ explorers }: { explorers: ExplorerSummary[] }) => {
       observed.current = useSidebarExplorerModel({
-        detachedGroupId: null,
+        unavailablePaneIds: new Set(),
         environment: {
           explorerFileTarget: null,
           popoutTarget: null,

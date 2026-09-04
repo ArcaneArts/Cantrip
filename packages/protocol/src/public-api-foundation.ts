@@ -528,6 +528,13 @@ export {
   settingsBundleWireSchema,
 } from "./settings.js";
 
+export {
+  workspaceLayoutProfileSchema,
+  workspaceLayoutProfilePlacement,
+} from "./workspace-layout-profiles.js";
+
+export type { WorkspaceLayoutProfile } from "./workspace-layout-profiles.js";
+
 export type {
   ThemePreference,
   MobileProjectTabConfigurations,

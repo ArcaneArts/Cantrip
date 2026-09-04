@@ -18,6 +18,7 @@ import { clientLogger } from "@/lib/client-log-relay";
 import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
 
 export const MAX_RETAINED_EXPLORER_VIEWS = 8;
+const EMPTY_EXCLUDED_EXPLORER_IDS: ReadonlySet<string> = new Set();
 
 interface ExplorerOwnershipDiagnostic {
   active: boolean;
@@ -162,6 +163,7 @@ export function PersistentExplorerViews({
   prewarmSuccessorExplorer,
   repositoryGraphAvailable,
   visiblePlacements,
+  excludedIds = EMPTY_EXCLUDED_EXPLORER_IDS,
 }: {
   activeExplorer: ExplorerSummary | null;
   transientFile?: {
@@ -201,6 +203,7 @@ export function PersistentExplorerViews({
   prewarmExplorer?: ExplorerSummary | null;
   prewarmSuccessorExplorer?: ExplorerSummary | null;
   repositoryGraphAvailable: boolean;
+  excludedIds?: ReadonlySet<string>;
   visiblePlacements?: readonly {
     explorer: ExplorerSummary;
     focused: boolean;
@@ -242,7 +245,7 @@ export function PersistentExplorerViews({
 
   const renderedExplorers = useMemo(
     () =>
-      openExplorers
+      (openExplorers
         ? ownedExplorerSurfaceTabs(
             openExplorers,
             activeExplorer,
@@ -265,10 +268,12 @@ export function PersistentExplorerViews({
             handoffExplorer,
             handoffSourceExplorer,
             prewarmSuccessorExplorer,
-          ),
+          )
+      ).filter(({ id }) => !excludedIds.has(id)),
     [
       activeExplorer,
       dirtyIds,
+      excludedIds,
       handoffExplorer,
       handoffSourceExplorer,
       openExplorers,

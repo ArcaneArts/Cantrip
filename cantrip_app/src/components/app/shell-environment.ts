@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import {
   parseDesktopExplorerFileTarget,
-  parseDesktopPopoutGroupTarget,
+  parseDesktopPopoutPaneTarget,
   parseDesktopProjectOverviewTarget,
   isDesktopRuntime,
   shouldUseOverlayTitlebar,
@@ -39,7 +39,7 @@ export function useShellEnvironment() {
   const popoutTarget = useMemo(
     () =>
       desktopRuntime
-        ? parseDesktopPopoutGroupTarget(window.location.search)
+        ? parseDesktopPopoutPaneTarget(window.location.search)
         : null,
     [desktopRuntime],
   );

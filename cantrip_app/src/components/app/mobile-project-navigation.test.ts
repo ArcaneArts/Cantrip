@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectSurface } from "@/lib/project-surface";
 
 import {
+  MAX_MOBILE_PROJECT_SURFACES,
   mobileProjectShellModel,
   mobileProjectSurfaces,
 } from "./mobile-project-navigation";
@@ -73,5 +74,26 @@ describe("mobileProjectSurfaces", () => {
     expect(
       mobileProjectSurfaces([root, activeFile], activeFile.tabKey),
     ).toEqual([activeFile]);
+  });
+
+  it("bounds compact navigation to the active surface and recent placements", () => {
+    const surfaces = Array.from(
+      { length: 8 },
+      (_, index) =>
+        ({ kind: "chat", tabKey: `chat:${index}` }) as ProjectSurface,
+    );
+    const result = mobileProjectSurfaces(surfaces, "chat:0");
+
+    expect(result).toHaveLength(MAX_MOBILE_PROJECT_SURFACES);
+    expect(result.map(({ tabKey }) => tabKey)).toEqual([
+      "chat:0",
+      "chat:4",
+      "chat:5",
+      "chat:6",
+      "chat:7",
+    ]);
+    expect(surfaces.map(({ tabKey }) => tabKey)).toEqual(
+      Array.from({ length: 8 }, (_, index) => `chat:${index}`),
+    );
   });
 });

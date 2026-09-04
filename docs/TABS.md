@@ -1,6 +1,6 @@
 # Tabs, panes, and workspace layout
 
-Status: design and implementation plan.
+Status: implemented through Milestone 7.
 
 Cantrip is moving from a kind-dependent tab-group presentation to a unified
 workspace model. Every open surface should behave like a tab, every tab should
@@ -420,7 +420,12 @@ WorkspaceLayout {
   centerRoot
   rightDockPaneId
   bottomDockPaneId
-  detachedPaneIds
+}
+
+LocalDesktopOwnership {
+  paneId
+  phase: detaching | detached
+  explorerId?
 }
 
 LayoutNode = PaneNode | SplitNode(direction, fraction, first, second)
@@ -440,7 +445,6 @@ The server continues to own:
 - pane identity;
 - tab placement and order;
 - pane region and split-tree structure;
-- detached-pane membership;
 - layout revision; and
 - atomic move, split, merge, and reorder mutations.
 
@@ -455,37 +459,64 @@ Each app window locally remembers:
 - the active tab in each pane;
 - focus history;
 - temporary responsive clamps;
-- hover/reveal state for collapsed rails; and
-- effective pixel geometry derived from normalized fractions.
+- hover/reveal state for collapsed rails;
+- effective pixel geometry derived from normalized fractions;
+- pane-to-pop-out ownership claims and discovery state; and
+- native pop-out window position, size, and focus.
 
 Normalized user preferences may sync with tab placement, while platform- or
-device-specific geometry remains local. A later named-layout system may allow
-users to choose synced Agent, Hybrid, or IDE profiles explicitly.
+device-specific geometry remains local. The synced `workspaceLayoutProfile`
+setting is a prospective first-open policy, not a saved layout: changing it
+never moves a placed tab, changes a pane revision, or rewrites dock or split
+geometry.
+
+The available profiles are:
+
+- **Agent:** new surfaces prefer the center so the workspace stays focused on
+  one agent-first canvas.
+- **Hybrid:** new surfaces use the registry defaults (Agents and files in the
+  center, Terminals at the bottom, and inspection tools on the right).
+- **IDE:** registry defaults remain in force except new Agents prefer the
+  right dock beside the editor.
+
+An explicit pane or region always wins. Existing singleton and resource views
+always focus their current placement, regardless of the active profile.
 
 ## Detached windows and ownership
 
 A pop-out owns a pane, not a duplicate set of surfaces. The pane keeps its
-server layout identity while a local window claims its live rendering
-ownership.
+server layout identity and region while a device-local window claims its live
+rendering ownership.
 
 - One local desktop window owns a pane at a time.
 - The main window keeps a launcher/placeholder for a detached pane.
 - Selecting that placeholder focuses the owning window.
 - Closing a pop-out releases local ownership without deleting its tabs.
+- The main window claims before opening and rolls back only that pane if native
+  window creation fails.
+- Startup discovery checks every loaded pane and understands both the
+  canonical `cantrip-pane-*` label and the compatibility `cantrip-group-*`
+  label before allowing a live surface to mount.
+- Multiple detached panes are observed and released independently.
 - Dragging between windows remains unsupported until there is an explicit,
   atomic cross-window handoff protocol.
 - Terminals, Browsers, Code, Remote Desktop, and similar live surfaces must
   never mount concurrently in two windows for the same view.
 
-The current deterministic local ownership behavior should be preserved while
-the ownership unit migrates from tab group to pane.
+Compatibility readers remain for the legacy group query parameter and window
+label, but all maintained ownership and rendering decisions are pane-based.
+The migration converts any legacy durable `detached` region into a center pane,
+rebuilds that project's center tree, and preserves every view. New pop-outs are
+opened only through the pane pop-out action; `detached` is no longer advertised
+or accepted as a generic placement region.
 
 ## Compact and mobile behavior
 
 Compact clients consume the same surface definitions, placements, and order
 but may not render desktop docks or split handles.
 
-- Mobile navigation exposes a bounded set of active and recent surfaces.
+- Mobile navigation exposes at most five active and recent surfaces after
+  collapsing Explorer file views to one destination per worktree.
 - Selecting a right- or bottom-placed tab may present it full-screen locally.
 - That responsive presentation must not rewrite its desktop region or saved
   split fraction.
@@ -570,10 +601,14 @@ because its view placement is deduplicated.
 
 ### Milestone 7: detached panes and layout profiles
 
-- Migrate pop-out ownership from group to pane.
-- Add explicit pane handoff only when atomic cross-window moves are available.
-- Add optional Agent, Hybrid, and IDE layout profiles.
-- Keep responsive and device-local geometry separate from synced preferences.
+- Migrated pop-out routing, labels, discovery, observation, and ownership from
+  one selected group to a pane-keyed local claim map.
+- Kept cross-window drag/handoff unavailable until an atomic protocol exists;
+  direct `detached` API placement is rejected rather than becoming invisible.
+- Added synced Agent, Hybrid, and IDE first-open profiles with Hybrid as the
+  compatibility default.
+- Kept responsive clamps, native window geometry, active pane state, and
+  effective pixel sizes device- and window-local.
 
 Each milestone should be independently mergeable, migrate existing state
 safely, and include a compatibility period when protocol or server schema

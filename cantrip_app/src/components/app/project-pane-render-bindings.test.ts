@@ -24,14 +24,17 @@ const surface = {
   entity: { definitionId: "git.history" },
 } as ProjectSurface;
 
-function presentation(focused: boolean): VisibleProjectPane {
+function presentation(
+  focused: boolean,
+  activeSurface: ProjectSurface = surface,
+): VisibleProjectPane {
   return {
-    activeSurface: surface,
-    activeTabKey: surface.tabKey,
+    activeSurface,
+    activeTabKey: activeSurface.tabKey,
     focused,
     gridArea: "center-body",
     pane,
-    surfaces: [surface],
+    surfaces: [activeSurface],
   };
 }
 
@@ -71,4 +74,31 @@ describe("project pane render bindings", () => {
     expect(unfocused.setExplorerHeader).toBeUndefined();
     expect(unfocused.setGitHistoryHeader).toBeUndefined();
   });
+
+  it.each(["github.issues", "github.pull-requests", "github.actions"] as const)(
+    "keeps an unavailable %s singleton placed when GitHub capability is lost",
+    (definitionId) => {
+      const shell = {
+        ...bindings(),
+        selectedProject: {
+          capabilities: { git: true, github: false, worker: true },
+        },
+      };
+      const unavailableSurface = {
+        entity: { definitionId },
+        kind: "builtin",
+        paneId: pane.id,
+        projectId: pane.projectId,
+        tabKey: `builtin:${definitionId}`,
+      } as ProjectSurface;
+      const input = presentation(true, unavailableSurface);
+
+      const resolved = projectPaneRenderBindings(shell, input);
+
+      expect(resolved.selectedProjectToolUnavailable).toBe(true);
+      expect(resolved.selectedPane).toBe(pane);
+      expect(resolved.selectedSurface).toBe(unavailableSurface);
+      expect(input.surfaces).toEqual([unavailableSurface]);
+    },
+  );
 });

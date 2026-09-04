@@ -123,6 +123,9 @@ import {
   desktopPopoutTitlebarLeftInset,
   desktopPopoutGroupSearch,
   desktopPopoutGroupWindowLabel,
+  desktopPopoutPaneSearch,
+  desktopPopoutPaneWindowLabel,
+  discoverDesktopPopoutPaneIds,
   desktopProjectOverviewSearch,
   desktopProjectOverviewWindowLabel,
   desktopStandaloneChatFileSearch,
@@ -133,10 +136,12 @@ import {
   observeDesktopWindowFocus,
   openSyntheticBuildProgressWindow,
   openDesktopPopoutGroup,
+  openDesktopPopoutPane,
   openDesktopExplorerFile,
   openDesktopStandaloneChatFile,
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
+  parseDesktopPopoutPaneTarget,
   parseDesktopProjectOverviewTarget,
   parseDesktopStandaloneChatFileTarget,
   prewarmDesktopExplorerFile,
@@ -144,6 +149,7 @@ import {
   shouldUseOverlayTitlebar,
   type DesktopExplorerFileTarget,
   type DesktopPopoutGroupTarget,
+  type DesktopPopoutPaneTarget,
   type DesktopProjectOverviewTarget,
   type DesktopStandaloneChatFileTarget,
 } from "./desktop-popout";
@@ -289,6 +295,74 @@ describe("desktop pop-out groups", () => {
 
     expect(onClosed).toHaveBeenCalledOnce();
     expect(unlisten).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("desktop pop-out panes", () => {
+  const target: DesktopPopoutPaneTarget = {
+    activeTabKey: "terminal:terminal/1",
+    paneId: "pane one",
+    projectId: "project one",
+  };
+
+  it("writes the canonical pane route and reads canonical or legacy routes", () => {
+    expect(desktopPopoutPaneSearch(target)).toContain(
+      "cantrip-popout-pane=pane+one",
+    );
+    expect(
+      parseDesktopPopoutPaneTarget(desktopPopoutPaneSearch(target)),
+    ).toEqual(target);
+    expect(
+      parseDesktopPopoutPaneTarget(
+        "?cantrip-popout-group=legacy-pane&active=chat%3A1&project=project-1",
+      ),
+    ).toEqual({
+      activeTabKey: "chat:1",
+      paneId: "legacy-pane",
+      projectId: "project-1",
+    });
+  });
+
+  it("uses a pane-scoped window label", () => {
+    expect(desktopPopoutPaneWindowLabel("pane with spaces")).toBe(
+      "cantrip-pane-pane_with_spaces",
+    );
+  });
+
+  it("opens the canonical pane window", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    try {
+      await expect(
+        openDesktopPopoutPane(target, "Detached pane"),
+      ).resolves.toBe("created");
+      expect(
+        webviews.windows.get(desktopPopoutPaneWindowLabel(target.paneId))
+          ?.options,
+      ).toMatchObject({ dragDropEnabled: false });
+    } finally {
+      for (const window of webviews.windows.values()) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("discovers multiple canonical and compatibility pane windows", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    new webviews.MockWebviewWindow(desktopPopoutPaneWindowLabel("pane-a"));
+    new webviews.MockWebviewWindow(desktopPopoutGroupWindowLabel("pane-b"));
+    try {
+      expect(
+        await discoverDesktopPopoutPaneIds(["pane-a", "pane-b", "pane-c"]),
+      ).toEqual(new Set(["pane-a", "pane-b"]));
+    } finally {
+      for (const window of webviews.windows.values()) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
   });
 });
 

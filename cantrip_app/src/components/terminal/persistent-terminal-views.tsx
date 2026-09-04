@@ -12,6 +12,7 @@ import { TerminalView } from "./terminal-view";
 // a project with abandoned tabs cannot retain browser/transport resources
 // without bound.
 export const MAX_RETAINED_TERMINAL_VIEWS = 12;
+const EMPTY_EXCLUDED_TERMINAL_IDS: ReadonlySet<string> = new Set();
 
 export interface PendingTerminalInput {
   data: string;
@@ -60,6 +61,7 @@ export function PersistentTerminalViews({
   selectedTerminal,
   servicePanelTerminalId,
   visiblePlacements,
+  excludedIds = EMPTY_EXCLUDED_TERMINAL_IDS,
 }: {
   active: boolean;
   commandPaletteTerminalId: string | null;
@@ -73,6 +75,7 @@ export function PersistentTerminalViews({
   pendingInputs: readonly PendingTerminalInput[];
   selectedTerminal: TerminalSummary | null;
   servicePanelTerminalId: string | null;
+  excludedIds?: ReadonlySet<string>;
   visiblePlacements?: readonly {
     focused: boolean;
     gridArea: string;
@@ -82,29 +85,57 @@ export function PersistentTerminalViews({
   }[];
 }) {
   const visibleTerminals = useMemo(
-    () => visiblePlacements?.map(({ terminal }) => terminal) ?? [],
-    [visiblePlacements],
+    () =>
+      (visiblePlacements?.map(({ terminal }) => terminal) ?? []).filter(
+        ({ id }) => !excludedIds.has(id),
+      ),
+    [excludedIds, visiblePlacements],
   );
+  const availableOwnedTerminals = useMemo(
+    () => ownedTerminals.filter(({ id }) => !excludedIds.has(id)),
+    [excludedIds, ownedTerminals],
+  );
+  const availableSelectedTerminal =
+    selectedTerminal && !excludedIds.has(selectedTerminal.id)
+      ? selectedTerminal
+      : null;
   const [retainedTerminals, setRetainedTerminals] = useState<TerminalSummary[]>(
     () =>
       visibleTerminals.reduce(
         (retained, terminal) =>
-          retainTerminalSurfaceTabs(retained, ownedTerminals, terminal),
-        retainTerminalSurfaceTabs([], ownedTerminals, selectedTerminal),
+          retainTerminalSurfaceTabs(
+            retained,
+            availableOwnedTerminals,
+            terminal,
+          ),
+        retainTerminalSurfaceTabs(
+          [],
+          availableOwnedTerminals,
+          availableSelectedTerminal,
+        ),
       ),
   );
   const renderedTerminals = useMemo(
     () =>
       visibleTerminals.reduce(
         (retained, terminal) =>
-          retainTerminalSurfaceTabs(retained, ownedTerminals, terminal),
+          retainTerminalSurfaceTabs(
+            retained,
+            availableOwnedTerminals,
+            terminal,
+          ),
         retainTerminalSurfaceTabs(
           retainedTerminals,
-          ownedTerminals,
-          selectedTerminal,
+          availableOwnedTerminals,
+          availableSelectedTerminal,
         ),
       ),
-    [ownedTerminals, retainedTerminals, selectedTerminal, visibleTerminals],
+    [
+      availableOwnedTerminals,
+      availableSelectedTerminal,
+      retainedTerminals,
+      visibleTerminals,
+    ],
   );
   const previousOwnershipRef = useRef(new Map<string, TerminalSummary>());
 
@@ -112,11 +143,19 @@ export function PersistentTerminalViews({
     setRetainedTerminals((current) =>
       visibleTerminals.reduce(
         (retained, terminal) =>
-          retainTerminalSurfaceTabs(retained, ownedTerminals, terminal),
-        retainTerminalSurfaceTabs(current, ownedTerminals, selectedTerminal),
+          retainTerminalSurfaceTabs(
+            retained,
+            availableOwnedTerminals,
+            terminal,
+          ),
+        retainTerminalSurfaceTabs(
+          current,
+          availableOwnedTerminals,
+          availableSelectedTerminal,
+        ),
       ),
     );
-  }, [ownedTerminals, selectedTerminal, visibleTerminals]);
+  }, [availableOwnedTerminals, availableSelectedTerminal, visibleTerminals]);
 
   useEffect(() => {
     const current = new Map(
@@ -136,7 +175,7 @@ export function PersistentTerminalViews({
     }
     for (const [terminalId, terminal] of previousOwnershipRef.current) {
       if (current.has(terminalId)) continue;
-      const ownershipRemoved = !ownedTerminals.some(
+      const ownershipRemoved = !availableOwnedTerminals.some(
         (candidate) => candidate.id === terminalId,
       );
       clientLogger.info("Terminal surface ownership released", {
@@ -153,7 +192,7 @@ export function PersistentTerminalViews({
       });
     }
     previousOwnershipRef.current = current;
-  }, [ownedTerminals, renderedTerminals]);
+  }, [availableOwnedTerminals, renderedTerminals]);
   const placementById = new Map(
     visiblePlacements?.map((placement) => [placement.terminal.id, placement]) ??
       [],

@@ -26,7 +26,6 @@ function ShellContent({
     appMode,
     compactShell,
     contentRootRef,
-    groupOwnedElsewhere,
     isPopout,
     mobileProjectSelectorOpen,
     selectedProject,
@@ -55,8 +54,7 @@ function ShellContent({
     !showServerAdmin &&
     !showProjectSettings &&
     !sidebarFilePreviewVisible &&
-    workspaceSelection.destination !== "overview" &&
-    !groupOwnedElsewhere,
+    workspaceSelection.destination !== "overview",
   );
   return (
     <section
@@ -104,7 +102,7 @@ export function ApplicationShellRender({
     explorers,
     gitHistoryHeader,
     gitHistoryProject,
-    groupOwnedElsewhere,
+    selectedPaneOwnedElsewhere,
     handleWorkspaceDrop,
     isPopout,
     linkedConsoleChat,
@@ -286,7 +284,7 @@ export function ApplicationShellRender({
     !showSettings &&
     !showServerAdmin &&
     !showProjectSettings &&
-    !groupOwnedElsewhere,
+    !selectedPaneOwnedElsewhere,
   );
   const explorerSurfaceVisible = Boolean(
     appMode === "ide" &&
@@ -296,7 +294,7 @@ export function ApplicationShellRender({
     !showSettings &&
     !showServerAdmin &&
     !showProjectSettings &&
-    !groupOwnedElsewhere,
+    !selectedPaneOwnedElsewhere,
   );
   const terminalSurfaceVisible = Boolean(
     appMode === "ide" &&
@@ -307,7 +305,7 @@ export function ApplicationShellRender({
     !showSettings &&
     !showServerAdmin &&
     !showProjectSettings &&
-    !groupOwnedElsewhere,
+    !selectedPaneOwnedElsewhere,
   );
   if (explorerFileTarget) {
     const explorer =

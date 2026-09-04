@@ -41,7 +41,7 @@ export function useProjectWorkspaceSelectionState({
     useState<PendingSurfaceSelection | null>(
       popoutTarget
         ? {
-            paneId: popoutTarget.groupId,
+            paneId: popoutTarget.paneId,
             projectId: popoutTarget.projectId,
             tabKey: popoutTarget.activeTabKey,
           }

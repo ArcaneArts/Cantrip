@@ -5235,7 +5235,7 @@ export async function getProjectTabLayout(projectId: string) {
 export async function reorderProjectPanes(
   projectId: string,
   revision: number,
-  region: "center" | "right" | "bottom" | "left" | "detached",
+  region: "center" | "right" | "bottom" | "left",
   paneIds: string[],
 ) {
   return chatTitleEncryption.openTabLayout(
@@ -5311,7 +5311,7 @@ export async function moveProjectPaneMember(
     targetPaneId: string | null;
     targetMemberPosition: number;
     targetPanePosition?: number;
-    targetRegion?: "center" | "right" | "bottom" | "left" | "detached";
+    targetRegion?: "center" | "right" | "bottom" | "left";
   },
 ) {
   return chatTitleEncryption.openTabLayout(
@@ -5402,7 +5402,7 @@ export async function openProjectSurfaceView(
     revision: number;
     surfaceRef: ProjectSurfaceResourceRef;
     targetPaneId?: string;
-    targetRegion?: "center" | "right" | "bottom" | "left" | "detached";
+    targetRegion?: "center" | "right" | "bottom" | "left";
   },
 ) {
   const wire = projectSurfaceViewOpenResultSchema.parse(

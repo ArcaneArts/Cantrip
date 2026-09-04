@@ -1,12 +1,24 @@
 import type { ProjectSummary } from "@cantrip/protocol";
 import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createElement } from "react";
+import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
+
+const apiMocks = vi.hoisted(() => ({
+  moveProjectPaneMember: vi.fn(),
+}));
+
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  moveProjectPaneMember: apiMocks.moveProjectPaneMember,
+}));
 
 import {
   applyDockPresentationToLayout,
   createWorkspaceDropHandler,
   prepareOptimisticTabLayoutMutation,
+  useTabLayoutOperations,
 } from "./tab-layout-operations";
 
 const projects = ["one", "two", "three"].map(
@@ -87,6 +99,66 @@ describe("workspace drop operations", () => {
     ).toEqual(["chat:second", "chat:first"]);
     finishCancellation();
     await expect(prepared.cancellation).resolves.toBeUndefined();
+  });
+
+  it("rolls an optimistic move back and reloads authority after a stale 409", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false },
+      },
+    });
+    const queryKey = ["project-tab-layout", layout.projectId] as const;
+    queryClient.setQueryData(queryKey, layout);
+    const conflict = Object.assign(
+      new Error("The project tab layout changed. Refresh it and try again."),
+      { status: 409 },
+    );
+    apiMocks.moveProjectPaneMember.mockRejectedValueOnce(conflict);
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    const setWorkspaceDragError = vi.fn();
+    let operations!: ReturnType<typeof useTabLayoutOperations>;
+    const Probe = () => {
+      operations = useTabLayoutOperations({
+        queryClient,
+        setWorkspaceDragError,
+      });
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(Probe),
+        ),
+      );
+    });
+
+    await act(async () => {
+      operations.tabLayoutMutation.mutate({
+        command: {
+          tabKey: "chat:second",
+          targetMemberPosition: 0,
+          targetPaneId: null,
+          targetPanePosition: 0,
+          targetRegion: "right",
+          type: "move-member",
+        },
+        projectId: layout.projectId,
+      });
+      await vi.waitFor(() =>
+        expect(setWorkspaceDragError).toHaveBeenCalledWith(conflict.message),
+      );
+    });
+
+    expect(queryClient.getQueryData(queryKey)).toEqual(layout);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey });
+    expect(apiMocks.moveProjectPaneMember).toHaveBeenCalledOnce();
+    await act(async () => renderer.unmount());
   });
 
   it("does not overlap optimistic tab-layout mutations", () => {

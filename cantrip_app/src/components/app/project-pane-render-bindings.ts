@@ -130,7 +130,7 @@ export function projectPaneRenderBindings(
     displayedGitProject: gitHistoryProject ?? projectOverviewGitProject,
     explorerSurfaceVisible: activeSurface?.kind === "explorer",
     gitHistoryProject,
-    groupOwnedElsewhere: false,
+    selectedPaneOwnedElsewhere: false,
     linkedConsoleChat: undefined,
     newBrowser: inPane(bindings.newBrowser),
     newChat: inPane(bindings.newChat),
