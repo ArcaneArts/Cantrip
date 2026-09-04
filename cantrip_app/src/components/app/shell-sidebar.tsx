@@ -91,38 +91,23 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     archiveStandaloneChat,
     archivedStandaloneChats,
     beginSidebarResize,
-    bindChatWorktree,
     bootstrap,
-    browsers,
-    chats,
     closeSurfaceView,
-    codeTabs,
     createProjectSurface,
     createSidebarExplorerMutation,
     createSidebarFolder,
     creatingSurfaceKinds,
-    deleteBrowserMutation,
-    deleteChatMutation,
-    deleteCodeTabMutation,
-    deleteExplorerMutation,
-    deleteProjectViewMutation,
     deleteSidebarFileEntry,
-    deleteTerminalMutation,
     desktopSidebarDrawer,
     desktopSidebarDrawerOpen,
-    displayTerminals,
     explorers,
     finishSidebarResize,
     folderSetupJobs,
-    forkChatMutation,
     forkStandaloneChat,
     isPopout,
     moveSidebarResize,
     newStandaloneChat,
     onlineWorker,
-    openChatExplorerHere,
-    openChatHistoryHere,
-    openChatTerminalHere,
     openProjectNavigatorSurface,
     openProjectCreateSource,
     openProjectSettings,
@@ -141,17 +126,11 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     projectRevealButtonLabel,
     projectRevealLabel,
     projectSetupJobs,
-    projectViews,
     projectWorkspaces,
     projects,
     removeProjectMutation,
-    renameChatMutation,
-    renameExplorerMutation,
-    renameProjectViewMutation,
     renameSidebarFileEntry,
     renameStandaloneChat,
-    renameTerminalMutation,
-    requestDeleteExplorer,
     resizeSidebarWithKeyboard,
     restoreStandaloneChat,
     retrySidebarFileTree,
@@ -173,7 +152,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     setShowServerAdmin,
     setShowSettings,
     setSidebarCollapsed,
-    setWorktreeCreateTarget,
     showArchivedStandaloneChats,
     sidebarCollapsed,
     sidebarExpanded,
@@ -188,16 +166,11 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     standaloneChatCreationAvailable,
     standaloneChatCreationUnavailableReason,
     standaloneChats,
-    stopAndDeleteRunTerminalMutation,
     surfaceLaunchers,
     switchToChat,
     switchToIde,
-    tabLayout,
-    updateBrowserMutation,
-    updateCodeTabMutation,
     updateSurfaceLauncherPin,
     workers,
-    worktreeStatuses,
     worktrees,
   } = bindings;
   return (
@@ -431,24 +404,14 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   data-slot="sidebar-scroll-region"
                 >
                   <ProjectChatList
-                    browsers={browsers.data ?? []}
                     folderSetupJobs={folderSetupJobs}
                     projects={projects.data ?? []}
                     projectSetupJobs={projectSetupJobs}
-                    chats={chats.data ?? []}
-                    codeTabs={codeTabs.data ?? []}
-                    explorers={explorers.data ?? []}
-                    projectViews={projectViews.data ?? []}
                     surfaces={projectInventorySurfaces}
                     surfaceLaunchers={surfaceLaunchers.data ?? []}
-                    terminals={displayTerminals}
-                    workers={workers.data ?? []}
-                    worktrees={worktrees.data ?? []}
-                    worktreeStatuses={worktreeStatuses}
                     overviewSelected={projectOverviewSelected}
                     selectedProjectId={selectedProjectId}
                     selectedTabKey={selectedTabKey}
-                    tabLayout={tabLayout.data ?? null}
                     fileExplorer={sidebarExplorer}
                     fileGraphAvailable={explorerRepositoryGraphAvailable(
                       selectedProject?.capabilities,
@@ -477,23 +440,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     fileTreeWorkerId={sidebarFileWorkerId}
                     fileTreeWorkerOnline={sidebarFileWorkerOnline}
                     fileRevealLabel={projectRevealButtonLabel ?? undefined}
-                    onChangeChatWorktree={(chatId, worktreeId, mode) => {
-                      const chat = chats.data?.find(
-                        ({ id }: { id: string }) => id === chatId,
-                      );
-                      if (chat) bindChatWorktree(chat, worktreeId, mode);
-                    }}
-                    onRequestChatWorktreeCreate={(chat) =>
-                      setWorktreeCreateTarget({
-                        kind: "chat",
-                        projectId: chat.projectId,
-                        tabId: chat.id,
-                        mode: chat.worktreeMode,
-                      })
-                    }
-                    onOpenChatTerminal={openChatTerminalHere}
-                    onOpenChatExplorer={openChatExplorerHere}
-                    onOpenChatHistory={openChatHistoryHere}
                     onFilePin={pinSidebarFile}
                     onFileCreateFolder={createSidebarFolder}
                     onFileDelete={deleteSidebarFileEntry}
@@ -504,32 +450,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     onFilePreview={openSidebarFilePreview}
                     onFileRename={renameSidebarFileEntry}
                     onFileTreeRetry={retrySidebarFileTree}
-                    onRenameChat={(chatId, title) =>
-                      renameChatMutation.mutate({ chatId, title })
-                    }
-                    onDuplicateChat={(chatId) =>
-                      forkChatMutation.mutate(chatId)
-                    }
-                    onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
-                    onRenameCode={(codeTabId, title) =>
-                      updateCodeTabMutation.mutate({ codeTabId, title })
-                    }
-                    onDeleteCode={(codeTabId) =>
-                      deleteCodeTabMutation.mutate(codeTabId)
-                    }
-                    onRenameBrowser={(browserId, title) =>
-                      updateBrowserMutation.mutate({
-                        browserId,
-                        input: { title },
-                      })
-                    }
-                    onDeleteBrowser={(browserId) =>
-                      deleteBrowserMutation.mutate(browserId)
-                    }
-                    onRenameExplorer={(explorerId, title) =>
-                      renameExplorerMutation.mutate({ explorerId, title })
-                    }
-                    onDeleteExplorer={requestDeleteExplorer}
                     onCloseSurface={closeSurfaceView}
                     onOpenSurface={(surfaceRef) =>
                       selectedProjectId
@@ -547,23 +467,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         projectId: selectedProjectId,
                       });
                     }}
-                    onRenameProjectView={(viewId, title) =>
-                      renameProjectViewMutation.mutate({ viewId, title })
-                    }
-                    onDeleteProjectView={(viewId) =>
-                      deleteProjectViewMutation.mutate(viewId)
-                    }
-                    onRenameTerminal={(terminalId, title) =>
-                      renameTerminalMutation.mutate({ terminalId, title })
-                    }
-                    onDeleteTerminal={(terminalId) =>
-                      deleteTerminalMutation.mutate(terminalId)
-                    }
-                    onStopAndCloseRunTerminal={(terminal) =>
-                      stopAndDeleteRunTerminalMutation
-                        .mutateAsync(terminal)
-                        .then(() => undefined)
-                    }
                     onRemoveProject={(projectId, deleteLocalFiles) =>
                       removeProjectMutation
                         .mutateAsync({ projectId, deleteLocalFiles })

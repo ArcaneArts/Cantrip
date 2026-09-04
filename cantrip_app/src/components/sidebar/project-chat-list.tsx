@@ -3,9 +3,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type {
-  BrowserSummary,
-  ChatSummary,
-  CodeTabSummary,
   ExplorerEntry,
   ExplorerSummary,
   ProjectFolderSetupJobSummary,
@@ -14,28 +11,12 @@ import type {
   ProjectSurfaceLauncher,
   ProjectBuiltInSurfaceDefinitionId,
   ProjectReplicaJobSummary,
-  ProjectTabLayoutSummary,
-  ProjectWorktreeSummary,
-  ProjectViewSummary,
-  TerminalSummary,
-  WorkerSummary,
 } from "@cantrip/protocol";
 import {
   CircleAlert,
-  Code2,
-  CopyPlus,
-  FileCode2,
-  FolderTree,
-  GitCommitHorizontal,
-  Globe2,
   LayoutDashboard,
   Loader2,
-  MonitorUp,
   MoreHorizontal,
-  Pencil,
-  Play,
-  SquareTerminal,
-  Trash2,
   WifiOff,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -46,199 +27,22 @@ import {
   projectSetupErrorMessage,
 } from "@/lib/job-status-message";
 
-import {
-  ChatContextMenu,
-  ChatDropdownMenu,
-  type ChatWorktreeActions,
-} from "@/components/chat/chat-menu";
-import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
-import { Button } from "@/components/ui/button";
 import { InlineAlert } from "@/components/ui/inline-alert";
-import { SortableSidebarSurfaceRow } from "@/components/sidebar/sortable-sidebar-surface-row";
 import {
   ProjectSidebarFileTree,
   type ExplorerFileMutationAuthorization,
 } from "@/components/sidebar/project-sidebar-file-tree";
-import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { ProjectToolLaunchers } from "@/components/sidebar/project-tool-launchers";
-import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
 import {
   ProjectContextMenu,
   ProjectDropdownMenu,
   type ProjectMenuActions,
 } from "@/components/projects/project-actions-menu";
 import { ProjectRemovalDialog } from "@/components/projects/project-removal-dialog";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ProjectSurface } from "@/lib/project-surface";
-import { type WorkspaceDndData } from "@/lib/workspace-dnd-model";
-import {
-  WorkerPlacementIndicator,
-  WorktreeIndicator,
-  type WorktreeStatusMap,
-} from "@/components/worktrees/worktree-control";
 
 const projectId = (id: string) => `project:${id}`;
-const chatId = (id: string) => `chat:${id}`;
-const terminalId = (id: string) => `terminal:${id}`;
-const explorerId = (id: string) => `explorer:${id}`;
-const browserId = (id: string) => `browser:${id}`;
-const codeId = (id: string) => `code:${id}`;
-const viewId = (id: string) => `view:${id}`;
-
-function SortableChat({
-  active,
-  chat,
-  dndData,
-  editing,
-  onClose,
-  onDelete,
-  onDuplicate,
-  onRename,
-  onSelect,
-  renameValue,
-  setRenameValue,
-  submitRename,
-  workers,
-  worktree,
-  worktreeActions,
-  worktreeStatus,
-}: {
-  active: boolean;
-  chat: ChatSummary;
-  dndData: WorkspaceDndData;
-  editing: boolean;
-  onClose(): void;
-  onDelete(): void;
-  onDuplicate(): void;
-  onRename(): void;
-  onSelect(): void;
-  renameValue: string;
-  setRenameValue(value: string): void;
-  submitRename(): void;
-  workers: WorkerSummary[];
-  worktree?: ProjectWorktreeSummary;
-  worktreeActions?: ChatWorktreeActions;
-  worktreeStatus?: WorktreeStatusMap[string];
-}) {
-  const actions = {
-    deleteLabel: "Archive Resource",
-    deleteDisabled:
-      chat.status === "running" || chat.status === "waiting-for-approval",
-    onDelete,
-    onClose,
-    onDuplicate,
-    onRename,
-    worktree: worktreeActions,
-  };
-  return (
-    <SortableSidebarSurfaceRow
-      active={active}
-      dndData={dndData}
-      editing={editing}
-      icon={
-        <ProjectSurfaceIcon
-          kind={chat.experience === "task" ? "task" : "chat"}
-          className="size-3.5 shrink-0"
-        />
-      }
-      sortId={chatId(chat.id)}
-      status={<ChatActivityStatus chat={chat} />}
-      title={chat.title}
-      renameValue={renameValue}
-      onCancelRename={onRename}
-      onClose={onClose}
-      onRename={setRenameValue}
-      onSelect={onSelect}
-      onSubmitRename={submitRename}
-      openActionsOnContextMenu={false}
-      trailing={
-        worktreeActions ? (
-          <WorktreeIndicator
-            leaseOwner={chat.title}
-            status={worktreeStatus}
-            workers={workers}
-            worktree={worktree}
-          />
-        ) : undefined
-      }
-      actions={<ChatDropdownMenu actions={actions} title={chat.title} />}
-      renderContextMenu={(row) => (
-        <ChatContextMenu actions={actions}>{row}</ChatContextMenu>
-      )}
-    />
-  );
-}
-
-function StandardSidebarSurfaceTab({
-  active,
-  dndData,
-  editing,
-  icon,
-  onClose,
-  onDelete,
-  onRename,
-  onSelect,
-  renameValue,
-  setRenameValue,
-  sortId,
-  status,
-  submitRename,
-  title,
-  trailing,
-}: {
-  active: boolean;
-  dndData: WorkspaceDndData;
-  editing: boolean;
-  icon: ReactNode;
-  onClose(): void;
-  onDelete?: () => void;
-  onRename?: () => void;
-  onSelect(): void;
-  renameValue: string;
-  setRenameValue(value: string): void;
-  sortId: string;
-  status?: ReactNode;
-  submitRename(): void;
-  title: string;
-  trailing?: ReactNode;
-}) {
-  return (
-    <SortableSidebarSurfaceRow
-      actions={
-        <SurfaceActionsMenu
-          title={title}
-          onClose={onClose}
-          onDelete={onDelete}
-          onRename={onRename}
-          contentClassName="min-w-36"
-        />
-      }
-      active={active}
-      dndData={dndData}
-      editing={editing}
-      icon={icon}
-      sortId={sortId}
-      status={status}
-      title={title}
-      trailing={trailing}
-      renameValue={renameValue}
-      onCancelRename={onRename ?? (() => undefined)}
-      onClose={onClose}
-      onRename={setRenameValue}
-      onSelect={onSelect}
-      onSubmitRename={submitRename}
-    />
-  );
-}
 
 export function ProjectOverviewTab({
   active,
@@ -355,10 +159,6 @@ export function ProjectOverviewTab({
 }
 
 export function ProjectChatList({
-  browsers,
-  chats,
-  codeTabs,
-  explorers,
   fileExplorer,
   filePreviewPath,
   fileTreeError,
@@ -368,10 +168,8 @@ export function ProjectChatList({
   fileTreeWorkerId,
   fileTreeWorkerOnline,
   fileRevealLabel,
-  onChangeChatWorktree,
   overviewSelected,
   surfaceLaunchers = [],
-  projectViews,
   onFilePin,
   onFileCreateFolder,
   onFileDelete,
@@ -382,30 +180,12 @@ export function ProjectChatList({
   onFilePreview,
   onFileRename,
   onFileTreeRetry,
-  onDeleteChat,
-  onDeleteBrowser,
-  onDeleteCode,
-  onDeleteExplorer,
   onCloseSurface,
-  onDeleteProjectView,
-  onDuplicateChat,
-  onOpenChatExplorer,
-  onOpenChatHistory,
-  onOpenChatTerminal,
   onOpenProjectSettings,
   onOpenSurface,
   onPinProjectTool,
   onRevealProject,
-  onDeleteTerminal,
-  onStopAndCloseRunTerminal,
   onRemoveProject,
-  onRequestChatWorktreeCreate,
-  onRenameChat,
-  onRenameBrowser,
-  onRenameCode,
-  onRenameExplorer,
-  onRenameProjectView,
-  onRenameTerminal,
   onSelectTab,
   onSelectProject,
   folderSetupJobs,
@@ -415,16 +195,7 @@ export function ProjectChatList({
   selectedTabKey,
   selectedProjectId,
   surfaces,
-  tabLayout,
-  terminals,
-  workers,
-  worktrees,
-  worktreeStatuses,
 }: {
-  browsers: BrowserSummary[];
-  chats: ChatSummary[];
-  codeTabs: CodeTabSummary[];
-  explorers: ExplorerSummary[];
   fileExplorer: ExplorerSummary | null;
   filePreviewPath: string | null;
   fileTreeError?: string | null;
@@ -434,14 +205,8 @@ export function ProjectChatList({
   fileTreeWorkerId: string | null;
   fileTreeWorkerOnline: boolean;
   fileRevealLabel?: string;
-  onChangeChatWorktree(
-    chatId: string,
-    worktreeId: string,
-    mode: "agent-managed" | "pinned",
-  ): void;
   overviewSelected: boolean;
   surfaceLaunchers: ProjectSurfaceLauncher[];
-  projectViews: ProjectViewSummary[];
   onFilePin(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFileCreateFolder(
     explorer: ExplorerSummary,
@@ -469,16 +234,7 @@ export function ProjectChatList({
     authorization: ExplorerFileMutationAuthorization,
   ): Promise<void>;
   onFileTreeRetry?(): void;
-  onDeleteChat(chatId: string): void;
-  onDeleteBrowser(browserId: string): void;
-  onDeleteCode(codeTabId: string): void;
-  onDeleteExplorer(explorerId: string): void;
   onCloseSurface(surface: ProjectSurface): void;
-  onDeleteProjectView(viewId: string): void;
-  onDuplicateChat(chatId: string): void;
-  onOpenChatExplorer(chat: ChatSummary): void;
-  onOpenChatHistory(chat: ChatSummary): void;
-  onOpenChatTerminal(chat: ChatSummary): void;
   onOpenProjectSettings(projectId: string): void;
   onOpenSurface(surfaceRef: ProjectSurfaceResourceRef): void;
   onPinProjectTool(
@@ -489,16 +245,7 @@ export function ProjectChatList({
     project: ProjectSummary,
     localFolder: boolean,
   ) => Promise<void>;
-  onDeleteTerminal(terminalId: string): void;
-  onStopAndCloseRunTerminal(terminal: TerminalSummary): Promise<void>;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
-  onRequestChatWorktreeCreate(chat: ChatSummary): void;
-  onRenameChat(chatId: string, title: string): void;
-  onRenameBrowser(browserId: string, title: string): void;
-  onRenameCode(codeTabId: string, title: string): void;
-  onRenameExplorer(explorerId: string, title: string): void;
-  onRenameProjectView(viewId: string, title: string): void;
-  onRenameTerminal(terminalId: string, title: string): void;
   onSelectTab(tabKey: string): void;
   onSelectProject(projectId: string): void;
   folderSetupJobs: ReadonlyMap<string, ProjectFolderSetupJobSummary>;
@@ -508,40 +255,7 @@ export function ProjectChatList({
   selectedTabKey: string | null;
   selectedProjectId: string | null;
   surfaces: readonly ProjectSurface[];
-  tabLayout: ProjectTabLayoutSummary | null;
-  terminals: TerminalSummary[];
-  workers: WorkerSummary[];
-  worktrees: ProjectWorktreeSummary[];
-  worktreeStatuses: WorktreeStatusMap;
 }) {
-  const [editingChatId, setEditingChatId] = useState<string | null>(null);
-  const [editingBrowserId, setEditingBrowserId] = useState<string | null>(null);
-  const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
-  const [editingExplorerId, setEditingExplorerId] = useState<string | null>(
-    null,
-  );
-  const [editingTerminalId, setEditingTerminalId] = useState<string | null>(
-    null,
-  );
-  const [editingProjectViewId, setEditingProjectViewId] = useState<
-    string | null
-  >(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
-  const [deleteBrowserTarget, setDeleteBrowserTarget] =
-    useState<BrowserSummary | null>(null);
-  const [deleteCodeTarget, setDeleteCodeTarget] =
-    useState<CodeTabSummary | null>(null);
-  const [deleteExplorerTarget, setDeleteExplorerTarget] =
-    useState<ExplorerSummary | null>(null);
-  const [deleteTerminalTarget, setDeleteTerminalTarget] =
-    useState<TerminalSummary | null>(null);
-  const [deleteTerminalPending, setDeleteTerminalPending] = useState(false);
-  const [deleteTerminalError, setDeleteTerminalError] = useState<string | null>(
-    null,
-  );
-  const [deleteProjectViewTarget, setDeleteProjectViewTarget] =
-    useState<ProjectViewSummary | null>(null);
   const [removeProjectTarget, setRemoveProjectTarget] =
     useState<ProjectSummary | null>(null);
   const [revealingProjectId, setRevealingProjectId] = useState<string | null>(
@@ -550,159 +264,6 @@ export function ProjectChatList({
   const [projectRevealError, setProjectRevealError] = useState<string | null>(
     null,
   );
-  const standaloneTerminals = terminals.filter(
-    (terminal) => terminal.linkedChatId === null,
-  );
-  type SidebarTab =
-    | { id: string; kind: "chat"; chat: ChatSummary }
-    | {
-        id: string;
-        kind: "terminal";
-        terminal: TerminalSummary;
-      }
-    | {
-        id: string;
-        kind: "explorer";
-        explorer: ExplorerSummary;
-      }
-    | {
-        id: string;
-        kind: "browser";
-        browser: BrowserSummary;
-      }
-    | {
-        id: string;
-        kind: "code";
-        codeTab: CodeTabSummary;
-      }
-    | {
-        id: string;
-        kind: "view";
-        view: ProjectViewSummary;
-      };
-  const tabs: SidebarTab[] = [
-    ...chats
-      .filter(({ experience }) => experience !== "task")
-      .map((chat) => ({
-        id: chatId(chat.id),
-        kind: "chat" as const,
-        chat,
-      })),
-    ...standaloneTerminals.map((terminal) => ({
-      id: terminalId(terminal.id),
-      kind: "terminal" as const,
-      terminal,
-    })),
-    ...explorers.map((explorer) => ({
-      id: explorerId(explorer.id),
-      kind: "explorer" as const,
-      explorer,
-    })),
-    ...browsers.map((browser) => ({
-      id: browserId(browser.id),
-      kind: "browser" as const,
-      browser,
-    })),
-    ...codeTabs.map((codeTab) => ({
-      id: codeId(codeTab.id),
-      kind: "code" as const,
-      codeTab,
-    })),
-    ...projectViews
-      .filter(({ kind }) => kind === "remote-desktop")
-      .map((view) => ({
-        id: viewId(view.id),
-        kind: "view" as const,
-        view,
-      })),
-  ];
-  const tabByKey = new Map(tabs.map((tab) => [tab.id, tab]));
-  const sidebarSurfaceRows = surfaces.flatMap((surface) => {
-    const tab = tabByKey.get(surface.tabKey);
-    return tab ? [{ surface, tab }] : [];
-  });
-  const worktreeById = new Map(
-    worktrees.map((worktree) => [worktree.id, worktree]),
-  );
-
-  const beginRename = (chat: ChatSummary) => {
-    if (editingChatId === chat.id) {
-      setEditingChatId(null);
-      return;
-    }
-    setEditingChatId(chat.id);
-    setRenameValue(chat.title);
-  };
-  const finishRename = (chat: ChatSummary) => {
-    const title = renameValue.trim();
-    setEditingChatId(null);
-    if (title && title !== chat.title) onRenameChat(chat.id, title);
-  };
-  const beginTerminalRename = (terminal: TerminalSummary) => {
-    if (editingTerminalId === terminal.id) {
-      setEditingTerminalId(null);
-      return;
-    }
-    setEditingTerminalId(terminal.id);
-    setRenameValue(terminal.title);
-  };
-  const finishTerminalRename = (terminal: TerminalSummary) => {
-    const title = renameValue.trim();
-    setEditingTerminalId(null);
-    if (title && title !== terminal.title) onRenameTerminal(terminal.id, title);
-  };
-  const beginExplorerRename = (explorer: ExplorerSummary) => {
-    if (editingExplorerId === explorer.id) {
-      setEditingExplorerId(null);
-      return;
-    }
-    setEditingExplorerId(explorer.id);
-    setRenameValue(explorer.title);
-  };
-  const finishExplorerRename = (explorer: ExplorerSummary) => {
-    const title = renameValue.trim();
-    setEditingExplorerId(null);
-    if (title && title !== explorer.title) onRenameExplorer(explorer.id, title);
-  };
-  const beginBrowserRename = (browser: BrowserSummary) => {
-    if (editingBrowserId === browser.id) {
-      setEditingBrowserId(null);
-      return;
-    }
-    setEditingBrowserId(browser.id);
-    setRenameValue(browser.title);
-  };
-  const beginCodeRename = (codeTab: CodeTabSummary) => {
-    if (editingCodeId === codeTab.id) {
-      setEditingCodeId(null);
-      return;
-    }
-    setEditingCodeId(codeTab.id);
-    setRenameValue(codeTab.title);
-  };
-  const finishCodeRename = (codeTab: CodeTabSummary) => {
-    const title = renameValue.trim();
-    setEditingCodeId(null);
-    if (title && title !== codeTab.title) onRenameCode(codeTab.id, title);
-  };
-  const finishBrowserRename = (browser: BrowserSummary) => {
-    const title = renameValue.trim();
-    setEditingBrowserId(null);
-    if (title && title !== browser.title) onRenameBrowser(browser.id, title);
-  };
-  const beginProjectViewRename = (view: ProjectViewSummary) => {
-    if (editingProjectViewId === view.id) {
-      setEditingProjectViewId(null);
-      return;
-    }
-    setEditingProjectViewId(view.id);
-    setRenameValue(view.title);
-  };
-  const finishProjectViewRename = (view: ProjectViewSummary) => {
-    const title = renameValue.trim();
-    setEditingProjectViewId(null);
-    if (title && title !== view.title) onRenameProjectView(view.id, title);
-  };
   return (
     <>
       <div className="contents">
@@ -760,322 +321,6 @@ export function ProjectChatList({
                       onPin={onPinProjectTool}
                       onSelect={onSelectTab}
                     />
-                    {sidebarSurfaceRows.length > 0 ? (
-                      <details className="mt-1 rounded-md border border-border/50 px-1 py-0.5">
-                        <summary className="cursor-pointer select-none px-1 py-1 text-[11px] font-medium text-muted-foreground">
-                          Open views ({sidebarSurfaceRows.length})
-                        </summary>
-                        <SortableContext
-                          items={sidebarSurfaceRows.map(({ tab }) => tab.id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          {sidebarSurfaceRows.map(({ surface, tab }) => {
-                            const selectTab = () => onSelectTab(tab.id);
-                            const dndData = {
-                              drag: {
-                                type: "surface" as const,
-                                projectId: surface.projectId,
-                                paneId: surface.paneId,
-                                tabKey: surface.tabKey,
-                                label: surface.title,
-                                position: surface.member.position,
-                                visualKind: surface.kind,
-                              },
-                              drop: {
-                                type: "pane-target" as const,
-                                projectId: surface.projectId,
-                                paneId: surface.paneId,
-                              },
-                            } satisfies WorkspaceDndData;
-                            return tab.kind === "chat" ? (
-                              <SortableChat
-                                key={tab.id}
-                                chat={tab.chat}
-                                active={tab.id === selectedTabKey}
-                                editing={editingChatId === tab.chat.id}
-                                renameValue={renameValue}
-                                setRenameValue={setRenameValue}
-                                submitRename={() => finishRename(tab.chat)}
-                                onSelect={selectTab}
-                                onRename={() => beginRename(tab.chat)}
-                                onDuplicate={() => onDuplicateChat(tab.chat.id)}
-                                onClose={() => onCloseSurface(surface)}
-                                onDelete={() => setDeleteTarget(tab.chat)}
-                                workers={workers}
-                                worktree={worktreeById.get(
-                                  tab.chat.activeWorktreeId,
-                                )}
-                                worktreeStatus={
-                                  worktreeStatuses[tab.chat.activeWorktreeId]
-                                }
-                                worktreeActions={
-                                  project.capabilities.worktrees
-                                    ? {
-                                        currentWorktreeId:
-                                          tab.chat.activeWorktreeId,
-                                        disabled: tab.chat.status === "running",
-                                        mode: tab.chat.worktreeMode,
-                                        worktrees,
-                                        onCreate: () =>
-                                          onRequestChatWorktreeCreate(tab.chat),
-                                        onSelect: (worktreeId) =>
-                                          onChangeChatWorktree(
-                                            tab.chat.id,
-                                            worktreeId,
-                                            tab.chat.worktreeMode,
-                                          ),
-                                        onSetMode: (mode) =>
-                                          onChangeChatWorktree(
-                                            tab.chat.id,
-                                            tab.chat.activeWorktreeId,
-                                            mode,
-                                          ),
-                                        onOpenTerminal: () =>
-                                          onOpenChatTerminal(tab.chat),
-                                        onOpenExplorer: () =>
-                                          onOpenChatExplorer(tab.chat),
-                                        onOpenHistory: () =>
-                                          onOpenChatHistory(tab.chat),
-                                      }
-                                    : undefined
-                                }
-                                dndData={dndData}
-                              />
-                            ) : tab.kind === "terminal" ? (
-                              <StandardSidebarSurfaceTab
-                                key={tab.id}
-                                dndData={dndData}
-                                sortId={tab.id}
-                                title={tab.terminal.title}
-                                icon={
-                                  tab.terminal.kind === "run-configuration" ? (
-                                    <Play className="size-3.5 shrink-0 fill-current" />
-                                  ) : (
-                                    <SquareTerminal className="size-3.5 shrink-0" />
-                                  )
-                                }
-                                status={
-                                  <span
-                                    className={cn(
-                                      "ml-auto size-[5px] rounded-full bg-muted-foreground/40",
-                                      tab.terminal.status === "running" &&
-                                        "bg-emerald-400",
-                                      tab.terminal.status === "failed" &&
-                                        "bg-red-400",
-                                    )}
-                                  />
-                                }
-                                active={tab.id === selectedTabKey}
-                                editing={editingTerminalId === tab.terminal.id}
-                                renameValue={renameValue}
-                                setRenameValue={setRenameValue}
-                                submitRename={() =>
-                                  finishTerminalRename(tab.terminal)
-                                }
-                                onSelect={selectTab}
-                                onRename={
-                                  tab.terminal.kind === "run-configuration"
-                                    ? undefined
-                                    : () => beginTerminalRename(tab.terminal)
-                                }
-                                onClose={() => onCloseSurface(surface)}
-                                onDelete={() =>
-                                  setDeleteTerminalTarget(tab.terminal)
-                                }
-                                trailing={
-                                  project.capabilities.worktrees ? (
-                                    <WorktreeIndicator
-                                      status={
-                                        worktreeStatuses[
-                                          tab.terminal.worktreeId
-                                        ]
-                                      }
-                                      workers={workers}
-                                      worktree={worktreeById.get(
-                                        tab.terminal.worktreeId,
-                                      )}
-                                    />
-                                  ) : undefined
-                                }
-                              />
-                            ) : tab.kind === "explorer" ? (
-                              <StandardSidebarSurfaceTab
-                                key={tab.id}
-                                dndData={dndData}
-                                sortId={tab.id}
-                                title={tab.explorer.title}
-                                icon={
-                                  tab.explorer.selectedPath ? (
-                                    <FileCode2 className="size-3.5 shrink-0" />
-                                  ) : (
-                                    <FolderTree className="size-3.5 shrink-0" />
-                                  )
-                                }
-                                active={tab.id === selectedTabKey}
-                                editing={editingExplorerId === tab.explorer.id}
-                                renameValue={renameValue}
-                                setRenameValue={setRenameValue}
-                                submitRename={() =>
-                                  finishExplorerRename(tab.explorer)
-                                }
-                                onSelect={selectTab}
-                                onRename={() =>
-                                  beginExplorerRename(tab.explorer)
-                                }
-                                onClose={() => onCloseSurface(surface)}
-                                onDelete={() =>
-                                  setDeleteExplorerTarget(tab.explorer)
-                                }
-                                trailing={
-                                  project.capabilities.worktrees ? (
-                                    <WorktreeIndicator
-                                      status={
-                                        worktreeStatuses[
-                                          tab.explorer.worktreeId
-                                        ]
-                                      }
-                                      workers={workers}
-                                      worktree={worktreeById.get(
-                                        tab.explorer.worktreeId,
-                                      )}
-                                    />
-                                  ) : undefined
-                                }
-                              />
-                            ) : tab.kind === "browser" ? (
-                              <StandardSidebarSurfaceTab
-                                key={tab.id}
-                                dndData={dndData}
-                                sortId={tab.id}
-                                title={tab.browser.title}
-                                icon={<Globe2 className="size-3.5 shrink-0" />}
-                                active={tab.id === selectedTabKey}
-                                editing={editingBrowserId === tab.browser.id}
-                                renameValue={renameValue}
-                                setRenameValue={setRenameValue}
-                                submitRename={() =>
-                                  finishBrowserRename(tab.browser)
-                                }
-                                onSelect={selectTab}
-                                onRename={() => beginBrowserRename(tab.browser)}
-                                onClose={() => onCloseSurface(surface)}
-                                onDelete={() =>
-                                  setDeleteBrowserTarget(tab.browser)
-                                }
-                                trailing={
-                                  <WorkerPlacementIndicator
-                                    workerId={tab.browser.workerId}
-                                    workers={workers}
-                                  />
-                                }
-                              />
-                            ) : tab.kind === "code" ? (
-                              <StandardSidebarSurfaceTab
-                                key={tab.id}
-                                dndData={dndData}
-                                sortId={tab.id}
-                                title={tab.codeTab.title}
-                                icon={<Code2 className="size-3.5 shrink-0" />}
-                                status={
-                                  <span
-                                    className={cn(
-                                      "ml-auto size-[5px] rounded-full bg-muted-foreground/40",
-                                      tab.codeTab.status === "running" &&
-                                        "bg-emerald-400",
-                                      tab.codeTab.status === "starting" &&
-                                        "animate-pulse bg-amber-500",
-                                      tab.codeTab.status === "failed" &&
-                                        "bg-red-400",
-                                    )}
-                                    title={`Editor ${tab.codeTab.status}`}
-                                  />
-                                }
-                                active={tab.id === selectedTabKey}
-                                editing={editingCodeId === tab.codeTab.id}
-                                renameValue={renameValue}
-                                setRenameValue={setRenameValue}
-                                submitRename={() =>
-                                  finishCodeRename(tab.codeTab)
-                                }
-                                onSelect={selectTab}
-                                onRename={() => beginCodeRename(tab.codeTab)}
-                                onClose={() => onCloseSurface(surface)}
-                                onDelete={() =>
-                                  setDeleteCodeTarget(tab.codeTab)
-                                }
-                                trailing={
-                                  project.capabilities.worktrees ? (
-                                    <WorktreeIndicator
-                                      status={
-                                        worktreeStatuses[tab.codeTab.worktreeId]
-                                      }
-                                      workers={workers}
-                                      worktree={worktreeById.get(
-                                        tab.codeTab.worktreeId,
-                                      )}
-                                    />
-                                  ) : undefined
-                                }
-                              />
-                            ) : (
-                              <StandardSidebarSurfaceTab
-                                key={tab.id}
-                                dndData={dndData}
-                                sortId={tab.id}
-                                title={tab.view.title}
-                                icon={
-                                  tab.view.kind === "remote-desktop" ? (
-                                    <MonitorUp className="size-3.5 shrink-0" />
-                                  ) : (
-                                    <GitCommitHorizontal className="size-3.5 shrink-0" />
-                                  )
-                                }
-                                active={tab.id === selectedTabKey}
-                                editing={editingProjectViewId === tab.view.id}
-                                renameValue={renameValue}
-                                setRenameValue={setRenameValue}
-                                submitRename={() =>
-                                  finishProjectViewRename(tab.view)
-                                }
-                                onSelect={selectTab}
-                                onRename={
-                                  tab.view.kind === "remote-desktop"
-                                    ? () => beginProjectViewRename(tab.view)
-                                    : undefined
-                                }
-                                onClose={() => onCloseSurface(surface)}
-                                onDelete={
-                                  tab.view.kind === "remote-desktop"
-                                    ? () => setDeleteProjectViewTarget(tab.view)
-                                    : undefined
-                                }
-                                trailing={
-                                  tab.view.kind === "history" ? (
-                                    <WorktreeIndicator
-                                      status={
-                                        tab.view.worktreeId
-                                          ? worktreeStatuses[
-                                              tab.view.worktreeId
-                                            ]
-                                          : undefined
-                                      }
-                                      workers={workers}
-                                      worktree={
-                                        tab.view.worktreeId
-                                          ? worktreeById.get(
-                                              tab.view.worktreeId,
-                                            )
-                                          : undefined
-                                      }
-                                    />
-                                  ) : undefined
-                                }
-                              />
-                            );
-                          })}
-                        </SortableContext>
-                      </details>
-                    ) : null}
                     <ProjectSidebarFileTree
                       activePath={filePreviewPath}
                       error={fileTreeError}
@@ -1174,231 +419,11 @@ export function ProjectChatList({
         </InlineAlert>
       ) : null}
 
-      <Dialog
-        open={Boolean(deleteTarget)}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Archive agent resource?</DialogTitle>
-            <DialogDescription>
-              {deleteTarget?.status === "running" ||
-              deleteTarget?.status === "waiting-for-approval"
-                ? "Stop the active agent before archiving this resource."
-                : `“${deleteTarget?.title ?? "This agent"}” will move to Archive for 90 days if it has conversation history. Empty agent resources are deleted immediately.`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              disabled={
-                deleteTarget?.status === "running" ||
-                deleteTarget?.status === "waiting-for-approval"
-              }
-              onClick={() => {
-                if (deleteTarget) onDeleteChat(deleteTarget.id);
-                setDeleteTarget(null);
-              }}
-            >
-              Archive Resource
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <ProjectRemovalDialog
         onOpenChange={(open) => !open && setRemoveProjectTarget(null)}
         onRemove={onRemoveProject}
         project={removeProjectTarget}
       />
-      <Dialog
-        open={Boolean(deleteTerminalTarget)}
-        onOpenChange={(open) => {
-          if (!open && !deleteTerminalPending) {
-            setDeleteTerminalError(null);
-            setDeleteTerminalTarget(null);
-          }
-        }}
-      >
-        <DialogContent showClose={!deleteTerminalPending}>
-          <DialogHeader>
-            <DialogTitle>
-              {deleteTerminalTarget?.kind === "run-configuration" &&
-              deleteTerminalTarget.status === "running"
-                ? "Stop and close Run terminal?"
-                : "Delete terminal?"}
-            </DialogTitle>
-            <DialogDescription>
-              {deleteTerminalTarget?.kind === "run-configuration" &&
-              deleteTerminalTarget.status === "running"
-                ? `“${deleteTerminalTarget.title}” will be stopped immediately and its terminal tab removed. The shared Run configuration remains available.`
-                : `“${deleteTerminalTarget?.title}” will be closed and removed from this project.`}
-            </DialogDescription>
-          </DialogHeader>
-          {deleteTerminalError ? (
-            <InlineAlert tone="error">{deleteTerminalError}</InlineAlert>
-          ) : null}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button disabled={deleteTerminalPending} variant="outline">
-                Cancel
-              </Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              pending={deleteTerminalPending}
-              pendingLabel="Stopping and closing…"
-              onClick={() => {
-                if (!deleteTerminalTarget) return;
-                if (
-                  deleteTerminalTarget.kind === "run-configuration" &&
-                  deleteTerminalTarget.status === "running"
-                ) {
-                  setDeleteTerminalPending(true);
-                  setDeleteTerminalError(null);
-                  void onStopAndCloseRunTerminal(deleteTerminalTarget)
-                    .then(() => setDeleteTerminalTarget(null))
-                    .catch((error: unknown) =>
-                      setDeleteTerminalError(
-                        error instanceof Error
-                          ? error.message
-                          : "Could not stop and close this Run terminal.",
-                      ),
-                    )
-                    .finally(() => setDeleteTerminalPending(false));
-                  return;
-                }
-                onDeleteTerminal(deleteTerminalTarget.id);
-                setDeleteTerminalTarget(null);
-              }}
-            >
-              {deleteTerminalTarget?.kind === "run-configuration" &&
-              deleteTerminalTarget?.status === "running"
-                ? "Stop and close"
-                : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={Boolean(deleteExplorerTarget)}
-        onOpenChange={(open) => !open && setDeleteExplorerTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete explorer?</DialogTitle>
-            <DialogDescription>
-              “{deleteExplorerTarget?.title}” will be removed. Project files are
-              not changed.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (deleteExplorerTarget)
-                  onDeleteExplorer(deleteExplorerTarget.id);
-                setDeleteExplorerTarget(null);
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={Boolean(deleteBrowserTarget)}
-        onOpenChange={(open) => !open && setDeleteBrowserTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete browser?</DialogTitle>
-            <DialogDescription>
-              “{deleteBrowserTarget?.title}” and its saved address will be
-              removed from this project.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (deleteBrowserTarget)
-                  onDeleteBrowser(deleteBrowserTarget.id);
-                setDeleteBrowserTarget(null);
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={Boolean(deleteProjectViewTarget)}
-        onOpenChange={(open) => !open && setDeleteProjectViewTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {deleteProjectViewTarget?.title}?</DialogTitle>
-            <DialogDescription>
-              {deleteProjectViewTarget?.kind === "remote-desktop"
-                ? "This removes the remote desktop tab only. Project files are not changed."
-                : "This removes the tab only. It does not change repository history or GitHub issues."}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (deleteProjectViewTarget) {
-                  onDeleteProjectView(deleteProjectViewTarget.id);
-                }
-                setDeleteProjectViewTarget(null);
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={Boolean(deleteCodeTarget)}
-        onOpenChange={(open) => !open && setDeleteCodeTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Code tab?</DialogTitle>
-            <DialogDescription>
-              “{deleteCodeTarget?.title}” will stop its editor and remove this
-              tab. Its persistent worker profile and project files are kept.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (deleteCodeTarget) onDeleteCode(deleteCodeTarget.id);
-                setDeleteCodeTarget(null);
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
