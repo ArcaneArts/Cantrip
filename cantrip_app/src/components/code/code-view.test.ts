@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CantripApiError } from "@/lib/api";
 
 import {
+  CODE_WORKBENCH_FRAME_BACKGROUND,
   codeAttachmentUrlForLog,
   codeWorkbenchFrameClassName,
   codeReconnectDelayMs,
@@ -93,6 +94,10 @@ describe("Cantrip Code reconnect delay", () => {
     expect(codeWorkbenchFrameClassName(true)).not.toContain(
       "pointer-events-none",
     );
+  });
+
+  it("lets Cantrip own the background behind the embedded workbench", () => {
+    expect(CODE_WORKBENCH_FRAME_BACKGROUND).toBe("transparent");
   });
 
   it("redacts attachment capabilities from diagnostic URLs", () => {

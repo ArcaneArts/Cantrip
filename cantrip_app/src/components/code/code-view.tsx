@@ -94,6 +94,8 @@ export function codeWorkbenchFrameClassName(ready: boolean): string {
   return `min-h-0 w-full flex-1 border-0 ${ready ? "" : "pointer-events-none"}`;
 }
 
+export const CODE_WORKBENCH_FRAME_BACKGROUND = "transparent";
+
 export function codeAttachmentUrlForLog(rawUrl: string): string {
   try {
     const url = new URL(rawUrl);
@@ -758,7 +760,7 @@ export function CodeView({
             referrerPolicy="no-referrer"
             ref={frameRef}
             src={frameMount?.url}
-            style={{ backgroundColor: workbenchBackdrop }}
+            style={{ backgroundColor: CODE_WORKBENCH_FRAME_BACKGROUND }}
             title={`${codeTab.title} — Cantrip Code`}
             onError={() => {
               if (!frameMount) return;

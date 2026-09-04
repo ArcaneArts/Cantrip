@@ -29529,7 +29529,7 @@
     {
       "path": "src/vs/workbench/browser/style.ts",
       "type": "file",
-      "gitHash": "9250ef3f28006d3d6358350792ac00909d965aae"
+      "gitHash": "2e6047bd6543d507f619f735f191d0afd0ae757c"
     },
     {
       "path": "src/vs/workbench/browser/web.api.ts",

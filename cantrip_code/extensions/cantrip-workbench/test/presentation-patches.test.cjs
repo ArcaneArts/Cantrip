@@ -12,6 +12,29 @@ function patch(name) {
   );
 }
 
+test("lets Cantrip own the background behind every workbench", () => {
+  const source = readFileSync(
+    path.resolve(
+      __dirname,
+      "../../../upstream/src/vs/workbench/browser/style.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /collector\.addRule\('\.monaco-workbench \{ background-color: transparent; \}'\);/u,
+  );
+  assert.match(
+    source,
+    /collector\.addRule\('\.monaco-workbench \.part\.titlebar \{ background-color: transparent !important; \}'\);/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /collector\.addRule\(`\.monaco-workbench \{ background-color: \$\{workbenchBackground\}; \}`\);/u,
+  );
+});
+
 test("makes every prohibited workbench part authoritative in editor presentation", () => {
   const source = patch("0007-honor-editor-presentation-layout");
 

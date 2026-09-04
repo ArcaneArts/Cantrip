@@ -1,8 +1,9 @@
 # Cantrip Code patch series
 
-Prefer product configuration and the bundled `cantrip-workbench` extension to
-changes in upstream source. A direct patch is permitted only when the required
-server or workbench behavior cannot be implemented at those extension points.
+Prefer product configuration and the bundled `cantrip-workbench` extension when
+they can express the behavior cleanly. Permanent fork behavior may be committed
+to the recorded vendored source. Use a build-time patch when the source change
+should remain isolated against its originating upstream revision.
 
 Patch files use an ordered identifier such as `0001-surface-bootstrap.patch`
 and must have a sibling JSON metadata file:

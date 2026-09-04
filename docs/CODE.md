@@ -130,7 +130,8 @@ An upstream update is a deliberate repository change:
 2. Import it into `cantrip_code/` without touching unrelated monorepo files.
 3. Record the corresponding Code OSS revision.
 4. Produce a machine-readable and human-readable divergence report.
-5. Reapply the ordered Cantrip patch series.
+5. Preserve or reapply reviewed Cantrip source changes and the ordered patch
+   series.
 6. Restore or rebuild Cantrip-owned extensions, resources, and product data.
 7. Run editor, worker, proxy, packaging, and integration validation.
 8. Review and merge the update through the normal worktree and pull-request
@@ -270,7 +271,7 @@ inventory or hash the distribution's files.
 
 `pnpm code:dev` verifies and starts the already-built cached distribution for
 the current target on `127.0.0.1:9888`; it neither rebuilds nor watches source.
-CI and release builds compile from the pinned upstream source together with the
+CI and release builds compile from the recorded vendored fork together with the
 repository's current product overrides, ordered patch series, and bundled
 extension tree.
 
@@ -976,5 +977,6 @@ A Cantrip Code upstream update cannot merge until:
 - the previous worker/editor release remains available for rollback.
 
 The resulting editor is therefore an immutable, reviewed component of a
-specific worker release: source-owned by the Cantrip monorepo, upstreamed by
-explicit scripts and patches, and updated only when Cantrip itself is updated.
+specific worker release: source-owned by the Cantrip monorepo, maintained with
+reviewed vendored changes and explicit patches, and updated only when Cantrip
+itself is updated.
