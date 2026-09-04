@@ -20,7 +20,7 @@ import {
 } from "@/lib/workspace-selection";
 
 export type StoredProjectSurfaceKind =
-  "browser" | "chat" | "code" | "explorer" | "terminal" | "view";
+  "browser" | "builtin" | "chat" | "code" | "explorer" | "terminal" | "view";
 
 export interface ProjectSurfaceCloseInput {
   kind: StoredProjectSurfaceKind;
@@ -41,6 +41,7 @@ export interface ProjectSurfaceCloseCoordinator {
 
 const entityCollectionByKind: Record<StoredProjectSurfaceKind, string> = {
   browser: "browsers",
+  builtin: "project-tab-layout",
   chat: "chats",
   code: "code-tabs",
   explorer: "explorers",
@@ -81,9 +82,15 @@ export function useProjectSurfaceCloseCoordinator({
 
   const begin = useCallback(
     (input: ProjectSurfaceCloseInput) => {
-      const tabKey = projectSurfaceTabKey(input.kind, input.tabId);
+      const tabKey = projectSurfaceTabKey(
+        input.kind,
+        input.tabId,
+        input.projectId,
+      );
       const layoutQueryKey = ["project-tab-layout", input.projectId] as const;
-      void queryClient.cancelQueries({ queryKey: entityQueryKey(input) });
+      if (input.kind !== "builtin") {
+        void queryClient.cancelQueries({ queryKey: entityQueryKey(input) });
+      }
       void queryClient.cancelQueries({ queryKey: layoutQueryKey });
       setPendingTabKeys((current) => {
         if (current.has(tabKey)) return current;
@@ -111,11 +118,17 @@ export function useProjectSurfaceCloseCoordinator({
 
   const commit = useCallback(
     (input: ProjectSurfaceCloseInput) => {
-      const tabKey = projectSurfaceTabKey(input.kind, input.tabId);
-      queryClient.setQueryData<Array<{ id: string }>>(
-        entityQueryKey(input),
-        (current) => current?.filter(({ id }) => id !== input.tabId),
+      const tabKey = projectSurfaceTabKey(
+        input.kind,
+        input.tabId,
+        input.projectId,
       );
+      if (input.kind !== "builtin") {
+        queryClient.setQueryData<Array<{ id: string }>>(
+          entityQueryKey(input),
+          (current) => current?.filter(({ id }) => id !== input.tabId),
+        );
+      }
       queryClient.setQueryData<ProjectTabLayoutSummary>(
         ["project-tab-layout", input.projectId],
         (current) =>
@@ -129,7 +142,11 @@ export function useProjectSurfaceCloseCoordinator({
 
   const rollback = useCallback(
     (input: ProjectSurfaceCloseInput) => {
-      const tabKey = projectSurfaceTabKey(input.kind, input.tabId);
+      const tabKey = projectSurfaceTabKey(
+        input.kind,
+        input.tabId,
+        input.projectId,
+      );
       const selection = selectionBeforeCloseRef.current.get(tabKey);
       selectionBeforeCloseRef.current.delete(tabKey);
       if (selection) {
@@ -144,7 +161,11 @@ export function useProjectSurfaceCloseCoordinator({
 
   const commitView = useCallback(
     (input: ProjectSurfaceCloseInput, layout: ProjectTabLayoutSummary) => {
-      const tabKey = projectSurfaceTabKey(input.kind, input.tabId);
+      const tabKey = projectSurfaceTabKey(
+        input.kind,
+        input.tabId,
+        input.projectId,
+      );
       queryClient.setQueryData(["project-tab-layout", input.projectId], layout);
       setWorkspaceSelection((current) =>
         current.projectId === input.projectId

@@ -1086,18 +1086,19 @@ export function createShellProjectNavigationCommands({
     const viewId = projectSurfaceViewId({ projectId, resource: surfaceRef });
     const requestId = ++surfaceOpenRequestRef.current;
     setPendingSurfaceSelection({ projectId, tabKey: viewId });
-    void openOrFocusProjectSurface({
+    const openRequest = openOrFocusProjectSurface({
       projectId,
       queryClient,
       surfaceRef,
       ...(targetPaneId ? { targetPaneId } : {}),
     })
       .then(({ layout }) => {
-        if (surfaceOpenRequestRef.current !== requestId) return;
+        if (surfaceOpenRequestRef.current !== requestId) return true;
         setWorkspaceSelection((current) =>
           selectWorkspaceTab(current, layout, viewId),
         );
         setPendingSurfaceSelection(null);
+        return true;
       })
       .catch((error: unknown) => {
         if (surfaceOpenRequestRef.current !== requestId) return;
@@ -1110,6 +1111,7 @@ export function createShellProjectNavigationCommands({
         void queryClient.invalidateQueries({
           queryKey: ["project-tab-layout", projectId],
         });
+        return false;
       });
     setShowImporter(false);
     setShowSettings(false);
@@ -1120,6 +1122,7 @@ export function createShellProjectNavigationCommands({
       lastIdeProjectId: projectId,
       lastIdeWorkspaceId: getActiveProjectWorkspaceId(),
     });
+    return openRequest;
   };
   const openProjectTask = (projectId: string, chatId: string) => {
     setAppMode("ide");

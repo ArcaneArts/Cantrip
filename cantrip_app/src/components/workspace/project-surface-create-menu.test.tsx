@@ -123,7 +123,6 @@ describe("project surface creation menu", () => {
       { kind: "explorer", label: "Explorer" },
       { kind: "code", label: "Code" },
       { kind: "browser", label: "Browser" },
-      { kind: "history", label: "Git" },
       { kind: "remote-desktop", label: "Remote Desktop" },
     ]);
   });
@@ -136,12 +135,12 @@ describe("project surface creation menu", () => {
 
   it("marks only actively creating surface kinds as disabled", () => {
     const options = projectSurfaceCreateOptions(
-      new Set(["terminal", "history"]),
+      new Set(["terminal", "browser"]),
     );
 
     expect(
       options.filter(({ disabled }) => disabled).map(({ kind }) => kind),
-    ).toEqual(["terminal", "history"]);
+    ).toEqual(["terminal", "browser"]);
     expect(options.find(({ kind }) => kind === "chat")?.disabled).toBe(false);
   });
 
@@ -151,7 +150,7 @@ describe("project surface creation menu", () => {
     ).toBe(true);
   });
 
-  it("removes Git creation from managed-folder projects", () => {
+  it("never exposes singleton project tools as resource creation", () => {
     const options = projectSurfaceCreateOptions(new Set(), {
       git: false,
       github: false,
@@ -161,6 +160,8 @@ describe("project surface creation menu", () => {
     });
 
     expect(options.map(({ kind }) => kind)).not.toContain("history");
+    expect(options.map(({ kind }) => kind)).not.toContain("issues");
+    expect(options.map(({ kind }) => kind)).not.toContain("builtin");
     expect(options.map(({ kind }) => kind)).toEqual([
       "chat",
       "terminal",
@@ -218,7 +219,6 @@ describe("project surface creation menu", () => {
     expect(projectSurfaceWorkerPlacements("browser", context)[0]).toMatchObject(
       { disabled: false, reason: null },
     );
-    expect(surfaceSupportsExplicitPlacement("history")).toBe(false);
     expect(surfaceSupportsExplicitPlacement("remote-desktop")).toBe(true);
   });
 

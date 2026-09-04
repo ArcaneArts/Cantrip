@@ -83,6 +83,31 @@ describe("project surface registry", () => {
         resourceId: "overview-1",
       }).success,
     ).toBe(false);
+
+    expect(
+      PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.map((definitionId) =>
+        projectSurfaceViewId({
+          projectId: "project-1",
+          resource: { kind: "builtin", definitionId },
+        }),
+      ),
+    ).toEqual(
+      PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.map(
+        (definitionId) => `builtin:project-1:${definitionId}`,
+      ),
+    );
+    expect(
+      new Set(
+        ["project-1", "project-2"].flatMap((projectId) =>
+          PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.map((definitionId) =>
+            projectSurfaceViewId({
+              projectId,
+              resource: { kind: "builtin", definitionId },
+            }),
+          ),
+        ),
+      ).size,
+    ).toBe(PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length * 2);
   });
 
   it("validates distinct view, placement, pane, and launcher-era identities", () => {

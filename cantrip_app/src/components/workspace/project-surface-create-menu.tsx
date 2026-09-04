@@ -19,7 +19,10 @@ import {
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
-export type ProjectSurfaceCreateKind = ProjectSurface["kind"];
+export type ProjectSurfaceCreateKind = Exclude<
+  ProjectSurface["kind"],
+  "builtin" | "history" | "issues"
+>;
 
 export interface ProjectSurfaceCreateDefinition {
   kind: ProjectSurfaceCreateKind;
@@ -48,7 +51,6 @@ export const projectSurfaceCreateDefinitions = [
   { kind: "explorer", label: "Explorer" },
   { kind: "code", label: "Code" },
   { kind: "browser", label: "Browser" },
-  { kind: "history", label: "Git" },
   { kind: "remote-desktop", label: "Remote Desktop" },
 ] as const satisfies readonly ProjectSurfaceCreateDefinition[];
 
@@ -62,9 +64,9 @@ const worktreePlacementKinds = new Set<ProjectSurfaceCreateKind>([
 ]);
 
 export function surfaceSupportsExplicitPlacement(
-  kind: ProjectSurfaceCreateKind,
+  _kind: ProjectSurfaceCreateKind,
 ): boolean {
-  return kind !== "history" && kind !== "issues";
+  return true;
 }
 
 function capabilityReason(
@@ -134,17 +136,12 @@ export function projectSurfaceWorkerPlacements(
 
 export function projectSurfaceCreateOptions(
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind> = noCreatingKinds,
-  capabilities?: ProjectCapabilities,
+  _capabilities?: ProjectCapabilities,
 ) {
-  return projectSurfaceCreateDefinitions
-    .filter(
-      (definition) =>
-        definition.kind !== "history" || capabilities?.git !== false,
-    )
-    .map((definition) => ({
-      ...definition,
-      disabled: creatingKinds.has(definition.kind),
-    }));
+  return projectSurfaceCreateDefinitions.map((definition) => ({
+    ...definition,
+    disabled: creatingKinds.has(definition.kind),
+  }));
 }
 
 export function ProjectSurfaceCreateMenu({

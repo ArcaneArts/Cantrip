@@ -17,6 +17,7 @@ import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-vi
 import {
   createProjectWorktree,
   updateChatWorktree,
+  updateBuiltInSurfaceWorktree,
   updateCodeTabWorktree,
   updateExplorerWorktree,
   updateProjectViewWorktree,
@@ -70,6 +71,16 @@ export function useWorktreeOperations({
         return {
           kind: "code" as const,
           value: await updateCodeTabWorktree(target.tabId, worktreeId),
+        };
+      }
+      if (target.kind === "builtin") {
+        return {
+          kind: "builtin" as const,
+          value: await updateBuiltInSurfaceWorktree(
+            target.projectId,
+            target.definitionId,
+            worktreeId,
+          ),
         };
       }
       return {
@@ -143,11 +154,16 @@ export function useWorktreeOperations({
               codeTab.id === value.id ? value : codeTab,
             ),
         );
-      } else {
+      } else if (kind === "history") {
         queryClient.setQueryData<ProjectViewSummary[]>(
           ["project-views", value.projectId],
           (current = []) =>
             current.map((view) => (view.id === value.id ? value : view)),
+        );
+      } else {
+        queryClient.setQueryData(
+          ["project-tab-layout", value.projectId],
+          value,
         );
       }
     },
@@ -158,6 +174,11 @@ export function useWorktreeOperations({
       if (input.target.kind === "history") {
         void queryClient.invalidateQueries({
           queryKey: ["project-views", input.target.projectId],
+        });
+      }
+      if (input.target.kind === "builtin") {
+        void queryClient.invalidateQueries({
+          queryKey: ["project-tab-layout", input.target.projectId],
         });
       }
       if (input.target.kind === "code") {

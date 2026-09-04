@@ -74,8 +74,8 @@ describe("chat activity status", () => {
   });
 });
 
-describe("project overview sidebar tab", () => {
-  it("uses a compact Overview destination instead of the project name", () => {
+describe("project root sidebar row", () => {
+  it("uses the project name instead of duplicating the Overview launcher", () => {
     const markup = renderToStaticMarkup(
       <ProjectOverviewTab
         active
@@ -93,9 +93,9 @@ describe("project overview sidebar tab", () => {
       />,
     );
 
-    expect(markup).toContain(">Overview</span>");
+    expect(markup).toContain(">BileTools</span>");
     expect(markup).toContain("h-8");
-    expect(markup).not.toContain(">BileTools</span>");
+    expect(markup).not.toContain(">Overview</span>");
   });
 });
 
@@ -137,6 +137,7 @@ describe("closed surface views", () => {
       onOpenChatTerminal: vi.fn(),
       onOpenProjectSettings: vi.fn(),
       onOpenSurface,
+      onPinProjectTool: vi.fn(),
       onRemoveProject: vi.fn(),
       onRenameBrowser: vi.fn(),
       onRenameChat: vi.fn(),
@@ -152,7 +153,13 @@ describe("closed surface views", () => {
       overviewSelected: false,
       projects: [
         {
-          capabilities: { worktrees: false },
+          capabilities: {
+            git: true,
+            github: true,
+            worktrees: false,
+            replicas: true,
+            relocation: true,
+          },
           id: "project-1",
           name: "Cantrip",
           setupStatus: "ready",
@@ -160,9 +167,31 @@ describe("closed surface views", () => {
         },
       ],
       projectSetupJobs: new Map(),
-      projectViews: [],
+      projectViews: [
+        {
+          id: "history-1",
+          projectId: "project-1",
+          title: "History",
+          kind: "history",
+          worktreeId: null,
+          position: 0,
+          createdAt: "2026-08-22T12:00:00.000Z",
+          updatedAt: "2026-08-22T12:01:00.000Z",
+        },
+        {
+          id: "issues-1",
+          projectId: "project-1",
+          title: "Issues",
+          kind: "issues",
+          worktreeId: null,
+          position: 1,
+          createdAt: "2026-08-22T12:00:00.000Z",
+          updatedAt: "2026-08-22T12:01:00.000Z",
+        },
+      ],
       selectedProjectId: "project-1",
       selectedTabKey: null,
+      surfaceLaunchers: [],
       surfaces: [],
       tabLayout: { groups: [], projectId: "project-1", revision: 2 },
       terminals: [],
@@ -184,6 +213,16 @@ describe("closed surface views", () => {
     const closed = renderer.root.findByProps({
       "data-closed-surface-view": "chat:chat-1",
     });
+    expect(
+      renderer.root.findAllByProps({
+        "data-closed-surface-view": "view:history-1",
+      }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        "data-closed-surface-view": "view:issues-1",
+      }),
+    ).toHaveLength(0);
     await act(async () => closed.props.onClick());
     expect(onOpenSurface).toHaveBeenCalledWith({
       kind: "entity",

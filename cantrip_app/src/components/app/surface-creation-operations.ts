@@ -8,7 +8,6 @@ import type {
   GithubAgentWorkflowContext,
   ExplorerEntry,
   ExplorerSummary,
-  ProjectViewKind,
   ProjectViewSummary,
   RemoteDesktopTarget,
   StandaloneChatSummary,
@@ -32,7 +31,6 @@ import {
   createChatConsole,
   createCodeTab,
   createExplorer,
-  createProjectView,
   createRemoteDesktop,
   createStandaloneChat,
   createTask,
@@ -617,44 +615,7 @@ export function useBrowserCodeViewCreationOperations({
       });
     },
   });
-  const newProjectView = useMutation({
-    mutationFn: ({
-      projectId,
-      kind,
-      tabGroupId,
-      worktreeId,
-    }: {
-      projectId: string;
-      kind: ProjectViewKind;
-      tabGroupId?: string;
-      worktreeId?: string;
-    }) =>
-      createProjectView(
-        projectId,
-        kind,
-        kind === "history"
-          ? "Git"
-          : kind === "issues"
-            ? "Issues"
-            : "Remote Desktop",
-        worktreeId,
-        tabGroupId,
-      ),
-    onSuccess: (view) => {
-      queryClient.setQueryData<ProjectViewSummary[]>(
-        ["project-views", view.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== view.id), view].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      openCreatedTab(view.projectId, "view", view.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["project-views", view.projectId],
-      });
-    },
-  });
-  return { newBrowser, newCodeTab, newProjectView } as const;
+  return { newBrowser, newCodeTab } as const;
 }
 
 export function useRemoteDesktopCreationOperation({

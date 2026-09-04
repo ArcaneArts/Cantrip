@@ -1,4 +1,5 @@
 import {
+  PROJECT_SURFACE_DEFINITIONS,
   archivedChatSummarySchema,
   chatSummarySchema,
   executionTargetCatalogSchema,
@@ -27,6 +28,12 @@ import {
   decodePrivateDisplayLabelForClient,
   encodePrivateDisplayLabelForClient,
 } from "./private-label-encryption";
+
+const builtInSurfaceLabelById = new Map<string, string>(
+  PROJECT_SURFACE_DEFINITIONS.filter(
+    ({ cardinality }) => cardinality === "singleton",
+  ).map(({ id, label }) => [id, label]),
+);
 
 export class ChatTitleEncryptionAdapter {
   constructor(
@@ -179,7 +186,14 @@ export class ChatTitleEncryptionAdapter {
                     rowId: member.tabId,
                     service: this.service,
                   })
-                : "Run configuration",
+                : member.tabKind === "builtin"
+                  ? (builtInSurfaceLabelById.get(member.tabId) ??
+                    (() => {
+                      throw new Error(
+                        `Unknown built-in surface definition ${member.tabId}.`,
+                      );
+                    })())
+                  : "Run configuration",
             })),
           );
           const anchor = members.find(

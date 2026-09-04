@@ -2,7 +2,6 @@ import type {
   BrowserFleetService,
   ProjectViewSummary,
   RemoteDesktopTarget,
-  TaskDetail,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -39,11 +38,7 @@ import { MobileBottomNavigation } from "@/components/mobile/mobile-bottom-naviga
 import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
-import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
-import {
-  ProjectTasksDashboard,
-  projectTaskIsUnqueuedDraft,
-} from "@/components/projects/project-tasks-dashboard";
+import { ProjectTasksDashboard } from "@/components/projects/project-tasks-dashboard";
 import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { RepositoryImporter } from "@/components/projects/repository-importer";
 import { SettingsPage } from "@/components/settings/settings-page";
@@ -66,7 +61,6 @@ import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { cn } from "@/lib/utils";
 import { projectSetupPercent } from "@/lib/project-setup-progress";
-import { projectHasGithubCapability } from "@/lib/project-capabilities";
 import {
   projectFolderSetupErrorMessage,
   projectReplicaProgressMessage,
@@ -154,7 +148,6 @@ export function GlobalContentHost({
     newChat,
     newCodeTab,
     newExplorer,
-    newProjectView,
     newRemoteDesktop,
     newStandaloneChat,
     newTask,
@@ -168,6 +161,7 @@ export function GlobalContentHost({
     openProjectExplorerFile,
     openProjectSettings,
     openProjectTask,
+    openProjectToolSection,
     openServerAdmin,
     openTunnelOwner,
     permanentlyDeleteStandaloneChat,
@@ -200,6 +194,7 @@ export function GlobalContentHost({
     selectStandaloneChat,
     selectTopTab,
     selectedBrowser,
+    selectedBuiltInSurface,
     selectedChat,
     selectedCodeTab,
     selectedExplorer,
@@ -208,6 +203,7 @@ export function GlobalContentHost({
     selectedLongPathSetupJob,
     selectedPlacementContext,
     selectedProject,
+    selectedProjectToolUnavailable,
     selectedProjectSetupJob,
     selectedProjectView,
     selectedProjectWorkerId,
@@ -227,7 +223,6 @@ export function GlobalContentHost({
     setChatRelocationOpen,
     setGitHistoryHeader,
     setMobileSettingsSectionOpen,
-    setProjectOverviewSection,
     setProjectOverviewWorktreeId,
     setRunConfigurationEditorId,
     setSettingsPolicyId,
@@ -257,7 +252,6 @@ export function GlobalContentHost({
     tabLayout,
     updateBrowserMutation,
     workers,
-    workspaceSelection,
     worktreeStatuses,
     worktrees,
   } = bindings;
@@ -445,11 +439,7 @@ export function GlobalContentHost({
             })
           }
           onCreateHistory={(worktreeId) =>
-            newProjectView.mutate({
-              projectId: selectedProject.id,
-              kind: "history",
-              worktreeId,
-            })
+            openProjectToolSection("history", worktreeId)
           }
           onRestoreChat={(chat) =>
             chat.experience === "task"
@@ -527,6 +517,22 @@ export function GlobalContentHost({
                 <Loader2 className="size-5 animate-spin" />
               </div>
             )
+          ) : selectedBuiltInSurface && selectedProjectToolUnavailable ? (
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateIcon>
+                  <WifiOff className="size-5 text-amber-500" />
+                </EmptyStateIcon>
+                <EmptyStateTitle as="h1">
+                  {selectedBuiltInSurface.title} unavailable
+                </EmptyStateTitle>
+                <EmptyStateDescription>
+                  This project no longer provides the capability required by
+                  this tool. Its tab and placement are preserved and will work
+                  again if the capability returns.
+                </EmptyStateDescription>
+              </EmptyStateContent>
+            </EmptyState>
           ) : displayedGitProject ? (
             <GitHistoryView
               key={
@@ -537,9 +543,7 @@ export function GlobalContentHost({
               activeSection={projectOverviewGitSection ?? undefined}
               chats={chats.data ?? []}
               contentScrolled={contentScrolled}
-              includeOverviewTab={Boolean(
-                projectOverviewGitProject && !projectOverviewPopoutTarget,
-              )}
+              includeOverviewTab={false}
               view={
                 projectOverviewGitSection === "issues"
                   ? "issues"
@@ -547,7 +551,7 @@ export function GlobalContentHost({
               }
               standalone={isPopout || Boolean(projectOverviewGitProject)}
               project={displayedGitProject}
-              showSectionTabs={!projectOverviewPopoutTarget}
+              showSectionTabs={false}
               worktreeId={
                 projectOverviewGitProject
                   ? (resolvedProjectOverviewWorktreeId ?? "")
@@ -561,6 +565,17 @@ export function GlobalContentHost({
               statuses={worktreeStatuses}
               workers={workers.data ?? []}
               onSelectWorktree={(worktreeId) => {
+                if (selectedBuiltInSurface) {
+                  bindWorktreeMutation.mutate({
+                    target: {
+                      kind: "builtin",
+                      projectId: selectedBuiltInSurface.projectId,
+                      definitionId: selectedBuiltInSurface.entity.definitionId,
+                    },
+                    worktreeId,
+                  });
+                  return;
+                }
                 if (projectOverviewGitProject) {
                   setProjectOverviewWorktreeId(worktreeId);
                   return;
@@ -590,7 +605,7 @@ export function GlobalContentHost({
               }}
               onSectionChange={
                 projectOverviewGitProject && !projectOverviewPopoutTarget
-                  ? setProjectOverviewSection
+                  ? openProjectToolSection
                   : undefined
               }
               onCreateChat={async (worktreeId, draft) => {
@@ -638,11 +653,7 @@ export function GlobalContentHost({
                 })
               }
               onCreateHistory={(worktreeId) =>
-                newProjectView.mutate({
-                  projectId: displayedGitProject.id,
-                  kind: "history",
-                  worktreeId,
-                })
+                openProjectToolSection("history", worktreeId)
               }
               onOpenChat={(chatId) =>
                 openCreatedTab(displayedGitProject.id, "chat", chatId)
@@ -902,35 +913,6 @@ export function GlobalContentHost({
                 </EmptyState>
               ) : projectOverviewSelected ? (
                 <div className="flex min-h-0 flex-1 flex-col">
-                  {!projectOverviewPopoutTarget ? (
-                    <div className="relative flex h-10 shrink-0 items-center px-3">
-                      <ProjectOverviewNavigation
-                        activeTab={activeProjectOverviewSection}
-                        githubEnabled={projectHasGithubCapability(
-                          selectedProject,
-                        )}
-                        gitEnabled={selectedProject.capabilities.git}
-                        onTabChange={(section) => {
-                          if (
-                            section === "tasks" &&
-                            activeProjectOverviewSection === "tasks" &&
-                            activeProjectTaskChatId &&
-                            !projectTaskIsUnqueuedDraft(
-                              queryClient.getQueryData<TaskDetail>([
-                                "task",
-                                activeProjectTaskChatId,
-                              ]),
-                            )
-                          ) {
-                            closeProjectTask(selectedProject.id);
-                            return;
-                          }
-                          setProjectOverviewSection(section);
-                        }}
-                      />
-                      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border" />
-                    </div>
-                  ) : null}
                   <div
                     className={cn(
                       "min-h-0 flex-1 flex-col",
@@ -1210,7 +1192,9 @@ export function GlobalContentHost({
           onClose={closeSurfaceView}
           onOverview={returnToCompactProjectOverview}
           onSelect={selectTopTab}
-          overviewSelected={workspaceSelection.destination === "overview"}
+          overviewSelected={
+            selectedBuiltInSurface?.entity.definitionId === "project.overview"
+          }
           placement={selectedPlacementContext}
           surfaces={mobileNavigationSurfaces}
         />

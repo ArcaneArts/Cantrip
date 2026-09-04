@@ -25,7 +25,9 @@ import type {
   MobileProjectTabConfigurations,
   ModelReasoningEffortOption,
   PrivateDisplayLabelOpaque,
+  ProjectBuiltInSurfaceDefinitionId,
   SurfacePrivateStateOpaque,
+  SurfaceLauncherLocation,
   TerminalKind,
   ProjectFolderManagement,
   ProjectOriginKind,
@@ -2401,6 +2403,7 @@ export const tabGroupMembers = pgTable(
       name: "tab_group_members_group_project_fk",
     }).onDelete("cascade"),
     uniqueIndex("tab_group_members_surface_unique").on(
+      table.projectId,
       table.tabKind,
       table.tabId,
     ),
@@ -2410,7 +2413,7 @@ export const tabGroupMembers = pgTable(
     ),
     check(
       "tab_group_members_kind_check",
-      sql`${table.tabKind} IN ('chat', 'terminal', 'explorer', 'browser', 'code', 'history', 'issues', 'remote-desktop')`,
+      sql`${table.tabKind} IN ('chat', 'terminal', 'explorer', 'browser', 'code', 'history', 'issues', 'remote-desktop', 'builtin')`,
     ),
   ],
 );
@@ -3941,26 +3944,93 @@ export const remoteSurfaces = pgTable(
   ],
 );
 
-export const projectViews = pgTable("project_views", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  protectedLabel: jsonb("protected_label")
-    .$type<PrivateDisplayLabelOpaque>()
-    .notNull(),
-  kind: text("kind").notNull(),
-  worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
-    onDelete: "restrict",
-  }),
-  position: integer("position").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const projectViews = pgTable(
+  "project_views",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    protectedLabel: jsonb("protected_label")
+      .$type<PrivateDisplayLabelOpaque>()
+      .notNull(),
+    kind: text("kind").notNull(),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "restrict",
+    }),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check("project_views_kind_check", sql`${table.kind} = 'remote-desktop'`),
+  ],
+);
+
+export const projectBuiltInSurfaceStates = pgTable(
+  "project_builtin_surface_states",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    definitionId: text("definition_id")
+      .$type<ProjectBuiltInSurfaceDefinitionId>()
+      .notNull(),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.definitionId] }),
+    check(
+      "project_builtin_surface_states_definition_check",
+      sql`${table.definitionId} IN ('project.overview', 'project.tasks', 'git.history', 'git.graph', 'github.issues', 'github.pull-requests', 'github.actions')`,
+    ),
+  ],
+);
+
+export const projectSurfaceLauncherPreferences = pgTable(
+  "project_surface_launcher_preferences",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    location: text("location").$type<SurfaceLauncherLocation>().notNull(),
+    definitionId: text("definition_id")
+      .$type<ProjectBuiltInSurfaceDefinitionId>()
+      .notNull(),
+    pinned: boolean("pinned").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.projectId, table.location, table.definitionId],
+    }),
+    check(
+      "project_surface_launcher_preferences_definition_check",
+      sql`${table.definitionId} IN ('project.overview', 'project.tasks', 'git.history', 'git.graph', 'github.issues', 'github.pull-requests', 'github.actions')`,
+    ),
+    check(
+      "project_surface_launcher_preferences_location_check",
+      sql`${table.location} IN ('project-navigator', 'surface-catalog', 'command-palette', 'right-rail', 'bottom-rail')`,
+    ),
+  ],
+);
 
 export const chatRuntimeSessions = pgTable(
   "chat_runtime_sessions",

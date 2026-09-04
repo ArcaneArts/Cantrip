@@ -2,6 +2,7 @@ import type {
   CodeAppearance,
   ExplorerSummary,
   ModelProfileSummary,
+  ProjectBuiltInSurfaceDefinitionId,
 } from "@cantrip/protocol";
 
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
@@ -28,6 +29,11 @@ export type WorktreeBindingTarget =
       kind: "code" | "explorer" | "history" | "terminal";
       projectId: string;
       tabId: string;
+    }
+  | {
+      kind: "builtin";
+      projectId: string;
+      definitionId: ProjectBuiltInSurfaceDefinitionId;
     };
 
 export function modelDisplayName(model: ModelProfileSummary): string {

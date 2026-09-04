@@ -51,6 +51,118 @@ const layout: ProjectTabLayoutSummary = {
 };
 
 describe("project surfaces", () => {
+  it("resolves a built-in project tool without an entity collection row", () => {
+    const builtInTabKey = "builtin:project-1:git.history";
+    const index = buildProjectSurfaceIndex(
+      {
+        projectId: "project-1",
+        revision: 3,
+        groups: [
+          {
+            id: "group-history",
+            projectId: "project-1",
+            title: "History",
+            position: 0,
+            anchorTabKey: builtInTabKey,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            members: [
+              {
+                tabKey: builtInTabKey,
+                groupId: "group-history",
+                projectId: "project-1",
+                tabKind: "builtin",
+                tabId: "git.history",
+                builtInState: {
+                  definitionId: "git.history",
+                  worktreeId: "worktree-1",
+                },
+                title: "History",
+                position: 0,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        browsers: [],
+        chats: [],
+        codeTabs: [],
+        explorers: [],
+        projectViews: [],
+        terminals: [],
+      },
+    );
+
+    expect(index.byTabKey.get(builtInTabKey)).toMatchObject({
+      kind: "builtin",
+      title: "History",
+      entity: {
+        id: builtInTabKey,
+        projectId: "project-1",
+        definitionId: "git.history",
+        worktreeId: "worktree-1",
+      },
+      resource: {
+        ref: { kind: "builtin", definitionId: "git.history" },
+      },
+      view: {
+        id: builtInTabKey,
+        projectId: "project-1",
+      },
+    });
+    expect(index.byGroupId.get("group-history")).toHaveLength(1);
+    expect(index.unresolvedTabKeys).toEqual([]);
+  });
+
+  it("leaves a malformed built-in member unresolved", () => {
+    const malformedTabKey = "builtin:project-1:git.history";
+    const index = buildProjectSurfaceIndex(
+      {
+        projectId: "project-1",
+        revision: 3,
+        groups: [
+          {
+            id: "group-history",
+            projectId: "project-1",
+            title: "History",
+            position: 0,
+            anchorTabKey: malformedTabKey,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            members: [
+              {
+                tabKey: malformedTabKey,
+                groupId: "group-history",
+                projectId: "project-1",
+                tabKind: "builtin",
+                tabId: "git.history",
+                title: "History",
+                position: 0,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        browsers: [],
+        chats: [],
+        codeTabs: [],
+        explorers: [],
+        projectViews: [],
+        terminals: [],
+      },
+    );
+
+    expect(index.byTabKey.size).toBe(0);
+    expect(index.byGroupId.get("group-history")).toEqual([]);
+    expect(index.unresolvedTabKeys).toEqual([malformedTabKey]);
+  });
+
   it("adapts every persisted member to one discriminated surface", () => {
     const index = buildProjectSurfaceIndex(layout, {
       browsers: [],
@@ -216,5 +328,11 @@ describe("project surfaces", () => {
     );
     expect(projectSurfaceTabId("view:desktop-1", "view")).toBe("desktop-1");
     expect(projectSurfaceTabId("chat:chat-1", "view")).toBeNull();
+    expect(
+      projectSurfaceTabKey("builtin", "project.overview", "project-1"),
+    ).toBe("builtin:project-1:project.overview");
+    expect(() => projectSurfaceTabKey("builtin", "project.overview")).toThrow(
+      "Built-in tab keys require a project id.",
+    );
   });
 });

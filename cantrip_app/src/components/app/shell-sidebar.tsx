@@ -189,11 +189,13 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     standaloneChatCreationUnavailableReason,
     standaloneChats,
     stopAndDeleteRunTerminalMutation,
+    surfaceLaunchers,
     switchToChat,
     switchToIde,
     tabLayout,
     updateBrowserMutation,
     updateCodeTabMutation,
+    updateSurfaceLauncherPin,
     workers,
     worktreeStatuses,
     worktrees,
@@ -438,6 +440,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     explorers={explorers.data ?? []}
                     projectViews={projectViews.data ?? []}
                     surfaces={projectSidebarSurfaces}
+                    surfaceLaunchers={surfaceLaunchers.data ?? []}
                     terminals={displayTerminals}
                     workers={workers.data ?? []}
                     worktrees={worktrees.data ?? []}
@@ -533,6 +536,14 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         ? openOrFocusSurface(selectedProjectId, surfaceRef)
                         : undefined
                     }
+                    onPinProjectTool={(definitionId, pinned) => {
+                      if (!selectedProjectId) return;
+                      updateSurfaceLauncherPin.mutate({
+                        definitionId,
+                        pinned,
+                        projectId: selectedProjectId,
+                      });
+                    }}
                     onRenameProjectView={(viewId, title) =>
                       renameProjectViewMutation.mutate({ viewId, title })
                     }

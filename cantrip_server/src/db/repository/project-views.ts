@@ -99,25 +99,6 @@ export class ProjectViewRepository {
     projectId: string,
     input: EncryptedProjectViewCreate,
   ): Promise<ProjectViewWireSummary | null> {
-    const selected =
-      input.kind === "history" && input.worktreeId
-        ? await this.collaborators.getProjectWorktreeContext(
-            ownerId,
-            projectId,
-            input.worktreeId,
-          )
-        : null;
-    const source =
-      input.kind === "history" && !input.worktreeId
-        ? await this.collaborators.getProjectSource(ownerId, projectId)
-        : null;
-    const worktreeId = selected?.worktree.id ?? source?.worktreeId ?? null;
-    if (
-      input.kind === "history" &&
-      (!worktreeId ||
-        (selected && selected.worktree.lifecycleState !== "ready"))
-    )
-      return null;
     const position = await this.collaborators.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
       const result = await transaction
@@ -127,7 +108,7 @@ export class ProjectViewRepository {
           projectId,
           protectedLabel: input.titleProtection,
           kind: input.kind,
-          worktreeId: input.kind === "history" ? worktreeId : null,
+          worktreeId: null,
           position,
         })
         .returning();
@@ -175,21 +156,8 @@ export class ProjectViewRepository {
       .limit(1);
     const view = rows[0]?.view;
     if (!view) return null;
-    if (view.kind !== "history") {
-      throw new Error("This project view does not use worktrees.");
-    }
-    const target = await this.collaborators.getProjectWorktreeContext(
-      ownerId,
-      view.projectId,
-      input.worktreeId,
-    );
-    if (!target || target.worktree.lifecycleState !== "ready") return null;
-    const updated = await this.database
-      .update(schema.projectViews)
-      .set({ worktreeId: target.worktree.id, updatedAt: new Date() })
-      .where(eq(schema.projectViews.id, viewId))
-      .returning();
-    return updated[0] ? toProjectViewWireSummary(updated[0]) : null;
+    void input;
+    throw new Error("This project view does not use worktrees.");
   }
 
   async deleteProjectView(ownerId: string, viewId: string): Promise<boolean> {
