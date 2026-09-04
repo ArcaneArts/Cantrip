@@ -224,7 +224,13 @@ is the authoritative merge record until the next ledger update.
   files pass on Primary and branch in isolation, and the EPIPE also reproduces
   synthetically on Primary. These remain final-hardening follow-ups, not CUA
   regressions hidden by skipped tests. Full server reported 794 passes and
-  20 failing assertions/8 failed suites; baseline comparison is in progress.
+  20 failing assertions/8 failed suites. Clean Primary reproduces all 26 common
+  failure headings with the same leading cause (mostly existing database
+  fixtures, catalog/label expectations and finite-timeout count drift). Two
+  branch-only full-run timeouts (project placement and task dispatch) do not
+  recur in rebuilt-dependency focused runs: both Primary and branch produce
+  identical 34 passes/2 existing failures. The full server suite is therefore
+  not claimed green; these baseline gaps remain final regression work.
   First portable CI run `33931195514` passed the Rust round-trip tests on all
   three platforms but exposed a missing logging-package build prerequisite in
   the new server test command; the command now builds its workspace dependencies
