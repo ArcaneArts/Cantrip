@@ -48,6 +48,7 @@ describe("desktop app mode menu", () => {
     mocks.projectChatListProps.length = 0;
     const query = { data: [] };
     const callback = vi.fn();
+    const openProjectNavigatorSurface = vi.fn();
     const bindings: Record<string, any> = {
       activeProjectWorkspace: null,
       appMode: "ide",
@@ -69,6 +70,7 @@ describe("desktop app mode menu", () => {
       isPopout: false,
       moveSidebarResize: callback,
       onlineWorker: null,
+      openProjectNavigatorSurface,
       overlayTitlebar: false,
       pinSidebarFileMutation: {
         isPending: true,
@@ -121,6 +123,19 @@ describe("desktop app mode menu", () => {
         fileTreeLoading: false,
         fileTreePinningPath: "src/pinned.ts",
       }),
+    );
+    const surfaceRef = {
+      kind: "builtin",
+      definitionId: "project.overview",
+    } as const;
+    (
+      mocks.projectChatListProps[0]?.onOpenSurface as (
+        resource: typeof surfaceRef,
+      ) => void
+    )(surfaceRef);
+    expect(openProjectNavigatorSurface).toHaveBeenCalledWith(
+      "project-a",
+      surfaceRef,
     );
 
     bindings.pinSidebarFileMutation.isPending = false;
