@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   EXPLORER_CODE_EDITOR_CLASS_NAME,
   EXPLORER_CODE_LOADING_COVER_CLASS_NAME,
-  EXPLORER_CODE_SURFACE_BACKGROUND,
   explorerCodeEditorBindingKey,
   isRetryableExplorerCodeConnectionError,
 } from "./explorer-code-editor";
@@ -32,8 +31,7 @@ describe("Explorer Code editor readiness identity", () => {
 });
 
 describe("Explorer Code editor background ownership", () => {
-  it("leaves the persistent surface, iframe, and loading cover transparent", () => {
-    expect(EXPLORER_CODE_SURFACE_BACKGROUND).toBe("transparent");
+  it("leaves the persistent surface and loading cover free of duplicate fills", () => {
     for (const className of [
       EXPLORER_CODE_EDITOR_CLASS_NAME,
       EXPLORER_CODE_LOADING_COVER_CLASS_NAME,

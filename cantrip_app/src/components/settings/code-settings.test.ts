@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import {
   CODE_SETTINGS_FRAME_CLASS_NAME,
   CODE_SETTINGS_LOADING_COVER_CLASS_NAME,
-  CODE_SETTINGS_SURFACE_BACKGROUND,
   CODE_SETTINGS_SURFACE_CLASS_NAME,
   selectCodeSettingsWorker,
 } from "./code-settings";
@@ -117,8 +116,7 @@ describe("Code settings worker selection", () => {
 });
 
 describe("Code settings background ownership", () => {
-  it("leaves the surface, iframe, and loading cover transparent", () => {
-    expect(CODE_SETTINGS_SURFACE_BACKGROUND).toBe("transparent");
+  it("leaves the surface and loading cover free of duplicate fills", () => {
     for (const className of [
       CODE_SETTINGS_SURFACE_CLASS_NAME,
       CODE_SETTINGS_FRAME_CLASS_NAME,
