@@ -99,8 +99,8 @@ describe("project root sidebar row", () => {
   });
 });
 
-describe("closed surface views", () => {
-  it("keeps an unplaced resource discoverable and reopens its existing identity", async () => {
+describe("sidebar surface inventory", () => {
+  it("does not render a generic inventory of resources without open views", async () => {
     const onOpenSurface = vi.fn();
     const props = {
       browsers: [],
@@ -210,25 +210,13 @@ describe("closed surface views", () => {
       );
     });
 
-    const closed = renderer.root.findByProps({
-      "data-closed-surface-view": "chat:chat-1",
-    });
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Closed views");
     expect(
       renderer.root.findAllByProps({
-        "data-closed-surface-view": "view:history-1",
+        "data-closed-surface-view": "chat:chat-1",
       }),
     ).toHaveLength(0);
-    expect(
-      renderer.root.findAllByProps({
-        "data-closed-surface-view": "view:issues-1",
-      }),
-    ).toHaveLength(0);
-    await act(async () => closed.props.onClick());
-    expect(onOpenSurface).toHaveBeenCalledWith({
-      kind: "entity",
-      definitionId: "project.agent",
-      resourceId: "chat-1",
-    });
+    expect(onOpenSurface).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
 });

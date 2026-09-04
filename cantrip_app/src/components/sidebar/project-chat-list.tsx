@@ -13,7 +13,6 @@ import type {
   ProjectSurfaceResourceRef,
   ProjectSurfaceLauncher,
   ProjectBuiltInSurfaceDefinitionId,
-  ProjectTabKind,
   ProjectReplicaJobSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
@@ -80,7 +79,6 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ProjectSurface } from "@/lib/project-surface";
-import { projectSurfaceResourceRefForTab } from "@/lib/project-surface-registry";
 import { type WorkspaceDndData } from "@/lib/workspace-dnd-model";
 import {
   WorkerPlacementIndicator,
@@ -619,40 +617,6 @@ export function ProjectChatList({
       })),
   ];
   const tabByKey = new Map(tabs.map((tab) => [tab.id, tab]));
-  const openTabKeys = new Set(surfaces.map(({ tabKey }) => tabKey));
-  const closedTabs = tabs.filter(({ id }) => !openTabKeys.has(id));
-  const resourceRefForTab = (tab: SidebarTab) => {
-    const kind: ProjectTabKind = tab.kind === "view" ? tab.view.kind : tab.kind;
-    const resourceId =
-      tab.kind === "chat"
-        ? tab.chat.id
-        : tab.kind === "terminal"
-          ? tab.terminal.id
-          : tab.kind === "explorer"
-            ? tab.explorer.id
-            : tab.kind === "browser"
-              ? tab.browser.id
-              : tab.kind === "code"
-                ? tab.codeTab.id
-                : tab.view.id;
-    return projectSurfaceResourceRefForTab(kind, resourceId, {
-      file: tab.kind === "explorer" && tab.explorer.selectedPath !== null,
-    });
-  };
-  const labelForTab = (tab: SidebarTab) =>
-    tab.kind === "chat"
-      ? tab.chat.title
-      : tab.kind === "terminal"
-        ? tab.terminal.title
-        : tab.kind === "explorer"
-          ? tab.explorer.title
-          : tab.kind === "browser"
-            ? tab.browser.title
-            : tab.kind === "code"
-              ? tab.codeTab.title
-              : tab.view.title;
-  const iconKindForTab = (tab: SidebarTab) =>
-    tab.kind === "view" ? tab.view.kind : tab.kind;
   const sidebarSurfaceRows = surfaces.flatMap((surface) => {
     const tab = tabByKey.get(surface.tabKey);
     return tab ? [{ surface, tab }] : [];
@@ -1110,34 +1074,6 @@ export function ProjectChatList({
                             );
                           })}
                         </SortableContext>
-                      </details>
-                    ) : null}
-                    {closedTabs.length > 0 ? (
-                      <details className="mt-1 rounded-md border border-border/50 px-1 py-0.5">
-                        <summary className="cursor-pointer select-none px-1 py-1 text-[11px] font-medium text-muted-foreground">
-                          Closed views ({closedTabs.length})
-                        </summary>
-                        <div className="flex flex-col pb-1">
-                          {closedTabs.map((tab) => (
-                            <button
-                              key={tab.id}
-                              type="button"
-                              data-closed-surface-view={tab.id}
-                              className="flex min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                              onClick={() =>
-                                onOpenSurface(resourceRefForTab(tab))
-                              }
-                            >
-                              <ProjectSurfaceIcon
-                                className="size-3.5 shrink-0"
-                                kind={iconKindForTab(tab)}
-                              />
-                              <span className="truncate">
-                                {labelForTab(tab)}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
                       </details>
                     ) : null}
                     <ProjectSidebarFileTree
