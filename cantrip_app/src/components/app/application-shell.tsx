@@ -2035,7 +2035,7 @@ export function App() {
     sidebarInlineExplorer, sidebarPreviewExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
-    surfaceLaunchers, tabLayout, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation, updateSurfaceLauncherPin,
+    surfaceLaunchers, tabLayout, tabLayoutMutation, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation, updateSurfaceLauncherPin,
     visibleProjects, workers, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };
