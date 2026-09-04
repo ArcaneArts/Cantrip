@@ -249,6 +249,10 @@ describe("project overview", () => {
     expect(markup).toContain("Worker online");
     expect(markup).toContain('class="w-full space-y-5 p-4 sm:p-6 lg:p-8"');
     expect(markup).not.toContain("max-w-6xl");
+    expect(markup).toContain("xl:grid-cols-7");
+    expect(markup).toContain("xl:grid-cols-[minmax(0,1fr)_18rem]");
+    expect(markup).not.toContain("lg:grid-cols-7");
+    expect(markup).not.toContain("lg:grid-cols-[minmax(0,1fr)_18rem]");
     expect(markup).toContain("Open in Finder");
     expect(markup).not.toContain("Reveal in Finder");
     expect(markup.indexOf("Open in Finder")).toBeLessThan(
