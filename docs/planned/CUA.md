@@ -84,7 +84,8 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 3 — Build chain, stable helper installation, and packaged smoke
 
 - Branch: `codex/cua-03-build-chain`, based on merged cycle 2 (`c6982b46d`).
-- PR/commit: opening after local validation; merge not yet observed.
+- PR: [#1735](https://github.com/ArcaneArts/Cantrip/pull/1735).
+  Initial implementation commit: `e3f320d2`; merge not yet observed.
 - Implemented: root CUA build/check/test/smoke commands; Cargo-reported executable
   selection; worker and inherited desktop bundling; final-layout protocol smoke;
   explicit macOS signing identifiers; named user-data development installation
