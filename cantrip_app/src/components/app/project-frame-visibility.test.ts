@@ -15,26 +15,25 @@ const visibleProjectFrame = {
 describe("project frame visibility", () => {
   it.each([
     {
+      docked: false,
       name: "project overview",
       sidebarFilePreviewVisible: false,
       workspaceDestination: "overview" as const,
     },
     {
+      docked: true,
       name: "sidebar file preview",
       sidebarFilePreviewVisible: true,
       workspaceDestination: "surface" as const,
     },
-  ])(
-    "keeps rails visible while $name uses the global content host",
-    (state) => {
-      expect(
-        projectFrameVisibility({ ...visibleProjectFrame, ...state }),
-      ).toEqual({
-        docked: false,
-        railsVisible: true,
-      });
-    },
-  );
+  ])("keeps rails visible while showing the $name", ({ docked, ...state }) => {
+    expect(
+      projectFrameVisibility({ ...visibleProjectFrame, ...state }),
+    ).toEqual({
+      docked,
+      railsVisible: true,
+    });
+  });
 
   it("shows the pane workspace and rails for a selected project surface", () => {
     expect(

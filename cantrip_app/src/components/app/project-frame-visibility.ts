@@ -8,7 +8,7 @@ export function projectFrameVisibility({
   showProjectSettings,
   showServerAdmin,
   showSettings,
-  sidebarFilePreviewVisible,
+  sidebarFilePreviewVisible: _sidebarFilePreviewVisible,
   workspaceDestination,
 }: {
   desktopProjectFrame: boolean;
@@ -30,11 +30,10 @@ export function projectFrameVisibility({
     !showServerAdmin &&
     !showProjectSettings,
   );
+  // A transient file preview owns its target pane instead of switching the
+  // whole frame back to the legacy single-surface host.
   return {
-    docked:
-      railsVisible &&
-      !sidebarFilePreviewVisible &&
-      workspaceDestination !== "overview",
+    docked: railsVisible && workspaceDestination !== "overview",
     railsVisible,
   } as const;
 }

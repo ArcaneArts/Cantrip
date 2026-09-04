@@ -42,6 +42,7 @@ import {
   legacyTopStripShowsSidebarPreview,
   partitionVisibleWorkspacePanes,
   responsiveProjectWorkspaceGridModel,
+  sidebarFilePreviewForPane,
   visibleWorkspacePanes,
   type VisibleProjectPane,
 } from "@/components/app/project-workspace-frame-model";
@@ -454,6 +455,12 @@ function genericPaneBody(
       </div>
     );
   }
+  if (
+    bindings.sidebarFilePreviewVisible &&
+    sidebarFilePreviewForPane(presentation, bindings.sidebarFilePreview)?.active
+  ) {
+    return null;
+  }
   const kind = presentation.activeSurface?.kind;
   if (
     kind === "code" ||
@@ -859,11 +866,10 @@ export function ProjectWorkspaceFrame({
     [],
   );
   const tabStrip = (presentation: VisibleProjectPane) => {
-    const sidebarPreview =
-      bindings.showSidebarPreviewTab &&
-      bindings.sidebarFilePreview?.paneId === presentation.pane.id
-        ? bindings.sidebarFilePreview
-        : null;
+    const sidebarPreview = sidebarFilePreviewForPane(
+      presentation,
+      bindings.sidebarFilePreview,
+    );
     return (
       <div
         className="min-w-0 overflow-hidden border-b"

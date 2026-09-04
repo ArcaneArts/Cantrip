@@ -8,6 +8,7 @@ import {
 } from "@/components/app/application-shell-surfaces";
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
 import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
+import { dockPresentationsForSidebarPreview } from "@/components/app/project-workspace-frame-model";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import {
   sidebarExplorerPrewarmTarget,
@@ -92,9 +93,21 @@ export function PersistentSurfaceLayer({
     worktreeStatuses,
     worktrees,
   } = bindings;
+  const {
+    activePreviewPresentation: activeSidebarPreviewPresentation,
+    surfacePresentations: surfaceDockPanePresentations,
+  } = useMemo(
+    () =>
+      dockPresentationsForSidebarPreview(
+        dockPanePresentations,
+        sidebarFilePreview,
+        sidebarFilePreviewVisible,
+      ),
+    [dockPanePresentations, sidebarFilePreview, sidebarFilePreviewVisible],
+  );
   const dockCodePlacements = useMemo(
     () =>
-      dockPanePresentations?.flatMap((presentation: any) =>
+      surfaceDockPanePresentations?.flatMap((presentation: any) =>
         presentation.activeSurface?.kind === "code"
           ? [
               {
@@ -107,11 +120,11 @@ export function PersistentSurfaceLayer({
             ]
           : [],
       ),
-    [dockPanePresentations],
+    [surfaceDockPanePresentations],
   );
   const dockTerminalPlacements = useMemo(
     () =>
-      dockPanePresentations?.flatMap((presentation: any) =>
+      surfaceDockPanePresentations?.flatMap((presentation: any) =>
         presentation.activeSurface?.kind === "terminal" &&
         presentation.activeSurface.entity.kind !== "run-configuration"
           ? [
@@ -125,11 +138,11 @@ export function PersistentSurfaceLayer({
             ]
           : [],
       ),
-    [dockPanePresentations],
+    [surfaceDockPanePresentations],
   );
-  const dockExplorerPlacements = useMemo(
-    () =>
-      dockPanePresentations?.flatMap((presentation: any) =>
+  const dockExplorerPlacements = useMemo(() => {
+    const placements = surfaceDockPanePresentations?.flatMap(
+      (presentation: any) =>
         presentation.activeSurface?.kind === "explorer"
           ? [
               {
@@ -141,9 +154,29 @@ export function PersistentSurfaceLayer({
               },
             ]
           : [],
-      ),
-    [dockPanePresentations],
-  );
+    );
+    if (
+      !placements ||
+      !activeSidebarPreviewPresentation ||
+      !sidebarPreviewExplorer
+    ) {
+      return placements;
+    }
+    return [
+      ...placements,
+      {
+        explorer: sidebarPreviewExplorer,
+        focused: activeSidebarPreviewPresentation.focused,
+        gridArea: activeSidebarPreviewPresentation.gridArea,
+        paneId: activeSidebarPreviewPresentation.pane.id,
+        portalTarget: activeSidebarPreviewPresentation.portalTarget,
+      },
+    ];
+  }, [
+    activeSidebarPreviewPresentation,
+    sidebarPreviewExplorer,
+    surfaceDockPanePresentations,
+  ]);
   return (
     <>
       {!dockPanePresentations &&

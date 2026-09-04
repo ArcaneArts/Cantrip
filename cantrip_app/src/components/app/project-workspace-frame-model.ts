@@ -51,9 +51,38 @@ export function legacyTopStripShowsSidebarPreview(
   return Boolean(
     presentation &&
     preview &&
-    (preview.active ||
-      (preview.paneId !== null && preview.paneId === presentation.pane.id)),
+    (preview.active || sidebarFilePreviewForPane(presentation, preview)),
   );
+}
+
+export function sidebarFilePreviewForPane(
+  presentation: VisibleProjectPane | undefined,
+  preview: SidebarFilePreviewState | null,
+): SidebarFilePreviewState | null {
+  return presentation && preview?.paneId === presentation.pane.id
+    ? preview
+    : null;
+}
+
+export function dockPresentationsForSidebarPreview(
+  presentations: readonly VisibleProjectPane[] | undefined,
+  preview: SidebarFilePreviewState | null,
+  previewVisible: boolean,
+) {
+  const activePreviewPresentation =
+    previewVisible && preview?.active
+      ? presentations?.find((presentation) =>
+          sidebarFilePreviewForPane(presentation, preview),
+        )
+      : undefined;
+  return {
+    activePreviewPresentation,
+    surfacePresentations: activePreviewPresentation
+      ? presentations?.filter(
+          (presentation) => presentation !== activePreviewPresentation,
+        )
+      : presentations,
+  } as const;
 }
 
 export const definitionIdByCreateKind = {
