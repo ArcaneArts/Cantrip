@@ -100,7 +100,7 @@ describe("project root sidebar row", () => {
 });
 
 describe("sidebar surface inventory", () => {
-  it("does not render a generic inventory of resources without open views", async () => {
+  it("does not duplicate open workspace surfaces in the project sidebar", async () => {
     const onOpenSurface = vi.fn();
     const props = {
       browsers: [],
@@ -192,9 +192,40 @@ describe("sidebar surface inventory", () => {
       selectedProjectId: "project-1",
       selectedTabKey: null,
       surfaceLaunchers: [],
-      surfaces: [],
+      surfaces: [
+        {
+          definition: {
+            deletable: true,
+            id: "project.terminal",
+            supportedPlacements: ["center", "right", "bottom"],
+          },
+          entity: { id: "terminal-1" },
+          kind: "terminal",
+          member: { position: 0 },
+          paneId: "pane-bottom",
+          placement: { paneId: "pane-bottom", position: 0 },
+          projectId: "project-1",
+          resource: {
+            entity: { id: "terminal-1" },
+            ref: { id: "terminal-1" },
+          },
+          tabId: "terminal-1",
+          tabKey: "terminal:terminal-1",
+          title: "Terminal",
+          view: { id: "terminal-view-1" },
+        },
+      ],
       tabLayout: { groups: [], projectId: "project-1", revision: 2 },
-      terminals: [],
+      terminals: [
+        {
+          id: "terminal-1",
+          kind: "shell",
+          linkedChatId: null,
+          status: "running",
+          title: "Terminal",
+          worktreeId: "worktree-1",
+        },
+      ],
       workers: [],
       worktrees: [],
       worktreeStatuses: {},
@@ -210,12 +241,7 @@ describe("sidebar surface inventory", () => {
       );
     });
 
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("Closed views");
-    expect(
-      renderer.root.findAllByProps({
-        "data-closed-surface-view": "chat:chat-1",
-      }),
-    ).toHaveLength(0);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Open views");
     expect(onOpenSurface).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
