@@ -711,15 +711,20 @@ export function createSidebarExplorerCommands({
       projectId: sidebarFilePreview.projectId,
       samePath: true,
     });
-    if (sidebarFilePreview.active) return;
-    if (tabLayout && sidebarFilePreview.paneId) {
+    if (
+      tabLayout &&
+      sidebarFilePreview.paneId &&
+      selectedPane?.id !== sidebarFilePreview.paneId
+    ) {
       setWorkspaceSelection((current) =>
         selectWorkspacePane(current, tabLayout, sidebarFilePreview.paneId!),
       );
     }
-    setSidebarFilePreview((current) =>
-      current ? { ...current, active: true } : null,
-    );
+    if (!sidebarFilePreview.active) {
+      setSidebarFilePreview((current) =>
+        current ? { ...current, active: true } : null,
+      );
+    }
     revealWorkspace();
   };
   const retrySidebarFileTree = () => {

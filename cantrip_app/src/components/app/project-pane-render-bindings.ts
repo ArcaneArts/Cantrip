@@ -190,6 +190,7 @@ export function projectPaneRenderBindings(
       : ignoreGitHistoryHeaderChange,
     showSidebarPreviewTab: false,
     sidebarFilePreview: null,
+    sidebarFilePreviewPaneVisible: false,
     sidebarFilePreviewVisible: false,
     terminalSurfaceVisible:
       activeSurface?.kind === "terminal" &&
