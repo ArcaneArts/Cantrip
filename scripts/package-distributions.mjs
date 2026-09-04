@@ -11,6 +11,7 @@ import {
   verifyBuild,
 } from "./cantrip-code/build-lib.mjs";
 import { buildCantripCli, bundleCantripCli } from "./cantrip-cli/build.mjs";
+import { buildCantripCua, bundleCantripCua } from "./cantrip-cua/build.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
 import {
   assertPackagedWorkspaceRuntime,
@@ -21,6 +22,7 @@ import {
   writeServiceLaunchers,
 } from "./package-runtime.mjs";
 import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
+import { verifyPackagedWorkerCua } from "./verify-packaged-worker-cua.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const selection = process.argv[2];
@@ -75,6 +77,7 @@ const runtime = path.join(
   "resources",
   "runtime",
 );
+let cuaBinary;
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -134,6 +137,8 @@ async function packageService(name, destination, { standalone = true } = {}) {
     const bin = path.join(destination, "bin");
     await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });
     await bundleCantripCli(root, bin);
+    await bundleCantripCua(cuaBinary, bin);
+    await verifyPackagedWorkerCua(destination);
     await verifyPackagedWorkerMcp(destination, { smoke: standalone });
   }
   await cp(
@@ -201,6 +206,7 @@ async function packageStandalone(selection) {
   if (selection === "worker" || selection === "services") {
     buildCodex();
     buildCli();
+    cuaBinary = buildCantripCua(root, { release: true });
   }
   buildSelectedServices(selection);
   if (selection === "server" || selection === "services") {
@@ -247,6 +253,7 @@ async function packageDesktopRuntime() {
   } else {
     buildCodex();
     buildCli();
+    cuaBinary = buildCantripCua(root, { release: true });
     buildSelectedServices("services");
     await packageService("server", path.join(runtime, "server"), {
       standalone: false,
@@ -256,6 +263,7 @@ async function packageDesktopRuntime() {
     });
   }
   await bundleNodeRuntime(runtime);
+  await verifyPackagedWorkerCua(path.join(runtime, "worker"));
   console.log(
     `Bundled Node ${process.version}: ${path.relative(root, runtime)}`,
   );

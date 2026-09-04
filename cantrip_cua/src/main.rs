@@ -3,6 +3,8 @@ use cantrip_cua::{
     runtime::run,
 };
 
+mod installation_lock;
+
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let result = match arguments
@@ -17,8 +19,17 @@ fn main() {
             println!("cantrip-cua {} protocol 1", env!("CARGO_PKG_VERSION"));
             return;
         }
+        ["--installation-lock", path] if !path.is_empty() => {
+            if let Err(reason) = installation_lock::hold(std::path::Path::new(path)) {
+                eprintln!("{{\"event\":\"cua.installation.failed\",\"reason\":\"{reason}\"}}");
+                std::process::exit(1);
+            }
+            return;
+        }
         _ => {
-            eprintln!("Usage: cantrip-cua [--backend fake | --version]");
+            eprintln!(
+                "Usage: cantrip-cua [--backend fake | --version | --installation-lock <path>]"
+            );
             std::process::exit(2);
         }
     };

@@ -1,0 +1,52 @@
+name: Computer use native foundation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/computer-use-native.yml"
+      - ".github/workflows/native-release.yml"
+      - "cantrip_cua/**"
+      - "scripts/cantrip-cua/**"
+      - "scripts/verify-packaged-worker-cua.mjs"
+      - "scripts/package-distributions.mjs"
+      - "scripts/sign-macos-runtime.mjs"
+      - "scripts/verify-macos-distribution.mjs"
+      - "package.json"
+
+permissions:
+  contents: read
+
+jobs:
+  portable-cua:
+    name: CUA fake capture (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: blacksmith-6vcpu-macos-15
+            target: darwin-arm64
+          - runner: blacksmith-4vcpu-windows-2025
+            target: win32-x64
+          - runner: ubuntu-24.04
+            target: linux-x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cua-${{ matrix.target }}
+          workspaces: cantrip_cua -> target
+      - run: cargo fmt --manifest-path cantrip_cua/Cargo.toml -- --check
+      - run: cargo clippy --locked --manifest-path cantrip_cua/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --locked --manifest-path cantrip_cua/Cargo.toml
+      - run: node --test scripts/cantrip-cua/*.test.mjs
+      - run: node scripts/cantrip-cua/smoke.mjs
+      - run: node scripts/cantrip-cua/build.mjs --release

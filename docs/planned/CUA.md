@@ -51,7 +51,8 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-02-rust-foundation`, based on merged cycle 1 (`1e2da3de9`).
 - PR: [#1734](https://github.com/ArcaneArts/Cantrip/pull/1734).
-  Initial implementation commit: `67019f00a`; merge pending.
+  Initial implementation commit: `67019f00a`; merged 2026-09-04 as
+  `c6982b46d2d7170d363ceb58cc9fbcdbeb4577ee` (observed via GitHub).
 - Implemented: standalone `cantrip_cua` library/executable and lockfile; bounded
   raw-binary protocol; independent cancellation reader; serialized session
   ownership; explicit fake monitor/window backend; PNG observations with digest;
@@ -79,6 +80,47 @@ is the authoritative merge record until the next ledger update.
   Trajectory wiring, full end-to-end verification.
 - Deferred: native input/mutations, human event taps, Windows/Linux native
   backends, remote-worker control, continuous video, and arbitrary cursor assets.
+
+### Tranche cycle 3 — Build chain, stable helper installation, and packaged smoke
+
+- Branch: `codex/cua-03-build-chain`, based on merged cycle 2 (`c6982b46d`).
+- PR/commit: opening after local validation; merge not yet observed.
+- Implemented: root CUA build/check/test/smoke commands; Cargo-reported executable
+  selection; worker and inherited desktop bundling; final-layout protocol smoke;
+  explicit macOS signing identifiers; named user-data development installation
+  independent from build/worktree paths. Signing configuration is retained across
+  rebuilds, installation is OS-lock serialized, and failed signing/smoke preserves
+  the prior executable. No worker runtime activation or native capture yet.
+- Validation: 50 Rust tests and 24 CUA script tests pass; focused Clippy/format,
+  release build, Windows GNU cross-check, and diff/large-file checks pass.
+  Actual copied worker/desktop-layout smoke covers both fake targets, four cursor
+  styles, binary PNG metadata/digest, deterministic repeat captures, and shutdown.
+  The actual development CLI is exercised (including a fixed circular-import
+  startup deadlock). Broad script run: 142/144 pass; the App Platform build-command
+  assertion and network Tranche Two missing-test-name assertion also fail on
+  unchanged Primary `c6982b46d`. They remain recorded baseline regression work,
+  not claimed passing or silently bypassed.
+- Platform: local macOS arm64 fake execution; added macOS/Windows/Linux CI matrix,
+  with results pending. Native capture remains only cycle-1 prototype evidence.
+- Manual verification: named `cua-cycle-three-qa` development helper installed
+  in native user data with Apple Development signing; debug and release builds
+  both passed actual smoke with equal designated requirements. Developer ID
+  final-layout helper passed strict signature verification and fake smoke
+  (60 ms release sample, not a native capture benchmark). The named QA helper
+  remains installed for subsequent native validation. Actual TCC reuse across
+  worktrees and capture permission behavior remain cycle-7/end-to-end work;
+  neither is implied by signing or fake smoke. A full app/DMG build was not run
+  in this cycle; final-layout helper verification is not outer-app notarization.
+- Risks: standalone worker release artifacts are not yet certificate-signed by
+  their release job; desktop nested signing does not prove that separate path.
+  Moving/translocating the installed outer app can change its absolute path.
+- Remaining first tranche: lazy worker service and binary resolution; protected
+  shared protocol/server routing; preview/customization UI; native Rust capture;
+  persistent JS/managed MCP; durable approvals, Trajectory, and end-to-end audit.
+- Deferred: native input and mutations, human event taps, Windows/Linux native
+  capture, arbitrary cursor assets, continuous video, and cross-worker control.
+- Developer/build/inspection/reset instructions:
+  [CUA runtime README](../../cantrip_cua/README.md#stable-development-helper).
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

@@ -1,0 +1,175 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { buildCantripCua, bundleCantripCua } from "./build.mjs";
+import { verifyPackagedWorkerCua } from "../verify-packaged-worker-cua.mjs";
+import { verifyMacosDistribution } from "../verify-macos-distribution.mjs";
+import { installDevelopmentCua } from "./development.mjs";
+import { withInstallationLock } from "./install-lock.mjs";
+
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+
+test(
+  "development CLI installs without a circular top-level import",
+  { timeout: 120_000 },
+  async () => {
+    const fixture = await mkdtemp(
+      path.join(os.tmpdir(), "cantrip-cua-cli-test-"),
+    );
+    try {
+      // Exercise the real CLI main branch in a separate Node process while keeping
+      // its user-data destination inside this fixture (without changing HOME).
+      const entry = fileURLToPath(new URL("./build.mjs", import.meta.url));
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+      import os from 'node:os';
+      import { pathToFileURL } from 'node:url';
+      os.homedir = () => ${JSON.stringify(fixture)};
+      process.argv = [process.execPath, ${JSON.stringify(entry)}, '--install-dev'];
+      await import(pathToFileURL(process.argv[1]).href);
+    `,
+        ],
+        {
+          encoding: "utf8",
+          timeout: 60_000,
+          env: {
+            ...process.env,
+            CANTRIP_DEV_PROFILE: "default",
+            CANTRIP_CUA_SIGNING_IDENTITY: "",
+            LOCALAPPDATA: fixture,
+            XDG_DATA_HOME: fixture,
+          },
+        },
+      );
+      assert.equal(result.error, undefined);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /"capturePermissionVerified": false/);
+      assert.doesNotMatch(result.stderr, /unsettled top-level await/);
+    } finally {
+      await rm(fixture, { force: true, recursive: true });
+    }
+  },
+);
+
+test(
+  "final copied worker and desktop artifact helpers run their real protocol",
+  { timeout: 120_000 },
+  async () => {
+    const fixture = await mkdtemp(
+      path.join(os.tmpdir(), "cantrip-cua-package-test-"),
+    );
+    try {
+      const binary = buildCantripCua(root);
+      const worker = path.join(fixture, "worker artifact");
+      await bundleCantripCua(binary, path.join(worker, "bin"));
+      const result = await verifyPackagedWorkerCua(worker);
+      assert.equal(result.backend, "fake");
+      const copied = path.join(
+        fixture,
+        "Cantrip.app",
+        "Contents",
+        "Resources",
+        "runtime",
+        "worker",
+      );
+      await cp(worker, copied, { recursive: true });
+      assert.equal((await verifyPackagedWorkerCua(copied)).backend, "fake");
+      await assert.rejects(
+        verifyPackagedWorkerCua(path.join(fixture, "missing")),
+      );
+
+      const install = await installDevelopmentCua(binary, {
+        homeDirectory: fixture,
+        environment: {},
+      });
+      assert.deepEqual(await readFile(install.binary), await readFile(binary));
+      await withInstallationLock(
+        binary,
+        path.join(install.directory, ".installation.lock"),
+        async () => {
+          await assert.rejects(
+            installDevelopmentCua(binary, {
+              homeDirectory: fixture,
+              environment: {},
+            }),
+            /Could not lock/,
+          );
+        },
+      );
+      // The failed contender neither replaces the helper nor leaves a stale lock.
+      assert.equal(
+        (
+          await installDevelopmentCua(binary, {
+            homeDirectory: fixture,
+            environment: {},
+          })
+        ).binary,
+        install.binary,
+      );
+    } finally {
+      await rm(fixture, { force: true, recursive: true });
+    }
+  },
+);
+
+test("macOS verification requires stable CUA signature and runs final-layout handshake", async () => {
+  const fixture = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-cua-sign-test-"),
+  );
+  try {
+    const app = path.join(fixture, "Cantrip.app");
+    const worker = path.join(app, "Contents", "Resources", "runtime", "worker");
+    const binary = path.join(worker, "bin", "cantrip-cua");
+    const dmg = path.join(fixture, "Cantrip.dmg");
+    await mkdir(path.dirname(binary), { recursive: true });
+    await writeFile(binary, Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]));
+    await writeFile(dmg, "fixture");
+    let identifier = "art.cantrip.cua";
+    let observed;
+    const options = {
+      bundleDirectory: fixture,
+      runCommand(_command, args) {
+        if (args[0] !== "-dvvv") return "";
+        const target = args.at(-1);
+        return [
+          `Identifier=${target === binary ? identifier : "art.cantrip"}`,
+          "flags=0x10000(runtime)",
+          "Authority=Developer ID Application: Test (TEAM)",
+        ].join("\n");
+      },
+      verifyCua: async (directory) => {
+        observed = directory;
+      },
+    };
+    await verifyMacosDistribution(options);
+    assert.equal(observed, worker);
+    identifier = "accidental-build-path";
+    await assert.rejects(
+      verifyMacosDistribution(options),
+      /stable art.cantrip.cua signing identifier/,
+    );
+    identifier = "art.cantrip.cua";
+    await assert.rejects(
+      verifyMacosDistribution({
+        ...options,
+        verifyCua: async () => {
+          throw new Error("actual launch failed");
+        },
+      }),
+      /actual launch failed/,
+    );
+  } finally {
+    await rm(fixture, { force: true, recursive: true });
+  }
+});

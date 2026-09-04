@@ -36,6 +36,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
   try {
     const node = path.join(root, "node");
     const codex = path.join(root, "worker", "bin", "codex");
+    const cua = path.join(root, "worker", "bin", "cantrip-cua");
     const codeModeHost = path.join(
       root,
       "worker",
@@ -45,6 +46,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
     await mkdir(path.dirname(codex), { recursive: true });
     await writeFile(node, thinMachO);
     await writeFile(codex, thinMachO);
+    await writeFile(cua, thinMachO);
     await writeFile(codeModeHost, thinMachO);
     await chmod(node, 0o755);
     await chmod(codex, 0o644);
@@ -54,7 +56,13 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
     await writeFile(path.join(codeRoot, "native.dylib"), thinMachO);
     assert.deepEqual(
       new Set(await findMachOBinaries(root)),
-      new Set([node, codex, codeModeHost, path.join(codeRoot, "native.dylib")]),
+      new Set([
+        node,
+        codex,
+        cua,
+        codeModeHost,
+        path.join(codeRoot, "native.dylib"),
+      ]),
     );
 
     const calls = [];
@@ -64,7 +72,11 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
       identity: "Developer ID Application: Cantrip Test (TEAMID)",
       run: (arguments_) => calls.push(arguments_),
     });
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
+    const cuaCall = calls.find((call) => call.at(-1) === cua);
+    assert.ok(cuaCall.includes("--identifier"));
+    assert.ok(cuaCall.includes("art.cantrip.cua"));
+    assert.equal(cuaCall.includes("--entitlements"), false);
     const nodeCall = calls.find((call) => call.at(-1) === node);
     const codexCall = calls.find((call) => call.at(-1) === codex);
     const codeModeHostCall = calls.find((call) => call.at(-1) === codeModeHost);
@@ -84,7 +96,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
       identity: "-",
       run: (arguments_) => adhocCalls.push(arguments_),
     });
-    assert.equal(adhocCalls.length, 4);
+    assert.equal(adhocCalls.length, 5);
     assert.equal(
       adhocCalls.some((call) => call.includes("--timestamp")),
       false,
@@ -258,6 +270,11 @@ test("verifies the outer app, embedded runtime, and DMG signatures", async () =>
       bundleDirectory: root,
       requireNotarization: true,
       runCommand,
+      verifyCua: async (worker) =>
+        assert.equal(
+          worker,
+          path.join(app, "Contents", "Resources", "runtime", "worker"),
+        ),
     });
     assert.deepEqual(result.apps, [app]);
     assert.deepEqual(result.dmgs, [dmg]);
@@ -296,6 +313,11 @@ test("accepts a certificate-signed distribution without notarization", async () 
     const result = await verifyMacosDistribution({
       bundleDirectory: root,
       requireNotarization: false,
+      verifyCua: async (worker) =>
+        assert.equal(
+          worker,
+          path.join(app, "Contents", "Resources", "runtime", "worker"),
+        ),
       runCommand: (command, arguments_) => {
         calls.push({ command, arguments_ });
         const target = arguments_.at(-1);
@@ -418,6 +440,11 @@ test("accepts a sealed ad-hoc app in an unsigned DMG when allowed", async () => 
       allowAdhoc: true,
       bundleDirectory: root,
       requireNotarization: false,
+      verifyCua: async (worker) =>
+        assert.equal(
+          worker,
+          path.join(app, "Contents", "Resources", "runtime", "worker"),
+        ),
       runCommand: (command, arguments_) => {
         calls.push({ command, arguments_ });
         const target = arguments_.at(-1);
