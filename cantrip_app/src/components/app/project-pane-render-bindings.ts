@@ -32,7 +32,10 @@ export function projectPaneRenderBindings(
     activeSurface?.kind === "code" ? activeSurface.entity : undefined;
   const selectedProjectView =
     activeSurface?.kind === "history" ||
+    activeSurface?.kind === "graph" ||
     activeSurface?.kind === "issues" ||
+    activeSurface?.kind === "prs" ||
+    activeSurface?.kind === "actions" ||
     activeSurface?.kind === "remote-desktop"
       ? activeSurface.entity
       : undefined;
@@ -52,8 +55,8 @@ export function projectPaneRenderBindings(
       : null;
   const gitHistoryProject =
     selectedProject?.capabilities.git &&
-    (selectedProjectView?.kind === "history" ||
-      selectedProjectView?.kind === "issues")
+    selectedProjectView &&
+    selectedProjectView.kind !== "remote-desktop"
       ? selectedProject
       : undefined;
   const projectOverviewGitProject =

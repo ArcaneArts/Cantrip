@@ -37,7 +37,10 @@ export function projectSurfaceDefinitionIdForTab(
   if (kind === "browser") return "project.browser";
   if (kind === "code") return "project.code";
   if (kind === "history") return "project.git-history";
+  if (kind === "graph") return "project.git-graph";
   if (kind === "issues") return "project.github-issues";
+  if (kind === "prs") return "project.github-pull-requests";
+  if (kind === "actions") return "project.github-actions";
   return "project.remote-desktop";
 }
 

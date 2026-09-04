@@ -86,8 +86,14 @@ function surfaceDefinitionIdForTab(
       return "project.code";
     case "history":
       return "project.git-history";
+    case "graph":
+      return "project.git-graph";
     case "issues":
       return "project.github-issues";
+    case "prs":
+      return "project.github-pull-requests";
+    case "actions":
+      return "project.github-actions";
     case "remote-desktop":
       return "project.remote-desktop";
     case "builtin":
@@ -229,7 +235,12 @@ export function projectTabKey(
     });
   }
   const prefix =
-    kind === "history" || kind === "issues" || kind === "remote-desktop"
+    kind === "history" ||
+    kind === "graph" ||
+    kind === "issues" ||
+    kind === "prs" ||
+    kind === "actions" ||
+    kind === "remote-desktop"
       ? "view"
       : kind;
   return `${prefix}:${tabId}`;

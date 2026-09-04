@@ -8,7 +8,7 @@ import {
 } from "./project-surface-registry";
 
 describe("project surface registry adapter", () => {
-  it("maps every legacy tab kind into the unified registry", () => {
+  it("maps every entity-backed tab kind into the unified registry", () => {
     const definitions = new Set(
       PROJECT_SURFACE_DEFINITIONS.map(({ id }) => id),
     );
@@ -19,7 +19,10 @@ describe("project surface registry adapter", () => {
       ["browser", "project.browser"],
       ["code", "project.code"],
       ["history", "project.git-history"],
+      ["graph", "project.git-graph"],
       ["issues", "project.github-issues"],
+      ["prs", "project.github-pull-requests"],
+      ["actions", "project.github-actions"],
       ["remote-desktop", "project.remote-desktop"],
     ] as const;
 

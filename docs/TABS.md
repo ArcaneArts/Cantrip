@@ -10,7 +10,7 @@ where and how it is rendered.
 This document replaces the previous tab-group design. It preserves the
 important durability, revision, and ownership guarantees of the existing
 implementation while defining the target model for mixed tabs, docked panes,
-split views, singleton project tools, and detached windows.
+split views, user-created project tools, and detached windows.
 
 ## Why the model is changing
 
@@ -44,8 +44,8 @@ default-placement hint rather than a permanent visual restriction.
 2. Give every actual tab exactly one pane placement.
 3. Allow tabs to move between center, right, bottom, split, and detached panes.
 4. Keep surface resources separate from their open tab placements.
-5. Make built-in project tools behave like tabs without creating disposable
-   database entities or permanently cluttering the interface.
+5. Keep Overview and Tasks as built-ins while making Git and GitHub tools
+   ordinary, independently placeable surface resources.
 6. Preserve server-authoritative ordering and revision conflict handling.
 7. Remember dock size and full-view intent without persisting unusable pixel
    geometry.
@@ -348,18 +348,12 @@ When another rail tab is selected while one dock is full:
 Full view applies to workspace panes. Persistent application chrome and
 launcher rails remain visible unless a separate Zen/Focus mode is active.
 
-## Built-in singleton surfaces
+## Built-in and user-created project tools
 
-The following project tools become project-scoped singleton surface
-definitions:
+Overview and Tasks remain project-scoped singleton surface definitions:
 
 - `project.overview`
 - `project.tasks`
-- `git.history`
-- `git.graph`
-- `github.issues`
-- `github.pull-requests`
-- `github.actions`
 
 These surfaces are always conceptually available when project capabilities
 allow them. They do not need a newly created domain record each time they are
@@ -368,18 +362,21 @@ opened.
 - Opening one creates or focuses a deterministic layout reference.
 - Closing it removes the placement only.
 - It has no Delete action.
-- It may be pinned or unpinned as a launcher.
 - Worktree selection, filters, and other view state are stored against its
   deterministic identity.
 - Capability loss preserves the placement and shows an unavailable state
   instead of silently deleting it.
 
-History, Issues, PRs, Actions, and Graph may be grouped under a collapsible
-"Project tools" launcher category. Availability does not require all seven to
-occupy permanent sidebar rows or open tabs.
+History, Graph, Issues, Pull Requests, and Actions are multi-instance
+`ProjectView` resources. They appear in the add-surface menu for every
+compatible top bar or rail, and the control that creates them determines their
+initial pane. Each instance has its own identity, worktree binding, placement,
+ordering, dock presentation, rename lifecycle, and Delete action.
 
-History and Issues should stop being independently creatable `ProjectView`
-records after migration. Remote Desktop remains a multi-instance project view.
+The rails do not render preset Git or GitHub launchers, and the project
+navigator does not render a "Project tools" section. Older deterministic
+built-in Git tool references remain readable for saved-layout compatibility,
+but they are not offered as new launchers.
 
 ## Agent and resource inventory
 
@@ -408,12 +405,11 @@ archivable resources. Context menus must clearly distinguish:
 
 - Close View
 - Move to Region
-- Pin/Unpin Launcher
 - Rename Resource
 - Archive Resource
 - Delete Resource
 
-Built-in singleton surfaces expose only the applicable non-destructive subset.
+Overview and Tasks expose only the applicable non-destructive subset.
 
 ## Conceptual persisted model
 
@@ -597,12 +593,12 @@ because its view placement is deduplicated.
 
 ### Milestone 2: built-in project tools
 
-- Move Overview, Tasks, History, Graph, Issues, PRs, and Actions into the
-  registry.
-- Replace the fixed secondary navigation with launchers that open or focus
-  singleton tabs.
-- Stop creating duplicate History and Issues project-view resources.
-- Add capability-aware unavailable states and launcher pinning.
+- Keep Overview and Tasks as deterministic built-ins.
+- Register History, Graph, Issues, Pull Requests, and Actions as
+  capability-aware multi-instance resources.
+- Offer those resources from each pane or rail add-surface control instead of
+  fixed secondary navigation.
+- Preserve legacy built-in identities only for saved-layout compatibility.
 
 ### Milestone 3: panes and unified center tab strips
 

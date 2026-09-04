@@ -92,7 +92,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     archivedStandaloneChats,
     beginSidebarResize,
     bootstrap,
-    closeSurfaceView,
     createProjectSurface,
     createSidebarExplorerMutation,
     createSidebarFolder,
@@ -108,7 +107,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     moveSidebarResize,
     newStandaloneChat,
     onlineWorker,
-    openProjectNavigatorSurface,
     openProjectCreateSource,
     openProjectSettings,
     openServerAdmin,
@@ -122,7 +120,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     pinSidebarFile,
     pinSidebarFileMutation,
     projectOverviewSelected,
-    projectInventorySurfaces,
     projectRevealButtonLabel,
     projectRevealLabel,
     projectSetupJobs,
@@ -134,7 +131,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     resizeSidebarWithKeyboard,
     restoreStandaloneChat,
     retrySidebarFileTree,
-    selectTopTab,
     selectProjectFromSidebar,
     selectProjectWorkspace,
     selectStandaloneChat,
@@ -143,7 +139,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     selectedProject,
     selectedProjectId,
     selectedStandaloneChatId,
-    selectedTabKey,
     setDesktopSidebarDrawerOpen,
     setSettingsSection,
     setShowArchivedStandaloneChats,
@@ -166,10 +161,8 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     standaloneChatCreationAvailable,
     standaloneChatCreationUnavailableReason,
     standaloneChats,
-    surfaceLaunchers,
     switchToChat,
     switchToIde,
-    updateSurfaceLauncherPin,
     workers,
     worktrees,
   } = bindings;
@@ -407,11 +400,8 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     folderSetupJobs={folderSetupJobs}
                     projects={projects.data ?? []}
                     projectSetupJobs={projectSetupJobs}
-                    surfaces={projectInventorySurfaces}
-                    surfaceLaunchers={surfaceLaunchers.data ?? []}
                     overviewSelected={projectOverviewSelected}
                     selectedProjectId={selectedProjectId}
-                    selectedTabKey={selectedTabKey}
                     fileExplorer={sidebarExplorer}
                     fileGraphAvailable={explorerRepositoryGraphAvailable(
                       selectedProject?.capabilities,
@@ -450,23 +440,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     onFilePreview={openSidebarFilePreview}
                     onFileRename={renameSidebarFileEntry}
                     onFileTreeRetry={retrySidebarFileTree}
-                    onCloseSurface={closeSurfaceView}
-                    onOpenSurface={(surfaceRef) =>
-                      selectedProjectId
-                        ? openProjectNavigatorSurface(
-                            selectedProjectId,
-                            surfaceRef,
-                          )
-                        : undefined
-                    }
-                    onPinProjectTool={(definitionId, pinned) => {
-                      if (!selectedProjectId) return;
-                      updateSurfaceLauncherPin.mutate({
-                        definitionId,
-                        pinned,
-                        projectId: selectedProjectId,
-                      });
-                    }}
                     onRemoveProject={(projectId, deleteLocalFiles) =>
                       removeProjectMutation
                         .mutateAsync({ projectId, deleteLocalFiles })
@@ -487,7 +460,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                       )
                     }
                     onSelectProject={selectProjectFromSidebar}
-                    onSelectTab={selectTopTab}
                   />
                 </nav>
               </>

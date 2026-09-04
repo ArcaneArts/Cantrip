@@ -39,7 +39,10 @@ export type ProjectSurface =
   | ProjectSurfaceBase<"browser", BrowserSummary>
   | ProjectSurfaceBase<"code", CodeTabSummary>
   | ProjectSurfaceBase<"history", ProjectViewSummary>
+  | ProjectSurfaceBase<"graph", ProjectViewSummary>
   | ProjectSurfaceBase<"issues", ProjectViewSummary>
+  | ProjectSurfaceBase<"prs", ProjectViewSummary>
+  | ProjectSurfaceBase<"actions", ProjectViewSummary>
   | ProjectSurfaceBase<"remote-desktop", ProjectViewSummary>
   | ProjectSurfaceBase<"builtin", ProjectBuiltInSurfaceEntity>;
 
@@ -121,7 +124,12 @@ export function projectSurfaceTabKey(
     });
   }
   const prefix =
-    kind === "history" || kind === "issues" || kind === "remote-desktop"
+    kind === "history" ||
+    kind === "graph" ||
+    kind === "issues" ||
+    kind === "prs" ||
+    kind === "actions" ||
+    kind === "remote-desktop"
       ? "view"
       : kind;
   return `${prefix}:${tabId}`;

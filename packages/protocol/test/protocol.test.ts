@@ -6596,7 +6596,7 @@ describe("Cantrip protocol", () => {
     expect(
       encryptedProjectViewCreateSchema.safeParse({
         id: "123e4567-e89b-42d3-a456-426614174000",
-        kind: "remote-desktop",
+        kind: "history",
         paneId: "pane-1",
         tabGroupId: "group-1",
         titleProtection: protectedLabelFixture("project-view"),

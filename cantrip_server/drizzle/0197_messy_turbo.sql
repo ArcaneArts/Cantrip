@@ -1,0 +1,4 @@
+ALTER TABLE "project_views" DROP CONSTRAINT "project_views_kind_check";--> statement-breakpoint
+ALTER TABLE "tab_group_members" DROP CONSTRAINT "tab_group_members_kind_check";--> statement-breakpoint
+ALTER TABLE "project_views" ADD CONSTRAINT "project_views_kind_check" CHECK ("project_views"."kind" IN ('remote-desktop', 'history', 'graph', 'issues', 'prs', 'actions'));--> statement-breakpoint
+ALTER TABLE "tab_group_members" ADD CONSTRAINT "tab_group_members_kind_check" CHECK ("tab_group_members"."tab_kind" IN ('chat', 'terminal', 'explorer', 'browser', 'code', 'history', 'graph', 'issues', 'prs', 'actions', 'remote-desktop', 'builtin'));

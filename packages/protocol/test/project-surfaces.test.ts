@@ -7,6 +7,7 @@ import {
   projectPaneSchema,
   projectSurfaceLauncherSchema,
   projectSurfaceResourceRefSchema,
+  projectSurfaceTabKind,
   projectSurfaceViewCloseSchema,
   projectSurfaceViewId,
   projectSurfaceViewSchema,
@@ -48,11 +49,17 @@ describe("project surface registry", () => {
       archivable: true,
       deletable: true,
     });
-    expect(
-      PROJECT_SURFACE_DEFINITIONS.find(
-        ({ id }) => id === "project.git-history",
-      ),
-    ).toMatchObject({ cardinality: "multi-instance", deletable: true });
+    for (const id of [
+      "project.git-history",
+      "project.git-graph",
+      "project.github-issues",
+      "project.github-pull-requests",
+      "project.github-actions",
+    ] as const) {
+      expect(
+        PROJECT_SURFACE_DEFINITIONS.find((definition) => definition.id === id),
+      ).toMatchObject({ cardinality: "multi-instance", deletable: true });
+    }
     expect(
       PROJECT_SURFACE_DEFINITIONS.find(({ id }) => id === "project.explorer")
         ?.supportedPlacements,
@@ -74,6 +81,15 @@ describe("project surface registry", () => {
     expect(
       projectSurfaceViewId({ projectId: "project-1", resource: agent }),
     ).toBe("chat:agent-1");
+    const actions = projectSurfaceResourceRefSchema.parse({
+      kind: "entity",
+      definitionId: "project.github-actions",
+      resourceId: "actions-1",
+    });
+    expect(projectSurfaceTabKind(actions)).toBe("actions");
+    expect(
+      projectSurfaceViewId({ projectId: "project-1", resource: actions }),
+    ).toBe("view:actions-1");
     expect(
       projectSurfaceViewId({
         projectId: "project-1",

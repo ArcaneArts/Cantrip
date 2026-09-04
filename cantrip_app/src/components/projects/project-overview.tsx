@@ -129,7 +129,10 @@ function surfaceWorktreeId(surface: ProjectSurface): string | null {
   }
   if (
     surface.kind === "history" ||
+    surface.kind === "graph" ||
     surface.kind === "issues" ||
+    surface.kind === "prs" ||
+    surface.kind === "actions" ||
     surface.kind === "remote-desktop"
   ) {
     return surface.entity.worktreeId;

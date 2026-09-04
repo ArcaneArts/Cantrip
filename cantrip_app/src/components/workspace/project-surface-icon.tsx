@@ -1,9 +1,12 @@
 import {
   Bot,
   CircleDot,
+  CirclePlay,
   Code2,
   FolderTree,
   GitCommitHorizontal,
+  GitFork,
+  GitPullRequest,
   Globe2,
   Layers3,
   ListTodo,
@@ -34,10 +37,16 @@ export function ProjectSurfaceIcon({
                 ? Code2
                 : kind === "history"
                   ? GitCommitHorizontal
-                  : kind === "issues"
-                    ? CircleDot
-                    : kind === "remote-desktop"
-                      ? MonitorUp
-                      : Layers3;
+                  : kind === "graph"
+                    ? GitFork
+                    : kind === "issues"
+                      ? CircleDot
+                      : kind === "prs"
+                        ? GitPullRequest
+                        : kind === "actions"
+                          ? CirclePlay
+                          : kind === "remote-desktop"
+                            ? MonitorUp
+                            : Layers3;
   return <Icon {...props} fill={filled ? "currentColor" : props.fill} />;
 }

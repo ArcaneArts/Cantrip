@@ -8,11 +8,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  PROJECT_SURFACE_DEFINITIONS,
-  projectBuiltinSurfaceDefinitionIdSchema,
   type ExecutionTarget,
   type ProjectDockPresentationPreference,
-  type ProjectSurfaceLauncher,
   type ProjectPaneRegion,
   type ProjectPaneSummary,
 } from "@cantrip/protocol";
@@ -41,11 +38,9 @@ import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-laye
 import { projectPaneRenderBindings } from "@/components/app/project-pane-render-bindings";
 import {
   createKindsForPaneRegion,
-  definitionIdByCreateKind,
   legacyTopStripPresentation,
   legacyTopStripShowsSidebarPreview,
   partitionVisibleWorkspacePanes,
-  railLauncherDisposition,
   responsiveProjectWorkspaceGridModel,
   visibleWorkspacePanes,
   type VisibleProjectPane,
@@ -58,7 +53,6 @@ import {
   dockPresentationForPane,
   dockResizeCandidate,
   resizeDockPresentation,
-  revealDockPresentation,
   restoreDockPresentation,
   temporarySplitFraction,
   type DockRegion,
@@ -95,7 +89,6 @@ import {
   getRemoteDesktop,
 } from "@/lib/api";
 import type { ProjectSurface } from "@/lib/project-surface";
-import { projectBuiltInSurfaceResourceRef } from "@/lib/project-tool-surfaces";
 import {
   closeTabOnMiddleClick,
   preventMiddleMouseDefault,
@@ -271,14 +264,11 @@ function SortableDockRailTab({
 
 export function DockRail({
   activeTabKey,
-  allSurfaces,
   creatingKinds,
-  launchers,
   onCreate,
   onClose,
   onDelete,
   onMoveToRegion,
-  onOpenLauncher,
   onSelect,
   pending,
   pane,
@@ -288,9 +278,7 @@ export function DockRail({
   surfaces,
 }: {
   activeTabKey: string | null;
-  allSurfaces: readonly ProjectSurface[];
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
-  launchers: readonly ProjectSurfaceLauncher[];
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onClose(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface): void;
@@ -298,7 +286,6 @@ export function DockRail({
     surface: ProjectSurface,
     region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">,
   ): void;
-  onOpenLauncher(launcher: ProjectSurfaceLauncher): void;
   onSelect(surface: ProjectSurface, active: boolean): void;
   pending: boolean;
   pane: ProjectPaneSummary | undefined;
@@ -335,32 +322,6 @@ export function DockRail({
     region,
   });
   const tooltipSide = region === "right" ? "left" : "top";
-  const regionLaunchers = launchers.filter((launcher) => {
-    if (
-      launcher.location !== `${region}-rail` ||
-      launcher.target.kind !== "definition"
-    ) {
-      return false;
-    }
-    const definitionId = launcher.target.definitionId;
-    return (
-      PROJECT_SURFACE_DEFINITIONS.find(({ id }) => id === definitionId)
-        ?.cardinality === "singleton"
-    );
-  });
-  const launcherSurface = (launcher: ProjectSurfaceLauncher) => {
-    if (launcher.target.kind === "definition") {
-      const definitionId = launcher.target.definitionId;
-      return allSurfaces.find(
-        (surface) => surface.definition.id === definitionId,
-      );
-    }
-    const surfaceRef = launcher.target.surfaceRef;
-    return allSurfaces.find(
-      ({ resource }) =>
-        JSON.stringify(resource.ref) === JSON.stringify(surfaceRef),
-    );
-  };
   const closeImmediately = (surface: ProjectSurface) => {
     if (surface.tabKey === activeTabKey) {
       const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
@@ -371,7 +332,6 @@ export function DockRail({
     }
     onClose(surface);
   };
-  const placedTabKeys = new Set(surfaces.map((surface) => surface.tabKey));
   return (
     <>
       <aside
@@ -481,54 +441,6 @@ export function DockRail({
             />
           ) : null}
         </SortableContext>
-        {regionLaunchers.map((launcher) => {
-          if (launcher.target.kind !== "definition") return null;
-          const definitionId = launcher.target.definitionId;
-          const surface = launcherSurface(launcher);
-          if (surface && placedTabKeys.has(surface.tabKey)) return null;
-          const builtIn =
-            projectBuiltinSurfaceDefinitionIdSchema.safeParse(definitionId);
-          const definition = PROJECT_SURFACE_DEFINITIONS.find(
-            ({ id }) => id === definitionId,
-          );
-          const actionLabel = `${surface ? "Focus" : "Open"} ${definition?.label ?? "surface"}`;
-          return (
-            <TooltipButton
-              aria-label={`${actionLabel} in ${region} dock`}
-              aria-pressed={surface?.tabKey === activeTabKey}
-              className={cn(
-                "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
-                region === "right" ? "border-b" : "border-r",
-                surface?.tabKey === activeTabKey && "bg-muted text-foreground",
-              )}
-              key={launcher.id}
-              disabled={pending}
-              onClick={() => onOpenLauncher(launcher)}
-              size="icon"
-              tooltip={actionLabel}
-              tooltipSide={tooltipSide}
-              variant="ghost"
-            >
-              {builtIn.success ? (
-                <ProjectBuiltInSurfaceIcon
-                  className="size-4"
-                  definitionId={builtIn.data}
-                />
-              ) : (
-                <ProjectSurfaceIcon
-                  className="size-4"
-                  kind={
-                    definitionId === "project.terminal"
-                      ? "terminal"
-                      : definitionId === "project.browser"
-                        ? "browser"
-                        : "remote-desktop"
-                  }
-                />
-              )}
-            </TooltipButton>
-          );
-        })}
       </aside>
     </>
   );
@@ -1017,24 +929,6 @@ export function ProjectWorkspaceFrame({
       </div>
     );
   };
-  const focusAndRevealSurface = (surface: ProjectSurface) => {
-    const pane = bindings.tabLayout.data?.panes.find(
-      ({ id }: { id: string }) => id === surface.paneId,
-    );
-    const preference =
-      surface.member.dockPresentation ?? DEFAULT_DOCK_PRESENTATION;
-    if (
-      (pane?.region === "right" || pane?.region === "bottom") &&
-      preference.preferredMode === "closed"
-    ) {
-      commitDockPresentation(
-        surface.projectId,
-        surface.tabKey,
-        revealDockPresentation(preference),
-      );
-    }
-    bindings.selectTopTab(surface.tabKey);
-  };
   const selectDockRailSurface = (surface: ProjectSurface, active: boolean) => {
     const pane = bindings.tabLayout.data?.panes.find(
       ({ id }: { id: string }) => id === surface.paneId,
@@ -1056,51 +950,6 @@ export function ProjectWorkspaceFrame({
     }
     bindings.selectTopTab(surface.tabKey);
   };
-  const openRailLauncher = (
-    launcher: ProjectSurfaceLauncher,
-    region: DockRegion,
-  ) => {
-    const disposition = railLauncherDisposition(
-      launcher,
-      bindings.projectSurfaces,
-    );
-    if (disposition.type === "unavailable") return;
-    if (disposition.type === "focus") {
-      const surface = bindings.projectSurfaces.find(
-        ({ tabKey }: ProjectSurface) => tabKey === disposition.tabKey,
-      );
-      if (surface) focusAndRevealSurface(surface);
-      return;
-    }
-    const definitionId = disposition.definitionId;
-    const builtIn =
-      projectBuiltinSurfaceDefinitionIdSchema.safeParse(definitionId);
-    if (builtIn.success) {
-      void bindings.openOrFocusSurface(
-        bindings.selectedProject.id,
-        projectBuiltInSurfaceResourceRef(builtIn.data),
-        undefined,
-        region,
-      );
-      return;
-    }
-    const kind = (
-      Object.entries(definitionIdByCreateKind) as [
-        ProjectSurfaceCreateKind,
-        string,
-      ][]
-    ).find(([, candidateId]) => candidateId === definitionId)?.[0];
-    if (kind) {
-      bindings.createProjectSurface(
-        bindings.selectedProject.id,
-        kind,
-        undefined,
-        undefined,
-        region,
-      );
-    }
-  };
-
   const commitCenterSplitResize = (splitId: string, fraction: number) => {
     if (
       bindings.tabLayoutMutation.isPending ||
@@ -1330,9 +1179,7 @@ export function ProjectWorkspaceFrame({
       {railsVisible ? (
         <DockRail
           activeTabKey={right?.activeTabKey ?? null}
-          allSurfaces={bindings.projectSurfaces}
           creatingKinds={bindings.creatingSurfaceKinds}
-          launchers={bindings.surfaceLaunchers.data ?? []}
           onCreate={(kind, target) =>
             bindings.createProjectSurface(
               bindings.selectedProject.id,
@@ -1345,7 +1192,6 @@ export function ProjectWorkspaceFrame({
           onClose={bindings.closeSurfaceView}
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
-          onOpenLauncher={(launcher) => openRailLauncher(launcher, "right")}
           onSelect={selectDockRailSurface}
           pending={presentationMutationPending}
           pane={right?.pane}
@@ -1358,9 +1204,7 @@ export function ProjectWorkspaceFrame({
       {railsVisible ? (
         <DockRail
           activeTabKey={bottom?.activeTabKey ?? null}
-          allSurfaces={bindings.projectSurfaces}
           creatingKinds={bindings.creatingSurfaceKinds}
-          launchers={bindings.surfaceLaunchers.data ?? []}
           onCreate={(kind, target) =>
             bindings.createProjectSurface(
               bindings.selectedProject.id,
@@ -1373,7 +1217,6 @@ export function ProjectWorkspaceFrame({
           onClose={bindings.closeSurfaceView}
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
-          onOpenLauncher={(launcher) => openRailLauncher(launcher, "bottom")}
           onSelect={selectDockRailSurface}
           pending={presentationMutationPending}
           pane={bottom?.pane}

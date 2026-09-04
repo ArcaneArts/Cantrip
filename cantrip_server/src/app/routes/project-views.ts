@@ -9,6 +9,7 @@ import type { FastifyInstance } from "fastify";
 
 import type { ServerRepository } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
+import { requireProjectCapability } from "../../projects/capabilities.js";
 import type { WorkerLinkService } from "../../worker-links/service.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 
@@ -18,7 +19,9 @@ export interface ProjectViewRouteDependencies {
   repository: Pick<
     ServerRepository,
     | "deleteProjectView"
+    | "createProjectView"
     | "getProjectViewProjectId"
+    | "getProject"
     | "getRemoteSurfaceExecutionContext"
     | "listProjectViews"
     | "updateProjectView"
@@ -59,10 +62,32 @@ export function installProjectViewRoutes(
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      return reply.code(400).send({
-        error:
-          "Remote Desktop views must be created with endpoint configuration.",
-      });
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (
+        project &&
+        (input.data.kind === "history" || input.data.kind === "graph")
+      ) {
+        requireProjectCapability(project, "git");
+      }
+      if (
+        project &&
+        (input.data.kind === "issues" ||
+          input.data.kind === "prs" ||
+          input.data.kind === "actions")
+      ) {
+        requireProjectCapability(project, "github");
+      }
+      const view = await repository.createProjectView(
+        applicationOwnerId(),
+        request.params.projectId,
+        input.data,
+      );
+      return view
+        ? reply.code(201).send(projectViewWireSummarySchema.parse(view))
+        : reply.code(404).send({ error: "Project source not found." });
     },
   );
 
