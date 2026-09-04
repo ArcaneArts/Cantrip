@@ -1,6 +1,50 @@
 # Cantrip Computer Use
 
-Status: Planned
+Status: First-tranche implementation in progress; no product CUA capability yet.
+
+## Implementation progress
+
+The active first tranche is observation and a customizable logical cursor:
+Rust process, worker service, encrypted server routing, client preview,
+macOS snapshots, managed MCP, permissions, and Trajectory. Native input,
+Accessibility actions, clipboard/file mutations, human event taps, Windows,
+Linux, and cross-worker control remain later-tranche work. The full plan below
+describes the larger architecture; its operation list is not a requirement to
+implement later-tranche operations now.
+
+### Tranche cycle 1 — Contracts and feasibility
+
+- Branch: `codex/cua-01-feasibility`, based on `6b7df74b1`.
+- PR: [#1733](https://github.com/ArcaneArts/Cantrip/pull/1733).
+  Initial implementation commit: `3d1842785`; merge pending.
+- Implemented behavior: progress ledger and opt-in native/JavaScript
+  [feasibility probes](../../scripts/cantrip-cua/feasibility/README.md).
+  Product behavior remains unavailable; no startup or packaging changes.
+- Validation: repository build, managed MCP, permission, encryption, and
+  Trajectory seams inspected. Native fixture captured an occluded red window
+  (256 × 192) in 122–137 ms. Distinct signed debug/optimized builds both captured
+  successfully with equal designated requirements. A separate timestamped,
+  hardened-runtime Developer ID fixture passed strict signature verification.
+  JavaScript: five tests, release probe, formatting, and Clippy passed; persistent
+  globals, absent ambient I/O, deadline, heap bound, and reset exercised.
+- Platform: macOS only for native investigation; portable JavaScript probe.
+- Manual verification: fixture native pixels verified on macOS 27 arm64.
+  Parent-app TCC attribution, installed helper permission reuse across
+  worktrees, and packaged update capture remain unverified.
+- Risks: stable signing requirement alone does not prove TCC permission
+  continuity; this must be exercised with the installed helper. JS engine
+  limits do not bound native host calls or image memory.
+- Decisions: focused objc2 ScreenCaptureKit bindings; macOS 14+ CUA snapshot
+  capability (no app-wide minimum change); rquickjs 0.12.2 evaluator without
+  host I/O/module loader. Production implementation remains subsequent work.
+- Remaining tranche work: all production Rust, build, worker, server, client,
+  native capture, MCP, permission, Trajectory, and end-to-end cycles.
+- Deferred: all native input and mutations, other operating systems, and
+  remote-worker desktop control.
+
+Subsequent cycles record the preceding PR's observed merge commit. A cycle's
+own final merge cannot be truthfully written before GitHub merges it; its PR
+is the authoritative merge record until the next ledger update.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
