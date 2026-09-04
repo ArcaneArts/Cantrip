@@ -134,6 +134,63 @@ describe("workspace pane drag legality", () => {
     });
   });
 
+  it("turns center pane-edge drops into split commands", () => {
+    expect(
+      decideWorkspaceDrop(
+        layout,
+        { ...drag, supportedRegions: ["center", "right"] },
+        {
+          type: "pane-edge",
+          edge: "bottom",
+          projectId: "project-1",
+          paneId: "pane-b",
+        },
+      ),
+    ).toMatchObject({
+      status: "valid",
+      operation: {
+        command: {
+          type: "split-member",
+          edge: "bottom",
+          tabKey: "chat:agent",
+          targetPaneId: "pane-b",
+        },
+      },
+    });
+  });
+
+  it("rejects unsupported splits and no-ops a pane's final tab", () => {
+    expect(
+      decideWorkspaceDrop(
+        layout,
+        { ...drag, supportedRegions: ["right"] },
+        {
+          type: "pane-edge",
+          edge: "right",
+          projectId: "project-1",
+          paneId: "pane-b",
+        },
+      ),
+    ).toMatchObject({ status: "invalid" });
+    expect(
+      decideWorkspaceDrop(
+        layout,
+        {
+          ...drag,
+          paneId: "pane-b",
+          tabKey: "browser:docs",
+          visualKind: "browser",
+        },
+        {
+          type: "pane-edge",
+          edge: "right",
+          projectId: "project-1",
+          paneId: "pane-b",
+        },
+      ),
+    ).toEqual({ status: "noop" });
+  });
+
   it("does not reorder a pane when its inventory target is selected", () => {
     expect(
       decideWorkspaceDrop(layout, drag, {

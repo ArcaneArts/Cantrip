@@ -60,6 +60,17 @@ const layout: ProjectTabLayoutSummary = {
     },
   ],
 };
+const splitLayout: ProjectTabLayoutSummary = {
+  ...layout,
+  centerRoot: {
+    kind: "split",
+    id: "root-split",
+    direction: "horizontal",
+    fraction: 0.6,
+    first: { kind: "pane", paneId: "group-a" },
+    second: { kind: "pane", paneId: "group-b" },
+  },
+};
 
 describe("optimistic tab layouts", () => {
   it("removes a member and immediately promotes the remaining tab", () => {
@@ -80,6 +91,36 @@ describe("optimistic tab layouts", () => {
 
     expect(next.panes).toHaveLength(1);
     expect(next.panes[0]).toMatchObject({ id: "group-a", position: 0 });
+  });
+
+  it("collapses the center tree when the final tab is removed", () => {
+    const next = removeProjectTabFromLayout(splitLayout, "explorer:b");
+    expect(next.centerRoot).toEqual({ kind: "pane", paneId: "group-a" });
+  });
+
+  it("projects edge splits and split resizing into the cache", () => {
+    const split = applyOptimisticTabLayoutCommand(splitLayout, {
+      type: "split-member",
+      edge: "top",
+      tabKey: "chat:a",
+      targetPaneId: "group-b",
+    });
+    expect(split.panes.map(({ id }) => id)).toContain("optimistic:pane:chat:a");
+    expect(split.centerRoot).toMatchObject({
+      second: {
+        id: "optimistic:split:chat:a",
+        direction: "vertical",
+        first: { paneId: "optimistic:pane:chat:a" },
+        second: { paneId: "group-b" },
+      },
+    });
+
+    const resized = applyOptimisticTabLayoutCommand(split, {
+      type: "resize-center-split",
+      splitId: "root-split",
+      fraction: 0.35,
+    });
+    expect(resized.centerRoot).toMatchObject({ fraction: 0.35 });
   });
 
   it("promotes the first remaining member when splitting the anchor", () => {
@@ -140,6 +181,30 @@ describe("optimistic tab layouts", () => {
       "terminal:a",
     ]);
     expect(next.panes[0]?.title).toBe("Chat a");
+  });
+
+  it("keeps center leaves exact across ordinary moves", () => {
+    const joined = applyOptimisticTabLayoutCommand(splitLayout, {
+      type: "move-member",
+      tabKey: "explorer:b",
+      targetPaneId: "group-a",
+      targetMemberPosition: 1,
+    });
+    expect(joined.centerRoot).toEqual({ kind: "pane", paneId: "group-a" });
+
+    const split = applyOptimisticTabLayoutCommand(splitLayout, {
+      type: "move-member",
+      tabKey: "chat:a",
+      targetPaneId: null,
+      targetMemberPosition: 0,
+      targetPanePosition: 1,
+      targetRegion: "center",
+    });
+    expect(split.centerRoot).toBeDefined();
+    const leafIds = JSON.stringify(split.centerRoot).match(
+      /(?:group-a|group-b|optimistic:chat:a)/g,
+    );
+    expect(leafIds).toEqual(["group-a", "optimistic:chat:a", "group-b"]);
   });
 
   it("restores the authoritative snapshot after a rejected mutation", () => {

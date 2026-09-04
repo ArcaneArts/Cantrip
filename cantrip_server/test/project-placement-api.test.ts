@@ -32,6 +32,7 @@ import {
   workerLinkSessionSchema,
   type WorkerCommand,
   type WorkerNotification,
+  type ProjectCenterLayoutNode,
 } from "@cantrip/protocol";
 import {
   afterAll,
@@ -2811,6 +2812,165 @@ describe.sequential("project execution placement API", () => {
         .panes.filter(({ region }) => region === "center")
         .map(({ id }) => id),
     ).toEqual(reversedGroups);
+  });
+
+  it("splits and resizes center panes with revision-safe durable topology", async () => {
+    const leafIds = (root: ProjectCenterLayoutNode | null): string[] =>
+      root === null
+        ? []
+        : root.kind === "pane"
+          ? [root.paneId]
+          : [...leafIds(root.first), ...leafIds(root.second)];
+    const containingSplitId = (
+      root: ProjectCenterLayoutNode,
+      paneId: string,
+    ): string | null => {
+      if (root.kind === "pane") return null;
+      if (leafIds(root.first).includes(paneId)) {
+        return root.first.kind === "pane" && root.first.paneId === paneId
+          ? root.id
+          : (containingSplitId(root.first, paneId) ?? root.id);
+      }
+      return root.second.kind === "pane" && root.second.paneId === paneId
+        ? root.id
+        : (containingSplitId(root.second, paneId) ?? root.id);
+    };
+
+    const targetBrowserResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/browsers`,
+      payload: {
+        ...protectedBrowserFields(),
+        target: { kind: "worker", projectId, workerId: "worker-alpha" },
+        targetRegion: "center",
+      },
+    });
+    expect(targetBrowserResponse.statusCode, targetBrowserResponse.body).toBe(
+      201,
+    );
+    const targetBrowser = browserWireSummarySchema.parse(
+      targetBrowserResponse.json(),
+    );
+    const browserResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/browsers`,
+      payload: {
+        ...protectedBrowserFields(),
+        target: { kind: "worker", projectId, workerId: "worker-alpha" },
+        targetRegion: "center",
+      },
+    });
+    expect(browserResponse.statusCode, browserResponse.body).toBe(201);
+    const browser = browserWireSummarySchema.parse(browserResponse.json());
+    let layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const sourcePane = layout.panes.find(({ members }) =>
+      members.some(({ tabKey }) => tabKey === `browser:${browser.id}`),
+    )!;
+    const targetPane = layout.panes.find(({ members }) =>
+      members.some(({ tabKey }) => tabKey === `browser:${targetBrowser.id}`),
+    )!;
+
+    const invalidSelfSplit = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member/split`,
+      payload: {
+        revision: layout.revision,
+        tabKey: `browser:${browser.id}`,
+        targetPaneId: sourcePane.id,
+        edge: "right",
+      },
+    });
+    expect(invalidSelfSplit.statusCode).toBe(400);
+
+    const splitRevision = layout.revision;
+    const splitResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member/split`,
+      payload: {
+        revision: splitRevision,
+        tabKey: `browser:${browser.id}`,
+        targetPaneId: targetPane.id,
+        edge: "left",
+        fraction: 0.4,
+      },
+    });
+    expect(splitResponse.statusCode, splitResponse.body).toBe(200);
+    layout = projectTabLayoutWireSummarySchema.parse(splitResponse.json());
+    expect(layout.panes.some(({ id }) => id === sourcePane.id)).toBe(false);
+    const splitPane = layout.panes.find(({ members }) =>
+      members.some(({ tabKey }) => tabKey === `browser:${browser.id}`),
+    )!;
+    expect(splitPane.region).toBe("center");
+    expect(layout.centerRoot).not.toBeNull();
+    expect(leafIds(layout.centerRoot ?? null)).toEqual(
+      layout.panes
+        .filter(({ region }) => region === "center")
+        .map(({ id }) => id),
+    );
+    const splitId = containingSplitId(layout.centerRoot!, splitPane.id)!;
+
+    const resized = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/splits/${splitId}`,
+      payload: { revision: layout.revision, fraction: 0.65 },
+    });
+    expect(resized.statusCode, resized.body).toBe(200);
+    const resizedLayout = projectTabLayoutWireSummarySchema.parse(
+      resized.json(),
+    );
+    expect(JSON.stringify(resizedLayout.centerRoot)).toContain(
+      '"fraction":0.65',
+    );
+
+    const staleResize = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/splits/${splitId}`,
+      payload: { revision: layout.revision, fraction: 0.7 },
+    });
+    expect(staleResize.statusCode).toBe(409);
+    const missingResize = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/splits/missing-split`,
+      payload: { revision: resizedLayout.revision, fraction: 0.7 },
+    });
+    expect(missingResize.statusCode).toBe(400);
+
+    const closed = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/panes/member/close`,
+      payload: {
+        revision: resizedLayout.revision,
+        viewId: `browser:${browser.id}`,
+      },
+    });
+    expect(closed.statusCode, closed.body).toBe(200);
+    const closedLayout = projectSurfaceViewCloseResultSchema.parse(
+      closed.json(),
+    ).layout;
+    expect(closedLayout.panes.some(({ id }) => id === splitPane.id)).toBe(
+      false,
+    );
+    expect(leafIds(closedLayout.centerRoot ?? null)).toEqual(
+      closedLayout.panes
+        .filter(({ region }) => region === "center")
+        .map(({ id }) => id),
+    );
+    const targetClosed = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/panes/member/close`,
+      payload: {
+        revision: closedLayout.revision,
+        viewId: `browser:${targetBrowser.id}`,
+      },
+    });
+    expect(targetClosed.statusCode, targetClosed.body).toBe(200);
   });
 
   it("places surfaces in singleton docks and keeps legacy pane ordering compatible", async () => {

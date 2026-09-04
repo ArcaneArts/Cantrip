@@ -100,6 +100,7 @@ export function PersistentSurfaceLayer({
                 focused: presentation.focused,
                 gridArea: presentation.gridArea,
                 paneId: presentation.pane.id,
+                portalTarget: presentation.portalTarget,
                 tab: presentation.activeSurface.entity,
               },
             ]
@@ -117,6 +118,7 @@ export function PersistentSurfaceLayer({
                 focused: presentation.focused,
                 gridArea: presentation.gridArea,
                 paneId: presentation.pane.id,
+                portalTarget: presentation.portalTarget,
                 terminal: presentation.activeSurface.entity,
               },
             ]
@@ -134,6 +136,7 @@ export function PersistentSurfaceLayer({
                 focused: presentation.focused,
                 gridArea: presentation.gridArea,
                 paneId: presentation.pane.id,
+                portalTarget: presentation.portalTarget,
               },
             ]
           : [],

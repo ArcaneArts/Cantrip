@@ -6,6 +6,11 @@ import {
 } from "@cantrip/protocol";
 
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
+import {
+  centerLayoutPaneIds,
+  resolvedCenterLayoutRoot,
+  type CenterLayoutNode,
+} from "@/components/app/center-split-layout";
 import type { ProjectSurface } from "@/lib/project-surface";
 
 export interface VisibleProjectPane {
@@ -14,6 +19,7 @@ export interface VisibleProjectPane {
   focused: boolean;
   gridArea: "center-body" | "right-body" | "bottom-body";
   pane: ProjectPaneSummary;
+  portalTarget?: Element | null;
   surfaces: readonly ProjectSurface[];
 }
 
@@ -59,9 +65,9 @@ export function projectWorkspaceGridModel({
   const splitUpper = center && right;
   return {
     gridTemplateAreas: splitUpper
-      ? '"center-tabs right-divider right-tabs" "center-body right-divider right-body" "bottom-divider bottom-divider bottom-divider" "bottom-tabs bottom-tabs bottom-tabs" "bottom-body bottom-body bottom-body"'
+      ? '"center-root right-divider right-tabs" "center-root right-divider right-body" "bottom-divider bottom-divider bottom-divider" "bottom-tabs bottom-tabs bottom-tabs" "bottom-body bottom-body bottom-body"'
       : center
-        ? '"center-tabs" "center-body" "bottom-divider" "bottom-tabs" "bottom-body"'
+        ? '"center-root" "center-root" "bottom-divider" "bottom-tabs" "bottom-body"'
         : right
           ? '"right-tabs" "right-body" "bottom-divider" "bottom-tabs" "bottom-body"'
           : '"empty-upper-tabs" "empty-upper-body" "bottom-divider" "bottom-tabs" "bottom-body"',
@@ -121,12 +127,14 @@ export function createKindsForPaneRegion(
 
 export function visibleWorkspacePanes({
   activeTabByPane,
+  centerRoot,
   focusedPaneId,
   panes,
   surfaceByPaneId,
   visiblePaneIdByRegion = {},
 }: {
   activeTabByPane: Readonly<Record<string, string>>;
+  centerRoot?: CenterLayoutNode | null;
   focusedPaneId: string | null;
   panes: readonly ProjectPaneSummary[];
   surfaceByPaneId: ReadonlyMap<string, readonly ProjectSurface[]>;
@@ -138,10 +146,15 @@ export function visibleWorkspacePanes({
       ({ id, region: candidateRegion }) =>
         candidateRegion === region && id === visiblePaneIdByRegion[region],
     );
-  const centerPane =
-    (focusedPane?.region === "center" ? focusedPane : undefined) ??
-    rememberedPane("center") ??
-    panes.find(({ region }) => region === "center");
+  const centerPanes = panes.filter(({ region }) => region === "center");
+  const resolvedCenterRoot = resolvedCenterLayoutRoot({
+    centerPaneIds: centerPanes.map(({ id }) => id),
+    preferredPaneId:
+      (focusedPane?.region === "center" ? focusedPane.id : undefined) ??
+      rememberedPane("center")?.id,
+    root: centerRoot,
+  });
+  const centerPaneIds = centerLayoutPaneIds(resolvedCenterRoot);
   const rightPane =
     (focusedPane?.region === "right" ? focusedPane : undefined) ??
     rememberedPane("right") ??
@@ -151,9 +164,10 @@ export function visibleWorkspacePanes({
     rememberedPane("bottom") ??
     panes.find(({ region }) => region === "bottom");
   return [
-    centerPane
-      ? ({ pane: centerPane, gridArea: "center-body" } as const)
-      : null,
+    ...centerPaneIds.flatMap((paneId) => {
+      const pane = centerPanes.find(({ id }) => id === paneId);
+      return pane ? [{ pane, gridArea: "center-body" } as const] : [];
+    }),
     rightPane ? ({ pane: rightPane, gridArea: "right-body" } as const) : null,
     bottomPane
       ? ({ pane: bottomPane, gridArea: "bottom-body" } as const)

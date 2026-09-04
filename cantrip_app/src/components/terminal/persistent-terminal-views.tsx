@@ -1,6 +1,7 @@
 import type { TerminalSummary } from "@cantrip/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { PersistentSurfacePortal } from "@/components/app/persistent-surface-portal";
 import { clientLogger } from "@/lib/client-log-relay";
 import { cn } from "@/lib/utils";
 
@@ -76,6 +77,7 @@ export function PersistentTerminalViews({
     focused: boolean;
     gridArea: string;
     paneId: string;
+    portalTarget?: Element | null;
     terminal: TerminalSummary;
   }[];
 }) {
@@ -160,10 +162,10 @@ export function PersistentTerminalViews({
   return renderedTerminals.map((terminal) => {
     const placement = placementById.get(terminal.id);
     const visible = visiblePlacements
-      ? Boolean(placement)
+      ? Boolean(placement && placement.portalTarget !== null)
       : active && selectedTerminal?.id === terminal.id;
     const linkedChatId = terminal.linkedChatId;
-    return (
+    const owner = (
       <div
         aria-hidden={!visible}
         className={cn(
@@ -206,6 +208,17 @@ export function PersistentTerminalViews({
           visible={visible}
         />
       </div>
+    );
+    return visiblePlacements ? (
+      <PersistentSurfacePortal
+        host={placement?.portalTarget ?? null}
+        key={terminal.id}
+        portalKey={terminal.id}
+      >
+        {owner}
+      </PersistentSurfacePortal>
+    ) : (
+      owner
     );
   });
 }

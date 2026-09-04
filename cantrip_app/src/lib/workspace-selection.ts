@@ -56,10 +56,25 @@ export function reconcileWorkspaceSelection(
         members.some(({ tabKey }) => tabKey === preferredTabKey),
       )
     : undefined;
+  const previousFocusedTabKey =
+    !projectChanged && selection.focusedPaneId
+      ? selection.activeTabByPane[selection.focusedPaneId]
+      : undefined;
+  const previousFocusedPane = !projectChanged
+    ? layout.panes.find(({ id }) => id === selection.focusedPaneId)
+    : undefined;
+  const relocatedFocusedPane =
+    previousFocusedTabKey &&
+    !previousFocusedPane?.members.some(
+      ({ tabKey }) => tabKey === previousFocusedTabKey,
+    )
+      ? layout.panes.find(({ members }) =>
+          members.some(({ tabKey }) => tabKey === previousFocusedTabKey),
+        )
+      : undefined;
   const focusedPane =
-    (!projectChanged
-      ? layout.panes.find(({ id }) => id === selection.focusedPaneId)
-      : undefined) ??
+    relocatedFocusedPane ??
+    previousFocusedPane ??
     preferredPane ??
     layout.panes[0];
   const activeTabByPane: Record<string, string> = {};

@@ -38,6 +38,7 @@ function visible(
   panes: readonly ProjectPaneSummary[],
   options: {
     activeTabByPane?: Readonly<Record<string, string>>;
+    centerRoot?: Parameters<typeof visibleWorkspacePanes>[0]["centerRoot"];
     focusedPaneId?: string | null;
     visiblePaneIdByRegion?: Readonly<
       Partial<Record<ProjectPaneRegion, string>>
@@ -46,6 +47,7 @@ function visible(
 ) {
   return visibleWorkspacePanes({
     activeTabByPane: options.activeTabByPane ?? {},
+    centerRoot: options.centerRoot,
     focusedPaneId: options.focusedPaneId ?? null,
     panes,
     surfaceByPaneId: new Map(
@@ -111,6 +113,7 @@ describe("visible workspace panes", () => {
         },
       }).map(({ focused, pane: entry }) => [entry.id, focused]),
     ).toEqual([
+      ["center-a", false],
       ["center-b", false],
       ["right-a", true],
       ["bottom-a", false],
@@ -128,6 +131,38 @@ describe("visible workspace panes", () => {
         },
       }).map(({ activeTabKey }) => activeTabKey),
     ).toEqual(["center:alternate", "right:tab"]);
+  });
+
+  it("renders every recursive center leaf while retaining pane-local tabs", () => {
+    const panes = [
+      pane("left", "center"),
+      pane("top-right", "center"),
+      pane("bottom-right", "center"),
+    ];
+    expect(
+      visible(panes, {
+        activeTabByPane: { "top-right": "top-right:alternate" },
+        centerRoot: {
+          kind: "split",
+          id: "root",
+          direction: "horizontal",
+          fraction: 0.6,
+          first: { kind: "pane", paneId: "left" },
+          second: {
+            kind: "split",
+            id: "right",
+            direction: "vertical",
+            fraction: 0.4,
+            first: { kind: "pane", paneId: "top-right" },
+            second: { kind: "pane", paneId: "bottom-right" },
+          },
+        },
+      }).map(({ activeTabKey, pane: entry }) => [entry.id, activeTabKey]),
+    ).toEqual([
+      ["left", "left:tab"],
+      ["top-right", "top-right:alternate"],
+      ["bottom-right", "bottom-right:tab"],
+    ]);
   });
 });
 
@@ -154,7 +189,7 @@ describe("workspace frame topology", () => {
       center: true,
       right: false,
       bottom: false,
-      area: "center-body",
+      area: "center-root",
       columns: "minmax(0, 1fr)",
     },
     {

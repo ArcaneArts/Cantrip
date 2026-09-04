@@ -8,8 +8,10 @@ import { useRef } from "react";
 
 import {
   moveProjectPaneMember,
+  resizeProjectCenterSplit,
   reorderProjectPaneMembers,
   reorderProjectPanes,
+  splitProjectPaneMember,
   updateProjectPane,
   updateProjectPaneMemberPresentation,
 } from "@/lib/api";
@@ -106,6 +108,25 @@ export function useTabLayoutOperations({
           command.paneId,
           current.revision,
           command.tabKeys,
+        );
+      }
+      if (command.type === "split-member") {
+        return splitProjectPaneMember(projectId, {
+          revision: current.revision,
+          tabKey: command.tabKey,
+          targetPaneId: command.targetPaneId,
+          edge: command.edge,
+          ...(command.fraction === undefined
+            ? {}
+            : { fraction: command.fraction }),
+        });
+      }
+      if (command.type === "resize-center-split") {
+        return resizeProjectCenterSplit(
+          projectId,
+          command.splitId,
+          current.revision,
+          command.fraction,
         );
       }
       return moveProjectPaneMember(projectId, {

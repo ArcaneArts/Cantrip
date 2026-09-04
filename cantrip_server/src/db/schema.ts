@@ -27,6 +27,7 @@ import type {
   PrivateDisplayLabelOpaque,
   ProjectBuiltInSurfaceDefinitionId,
   ProjectDockPresentationMode,
+  ProjectCenterLayoutNode,
   ProjectPaneRegion,
   SurfacePrivateStateOpaque,
   SurfaceLauncherLocation,
@@ -1622,6 +1623,8 @@ export const projects = pgTable(
       { onDelete: "set null" },
     ),
     tabLayoutRevision: integer("tab_layout_revision").notNull().default(0),
+    centerLayoutRoot:
+      jsonb("center_layout_root").$type<ProjectCenterLayoutNode>(),
     taskSchedulingPaused: boolean("task_scheduling_paused")
       .notNull()
       .default(false),

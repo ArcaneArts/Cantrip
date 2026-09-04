@@ -2,6 +2,7 @@ import type { CodeAppearance, CodeTabSummary } from "@cantrip/protocol";
 import { useEffect, useMemo, useState } from "react";
 
 import { CodeView, type CodeHeaderState } from "./code-view";
+import { PersistentSurfacePortal } from "@/components/app/persistent-surface-portal";
 
 export const MAX_RETAINED_CODE_VIEWS = 8;
 
@@ -29,6 +30,7 @@ export function PersistentCodeViews({
     focused: boolean;
     gridArea: string;
     paneId: string;
+    portalTarget?: Element | null;
     tab: CodeTabSummary;
   }[];
 }) {
@@ -65,7 +67,7 @@ export function PersistentCodeViews({
   return renderedTabs.map((tab) => {
     const placement = placementById.get(tab.id);
     const active = visiblePlacements
-      ? Boolean(placement)
+      ? Boolean(placement && placement.portalTarget !== null)
       : activeTab?.id === tab.id;
     const view = (
       <CodeView
@@ -84,7 +86,7 @@ export function PersistentCodeViews({
         }
       />
     );
-    return (
+    const owner = (
       <div
         aria-hidden={!active}
         className={
@@ -97,6 +99,17 @@ export function PersistentCodeViews({
       >
         {view}
       </div>
+    );
+    return visiblePlacements ? (
+      <PersistentSurfacePortal
+        host={placement?.portalTarget ?? null}
+        key={tab.id}
+        portalKey={tab.id}
+      >
+        {owner}
+      </PersistentSurfacePortal>
+    ) : (
+      owner
     );
   });
 }

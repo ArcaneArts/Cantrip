@@ -6,6 +6,7 @@ import type {
 } from "@cantrip/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { PersistentSurfacePortal } from "@/components/app/persistent-surface-portal";
 import {
   ExplorerView,
   type ExplorerGraphRequest,
@@ -205,6 +206,7 @@ export function PersistentExplorerViews({
     focused: boolean;
     gridArea: string;
     paneId: string;
+    portalTarget?: Element | null;
   }[];
 }) {
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
@@ -416,7 +418,7 @@ export function PersistentExplorerViews({
   return renderedExplorers.map((explorer) => {
     const placement = placementById.get(explorer.id);
     const active = visiblePlacements
-      ? Boolean(placement)
+      ? Boolean(placement && placement.portalTarget !== null)
       : activeExplorer?.id === explorer.id;
     const explorerTransientFile =
       transientFile?.explorerId === explorer.id
@@ -469,7 +471,7 @@ export function PersistentExplorerViews({
         }
       />
     );
-    return (
+    const owner = (
       <div
         aria-hidden={!active}
         className={
@@ -482,6 +484,17 @@ export function PersistentExplorerViews({
       >
         {view}
       </div>
+    );
+    return visiblePlacements ? (
+      <PersistentSurfacePortal
+        host={placement?.portalTarget ?? null}
+        key={explorer.id}
+        portalKey={explorer.id}
+      >
+        {owner}
+      </PersistentSurfacePortal>
+    ) : (
+      owner
     );
   });
 }
