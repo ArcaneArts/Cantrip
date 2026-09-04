@@ -367,7 +367,7 @@ export function useOrphanedDesktopPopoutEffect({
 }) {
   useEffect(() => {
     if (!popoutTarget || !layoutIsSuccess || isLayoutMutationPending) return;
-    if (layout?.groups.some(({ id }) => id === popoutTarget.groupId)) return;
+    if (layout?.panes.some(({ id }) => id === popoutTarget.groupId)) return;
     void closeCurrentDesktopWindow().catch((error: unknown) => {
       clientLogger.warn("Orphaned desktop pop-out failed to close", {
         ...operationalErrorMetadata(error),

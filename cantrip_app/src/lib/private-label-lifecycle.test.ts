@@ -420,7 +420,7 @@ describe("protected app-facing label and surface-state lifecycle", () => {
     const layout: ProjectTabLayoutWireSummary = {
       projectId: project.id,
       revision: 1,
-      groups: [
+      panes: [
         {
           id: ids.group,
           projectId: project.id,
@@ -429,11 +429,12 @@ describe("protected app-facing label and surface-state lifecycle", () => {
             `${sentinel}-group`,
           ),
           position: 0,
+          region: "center",
           anchorTabKey: `chat:${ids.chat}`,
           members: [
             {
               tabKey: `chat:${ids.chat}`,
-              groupId: ids.group,
+              paneId: ids.group,
               projectId: project.id,
               tabKind: "chat",
               tabId: ids.chat,
@@ -444,7 +445,7 @@ describe("protected app-facing label and surface-state lifecycle", () => {
             },
             {
               tabKey: `terminal:${ids.terminal}`,
-              groupId: ids.group,
+              paneId: ids.group,
               projectId: project.id,
               tabKind: "terminal",
               tabId: ids.terminal,
@@ -537,7 +538,7 @@ describe("protected app-facing label and surface-state lifecycle", () => {
       { title: `${sentinel}-view` },
     ]);
     await expect(reopenedChats.openTabLayout(layout)).resolves.toMatchObject({
-      groups: [{ title: `${sentinel}-group` }],
+      panes: [{ title: `${sentinel}-group` }],
     });
 
     clearSensitiveBytes(accountMasterKey);

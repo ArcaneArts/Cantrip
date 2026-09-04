@@ -6,6 +6,10 @@ import {
   executionPlacementSchema,
   executionTargetSchema,
 } from "./execution-targets.js";
+import {
+  hasUnambiguousProjectPaneDestination,
+  projectPaneDestinationShape,
+} from "./project-pane-identifiers.js";
 
 export const browserHttpUrlSchema = z
   .string()
@@ -16,7 +20,7 @@ export const browserHttpUrlSchema = z
   });
 
 const browserCreateBaseSchema = z.object({
-  tabGroupId: z.string().min(1).optional(),
+  ...projectPaneDestinationShape,
   target: executionTargetSchema.optional(),
 });
 
@@ -25,7 +29,11 @@ export const browserCreateSchema = browserCreateBaseSchema
     title: z.string().trim().min(1).max(200).default("Browser"),
     url: browserHttpUrlSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine(hasUnambiguousProjectPaneDestination, {
+    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    path: ["paneId"],
+  });
 
 export const encryptedBrowserCreateSchema = browserCreateBaseSchema
   .extend({
@@ -34,6 +42,10 @@ export const encryptedBrowserCreateSchema = browserCreateBaseSchema
     stateProtection: browserPrivateStateOpaqueSchema,
   })
   .strict()
+  .refine(hasUnambiguousProjectPaneDestination, {
+    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    path: ["paneId"],
+  })
   .refine(
     (input) => input.titleProtection.classification.recordKind === "browser",
     {

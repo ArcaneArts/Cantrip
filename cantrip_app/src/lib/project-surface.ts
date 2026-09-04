@@ -48,7 +48,7 @@ export type ProjectFileSurface = Extract<ProjectSurface, { kind: "explorer" }>;
 export interface ProjectSurfaceBase<Kind extends ProjectTabKind, Entity> {
   definition: ProjectSurfaceDefinition;
   entity: Entity;
-  groupId: string;
+  paneId: string;
   kind: Kind;
   member: ProjectTabMemberSummary;
   placement: ProjectTabPlacement;
@@ -73,7 +73,7 @@ export interface ProjectSurfaceCollections {
 }
 
 export interface ProjectSurfaceIndex {
-  byGroupId: ReadonlyMap<string, ProjectSurface[]>;
+  byPaneId: ReadonlyMap<string, ProjectSurface[]>;
   byTabKey: ReadonlyMap<string, ProjectSurface>;
   unresolvedTabKeys: readonly string[];
 }
@@ -84,9 +84,9 @@ export function omitProjectSurfaceTabs(
 ): ProjectSurfaceIndex {
   if (omittedTabKeys.size === 0) return index;
   return {
-    byGroupId: new Map(
-      [...index.byGroupId].map(([groupId, surfaces]) => [
-        groupId,
+    byPaneId: new Map(
+      [...index.byPaneId].map(([paneId, surfaces]) => [
+        paneId,
         surfaces.filter(({ tabKey }) => !omittedTabKeys.has(tabKey)),
       ]),
     ),
@@ -170,11 +170,11 @@ function surfaceForMember(
     return {
       definition: identity.definition,
       entity,
-      groupId: member.groupId,
+      paneId: member.paneId,
       kind: "builtin",
       member,
       placement: {
-        paneId: member.groupId,
+        paneId: member.paneId,
         position: member.position,
         viewId: identity.viewId,
       },
@@ -205,11 +205,11 @@ function surfaceForMember(
     return {
       definition: identity.definition,
       entity,
-      groupId: member.groupId,
+      paneId: member.paneId,
       kind,
       member,
       placement: {
-        paneId: member.groupId,
+        paneId: member.paneId,
         position: member.position,
         viewId: identity.viewId,
       },
@@ -265,9 +265,9 @@ export function buildProjectSurfaceIndex(
   collections: ProjectSurfaceCollections,
 ): ProjectSurfaceIndex {
   const byTabKey = new Map<string, ProjectSurface>();
-  const byGroupId = new Map<string, ProjectSurface[]>();
+  const byPaneId = new Map<string, ProjectSurface[]>();
   const unresolvedTabKeys: string[] = [];
-  if (!layout) return { byGroupId, byTabKey, unresolvedTabKeys };
+  if (!layout) return { byPaneId, byTabKey, unresolvedTabKeys };
 
   const entities = {
     browsers: entityMap(collections.browsers),
@@ -277,9 +277,9 @@ export function buildProjectSurfaceIndex(
     projectViews: entityMap(collections.projectViews),
     terminals: entityMap(collections.terminals),
   };
-  for (const group of layout.groups) {
+  for (const pane of layout.panes) {
     const surfaces: ProjectSurface[] = [];
-    for (const member of group.members) {
+    for (const member of pane.members) {
       if (
         member.tabKind === "chat" &&
         entities.chats.get(member.tabId)?.experience === "task"
@@ -294,7 +294,7 @@ export function buildProjectSurfaceIndex(
       byTabKey.set(surface.tabKey, surface);
       surfaces.push(surface);
     }
-    byGroupId.set(group.id, surfaces);
+    byPaneId.set(pane.id, surfaces);
   }
-  return { byGroupId, byTabKey, unresolvedTabKeys };
+  return { byPaneId, byTabKey, unresolvedTabKeys };
 }

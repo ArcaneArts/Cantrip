@@ -12,13 +12,13 @@ import {
   type LucideProps,
 } from "lucide-react";
 
-import type { ProjectTabGroupVisualKind } from "@/lib/project-tab-group";
+import type { ProjectPaneVisualKind } from "@/lib/project-pane";
 
 export function ProjectSurfaceIcon({
   filled = false,
   kind,
   ...props
-}: LucideProps & { filled?: boolean; kind: ProjectTabGroupVisualKind }) {
+}: LucideProps & { filled?: boolean; kind: ProjectPaneVisualKind }) {
   const Icon =
     kind === "task"
       ? ListTodo

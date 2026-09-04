@@ -53,7 +53,7 @@ const chat: ChatSummary = {
   worktreeMode: "agent-managed",
 };
 const layout: ProjectTabLayoutSummary = {
-  groups: [
+  panes: [
     {
       anchorTabKey: "chat:agent-1",
       createdAt: timestamp,
@@ -68,7 +68,7 @@ const layout: ProjectTabLayoutSummary = {
       ].map((member, position) => ({
         ...member,
         createdAt: timestamp,
-        groupId: "group-1",
+        paneId: "group-1",
         position,
         projectId,
         tabKey: `${member.tabKind}:${member.tabId}`,
@@ -76,6 +76,7 @@ const layout: ProjectTabLayoutSummary = {
       })),
       position: 0,
       projectId,
+      region: "center",
       title: "Agent",
       updatedAt: timestamp,
     },
@@ -94,10 +95,10 @@ function deferred<T>() {
 
 function DeleteHarness({ queryClient }: { queryClient: QueryClient }) {
   const [selection, setSelection] = useState<WorkspaceSelection>({
-    activeTabByGroup: { "group-1": "chat:agent-1" },
+    activeTabByPane: { "group-1": "chat:agent-1" },
     destination: "surface" as const,
+    focusedPaneId: "group-1",
     projectId,
-    selectedGroupId: "group-1",
   });
   const surfaceClose = useProjectSurfaceCloseCoordinator({
     queryClient,
@@ -128,10 +129,10 @@ function ExplorerDeleteHarness({
   queryClient: QueryClient;
 }) {
   const [selection, setSelection] = useState<WorkspaceSelection>({
-    activeTabByGroup: { "group-1": "explorer:explorer-1" },
+    activeTabByPane: { "group-1": "explorer:explorer-1" },
     destination: "surface",
+    focusedPaneId: "group-1",
     projectId,
-    selectedGroupId: "group-1",
   });
   const surfaceClose = useProjectSurfaceCloseCoordinator({
     queryClient,
@@ -221,10 +222,10 @@ describe("immediate project surface deletion", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["project-tab-layout", projectId], {
       ...layout,
-      groups: layout.groups.map((group) => ({
-        ...group,
+      panes: layout.panes.map((pane) => ({
+        ...pane,
         anchorTabKey: "explorer:explorer-1",
-        members: group.members.map((member, index) =>
+        members: pane.members.map((member, index) =>
           index === 0
             ? {
                 ...member,

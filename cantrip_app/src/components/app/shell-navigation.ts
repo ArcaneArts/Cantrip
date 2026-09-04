@@ -53,7 +53,7 @@ import {
 } from "@/lib/workspace-selection";
 
 export interface PendingSurfaceSelection {
-  groupId?: string;
+  paneId?: string;
   projectId: string;
   tabKey: string;
 }
@@ -65,8 +65,8 @@ export function projectTabLayoutContainsTab(
 ): boolean {
   return Boolean(
     layout?.projectId === projectId &&
-    layout.groups.some((group) =>
-      group.members.some((member) => member.tabKey === tabKey),
+    layout.panes.some((pane) =>
+      pane.members.some((member) => member.tabKey === tabKey),
     ),
   );
 }

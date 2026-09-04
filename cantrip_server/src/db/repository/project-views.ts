@@ -115,7 +115,7 @@ export class ProjectViewRepository {
       const view = firstOrThrow(result, "creating a project view");
       await attachProjectTab(transaction, {
         projectId,
-        tabGroupId: input.tabGroupId,
+        paneId: input.paneId ?? input.tabGroupId,
         tabId: view.id,
         tabKind: input.kind,
       });

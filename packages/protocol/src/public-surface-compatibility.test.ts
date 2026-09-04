@@ -61,8 +61,8 @@ describe("protocol public surface compatibility", () => {
   it("keeps the root runtime export surface stable", () => {
     const exportNames = Object.keys(protocol).sort();
 
-    expect(exportNames).toHaveLength(1_917);
-    expect(stableFingerprint(exportNames)).toBe("a5f54df3d3271f3f:62816");
+    expect(exportNames).toHaveLength(1_934);
+    expect(stableFingerprint(exportNames)).toBe("4526c279b83c27e5:63394");
   });
 
   it("keeps worker discriminators stable and ordered", () => {

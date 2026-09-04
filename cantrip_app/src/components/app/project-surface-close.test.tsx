@@ -22,7 +22,7 @@ vi.mock("@/lib/api", () => ({ closeProjectSurfaceView: vi.fn() }));
 const timestamp = "2026-09-03T12:00:00.000Z";
 const projectId = "project-1";
 const layout: ProjectTabLayoutSummary = {
-  groups: [
+  panes: [
     {
       anchorTabKey: "chat:agent-1",
       createdAt: timestamp,
@@ -37,7 +37,7 @@ const layout: ProjectTabLayoutSummary = {
       ].map((member, position) => ({
         ...member,
         createdAt: timestamp,
-        groupId: "group-1",
+        paneId: "group-1",
         position,
         projectId,
         tabKey: `${member.tabKind}:${member.tabId}`,
@@ -45,6 +45,7 @@ const layout: ProjectTabLayoutSummary = {
       })),
       position: 0,
       projectId,
+      region: "center",
       title: "Agent",
       updatedAt: timestamp,
     },
@@ -74,10 +75,10 @@ const chat: ChatSummary = {
   worktreeMode: "agent-managed",
 };
 const selected: WorkspaceSelection = {
-  activeTabByGroup: { "group-1": "chat:agent-1" },
+  activeTabByPane: { "group-1": "chat:agent-1" },
   destination: "surface",
+  focusedPaneId: "group-1",
   projectId,
-  selectedGroupId: "group-1",
 };
 const closeInput = { kind: "chat", projectId, tabId: "agent-1" } as const;
 
@@ -97,9 +98,9 @@ function CloseHarness({ queryClient }: { queryClient: QueryClient }) {
           close.commitView(closeInput, {
             ...layout,
             revision: layout.revision + 1,
-            groups: layout.groups.map((group) => ({
-              ...group,
-              members: group.members.filter(
+            panes: layout.panes.map((pane) => ({
+              ...pane,
+              members: pane.members.filter(
                 ({ tabKey }) => tabKey !== "chat:agent-1",
               ),
             })),
@@ -111,10 +112,10 @@ function CloseHarness({ queryClient }: { queryClient: QueryClient }) {
         id="switch-project"
         onClick={() =>
           setSelection({
-            activeTabByGroup: {},
+            activeTabByPane: {},
             destination: "overview",
+            focusedPaneId: null,
             projectId: "project-2",
-            selectedGroupId: null,
           })
         }
       />
@@ -180,7 +181,7 @@ describe("project surface close coordinator", () => {
           "project-tab-layout",
           projectId,
         ])
-        ?.groups[0]?.members.map(({ tabKey }) => tabKey),
+        ?.panes[0]?.members.map(({ tabKey }) => tabKey),
     ).toEqual(["terminal:terminal-1"]);
 
     await act(async () => renderer.unmount());
@@ -209,7 +210,7 @@ describe("project surface close coordinator", () => {
           "project-tab-layout",
           projectId,
         ])
-        ?.groups[0]?.members.map(({ tabKey }) => tabKey),
+        ?.panes[0]?.members.map(({ tabKey }) => tabKey),
     ).toEqual(["terminal:terminal-1"]);
 
     await act(async () => renderer.unmount());
@@ -271,7 +272,7 @@ describe("project surface view operations", () => {
       order.push("server-close");
       return {
         disposition: "closed",
-        layout: { ...layout, revision: 2, groups: [] },
+        layout: { ...layout, panes: [], revision: 2 },
         viewId: "explorer:explorer-1",
       };
     });

@@ -7,65 +7,49 @@ const timestamp = "2026-08-09T12:00:00.000Z";
 const layout: ProjectTabLayoutSummary = {
   projectId: "project-1",
   revision: 7,
-  groups: [
+  panes: [
     {
-      id: "group-a",
+      id: "pane-a",
       projectId: "project-1",
-      title: "Chat a",
+      region: "center",
+      title: "Mixed pane",
       position: 0,
-      anchorTabKey: "chat:a",
+      anchorTabKey: "explorer:file",
       createdAt: timestamp,
       updatedAt: timestamp,
-      members: ["chat:a", "terminal:a"].map((tabKey, position) => ({
-        groupId: "group-a",
+      members: [
+        ["explorer:file", "explorer"],
+        ["chat:agent", "chat"],
+        ["terminal:shell", "terminal"],
+      ].map(([tabKey, tabKind], position) => ({
+        paneId: "pane-a",
         projectId: "project-1",
-        tabKind: position === 0 ? "chat" : "terminal",
-        tabId: tabKey.split(":")[1]!,
-        tabKey,
-        title: tabKey,
+        tabKind: tabKind as "explorer" | "chat" | "terminal",
+        tabId: tabKey!.split(":")[1]!,
+        tabKey: tabKey!,
+        title: tabKey!,
         position,
         createdAt: timestamp,
         updatedAt: timestamp,
       })),
     },
     {
-      id: "group-b",
+      id: "pane-b",
       projectId: "project-1",
-      title: "Explorer b",
+      region: "center",
+      title: "Browser pane",
       position: 1,
-      anchorTabKey: "explorer:b",
+      anchorTabKey: "browser:docs",
       createdAt: timestamp,
       updatedAt: timestamp,
       members: [
         {
-          groupId: "group-b",
+          paneId: "pane-b",
           projectId: "project-1",
-          tabKind: "explorer",
-          tabId: "b",
-          tabKey: "explorer:b",
-          title: "Explorer",
-          position: 0,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        },
-      ],
-    },
-    {
-      id: "group-c",
-      projectId: "project-1",
-      title: "Explorer c",
-      position: 2,
-      anchorTabKey: "explorer:c",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      members: [
-        {
-          groupId: "group-c",
-          projectId: "project-1",
-          tabKind: "explorer",
-          tabId: "c",
-          tabKey: "explorer:c",
-          title: "Explorer c",
+          tabKind: "browser",
+          tabId: "docs",
+          tabKey: "browser:docs",
+          title: "Docs",
           position: 0,
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -75,162 +59,75 @@ const layout: ProjectTabLayoutSummary = {
   ],
 };
 
-describe("workspace drag legality", () => {
-  it("splits and sorts sidebar surfaces without creating nested tabs", () => {
+const drag = {
+  type: "surface" as const,
+  projectId: "project-1",
+  paneId: "pane-a",
+  tabKey: "chat:agent",
+  label: "Agent",
+  position: 1,
+  visualKind: "chat" as const,
+};
+
+describe("workspace pane drag legality", () => {
+  it("reorders mixed surface kinds in one pane", () => {
     expect(
-      decideWorkspaceDrop(
-        layout,
-        {
-          type: "surface",
-          lane: "sidebar",
-          projectId: "project-1",
-          groupId: "group-a",
-          tabKey: "chat:a",
-          label: "Chat",
-          lanePosition: 0,
-          visualKind: "chat",
-        },
-        {
-          type: "sidebar-tab",
-          projectId: "project-1",
-          groupId: "group-a",
-          tabKey: "terminal:a",
-          lanePosition: 1,
-          memberPosition: 1,
-        },
-      ),
+      decideWorkspaceDrop(layout, drag, {
+        type: "pane-tab",
+        projectId: "project-1",
+        paneId: "pane-a",
+        tabKey: "explorer:file",
+        memberPosition: 0,
+      }),
     ).toMatchObject({
       status: "valid",
       operation: {
         command: {
-          type: "move-member",
-          tabKey: "chat:a",
-          targetGroupId: null,
-          targetGroupPosition: 1,
+          type: "reorder-members",
+          paneId: "pane-a",
+          tabKeys: ["chat:agent", "explorer:file", "terminal:shell"],
         },
       },
     });
   });
 
-  it("sorts project-wide file tabs across their stored groups", () => {
+  it("moves a surface across panes regardless of kind", () => {
     expect(
-      decideWorkspaceDrop(
-        layout,
-        {
-          type: "surface",
-          lane: "file-tabs",
-          projectId: "project-1",
-          groupId: "group-b",
-          tabKey: "explorer:b",
-          label: "Explorer b",
-          lanePosition: 0,
-          visualKind: "explorer",
-        },
-        {
-          type: "top-tab",
-          projectId: "project-1",
-          groupId: "group-c",
-          tabKey: "explorer:c",
-          lanePosition: 1,
-          memberPosition: 0,
-        },
-      ),
+      decideWorkspaceDrop(layout, drag, {
+        type: "pane-target",
+        projectId: "project-1",
+        paneId: "pane-b",
+      }),
     ).toMatchObject({
       status: "valid",
       operation: {
         command: {
           type: "move-member",
-          tabKey: "explorer:b",
-          targetGroupId: null,
-          targetGroupPosition: 2,
+          tabKey: "chat:agent",
+          targetPaneId: "pane-b",
+          targetMemberPosition: 1,
         },
       },
     });
   });
 
-  it("rejects moving sidebar surfaces into the file bar", () => {
+  it("does not reorder a pane when its inventory target is selected", () => {
     expect(
-      decideWorkspaceDrop(
-        layout,
-        {
-          type: "surface",
-          lane: "sidebar",
-          projectId: "project-1",
-          groupId: "group-a",
-          tabKey: "chat:a",
-          label: "Chat",
-          lanePosition: 0,
-          visualKind: "chat",
-        },
-        {
-          type: "top-tab",
-          projectId: "project-1",
-          groupId: "group-b",
-          tabKey: "explorer:b",
-          lanePosition: 0,
-          memberPosition: 0,
-        },
-      ),
-    ).toMatchObject({ status: "invalid" });
-  });
-
-  it("moves a sidebar surface to the end of its lane", () => {
-    expect(
-      decideWorkspaceDrop(
-        layout,
-        {
-          type: "surface",
-          lane: "sidebar",
-          projectId: "project-1",
-          groupId: "group-a",
-          tabKey: "chat:a",
-          label: "Chat",
-          lanePosition: 0,
-          visualKind: "chat",
-        },
-        {
-          type: "sidebar-project",
-          projectId: "project-1",
-          groupPosition: 3,
-          lanePosition: 2,
-        },
-      ),
-    ).toMatchObject({
-      status: "valid",
-      operation: {
-        command: {
-          type: "move-member",
-          tabKey: "chat:a",
-          targetGroupId: null,
-          targetGroupPosition: 3,
-        },
-      },
-    });
+      decideWorkspaceDrop(layout, drag, {
+        type: "pane-target",
+        projectId: "project-1",
+        paneId: "pane-a",
+      }),
+    ).toEqual({ status: "noop" });
   });
 
   it("rejects cross-project drops", () => {
     expect(
-      decideWorkspaceDrop(
-        layout,
-        {
-          type: "surface",
-          lane: "sidebar",
-          projectId: "project-1",
-          groupId: "group-a",
-          tabKey: "chat:a",
-          label: "Chat",
-          lanePosition: 0,
-          visualKind: "chat",
-        },
-        {
-          type: "top-bar",
-          projectId: "project-2",
-          groupId: "other",
-          tabKey: "explorer:other",
-          lanePosition: 1,
-          memberPosition: 0,
-        },
-      ),
+      decideWorkspaceDrop(layout, drag, {
+        type: "pane-target",
+        projectId: "project-2",
+        paneId: "other",
+      }),
     ).toMatchObject({ status: "invalid" });
   });
 });

@@ -16,7 +16,7 @@ import {
   sidebarFilePreviewMatches,
   sidebarFilePreviewIsVisible,
   sidebarFilePreviewViewKey,
-  sidebarFileTargetGroupId,
+  sidebarFileTargetPaneId,
   sidebarPathAtOrBelow,
   tabbedExplorerIds,
 } from "./sidebar-file-tabs";
@@ -31,7 +31,7 @@ function explorer(
 
 function layout(...explorerIds: string[]): ProjectTabLayoutSummary {
   return {
-    groups: [
+    panes: [
       {
         members: explorerIds.map((id) => ({
           tabId: id,
@@ -39,7 +39,7 @@ function layout(...explorerIds: string[]): ProjectTabLayoutSummary {
         })),
       },
     ],
-  } as ProjectTabLayoutSummary;
+  } as unknown as ProjectTabLayoutSummary;
 }
 
 describe("sidebar file tabs", () => {
@@ -47,7 +47,7 @@ describe("sidebar file tabs", () => {
     const preview = {
       active: true,
       explorerId: "explorer-1",
-      groupId: "group-1",
+      paneId: "group-1",
       path: "src/index.ts",
       projectId: "project-1",
     };
@@ -270,36 +270,36 @@ describe("sidebar file tabs", () => {
     );
   });
 
-  it("places sidebar files in the active tab group before a stale preview group", () => {
+  it("places sidebar files in the active pane before a stale preview pane", () => {
     const preview = {
       active: false,
       explorerId: "sidebar-explorer",
-      groupId: "previous-group",
+      paneId: "previous-group",
       path: "src/previous.ts",
       projectId: "project-1",
     };
 
     expect(
-      sidebarFileTargetGroupId({
-        activeGroupId: "current-group",
+      sidebarFileTargetPaneId({
+        activePaneId: "current-group",
         explorerId: "sidebar-explorer",
-        fallbackGroupId: "fallback-group",
+        fallbackPaneId: "fallback-group",
         preview,
       }),
     ).toBe("current-group");
     expect(
-      sidebarFileTargetGroupId({
-        activeGroupId: null,
+      sidebarFileTargetPaneId({
+        activePaneId: null,
         explorerId: "sidebar-explorer",
-        fallbackGroupId: "fallback-group",
+        fallbackPaneId: "fallback-group",
         preview,
       }),
     ).toBe("previous-group");
     expect(
-      sidebarFileTargetGroupId({
-        activeGroupId: null,
+      sidebarFileTargetPaneId({
+        activePaneId: null,
         explorerId: "other-explorer",
-        fallbackGroupId: "fallback-group",
+        fallbackPaneId: "fallback-group",
         preview,
       }),
     ).toBe("fallback-group");
@@ -321,9 +321,9 @@ describe("sidebar file tabs", () => {
     expect(sidebarFileName("src/index.ts")).toBe("index.ts");
   });
 
-  it("scopes connected Explorer tabs to the groups owned by this window", () => {
+  it("scopes connected Explorer tabs to the panes owned by this window", () => {
     const groupedLayout = {
-      groups: [
+      panes: [
         {
           id: "main-group",
           members: [{ tabId: "main-explorer", tabKind: "explorer" }],
@@ -333,7 +333,7 @@ describe("sidebar file tabs", () => {
           members: [{ tabId: "popout-explorer", tabKind: "explorer" }],
         },
       ],
-    } as ProjectTabLayoutSummary;
+    } as unknown as ProjectTabLayoutSummary;
 
     expect(tabbedExplorerIds(groupedLayout, new Set(["main-group"]))).toEqual(
       new Set(["main-explorer"]),

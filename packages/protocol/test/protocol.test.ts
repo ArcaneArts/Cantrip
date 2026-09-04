@@ -210,11 +210,13 @@ import {
   terminalSnapshotResultSchema,
   terminalSummarySchema,
   terminalServerMessageSchema,
-  tabGroupMemberMoveSchema,
-  tabGroupMemberOrderSchema,
-  tabGroupOrderSchema,
-  encryptedTabGroupUpdateSchema,
-  tabGroupUpdateSchema,
+  projectPaneMemberMoveSchema,
+  projectPaneMemberOrderSchema,
+  projectPaneOrderSchema,
+  encryptedProjectPaneUpdateSchema,
+  encryptedProjectViewCreateSchema,
+  legacyProjectTabLayoutWireSummarySchema,
+  projectPaneUpdateSchema,
   nativeSubagentCapabilityCompatible,
   codexRuntimeReportSchema,
   NATIVE_SUBAGENT_PROTOCOL_VERSION,
@@ -6168,17 +6170,18 @@ describe("Cantrip protocol", () => {
       projectTabLayoutSummarySchema.parse({
         projectId: "project-1",
         revision: 3,
-        groups: [
+        panes: [
           {
-            id: "group-1",
+            id: "pane-1",
             projectId: "project-1",
+            region: "center",
             title: "Chat",
             position: 0,
             anchorTabKey: "chat:chat-1",
             members: [
               {
                 tabKey: "chat:chat-1",
-                groupId: "group-1",
+                paneId: "pane-1",
                 projectId: "project-1",
                 tabKind: "chat",
                 tabId: "chat-1",
@@ -6195,62 +6198,64 @@ describe("Cantrip protocol", () => {
       }),
     ).toMatchObject({ revision: 3 });
     expect(
-      tabGroupOrderSchema.safeParse({
+      projectPaneOrderSchema.safeParse({
         revision: 3,
-        groupIds: ["group-1", "group-1"],
+        region: "center",
+        paneIds: ["pane-1", "pane-1"],
       }).success,
     ).toBe(false);
     expect(
-      tabGroupMemberOrderSchema.safeParse({
+      projectPaneMemberOrderSchema.safeParse({
         revision: 3,
         tabKeys: ["chat:chat-1", "chat:chat-1"],
       }).success,
     ).toBe(false);
     expect(
-      tabGroupMemberMoveSchema.safeParse({
+      projectPaneMemberMoveSchema.safeParse({
         revision: 3,
         tabKey: "chat:chat-1",
-        targetGroupId: null,
+        targetPaneId: null,
         targetMemberPosition: 0,
       }).success,
     ).toBe(false);
     expect(
-      tabGroupMemberMoveSchema.parse({
+      projectPaneMemberMoveSchema.parse({
         revision: 3,
         tabKey: "chat:chat-1",
-        targetGroupId: null,
+        targetPaneId: null,
         targetMemberPosition: 0,
-        targetGroupPosition: 1,
+        targetPanePosition: 1,
       }),
-    ).toMatchObject({ targetGroupId: null, targetGroupPosition: 1 });
+    ).toMatchObject({ targetPaneId: null, targetPanePosition: 1 });
     expect(
-      tabGroupUpdateSchema.parse({ revision: 3, title: "  Agents  " }),
+      projectPaneUpdateSchema.parse({ revision: 3, title: "  Agents  " }),
     ).toEqual({ revision: 3, title: "Agents" });
     expect(
-      tabGroupUpdateSchema.safeParse({ revision: 3, title: "   " }).success,
+      projectPaneUpdateSchema.safeParse({ revision: 3, title: "   " }).success,
     ).toBe(false);
     expect(
-      encryptedTabGroupUpdateSchema.safeParse({
+      encryptedProjectPaneUpdateSchema.safeParse({
         revision: 3,
         titleProtection: protectedLabelFixture("tab-group"),
       }).success,
     ).toBe(true);
     expect(
-      encryptedTabGroupUpdateSchema.safeParse({
+      encryptedProjectPaneUpdateSchema.safeParse({
         revision: 3,
         titleProtection: protectedLabelFixture("chat"),
       }).success,
     ).toBe(false);
     const wireGroup = {
-      id: "group-1",
+      id: "pane-1",
       projectId: "project-1",
+      region: "center",
       titleProtection: null,
       position: 0,
       anchorTabKey: "chat:chat-1",
       members: [
         {
           tabKey: "chat:chat-1",
-          groupId: "group-1",
+          paneId: "pane-1",
           projectId: "project-1",
           tabKind: "chat" as const,
           tabId: "chat-1",
@@ -6267,19 +6272,102 @@ describe("Cantrip protocol", () => {
       projectTabLayoutWireSummarySchema.safeParse({
         projectId: "project-1",
         revision: 3,
-        groups: [wireGroup],
+        panes: [wireGroup],
       }).success,
     ).toBe(true);
     expect(
       projectTabLayoutWireSummarySchema.safeParse({
         projectId: "project-1",
         revision: 3,
-        groups: [
+        panes: [
           {
             ...wireGroup,
             titleProtection: protectedLabelFixture("tab-group"),
           },
         ],
+      }).success,
+    ).toBe(false);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        panes: [
+          {
+            ...wireGroup,
+            members: [{ ...wireGroup.members[0], paneId: "pane-other" }],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        panes: [
+          wireGroup,
+          {
+            ...wireGroup,
+            id: "pane-2",
+            position: 1,
+            members: [{ ...wireGroup.members[0], paneId: "pane-2" }],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    const {
+      region: _region,
+      members: paneMembers,
+      ...legacyWireGroupBase
+    } = wireGroup;
+    const legacyWireGroup = {
+      ...legacyWireGroupBase,
+      members: paneMembers.map(({ paneId, ...member }) => ({
+        ...member,
+        groupId: paneId,
+      })),
+    };
+    expect(
+      legacyProjectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        groups: [
+          legacyWireGroup,
+          {
+            ...legacyWireGroup,
+            id: "pane-2",
+            position: 1,
+            members: [{ ...legacyWireGroup.members[0], groupId: "pane-2" }],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      legacyProjectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        groups: [
+          {
+            ...legacyWireGroup,
+            members: [
+              { ...legacyWireGroup.members[0], groupId: "group-other" },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      browserCreateSchema.safeParse({
+        paneId: "pane-1",
+        tabGroupId: "group-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      encryptedProjectViewCreateSchema.safeParse({
+        id: "123e4567-e89b-42d3-a456-426614174000",
+        kind: "remote-desktop",
+        paneId: "pane-1",
+        tabGroupId: "group-1",
+        titleProtection: protectedLabelFixture("project-view"),
       }).success,
     ).toBe(false);
   });

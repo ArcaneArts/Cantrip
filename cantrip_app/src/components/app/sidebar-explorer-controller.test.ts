@@ -216,7 +216,7 @@ describe("sidebar file pin completion", () => {
         {
           active: false,
           explorerId: source.id,
-          groupId: "group-1",
+          paneId: "group-1",
           path: handoff.sourcePath,
           projectId: source.projectId,
         },
@@ -295,20 +295,20 @@ describe("sidebar preview ownership handoff", () => {
       worktreeId: "worktree-1",
     } as ExplorerSummary;
     const tabLayout = {
-      groups: [
+      panes: [
         {
           id: "group-1",
           members: [{ tabId: pinned.id, tabKind: "explorer" }],
         },
       ],
-    } as ProjectTabLayoutSummary;
+    } as unknown as ProjectTabLayoutSummary;
     const worktrees = [
       { id: "worktree-1", isPrimary: true },
     ] as ProjectWorktreeSummary[];
     const preview = {
       active: true,
       explorerId: pinned.id,
-      groupId: "group-1",
+      paneId: "group-1",
       path: "src/first.ts",
       projectId: "project-1",
     };

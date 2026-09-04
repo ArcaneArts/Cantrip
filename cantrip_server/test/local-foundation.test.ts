@@ -5089,19 +5089,19 @@ describe("local server foundation", () => {
       (
         await firstApp.inject({
           method: "GET",
-          url: `/api/projects/${project.id}/tab-groups`,
+          url: `/api/projects/${project.id}/panes`,
         })
       ).json(),
     );
     expect(
-      initialTabLayout.groups.every(({ members }) => members.length === 1),
+      initialTabLayout.panes.every(({ members }) => members.length === 1),
     ).toBe(true);
     expect(
-      initialTabLayout.groups.flatMap(({ members }) =>
+      initialTabLayout.panes.flatMap(({ members }) =>
         members.map(({ tabKey }) => tabKey),
       ),
     ).toContain(`view:${remoteDesktop.id}`);
-    const explorerGroup = initialTabLayout.groups.find(({ members }) =>
+    const explorerPane = initialTabLayout.panes.find(({ members }) =>
       members.some(({ tabKey }) => tabKey === `explorer:${explorer.id}`),
     )!;
     const groupedIssuesView = projectViewSummarySchema.parse(
@@ -5112,7 +5112,7 @@ describe("local server foundation", () => {
           payload: {
             kind: "issues",
             title: "Issues",
-            tabGroupId: explorerGroup.id,
+            paneId: explorerPane.id,
           },
         })
       ).json(),
@@ -5121,26 +5121,24 @@ describe("local server foundation", () => {
       (
         await firstApp.inject({
           method: "GET",
-          url: `/api/projects/${project.id}/tab-groups`,
+          url: `/api/projects/${project.id}/panes`,
         })
       ).json(),
     );
-    expect(groupedTabLayout.groups).toHaveLength(
-      initialTabLayout.groups.length,
-    );
+    expect(groupedTabLayout.panes).toHaveLength(initialTabLayout.panes.length);
     expect(
-      groupedTabLayout.groups
-        .find(({ id }) => id === explorerGroup.id)
+      groupedTabLayout.panes
+        .find(({ id }) => id === explorerPane.id)
         ?.members.map(({ tabKey }) => tabKey),
     ).toEqual([`explorer:${explorer.id}`, `view:${groupedIssuesView.id}`]);
     expect(
-      groupedTabLayout.groups.find(({ id }) => id === explorerGroup.id)?.title,
+      groupedTabLayout.panes.find(({ id }) => id === explorerPane.id)?.title,
     ).toBe("Source browser");
     const renamedGroupLayout = projectTabLayoutSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
-          url: `/api/projects/${project.id}/tab-groups/${explorerGroup.id}`,
+          url: `/api/projects/${project.id}/panes/${explorerPane.id}`,
           payload: {
             revision: groupedTabLayout.revision,
             title: "Research",
@@ -5149,8 +5147,7 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(
-      renamedGroupLayout.groups.find(({ id }) => id === explorerGroup.id)
-        ?.title,
+      renamedGroupLayout.panes.find(({ id }) => id === explorerPane.id)?.title,
     ).toBe("Research");
     expect(
       await firstApp.inject({
@@ -5163,12 +5160,12 @@ describe("local server foundation", () => {
       (
         await firstApp.inject({
           method: "GET",
-          url: `/api/projects/${project.id}/tab-groups`,
+          url: `/api/projects/${project.id}/panes`,
         })
       ).json(),
     );
     expect(
-      independentlyNamedLayout.groups.find(({ id }) => id === explorerGroup.id),
+      independentlyNamedLayout.panes.find(({ id }) => id === explorerPane.id),
     ).toMatchObject({
       title: "Research",
       members: [{ title: "Source browser" }, { title: "Tracker" }],
@@ -5177,7 +5174,7 @@ describe("local server foundation", () => {
       (
         await firstApp.inject({
           method: "PATCH",
-          url: `/api/projects/${project.id}/tab-groups/${explorerGroup.id}/members/order`,
+          url: `/api/projects/${project.id}/panes/${explorerPane.id}/members/order`,
           payload: {
             revision: independentlyNamedLayout.revision,
             tabKeys: [
@@ -5189,20 +5186,20 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(
-      reorderedTabLayout.groups
-        .find(({ id }) => id === explorerGroup.id)
+      reorderedTabLayout.panes
+        .find(({ id }) => id === explorerPane.id)
         ?.members.map(({ tabKey }) => tabKey),
     ).toEqual([`view:${groupedIssuesView.id}`, `explorer:${explorer.id}`]);
     expect(
       await firstApp.inject({
         method: "PATCH",
-        url: `/api/projects/${project.id}/tab-groups/member`,
+        url: `/api/projects/${project.id}/panes/member`,
         payload: {
           revision: groupedTabLayout.revision,
           tabKey: `view:${groupedIssuesView.id}`,
-          targetGroupId: null,
+          targetPaneId: null,
           targetMemberPosition: 0,
-          targetGroupPosition: 0,
+          targetPanePosition: 0,
         },
       }),
     ).toMatchObject({ statusCode: 409 });
@@ -5210,55 +5207,56 @@ describe("local server foundation", () => {
       (
         await firstApp.inject({
           method: "PATCH",
-          url: `/api/projects/${project.id}/tab-groups/member`,
+          url: `/api/projects/${project.id}/panes/member`,
           payload: {
             revision: reorderedTabLayout.revision,
             tabKey: `view:${groupedIssuesView.id}`,
-            targetGroupId: null,
+            targetPaneId: null,
             targetMemberPosition: 0,
-            targetGroupPosition: 0,
+            targetPanePosition: 0,
           },
         })
       ).json(),
     );
-    expect(splitTabLayout.groups[0]?.members).toMatchObject([
+    expect(splitTabLayout.panes[0]?.members).toMatchObject([
       { tabKey: `view:${groupedIssuesView.id}`, title: "Tracker" },
     ]);
-    expect(splitTabLayout.groups[0]?.title).toBe("Tracker");
+    expect(splitTabLayout.panes[0]?.title).toBe("Tracker");
     expect(
-      splitTabLayout.groups.find(({ id }) => id === explorerGroup.id)?.title,
+      splitTabLayout.panes.find(({ id }) => id === explorerPane.id)?.title,
     ).toBe("Source browser");
     const reorderedGroupsLayout = projectTabLayoutSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
-          url: `/api/projects/${project.id}/tab-groups/order`,
+          url: `/api/projects/${project.id}/panes/order`,
           payload: {
             revision: splitTabLayout.revision,
-            groupIds: splitTabLayout.groups.map(({ id }) => id).reverse(),
+            region: "center",
+            paneIds: splitTabLayout.panes.map(({ id }) => id).reverse(),
           },
         })
       ).json(),
     );
-    expect(reorderedGroupsLayout.groups.map(({ id }) => id)).toEqual(
-      splitTabLayout.groups.map(({ id }) => id).reverse(),
+    expect(reorderedGroupsLayout.panes.map(({ id }) => id)).toEqual(
+      splitTabLayout.panes.map(({ id }) => id).reverse(),
     );
     const mergedTabLayout = projectTabLayoutSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
-          url: `/api/projects/${project.id}/tab-groups/member`,
+          url: `/api/projects/${project.id}/panes/member`,
           payload: {
             revision: reorderedGroupsLayout.revision,
             tabKey: `view:${groupedIssuesView.id}`,
-            targetGroupId: explorerGroup.id,
+            targetPaneId: explorerPane.id,
             targetMemberPosition: 1,
           },
         })
       ).json(),
     );
     expect(
-      mergedTabLayout.groups.find(({ id }) => id === explorerGroup.id),
+      mergedTabLayout.panes.find(({ id }) => id === explorerPane.id),
     ).toMatchObject({
       anchorTabKey: `explorer:${explorer.id}`,
       title: "Source browser",
@@ -5270,18 +5268,20 @@ describe("local server foundation", () => {
     const concurrentOrders = await Promise.all([
       firstApp.inject({
         method: "PATCH",
-        url: `/api/projects/${project.id}/tab-groups/order`,
+        url: `/api/projects/${project.id}/panes/order`,
         payload: {
           revision: mergedTabLayout.revision,
-          groupIds: mergedTabLayout.groups.map(({ id }) => id),
+          region: "center",
+          paneIds: mergedTabLayout.panes.map(({ id }) => id),
         },
       }),
       firstApp.inject({
         method: "PATCH",
-        url: `/api/projects/${project.id}/tab-groups/order`,
+        url: `/api/projects/${project.id}/panes/order`,
         payload: {
           revision: mergedTabLayout.revision,
-          groupIds: mergedTabLayout.groups.map(({ id }) => id).reverse(),
+          region: "center",
+          paneIds: mergedTabLayout.panes.map(({ id }) => id).reverse(),
         },
       }),
     ]);
@@ -5327,11 +5327,11 @@ describe("local server foundation", () => {
           (
             await firstApp.inject({
               method: "GET",
-              url: `/api/projects/${project.id}/tab-groups`,
+              url: `/api/projects/${project.id}/panes`,
             })
           ).json(),
         )
-        .groups.some(({ members }) =>
+        .panes.some(({ members }) =>
           members.some(({ tabKey }) => tabKey === `view:${remoteDesktop.id}`),
         ),
     ).toBe(false);
@@ -6455,7 +6455,7 @@ describe("local server foundation", () => {
       (
         await firstApp.inject({
           method: "GET",
-          url: `/api/projects/${project.id}/tab-groups`,
+          url: `/api/projects/${project.id}/panes`,
         })
       ).json(),
     );
@@ -6502,7 +6502,7 @@ describe("local server foundation", () => {
       (
         await secondApp.inject({
           method: "GET",
-          url: `/api/projects/${project.id}/tab-groups`,
+          url: `/api/projects/${project.id}/panes`,
         })
       ).json(),
     );
@@ -6623,12 +6623,12 @@ describe("local server foundation", () => {
       (
         await secondApp.inject({
           method: "GET",
-          url: `/api/projects/${project.id}/tab-groups`,
+          url: `/api/projects/${project.id}/panes`,
         })
       ).json(),
     );
     expect(
-      layoutAfterBrowserDelete.groups.flatMap(({ members }) =>
+      layoutAfterBrowserDelete.panes.flatMap(({ members }) =>
         members.map(({ tabKey }) => tabKey),
       ),
     ).not.toContain(`browser:${browser.id}`);
@@ -6642,12 +6642,12 @@ describe("local server foundation", () => {
       (
         await secondApp.inject({
           method: "GET",
-          url: `/api/projects/${project.id}/tab-groups`,
+          url: `/api/projects/${project.id}/panes`,
         })
       ).json(),
     );
     expect(
-      layoutAfterSurfaceDeletes.groups.find(({ members }) =>
+      layoutAfterSurfaceDeletes.panes.find(({ members }) =>
         members.some(({ tabKey }) => tabKey === `view:${groupedIssuesView.id}`),
       ),
     ).toMatchObject({
@@ -6656,8 +6656,8 @@ describe("local server foundation", () => {
       members: [{ tabKey: `view:${groupedIssuesView.id}` }],
     });
     expect(
-      layoutAfterSurfaceDeletes.groups.map(({ position }) => position),
-    ).toEqual(layoutAfterSurfaceDeletes.groups.map((_, position) => position));
+      layoutAfterSurfaceDeletes.panes.map(({ position }) => position),
+    ).toEqual(layoutAfterSurfaceDeletes.panes.map((_, position) => position));
 
     const unlinkResponse = await secondApp.inject({
       method: "DELETE",

@@ -274,12 +274,12 @@ export function useSidebarExplorerMutations({
   const pinSidebarFileMutation = useMutation({
     mutationFn: async ({
       destinationExplorerId,
-      groupId,
+      paneId,
       path,
       transactionId,
     }: {
       destinationExplorerId: string;
-      groupId: string | null;
+      paneId: string | null;
       path: string;
       transactionId: string;
     }) => {
@@ -300,7 +300,7 @@ export function useSidebarExplorerMutations({
           fileMode: defaultExplorerFileMode(path),
           selectedPath: path,
         },
-        groupId ?? undefined,
+        paneId ?? undefined,
       );
       clientLogger.info("Explorer file pin mutation updated surface", {
         ...explorerFileIntentContext(destinationExplorerId),
@@ -647,13 +647,13 @@ export function useSidebarExplorerModel({
   );
   const sidebarInlineExplorer = sidebarInlineExplorers[0] ?? null;
   const sidebarPreviewSuccessorExplorer = sidebarInlineExplorers[1] ?? null;
-  const connectedExplorerGroupIds = useMemo(() => {
+  const connectedExplorerPaneIds = useMemo(() => {
     if (projectOverviewPopoutTarget || explorerFileTarget) {
       return new Set<string>();
     }
     if (popoutTarget) return new Set([popoutTarget.groupId]);
     return new Set(
-      tabLayout?.groups
+      tabLayout?.panes
         .filter(({ id }) => id !== detachedGroupId)
         .map(({ id }) => id) ?? [],
     );
@@ -665,8 +665,8 @@ export function useSidebarExplorerModel({
     tabLayout,
   ]);
   const openExplorerIds = useMemo(
-    () => tabbedExplorerIds(tabLayout, connectedExplorerGroupIds),
-    [connectedExplorerGroupIds, tabLayout],
+    () => tabbedExplorerIds(tabLayout, connectedExplorerPaneIds),
+    [connectedExplorerPaneIds, tabLayout],
   );
   const openExplorers = useMemo(
     () =>

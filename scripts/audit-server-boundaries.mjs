@@ -102,7 +102,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
   applicationRoutes:
-    "b5ea5205bb57a9abd14d5751e367676a49bdee94248fb8d13e9c7c3e70d47661",
+    "a5f648d3d3013758153bfdd43c059465d090770c5cd144b1d1fe366db21eab84",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -1313,14 +1313,14 @@ function privateDisplayLabelRouteBoundaryAudit(routes) {
     ],
     [
       "GET",
-      "/api/projects/:projectId/tab-groups",
+      "/api/projects/:projectId/panes",
       "projectTabLayoutWireSummarySchema",
       "opaque-layout",
     ],
     [
       "PATCH",
-      "/api/projects/:projectId/tab-groups/:groupId",
-      "encryptedTabGroupUpdateSchema",
+      "/api/projects/:projectId/panes/:paneId",
+      "encryptedProjectPaneUpdateSchema",
       "encrypted-update",
     ],
     [

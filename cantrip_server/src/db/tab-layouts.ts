@@ -11,12 +11,14 @@ import type {
   ProjectSurfaceViewOpenResult,
   ProjectTabKind,
   ProjectTabLayoutWireSummary,
+  LegacyProjectTabLayoutWireSummary,
   ProjectTabMemberWireSummary,
+  ProjectPaneRegion,
   OrderedIds,
-  EncryptedTabGroupUpdate,
-  TabGroupMemberMove,
-  TabGroupMemberOrder,
-  TabGroupOrder,
+  EncryptedProjectPaneUpdate,
+  ProjectPaneMemberMove,
+  ProjectPaneMemberOrder,
+  ProjectPaneOrder,
 } from "@cantrip/protocol";
 import { projectSurfaceTabKind, projectSurfaceViewId } from "@cantrip/protocol";
 import {
@@ -43,6 +45,22 @@ export class TabLayoutConflictError extends Error {
 
 export class TabLayoutInvariantError extends Error {
   readonly statusCode = 400;
+}
+
+export function legacyTabLayoutFromPaneLayout(
+  layout: ProjectTabLayoutWireSummary,
+): LegacyProjectTabLayoutWireSummary {
+  return {
+    projectId: layout.projectId,
+    revision: layout.revision,
+    groups: layout.panes.map(({ region: _region, members, ...pane }) => ({
+      ...pane,
+      members: members.map(({ paneId, ...member }) => ({
+        ...member,
+        groupId: paneId,
+      })),
+    })),
+  };
 }
 
 export function projectTabKey(
@@ -128,13 +146,15 @@ async function attachProjectTabPlacement(
   database: TabLayoutExecutor,
   input: {
     projectId: string;
-    tabGroupId?: string;
+    paneId?: string;
+    region?: ProjectPaneRegion;
     tabId: string;
     tabKind: ProjectTabKind;
   },
 ): Promise<string> {
   const tabKey = projectTabKey(input.tabKind, input.tabId, input.projectId);
-  let groupId = input.tabGroupId;
+  let groupId = input.paneId;
+  const region = input.region ?? "center";
   let memberPosition = 0;
 
   if (groupId) {
@@ -150,25 +170,34 @@ async function attachProjectTabPlacement(
       .limit(1);
     if (!groups[0]) {
       throw new TabLayoutInvariantError(
-        "The destination tab group does not belong to this project.",
+        "The destination pane does not belong to this project.",
       );
     }
     const positions = await database
       .select({ position: schema.tabGroupMembers.position })
       .from(schema.tabGroupMembers)
       .where(eq(schema.tabGroupMembers.groupId, groupId))
-      .orderBy(asc(schema.tabGroupMembers.position));
-    memberPosition = positions.length;
+      .orderBy(desc(schema.tabGroupMembers.position))
+      .limit(1);
+    memberPosition = (positions[0]?.position ?? -1) + 1;
   } else {
     groupId = randomUUID();
     const groups = await database
       .select({ position: schema.tabGroups.position })
       .from(schema.tabGroups)
-      .where(eq(schema.tabGroups.projectId, input.projectId));
+      .where(
+        and(
+          eq(schema.tabGroups.projectId, input.projectId),
+          eq(schema.tabGroups.region, region),
+        ),
+      )
+      .orderBy(desc(schema.tabGroups.position))
+      .limit(1);
     await database.insert(schema.tabGroups).values({
       id: groupId,
       projectId: input.projectId,
-      position: groups.length,
+      region,
+      position: (groups[0]?.position ?? -1) + 1,
       anchorTabKey: tabKey,
     });
   }
@@ -188,7 +217,8 @@ export async function attachProjectTab(
   database: TabLayoutExecutor,
   input: {
     projectId: string;
-    tabGroupId?: string;
+    paneId?: string;
+    region?: ProjectPaneRegion;
     tabId: string;
     tabKind: ProjectTabKind;
   },
@@ -238,7 +268,12 @@ async function detachProjectTabPlacement(
     const remainingGroups = await database
       .select({ id: schema.tabGroups.id })
       .from(schema.tabGroups)
-      .where(eq(schema.tabGroups.projectId, projectId))
+      .where(
+        and(
+          eq(schema.tabGroups.projectId, projectId),
+          eq(schema.tabGroups.region, selected.group.region),
+        ),
+      )
       .orderBy(asc(schema.tabGroups.position), asc(schema.tabGroups.id));
     await updateGroupPositions(
       database,
@@ -398,6 +433,15 @@ function movedTo<T>(items: T[], from: number, to: number): T[] {
   return result;
 }
 
+const paneRegionOrder = sql<number>`CASE ${schema.tabGroups.region}
+  WHEN 'center' THEN 0
+  WHEN 'right' THEN 1
+  WHEN 'bottom' THEN 2
+  WHEN 'left' THEN 3
+  WHEN 'detached' THEN 4
+  ELSE 5
+END`;
+
 export class ProjectTabLayoutRepository {
   constructor(private readonly database: TabLayoutDatabase) {}
 
@@ -422,7 +466,7 @@ export class ProjectTabLayoutRepository {
     if (!project) return null;
 
     const [
-      groups,
+      panes,
       members,
       chats,
       terminals,
@@ -436,7 +480,11 @@ export class ProjectTabLayoutRepository {
         .select()
         .from(schema.tabGroups)
         .where(eq(schema.tabGroups.projectId, projectId))
-        .orderBy(asc(schema.tabGroups.position), asc(schema.tabGroups.id)),
+        .orderBy(
+          paneRegionOrder,
+          asc(schema.tabGroups.position),
+          asc(schema.tabGroups.id),
+        ),
       this.database
         .select()
         .from(schema.tabGroupMembers)
@@ -544,7 +592,7 @@ export class ProjectTabLayoutRepository {
       }
       const summary: ProjectTabMemberWireSummary = {
         tabKey: member.tabKey,
-        groupId: member.groupId,
+        paneId: member.groupId,
         projectId: member.projectId,
         tabKind: member.tabKind as ProjectTabKind,
         tabId: member.tabId,
@@ -562,7 +610,7 @@ export class ProjectTabLayoutRepository {
     return {
       projectId,
       revision: project.revision,
-      groups: groups.map((group) => {
+      panes: panes.map((group) => {
         const groupedMembers = memberSummaries.get(group.id) ?? [];
         if (
           groupedMembers.length === 0 ||
@@ -575,6 +623,7 @@ export class ProjectTabLayoutRepository {
         return {
           id: group.id,
           projectId: group.projectId,
+          region: group.region,
           titleProtection: group.protectedLabel,
           position: group.position,
           anchorTabKey: group.anchorTabKey,
@@ -586,11 +635,11 @@ export class ProjectTabLayoutRepository {
     };
   }
 
-  async updateGroup(
+  async updatePane(
     ownerId: string,
     projectId: string,
-    groupId: string,
-    input: EncryptedTabGroupUpdate,
+    paneId: string,
+    input: EncryptedProjectPaneUpdate,
   ): Promise<ProjectTabLayoutWireSummary | null> {
     if (!(await this.get(ownerId, projectId))) return null;
     await this.database.transaction(async (transaction) => {
@@ -600,20 +649,20 @@ export class ProjectTabLayoutRepository {
         .from(schema.tabGroups)
         .where(
           and(
-            eq(schema.tabGroups.id, groupId),
+            eq(schema.tabGroups.id, paneId),
             eq(schema.tabGroups.projectId, projectId),
           ),
         )
         .limit(1);
       if (!groups[0]) {
         throw new TabLayoutInvariantError(
-          "The tab group does not belong to this project.",
+          "The pane does not belong to this project.",
         );
       }
       const members = await transaction
         .select({ tabKey: schema.tabGroupMembers.tabKey })
         .from(schema.tabGroupMembers)
-        .where(eq(schema.tabGroupMembers.groupId, groupId))
+        .where(eq(schema.tabGroupMembers.groupId, paneId))
         .limit(2);
       if (members.length < 2) {
         throw new TabLayoutInvariantError(
@@ -626,42 +675,15 @@ export class ProjectTabLayoutRepository {
           protectedLabel: input.titleProtection,
           updatedAt: new Date(),
         })
-        .where(eq(schema.tabGroups.id, groupId));
+        .where(eq(schema.tabGroups.id, paneId));
     });
     return this.get(ownerId, projectId);
   }
 
-  async reorderGroups(
+  async reorderPanes(
     ownerId: string,
     projectId: string,
-    input: TabGroupOrder,
-  ): Promise<ProjectTabLayoutWireSummary | null> {
-    if (!(await this.get(ownerId, projectId))) return null;
-    await this.database.transaction(async (transaction) => {
-      await claimRevision(transaction, ownerId, projectId, input.revision);
-      const groups = await transaction
-        .select({ id: schema.tabGroups.id })
-        .from(schema.tabGroups)
-        .where(eq(schema.tabGroups.projectId, projectId));
-      const expected = new Set(groups.map(({ id }) => id));
-      if (
-        expected.size !== input.groupIds.length ||
-        input.groupIds.some((id) => !expected.has(id))
-      ) {
-        throw new TabLayoutInvariantError(
-          "The group order did not match this project's layout.",
-        );
-      }
-      await updateGroupPositions(transaction, input.groupIds);
-    });
-    return this.get(ownerId, projectId);
-  }
-
-  async reorderMembers(
-    ownerId: string,
-    projectId: string,
-    groupId: string,
-    input: TabGroupMemberOrder,
+    input: ProjectPaneOrder,
   ): Promise<ProjectTabLayoutWireSummary | null> {
     if (!(await this.get(ownerId, projectId))) return null;
     await this.database.transaction(async (transaction) => {
@@ -671,30 +693,62 @@ export class ProjectTabLayoutRepository {
         .from(schema.tabGroups)
         .where(
           and(
-            eq(schema.tabGroups.id, groupId),
+            eq(schema.tabGroups.projectId, projectId),
+            eq(schema.tabGroups.region, input.region),
+          ),
+        );
+      const expected = new Set(groups.map(({ id }) => id));
+      if (
+        expected.size !== input.paneIds.length ||
+        input.paneIds.some((id) => !expected.has(id))
+      ) {
+        throw new TabLayoutInvariantError(
+          "The pane order did not match this project's region.",
+        );
+      }
+      await updateGroupPositions(transaction, input.paneIds);
+    });
+    return this.get(ownerId, projectId);
+  }
+
+  async reorderMembers(
+    ownerId: string,
+    projectId: string,
+    paneId: string,
+    input: ProjectPaneMemberOrder,
+  ): Promise<ProjectTabLayoutWireSummary | null> {
+    if (!(await this.get(ownerId, projectId))) return null;
+    await this.database.transaction(async (transaction) => {
+      await claimRevision(transaction, ownerId, projectId, input.revision);
+      const groups = await transaction
+        .select({ id: schema.tabGroups.id })
+        .from(schema.tabGroups)
+        .where(
+          and(
+            eq(schema.tabGroups.id, paneId),
             eq(schema.tabGroups.projectId, projectId),
           ),
         )
         .limit(1);
       if (!groups[0]) {
         throw new TabLayoutInvariantError(
-          "The tab group does not belong to this project.",
+          "The pane does not belong to this project.",
         );
       }
       const members = await transaction
         .select({ tabKey: schema.tabGroupMembers.tabKey })
         .from(schema.tabGroupMembers)
-        .where(eq(schema.tabGroupMembers.groupId, groupId));
+        .where(eq(schema.tabGroupMembers.groupId, paneId));
       const expected = new Set(members.map(({ tabKey }) => tabKey));
       if (
         expected.size !== input.tabKeys.length ||
         input.tabKeys.some((tabKey) => !expected.has(tabKey))
       ) {
         throw new TabLayoutInvariantError(
-          "The member order did not match this tab group.",
+          "The member order did not match this pane.",
         );
       }
-      await updateMemberPositions(transaction, groupId, input.tabKeys);
+      await updateMemberPositions(transaction, paneId, input.tabKeys);
     });
     return this.get(ownerId, projectId);
   }
@@ -702,7 +756,7 @@ export class ProjectTabLayoutRepository {
   async moveMember(
     ownerId: string,
     projectId: string,
-    input: TabGroupMemberMove,
+    input: ProjectPaneMemberMove,
   ): Promise<ProjectTabLayoutWireSummary | null> {
     if (!(await this.get(ownerId, projectId))) return null;
     await this.database.transaction(async (transaction) => {
@@ -730,7 +784,12 @@ export class ProjectTabLayoutRepository {
       const groups = await transaction
         .select()
         .from(schema.tabGroups)
-        .where(eq(schema.tabGroups.projectId, projectId))
+        .where(
+          and(
+            eq(schema.tabGroups.projectId, projectId),
+            eq(schema.tabGroups.region, selected.group.region),
+          ),
+        )
         .orderBy(asc(schema.tabGroups.position), asc(schema.tabGroups.id));
       const sourceMembers = await transaction
         .select()
@@ -741,7 +800,7 @@ export class ProjectTabLayoutRepository {
           asc(schema.tabGroupMembers.tabKey),
         );
 
-      if (input.targetGroupId === selected.group.id) {
+      if (input.targetPaneId === selected.group.id) {
         const from = sourceMembers.findIndex(
           ({ tabKey }) => tabKey === input.tabKey,
         );
@@ -757,14 +816,14 @@ export class ProjectTabLayoutRepository {
         return;
       }
 
-      if (input.targetGroupId === null && sourceMembers.length === 1) {
+      if (input.targetPaneId === null && sourceMembers.length === 1) {
         const from = groups.findIndex(({ id }) => id === selected.group.id);
         await updateGroupPositions(
           transaction,
           movedTo(
             groups.map(({ id }) => id),
             from,
-            input.targetGroupPosition!,
+            input.targetPanePosition!,
           ),
         );
         return;
@@ -806,19 +865,20 @@ export class ProjectTabLayoutRepository {
         }
       }
 
-      let targetGroupId = input.targetGroupId;
+      let targetGroupId = input.targetPaneId;
       if (targetGroupId === null) {
         targetGroupId = randomUUID();
         await transaction.insert(schema.tabGroups).values({
           id: targetGroupId,
           projectId,
-          position: input.targetGroupPosition!,
+          region: selected.group.region,
+          position: input.targetPanePosition!,
           anchorTabKey: input.tabKey,
         });
         nextGroupIds = insertedAt(
           nextGroupIds,
           targetGroupId,
-          input.targetGroupPosition!,
+          input.targetPanePosition!,
         );
         await transaction.insert(schema.tabGroupMembers).values({
           ...selected.member,
@@ -827,10 +887,20 @@ export class ProjectTabLayoutRepository {
           updatedAt: new Date(),
         });
       } else {
-        const targetGroup = groups.find(({ id }) => id === targetGroupId);
+        const targetGroups = await transaction
+          .select()
+          .from(schema.tabGroups)
+          .where(
+            and(
+              eq(schema.tabGroups.id, targetGroupId),
+              eq(schema.tabGroups.projectId, projectId),
+            ),
+          )
+          .limit(1);
+        const targetGroup = targetGroups[0];
         if (!targetGroup) {
           throw new TabLayoutInvariantError(
-            "The destination tab group does not belong to this project.",
+            "The destination pane does not belong to this project.",
           );
         }
         const targetMembers = await transaction
@@ -882,7 +952,7 @@ export class ProjectTabLayoutRepository {
         "The surface definition is not currently entity-backed.",
       );
     }
-    const existingPane = current.groups.find(({ members }) =>
+    const existingPane = current.panes.find(({ members }) =>
       members.some(({ tabKey }) => tabKey === viewId),
     );
     const existingMember = existingPane?.members.find(
@@ -946,7 +1016,7 @@ export class ProjectTabLayoutRepository {
       }
       paneId = await attachProjectTabPlacement(transaction, {
         projectId,
-        tabGroupId: input.targetPaneId,
+        paneId: input.targetPaneId,
         tabId,
         tabKind,
       });
@@ -967,7 +1037,7 @@ export class ProjectTabLayoutRepository {
   ): Promise<ProjectSurfaceViewCloseResult | null> {
     const current = await this.get(ownerId, projectId);
     if (!current) return null;
-    const existing = current.groups.some(({ members }) =>
+    const existing = current.panes.some(({ members }) =>
       members.some(({ tabKey }) => tabKey === input.viewId),
     );
     if (!existing) {

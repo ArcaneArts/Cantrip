@@ -10,7 +10,7 @@ import { emptyWorkspaceSelection } from "@/lib/workspace-selection";
 
 import {
   projectWorkspaceSurfaceSelection,
-  workspaceGroupSelection,
+  workspacePaneSelection,
 } from "./project-workspace-selection";
 
 const timestamp = "2026-08-26T12:00:00.000Z";
@@ -57,11 +57,12 @@ function file(id: string): ExplorerSummary {
 const layout: ProjectTabLayoutSummary = {
   projectId: "project-1",
   revision: 1,
-  groups: ["one", "two"].map((id, position) => ({
+  panes: ["one", "two"].map((id, position) => ({
     id: `group-${id}`,
     projectId: "project-1",
     title: id,
     position,
+    region: "center",
     anchorTabKey: `chat:${id}`,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -75,7 +76,7 @@ const layout: ProjectTabLayoutSummary = {
     ].map((member, memberPosition) => ({
       ...member,
       tabKey: `${member.tabKind}:${member.tabId}`,
-      groupId: `group-${id}`,
+      paneId: `group-${id}`,
       projectId: "project-1",
       position: memberPosition,
       createdAt: timestamp,
@@ -97,10 +98,10 @@ describe("project workspace selection", () => {
   it("derives exactly one typed surface id from the selected tab key", () => {
     expect(
       projectWorkspaceSurfaceSelection({
-        activeTabByGroup: { "group-one": "chat:one" },
+        activeTabByPane: { "group-one": "chat:one" },
         destination: "surface",
+        focusedPaneId: "group-one",
         projectId: "project-1",
-        selectedGroupId: "group-one",
       }),
     ).toEqual({
       selectedBrowserId: null,
@@ -113,28 +114,28 @@ describe("project workspace selection", () => {
     });
   });
 
-  it("keeps file tabs on top and non-file surfaces in the sidebar", () => {
+  it("keeps every surface kind in the selected pane strip", () => {
     const workspaceSelection = {
       ...emptyWorkspaceSelection("project-1"),
-      activeTabByGroup: { "group-one": "chat:one" },
+      activeTabByPane: { "group-one": "chat:one" },
       destination: "surface" as const,
-      selectedGroupId: "group-one",
+      focusedPaneId: "group-one",
     };
     const preview = {
       active: true,
       explorerId: "sidebar-explorer",
-      groupId: "group-two",
+      paneId: "group-two",
       path: "src/index.ts",
       projectId: "project-1",
     };
 
-    const activePreview = workspaceGroupSelection({
+    const activePreview = workspacePaneSelection({
       projectSurfaceIndex: surfaceIndex,
       sidebarFilePreview: preview,
       tabLayout: layout,
       workspaceSelection,
     });
-    const inactivePreview = workspaceGroupSelection({
+    const inactivePreview = workspacePaneSelection({
       projectSurfaceIndex: surfaceIndex,
       sidebarFilePreview: { ...preview, active: false },
       tabLayout: layout,
@@ -142,13 +143,18 @@ describe("project workspace selection", () => {
     });
 
     expect(
-      activePreview.projectTabBarSurfaces.map(({ tabKey }) => tabKey),
-    ).toEqual(["explorer:file-one", "explorer:file-two"]);
+      activePreview.selectedPaneSurfaces.map(({ tabKey }) => tabKey),
+    ).toEqual(["chat:one", "explorer:file-one"]);
     expect(
-      activePreview.projectSidebarSurfaces.map(({ tabKey }) => tabKey),
-    ).toEqual(["chat:one", "chat:two"]);
-    expect(inactivePreview.projectTabBarSurfaces).toEqual(
-      activePreview.projectTabBarSurfaces,
+      activePreview.orderedProjectSurfaces.map(({ tabKey }) => tabKey),
+    ).toEqual([
+      "chat:one",
+      "explorer:file-one",
+      "chat:two",
+      "explorer:file-two",
+    ]);
+    expect(inactivePreview.selectedPaneSurfaces).toEqual(
+      activePreview.selectedPaneSurfaces,
     );
   });
 });

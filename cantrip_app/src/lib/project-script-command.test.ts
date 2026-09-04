@@ -7,7 +7,7 @@ describe("project script command destination", () => {
     expect(
       projectScriptCommandDestination({
         activeWorktreeId: "worktree-1",
-        currentSurface: { groupId: "group-1", kind: "terminal" },
+        currentSurface: { paneId: "group-1", kind: "terminal" },
         selectedTerminal: { id: "terminal-1", status: "idle" },
       }),
     ).toEqual({ kind: "current-terminal", terminalId: "terminal-1" });
@@ -17,12 +17,12 @@ describe("project script command destination", () => {
     expect(
       projectScriptCommandDestination({
         activeWorktreeId: "worktree-1",
-        currentSurface: { groupId: "group-1", kind: "terminal" },
+        currentSurface: { paneId: "group-1", kind: "terminal" },
         selectedTerminal: { id: "terminal-1", status: "running" },
       }),
     ).toEqual({
       kind: "new-terminal",
-      tabGroupId: "group-1",
+      paneId: "group-1",
       worktreeId: "worktree-1",
     });
   });
@@ -31,12 +31,12 @@ describe("project script command destination", () => {
     expect(
       projectScriptCommandDestination({
         activeWorktreeId: "worktree-2",
-        currentSurface: { groupId: "group-2", kind: "chat" },
+        currentSurface: { paneId: "group-2", kind: "chat" },
         selectedTerminal: null,
       }),
     ).toEqual({
       kind: "new-terminal",
-      tabGroupId: "group-2",
+      paneId: "group-2",
       worktreeId: "worktree-2",
     });
   });

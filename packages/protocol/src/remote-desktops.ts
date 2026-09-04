@@ -6,6 +6,10 @@ import {
 } from "./surface-private-state.js";
 import { remoteSurfaceStatusSchema } from "./runtime-capabilities.js";
 import { executionTargetSchema } from "./execution-targets.js";
+import {
+  hasUnambiguousProjectPaneDestination,
+  projectPaneDestinationShape,
+} from "./project-pane-identifiers.js";
 
 export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -21,20 +25,29 @@ export const remoteDesktopTargetSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const remoteDesktopCreateSchema = z
-  .object({
-    tabGroupId: z.string().min(1).optional(),
-    target: executionTargetSchema.optional(),
-  })
-  .strict();
+const remoteDesktopCreateBaseSchema = z.object({
+  ...projectPaneDestinationShape,
+  target: executionTargetSchema.optional(),
+});
 
-export const encryptedRemoteDesktopCreateSchema = remoteDesktopCreateSchema
+export const remoteDesktopCreateSchema = remoteDesktopCreateBaseSchema
+  .strict()
+  .refine(hasUnambiguousProjectPaneDestination, {
+    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    path: ["paneId"],
+  });
+
+export const encryptedRemoteDesktopCreateSchema = remoteDesktopCreateBaseSchema
   .extend({
     id: z.string().uuid(),
     stateProtection: remoteDesktopPrivateStateOpaqueSchema,
     titleProtection: privateDisplayLabelOpaqueSchema,
   })
   .strict()
+  .refine(hasUnambiguousProjectPaneDestination, {
+    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    path: ["paneId"],
+  })
   .refine(
     (input) =>
       input.titleProtection.classification.recordKind === "project-view",

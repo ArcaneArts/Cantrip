@@ -5,6 +5,7 @@ import {
   pointerWithin,
   useSensor,
   useSensors,
+  useDroppable,
   type CollisionDetection,
   type Collision,
   type DragEndEvent,
@@ -31,6 +32,7 @@ import {
   type WorkspaceDropDecision,
   type WorkspaceDropOperation,
   type WorkspaceDropTarget,
+  workspacePaneTargetDropId,
 } from "@/lib/workspace-dnd-model";
 
 export function canStartWorkspacePointerDrag(event: {
@@ -66,7 +68,7 @@ export function filterWorkspacePointerCollisions(
         collision.data?.droppableContainer.data.current as
           WorkspaceDndData | undefined
       )?.drop;
-      return drop?.type !== "top-bar" && drop?.type !== "sidebar-project";
+      return drop?.type !== "pane-strip";
     });
     return specific.length > 0 ? specific : pointerCollisions;
   }
@@ -129,16 +131,17 @@ function dragData(
         projects.find((project) => project.id === projectId)?.name ?? "Project",
     };
   }
-  const group = layout?.groups.find(({ anchorTabKey }) => anchorTabKey === id);
-  if (!group) return undefined;
-  const kinds = new Set(group.members.map(({ tabKind }) => tabKind));
+  const pane = layout?.panes.find(({ anchorTabKey }) => anchorTabKey === id);
+  if (!pane) return undefined;
+  const kinds = new Set(pane.members.map(({ tabKind }) => tabKind));
   return {
-    type: "group",
-    projectId: group.projectId,
-    groupId: group.id,
-    label: group.title,
+    type: "pane",
+    projectId: pane.projectId,
+    paneId: pane.id,
+    label: pane.title,
+    region: pane.region,
     visualKind:
-      kinds.size > 1 ? "mixed" : (group.members[0]?.tabKind ?? "mixed"),
+      kinds.size > 1 ? "mixed" : (pane.members[0]?.tabKind ?? "mixed"),
   };
 }
 
@@ -154,15 +157,54 @@ function dropData(
   if (id.startsWith("project:")) {
     return { type: "project", projectId: id.slice("project:".length) };
   }
-  const group = layout?.groups.find(({ anchorTabKey }) => anchorTabKey === id);
-  return group
+  const pane = layout?.panes.find(({ anchorTabKey }) => anchorTabKey === id);
+  return pane
     ? {
-        type: "sidebar-group",
-        projectId: group.projectId,
-        groupId: group.id,
-        groupPosition: group.position,
+        type: "pane",
+        projectId: pane.projectId,
+        paneId: pane.id,
+        panePosition: pane.position,
+        region: pane.region,
       }
     : undefined;
+}
+
+function PaneDropTarget({
+  activePaneId,
+  pane,
+}: {
+  activePaneId: string;
+  pane: ProjectTabLayoutSummary["panes"][number];
+}) {
+  const drop = useDroppable({
+    id: workspacePaneTargetDropId(pane.id),
+    disabled: pane.id === activePaneId,
+    data: {
+      drop: {
+        type: "pane-target",
+        projectId: pane.projectId,
+        paneId: pane.id,
+      },
+    } satisfies WorkspaceDndData,
+  });
+  return (
+    <div
+      ref={drop.setNodeRef}
+      className={`rounded-md border px-3 py-2 text-xs shadow-sm transition-colors ${
+        pane.id === activePaneId
+          ? "border-muted bg-muted text-muted-foreground"
+          : drop.isOver
+            ? "border-primary bg-primary/10 text-foreground"
+            : "bg-popover text-popover-foreground"
+      }`}
+      data-pane-drop-target={pane.id}
+    >
+      <span className="block max-w-40 truncate">{pane.title}</span>
+      <span className="text-[10px] capitalize text-muted-foreground">
+        {pane.region}
+      </span>
+    </div>
+  );
 }
 
 export function WorkspaceDndProvider({
@@ -235,6 +277,20 @@ export function WorkspaceDndProvider({
           <WorkspaceDragPreview drag={activeDrag} decision={decision} />
         ) : null}
       </DragOverlay>
+      {activeDrag?.type === "surface" && (layout?.panes.length ?? 0) > 1 ? (
+        <aside
+          aria-label="Move tab to pane"
+          className="fixed inset-x-0 bottom-4 z-[80] mx-auto flex w-fit max-w-[calc(100vw-2rem)] gap-2 overflow-x-auto rounded-lg border bg-background/95 p-2 shadow-xl backdrop-blur"
+        >
+          {layout?.panes.map((pane) => (
+            <PaneDropTarget
+              activePaneId={activeDrag.paneId}
+              key={pane.id}
+              pane={pane}
+            />
+          ))}
+        </aside>
+      ) : null}
       <span className="sr-only" aria-live="polite">
         {decision?.status === "invalid" ? decision.reason : ""}
       </span>

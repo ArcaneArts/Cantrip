@@ -74,7 +74,7 @@ import {
   useProjectWorkspaceSelectionState,
   useWorkspaceLiveScopes,
   useWorkspaceSelectionReconciliation,
-  workspaceGroupSelection,
+  workspacePaneSelection,
 } from "@/components/app/project-workspace-selection";
 import { useShellEnvironment } from "@/components/app/shell-environment";
 import {
@@ -861,7 +861,7 @@ export function App() {
     showProjectSettings,
     workspaceSelection,
   });
-  const { renameTabGroupMutation, tabLayoutMutation } = useTabLayoutOperations({
+  const { renamePaneMutation, tabLayoutMutation } = useTabLayoutOperations({
     queryClient,
     setWorkspaceDragError,
   });
@@ -990,12 +990,11 @@ export function App() {
     showSettings,
   });
   const {
-    projectSidebarSurfaces,
-    projectTabBarSurfaces,
-    selectedGroupSurfaces,
-    selectedTabGroup,
+    orderedProjectSurfaces: projectInventorySurfaces,
+    selectedPaneSurfaces,
+    selectedPane,
     showSidebarPreviewTab,
-  } = workspaceGroupSelection({
+  } = workspacePaneSelection({
     projectSurfaceIndex,
     sidebarFilePreview,
     tabLayout: tabLayout.data,
@@ -1248,10 +1247,10 @@ export function App() {
     ? runTerminalTargetLabel(selectedTerminal, worktrees.data ?? [])
     : "Unavailable worktree";
   const openTerminalLink = (url: string) => {
-    if (!selectedTerminal || !selectedTabGroup) return;
+    if (!selectedTerminal || !selectedPane) return;
     newBrowser.mutate({
       projectId: selectedTerminal.projectId,
-      tabGroupId: selectedTabGroup.id,
+      paneId: selectedPane.id,
       target: {
         kind: "worker",
         projectId: selectedTerminal.projectId,
@@ -1443,7 +1442,7 @@ export function App() {
     await newTerminal.mutateAsync({
       initialInput: input,
       projectId: selectedProject.id,
-      tabGroupId: destination.tabGroupId,
+      paneId: destination.paneId,
       worktreeId: destination.worktreeId,
     });
   };
@@ -1536,7 +1535,7 @@ export function App() {
     selectedExplorer,
     selectedProject,
     selectedProjectId,
-    selectedTabGroupId: selectedTabGroup?.id ?? null,
+    selectedTabGroupId: selectedPane?.id ?? null,
     status: desktopPopoutStatus,
   });
   const {
@@ -1820,7 +1819,7 @@ export function App() {
     projects: projects.data,
     queryClient,
     revealWorkspace,
-    selectedTabGroup,
+    selectedPane,
     setDesktopSidebarDrawerOpen,
     setDetachedGroupId,
     setPopoutError,
@@ -1941,22 +1940,22 @@ export function App() {
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
     pinSidebarFilePath, popOutActiveView, popOutProjectOverviewView, popoutError, popoutPending,
     prepareExplorerRebind, projectOverviewGitProject, projectOverviewGitSection, projectOverviewPopoutTarget, projectOverviewSelected,
-    projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSidebarSurfaces, projectSurfaces,
-    projectTabBarSurfaces, projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
+    projectInventorySurfaces, projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSurfaces,
+    projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
     projects, queryClient, remoteDesktop,
     removeProjectMutation, renameChatMutation, renameExplorerMutation, renameProjectViewMutation, renameSidebarFileEntry,
-    renameStandaloneChat, renameSurface, renameTabGroupMutation, renameTerminalMutation, repositoryStats,
+    renamePaneMutation, renameStandaloneChat, renameSurface, renameTerminalMutation, repositoryStats,
     requestBindWorktree, requestDeleteExplorer, resizeSidebarWithKeyboard, resolvedProjectOverviewWorktreeId, restoreStandaloneChat,
     retryFolderSetupMutation, retryLongPathSetupMutation, retrySidebarFileTree, returnToCompactProjectOverview, revealWorkspace,
     runConfigurationEditorId, runConfigurationRuntimes, runConfigurations, runProjectScriptCommand, scriptCommandWorktreeId,
     selectGroupFromSidebar, selectProjectFromCommandBar,
     selectProjectFromSidebar, selectProjectWorkspace, selectStandaloneChat, selectTopTab, selectedBrowser,
     selectedBuiltInSurface, selectedChat, selectedCodeTab, selectedExplorer, selectedFolderSetupJob, selectedFolderSetupNeedsAttention,
-    selectedGroupSurfaces, selectedLongPathFailure, selectedLongPathSetupJob, selectedPlacementContext, selectedProject,
+    selectedLongPathFailure, selectedLongPathSetupJob, selectedPaneSurfaces, selectedPlacementContext, selectedProject,
     selectedProjectId, selectedProjectSetupJob, selectedProjectView, selectedProjectWorkerId, selectedRunDefinitionAvailable,
     selectedRunLaunchAvailable, selectedRunLaunchProblem, selectedRunRuntime, selectedRunStopAvailable, selectedRunStopProblem,
     selectedProjectToolUnavailable, selectedRunTargetLabel, selectedStandaloneChat, selectedStandaloneChatId, selectedStandaloneTerminal, selectedSurface,
-    selectedTabGroup, selectedTabKey, selectedTerminal, selectedWorker,
+    selectedPane, selectedTabKey, selectedTerminal, selectedWorker,
     setActiveProjectTaskView, setAgentInspectOpen, setAppToast, setChatConsoleOpen, setChatRelocationOpen,
     setCodeHeader, setCommandBarOpen, setDesktopSidebarDrawerOpen, setDismissedLongPathFailure, setExplorerHeader,
     setFolderProjectDialogMode, setFolderProjectDialogOpen, setGitHistoryHeader, setPendingSurfaceSelection,

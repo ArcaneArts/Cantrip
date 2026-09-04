@@ -13,19 +13,20 @@ const timestamp = "2026-08-09T12:00:00.000Z";
 const layout: ProjectTabLayoutSummary = {
   projectId: "project-1",
   revision: 2,
-  groups: [
+  panes: [
     {
       id: "group-1",
       projectId: "project-1",
       title: "Chat",
       position: 0,
+      region: "center",
       anchorTabKey: "chat:chat-1",
       createdAt: timestamp,
       updatedAt: timestamp,
       members: [
         {
           tabKey: "chat:chat-1",
-          groupId: "group-1",
+          paneId: "group-1",
           projectId: "project-1",
           tabKind: "chat",
           tabId: "chat-1",
@@ -36,7 +37,7 @@ const layout: ProjectTabLayoutSummary = {
         },
         {
           tabKey: "view:issues-1",
-          groupId: "group-1",
+          paneId: "group-1",
           projectId: "project-1",
           tabKind: "issues",
           tabId: "issues-1",
@@ -57,19 +58,20 @@ describe("project surfaces", () => {
       {
         projectId: "project-1",
         revision: 3,
-        groups: [
+        panes: [
           {
             id: "group-history",
             projectId: "project-1",
             title: "History",
             position: 0,
+            region: "center",
             anchorTabKey: builtInTabKey,
             createdAt: timestamp,
             updatedAt: timestamp,
             members: [
               {
                 tabKey: builtInTabKey,
-                groupId: "group-history",
+                paneId: "group-history",
                 projectId: "project-1",
                 tabKind: "builtin",
                 tabId: "git.history",
@@ -113,7 +115,7 @@ describe("project surfaces", () => {
         projectId: "project-1",
       },
     });
-    expect(index.byGroupId.get("group-history")).toHaveLength(1);
+    expect(index.byPaneId.get("group-history")).toHaveLength(1);
     expect(index.unresolvedTabKeys).toEqual([]);
   });
 
@@ -123,19 +125,20 @@ describe("project surfaces", () => {
       {
         projectId: "project-1",
         revision: 3,
-        groups: [
+        panes: [
           {
             id: "group-history",
             projectId: "project-1",
             title: "History",
             position: 0,
+            region: "center",
             anchorTabKey: malformedTabKey,
             createdAt: timestamp,
             updatedAt: timestamp,
             members: [
               {
                 tabKey: malformedTabKey,
-                groupId: "group-history",
+                paneId: "group-history",
                 projectId: "project-1",
                 tabKind: "builtin",
                 tabId: "git.history",
@@ -159,7 +162,7 @@ describe("project surfaces", () => {
     );
 
     expect(index.byTabKey.size).toBe(0);
-    expect(index.byGroupId.get("group-history")).toEqual([]);
+    expect(index.byPaneId.get("group-history")).toEqual([]);
     expect(index.unresolvedTabKeys).toEqual([malformedTabKey]);
   });
 
@@ -206,7 +209,7 @@ describe("project surfaces", () => {
       terminals: [],
     });
 
-    expect(index.byGroupId.get("group-1")?.map(({ kind }) => kind)).toEqual([
+    expect(index.byPaneId.get("group-1")?.map(({ kind }) => kind)).toEqual([
       "chat",
       "issues",
     ]);
@@ -218,7 +221,7 @@ describe("project surfaces", () => {
 
     const closing = omitProjectSurfaceTabs(index, new Set(["chat:chat-1"]));
     expect(
-      closing.byGroupId.get("group-1")?.map(({ tabKey }) => tabKey),
+      closing.byPaneId.get("group-1")?.map(({ tabKey }) => tabKey),
     ).toEqual(["view:issues-1"]);
     expect(closing.byTabKey.has("chat:chat-1")).toBe(false);
     expect(index.byTabKey.has("chat:chat-1")).toBe(true);
@@ -227,13 +230,13 @@ describe("project surfaces", () => {
   it("does not promote linked consoles into standalone project surfaces", () => {
     const terminalLayout: ProjectTabLayoutSummary = {
       ...layout,
-      groups: [
+      panes: [
         {
-          ...layout.groups[0]!,
+          ...layout.panes[0]!,
           anchorTabKey: "terminal:console-1",
           members: [
             {
-              ...layout.groups[0]!.members[0]!,
+              ...layout.panes[0]!.members[0]!,
               tabKey: "terminal:console-1",
               tabKind: "terminal",
               tabId: "console-1",
@@ -316,7 +319,7 @@ describe("project surfaces", () => {
     });
 
     expect(index.byTabKey.has("chat:chat-1")).toBe(false);
-    expect(index.byGroupId.get("group-1")?.map(({ kind }) => kind)).toEqual([
+    expect(index.byPaneId.get("group-1")?.map(({ kind }) => kind)).toEqual([
       "issues",
     ]);
     expect(index.unresolvedTabKeys).toEqual([]);

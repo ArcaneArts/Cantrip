@@ -1,65 +1,57 @@
-import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
+import type {
+  ProjectPaneRegion,
+  ProjectTabLayoutSummary,
+} from "@cantrip/protocol";
 
-import type { ProjectTabGroupVisualKind } from "@/lib/project-tab-group";
+import type { ProjectPaneVisualKind } from "@/lib/project-pane";
 import type { ProjectSurface } from "@/lib/project-surface";
 
 export type WorkspaceDragItem =
   | { type: "project"; projectId: string; label: string }
   | {
-      type: "group";
+      type: "pane";
       projectId: string;
-      groupId: string;
+      paneId: string;
       label: string;
-      visualKind: ProjectTabGroupVisualKind;
+      region: ProjectPaneRegion;
+      visualKind: ProjectPaneVisualKind;
     }
   | {
       type: "surface";
-      lane: "file-tabs" | "sidebar";
       projectId: string;
-      groupId: string;
+      paneId: string;
       tabKey: string;
       label: string;
-      lanePosition: number;
+      position: number;
       visualKind: ProjectSurface["kind"];
     };
 
 export type WorkspaceDropTarget =
   | { type: "project"; projectId: string }
   | {
-      type: "sidebar-group";
+      type: "pane";
       projectId: string;
-      groupId: string;
-      groupPosition: number;
+      paneId: string;
+      panePosition: number;
+      region: ProjectPaneRegion;
     }
   | {
-      type: "sidebar-project";
+      type: "pane-strip";
       projectId: string;
-      groupPosition: number;
-      lanePosition: number;
-    }
-  | {
-      type: "sidebar-tab";
-      projectId: string;
-      groupId: string;
-      tabKey: string;
-      lanePosition: number;
+      paneId: string;
       memberPosition: number;
     }
   | {
-      type: "top-bar";
+      type: "pane-tab";
       projectId: string;
-      groupId: string;
+      paneId: string;
       tabKey: string;
-      lanePosition: number;
       memberPosition: number;
     }
   | {
-      type: "top-tab";
+      type: "pane-target";
       projectId: string;
-      groupId: string;
-      tabKey: string;
-      lanePosition: number;
-      memberPosition: number;
+      paneId: string;
     };
 
 export interface WorkspaceDndData {
@@ -68,14 +60,14 @@ export interface WorkspaceDndData {
 }
 
 export type TabLayoutCommand =
-  | { type: "reorder-groups"; groupIds: string[] }
-  | { type: "reorder-members"; groupId: string; tabKeys: string[] }
+  | { type: "reorder-panes"; paneIds: string[]; region: ProjectPaneRegion }
+  | { type: "reorder-members"; paneId: string; tabKeys: string[] }
   | {
       type: "move-member";
       tabKey: string;
-      targetGroupId: string | null;
+      targetPaneId: string | null;
       targetMemberPosition: number;
-      targetGroupPosition?: number;
+      targetPanePosition?: number;
     };
 
 export type WorkspaceDropOperation =
@@ -130,66 +122,80 @@ export function decideWorkspaceDrop(
   if (drop.type === "project" || drop.projectId !== drag.projectId) {
     return {
       status: "invalid",
-      reason: "Tab groups cannot span projects.",
+      reason: "Panes and tabs cannot span projects.",
     };
   }
 
-  if (drag.type === "group") {
-    const sourceGroup = layout.groups.find(({ id }) => id === drag.groupId);
-    if (!sourceGroup) {
+  if (drag.type === "pane") {
+    if (drop.type !== "pane") {
+      return { status: "invalid", reason: "This is not a pane drop target." };
+    }
+    if (drag.region !== drop.region) {
       return {
         status: "invalid",
-        reason: "The dragged group no longer exists.",
+        reason: "Pane movement between regions is not available yet.",
       };
     }
-    if (drop.type === "sidebar-group") {
-      if (drop.groupId === sourceGroup.id) return { status: "noop" };
-      const from = layout.groups.findIndex(({ id }) => id === sourceGroup.id);
-      const to = layout.groups.findIndex(({ id }) => id === drop.groupId);
-      return {
-        status: "valid",
-        operation: {
-          type: "tab-layout",
-          projectId: drag.projectId,
-          command: {
-            type: "reorder-groups",
-            groupIds: moved(
-              layout.groups.map(({ id }) => id),
-              from,
-              to,
-            ),
-          },
-        },
-      };
+    const from = layout.panes.findIndex(({ id }) => id === drag.paneId);
+    const to = layout.panes.findIndex(({ id }) => id === drop.paneId);
+    if (from < 0 || to < 0) {
+      return { status: "invalid", reason: "The pane no longer exists." };
     }
+    if (from === to) return { status: "noop" };
     return {
-      status: "invalid",
-      reason: "Sidebar groups can only be sorted in the sidebar.",
+      status: "valid",
+      operation: {
+        type: "tab-layout",
+        projectId: drag.projectId,
+        command: {
+          type: "reorder-panes",
+          region: drag.region,
+          paneIds: moved(
+            layout.panes
+              .filter(({ region }) => region === drag.region)
+              .map(({ id }) => id),
+            layout.panes
+              .filter(({ region }) => region === drag.region)
+              .findIndex(({ id }) => id === drag.paneId),
+            layout.panes
+              .filter(({ region }) => region === drag.region)
+              .findIndex(({ id }) => id === drop.paneId),
+          ),
+        },
+      },
     };
   }
 
-  const sourceGroup = layout.groups.find(({ id }) => id === drag.groupId);
-  if (!sourceGroup) {
+  if (drop.type === "pane") {
+    return { status: "invalid", reason: "Drop the tab on the pane target." };
+  }
+
+  const sourcePane = layout.panes.find(({ id }) => id === drag.paneId);
+  const targetPane = layout.panes.find(({ id }) => id === drop.paneId);
+  if (!sourcePane || !targetPane) {
+    return { status: "invalid", reason: "The tab's pane no longer exists." };
+  }
+  const sourcePosition = sourcePane.members.findIndex(
+    ({ tabKey }) => tabKey === drag.tabKey,
+  );
+  if (sourcePosition < 0) {
     return { status: "invalid", reason: "The dragged tab no longer exists." };
   }
-  const fileDrop = drop.type === "top-tab" || drop.type === "top-bar";
-  const sidebarDrop =
-    drop.type === "sidebar-tab" || drop.type === "sidebar-project";
-  if (
-    (drag.lane === "file-tabs" && !fileDrop) ||
-    (drag.lane === "sidebar" && !sidebarDrop)
-  ) {
-    return {
-      status: "invalid",
-      reason:
-        drag.lane === "file-tabs"
-          ? "File tabs stay in the top file bar."
-          : "Project surfaces stay in the sidebar.",
-    };
-  }
+  const requestedPosition =
+    drop.type === "pane-target"
+      ? targetPane.members.length
+      : drop.memberPosition;
 
-  if (drop.type === "sidebar-project") {
-    if (drag.lanePosition === drop.lanePosition - 1) {
+  if (sourcePane.id === targetPane.id) {
+    if (drop.type === "pane-target") return { status: "noop" };
+    const targetPosition = Math.max(
+      0,
+      Math.min(requestedPosition, sourcePane.members.length - 1),
+    );
+    if (
+      sourcePosition === targetPosition ||
+      (drop.type === "pane-tab" && drop.tabKey === drag.tabKey)
+    ) {
       return { status: "noop" };
     }
     return {
@@ -198,36 +204,18 @@ export function decideWorkspaceDrop(
         type: "tab-layout",
         projectId: drag.projectId,
         command: {
-          type: "move-member",
-          tabKey: drag.tabKey,
-          targetGroupId: null,
-          targetMemberPosition: 0,
-          targetGroupPosition: drop.groupPosition,
+          type: "reorder-members",
+          paneId: sourcePane.id,
+          tabKeys: moved(
+            sourcePane.members.map(({ tabKey }) => tabKey),
+            sourcePosition,
+            targetPosition,
+          ),
         },
       },
     };
   }
 
-  if (
-    drop.type !== "top-tab" &&
-    drop.type !== "top-bar" &&
-    drop.type !== "sidebar-tab"
-  ) {
-    return { status: "invalid", reason: "This is not a tab drop target." };
-  }
-  if (drop.tabKey === drag.tabKey) return { status: "noop" };
-  const targetGroup = layout.groups.find(({ id }) => id === drop.groupId);
-  if (!targetGroup) {
-    return { status: "invalid", reason: "The target tab no longer exists." };
-  }
-  const sourceGroupWillRemain = sourceGroup.members.length > 1;
-  const targetPositionAfterRemoval =
-    !sourceGroupWillRemain && sourceGroup.position < targetGroup.position
-      ? targetGroup.position - 1
-      : targetGroup.position;
-  const targetGroupPosition =
-    targetPositionAfterRemoval +
-    (drag.lanePosition < drop.lanePosition ? 1 : 0);
   return {
     status: "valid",
     operation: {
@@ -236,9 +224,11 @@ export function decideWorkspaceDrop(
       command: {
         type: "move-member",
         tabKey: drag.tabKey,
-        targetGroupId: null,
-        targetMemberPosition: 0,
-        targetGroupPosition,
+        targetPaneId: targetPane.id,
+        targetMemberPosition: Math.max(
+          0,
+          Math.min(requestedPosition, targetPane.members.length),
+        ),
       },
     },
   };
@@ -248,18 +238,18 @@ export function workspaceProjectDragId(projectId: string): string {
   return `workspace:project:${projectId}`;
 }
 
-export function workspaceGroupDragId(groupId: string): string {
-  return `workspace:group:${groupId}`;
+export function workspacePaneDragId(paneId: string): string {
+  return `workspace:pane:${paneId}`;
 }
 
 export function workspaceSurfaceDragId(tabKey: string): string {
   return `workspace:surface:${tabKey}`;
 }
 
-export function workspaceTopBarDropId(groupId: string): string {
-  return `workspace:top-bar:${groupId}`;
+export function workspacePaneStripDropId(paneId: string): string {
+  return `workspace:pane-strip:${paneId}`;
 }
 
-export function workspaceSidebarDropId(projectId: string): string {
-  return `workspace:sidebar:${projectId}`;
+export function workspacePaneTargetDropId(paneId: string): string {
+  return `workspace:pane-target:${paneId}`;
 }

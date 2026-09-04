@@ -18,10 +18,10 @@ function surface(
       projectId: "project-1",
       title: tabId,
     },
-    groupId: "group-1",
+    paneId: "group-1",
     kind,
     member: {
-      groupId: "group-1",
+      paneId: "group-1",
       projectId: "project-1",
       tabKind: kind,
       tabId,
@@ -36,7 +36,7 @@ function surface(
     tabKey,
     title: tabId,
   };
-  return base as ProjectSurface;
+  return base as unknown as ProjectSurface;
 }
 
 describe("project tab group presentation", () => {
@@ -49,6 +49,7 @@ describe("project tab group presentation", () => {
           projectId: "project-1",
           title: "Anchor",
           position: 0,
+          region: "center",
           anchorTabKey: "chat:anchor",
           members: surfaces.map(({ member }) => member),
           createdAt: "2026-08-09T00:00:00.000Z",

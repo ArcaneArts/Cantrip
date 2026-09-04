@@ -106,10 +106,10 @@ describe("shell navigation commands", () => {
       "project-fallback",
     );
     expect(options.setWorkspaceSelection).toHaveBeenCalledWith({
-      activeTabByGroup: {},
+      activeTabByPane: {},
       destination: "overview",
+      focusedPaneId: null,
       projectId: "project-fallback",
-      selectedGroupId: null,
     });
     expect(options.setPendingSurfaceSelection).toHaveBeenCalledWith(null);
     expect(options.persistAppDestination).toHaveBeenCalledWith({
@@ -213,14 +213,14 @@ describe("surface view open-or-focus", () => {
   const layout = {
     projectId: "project-1",
     revision: 4,
-    groups: [
+    panes: [
       {
         id: "group-1",
         projectId: "project-1",
         members: [{ tabKey: "chat:agent-1" }],
       },
     ],
-  } as ProjectTabLayoutSummary;
+  } as unknown as ProjectTabLayoutSummary;
 
   it("asks the server to focus an already-open view despite a cached placement", async () => {
     const queryClient = new QueryClient();
@@ -248,7 +248,7 @@ describe("surface view open-or-focus", () => {
 
   it("opens a closed view once and caches the authoritative layout", async () => {
     const queryClient = new QueryClient();
-    const closed = { ...layout, groups: [], revision: 5 };
+    const closed = { ...layout, panes: [], revision: 5 };
     const reopened = { ...layout, revision: 6 };
     queryClient.setQueryData(["project-tab-layout", "project-1"], closed);
     const open = vi.spyOn(api, "openProjectSurfaceView").mockResolvedValue({
@@ -333,9 +333,9 @@ describe("surface view open-or-focus", () => {
     const secondLayout = {
       ...layout,
       revision: 5,
-      groups: [
+      panes: [
         {
-          ...layout.groups[0]!,
+          ...layout.panes[0]!,
           anchorTabKey: "chat:agent-2",
           members: [{ tabKey: "chat:agent-2" }],
         },
@@ -368,10 +368,10 @@ describe("surface view open-or-focus", () => {
     expect(
       selectedWorkspaceTabKey(
         selectLatest({
-          activeTabByGroup: {},
+          activeTabByPane: {},
           destination: "overview",
+          focusedPaneId: null,
           projectId: "project-1",
-          selectedGroupId: null,
         }),
       ),
     ).toBe("chat:agent-2");
@@ -387,7 +387,7 @@ describe("surface view open-or-focus", () => {
 describe("created tab selection", () => {
   const layout = {
     projectId: "project-1",
-    groups: [
+    panes: [
       {
         anchorTabKey: "explorer:explorer-1",
         id: "group-1",
@@ -395,7 +395,7 @@ describe("created tab selection", () => {
         projectId: "project-1",
       },
     ],
-  } as ProjectTabLayoutSummary;
+  } as unknown as ProjectTabLayoutSummary;
 
   it("opens a newly cloned project on its overview", () => {
     type ProjectCommandOptions = Parameters<
@@ -446,10 +446,10 @@ describe("created tab selection", () => {
       "overview",
     );
     expect(setWorkspaceSelection).toHaveBeenCalledWith({
-      activeTabByGroup: {},
+      activeTabByPane: {},
       destination: "overview",
+      focusedPaneId: null,
       projectId: "project-cloning",
-      selectedGroupId: null,
     });
     expect(setCreatedRepositoryOnboarding).toHaveBeenCalledWith({
       openInitialChat: true,
@@ -518,21 +518,21 @@ describe("created tab selection", () => {
     expect(setPendingSurfaceSelection).toHaveBeenCalledWith(null);
     expect(setWorkspaceSelection).toHaveBeenCalledOnce();
     const select = setWorkspaceSelection.mock.calls[0]?.[0] as (current: {
-      activeTabByGroup: Record<string, string>;
+      activeTabByPane: Record<string, string>;
       destination: "overview";
+      focusedPaneId: null;
       projectId: string;
-      selectedGroupId: null;
     }) => unknown;
     expect(
       select({
-        activeTabByGroup: {},
+        activeTabByPane: {},
         destination: "overview",
+        focusedPaneId: null,
         projectId: "project-1",
-        selectedGroupId: null,
       }),
     ).toMatchObject({
       destination: "surface",
-      selectedGroupId: "group-1",
+      focusedPaneId: "group-1",
     });
   });
 });

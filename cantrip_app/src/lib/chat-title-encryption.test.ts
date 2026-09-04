@@ -207,17 +207,18 @@ describe("chat title encryption adapter", () => {
     const tabLayout: ProjectTabLayoutWireSummary = {
       projectId: "project-a",
       revision: 1,
-      groups: [
+      panes: [
         {
           id: defaultGroupId,
           projectId: "project-a",
           titleProtection: null,
           position: 0,
+          region: "center",
           anchorTabKey: `chat:${chatId}`,
           members: [
             {
               tabKey: `chat:${chatId}`,
-              groupId: defaultGroupId,
+              paneId: defaultGroupId,
               projectId: "project-a",
               tabKind: "chat",
               tabId: chatId,
@@ -238,11 +239,12 @@ describe("chat title encryption adapter", () => {
             "Private group",
           ),
           position: 1,
+          region: "center",
           anchorTabKey: `terminal:${terminalId}`,
           members: [
             {
               tabKey: `terminal:${terminalId}`,
-              groupId: customGroupId,
+              paneId: customGroupId,
               projectId: "project-a",
               tabKind: "terminal",
               tabId: terminalId,
@@ -253,7 +255,7 @@ describe("chat title encryption adapter", () => {
             },
             {
               tabKey: `chat:${taskId}`,
-              groupId: customGroupId,
+              paneId: customGroupId,
               projectId: "project-a",
               tabKind: "chat",
               tabId: taskId,
@@ -269,7 +271,7 @@ describe("chat title encryption adapter", () => {
       ],
     };
     const expectedLayout = {
-      groups: [
+      panes: [
         {
           title: "Private agent",
           members: [{ title: "Private agent" }],
@@ -355,17 +357,18 @@ describe("chat title encryption adapter", () => {
     ): ProjectTabLayoutWireSummary => ({
       projectId: "project-a",
       revision: 1,
-      groups: [
+      panes: [
         {
           id: groupId,
           projectId: "project-a",
           titleProtection,
           position: 0,
+          region: "center",
           anchorTabKey: `chat:${chatId}`,
           members: [
             {
               tabKey: `chat:${chatId}`,
-              groupId,
+              paneId: groupId,
               projectId: "project-a",
               tabKind: "chat",
               tabId: chatId,
@@ -376,7 +379,7 @@ describe("chat title encryption adapter", () => {
             },
             {
               tabKey: `terminal:${terminalId}`,
-              groupId,
+              paneId: groupId,
               projectId: "project-a",
               tabKind: "terminal",
               tabId: terminalId,
@@ -394,13 +397,13 @@ describe("chat title encryption adapter", () => {
 
     await expect(
       adapter.openTabLayout(layout(groupProtection)),
-    ).resolves.toMatchObject({ groups: [{ title: "Private group" }] });
+    ).resolves.toMatchObject({ panes: [{ title: "Private group" }] });
     await expect(
       adapter.openTabLayout({
         ...layout(groupProtection),
-        groups: [
+        panes: [
           {
-            ...layout(groupProtection).groups[0]!,
+            ...layout(groupProtection).panes[0]!,
             id: "00000000-0000-4000-8000-000000000034",
           },
         ],

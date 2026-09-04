@@ -1,5 +1,12 @@
 import {
+  encryptedProjectPaneUpdateSchema,
   encryptedTabGroupUpdateSchema,
+  legacyProjectSurfaceViewCloseResultSchema,
+  legacyProjectSurfaceViewOpenResultSchema,
+  legacyProjectTabLayoutWireSummarySchema,
+  projectPaneMemberMoveSchema,
+  projectPaneMemberOrderSchema,
+  projectPaneOrderSchema,
   projectBuiltinSurfaceDefinitionIdSchema,
   projectSurfaceLauncherListSchema,
   projectSurfaceLauncherPinSchema,
@@ -18,6 +25,7 @@ import type { FastifyInstance } from "fastify";
 
 import type { ServerRepository } from "../../db/repository.js";
 import {
+  legacyTabLayoutFromPaneLayout,
   TabLayoutConflictError,
   TabLayoutInvariantError,
 } from "../../db/tab-layouts.js";
@@ -33,7 +41,7 @@ export function installTabLayoutRoutes(
   { applicationOwnerId, repository }: TabLayoutRouteDependencies,
 ): void {
   app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/tab-groups",
+    "/api/projects/:projectId/panes",
     async (request, reply) => {
       try {
         const layout = await repository.tabLayouts.get(
@@ -42,6 +50,212 @@ export function installTabLayoutRoutes(
         );
         return layout
           ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (error instanceof TabLayoutInvariantError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/panes/order",
+    async (request, reply) => {
+      const input = projectPaneOrderSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.reorderPanes(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { paneId: string; projectId: string } }>(
+    "/api/projects/:projectId/panes/:paneId",
+    async (request, reply) => {
+      const input = encryptedProjectPaneUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.updatePane(
+          applicationOwnerId(),
+          request.params.projectId,
+          request.params.paneId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { paneId: string; projectId: string } }>(
+    "/api/projects/:projectId/panes/:paneId/members/order",
+    async (request, reply) => {
+      const input = projectPaneMemberOrderSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.reorderMembers(
+          applicationOwnerId(),
+          request.params.projectId,
+          request.params.paneId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/panes/member",
+    async (request, reply) => {
+      const input = projectPaneMemberMoveSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.moveMember(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/panes/member/open",
+    async (request, reply) => {
+      const input = projectSurfaceViewOpenSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await repository.tabLayouts.openSurfaceView(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        return result
+          ? reply.send(projectSurfaceViewOpenResultSchema.parse(result))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/panes/member/close",
+    async (request, reply) => {
+      const input = projectSurfaceViewCloseSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const result = await repository.tabLayouts.closeSurfaceView(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        return result
+          ? reply.send(projectSurfaceViewCloseResultSchema.parse(result))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tab-groups",
+    async (request, reply) => {
+      try {
+        const layout = await repository.tabLayouts.get(
+          applicationOwnerId(),
+          request.params.projectId,
+        );
+        return layout
+          ? reply.send(
+              legacyProjectTabLayoutWireSummarySchema.parse(
+                legacyTabLayoutFromPaneLayout(layout),
+              ),
+            )
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (error instanceof TabLayoutInvariantError) {
@@ -136,13 +350,21 @@ export function installTabLayoutRoutes(
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const layout = await repository.tabLayouts.reorderGroups(
+        const layout = await repository.tabLayouts.reorderPanes(
           applicationOwnerId(),
           request.params.projectId,
-          input.data,
+          {
+            revision: input.data.revision,
+            region: "center",
+            paneIds: input.data.groupIds,
+          },
         );
         return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          ? reply.send(
+              legacyProjectTabLayoutWireSummarySchema.parse(
+                legacyTabLayoutFromPaneLayout(layout),
+              ),
+            )
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -166,14 +388,18 @@ export function installTabLayoutRoutes(
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const layout = await repository.tabLayouts.updateGroup(
+        const layout = await repository.tabLayouts.updatePane(
           applicationOwnerId(),
           request.params.projectId,
           request.params.groupId,
           input.data,
         );
         return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          ? reply.send(
+              legacyProjectTabLayoutWireSummarySchema.parse(
+                legacyTabLayoutFromPaneLayout(layout),
+              ),
+            )
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -204,7 +430,11 @@ export function installTabLayoutRoutes(
           input.data,
         );
         return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          ? reply.send(
+              legacyProjectTabLayoutWireSummarySchema.parse(
+                legacyTabLayoutFromPaneLayout(layout),
+              ),
+            )
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -231,10 +461,22 @@ export function installTabLayoutRoutes(
         const layout = await repository.tabLayouts.moveMember(
           applicationOwnerId(),
           request.params.projectId,
-          input.data,
+          {
+            revision: input.data.revision,
+            tabKey: input.data.tabKey,
+            targetPaneId: input.data.targetGroupId,
+            targetMemberPosition: input.data.targetMemberPosition,
+            ...(input.data.targetGroupPosition === undefined
+              ? {}
+              : { targetPanePosition: input.data.targetGroupPosition }),
+          },
         );
         return layout
-          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          ? reply.send(
+              legacyProjectTabLayoutWireSummarySchema.parse(
+                legacyTabLayoutFromPaneLayout(layout),
+              ),
+            )
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -264,7 +506,12 @@ export function installTabLayoutRoutes(
           input.data,
         );
         return result
-          ? reply.send(projectSurfaceViewOpenResultSchema.parse(result))
+          ? reply.send(
+              legacyProjectSurfaceViewOpenResultSchema.parse({
+                ...result,
+                layout: legacyTabLayoutFromPaneLayout(result.layout),
+              }),
+            )
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -294,7 +541,12 @@ export function installTabLayoutRoutes(
           input.data,
         );
         return result
-          ? reply.send(projectSurfaceViewCloseResultSchema.parse(result))
+          ? reply.send(
+              legacyProjectSurfaceViewCloseResultSchema.parse({
+                ...result,
+                layout: legacyTabLayoutFromPaneLayout(result.layout),
+              }),
+            )
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (

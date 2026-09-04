@@ -434,7 +434,7 @@ export class RemoteSurfaceRepository {
     titleProtection: PrivateDisplayLabelOpaque,
     workerId: string,
     stateProtection: SurfacePrivateStateOpaque,
-    tabGroupId?: string,
+    paneId?: string,
   ): Promise<RemoteDesktopWireSummary | null> {
     const [projectRows, workerRows] = await Promise.all([
       this.database
@@ -481,7 +481,7 @@ export class RemoteSurfaceRepository {
       });
       await attachProjectTab(transaction, {
         projectId,
-        tabGroupId,
+        paneId,
         tabId: desktopId,
         tabKind: "remote-desktop",
       });

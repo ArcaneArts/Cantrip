@@ -16,17 +16,18 @@ const timestamp = "2026-08-27T12:00:00.000Z";
 const layout: ProjectTabLayoutSummary = {
   projectId: "one",
   revision: 1,
-  groups: [
+  panes: [
     {
       id: "group-1",
       projectId: "one",
       title: "Tabs",
       position: 0,
+      region: "center",
       anchorTabKey: "chat:first",
       createdAt: timestamp,
       updatedAt: timestamp,
       members: ["chat:first", "chat:second"].map((tabKey, position) => ({
-        groupId: "group-1",
+        paneId: "group-1",
         projectId: "one",
         tabKind: "chat" as const,
         tabId: tabKey.slice("chat:".length),
@@ -55,7 +56,7 @@ describe("workspace drop operations", () => {
       projectId: layout.projectId,
       command: {
         type: "reorder-members",
-        groupId: "group-1",
+        paneId: "group-1",
         tabKeys: ["chat:second", "chat:first"],
       },
     });
@@ -63,7 +64,7 @@ describe("workspace drop operations", () => {
     expect(
       queryClient
         .getQueryData<ProjectTabLayoutSummary>(queryKey)
-        ?.groups[0]?.members.map(({ tabKey }) => tabKey),
+        ?.panes[0]?.members.map(({ tabKey }) => tabKey),
     ).toEqual(["chat:second", "chat:first"]);
     finishCancellation();
     await expect(prepared.cancellation).resolves.toBeUndefined();
@@ -82,7 +83,11 @@ describe("workspace drop operations", () => {
     handleDrop({
       type: "tab-layout",
       projectId: "one",
-      command: { type: "reorder-groups", groupIds: ["group-2", "group-1"] },
+      command: {
+        type: "reorder-panes",
+        paneIds: ["group-2", "group-1"],
+        region: "center",
+      },
     });
 
     expect(tabLayoutMutation.mutate).not.toHaveBeenCalled();

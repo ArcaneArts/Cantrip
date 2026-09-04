@@ -1,6 +1,7 @@
 import type {
+  ProjectPaneRegion,
+  ProjectPaneSummary,
   ProjectTabLayoutSummary,
-  TabGroupSummary,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 
@@ -12,11 +13,50 @@ function inserted<T>(items: readonly T[], item: T, position: number): T[] {
   return next;
 }
 
-function positionedGroups(groups: readonly TabGroupSummary[]) {
-  return groups.map((group, position) => ({
-    ...group,
-    position,
-    members: group.members.map((member, memberPosition) => ({
+const paneRegionOrder: readonly ProjectPaneRegion[] = [
+  "center",
+  "right",
+  "bottom",
+  "left",
+  "detached",
+];
+
+function insertedInRegion(
+  panes: readonly ProjectPaneSummary[],
+  pane: ProjectPaneSummary,
+  position: number,
+): ProjectPaneSummary[] {
+  const regionIndexes = panes.flatMap((candidate, index) =>
+    candidate.region === pane.region ? [index] : [],
+  );
+  const clampedPosition = Math.max(0, Math.min(position, regionIndexes.length));
+  if (regionIndexes.length > 0) {
+    const insertionIndex =
+      regionIndexes[clampedPosition] ?? regionIndexes.at(-1)! + 1;
+    return inserted(panes, pane, insertionIndex);
+  }
+
+  const regionRank = paneRegionOrder.indexOf(pane.region);
+  const insertionIndex = panes.findIndex(
+    (candidate) => paneRegionOrder.indexOf(candidate.region) > regionRank,
+  );
+  return inserted(
+    panes,
+    pane,
+    insertionIndex === -1 ? panes.length : insertionIndex,
+  );
+}
+
+function positionedPanes(panes: readonly ProjectPaneSummary[]) {
+  const positions = new Map<string, number>();
+  return panes.map((pane) => ({
+    ...pane,
+    position: (() => {
+      const position = positions.get(pane.region) ?? 0;
+      positions.set(pane.region, position + 1);
+      return position;
+    })(),
+    members: pane.members.map((member, memberPosition) => ({
       ...member,
       position: memberPosition,
     })),
@@ -57,53 +97,57 @@ export function removeProjectTabFromLayout(
   tabKey: string,
 ): ProjectTabLayoutSummary {
   let removed = false;
-  const groups = layout.groups.flatMap((group) => {
-    const members = group.members.filter((member) => member.tabKey !== tabKey);
-    if (members.length === group.members.length) return [group];
+  const panes = layout.panes.flatMap((pane) => {
+    const members = pane.members.filter((member) => member.tabKey !== tabKey);
+    if (members.length === pane.members.length) return [pane];
     removed = true;
     if (members.length === 0) return [];
     return [
       {
-        ...group,
+        ...pane,
         ...(members.length === 1 ? { title: members[0]!.title } : {}),
         anchorTabKey:
-          group.anchorTabKey === tabKey
-            ? members[0]!.tabKey
-            : group.anchorTabKey,
+          pane.anchorTabKey === tabKey ? members[0]!.tabKey : pane.anchorTabKey,
         members,
       },
     ];
   });
-  return removed ? { ...layout, groups: positionedGroups(groups) } : layout;
+  return removed ? { ...layout, panes: positionedPanes(panes) } : layout;
 }
 
 export function applyOptimisticTabLayoutCommand(
   layout: ProjectTabLayoutSummary,
   command: TabLayoutCommand,
 ): ProjectTabLayoutSummary {
-  if (command.type === "reorder-groups") {
-    const byId = new Map(layout.groups.map((group) => [group.id, group]));
+  if (command.type === "reorder-panes") {
+    const byId = new Map(layout.panes.map((pane) => [pane.id, pane]));
+    const reorderedRegion = command.paneIds.flatMap((id) => {
+      const pane = byId.get(id);
+      return pane && pane.region === command.region ? [pane] : [];
+    });
+    let regionIndex = 0;
     return {
       ...layout,
-      groups: positionedGroups(
-        command.groupIds.flatMap((id) => {
-          const group = byId.get(id);
-          return group ? [group] : [];
-        }),
+      panes: positionedPanes(
+        layout.panes.map((pane) =>
+          pane.region === command.region
+            ? (reorderedRegion[regionIndex++] ?? pane)
+            : pane,
+        ),
       ),
     };
   }
   if (command.type === "reorder-members") {
     return {
       ...layout,
-      groups: positionedGroups(
-        layout.groups.map((group) => {
-          if (group.id !== command.groupId) return group;
+      panes: positionedPanes(
+        layout.panes.map((pane) => {
+          if (pane.id !== command.paneId) return pane;
           const byKey = new Map(
-            group.members.map((member) => [member.tabKey, member]),
+            pane.members.map((member) => [member.tabKey, member]),
           );
           return {
-            ...group,
+            ...pane,
             members: command.tabKeys.flatMap((tabKey) => {
               const member = byKey.get(tabKey);
               return member ? [member] : [];
@@ -114,74 +158,79 @@ export function applyOptimisticTabLayoutCommand(
     };
   }
 
-  const sourceGroup = layout.groups.find(({ members }) =>
+  const sourcePane = layout.panes.find(({ members }) =>
     members.some(({ tabKey }) => tabKey === command.tabKey),
   );
-  const movedMember = sourceGroup?.members.find(
+  const movedMember = sourcePane?.members.find(
     ({ tabKey }) => tabKey === command.tabKey,
   );
-  if (!sourceGroup || !movedMember) return layout;
+  if (!sourcePane || !movedMember) return layout;
 
-  if (command.targetGroupId === null && sourceGroup.members.length === 1) {
-    const remaining = layout.groups.filter(({ id }) => id !== sourceGroup.id);
+  if (command.targetPaneId === null && sourcePane.members.length === 1) {
+    const remaining = layout.panes.filter(({ id }) => id !== sourcePane.id);
     return {
       ...layout,
-      groups: positionedGroups(
-        inserted(remaining, sourceGroup, command.targetGroupPosition ?? 0),
+      panes: positionedPanes(
+        insertedInRegion(
+          remaining,
+          sourcePane,
+          command.targetPanePosition ?? 0,
+        ),
       ),
     };
   }
 
-  const sourceMembers = sourceGroup.members.filter(
+  const sourceMembers = sourcePane.members.filter(
     ({ tabKey }) => tabKey !== command.tabKey,
   );
-  let groups = layout.groups.flatMap((group) => {
-    if (group.id !== sourceGroup.id) return [group];
+  let panes = layout.panes.flatMap((pane) => {
+    if (pane.id !== sourcePane.id) return [pane];
     if (sourceMembers.length === 0) return [];
     return [
       {
-        ...group,
+        ...pane,
         ...(sourceMembers.length === 1
           ? { title: sourceMembers[0]!.title }
           : {}),
         anchorTabKey:
-          group.anchorTabKey === command.tabKey
+          pane.anchorTabKey === command.tabKey
             ? sourceMembers[0]!.tabKey
-            : group.anchorTabKey,
+            : pane.anchorTabKey,
         members: sourceMembers,
       },
     ];
   });
 
-  if (command.targetGroupId === null) {
-    const groupId = `optimistic:${command.tabKey}`;
-    groups = inserted(
-      groups,
+  if (command.targetPaneId === null) {
+    const paneId = `optimistic:${command.tabKey}`;
+    panes = insertedInRegion(
+      panes,
       {
-        id: groupId,
+        id: paneId,
         projectId: layout.projectId,
         title: movedMember.title,
-        position: command.targetGroupPosition ?? groups.length,
+        position: command.targetPanePosition ?? panes.length,
+        region: sourcePane.region,
         anchorTabKey: command.tabKey,
-        members: [{ ...movedMember, groupId, position: 0 }],
+        members: [{ ...movedMember, paneId, position: 0 }],
         createdAt: movedMember.createdAt,
         updatedAt: movedMember.updatedAt,
       },
-      command.targetGroupPosition ?? groups.length,
+      command.targetPanePosition ?? panes.length,
     );
   } else {
-    groups = groups.map((group) =>
-      group.id === command.targetGroupId
+    panes = panes.map((pane) =>
+      pane.id === command.targetPaneId
         ? {
-            ...group,
+            ...pane,
             members: inserted(
-              group.members,
-              { ...movedMember, groupId: group.id },
+              pane.members,
+              { ...movedMember, paneId: pane.id },
               command.targetMemberPosition,
             ),
           }
-        : group,
+        : pane,
     );
   }
-  return { ...layout, groups: positionedGroups(groups) };
+  return { ...layout, panes: positionedPanes(panes) };
 }

@@ -1,0 +1,31 @@
+import { z } from "zod";
+
+export const projectPaneRegionSchema = z.enum([
+  "center",
+  "right",
+  "bottom",
+  "left",
+  "detached",
+]);
+
+export const projectPaneDestinationShape = {
+  paneId: z.string().min(1).optional(),
+  /** @deprecated Use paneId. */
+  tabGroupId: z.string().min(1).optional(),
+} as const;
+
+export function hasUnambiguousProjectPaneDestination(input: {
+  paneId?: string;
+  tabGroupId?: string;
+}): boolean {
+  return !(input.paneId && input.tabGroupId);
+}
+
+export function projectPaneIdFromDestination(input: {
+  paneId?: string;
+  tabGroupId?: string;
+}): string | undefined {
+  return input.paneId ?? input.tabGroupId;
+}
+
+export type ProjectPaneRegion = z.infer<typeof projectPaneRegionSchema>;

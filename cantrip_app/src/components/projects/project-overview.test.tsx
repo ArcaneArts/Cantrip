@@ -180,11 +180,11 @@ function chatSurface(status: ChatSummary["status"]): ProjectSurface {
   return {
     definition: identity.definition,
     entity: chat,
-    groupId: "group-1",
+    paneId: "group-1",
     kind: "chat",
     member: {
       tabKey: `chat:${chat.id}`,
-      groupId: "group-1",
+      paneId: "group-1",
       projectId: project.id,
       tabKind: "chat",
       tabId: chat.id,

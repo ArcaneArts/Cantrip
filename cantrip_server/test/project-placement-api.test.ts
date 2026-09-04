@@ -14,6 +14,7 @@ import {
   executionPlacementResolutionSchema,
   executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
+  legacyProjectTabLayoutWireSummarySchema,
   projectTabLayoutWireSummarySchema,
   projectSurfaceLauncherListSchema,
   projectSurfaceLauncherSchema,
@@ -2065,15 +2066,28 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const groupId = layout.panes.find(({ members }) =>
+      members.some(({ tabId }) => tabId === anchor.id),
+    )!.id;
+    const legacyLayout = legacyProjectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
           url: `/api/projects/${projectId}/tab-groups`,
         })
       ).json(),
     );
-    const groupId = layout.groups.find(({ members }) =>
-      members.some(({ tabId }) => tabId === anchor.id),
-    )!.id;
     expect(
-      layout.groups
+      legacyLayout.groups
+        .flatMap(({ members }) => members)
+        .every((member) => "groupId" in member && !("paneId" in member)),
+    ).toBe(true);
+    expect(
+      layout.panes
         .flatMap(({ members }) => members)
         .some(({ tabId }) => tabId === sidebar.id),
     ).toBe(false);
@@ -2126,12 +2140,12 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${projectId}/tab-groups`,
+          url: `/api/projects/${projectId}/panes`,
         })
       ).json(),
     );
     expect(
-      layout.groups
+      layout.panes
         .flatMap(({ members }) => members)
         .filter(
           ({ tabId, tabKind }) =>
@@ -2139,7 +2153,7 @@ describe.sequential("project execution placement API", () => {
         ),
     ).toHaveLength(1);
     expect(
-      layout.groups
+      layout.panes
         .find(({ id }) => id === groupId)
         ?.members.some(({ tabId }) => tabId === sidebar.id),
     ).toBe(true);
@@ -2165,12 +2179,12 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${projectId}/tab-groups`,
+          url: `/api/projects/${projectId}/panes`,
         })
       ).json(),
     );
     expect(
-      layout.groups
+      layout.panes
         .flatMap(({ members }) => members)
         .filter(({ tabKey }) => tabKey === viewId),
     ).toHaveLength(1);
@@ -2178,7 +2192,7 @@ describe.sequential("project execution placement API", () => {
     const closeRevision = layout.revision;
     const closeResponse = await app.inject({
       method: "POST",
-      url: `/api/projects/${projectId}/tab-groups/member/close`,
+      url: `/api/projects/${projectId}/panes/member/close`,
       payload: { revision: closeRevision, viewId },
     });
     expect(closeResponse.statusCode, closeResponse.body).toBe(200);
@@ -2188,7 +2202,7 @@ describe.sequential("project execution placement API", () => {
     expect(closed).toMatchObject({ disposition: "closed", viewId });
     expect(closed.layout.revision).toBe(closeRevision + 1);
     expect(
-      closed.layout.groups
+      closed.layout.panes
         .flatMap(({ members }) => members)
         .some(({ tabKey }) => tabKey === viewId),
     ).toBe(false);
@@ -2205,7 +2219,7 @@ describe.sequential("project execution placement API", () => {
 
     const repeatedCloseResponse = await app.inject({
       method: "POST",
-      url: `/api/projects/${projectId}/tab-groups/member/close`,
+      url: `/api/projects/${projectId}/panes/member/close`,
       payload: { revision: closeRevision, viewId },
     });
     expect(repeatedCloseResponse.statusCode, repeatedCloseResponse.body).toBe(
@@ -2222,7 +2236,7 @@ describe.sequential("project execution placement API", () => {
 
     const staleOpen = await app.inject({
       method: "POST",
-      url: `/api/projects/${projectId}/tab-groups/member/open`,
+      url: `/api/projects/${projectId}/panes/member/open`,
       payload: {
         revision: closeRevision,
         surfaceRef: {
@@ -2237,7 +2251,7 @@ describe.sequential("project execution placement API", () => {
     const openRequest = () =>
       app.inject({
         method: "POST",
-        url: `/api/projects/${projectId}/tab-groups/member/open`,
+        url: `/api/projects/${projectId}/panes/member/open`,
         payload: {
           revision: repeatedClose.layout.revision,
           surfaceRef: {
@@ -2277,14 +2291,14 @@ describe.sequential("project execution placement API", () => {
     expect(opened).toMatchObject({ disposition: "opened", viewId });
     expect(opened.layout.revision).toBe(repeatedClose.layout.revision + 1);
     expect(
-      opened.layout.groups
+      opened.layout.panes
         .flatMap(({ members }) => members)
         .filter(({ tabKey }) => tabKey === viewId),
     ).toHaveLength(1);
 
     const focusedResponse = await app.inject({
       method: "POST",
-      url: `/api/projects/${projectId}/tab-groups/member/open`,
+      url: `/api/projects/${projectId}/panes/member/open`,
       payload: {
         revision: repeatedClose.layout.revision,
         surfaceRef: {
@@ -2303,7 +2317,7 @@ describe.sequential("project execution placement API", () => {
 
     const staleClose = await app.inject({
       method: "POST",
-      url: `/api/projects/${projectId}/tab-groups/member/close`,
+      url: `/api/projects/${projectId}/panes/member/close`,
       payload: { revision: repeatedClose.layout.revision, viewId },
     });
     expect(staleClose.statusCode).toBe(409);
@@ -2311,12 +2325,12 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${projectId}/tab-groups`,
+          url: `/api/projects/${projectId}/panes`,
         })
       ).json(),
     );
     expect(
-      layout.groups
+      layout.panes
         .flatMap(({ members }) => members)
         .filter(({ tabKey }) => tabKey === viewId),
     ).toHaveLength(1);
@@ -2342,7 +2356,7 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${firstProject.id}/tab-groups`,
+          url: `/api/projects/${firstProject.id}/panes`,
         })
       ).json(),
     );
@@ -2350,7 +2364,7 @@ describe.sequential("project execution placement API", () => {
     for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
       const openResponse = await app.inject({
         method: "POST",
-        url: `/api/projects/${firstProject.id}/tab-groups/member/open`,
+        url: `/api/projects/${firstProject.id}/panes/member/open`,
         payload: {
           revision: firstLayout.revision,
           surfaceRef: { kind: "builtin", definitionId },
@@ -2376,7 +2390,7 @@ describe.sequential("project execution placement API", () => {
       PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length,
     );
     expect(
-      firstLayout.groups
+      firstLayout.panes
         .flatMap(({ members }) => members)
         .filter(({ tabKind }) => tabKind === "builtin"),
     ).toHaveLength(PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS.length);
@@ -2385,7 +2399,7 @@ describe.sequential("project execution placement API", () => {
     for (const definitionId of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
       const focusResponse = await app.inject({
         method: "POST",
-        url: `/api/projects/${firstProject.id}/tab-groups/member/open`,
+        url: `/api/projects/${firstProject.id}/panes/member/open`,
         payload: {
           revision: revisionAfterOpening,
           surfaceRef: { kind: "builtin", definitionId },
@@ -2408,13 +2422,13 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${secondProject.id}/tab-groups`,
+          url: `/api/projects/${secondProject.id}/panes`,
         })
       ).json(),
     );
     const secondOpenResponse = await app.inject({
       method: "POST",
-      url: `/api/projects/${secondProject.id}/tab-groups/member/open`,
+      url: `/api/projects/${secondProject.id}/panes/member/open`,
       payload: {
         revision: secondLayout.revision,
         surfaceRef: { kind: "builtin", definitionId: "project.overview" },
@@ -2488,7 +2502,7 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${firstProject.id}/tab-groups`,
+          url: `/api/projects/${firstProject.id}/panes`,
         })
       ).json(),
     );
@@ -2548,7 +2562,7 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${projectId}/tab-groups`,
+          url: `/api/projects/${projectId}/panes`,
         })
       ).json(),
     );
@@ -2556,7 +2570,7 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "POST",
-          url: `/api/projects/${projectId}/tab-groups/member/close`,
+          url: `/api/projects/${projectId}/panes/member/close`,
           payload: { revision: layout.revision, viewId },
         })
       ).json(),
@@ -2565,7 +2579,7 @@ describe.sequential("project execution placement API", () => {
     const [reopen, deleted] = await Promise.all([
       app.inject({
         method: "POST",
-        url: `/api/projects/${projectId}/tab-groups/member/open`,
+        url: `/api/projects/${projectId}/panes/member/open`,
         payload: {
           revision: closed.layout.revision,
           surfaceRef: {
@@ -2582,18 +2596,18 @@ describe.sequential("project execution placement API", () => {
 
     const layoutResponse = await app.inject({
       method: "GET",
-      url: `/api/projects/${projectId}/tab-groups`,
+      url: `/api/projects/${projectId}/panes`,
     });
     expect(layoutResponse.statusCode, layoutResponse.body).toBe(200);
     layout = projectTabLayoutWireSummarySchema.parse(layoutResponse.json());
     expect(
-      layout.groups
+      layout.panes
         .flatMap(({ members }) => members)
         .some(({ tabKey }) => tabKey === viewId),
     ).toBe(false);
   });
 
-  it("keeps custom tab-group labels opaque through rename, reorder, split, and merge", async () => {
+  it("keeps pane labels opaque while moving mixed kinds across center panes", async () => {
     const terminal = terminalWireSummarySchema.parse(
       (
         await app.inject({
@@ -2614,11 +2628,11 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${projectId}/tab-groups`,
+          url: `/api/projects/${projectId}/panes`,
         })
       ).json(),
     );
-    const groupId = layout.groups.find(({ members }) =>
+    const paneId = layout.panes.find(({ members }) =>
       members.some(({ tabId }) => tabId === terminal.id),
     )!.id;
     const explorer = explorerWireSummarySchema.parse(
@@ -2628,7 +2642,7 @@ describe.sequential("project execution placement API", () => {
           url: `/api/projects/${projectId}/explorers`,
           payload: {
             ...protectedExplorerFields(),
-            tabGroupId: groupId,
+            paneId,
             target: {
               kind: "worktree",
               projectId,
@@ -2642,31 +2656,32 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "GET",
-          url: `/api/projects/${projectId}/tab-groups`,
+          url: `/api/projects/${projectId}/panes`,
         })
       ).json(),
     );
     const renameRevision = layout.revision;
     const titleProtection = protectedDisplayLabelFields(
       "tab-group",
-      groupId,
+      paneId,
     ).titleProtection;
     const renamed = await app.inject({
       method: "PATCH",
-      url: `/api/projects/${projectId}/tab-groups/${groupId}`,
+      url: `/api/projects/${projectId}/panes/${paneId}`,
       payload: { revision: renameRevision, titleProtection },
     });
     expect(renamed.statusCode).toBe(200);
     expect(
-      (
-        renamed.json() as { groups: Array<Record<string, unknown>> }
-      ).groups.find(({ id }) => id === groupId),
+      (renamed.json() as { panes: Array<Record<string, unknown>> }).panes.find(
+        ({ id }) => id === paneId,
+      ),
     ).not.toHaveProperty("title");
     layout = projectTabLayoutWireSummarySchema.parse(renamed.json());
     expect(JSON.stringify(renamed.json())).not.toContain(
       "Cycle 5 private group",
     );
-    expect(layout.groups.find(({ id }) => id === groupId)).toMatchObject({
+    expect(layout.panes.find(({ id }) => id === paneId)).toMatchObject({
+      region: "center",
       titleProtection: {
         classification: { recordKind: "tab-group" },
       },
@@ -2678,49 +2693,64 @@ describe.sequential("project execution placement API", () => {
 
     const stale = await app.inject({
       method: "PATCH",
-      url: `/api/projects/${projectId}/tab-groups/${groupId}`,
+      url: `/api/projects/${projectId}/panes/${paneId}`,
       payload: { revision: renameRevision, titleProtection },
     });
     expect(stale.statusCode).toBe(409);
 
-    const memberKeys = layout.groups
-      .find(({ id }) => id === groupId)!
+    const memberKeys = layout.panes
+      .find(({ id }) => id === paneId)!
       .members.map(({ tabKey }) => tabKey)
       .reverse();
     layout = projectTabLayoutWireSummarySchema.parse(
       (
         await app.inject({
           method: "PATCH",
-          url: `/api/projects/${projectId}/tab-groups/${groupId}/members/order`,
+          url: `/api/projects/${projectId}/panes/${paneId}/members/order`,
           payload: { revision: layout.revision, tabKeys: memberKeys },
         })
       ).json(),
     );
     expect(
-      layout.groups
-        .find(({ id }) => id === groupId)!
+      layout.panes
+        .find(({ id }) => id === paneId)!
         .members.map(({ tabKey }) => tabKey),
     ).toEqual(memberKeys);
 
+    const concurrentMoves = await Promise.all([
+      app.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}/panes/member`,
+        payload: {
+          revision: layout.revision,
+          tabKey: `explorer:${explorer.id}`,
+          targetPaneId: null,
+          targetMemberPosition: 0,
+          targetPanePosition: layout.panes.length,
+        },
+      }),
+      app.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}/panes/member`,
+        payload: {
+          revision: layout.revision,
+          tabKey: `explorer:${explorer.id}`,
+          targetPaneId: null,
+          targetMemberPosition: 0,
+          targetPanePosition: layout.panes.length,
+        },
+      }),
+    ]);
+    expect(concurrentMoves.map(({ statusCode }) => statusCode).sort()).toEqual([
+      200, 409,
+    ]);
     layout = projectTabLayoutWireSummarySchema.parse(
-      (
-        await app.inject({
-          method: "PATCH",
-          url: `/api/projects/${projectId}/tab-groups/member`,
-          payload: {
-            revision: layout.revision,
-            tabKey: `explorer:${explorer.id}`,
-            targetGroupId: null,
-            targetMemberPosition: 0,
-            targetGroupPosition: layout.groups.length,
-          },
-        })
-      ).json(),
+      concurrentMoves.find(({ statusCode }) => statusCode === 200)!.json(),
     );
     expect(
-      layout.groups.find(({ id }) => id === groupId)?.titleProtection,
+      layout.panes.find(({ id }) => id === paneId)?.titleProtection,
     ).toBeNull();
-    const splitGroup = layout.groups.find(({ members }) =>
+    const splitGroup = layout.panes.find(({ members }) =>
       members.some(({ tabId }) => tabId === explorer.id),
     )!;
     expect(splitGroup.titleProtection).toBeNull();
@@ -2729,32 +2759,36 @@ describe.sequential("project execution placement API", () => {
       (
         await app.inject({
           method: "PATCH",
-          url: `/api/projects/${projectId}/tab-groups/member`,
+          url: `/api/projects/${projectId}/panes/member`,
           payload: {
             revision: layout.revision,
             tabKey: `explorer:${explorer.id}`,
-            targetGroupId: groupId,
+            targetPaneId: paneId,
             targetMemberPosition: 1,
           },
         })
       ).json(),
     );
-    expect(layout.groups.some(({ id }) => id === splitGroup.id)).toBe(false);
-    expect(
-      layout.groups.find(({ id }) => id === groupId)?.members,
-    ).toHaveLength(2);
+    expect(layout.panes.some(({ id }) => id === splitGroup.id)).toBe(false);
+    expect(layout.panes.find(({ id }) => id === paneId)?.members).toHaveLength(
+      2,
+    );
 
-    const reversedGroups = layout.groups.map(({ id }) => id).reverse();
+    const reversedGroups = layout.panes.map(({ id }) => id).reverse();
     const reordered = await app.inject({
       method: "PATCH",
-      url: `/api/projects/${projectId}/tab-groups/order`,
-      payload: { revision: layout.revision, groupIds: reversedGroups },
+      url: `/api/projects/${projectId}/panes/order`,
+      payload: {
+        revision: layout.revision,
+        region: "center",
+        paneIds: reversedGroups,
+      },
     });
     expect(reordered.statusCode).toBe(200);
     expect(
       projectTabLayoutWireSummarySchema
         .parse(reordered.json())
-        .groups.map(({ id }) => id),
+        .panes.map(({ id }) => id),
     ).toEqual(reversedGroups);
   });
 });

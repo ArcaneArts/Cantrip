@@ -5,19 +5,36 @@ import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import { reasoningEffortSchema } from "./providers.js";
 import { executionTargetSchema } from "./execution-targets.js";
 import { githubAgentWorkflowContextSchema } from "./github.js";
+import {
+  hasUnambiguousProjectPaneDestination,
+  projectPaneDestinationShape,
+} from "./project-pane-identifiers.js";
 
 const chatPlacementCreateFields = {
   worktreeId: z.string().min(1).optional(),
   worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
-  tabGroupId: z.string().min(1).optional(),
+  ...projectPaneDestinationShape,
   target: executionTargetSchema.optional(),
 } as const;
 
 const chatPlacementCreateSchema = z
   .object(chatPlacementCreateFields)
   .strict()
-  .refine((input) => !(input.worktreeId && input.target), {
-    message: "Choose either a legacy worktreeId or an execution target.",
+  .superRefine((input, context) => {
+    if (input.worktreeId && input.target) {
+      context.addIssue({
+        code: "custom",
+        message: "Choose either a legacy worktreeId or an execution target.",
+      });
+    }
+    if (!hasUnambiguousProjectPaneDestination(input)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Specify either paneId or the deprecated tabGroupId, not both.",
+        path: ["paneId"],
+      });
+    }
   });
 
 export const chatCreateSchema = chatPlacementCreateSchema
