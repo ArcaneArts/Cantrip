@@ -94,7 +94,6 @@ import {
   preventMiddleMouseDefault,
 } from "@/lib/tab-middle-click";
 import { useAppLiveScope } from "@/lib/app-live-react";
-import { nextProjectTabAfterRemoval } from "@/lib/project-pane";
 import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
 import {
@@ -322,16 +321,6 @@ export function DockRail({
     region,
   });
   const tooltipSide = region === "right" ? "left" : "top";
-  const closeImmediately = (surface: ProjectSurface) => {
-    if (surface.tabKey === activeTabKey) {
-      const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
-      const nextSurface = surfaces.find(
-        (candidate) => candidate.tabKey === nextTabKey,
-      );
-      if (nextSurface) onSelect(nextSurface, false);
-    }
-    onClose(surface);
-  };
   return (
     <>
       <aside
@@ -414,7 +403,7 @@ export function DockRail({
                 active={surface.tabKey === activeTabKey}
                 disabled={pending}
                 memberPosition={memberPosition}
-                onClose={() => closeImmediately(surface)}
+                onClose={() => onClose(surface)}
                 onDelete={() => onDelete(surface)}
                 onMoveToRegion={
                   onMoveToRegion
