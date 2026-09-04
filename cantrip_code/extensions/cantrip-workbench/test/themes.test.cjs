@@ -18,6 +18,18 @@ async function theme(name) {
   return JSON.parse(await readFile(path.join(themesDirectory, name), "utf8"));
 }
 
+async function resolvedColors(name) {
+  const value = await theme(name);
+  if (!value.include) {
+    return value.colors;
+  }
+
+  return {
+    ...(await resolvedColors(path.basename(value.include))),
+    ...value.colors,
+  };
+}
+
 test("ships themes in the browser extension host", async () => {
   const manifest = JSON.parse(await readFile(themesManifest, "utf8"));
 
@@ -164,6 +176,25 @@ test("uses transparent structural surfaces for every Cantrip theme", async () =>
     for (const color of structuralColors) {
       assert.equal(colors[color], "#00000000", `${name}: ${color}`);
     }
+  }
+});
+
+test("uses fixed half-opaque sticky-scroll surfaces", async () => {
+  const expectedColors = new Map([
+    ["cantrip-dark.json", "#090B0E80"],
+    ["cantrip-light.json", "#F8F9FB80"],
+    ["cantrip-hc-dark.json", "#00000080"],
+    ["cantrip-hc-light.json", "#FFFFFF80"],
+    ["cantrip-pro-dark.json", "#090B0E80"],
+    ["cantrip-pro-light.json", "#F8F9FB80"],
+    ["cantrip-pro-hc-dark.json", "#00000080"],
+    ["cantrip-pro-hc-light.json", "#FFFFFF80"],
+  ]);
+
+  for (const [name, expected] of expectedColors) {
+    const colors = await resolvedColors(name);
+    assert.equal(colors["editorStickyScroll.background"], expected);
+    assert.equal(colors["editorStickyScrollGutter.background"], expected);
   }
 });
 
