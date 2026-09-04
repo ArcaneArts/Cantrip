@@ -16,7 +16,8 @@ implement later-tranche operations now.
 
 - Branch: `codex/cua-01-feasibility`, based on `6b7df74b1`.
 - PR: [#1733](https://github.com/ArcaneArts/Cantrip/pull/1733).
-  Initial implementation commit: `3d1842785`; merge pending.
+  Initial implementation commit: `3d1842785`; merged 2026-09-04 as
+  `1e2da3de9f4ee08afb7b56b5e84b937606e4bf2b` (observed via GitHub).
 - Implemented behavior: progress ledger and opt-in native/JavaScript
   [feasibility probes](../../scripts/cantrip-cua/feasibility/README.md).
   Product behavior remains unavailable; no startup or packaging changes.
@@ -45,6 +46,39 @@ implement later-tranche operations now.
 Subsequent cycles record the preceding PR's observed merge commit. A cycle's
 own final merge cannot be truthfully written before GitHub merges it; its PR
 is the authoritative merge record until the next ledger update.
+
+### Tranche cycle 2 — Rust process, sessions, fake capture, and cursor
+
+- Branch: `codex/cua-02-rust-foundation`, based on merged cycle 1 (`1e2da3de9`).
+- PR: [#1734](https://github.com/ArcaneArts/Cantrip/pull/1734).
+  Initial implementation commit: `67019f00a`; merge pending.
+- Implemented: standalone `cantrip_cua` library/executable and lockfile; bounded
+  raw-binary protocol; independent cancellation reader; serialized session
+  ownership; explicit fake monitor/window backend; PNG observations with digest;
+  versioned configurable logical cursor and deterministic raster renderer.
+  Default native capability remains unavailable; no startup/build-chain changes.
+- Validation: all 47 protocol, cursor, service, runtime concurrency, and
+  actual-executable tests pass in debug and release; release build, focused
+  Clippy, formatting, and Windows GNU target cross-check pass. Executable test
+  completes handshake, target attach, configuration/movement, decoded PNG
+  hotspot verification, close, and shutdown. Runtime tests prove in-flight and
+  queued cancellation, EOF, saturation, and lost-output handling with real
+  reader/executor/writer threads and no scheduling sleeps.
+- Review fixes: unknown fields rejected for all operations; target-bound
+  requests carry ID **and** generation to prevent wrong-target commands after a
+  switch; lost stdout cancels native work; shared-target attachment preserves
+  observer cursor state; resized targets discard invalid trail points.
+- Platform: tests executed on macOS arm64 with deterministic fake pixels.
+  Windows cross-compilation is compile evidence only, not Windows runtime QA.
+- Manual verification: native pixels remain cycle-1 prototype evidence, not
+  production Rust capture. Installed helper/Tauri permission reuse unverified.
+- Known limitations: embedded bitmap cursor labels do not implement full text
+  shaping; native adapters must cooperatively honor cancellation/deadlines.
+- Remaining: build/package/smoke integration, worker service, protected server
+  routing, client preview, native Rust capture, managed JS/MCP, approval and
+  Trajectory wiring, full end-to-end verification.
+- Deferred: native input/mutations, human event taps, Windows/Linux native
+  backends, remote-worker control, continuous video, and arbitrary cursor assets.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
