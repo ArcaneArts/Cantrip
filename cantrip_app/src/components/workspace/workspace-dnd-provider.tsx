@@ -65,7 +65,6 @@ export function filterWorkspacePointerCollisions(
 ): Collision[] {
   if (pointerCollisions.length > 0) {
     for (const targetType of [
-      "pane-edge",
       "pane-tab",
       "pane-target",
       "region",

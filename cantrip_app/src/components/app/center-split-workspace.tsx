@@ -1,5 +1,3 @@
-import { useDndContext, useDroppable } from "@dnd-kit/core";
-import type { ProjectPaneSummary } from "@cantrip/protocol";
 import {
   useCallback,
   useRef,
@@ -12,83 +10,10 @@ import {
 import {
   centerSplitFractionForKey,
   type CenterLayoutNode,
-  type CenterPaneEdge,
   type CenterSplitDirection,
 } from "@/components/app/center-split-layout";
 import type { VisibleProjectPane } from "@/components/app/project-workspace-frame-model";
 import { cn } from "@/lib/utils";
-import {
-  type WorkspaceDndData,
-  workspacePaneEdgeDropId,
-} from "@/lib/workspace-dnd-model";
-
-function CenterPaneEdgeDropTarget({
-  active,
-  edge,
-  pane,
-}: {
-  active: boolean;
-  edge: CenterPaneEdge;
-  pane: ProjectPaneSummary;
-}) {
-  const drop = useDroppable({
-    id: workspacePaneEdgeDropId(pane.id, edge),
-    disabled: !active,
-    data: {
-      drop: {
-        edge,
-        paneId: pane.id,
-        projectId: pane.projectId,
-        type: "pane-edge",
-      },
-    } satisfies WorkspaceDndData,
-  });
-  return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        "absolute z-50 rounded border border-transparent transition-colors",
-        edge === "left" && "bottom-1/4 left-0 top-1/4 w-1/4",
-        edge === "right" && "bottom-1/4 right-0 top-1/4 w-1/4",
-        edge === "top" && "left-1/4 right-1/4 top-0 h-1/4",
-        edge === "bottom" && "bottom-0 left-1/4 right-1/4 h-1/4",
-        active ? "pointer-events-auto" : "pointer-events-none",
-        drop.isOver && "border-primary bg-primary/20",
-      )}
-      data-center-pane-edge={edge}
-      data-center-pane-edge-active={drop.isOver ? "true" : "false"}
-      ref={drop.setNodeRef}
-    />
-  );
-}
-
-function CenterPaneEdgeDropTargets({
-  enabled,
-  pane,
-}: {
-  enabled: boolean;
-  pane: ProjectPaneSummary;
-}) {
-  const { active } = useDndContext();
-  const drag = (active?.data.current as WorkspaceDndData | undefined)?.drag;
-  const acceptsCenter =
-    enabled &&
-    drag?.type === "surface" &&
-    (drag.supportedRegions === undefined ||
-      drag.supportedRegions.includes("center"));
-  return (
-    <>
-      {(["left", "right", "top", "bottom"] as const).map((edge) => (
-        <CenterPaneEdgeDropTarget
-          active={acceptsCenter}
-          edge={edge}
-          key={edge}
-          pane={pane}
-        />
-      ))}
-    </>
-  );
-}
 
 function CenterSplitDivider({
   direction,
@@ -230,10 +155,6 @@ function CenterSplitNode({
         >
           {renderPaneBody(presentation)}
         </div>
-        <CenterPaneEdgeDropTargets
-          enabled={controlsEnabled}
-          pane={presentation.pane}
-        />
       </section>
     );
   }

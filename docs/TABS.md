@@ -237,7 +237,8 @@ share that pane, but only one is active at a time.
 - Cross-pane dragging shows a temporary insertion placeholder before drop so
   destination members move out of the way without mutating durable layout
   state. Ending or cancelling the drag removes the placeholder immediately.
-- Dragging onto a center-pane edge creates a future split pane.
+- Center panes do not expose edge drop targets; tabs join them through their
+  top tab strips instead of creating a new center split while dragging.
 - Dragging an entire pane moves the pane only after pane-level movement is
   implemented explicitly.
 
@@ -574,8 +575,8 @@ Migration should be incremental and preserve current layouts:
 5. Add explicit pane region and dock placement to the persisted layout.
 6. Map current file-tab groups to the center and current non-file groups to the
    navigator/center defaults without changing their order.
-7. Replace `file-tabs` versus `sidebar` drag legality with pane and pane-edge
-   targets.
+7. Replace `file-tabs` versus `sidebar` drag legality with pane, tab-strip, and
+   dock-rail targets.
 8. Add right and bottom dock panes behind a feature flag or schema capability.
 9. Add split-tree nodes after the stable dock frame is shipped.
 10. Remove legacy entity-position navigation authority only after all clients
@@ -633,7 +634,7 @@ because its view placement is deduplicated.
 ### Milestone 6: center split tree
 
 - Add horizontal and vertical center split nodes.
-- Support pane-edge drops and resize fractions.
+- Support persisted split resize fractions without pane-edge creation drops.
 - Preserve active-tab state independently per pane and window.
 - Define close/merge behavior for the final tab in a split pane.
 
