@@ -11,6 +11,7 @@ import { projectSurfaceTabKey } from "@/lib/project-surface";
 import { GlobalContentHost } from "@/components/app/global-content-host";
 import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-layer";
 import { ProjectWorkspaceFrame } from "@/components/app/project-workspace-frame";
+import { projectFrameVisibility } from "@/components/app/project-frame-visibility";
 import { ShellHeader } from "@/components/app/shell-header";
 import { ShellOverlays } from "@/components/app/shell-overlays";
 import { ShellSidebar } from "@/components/app/shell-sidebar";
@@ -50,17 +51,17 @@ function ShellContent({
     selectedProject &&
     tabLayout.data,
   );
-  const dockFrameVisible = Boolean(
-    desktopProjectFrame &&
-    !mobileProjectSelectorOpen &&
-    !showImporter &&
-    !showSettings &&
-    !showArchivedStandaloneChats &&
-    !showServerAdmin &&
-    !showProjectSettings &&
-    !sidebarFilePreviewVisible &&
-    workspaceSelection.destination !== "overview",
-  );
+  const { docked, railsVisible } = projectFrameVisibility({
+    desktopProjectFrame,
+    mobileProjectSelectorOpen,
+    showArchivedStandaloneChats,
+    showImporter,
+    showProjectSettings,
+    showServerAdmin,
+    showSettings,
+    sidebarFilePreviewVisible,
+    workspaceDestination: workspaceSelection.destination,
+  });
   return (
     <section
       ref={contentRootRef}
@@ -68,7 +69,11 @@ function ShellContent({
     >
       <ShellHeader bindings={bindings} />
       {desktopProjectFrame ? (
-        <ProjectWorkspaceFrame bindings={bindings} docked={dockFrameVisible} />
+        <ProjectWorkspaceFrame
+          bindings={bindings}
+          docked={docked}
+          railsVisible={railsVisible}
+        />
       ) : (
         <>
           <PersistentSurfaceLayer bindings={bindings} />

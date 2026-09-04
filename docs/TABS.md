@@ -203,6 +203,9 @@ Each dock contains one pane in the first implementation. Multiple tabs may
 share that pane, but only one is active at a time.
 
 - The dock rail is the pane's tab selector; the pane body has no tab strip.
+- The right and bottom rails remain visible across project Overview, file
+  previews, and ordinary project surfaces. Switching between those content
+  modes does not hide the rails or discard an inactive transient file tab.
 - The rail owns the add-surface control and is the drop target for tabs moved
   from center panes.
 - Open rail tabs follow the pane's persisted member order. Dragging one along
