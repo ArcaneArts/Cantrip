@@ -295,6 +295,7 @@ import {
   workspaceRepositoryDiscoveryStartSchema,
   workspaceRepositoryImportStartSchema,
   projectTabLayoutWireSummarySchema,
+  projectDockPresentationUpdateSchema,
   projectSurfaceViewCloseResultSchema,
   projectSurfaceViewCloseSchema,
   projectSurfaceViewOpenResultSchema,
@@ -5318,6 +5319,31 @@ export async function moveProjectPaneMember(
         {
           method: "PATCH",
           body: JSON.stringify(projectPaneMemberMoveSchema.parse(input)),
+        },
+      ),
+    ),
+  );
+}
+
+export async function updateProjectPaneMemberPresentation(
+  projectId: string,
+  input: {
+    preferredMode: "closed" | "split" | "full";
+    restoreFraction: number;
+    revision: number;
+    splitFraction: number;
+    tabKey: string;
+  },
+) {
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/panes/member/presentation`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(
+            projectDockPresentationUpdateSchema.parse(input),
+          ),
         },
       ),
     ),

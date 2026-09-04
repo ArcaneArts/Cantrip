@@ -10,6 +10,8 @@ import type {
   ProjectSurfaceViewCloseResult,
   ProjectSurfaceViewOpen,
   ProjectSurfaceViewOpenResult,
+  ProjectDockPresentationPreference,
+  ProjectDockPresentationUpdate,
   ProjectTabKind,
   ProjectTabLayoutWireSummary,
   LegacyProjectTabLayoutWireSummary,
@@ -109,6 +111,19 @@ function isSinglePaneDockRegion(
   region: ProjectPaneRegion,
 ): region is "right" | "bottom" {
   return region === "right" || region === "bottom";
+}
+
+const DEFAULT_DOCK_PRESENTATION = {
+  preferredMode: "split",
+  splitFraction: 0.32,
+  restoreFraction: 0.32,
+} as const satisfies ProjectDockPresentationPreference;
+
+function dockPresentationKey(
+  tabKey: string,
+  region: ProjectPaneRegion,
+): string {
+  return `${region}:${tabKey}`;
 }
 
 async function panesInRegion(
@@ -585,6 +600,7 @@ export class ProjectTabLayoutRepository {
       code,
       views,
       builtInStates,
+      dockPresentations,
     ] = await Promise.all([
       this.database
         .select()
@@ -649,6 +665,12 @@ export class ProjectTabLayoutRepository {
         .select()
         .from(schema.projectBuiltInSurfaceStates)
         .where(eq(schema.projectBuiltInSurfaceStates.projectId, projectId)),
+      this.database
+        .select()
+        .from(schema.projectDockPresentationPreferences)
+        .where(
+          eq(schema.projectDockPresentationPreferences.projectId, projectId),
+        ),
     ]);
     for (const dockRegion of ["right", "bottom"] as const) {
       assertSingleDockPane(
@@ -699,6 +721,18 @@ export class ProjectTabLayoutRepository {
       ),
     ]);
     const memberSummaries = new Map<string, ProjectTabMemberWireSummary[]>();
+    const dockPresentationByTabAndRegion = new Map(
+      dockPresentations.map(
+        ({ tabKey, region, preferredMode, splitFraction, restoreFraction }) =>
+          [
+            dockPresentationKey(tabKey, region),
+            { preferredMode, splitFraction, restoreFraction },
+          ] as const,
+      ),
+    );
+    const paneRegionById = new Map(
+      panes.map(({ id, region }) => [id, region] as const),
+    );
     for (const member of members) {
       const protectedTitle = titles.get(member.tabKey);
       if (!protectedTitle) {
@@ -713,6 +747,16 @@ export class ProjectTabLayoutRepository {
         tabKind: member.tabKind as ProjectTabKind,
         tabId: member.tabId,
         ...protectedTitle,
+        dockPresentation:
+          paneRegionById.get(member.groupId) === "right" ||
+          paneRegionById.get(member.groupId) === "bottom"
+            ? (dockPresentationByTabAndRegion.get(
+                dockPresentationKey(
+                  member.tabKey,
+                  paneRegionById.get(member.groupId)!,
+                ),
+              ) ?? DEFAULT_DOCK_PRESENTATION)
+            : null,
         position: member.position,
         createdAt: member.createdAt.toISOString(),
         updatedAt: member.updatedAt.toISOString(),
@@ -792,6 +836,64 @@ export class ProjectTabLayoutRepository {
           updatedAt: new Date(),
         })
         .where(eq(schema.tabGroups.id, paneId));
+    });
+    return this.get(ownerId, projectId);
+  }
+
+  async updateDockPresentation(
+    ownerId: string,
+    projectId: string,
+    input: ProjectDockPresentationUpdate,
+  ): Promise<ProjectTabLayoutWireSummary | null> {
+    if (!(await this.get(ownerId, projectId))) return null;
+    await this.database.transaction(async (transaction) => {
+      await claimRevision(transaction, ownerId, projectId, input.revision);
+      const placements = await transaction
+        .select({ region: schema.tabGroups.region })
+        .from(schema.tabGroupMembers)
+        .innerJoin(
+          schema.tabGroups,
+          eq(schema.tabGroups.id, schema.tabGroupMembers.groupId),
+        )
+        .where(
+          and(
+            eq(schema.tabGroupMembers.projectId, projectId),
+            eq(schema.tabGroupMembers.tabKey, input.tabKey),
+          ),
+        )
+        .limit(1);
+      const region = placements[0]?.region;
+      if (region !== "right" && region !== "bottom") {
+        throw new TabLayoutInvariantError(
+          "Dock presentation can only be updated for a right or bottom placement.",
+        );
+      }
+      const now = new Date();
+      await transaction
+        .insert(schema.projectDockPresentationPreferences)
+        .values({
+          projectId,
+          tabKey: input.tabKey,
+          region,
+          preferredMode: input.preferredMode,
+          splitFraction: input.splitFraction,
+          restoreFraction: input.restoreFraction,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.projectDockPresentationPreferences.projectId,
+            schema.projectDockPresentationPreferences.tabKey,
+            schema.projectDockPresentationPreferences.region,
+          ],
+          set: {
+            preferredMode: input.preferredMode,
+            splitFraction: input.splitFraction,
+            restoreFraction: input.restoreFraction,
+            updatedAt: now,
+          },
+        });
     });
     return this.get(ownerId, projectId);
   }

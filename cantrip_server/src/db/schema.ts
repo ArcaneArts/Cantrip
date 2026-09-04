@@ -26,6 +26,7 @@ import type {
   ModelReasoningEffortOption,
   PrivateDisplayLabelOpaque,
   ProjectBuiltInSurfaceDefinitionId,
+  ProjectDockPresentationMode,
   ProjectPaneRegion,
   SurfacePrivateStateOpaque,
   SurfaceLauncherLocation,
@@ -127,6 +128,7 @@ import {
   bigserial,
   boolean,
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -2424,6 +2426,47 @@ export const tabGroupMembers = pgTable(
     check(
       "tab_group_members_kind_check",
       sql`${table.tabKind} IN ('chat', 'terminal', 'explorer', 'browser', 'code', 'history', 'issues', 'remote-desktop', 'builtin')`,
+    ),
+  ],
+);
+
+export const projectDockPresentationPreferences = pgTable(
+  "project_dock_presentation_preferences",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    tabKey: text("tab_key").notNull(),
+    region: text("region").$type<ProjectPaneRegion>().notNull(),
+    preferredMode: text("preferred_mode")
+      .$type<ProjectDockPresentationMode>()
+      .notNull(),
+    splitFraction: doublePrecision("split_fraction").notNull(),
+    restoreFraction: doublePrecision("restore_fraction").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.tabKey, table.region] }),
+    check(
+      "project_dock_presentation_preferences_region_check",
+      sql`${table.region} IN ('right', 'bottom')`,
+    ),
+    check(
+      "project_dock_presentation_preferences_mode_check",
+      sql`${table.preferredMode} IN ('closed', 'split', 'full')`,
+    ),
+    check(
+      "project_dock_presentation_preferences_split_fraction_check",
+      sql`${table.splitFraction} BETWEEN 0.05 AND 0.95`,
+    ),
+    check(
+      "project_dock_presentation_preferences_restore_fraction_check",
+      sql`${table.restoreFraction} BETWEEN 0.05 AND 0.95`,
     ),
   ],
 );

@@ -7,6 +7,7 @@ import {
   projectPaneMemberMoveSchema,
   projectPaneMemberOrderSchema,
   projectPaneOrderSchema,
+  projectDockPresentationUpdateSchema,
   projectBuiltinSurfaceDefinitionIdSchema,
   projectSurfaceLauncherListSchema,
   projectSurfaceLauncherPinSchema,
@@ -161,6 +162,36 @@ export function installTabLayoutRoutes(
       }
       try {
         const layout = await repository.tabLayouts.moveMember(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/panes/member/presentation",
+    async (request, reply) => {
+      const input = projectDockPresentationUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.updateDockPresentation(
           applicationOwnerId(),
           request.params.projectId,
           input.data,

@@ -26,33 +26,35 @@ export const definitionIdByCreateKind = {
   terminal: "project.terminal",
 } as const satisfies Record<ProjectSurfaceCreateKind, string>;
 
-export function dockDividerFractionForKey(
-  direction: "horizontal" | "vertical",
-  fraction: number,
-  key: string,
-): number | null {
-  if (key === "Home") return 0.2;
-  if (key === "End") return 0.8;
-  const previous = direction === "vertical" ? "ArrowLeft" : "ArrowUp";
-  const next = direction === "vertical" ? "ArrowRight" : "ArrowDown";
-  if (key === previous) return fraction - 0.05;
-  if (key === next) return fraction + 0.05;
-  return null;
-}
-
 export function projectWorkspaceGridModel({
   bottom,
   bottomFraction,
   center,
+  fullRegion = null,
   right,
   rightFraction,
 }: {
   bottom: boolean;
   bottomFraction: number;
   center: boolean;
+  fullRegion?: "right" | "bottom" | null;
   right: boolean;
   rightFraction: number;
 }) {
+  if (fullRegion) {
+    return {
+      gridTemplateAreas:
+        fullRegion === "right"
+          ? '"right-tabs" "right-body"'
+          : '"bottom-tabs" "bottom-body"',
+      gridTemplateColumns: "minmax(0, 1fr)",
+      gridTemplateRows: "40px minmax(0, 1fr)",
+      hasUpper: fullRegion === "right",
+      showBottomDivider: false,
+      showRightDivider: false,
+      visibleRegions: [fullRegion],
+    } as const;
+  }
   const hasUpper = center || right;
   const splitUpper = center && right;
   return {
@@ -64,11 +66,11 @@ export function projectWorkspaceGridModel({
           ? '"right-tabs" "right-body" "bottom-divider" "bottom-tabs" "bottom-body"'
           : '"empty-upper-tabs" "empty-upper-body" "bottom-divider" "bottom-tabs" "bottom-body"',
     gridTemplateColumns: splitUpper
-      ? `${rightFraction * 100}% 6px minmax(0, 1fr)`
+      ? `minmax(0, calc(${(1 - rightFraction) * 100}% - 3px)) 6px minmax(0, calc(${rightFraction * 100}% - 3px))`
       : "minmax(0, 1fr)",
     gridTemplateRows:
       hasUpper && bottom
-        ? `40px minmax(0, ${bottomFraction}fr) 6px 40px minmax(0, ${1 - bottomFraction}fr)`
+        ? `40px minmax(0, calc(${(1 - bottomFraction) * 100}% - 43px)) 6px 40px minmax(0, calc(${bottomFraction * 100}% - 43px))`
         : hasUpper
           ? "40px minmax(0, 1fr) 0 0 0"
           : bottom
@@ -77,6 +79,11 @@ export function projectWorkspaceGridModel({
     hasUpper,
     showBottomDivider: hasUpper && bottom,
     showRightDivider: splitUpper,
+    visibleRegions: [
+      ...(center ? (["center"] as const) : []),
+      ...(right ? (["right"] as const) : []),
+      ...(bottom ? (["bottom"] as const) : []),
+    ],
   } as const;
 }
 
