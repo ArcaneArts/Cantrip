@@ -75,6 +75,16 @@ export function revealDockPresentation(
     : preference;
 }
 
+export function dockPresentationAfterRailTabClick(
+  preference: ProjectDockPresentationPreference,
+  active: boolean,
+): ProjectDockPresentationPreference {
+  if (active && preference.preferredMode !== "closed") {
+    return { ...preference, preferredMode: "closed" };
+  }
+  return revealDockPresentation(preference);
+}
+
 /**
  * Resolves a drag candidate with asymmetric release thresholds so an edge snap
  * does not oscillate as the pointer moves around the entry threshold.

@@ -174,7 +174,7 @@ function renderRail({
   launchers?: readonly ProjectSurfaceLauncher[];
   onClose?(surface: ProjectSurface): void;
   onDelete?(surface: ProjectSurface): void;
-  onSelect?(surface: ProjectSurface): void;
+  onSelect?(surface: ProjectSurface, active: boolean): void;
   region?: "right" | "bottom";
   surfaces: readonly ProjectSurface[];
 }) {
@@ -256,7 +256,8 @@ describe("dock rail tabs", () => {
     const terminal = surface("terminal", "two", "Terminal", 1);
     const onClose = vi.fn<(surface: ProjectSurface) => void>();
     const onDelete = vi.fn<(surface: ProjectSurface) => void>();
-    const onSelect = vi.fn<(surface: ProjectSurface) => void>();
+    const onSelect =
+      vi.fn<(surface: ProjectSurface, active: boolean) => void>();
     let renderer!: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
@@ -277,7 +278,7 @@ describe("dock rail tabs", () => {
     );
     expect(closeBrowser).toBeDefined();
     await act(async () => closeBrowser?.props.onClick());
-    expect(onSelect).toHaveBeenCalledWith(terminal);
+    expect(onSelect).toHaveBeenCalledWith(terminal, false);
     expect(onClose).toHaveBeenCalledWith(browser);
 
     const deleteBrowser = menuItems().find((item) =>
@@ -301,6 +302,8 @@ describe("dock rail tabs", () => {
       projectId: "project-1",
       target: { definitionId: "git.history", kind: "definition" },
     } as ProjectSurfaceLauncher;
+    const onSelect =
+      vi.fn<(surface: ProjectSurface, active: boolean) => void>();
     let renderer!: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
@@ -308,6 +311,7 @@ describe("dock rail tabs", () => {
         activeTabKey: history.tabKey,
         allSurfaces: [history],
         launchers: [launcher],
+        onSelect,
         surfaces: [history],
       });
     });
@@ -316,7 +320,7 @@ describe("dock rail tabs", () => {
       renderer.root.findAll(
         (node) =>
           node.type === "button" &&
-          node.props["aria-label"] === "Focus History in right dock",
+          node.props["aria-label"] === "Collapse History in right dock",
       ),
     ).toHaveLength(1);
     expect(
@@ -327,6 +331,12 @@ describe("dock rail tabs", () => {
       ),
     ).toHaveLength(0);
     expect(sortableState.options).toHaveLength(1);
+
+    const historyTab = renderer.root.findByProps({
+      "aria-label": "Collapse History in right dock",
+    });
+    await act(async () => historyTab.props.onClick());
+    expect(onSelect).toHaveBeenCalledWith(history, true);
 
     await act(async () => renderer.unmount());
   });

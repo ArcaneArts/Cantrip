@@ -50,6 +50,7 @@ import {
 import {
   DEFAULT_DOCK_PRESENTATION,
   dockIsRendered,
+  dockPresentationAfterRailTabClick,
   dockPresentationForKey,
   dockPresentationForPane,
   dockResizeCandidate,
@@ -155,6 +156,12 @@ function SortableDockRailTab({
   });
   const canDelete = surfaceCanDelete(surface);
   const tooltipSide = region === "right" ? "left" : "top";
+  const action = !active
+    ? "Focus"
+    : surface.member.dockPresentation?.preferredMode === "closed"
+      ? "Expand"
+      : "Collapse";
+  const actionLabel = `${action} ${surface.title}`;
   return (
     <div
       className="size-10 shrink-0"
@@ -174,7 +181,7 @@ function SortableDockRailTab({
         <ContextMenu.Trigger asChild>
           <div className="size-10 shrink-0">
             <TooltipButton
-              aria-label={`Focus ${surface.title} in ${region} dock`}
+              aria-label={`${actionLabel} in ${region} dock`}
               aria-pressed={active}
               className={cn(
                 "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -184,7 +191,7 @@ function SortableDockRailTab({
               disabled={disabled}
               onClick={onSelect}
               size="icon"
-              tooltip={`Focus ${surface.title}`}
+              tooltip={actionLabel}
               tooltipSide={tooltipSide}
               variant="ghost"
             >
@@ -276,7 +283,7 @@ export function DockRail({
     region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">,
   ): void;
   onOpenLauncher(launcher: ProjectSurfaceLauncher): void;
-  onSelect(surface: ProjectSurface): void;
+  onSelect(surface: ProjectSurface, active: boolean): void;
   pending: boolean;
   pane: ProjectPaneSummary | undefined;
   placement?: ProjectSurfacePlacementContext;
@@ -331,7 +338,7 @@ export function DockRail({
       const nextSurface = surfaces.find(
         (candidate) => candidate.tabKey === nextTabKey,
       );
-      if (nextSurface) onSelect(nextSurface);
+      if (nextSurface) onSelect(nextSurface, false);
     }
     onClose(surface);
   };
@@ -414,7 +421,9 @@ export function DockRail({
                   ? (targetRegion) => onMoveToRegion(surface, targetRegion)
                   : undefined
               }
-              onSelect={() => onSelect(surface)}
+              onSelect={() =>
+                onSelect(surface, surface.tabKey === activeTabKey)
+              }
               region={region}
               surface={surface}
             />
@@ -961,6 +970,27 @@ export function ProjectWorkspaceFrame({
     }
     bindings.selectTopTab(surface.tabKey);
   };
+  const selectDockRailSurface = (surface: ProjectSurface, active: boolean) => {
+    const pane = bindings.tabLayout.data?.panes.find(
+      ({ id }: { id: string }) => id === surface.paneId,
+    );
+    const preference =
+      surface.member.dockPresentation ?? DEFAULT_DOCK_PRESENTATION;
+    if (pane?.region === "right" || pane?.region === "bottom") {
+      const nextPreference = dockPresentationAfterRailTabClick(
+        preference,
+        active,
+      );
+      if (nextPreference !== preference) {
+        commitDockPresentation(
+          surface.projectId,
+          surface.tabKey,
+          nextPreference,
+        );
+      }
+    }
+    bindings.selectTopTab(surface.tabKey);
+  };
   const openRailLauncher = (
     launcher: ProjectSurfaceLauncher,
     region: DockRegion,
@@ -1234,7 +1264,7 @@ export function ProjectWorkspaceFrame({
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
           onOpenLauncher={(launcher) => openRailLauncher(launcher, "right")}
-          onSelect={focusAndRevealSurface}
+          onSelect={selectDockRailSurface}
           pending={presentationMutationPending}
           pane={right?.pane}
           placement={bindings.selectedPlacementContext}
@@ -1262,7 +1292,7 @@ export function ProjectWorkspaceFrame({
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
           onOpenLauncher={(launcher) => openRailLauncher(launcher, "bottom")}
-          onSelect={focusAndRevealSurface}
+          onSelect={selectDockRailSurface}
           pending={presentationMutationPending}
           pane={bottom?.pane}
           placement={bindings.selectedPlacementContext}

@@ -8,6 +8,7 @@ import type { VisibleProjectPane } from "@/components/app/project-workspace-fram
 
 import {
   DEFAULT_DOCK_PRESENTATION,
+  dockPresentationAfterRailTabClick,
   dockPresentationForKey,
   dockPresentationForPane,
   dockResizeCandidate,
@@ -182,6 +183,31 @@ describe("dock presentation preferences", () => {
     expect(dockPresentationForKey("horizontal", split(), "ArrowUp")).toEqual(
       split(0.37),
     );
+  });
+
+  it("collapses an active rail tab and restores it without losing its size", () => {
+    const open = split(0.37);
+    const closed = dockPresentationAfterRailTabClick(open, true);
+    const full = {
+      preferredMode: "full",
+      restoreFraction: 0.43,
+      splitFraction: 0.52,
+    } as const;
+
+    expect(closed).toEqual({ ...open, preferredMode: "closed" });
+    expect(dockPresentationAfterRailTabClick(closed, true)).toEqual(open);
+    expect(dockPresentationAfterRailTabClick(full, true)).toEqual({
+      ...full,
+      preferredMode: "closed",
+    });
+  });
+
+  it("reveals a closed inactive rail tab and leaves an open one unchanged", () => {
+    const open = split(0.41);
+    const closed = { ...open, preferredMode: "closed" } as const;
+
+    expect(dockPresentationAfterRailTabClick(closed, false)).toEqual(open);
+    expect(dockPresentationAfterRailTabClick(open, false)).toBe(open);
   });
 
   it.each(["closed", "full"] as const)(

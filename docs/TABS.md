@@ -218,8 +218,10 @@ share that pane, but only one is active at a time.
   actionable rail tab and the duplicate launcher is hidden there.
 - Clicking a closed rail launcher opens or focuses its tab in that dock.
 - Clicking an already-open launcher focuses the tab and reveals its dock.
-- An optional repeated click may collapse the dock without closing the tab,
-  provided the collapsed/open distinction remains clear.
+- Clicking the active tab on a right or bottom rail collapses that dock without
+  closing its placement or deleting its resource. Clicking it again restores
+  the dock at the tab's remembered split size; clicking a different rail tab
+  selects that tab and reveals the dock.
 - Closing the tab removes its placement. The resource remains available from
   the navigator or surface catalog.
 - Dragging a tab into a dock joins that dock pane.
