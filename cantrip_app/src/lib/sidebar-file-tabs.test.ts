@@ -270,7 +270,7 @@ describe("sidebar file tabs", () => {
     );
   });
 
-  it("places sidebar files in the active pane before a stale preview pane", () => {
+  it("keeps sidebar files in center panes when a dock is focused", () => {
     const preview = {
       active: false,
       explorerId: "sidebar-explorer",
@@ -278,31 +278,37 @@ describe("sidebar file tabs", () => {
       path: "src/previous.ts",
       projectId: "project-1",
     };
+    const panes = [
+      { id: "current-group", region: "center" as const },
+      { id: "previous-group", region: "center" as const },
+      { id: "right-dock", region: "right" as const },
+      { id: "bottom-dock", region: "bottom" as const },
+    ];
 
     expect(
       sidebarFileTargetPaneId({
         activePaneId: "current-group",
         explorerId: "sidebar-explorer",
-        fallbackPaneId: "fallback-group",
+        panes,
         preview,
       }),
     ).toBe("current-group");
     expect(
       sidebarFileTargetPaneId({
-        activePaneId: null,
+        activePaneId: "right-dock",
         explorerId: "sidebar-explorer",
-        fallbackPaneId: "fallback-group",
+        panes,
         preview,
       }),
     ).toBe("previous-group");
     expect(
       sidebarFileTargetPaneId({
-        activePaneId: null,
+        activePaneId: "bottom-dock",
         explorerId: "other-explorer",
-        fallbackPaneId: "fallback-group",
-        preview,
+        panes,
+        preview: { ...preview, paneId: "right-dock" },
       }),
-    ).toBe("fallback-group");
+    ).toBe("current-group");
   });
 
   it("only treats layout-backed matching files as pinned", () => {

@@ -1,5 +1,6 @@
 import type {
   ExplorerSummary,
+  ProjectPaneSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
@@ -68,19 +69,26 @@ export function sidebarFilePreviewViewKey(
 export function sidebarFileTargetPaneId({
   activePaneId,
   explorerId,
-  fallbackPaneId,
+  panes,
   preview,
 }: {
   activePaneId: string | null | undefined;
   explorerId: string;
-  fallbackPaneId: string | null | undefined;
+  panes: readonly Pick<ProjectPaneSummary, "id" | "region">[];
   preview: SidebarFilePreviewState | null;
 }): string | null {
-  if (activePaneId) return activePaneId;
-  if (preview?.explorerId === explorerId && preview.paneId) {
+  const centerPaneIds = new Set(
+    panes.filter(({ region }) => region === "center").map(({ id }) => id),
+  );
+  if (activePaneId && centerPaneIds.has(activePaneId)) return activePaneId;
+  if (
+    preview?.explorerId === explorerId &&
+    preview.paneId &&
+    centerPaneIds.has(preview.paneId)
+  ) {
     return preview.paneId;
   }
-  return fallbackPaneId ?? null;
+  return panes.find(({ region }) => region === "center")?.id ?? null;
 }
 
 export function sidebarFilePreviewIsVisible({

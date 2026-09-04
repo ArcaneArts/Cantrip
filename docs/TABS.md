@@ -206,6 +206,9 @@ share that pane, but only one is active at a time.
 - The right and bottom rails remain visible across project Overview, file
   previews, and ordinary project surfaces. Switching between those content
   modes does not hide the rails or discard an inactive transient file tab.
+- A transient sidebar file preview always belongs to a center pane. The legacy
+  top strip must never mirror right- or bottom-dock members while their rails
+  are visible; every placed tab has exactly one draggable DOM owner.
 - The rail owns the add-surface control and is the drop target for tabs moved
   from center panes.
 - Open rail tabs follow the pane's persisted member order. Dragging one along
@@ -231,6 +234,9 @@ share that pane, but only one is active at a time.
   the navigator or surface catalog.
 - Dragging a tab into a dock joins that dock pane.
 - Dragging a tab onto a center-pane tab strip joins that center pane.
+- Cross-pane dragging shows a temporary insertion placeholder before drop so
+  destination members move out of the way without mutating durable layout
+  state. Ending or cancelling the drag removes the placeholder immediately.
 - Dragging onto a center-pane edge creates a future split pane.
 - Dragging an entire pane moves the pane only after pane-level movement is
   implemented explicitly.

@@ -207,6 +207,108 @@ describe("optimistic tab layouts", () => {
     expect(leafIds).toEqual(["group-a", "optimistic:chat:a", "group-b"]);
   });
 
+  it("moves one dock tab without injecting unrelated dock members", () => {
+    const member = (
+      paneId: string,
+      tabKey: string,
+      tabKind: "builtin" | "explorer" | "terminal",
+      position: number,
+    ) => ({
+      paneId,
+      projectId: "project-1",
+      tabKind,
+      tabId: tabKey.split(":").at(-1)!,
+      tabKey,
+      title: tabKey,
+      position,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    const rightKeys = [
+      "builtin:project-1:git.history",
+      "builtin:project-1:git.graph",
+      "builtin:project-1:github.issues",
+      "builtin:project-1:github.pull-requests",
+      "builtin:project-1:github.actions",
+    ];
+    const dockLayout = {
+      projectId: "project-1",
+      revision: 9,
+      centerRoot: { kind: "pane", paneId: "center-pane" },
+      panes: [
+        {
+          id: "center-pane",
+          projectId: "project-1",
+          title: "File",
+          position: 0,
+          region: "center",
+          anchorTabKey: "explorer:file",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          members: [member("center-pane", "explorer:file", "explorer", 0)],
+        },
+        {
+          id: "right-pane",
+          projectId: "project-1",
+          title: "Git",
+          position: 0,
+          region: "right",
+          anchorTabKey: rightKeys[0],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          members: rightKeys.map((tabKey, position) =>
+            member("right-pane", tabKey, "builtin", position),
+          ),
+        },
+        {
+          id: "bottom-pane",
+          projectId: "project-1",
+          title: "Terminal",
+          position: 0,
+          region: "bottom",
+          anchorTabKey: "terminal:shell",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          members: [member("bottom-pane", "terminal:shell", "terminal", 0)],
+        },
+      ],
+    } as ProjectTabLayoutSummary;
+    const beforeKeys = dockLayout.panes
+      .flatMap(({ members }) => members.map(({ tabKey }) => tabKey))
+      .sort();
+
+    const next = applyOptimisticTabLayoutCommand(dockLayout, {
+      type: "move-member",
+      tabKey: "terminal:shell",
+      targetPaneId: "center-pane",
+      targetMemberPosition: 1,
+    });
+
+    expect(
+      next.panes
+        .find(({ id }) => id === "right-pane")
+        ?.members.map(({ tabKey }) => tabKey),
+    ).toEqual(rightKeys);
+    expect(
+      next.panes
+        .find(({ id }) => id === "center-pane")
+        ?.members.map(({ paneId, position, tabKey }) => ({
+          paneId,
+          position,
+          tabKey,
+        })),
+    ).toEqual([
+      { paneId: "center-pane", position: 0, tabKey: "explorer:file" },
+      { paneId: "center-pane", position: 1, tabKey: "terminal:shell" },
+    ]);
+    expect(next.panes.some(({ id }) => id === "bottom-pane")).toBe(false);
+    expect(
+      next.panes
+        .flatMap(({ members }) => members.map(({ tabKey }) => tabKey))
+        .sort(),
+    ).toEqual(beforeKeys);
+  });
+
   it("restores the authoritative snapshot after a rejected mutation", () => {
     const queryClient = new QueryClient();
     const queryKey = ["project-tab-layout", layout.projectId] as const;

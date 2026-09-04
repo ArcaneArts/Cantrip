@@ -5,6 +5,7 @@ import type { ProjectSurface } from "@/lib/project-surface";
 
 import {
   createKindsForPaneRegion,
+  legacyTopStripPresentation,
   projectWorkspaceGridModel,
   partitionVisibleWorkspacePanes,
   railLauncherDisposition,
@@ -139,6 +140,21 @@ describe("visible workspace panes", () => {
       ["center-b", false],
       ["right-a", true],
       ["bottom-a", false],
+    ]);
+  });
+
+  it("keeps dock inventories out of the legacy top strip", () => {
+    const presentations = visible(
+      [pane("center", "center"), pane("right", "right")],
+      { focusedPaneId: "right" },
+    );
+
+    const topStrip = legacyTopStripPresentation(presentations);
+
+    expect(topStrip?.pane.id).toBe("center");
+    expect(topStrip?.surfaces.map(({ tabKey }) => tabKey)).toEqual([
+      "center:tab",
+      "center:alternate",
     ]);
   });
 

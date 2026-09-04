@@ -34,6 +34,7 @@ function commandHarness({
   handoff = null,
   layout,
   projects = [],
+  selectedPane = layout.panes[0],
   waitForSuccessor = vi.fn().mockResolvedValue({
     ...previewOwner,
     id: "explorer-successor",
@@ -43,6 +44,7 @@ function commandHarness({
   handoff?: SidebarFilePinHandoffState | null;
   layout: ProjectTabLayoutSummary;
   projects?: ProjectSummary[];
+  selectedPane?: ProjectTabLayoutSummary["panes"][number];
   waitForSuccessor?: (
     sourceExplorerId: string,
   ) => Promise<ExplorerSummary | null>;
@@ -87,7 +89,7 @@ function commandHarness({
       setQueryData: vi.fn(),
     },
     revealWorkspace,
-    selectedPane: layout.panes[0],
+    selectedPane,
     setDesktopSidebarDrawerOpen: vi.fn(),
     setPopoutError: vi.fn(),
     setWorkspaceSelection: vi.fn(),
@@ -109,6 +111,7 @@ function layout(tabbedExplorerIds: string[]): ProjectTabLayoutSummary {
     panes: [
       {
         id: "group-1",
+        region: "center",
         members: tabbedExplorerIds.map((tabId) => ({
           tabId,
           tabKind: "explorer",
@@ -186,6 +189,36 @@ describe("sidebar Explorer ownership commands", () => {
 
     expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
     expect(harness.pinMutation.mutate).not.toHaveBeenCalled();
+  });
+
+  it("routes a sidebar file to the center when a dock pane is focused", () => {
+    const center = {
+      id: "center-pane",
+      region: "center",
+      members: [],
+    } as unknown as ProjectTabLayoutSummary["panes"][number];
+    const right = {
+      id: "right-pane",
+      region: "right",
+      members: [],
+    } as unknown as ProjectTabLayoutSummary["panes"][number];
+    const dockLayout = {
+      panes: [center, right],
+    } as unknown as ProjectTabLayoutSummary;
+    const harness = commandHarness({
+      layout: dockLayout,
+      selectedPane: right,
+    });
+
+    harness.commands.openSidebarFilePreview(previewOwner, entry);
+
+    expect(harness.setSidebarFilePreview).toHaveBeenCalledWith({
+      active: true,
+      explorerId: previewOwner.id,
+      paneId: center.id,
+      path: entry.path,
+      projectId: previewOwner.projectId,
+    });
   });
 
   it("does not pin the active preview until its warm successor is ready", async () => {

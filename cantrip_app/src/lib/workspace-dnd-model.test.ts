@@ -1,7 +1,10 @@
 import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { decideWorkspaceDrop } from "./workspace-dnd-model";
+import {
+  decideWorkspaceDrop,
+  workspaceSurfaceDropPreview,
+} from "./workspace-dnd-model";
 
 const timestamp = "2026-08-09T12:00:00.000Z";
 const layout: ProjectTabLayoutSummary = {
@@ -73,6 +76,29 @@ const layout: ProjectTabLayoutSummary = {
           tabId: "reference",
           tabKey: "browser:reference",
           title: "Reference",
+          position: 0,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+    },
+    {
+      id: "pane-bottom",
+      projectId: "project-1",
+      region: "bottom",
+      title: "Bottom dock",
+      position: 0,
+      anchorTabKey: "terminal:dock",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      members: [
+        {
+          paneId: "pane-bottom",
+          projectId: "project-1",
+          tabKind: "terminal",
+          tabId: "dock",
+          tabKey: "terminal:dock",
+          title: "Dock terminal",
           position: 0,
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -300,5 +326,97 @@ describe("workspace pane drag legality", () => {
         paneId: "pane-right",
       }),
     ).toMatchObject({ status: "invalid" });
+  });
+
+  it("moves exactly one member between bottom, right, and center panes", () => {
+    const bottomDrag = {
+      ...drag,
+      paneId: "pane-bottom",
+      tabKey: "terminal:dock",
+      label: "Dock terminal",
+      position: 0,
+      visualKind: "terminal" as const,
+    };
+    expect(
+      decideWorkspaceDrop(layout, bottomDrag, {
+        type: "pane-tab",
+        projectId: "project-1",
+        paneId: "pane-right",
+        tabKey: "browser:reference",
+        memberPosition: 0,
+      }),
+    ).toMatchObject({
+      status: "valid",
+      operation: {
+        command: {
+          type: "move-member",
+          tabKey: "terminal:dock",
+          targetPaneId: "pane-right",
+          targetMemberPosition: 0,
+        },
+      },
+    });
+    expect(
+      decideWorkspaceDrop(layout, bottomDrag, {
+        type: "pane-strip",
+        projectId: "project-1",
+        paneId: "pane-a",
+        memberPosition: 3,
+      }),
+    ).toMatchObject({
+      status: "valid",
+      operation: {
+        command: {
+          type: "move-member",
+          tabKey: "terminal:dock",
+          targetPaneId: "pane-a",
+          targetMemberPosition: 3,
+        },
+      },
+    });
+  });
+
+  it("projects a cross-container insertion only while the drop is valid", () => {
+    const bottomDrag = {
+      ...drag,
+      paneId: "pane-bottom",
+      tabKey: "terminal:dock",
+      label: "Dock terminal",
+      visualKind: "terminal" as const,
+    };
+    const drop = {
+      type: "pane-tab" as const,
+      projectId: "project-1",
+      paneId: "pane-right",
+      tabKey: "browser:reference",
+      memberPosition: 0,
+    };
+    const decision = decideWorkspaceDrop(layout, bottomDrag, drop);
+
+    expect(
+      workspaceSurfaceDropPreview({
+        decision,
+        drag: bottomDrag,
+        drop,
+        memberCount: 1,
+        paneId: "pane-right",
+        region: "right",
+      }),
+    ).toEqual({
+      label: "Dock terminal",
+      memberPosition: 0,
+      tabKey: "terminal:dock",
+      visualKind: "terminal",
+    });
+    expect(
+      workspaceSurfaceDropPreview({
+        decision: { status: "noop" },
+        drag: bottomDrag,
+        drop,
+        memberCount: 1,
+        paneId: "pane-right",
+        region: "right",
+      }),
+    ).toBeNull();
   });
 });

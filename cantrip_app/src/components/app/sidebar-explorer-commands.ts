@@ -161,7 +161,7 @@ export function createSidebarExplorerCommands({
     return sidebarFileTargetPaneId({
       activePaneId: selectedPane?.id,
       explorerId: explorer.id,
-      fallbackPaneId: tabLayout?.panes[0]?.id,
+      panes: tabLayout?.panes ?? [],
       preview: sidebarFilePreview,
     });
   };
