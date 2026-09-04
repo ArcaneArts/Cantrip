@@ -235,7 +235,10 @@ export function SettingsNavigationLayout<SectionId extends string>({
             onValueChange={onSearchQueryChange}
           />
         </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto p-2">
+        <nav
+          className="min-h-0 flex-1 overflow-y-auto p-2"
+          data-slot="sidebar-scroll-region"
+        >
           <SettingsSectionList
             activeSection={activeSection}
             sections={sections}

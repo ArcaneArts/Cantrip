@@ -215,25 +215,33 @@
   }
 
   @media (hover: hover) {
-    [data-slot="app-sidebar-shell"] [data-slot="sidebar-scroll-region"] {
+    [data-slot="app-sidebar-shell"] [data-slot="sidebar-scroll-region"],
+    [data-slot="settings-sidebar"] [data-slot="sidebar-scroll-region"] {
       scrollbar-color: transparent transparent;
     }
 
     [data-slot="app-sidebar-shell"]
+      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb,
+    [data-slot="settings-sidebar"]
       [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb {
       background: transparent;
     }
 
-    [data-slot="app-sidebar-shell"]:hover [data-slot="sidebar-scroll-region"] {
+    [data-slot="app-sidebar-shell"]:hover [data-slot="sidebar-scroll-region"],
+    [data-slot="settings-sidebar"]:hover [data-slot="sidebar-scroll-region"] {
       scrollbar-color: var(--scrollbar-thumb) transparent;
     }
 
     [data-slot="app-sidebar-shell"]:hover
+      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb,
+    [data-slot="settings-sidebar"]:hover
       [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb {
       background: var(--scrollbar-thumb);
     }
 
     [data-slot="app-sidebar-shell"]:hover
+      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb:hover,
+    [data-slot="settings-sidebar"]:hover
       [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb:hover {
       background: var(--scrollbar-thumb-hover);
     }
