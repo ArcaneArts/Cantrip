@@ -57,6 +57,12 @@ describe("project surface registry", () => {
       PROJECT_SURFACE_DEFINITIONS.find(({ id }) => id === "project.explorer")
         ?.supportedPlacements,
     ).toEqual(expect.arrayContaining(["center", "right", "bottom"]));
+    for (const definition of PROJECT_SURFACE_DEFINITIONS.filter(
+      ({ cardinality }) => cardinality === "multi-instance",
+    )) {
+      expect(definition.launcherLocations).not.toContain("right-rail");
+      expect(definition.launcherLocations).not.toContain("bottom-rail");
+    }
   });
 
   it("derives stable view identities without duplicating resources", () => {

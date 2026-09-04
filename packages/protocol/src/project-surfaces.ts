@@ -100,6 +100,19 @@ export const projectSurfaceDefinitionSchema = z
         path: ["suggestedPlacement"],
       });
     }
+    if (
+      definition.cardinality === "multi-instance" &&
+      definition.launcherLocations.some(
+        (location) => location === "right-rail" || location === "bottom-rail",
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Multi-instance surfaces are created from the rail add-surface control, not static rail launchers.",
+        path: ["launcherLocations"],
+      });
+    }
   });
 
 export type ProjectSurfaceDefinition = z.infer<
@@ -157,7 +170,7 @@ export const PROJECT_SURFACE_DEFINITIONS = projectSurfaceRegistrySchema.parse([
     supportedPlacements: centerAndDockPlacements,
     deletable: true,
     archivable: false,
-    launcherLocations: [...commonLauncherLocations, "bottom-rail"],
+    launcherLocations: commonLauncherLocations,
     launcherPinnedByDefault: false,
   },
   {
@@ -202,7 +215,7 @@ export const PROJECT_SURFACE_DEFINITIONS = projectSurfaceRegistrySchema.parse([
     supportedPlacements: centerAndDockPlacements,
     deletable: true,
     archivable: false,
-    launcherLocations: [...commonLauncherLocations, "right-rail"],
+    launcherLocations: commonLauncherLocations,
     launcherPinnedByDefault: false,
   },
   {
@@ -232,7 +245,7 @@ export const PROJECT_SURFACE_DEFINITIONS = projectSurfaceRegistrySchema.parse([
     supportedPlacements: centerAndDockPlacements,
     deletable: true,
     archivable: false,
-    launcherLocations: [...commonLauncherLocations, "right-rail"],
+    launcherLocations: commonLauncherLocations,
     launcherPinnedByDefault: false,
   },
   {

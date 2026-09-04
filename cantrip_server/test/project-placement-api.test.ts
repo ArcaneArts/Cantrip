@@ -2485,7 +2485,7 @@ describe.sequential("project execution placement API", () => {
           target.kind === "definition" &&
           target.definitionId === "project.terminal",
       ),
-    ).toMatchObject({ pinned: false });
+    ).toBeUndefined();
     expect(
       launchers.find(
         ({ location, target }) =>
@@ -2493,7 +2493,15 @@ describe.sequential("project execution placement API", () => {
           target.kind === "definition" &&
           target.definitionId === "project.browser",
       ),
-    ).toMatchObject({ pinned: false });
+    ).toBeUndefined();
+    expect(
+      launchers.find(
+        ({ location, target }) =>
+          location === "right-rail" &&
+          target.kind === "definition" &&
+          target.definitionId === "project.remote-desktop",
+      ),
+    ).toBeUndefined();
 
     const pinResponse = await app.inject({
       method: "PATCH",
