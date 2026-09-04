@@ -5,10 +5,12 @@ import type { ProjectSurface } from "@/lib/project-surface";
 
 import {
   createKindsForPaneRegion,
+  dockPresentationsForSidebarPreview,
   legacyTopStripPresentation,
   legacyTopStripShowsSidebarPreview,
   projectWorkspaceGridModel,
   partitionVisibleWorkspacePanes,
+  sidebarFilePreviewForPane,
   responsiveProjectWorkspaceGridModel,
   visibleWorkspacePanes,
 } from "./project-workspace-frame-model";
@@ -174,6 +176,60 @@ describe("visible workspace panes", () => {
         projectId: "project-1",
       }),
     ).toBe(true);
+  });
+
+  it("keeps a sidebar preview assigned to its center pane while other panes have focus", () => {
+    const presentations = visible(
+      [pane("center", "center"), pane("bottom", "bottom")],
+      { focusedPaneId: "bottom" },
+    );
+    const preview = {
+      active: false,
+      explorerId: "sidebar-explorer",
+      paneId: "center",
+      path: "src/index.ts",
+      projectId: "project-1",
+    };
+
+    expect(
+      sidebarFilePreviewForPane(
+        presentations.find(({ pane: entry }) => entry.id === "center"),
+        preview,
+      ),
+    ).toBe(preview);
+    expect(
+      sidebarFilePreviewForPane(
+        presentations.find(({ pane: entry }) => entry.id === "bottom"),
+        preview,
+      ),
+    ).toBeNull();
+  });
+
+  it("lets an active sidebar preview own only its assigned pane body", () => {
+    const presentations = visible(
+      [
+        pane("center", "center"),
+        pane("right", "right"),
+        pane("bottom", "bottom"),
+      ],
+      { focusedPaneId: "center" },
+    );
+    const result = dockPresentationsForSidebarPreview(
+      presentations,
+      {
+        active: true,
+        explorerId: "sidebar-explorer",
+        paneId: "center",
+        path: "src/index.ts",
+        projectId: "project-1",
+      },
+      true,
+    );
+
+    expect(result.activePreviewPresentation?.pane.id).toBe("center");
+    expect(
+      result.surfacePresentations?.map(({ pane: entry }) => entry.id),
+    ).toEqual(["right", "bottom"]);
   });
 
   it("uses a valid pane-local active tab and falls back to the anchor", () => {
