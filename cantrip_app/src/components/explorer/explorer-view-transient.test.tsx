@@ -277,6 +277,7 @@ describe("ExplorerView transient selection", () => {
     expect(surface.props.inert).toBe(true);
     expect(surface.props.className).toContain("invisible");
     expect(surface.props.className.split(/\s+/)).not.toContain("hidden");
+    expect(surface.props.className.split(/\s+/)).not.toContain("bg-background");
 
     await act(async () => renderer.unmount());
     client.clear();
