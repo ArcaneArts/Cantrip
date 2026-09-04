@@ -76,6 +76,8 @@ Interrupt, thread relocation, terminal server disconnect, and worker shutdown
 revoke matching scopes immediately. Stop is local and does not wait for a child
 response. Transport cancellation acknowledgments and process shutdown are
 bounded; pending work never retries itself.
+Transport admission counts cancelled requests awaiting acknowledgment and
+reserves cleanup slots, so a saturated request queue cannot crowd out Stop.
 
 One unexpected helper crash permits one new launch on a **fresh explicit
 request**. Old session IDs remain invalid. A second crash, a launch failure, or

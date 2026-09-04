@@ -525,10 +525,13 @@ export class CantripCuaService {
     if (!record.runtime.transport.closed)
       this.background(
         record.runtime.transport
-          .request({
-            operation: "session.close",
-            binding: record.binding,
-          })
+          .request(
+            {
+              operation: "session.close",
+              binding: record.binding,
+            },
+            { lifecycle: true },
+          )
           .then(() => {}),
       );
   }

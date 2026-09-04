@@ -158,7 +158,7 @@ describe("CUA child transport", () => {
     const transport = fixture();
     await transport.request({ operation: "echo" });
     const abort = new AbortController();
-    const waiting = Array.from({ length: 32 }, () =>
+    const waiting = Array.from({ length: 16 }, () =>
       transport
         .request({ operation: "ignore" }, { signal: abort.signal })
         .catch((error) => error),
@@ -174,6 +174,37 @@ describe("CUA child transport", () => {
       transport.request({ operation: "echo" }),
     ).rejects.toMatchObject({ code: "capacity", outcome: "not-sent" });
     await transport.close();
+  });
+
+  it("reserves all 16 cleanup slots even while cancelled correlations are outstanding", async () => {
+    const transport = fixture();
+    await transport.request({ operation: "echo" });
+    const abort = new AbortController();
+    const waiting = Array.from({ length: 16 }, () =>
+      transport
+        .request({ operation: "ignore" }, { signal: abort.signal })
+        .catch((error) => error),
+    );
+    abort.abort();
+    for (const error of await Promise.all(waiting)) {
+      expect(error).toMatchObject({ code: "cancelled", outcome: "unknown" });
+    }
+    await expect(
+      transport.request({ operation: "echo" }),
+    ).rejects.toMatchObject({ code: "capacity", outcome: "not-sent" });
+    const cleanup = Array.from({ length: 16 }, () =>
+      transport
+        .request({ operation: "ignore" }, { lifecycle: true })
+        .catch((error) => error),
+    );
+    await expect(
+      transport.request({ operation: "echo" }, { lifecycle: true }),
+    ).rejects.toMatchObject({ code: "capacity", outcome: "not-sent" });
+    await transport.close();
+    for (const error of await Promise.all(cleanup)) {
+      // All reserved requests were accepted, not silently refused as capacity.
+      expect(error).toMatchObject({ code: "closed", outcome: "unknown" });
+    }
   });
 
   it("reports crash outcomes as unknown without replay or exposing stderr", async () => {

@@ -165,7 +165,7 @@ is the authoritative merge record until the next ledger update.
   override; stable named-profile projection for browser/direct worker and desktop
   development; preserved tsx watch and exact orphan-process cleanup behavior.
   `pnpm cua:test:worker` and portable CI execute the actual worker/Rust boundary.
-- Validation: 121 focused worker tests pass, including 11 real-Rust integration
+- Validation: 122 focused worker tests pass, including 11 real-Rust integration
   tests; 50 Rust and 30 CUA script tests pass; 13 existing development/profile
   tests pass; worker typecheck/build and CUA Clippy/format pass. Full worker suite
   initially reported 1,136 passes, 13 skips, and one goal-streaming timing failure
@@ -176,6 +176,9 @@ is the authoritative merge record until the next ledger update.
   while awaiting a shared handshake/queued operation settles promptly without
   cancelling other callers; disconnect cannot publish a just-completed protected
   target inventory; completed-but-cancelled mutations cannot revive a session.
+  Transport admission counts pending cancellation correlations and reserves
+  16 additional slots for lifecycle cleanup, so cancellation saturation cannot
+  crowd out Stop/session-close requests.
 - Platform/manual: actual fake helper/service on local macOS arm64; new Windows
   and Linux worker integration CI pending. No product/native/TCC verification
   claimed; helper still defaults to unavailable native capture.

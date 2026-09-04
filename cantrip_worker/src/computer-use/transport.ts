@@ -14,10 +14,17 @@ import {
 export interface CuaTransport {
   request(
     operation: unknown,
-    options?: { signal?: AbortSignal; timeoutMs?: number },
+    options?: CuaRequestOptions,
   ): Promise<{ data: unknown; payload: Buffer }>;
   close(): Promise<void>;
   readonly closed: boolean;
+}
+
+export interface CuaRequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  /** Trusted owner cleanup only; never populate from an agent/client request. */
+  lifecycle?: boolean;
 }
 
 export interface CuaTransportOptions {
@@ -36,6 +43,7 @@ interface Pending {
 }
 
 const MAX_OUTSTANDING = 32;
+const MAX_ORDINARY_OUTSTANDING = 16;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const CANCELLATION_GRACE_MS = 2_000;
 const SHUTDOWN_GRACE_MS = 2_000;
@@ -238,7 +246,8 @@ class ChildTransport implements CuaTransport {
     {
       signal,
       timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
-    }: { signal?: AbortSignal; timeoutMs?: number } = {},
+      lifecycle = false,
+    }: CuaRequestOptions = {},
   ): Promise<{ data: unknown; payload: Buffer }> {
     if (this.closed)
       return Promise.reject(new CuaProcessError("closed", "not-sent"));
@@ -250,7 +259,12 @@ class ChildTransport implements CuaTransport {
       timeoutMs > 120_000
     )
       return Promise.reject(new CuaProcessError("invalid-request", "not-sent"));
-    if (this.#pending.size + this.#cancelled.size >= MAX_OUTSTANDING)
+    // Settled cancellation still consumes a native correlation until its reply
+    // arrives. Reserve slots here, not in the owner's pending-promise count, so
+    // a burst of cancelled reads cannot prevent all session.close requests.
+    const limit =
+      lifecycle === true ? MAX_OUTSTANDING : MAX_ORDINARY_OUTSTANDING;
+    if (this.#pending.size + this.#cancelled.size >= limit)
       return Promise.reject(new CuaProcessError("capacity", "not-sent"));
     const requestId = this.#requestId + 1;
     let encoded: Buffer;
