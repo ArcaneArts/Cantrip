@@ -102,7 +102,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
   applicationRoutes:
-    "8d928a0765d5fe24a54460a3efcd7c2621136f2de3fc1713fb1d91c1ba099d96",
+    "bbb816a6c73d57eef0691561a25486c686dad8ec8017027b821ec0bd09b548a9",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
   workerCommands:
-    "fc63ee379629457138cb3ddd623e100e1c260b8b485d94977107020957db633d",
+    "b62cada76d550fa7c971632f246737f81f64ddbb58c1869470ba06029f540972",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3501,6 +3501,13 @@ function durableTableContentInventory(schemaText) {
 
 function applicationRouteContentClassification(route) {
   const key = `${route.method} ${route.path}`;
+  if (key === "POST /api/chats/:chatId/computer-use/operation") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "unregistered CUA relay factory; operation-bound client-control-content protects native target details, cursor state, results, and bounded image chunks; only routing and correlation metadata is public",
+    };
+  }
   if (route.path.endsWith("/run-configuration-secrets")) {
     return route.method === "PUT"
       ? {
@@ -3617,6 +3624,13 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "computer-use.operation") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "CUA handler remains unregistered pending permission-owner integration; native targets, cursor state, results, and image chunks use operation-bound client-control-content ciphertext rather than public worker metadata",
+    };
+  }
   if (command === "project.run-configuration-runtime.output") {
     return {
       classification: "endpoint-protected",

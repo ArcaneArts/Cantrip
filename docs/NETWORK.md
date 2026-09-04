@@ -22,6 +22,24 @@ Surface foundation. The execution history lives in
 [NETWORK_PROGRESS.md](NETWORK_PROGRESS.md), and the repeatable final matrix is
 recorded in [NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md).
 
+## Computer-use routing foundation
+
+CUA is separate from Remote Desktop and is not a new WorkerLink channel in
+this tranche. Its tested, currently unregistered route factory uses the normal
+client -> server -> same worker hosting the agent -> private Rust child
+process path. No app-to-worker/native bypass or public native listener exists.
+
+Snapshots are split into bounded encrypted worker events followed by an
+authenticated final result. The server awaits ordered command events before
+returning an opaque HTTP response and retains no screenshot records. Existing
+WebSocket frame limits remain unchanged. Disconnect loss causes authenticated
+assembly to fail rather than silently returning incomplete pixels or replaying
+an operation. This is not a resumable image stream, and the bounded HTTP request
+deadline is not a promise of worker cancellation on HTTP disconnect.
+
+Production activation, effective-policy authorization and capability publication
+remain tracked in [the CUA ledger](planned/CUA.md#implementation-progress).
+
 ## Product decisions
 
 The initial design makes the following decisions:

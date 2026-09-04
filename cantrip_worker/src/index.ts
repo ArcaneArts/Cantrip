@@ -5351,6 +5351,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.chatId,
           command.threadId,
         );
+      case "computer-use.operation":
+        // The encrypted handler is tested independently in this pass. Its
+        // production registration requires the durable permission owner; do
+        // not expose native capture through authentication alone meanwhile.
+        throw new Error("Computer-use permission routing is not installed.");
       case "chat.turn.rollback":
         return runtimeFor({
           executionProfile: command.executionProfile,

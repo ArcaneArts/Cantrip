@@ -89,6 +89,54 @@ export async function protectEndpointContent<T>(input: {
   }
 }
 
+/** Borrows plaintext until completion; the caller is responsible for clearing it. */
+export async function protectEndpointBytes(input: {
+  context: ClientEndpointContentContext;
+  plaintext: Uint8Array;
+  options?: TrustedOptions;
+}): Promise<EndpointContentOpaque> {
+  const encryption = encryptionContext(input.context, input.options ?? {});
+  try {
+    return await encryptEndpointContentPayload({
+      ownerId: encryption.ownerId,
+      context: encryption.context,
+      keyRevision: encryption.keyRevision,
+      componentKey: encryption.componentKey,
+      plaintext: input.plaintext,
+    });
+  } finally {
+    clearSensitiveBytes(encryption.componentKey);
+  }
+}
+
+/** Returns an owned plaintext buffer; its caller must clear it after use. */
+export async function openEndpointBytes(input: {
+  context: ClientEndpointContentContext;
+  opaque: unknown;
+  options?: TrustedOptions;
+}): Promise<Uint8Array> {
+  const opaque = endpointContentOpaqueSchema.parse(input.opaque);
+  const encryption = encryptionContext(input.context, input.options ?? {});
+  try {
+    if (opaque.keyRevision !== encryption.keyRevision)
+      throw new CantripDecryptionError();
+    return await decryptEndpointContentPayload({
+      ownerId: encryption.ownerId,
+      context: encryption.context,
+      keyRevision: encryption.keyRevision,
+      componentKey: encryption.componentKey,
+      opaque,
+    });
+  } catch {
+    throw new ClientEncryptionError(
+      "decryption-failed",
+      "Protected endpoint content could not be authenticated.",
+    );
+  } finally {
+    clearSensitiveBytes(encryption.componentKey);
+  }
+}
+
 export async function openEndpointContent<T>(input: {
   context: ClientEndpointContentContext;
   opaque: unknown;

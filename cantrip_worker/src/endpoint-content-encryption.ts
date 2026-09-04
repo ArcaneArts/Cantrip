@@ -21,10 +21,15 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 
 export type EndpointContentSchema<T> = { parse(value: unknown): T };
 
+export type WorkerEndpointEncryptionService = Pick<
+  WorkerEncryptionService,
+  "componentKey" | "ownerId"
+>;
+
 function componentKey(input: {
   context: EndpointContentContext;
   keyRevision?: number;
-  service: WorkerEncryptionService;
+  service: WorkerEndpointEncryptionService;
 }): { key: Uint8Array; keyRevision: number; ownerId: string } {
   try {
     const context = endpointContentContextSchema.parse(input.context);
@@ -45,6 +50,58 @@ function componentKey(input: {
       throw new Error("Endpoint content encryption is unavailable.");
     }
     throw error;
+  }
+}
+
+/** Borrows plaintext until completion; the caller remains responsible for clearing it. */
+export async function protectWorkerEndpointBytes(input: {
+  context: EndpointContentContext;
+  plaintext: Uint8Array;
+  service: WorkerEndpointEncryptionService;
+}): Promise<EndpointContentOpaque> {
+  const context = endpointContentContextSchema.parse(input.context);
+  const material = componentKey({ context, service: input.service });
+  try {
+    return await encryptEndpointContentPayload({
+      ownerId: material.ownerId,
+      context,
+      keyRevision: material.keyRevision,
+      componentKey: material.key,
+      plaintext: input.plaintext,
+    });
+  } finally {
+    clearSensitiveBytes(material.key);
+  }
+}
+
+/** Returns an owned plaintext buffer. Its caller must clear it after consuming it. */
+export async function openWorkerEndpointBytes(input: {
+  context: EndpointContentContext;
+  opaque: unknown;
+  service: WorkerEndpointEncryptionService;
+}): Promise<Uint8Array> {
+  const context = endpointContentContextSchema.parse(input.context);
+  const opaque = endpointContentOpaqueSchema.parse(input.opaque);
+  const material = componentKey({
+    context,
+    keyRevision: opaque.keyRevision,
+    service: input.service,
+  });
+  try {
+    return await decryptEndpointContentPayload({
+      ownerId: material.ownerId,
+      context,
+      keyRevision: material.keyRevision,
+      componentKey: material.key,
+      opaque,
+    });
+  } catch (error) {
+    if (error instanceof CantripDecryptionError) {
+      throw new Error("Protected endpoint content could not be authenticated.");
+    }
+    throw error;
+  } finally {
+    clearSensitiveBytes(material.key);
   }
 }
 

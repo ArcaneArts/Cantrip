@@ -152,7 +152,8 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-04-worker-service`, based on merged cycle 3b (`cbfa5df6d`).
 - PR: [#1738](https://github.com/ArcaneArts/Cantrip/pull/1738).
-  Initial implementation commit: `b972ff20`; merge not yet observed.
+  Initial implementation commit: `b972ff20`; merged 2026-09-04 as
+  `16218ed0d94d7bab4f2e8b5a69556392460f8223` (observed via GitHub).
 - Implemented: inert worker service construction; actual framed handshake on
   first authorized use; immutable execution/account ownership; per-session
   serialized operations; raw PNG validation; immediate local scope revocation;
@@ -171,7 +172,8 @@ is the authoritative merge record until the next ledger update.
   initially reported 1,136 passes, 13 skips, and one goal-streaming timing failure
   (empty final text); that unchanged test passes in isolation on Primary. The
   complete rerun passed 1,137 tests with 13 expected skips (including the 11
-  separately executed Rust-artifact tests). New platform CI remains pending.
+  separately executed Rust-artifact tests). Final-head portable CI run
+  `33929428361` passed all three platforms before auto-merge.
 - Review fixes verified: synchronous launch failure is terminal; cancellation
   while awaiting a shared handshake/queued operation settles promptly without
   cancelling other callers; disconnect cannot publish a just-completed protected
@@ -179,8 +181,8 @@ is the authoritative merge record until the next ledger update.
   Transport admission counts pending cancellation correlations and reserves
   16 additional slots for lifecycle cleanup, so cancellation saturation cannot
   crowd out Stop/session-close requests.
-- Platform/manual: actual fake helper/service on local macOS arm64; new Windows
-  and Linux worker integration CI pending. No product/native/TCC verification
+- Platform/manual: actual fake helper/service on local macOS arm64; macOS,
+  Windows, and Linux worker integration CI passed. No product/native/TCC verification
   claimed; helper still defaults to unavailable native capture.
 - Risks/remaining: encrypted shared routing, worker capability publication,
   client preview, native capture, persistent JS/MCP, durable approvals, protected
@@ -189,6 +191,65 @@ is the authoritative merge record until the next ledger update.
   Prior standalone-worker signing and baseline script failures remain open.
 - Deferred: native input/mutations, human event taps, other native operating
   systems, arbitrary cursor assets, continuous video, and cross-worker control.
+
+### Tranche cycle 5 — Shared encrypted contract and isolated routing
+
+- Branch: `codex/cua-05-protected-routing`, based on merged cycle 4 (`16218ed0d`).
+- PR/commit: not yet created; merge not yet observed.
+- Implemented: one browser-safe shared CUA schema; strict worker command/event
+  contracts; endpoint-only control/result encryption and sequential 256 KiB
+  screenshot chunks (16 MiB total); raw-byte adapters using existing component
+  grants; server relay factory and worker handler with mandatory authorization
+  and trusted execution ownership. No native-session tables or new key custody.
+- Activation status: factory and handler are deliberately not installed in the
+  production request dispatcher yet. Worker capability publication remains
+  required with activation, not inferred from an OS name or helper path.
+- Verified behavior: test client codec -> Fastify route -> worker handler ->
+  lazy service -> actual Rust fake helper opens a session, configures all four
+  cursor styles, moves, captures/decrypts/verifies PNG bytes, and closes. The
+  server sees neither target titles/IDs, cursor labels nor pixels; it only
+  accumulates bounded ciphertext for one response and discards its collector.
+- Lifecycle: execution lifetime is supplied by the trusted runtime owner and
+  spans pending authorization as well as native work. Revocation cannot let a
+  delayed approval start a new helper/session. Scoped Stop skips operation
+  approval, but still authenticates the sealed action and session ownership.
+- Validation: 238 focused CUA/adapter tests pass across protocol (47), crypto
+  (20), worker (127), server (39, including 12 real-Rust routing tests), and
+  client (5). Full protocol (500) and crypto (60) suites pass; 16 focused
+  client encryption tests pass; Rust (50), CUA scripts (30), Clippy, formatting,
+  worker/server/app typechecks, server-boundary audit and large-file/diff checks
+  pass. Full worker rerun passes 1,143 tests with 13 expected skips. Its first
+  loaded run hit unchanged CodeGraph output and Codex stdin EPIPE races; both
+  files pass on Primary and branch in isolation, and the EPIPE also reproduces
+  synthetically on Primary. These remain final-hardening follow-ups, not CUA
+  regressions hidden by skipped tests. Full server reported 794 passes and
+  20 failing assertions/8 failed suites; baseline comparison is in progress.
+  Portable CI remains pending. Native capture, live app entry points, real
+  policy prompts and MCP are not claimed by this factory integration.
+- Sequencing decision: existing durable interactions are Codex RPC-owned and
+  currently require a real native thread; they are not a generic CUA approval
+  owner. Enabling a route using authentication or YOLO alone would omit the
+  requested effective-policy behavior. Cycle 5b will therefore implement the
+  permission/trusted execution prerequisite from original tranche cycle 9
+  **before** exposing the client preview. It must preserve genuine nullable
+  idle thread/turn identity, avoid fabricated IDs, preserve ordinary chat
+  approval/status behavior, and wire cancellation leases to real lifecycle
+  events. This is a scoped sequencing change, not a second approval system.
+- Transport limitation: current worker event delivery is best effort across
+  disconnects. The authenticated final manifest rejects missing, duplicate,
+  reordered, substituted or wrong-revision chunks; it does not replay failed
+  mutations or claim resumable image delivery. No WorkerLink/Remote Desktop
+  changes or global WebSocket limit increases are introduced. The HTTP request
+  has a bounded deadline; HTTP disconnect does not yet cancel worker requests.
+- Remaining first tranche: production policy/ownership activation and capability
+  publication; client preview; native inventory/capture; persistent JS/MCP;
+  protected Trajectory; real macOS/packaged end-to-end verification. Native
+  inventory must respect the existing 64 KiB response-header budget. Previously
+  noted standalone-worker signing and unrelated baseline script failures remain.
+- Platform/manual: local macOS fake process; portable CI pending. No OS privacy
+  prompt, screen access, profile or native key access occurs in this test suite.
+- Deferred: native input/mutations, human event taps, other native operating
+  systems, arbitrary cursor assets, continuous video and cross-worker control.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

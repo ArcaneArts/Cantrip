@@ -116,6 +116,10 @@
       "types": "./src/client-control-content.ts",
       "import": "./dist/client-control-content.js"
     },
+    "./computer-use": {
+      "types": "./src/computer-use.ts",
+      "import": "./dist/computer-use.js"
+    },
     "./project-automation-content": {
       "types": "./src/project-automation-content.ts",
       "import": "./dist/project-automation-content.js"
