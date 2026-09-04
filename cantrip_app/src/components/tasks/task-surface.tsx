@@ -47,6 +47,10 @@ import {
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
 import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
+import {
+  dataTransferHasFiles,
+  filesFromDataTransfer,
+} from "@/components/chat/file-drop";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { Button } from "@/components/ui/button";
 import {
@@ -732,7 +736,7 @@ export function TaskSurface({
     <div
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
       onDragEnter={(event) => {
-        if (event.dataTransfer.types.includes("Files")) setDraggingFiles(true);
+        if (dataTransferHasFiles(event.dataTransfer)) setDraggingFiles(true);
       }}
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -740,12 +744,15 @@ export function TaskSurface({
         }
       }}
       onDragOver={(event) => {
-        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+        if (dataTransferHasFiles(event.dataTransfer)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }
       }}
       onDrop={(event: DragEvent<HTMLDivElement>) => {
         event.preventDefault();
         setDraggingFiles(false);
-        void attachFiles(Array.from(event.dataTransfer.files), "file");
+        void attachFiles(filesFromDataTransfer(event.dataTransfer), "file");
       }}
       onPaste={handlePaste}
     >
