@@ -72,7 +72,6 @@ import {
 } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   StyledContextMenuContent,
   StyledContextMenuItem,
@@ -90,6 +89,10 @@ import {
 } from "@/lib/api";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { projectBuiltInSurfaceResourceRef } from "@/lib/project-tool-surfaces";
+import {
+  closeTabOnMiddleClick,
+  preventMiddleMouseDefault,
+} from "@/lib/tab-middle-click";
 import { useAppLiveScope } from "@/lib/app-live-react";
 import { nextProjectTabAfterRemoval } from "@/lib/project-pane";
 import { cn } from "@/lib/utils";
@@ -167,6 +170,10 @@ function SortableDockRailTab({
       className="size-10 shrink-0"
       data-dock-rail-tab={surface.tabKey}
       data-dock-rail-tab-position={memberPosition}
+      onAuxClick={(event) => {
+        if (!disabled) closeTabOnMiddleClick(event, onClose);
+      }}
+      onMouseDown={preventMiddleMouseDefault}
       ref={sortable.setNodeRef}
       style={{
         transform: CSS.Transform.toString(sortable.transform),
@@ -293,7 +300,6 @@ export function DockRail({
 }) {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createTooltipOpen, setCreateTooltipOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
   const drop = useDroppable({
     id: workspaceRegionDropId(region),
     data: {
@@ -415,7 +421,7 @@ export function DockRail({
               key={surface.tabKey}
               memberPosition={memberPosition}
               onClose={() => closeImmediately(surface)}
-              onDelete={() => setDeleteTarget(surface)}
+              onDelete={() => onDelete(surface)}
               onMoveToRegion={
                 onMoveToRegion
                   ? (targetRegion) => onMoveToRegion(surface, targetRegion)
@@ -478,24 +484,6 @@ export function DockRail({
           );
         })}
       </aside>
-      <ConfirmDialog
-        confirmLabel={
-          deleteTarget ? surfaceDeleteLabel(deleteTarget) : "Delete Resource"
-        }
-        confirmVariant="destructive"
-        description={
-          deleteTarget?.kind === "chat"
-            ? "This closes the view and archives the Agent resource."
-            : "This permanently deletes the resource and its saved view state."
-        }
-        onConfirm={() => {
-          if (deleteTarget) onDelete(deleteTarget);
-          setDeleteTarget(null);
-        }}
-        open={Boolean(deleteTarget)}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`${deleteTarget?.kind === "chat" ? "Archive" : "Delete"} ${deleteTarget?.title ?? "resource"}?`}
-      />
     </>
   );
 }

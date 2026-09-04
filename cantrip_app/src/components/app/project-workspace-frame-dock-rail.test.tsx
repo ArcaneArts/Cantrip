@@ -70,22 +70,6 @@ vi.mock("@/components/workspace/project-surface-icon", () => ({
 vi.mock("@/components/sidebar/project-tool-launchers", () => ({
   ProjectBuiltInSurfaceIcon: () => <span>builtin</span>,
 }));
-vi.mock("@/components/ui/confirm-dialog", () => ({
-  ConfirmDialog: ({
-    confirmLabel,
-    onConfirm,
-    open,
-  }: {
-    confirmLabel: ReactNode;
-    onConfirm(): void;
-    open: boolean;
-  }) =>
-    open ? (
-      <button data-confirm-delete onClick={onConfirm}>
-        {confirmLabel}
-      </button>
-    ) : null,
-}));
 vi.mock("@/components/ui/styled-menu", () => ({
   StyledContextMenuContent: ({ children }: { children: ReactNode }) => (
     <div data-context-menu>{children}</div>
@@ -251,7 +235,7 @@ describe("dock rail tabs", () => {
     },
   );
 
-  it("closes rail views and confirms deletion with the standard resource semantics", async () => {
+  it("closes rail views and deletes resources without confirmation", async () => {
     const browser = surface("browser", "one", "Browser", 0);
     const terminal = surface("terminal", "two", "Terminal", 1);
     const onClose = vi.fn<(surface: ProjectSurface) => void>();
@@ -286,9 +270,52 @@ describe("dock rail tabs", () => {
     );
     expect(deleteBrowser).toBeDefined();
     await act(async () => deleteBrowser?.props.onClick());
-    const confirm = renderer.root.findByProps({ "data-confirm-delete": true });
-    await act(async () => confirm.props.onClick());
     expect(onDelete).toHaveBeenCalledWith(browser);
+    expect(
+      renderer.root.findAllByProps({ "data-confirm-delete": true }),
+    ).toHaveLength(0);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("closes a rail view on middle click", async () => {
+    const browser = surface("browser", "one", "Browser", 0);
+    const onClose = vi.fn<(surface: ProjectSurface) => void>();
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = renderRail({
+        activeTabKey: browser.tabKey,
+        allSurfaces: [browser],
+        onClose,
+        surfaces: [browser],
+      });
+    });
+
+    const railTab = renderer.root.findByProps({
+      "data-dock-rail-tab": browser.tabKey,
+    });
+    const mouseDownPreventDefault = vi.fn();
+    await act(async () =>
+      railTab.props.onMouseDown({
+        button: 1,
+        preventDefault: mouseDownPreventDefault,
+      }),
+    );
+    expect(mouseDownPreventDefault).toHaveBeenCalledOnce();
+
+    const auxPreventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+    await act(async () =>
+      railTab.props.onAuxClick({
+        button: 1,
+        preventDefault: auxPreventDefault,
+        stopPropagation,
+      }),
+    );
+    expect(auxPreventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledWith(browser);
 
     await act(async () => renderer.unmount());
   });
