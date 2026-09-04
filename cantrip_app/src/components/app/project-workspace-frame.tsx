@@ -55,6 +55,12 @@ import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-su
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
 import {
+  Tooltip,
+  TooltipButton,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   getProjectRepositoryStats,
   getProjectTokenUsage,
   getRemoteDesktop,
@@ -73,7 +79,7 @@ function VisibleChatLiveScope({ chatId }: { chatId: string }) {
   return null;
 }
 
-function DockRail({
+export function DockRail({
   activeTabKey,
   allSurfaces,
   launchers,
@@ -108,6 +114,7 @@ function DockRail({
     } satisfies WorkspaceDndData,
   });
   const Icon = region === "right" ? PanelRight : PanelBottom;
+  const tooltipSide = region === "right" ? "left" : "top";
   const regionLaunchers = launchers.filter(
     (launcher) =>
       launcher.location === `${region}-rail` &&
@@ -144,32 +151,40 @@ function DockRail({
           : { gridColumn: "1 / -1", gridRow: 2 }
       }
     >
-      <div
-        className={cn(
-          "grid size-10 shrink-0 place-items-center text-muted-foreground",
-          region === "right" ? "border-b" : "border-r",
-        )}
-        title={`Drop a tab into the ${region} dock`}
-      >
-        <Icon className="size-4" />
-      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className={cn(
+              "grid size-10 shrink-0 place-items-center text-muted-foreground",
+              region === "right" ? "border-b" : "border-r",
+            )}
+          >
+            <Icon className="size-4" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side={tooltipSide}>
+          Drop a tab into the {region} dock
+        </TooltipContent>
+      </Tooltip>
       {surfaces.map((surface) =>
         regionLaunchers.some(
           (launcher) => launcherSurface(launcher)?.tabKey === surface.tabKey,
         ) ? null : (
-          <button
+          <TooltipButton
             aria-label={`Focus ${surface.title} in ${region} dock`}
             aria-pressed={surface.tabKey === activeTabKey}
             className={cn(
-              "grid size-10 shrink-0 place-items-center border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+              "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
               region === "right" ? "border-b" : "border-r",
               surface.tabKey === activeTabKey && "bg-muted text-foreground",
             )}
             key={surface.tabKey}
             disabled={pending}
             onClick={() => onSelect(surface)}
-            title={surface.title}
-            type="button"
+            size="icon"
+            tooltip={`Focus ${surface.title}`}
+            tooltipSide={tooltipSide}
+            variant="ghost"
           >
             {surface.kind === "builtin" ? (
               <ProjectBuiltInSurfaceIcon
@@ -179,7 +194,7 @@ function DockRail({
             ) : (
               <ProjectSurfaceIcon className="size-4" kind={surface.kind} />
             )}
-          </button>
+          </TooltipButton>
         ),
       )}
       {regionLaunchers.map((launcher) => {
@@ -191,20 +206,23 @@ function DockRail({
         const definition = PROJECT_SURFACE_DEFINITIONS.find(
           ({ id }) => id === definitionId,
         );
+        const actionLabel = `${surface ? "Focus" : "Open"} ${definition?.label ?? "surface"}`;
         return (
-          <button
-            aria-label={`${surface ? "Focus" : "Open"} ${definition?.label ?? "surface"} in ${region} dock`}
+          <TooltipButton
+            aria-label={`${actionLabel} in ${region} dock`}
             aria-pressed={surface?.tabKey === activeTabKey}
             className={cn(
-              "grid size-10 shrink-0 place-items-center border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+              "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
               region === "right" ? "border-b" : "border-r",
               surface?.tabKey === activeTabKey && "bg-muted text-foreground",
             )}
             key={launcher.id}
             disabled={pending}
             onClick={() => onOpenLauncher(launcher)}
-            title={definition?.label}
-            type="button"
+            size="icon"
+            tooltip={actionLabel}
+            tooltipSide={tooltipSide}
+            variant="ghost"
           >
             {builtIn.success ? (
               <ProjectBuiltInSurfaceIcon
@@ -223,7 +241,7 @@ function DockRail({
                 }
               />
             )}
-          </button>
+          </TooltipButton>
         );
       })}
     </aside>
