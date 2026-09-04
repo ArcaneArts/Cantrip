@@ -91,6 +91,8 @@ releases it. The small `.installation.lock` file is not a stale-lock indicator
 and must not be removed while an installer runs. A failed signing/smoke step
 leaves the previous installed executable intact. A crash after installation
 configuration commits but before executable replacement is safe to rerun.
+Unexpected lock-holder exit cancels the active smoke and prevents subsequent
+installation commit steps; it is never reported as a successful installation.
 
 To reset only this helper deliberately, stop development processes, inspect the
 exact directory with `cua:profile`, and move that named helper directory to a

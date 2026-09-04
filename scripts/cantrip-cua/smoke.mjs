@@ -105,6 +105,7 @@ export async function smokeCantripCua(
     cwd,
     env = process.env,
     styles = STYLES,
+    signal,
   } = {},
 ) {
   if (backend !== "fake")
@@ -128,6 +129,7 @@ export async function smokeCantripCua(
     timeoutMs,
     cwd,
     env,
+    signal,
   });
   const binding = {
     sessionId: "cua-smoke-session",

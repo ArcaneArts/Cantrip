@@ -104,8 +104,9 @@ export async function installDevelopmentCua(
   return runLocked(
     source,
     path.join(paths.directory, ".installation.lock"),
-    async () => {
+    async (signal) => {
       const previous = await readConfiguration(paths.configuration);
+      signal?.throwIfAborted();
       const signingIdentity =
         environment.CANTRIP_CUA_SIGNING_IDENTITY?.trim() ||
         previous.signingIdentity;
@@ -119,6 +120,7 @@ export async function installDevelopmentCua(
         const staged = path.join(staging, cantripCuaExecutableName(platform));
         await cp(source, staged);
         if (platform !== "win32") await chmod(staged, 0o755);
+        signal?.throwIfAborted();
         if (platform === "darwin" && signingIdentity) {
           runCodesign([
             "--force",
@@ -132,15 +134,18 @@ export async function installDevelopmentCua(
           ]);
           runCodesign(["--verify", "--strict", staged]);
         }
-        await runSmoke(staged, { backend: "fake" });
+        await runSmoke(staged, { backend: "fake", signal });
+        signal?.throwIfAborted();
         const config = { version: 1, signingIdentity };
         const stagedConfig = path.join(staging, "installation.json");
         await writeFile(stagedConfig, JSON.stringify(config, null, 2) + "\n", {
           mode: 0o600,
         });
+        signal?.throwIfAborted();
         // Persist the deliberate signing choice before replacing the executable.
         // A later invocation without the environment variable must not downgrade it.
         await rename(stagedConfig, paths.configuration);
+        signal?.throwIfAborted();
         await rename(staged, paths.binary);
         return { ...paths, ...config, capturePermissionVerified: false };
       } finally {

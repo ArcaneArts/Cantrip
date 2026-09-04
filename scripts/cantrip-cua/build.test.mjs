@@ -115,7 +115,7 @@ test("bundling copies exact executable bytes under platform-correct name", async
       );
       assert.equal(path.basename(binary), cantripCuaExecutableName(platform));
       assert.equal(await readFile(binary, "utf8"), "fixture binary");
-      if (platform !== "win32")
+      if (platform !== "win32" && process.platform !== "win32")
         assert.equal((await stat(binary)).mode & 0o111, 0o111);
     }
     await assert.rejects(
