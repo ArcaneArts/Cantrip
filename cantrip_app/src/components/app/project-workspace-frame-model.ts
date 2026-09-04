@@ -12,6 +12,7 @@ import {
   type CenterLayoutNode,
 } from "@/components/app/center-split-layout";
 import type { ProjectSurface } from "@/lib/project-surface";
+import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import { effectiveDockFraction } from "./project-dock-presentation";
 
 export interface VisibleProjectPane {
@@ -41,6 +42,18 @@ export function legacyTopStripPresentation(
     presentations.find(
       ({ focused, pane }) => focused && pane.region === "center",
     ) ?? presentations.find(({ pane }) => pane.region === "center")
+  );
+}
+
+export function legacyTopStripShowsSidebarPreview(
+  presentation: VisibleProjectPane | undefined,
+  preview: SidebarFilePreviewState | null,
+): boolean {
+  return Boolean(
+    presentation &&
+    preview &&
+    (preview.active ||
+      (preview.paneId !== null && preview.paneId === presentation.pane.id)),
   );
 }
 

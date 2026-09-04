@@ -6,6 +6,7 @@ import type { ProjectSurface } from "@/lib/project-surface";
 import {
   createKindsForPaneRegion,
   legacyTopStripPresentation,
+  legacyTopStripShowsSidebarPreview,
   projectWorkspaceGridModel,
   partitionVisibleWorkspacePanes,
   railLauncherDisposition,
@@ -156,6 +157,24 @@ describe("visible workspace panes", () => {
       "center:tab",
       "center:alternate",
     ]);
+  });
+
+  it("keeps an inactive center preview in the legacy top strip while a dock has focus", () => {
+    const presentations = visible(
+      [pane("center", "center"), pane("bottom", "bottom")],
+      { focusedPaneId: "bottom" },
+    );
+    const topStrip = legacyTopStripPresentation(presentations);
+
+    expect(
+      legacyTopStripShowsSidebarPreview(topStrip, {
+        active: false,
+        explorerId: "sidebar-explorer",
+        paneId: "center",
+        path: "src/index.ts",
+        projectId: "project-1",
+      }),
+    ).toBe(true);
   });
 
   it("uses a valid pane-local active tab and falls back to the anchor", () => {

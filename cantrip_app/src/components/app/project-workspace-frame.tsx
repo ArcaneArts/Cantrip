@@ -43,6 +43,7 @@ import {
   createKindsForPaneRegion,
   definitionIdByCreateKind,
   legacyTopStripPresentation,
+  legacyTopStripShowsSidebarPreview,
   partitionVisibleWorkspacePanes,
   railLauncherDisposition,
   responsiveProjectWorkspaceGridModel,
@@ -1213,6 +1214,10 @@ export function ProjectWorkspaceFrame({
             : false,
           selectedPaneSurfaces: legacyTopStrip?.surfaces ?? [],
           selectedTabKey: legacyTopStrip?.activeTabKey ?? null,
+          showSidebarPreviewTab: legacyTopStripShowsSidebarPreview(
+            legacyTopStrip,
+            bindings.sidebarFilePreview,
+          ),
         }
       : bindings;
 
