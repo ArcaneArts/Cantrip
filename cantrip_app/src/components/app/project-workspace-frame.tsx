@@ -1,4 +1,12 @@
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useDroppable } from "@dnd-kit/core";
+import {
+  horizontalListSortingStrategy,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   PROJECT_SURFACE_DEFINITIONS,
   projectBuiltinSurfaceDefinitionIdSchema,
@@ -9,7 +17,7 @@ import {
   type ProjectPaneSummary,
 } from "@cantrip/protocol";
 import { useQueries } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import {
   useMemo,
   useCallback,
@@ -51,7 +59,11 @@ import {
   temporarySplitFraction,
   type DockRegion,
 } from "@/components/app/project-dock-presentation";
-import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
+import {
+  ProjectPaneTabStrip,
+  surfaceCanDelete,
+  surfaceDeleteLabel,
+} from "@/components/workspace/project-tab-bar";
 import {
   ProjectSurfaceCreateMenu,
   type ProjectSurfaceCreateKind,
@@ -59,6 +71,11 @@ import {
 } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { ProjectBuiltInSurfaceIcon } from "@/components/sidebar/project-tool-launchers";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  StyledContextMenuContent,
+  StyledContextMenuItem,
+} from "@/components/ui/styled-menu";
 import {
   Tooltip,
   TooltipButton,
@@ -73,15 +90,160 @@ import {
 import type { ProjectSurface } from "@/lib/project-surface";
 import { projectBuiltInSurfaceResourceRef } from "@/lib/project-tool-surfaces";
 import { useAppLiveScope } from "@/lib/app-live-react";
+import { nextProjectTabAfterRemoval } from "@/lib/project-pane";
 import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
   workspaceRegionDropId,
+  workspaceSurfaceDragId,
 } from "@/lib/workspace-dnd-model";
 
 function VisibleChatLiveScope({ chatId }: { chatId: string }) {
   useAppLiveScope({ kind: "chat", chatId });
   return null;
+}
+
+function SortableDockRailTab({
+  active,
+  disabled,
+  memberPosition,
+  onClose,
+  onDelete,
+  onMoveToRegion,
+  onSelect,
+  region,
+  surface,
+}: {
+  active: boolean;
+  disabled: boolean;
+  memberPosition: number;
+  onClose(): void;
+  onDelete(): void;
+  onMoveToRegion?(
+    region: Extract<ProjectPaneRegion, "center" | DockRegion>,
+  ): void;
+  onSelect(): void;
+  region: DockRegion;
+  surface: ProjectSurface;
+}) {
+  const sortable = useSortable({
+    disabled,
+    id: workspaceSurfaceDragId(surface.tabKey),
+    data: {
+      drag: {
+        type: "surface",
+        projectId: surface.projectId,
+        paneId: surface.paneId,
+        tabKey: surface.tabKey,
+        label: surface.title,
+        position: memberPosition,
+        supportedRegions: surface.definition.supportedPlacements,
+        visualKind: surface.kind,
+      },
+      drop: {
+        type: "pane-tab",
+        projectId: surface.projectId,
+        paneId: surface.paneId,
+        tabKey: surface.tabKey,
+        memberPosition,
+      },
+    } satisfies WorkspaceDndData,
+    transition: {
+      duration: 180,
+      easing: "cubic-bezier(0.2, 0, 0, 1)",
+    },
+  });
+  const canDelete = surfaceCanDelete(surface);
+  const tooltipSide = region === "right" ? "left" : "top";
+  return (
+    <div
+      className="size-10 shrink-0"
+      data-dock-rail-tab={surface.tabKey}
+      data-dock-rail-tab-position={memberPosition}
+      ref={sortable.setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+        opacity: sortable.isDragging ? 0.35 : 1,
+        zIndex: sortable.isDragging ? 10 : undefined,
+      }}
+      {...(disabled ? {} : sortable.attributes)}
+      {...(disabled ? {} : sortable.listeners)}
+    >
+      <ContextMenu.Root>
+        <ContextMenu.Trigger asChild>
+          <div className="size-10 shrink-0">
+            <TooltipButton
+              aria-label={`Focus ${surface.title} in ${region} dock`}
+              aria-pressed={active}
+              className={cn(
+                "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
+                region === "right" ? "border-b" : "border-r",
+                active && "bg-muted text-foreground",
+              )}
+              disabled={disabled}
+              onClick={onSelect}
+              size="icon"
+              tooltip={`Focus ${surface.title}`}
+              tooltipSide={tooltipSide}
+              variant="ghost"
+            >
+              {surface.kind === "builtin" ? (
+                <ProjectBuiltInSurfaceIcon
+                  className="size-4"
+                  definitionId={surface.entity.definitionId}
+                />
+              ) : (
+                <ProjectSurfaceIcon className="size-4" kind={surface.kind} />
+              )}
+            </TooltipButton>
+          </div>
+        </ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <StyledContextMenuContent className="min-w-40">
+            {onMoveToRegion
+              ? (["center", "right", "bottom"] as const)
+                  .filter(
+                    (targetRegion) =>
+                      targetRegion !== region &&
+                      surface.definition.supportedPlacements.includes(
+                        targetRegion,
+                      ),
+                  )
+                  .map((targetRegion) => (
+                    <StyledContextMenuItem
+                      key={targetRegion}
+                      onSelect={() => onMoveToRegion(targetRegion)}
+                    >
+                      Move to{" "}
+                      {targetRegion === "center"
+                        ? "Center"
+                        : targetRegion === "right"
+                          ? "Right"
+                          : "Bottom"}
+                    </StyledContextMenuItem>
+                  ))
+              : null}
+            <StyledContextMenuItem onSelect={onClose}>
+              <X className="size-4" /> Close View
+            </StyledContextMenuItem>
+            {canDelete ? (
+              <ContextMenu.Separator className="my-1 h-px bg-border" />
+            ) : null}
+            {canDelete ? (
+              <StyledContextMenuItem
+                className="text-destructive focus:bg-destructive/10"
+                onSelect={onDelete}
+              >
+                <Trash2 className="size-4" />
+                {surfaceDeleteLabel(surface)}
+              </StyledContextMenuItem>
+            ) : null}
+          </StyledContextMenuContent>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
+    </div>
+  );
 }
 
 export function DockRail({
@@ -90,6 +252,9 @@ export function DockRail({
   creatingKinds,
   launchers,
   onCreate,
+  onClose,
+  onDelete,
+  onMoveToRegion,
   onOpenLauncher,
   onSelect,
   pending,
@@ -104,6 +269,12 @@ export function DockRail({
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   launchers: readonly ProjectSurfaceLauncher[];
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
+  onClose(surface: ProjectSurface): void;
+  onDelete(surface: ProjectSurface): void;
+  onMoveToRegion?(
+    surface: ProjectSurface,
+    region: Extract<ProjectPaneRegion, "center" | "right" | "bottom">,
+  ): void;
   onOpenLauncher(launcher: ProjectSurfaceLauncher): void;
   onSelect(surface: ProjectSurface): void;
   pending: boolean;
@@ -115,6 +286,7 @@ export function DockRail({
 }) {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createTooltipOpen, setCreateTooltipOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
   const drop = useDroppable({
     id: workspaceRegionDropId(region),
     data: {
@@ -145,139 +317,169 @@ export function DockRail({
         JSON.stringify(resource.ref) === JSON.stringify(surfaceRef),
     );
   };
+  const closeImmediately = (surface: ProjectSurface) => {
+    if (surface.tabKey === activeTabKey) {
+      const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
+      const nextSurface = surfaces.find(
+        (candidate) => candidate.tabKey === nextTabKey,
+      );
+      if (nextSurface) onSelect(nextSurface);
+    }
+    onClose(surface);
+  };
+  const placedTabKeys = new Set(surfaces.map((surface) => surface.tabKey));
   return (
-    <aside
-      aria-label={`${region === "right" ? "Right" : "Bottom"} dock rail`}
-      className={cn(
-        "z-40 flex shrink-0 border-border bg-background",
-        region === "right"
-          ? "min-h-0 w-10 flex-col overflow-y-auto border-l [scrollbar-width:none]"
-          : "h-10 min-w-0 flex-row overflow-x-auto border-t [scrollbar-width:none]",
-        drop.isOver && "bg-primary/10",
-      )}
-      data-dock-rail={region}
-      ref={drop.setNodeRef}
-      style={
-        region === "right"
-          ? { gridColumn: 2, gridRow: 1 }
-          : { gridColumn: "1 / -1", gridRow: 2 }
-      }
-    >
-      <Tooltip
-        onOpenChange={(open) => setCreateTooltipOpen(open && !createMenuOpen)}
-        open={createTooltipOpen && !createMenuOpen}
+    <>
+      <aside
+        aria-label={`${region === "right" ? "Right" : "Bottom"} dock rail`}
+        className={cn(
+          "z-40 flex shrink-0 border-border bg-background",
+          region === "right"
+            ? "min-h-0 w-10 flex-col overflow-y-auto border-l [scrollbar-width:none]"
+            : "h-10 min-w-0 flex-row overflow-x-auto border-t [scrollbar-width:none]",
+          drop.isOver && "bg-primary/10",
+        )}
+        data-dock-rail={region}
+        ref={drop.setNodeRef}
+        style={
+          region === "right"
+            ? { gridColumn: 2, gridRow: 1 }
+            : { gridColumn: "1 / -1", gridRow: 2 }
+        }
       >
-        <TooltipTrigger asChild>
-          <span className="inline-flex size-10 shrink-0">
-            <ProjectSurfaceCreateMenu
-              align={region === "right" ? "end" : "start"}
-              allowedKinds={createKindsForPaneRegion(region)}
-              creatingKinds={creatingKinds}
-              onCreate={onCreate}
-              onOpenChange={(open) => {
-                setCreateMenuOpen(open);
-                if (open) setCreateTooltipOpen(false);
-              }}
-              placement={placement}
-              trigger={
-                <button
-                  aria-label={`Add surface to ${region} dock`}
-                  className={cn(
-                    "grid size-10 shrink-0 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
-                    region === "right" ? "border-b" : "border-r",
-                  )}
-                  disabled={pending}
-                  type="button"
-                >
-                  <Plus className="size-4" />
-                </button>
-              }
-            />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side={tooltipSide}>
-          Add surface to {region} dock
-        </TooltipContent>
-      </Tooltip>
-      {surfaces.map((surface) =>
-        regionLaunchers.some(
-          (launcher) => launcherSurface(launcher)?.tabKey === surface.tabKey,
-        ) ? null : (
-          <TooltipButton
-            aria-label={`Focus ${surface.title} in ${region} dock`}
-            aria-pressed={surface.tabKey === activeTabKey}
-            className={cn(
-              "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
-              region === "right" ? "border-b" : "border-r",
-              surface.tabKey === activeTabKey && "bg-muted text-foreground",
-            )}
-            key={surface.tabKey}
-            disabled={pending}
-            onClick={() => onSelect(surface)}
-            size="icon"
-            tooltip={`Focus ${surface.title}`}
-            tooltipSide={tooltipSide}
-            variant="ghost"
-          >
-            {surface.kind === "builtin" ? (
-              <ProjectBuiltInSurfaceIcon
-                className="size-4"
-                definitionId={surface.entity.definitionId}
-              />
-            ) : (
-              <ProjectSurfaceIcon className="size-4" kind={surface.kind} />
-            )}
-          </TooltipButton>
-        ),
-      )}
-      {regionLaunchers.map((launcher) => {
-        if (launcher.target.kind !== "definition") return null;
-        const definitionId = launcher.target.definitionId;
-        const surface = launcherSurface(launcher);
-        const builtIn =
-          projectBuiltinSurfaceDefinitionIdSchema.safeParse(definitionId);
-        const definition = PROJECT_SURFACE_DEFINITIONS.find(
-          ({ id }) => id === definitionId,
-        );
-        const actionLabel = `${surface ? "Focus" : "Open"} ${definition?.label ?? "surface"}`;
-        return (
-          <TooltipButton
-            aria-label={`${actionLabel} in ${region} dock`}
-            aria-pressed={surface?.tabKey === activeTabKey}
-            className={cn(
-              "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
-              region === "right" ? "border-b" : "border-r",
-              surface?.tabKey === activeTabKey && "bg-muted text-foreground",
-            )}
-            key={launcher.id}
-            disabled={pending}
-            onClick={() => onOpenLauncher(launcher)}
-            size="icon"
-            tooltip={actionLabel}
-            tooltipSide={tooltipSide}
-            variant="ghost"
-          >
-            {builtIn.success ? (
-              <ProjectBuiltInSurfaceIcon
-                className="size-4"
-                definitionId={builtIn.data}
-              />
-            ) : (
-              <ProjectSurfaceIcon
-                className="size-4"
-                kind={
-                  definitionId === "project.terminal"
-                    ? "terminal"
-                    : definitionId === "project.browser"
-                      ? "browser"
-                      : "remote-desktop"
+        <Tooltip
+          onOpenChange={(open) => setCreateTooltipOpen(open && !createMenuOpen)}
+          open={createTooltipOpen && !createMenuOpen}
+        >
+          <TooltipTrigger asChild>
+            <span className="inline-flex size-10 shrink-0">
+              <ProjectSurfaceCreateMenu
+                align={region === "right" ? "end" : "start"}
+                allowedKinds={createKindsForPaneRegion(region)}
+                creatingKinds={creatingKinds}
+                onCreate={onCreate}
+                onOpenChange={(open) => {
+                  setCreateMenuOpen(open);
+                  if (open) setCreateTooltipOpen(false);
+                }}
+                placement={placement}
+                trigger={
+                  <button
+                    aria-label={`Add surface to ${region} dock`}
+                    className={cn(
+                      "grid size-10 shrink-0 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+                      region === "right" ? "border-b" : "border-r",
+                    )}
+                    disabled={pending}
+                    type="button"
+                  >
+                    <Plus className="size-4" />
+                  </button>
                 }
               />
-            )}
-          </TooltipButton>
-        );
-      })}
-    </aside>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side={tooltipSide}>
+            Add surface to {region} dock
+          </TooltipContent>
+        </Tooltip>
+        <SortableContext
+          items={surfaces.map((surface) =>
+            workspaceSurfaceDragId(surface.tabKey),
+          )}
+          strategy={
+            region === "right"
+              ? verticalListSortingStrategy
+              : horizontalListSortingStrategy
+          }
+        >
+          {surfaces.map((surface, memberPosition) => (
+            <SortableDockRailTab
+              active={surface.tabKey === activeTabKey}
+              disabled={pending}
+              key={surface.tabKey}
+              memberPosition={memberPosition}
+              onClose={() => closeImmediately(surface)}
+              onDelete={() => setDeleteTarget(surface)}
+              onMoveToRegion={
+                onMoveToRegion
+                  ? (targetRegion) => onMoveToRegion(surface, targetRegion)
+                  : undefined
+              }
+              onSelect={() => onSelect(surface)}
+              region={region}
+              surface={surface}
+            />
+          ))}
+        </SortableContext>
+        {regionLaunchers.map((launcher) => {
+          if (launcher.target.kind !== "definition") return null;
+          const definitionId = launcher.target.definitionId;
+          const surface = launcherSurface(launcher);
+          if (surface && placedTabKeys.has(surface.tabKey)) return null;
+          const builtIn =
+            projectBuiltinSurfaceDefinitionIdSchema.safeParse(definitionId);
+          const definition = PROJECT_SURFACE_DEFINITIONS.find(
+            ({ id }) => id === definitionId,
+          );
+          const actionLabel = `${surface ? "Focus" : "Open"} ${definition?.label ?? "surface"}`;
+          return (
+            <TooltipButton
+              aria-label={`${actionLabel} in ${region} dock`}
+              aria-pressed={surface?.tabKey === activeTabKey}
+              className={cn(
+                "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
+                region === "right" ? "border-b" : "border-r",
+                surface?.tabKey === activeTabKey && "bg-muted text-foreground",
+              )}
+              key={launcher.id}
+              disabled={pending}
+              onClick={() => onOpenLauncher(launcher)}
+              size="icon"
+              tooltip={actionLabel}
+              tooltipSide={tooltipSide}
+              variant="ghost"
+            >
+              {builtIn.success ? (
+                <ProjectBuiltInSurfaceIcon
+                  className="size-4"
+                  definitionId={builtIn.data}
+                />
+              ) : (
+                <ProjectSurfaceIcon
+                  className="size-4"
+                  kind={
+                    definitionId === "project.terminal"
+                      ? "terminal"
+                      : definitionId === "project.browser"
+                        ? "browser"
+                        : "remote-desktop"
+                  }
+                />
+              )}
+            </TooltipButton>
+          );
+        })}
+      </aside>
+      <ConfirmDialog
+        confirmLabel={
+          deleteTarget ? surfaceDeleteLabel(deleteTarget) : "Delete Resource"
+        }
+        confirmVariant="destructive"
+        description={
+          deleteTarget?.kind === "chat"
+            ? "This closes the view and archives the Agent resource."
+            : "This permanently deletes the resource and its saved view state."
+        }
+        onConfirm={() => {
+          if (deleteTarget) onDelete(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`${deleteTarget?.kind === "chat" ? "Archive" : "Delete"} ${deleteTarget?.title ?? "resource"}?`}
+      />
+    </>
   );
 }
 
@@ -1020,6 +1222,9 @@ export function ProjectWorkspaceFrame({
               right ? undefined : "right",
             )
           }
+          onClose={bindings.closeSurfaceView}
+          onDelete={bindings.deleteSurfaceResource}
+          onMoveToRegion={bindings.moveSurfaceToRegion}
           onOpenLauncher={(launcher) => openRailLauncher(launcher, "right")}
           onSelect={focusAndRevealSurface}
           pending={presentationMutationPending}
@@ -1045,6 +1250,9 @@ export function ProjectWorkspaceFrame({
               bottom ? undefined : "bottom",
             )
           }
+          onClose={bindings.closeSurfaceView}
+          onDelete={bindings.deleteSurfaceResource}
+          onMoveToRegion={bindings.moveSurfaceToRegion}
           onOpenLauncher={(launcher) => openRailLauncher(launcher, "bottom")}
           onSelect={focusAndRevealSurface}
           pending={presentationMutationPending}
