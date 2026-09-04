@@ -1,4 +1,8 @@
-import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
+import type {
+  ExecutionTarget,
+  ProjectPaneRegion,
+  ProjectViewKind,
+} from "@cantrip/protocol";
 
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import type { ProjectSurface } from "@/lib/project-surface";
@@ -26,6 +30,12 @@ export interface SurfaceCreationOperations {
   chat: CreationMutation<SurfaceCreateInput & { open?: boolean }>;
   code: CreationMutation<SurfaceCreateInput & { worktreeId?: string }>;
   explorer: CreationMutation<SurfaceCreateInput & { worktreeId?: string }>;
+  projectView: CreationMutation<
+    SurfaceCreateInput & {
+      kind: Exclude<ProjectViewKind, "remote-desktop">;
+      worktreeId?: string;
+    }
+  >;
   remoteDesktop: CreationMutation<SurfaceCreateInput>;
   terminal: CreationMutation<SurfaceCreateInput>;
 }
@@ -65,6 +75,14 @@ export interface SurfaceViewOperations {
   close: MutationOperation<ProjectSurface>;
 }
 
+const projectToolCreateKinds = new Set<ProjectSurfaceCreateKind>([
+  "history",
+  "graph",
+  "issues",
+  "prs",
+  "actions",
+]);
+
 export function createSurfaceCommandController({
   creation,
   crud,
@@ -90,7 +108,12 @@ export function createSurfaceCommandController({
     else if (kind === "explorer") creation.explorer.mutate(input);
     else if (kind === "browser") creation.browser.mutate(input);
     else if (kind === "code") creation.code.mutate(input);
-    else if (kind === "remote-desktop") {
+    else if (projectToolCreateKinds.has(kind)) {
+      creation.projectView.mutate({
+        ...input,
+        kind: kind as Exclude<ProjectViewKind, "remote-desktop">,
+      });
+    } else if (kind === "remote-desktop") {
       if (!paneId) creation.remoteDesktop.reset();
       creation.remoteDesktop.mutate(input);
     }
@@ -135,6 +158,7 @@ export function createSurfaceCommandController({
     ...(creation.explorer.isPending ? (["explorer"] as const) : []),
     ...(creation.browser.isPending ? (["browser"] as const) : []),
     ...(creation.code.isPending ? (["code"] as const) : []),
+    ...(creation.projectView.isPending ? [...projectToolCreateKinds] : []),
     ...(creation.remoteDesktop.isPending ? (["remote-desktop"] as const) : []),
   ]);
   const surfaceCreationFailure = creation.chat.isError
@@ -167,13 +191,19 @@ export function createSurfaceCommandController({
                 error: creation.code.error,
                 dismiss: creation.code.reset,
               }
-            : creation.remoteDesktop.isError
+            : creation.projectView.isError
               ? {
-                  label: "Remote Desktop",
-                  error: creation.remoteDesktop.error,
-                  dismiss: creation.remoteDesktop.reset,
+                  label: "project tool",
+                  error: creation.projectView.error,
+                  dismiss: creation.projectView.reset,
                 }
-              : null;
+              : creation.remoteDesktop.isError
+                ? {
+                    label: "Remote Desktop",
+                    error: creation.remoteDesktop.error,
+                    dismiss: creation.remoteDesktop.reset,
+                  }
+                : null;
   return {
     createProjectSurface,
     creatingSurfaceKinds,

@@ -123,6 +123,11 @@ describe("project surface creation menu", () => {
       { kind: "explorer", label: "Explorer" },
       { kind: "code", label: "Code" },
       { kind: "browser", label: "Browser" },
+      { kind: "history", label: "History" },
+      { kind: "graph", label: "Graph" },
+      { kind: "issues", label: "Issues" },
+      { kind: "prs", label: "Pull Requests" },
+      { kind: "actions", label: "Actions" },
       { kind: "remote-desktop", label: "Remote Desktop" },
     ]);
   });
@@ -150,7 +155,7 @@ describe("project surface creation menu", () => {
     ).toBe(true);
   });
 
-  it("never exposes singleton project tools as resource creation", () => {
+  it("exposes project tools as capability-aware resource creation", () => {
     const options = projectSurfaceCreateOptions(new Set(), {
       git: false,
       github: false,
@@ -159,17 +164,10 @@ describe("project surface creation menu", () => {
       relocation: false,
     });
 
-    expect(options.map(({ kind }) => kind)).not.toContain("history");
-    expect(options.map(({ kind }) => kind)).not.toContain("issues");
     expect(options.map(({ kind }) => kind)).not.toContain("builtin");
-    expect(options.map(({ kind }) => kind)).toEqual([
-      "chat",
-      "terminal",
-      "explorer",
-      "code",
-      "browser",
-      "remote-desktop",
-    ]);
+    expect(
+      options.filter(({ disabled }) => disabled).map(({ kind }) => kind),
+    ).toEqual(["history", "graph", "issues", "prs", "actions"]);
   });
 
   it("derives compatible worker, replica, and worktree placement choices", () => {
@@ -220,6 +218,8 @@ describe("project surface creation menu", () => {
       { disabled: false, reason: null },
     );
     expect(surfaceSupportsExplicitPlacement("remote-desktop")).toBe(true);
+    expect(surfaceSupportsExplicitPlacement("history")).toBe(false);
+    expect(surfaceSupportsExplicitPlacement("actions")).toBe(false);
   });
 
   it("preserves the caller-provided trigger", () => {

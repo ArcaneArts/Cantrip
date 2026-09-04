@@ -8,6 +8,7 @@ import type {
   GithubAgentWorkflowContext,
   ExplorerEntry,
   ExplorerSummary,
+  ProjectViewKind,
   ProjectViewSummary,
   RemoteDesktopTarget,
   StandaloneChatSummary,
@@ -31,6 +32,7 @@ import {
   createChatConsole,
   createCodeTab,
   createExplorer,
+  createProjectView,
   createRemoteDesktop,
   createStandaloneChat,
   createTask,
@@ -616,6 +618,59 @@ export function useBrowserCodeViewCreationOperations({
     },
   });
   return { newBrowser, newCodeTab } as const;
+}
+
+const projectToolSurfaceTitles = {
+  actions: "Actions",
+  graph: "Graph",
+  history: "History",
+  issues: "Issues",
+  prs: "Pull Requests",
+} as const satisfies Record<Exclude<ProjectViewKind, "remote-desktop">, string>;
+
+export function useProjectToolSurfaceCreationOperation({
+  openCreatedTab,
+  queryClient,
+}: {
+  openCreatedTab: OpenCreatedTab;
+  queryClient: QueryClient;
+}) {
+  return useMutation({
+    mutationFn: ({
+      kind,
+      paneId,
+      projectId,
+      targetRegion,
+      worktreeId,
+    }: {
+      kind: Exclude<ProjectViewKind, "remote-desktop">;
+      paneId?: string;
+      projectId: string;
+      targetRegion?: "center" | "right" | "bottom" | "left";
+      worktreeId?: string;
+    }) =>
+      createProjectView(
+        projectId,
+        kind,
+        projectToolSurfaceTitles[kind],
+        worktreeId,
+        paneId,
+        targetRegion,
+      ),
+    onSuccess: (view) => {
+      queryClient.setQueryData<ProjectViewSummary[]>(
+        ["project-views", view.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== view.id), view].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      openCreatedTab(view.projectId, "view", view.id);
+      void queryClient.invalidateQueries({
+        queryKey: ["project-views", view.projectId],
+      });
+    },
+  });
 }
 
 export function useRemoteDesktopCreationOperation({

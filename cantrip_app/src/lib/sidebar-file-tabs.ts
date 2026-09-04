@@ -142,6 +142,10 @@ export function surfaceWorktreeId(surface: ProjectSurface | undefined) {
     return surface.entity.worktreeId;
   }
   if (surface.kind === "history") return surface.entity.worktreeId;
+  if (surface.kind === "graph") return surface.entity.worktreeId;
+  if (surface.kind === "issues") return surface.entity.worktreeId;
+  if (surface.kind === "prs") return surface.entity.worktreeId;
+  if (surface.kind === "actions") return surface.entity.worktreeId;
   return null;
 }
 

@@ -108,6 +108,29 @@ describe("surface command controller", () => {
     });
   });
 
+  it("creates independent project tools in the requested pane", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+
+    controller.createProjectSurface("project-1", "prs", "right-pane");
+    controller.createProjectSurface(
+      "project-1",
+      "prs",
+      undefined,
+      undefined,
+      "bottom",
+    );
+
+    expect(operationSet.creation.projectView.mutate).toHaveBeenNthCalledWith(
+      1,
+      { kind: "prs", paneId: "right-pane", projectId: "project-1" },
+    );
+    expect(operationSet.creation.projectView.mutate).toHaveBeenNthCalledWith(
+      2,
+      { kind: "prs", projectId: "project-1", targetRegion: "bottom" },
+    );
+  });
+
   it("keeps Close View separate from deleting an Explorer resource", () => {
     const operationSet = operations();
     const controller = createSurfaceCommandController(operationSet);

@@ -32,6 +32,7 @@ import {
   useExplorerCreationOperations,
   useProjectChatCreationOperation,
   useProjectTaskCreationOperation,
+  useProjectToolSurfaceCreationOperation,
   useRemoteDesktopCreationOperation,
   useStandaloneChatCompletionOperation,
   useStandaloneChatOperations,
@@ -134,7 +135,7 @@ import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboar
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { useWorkerObservationDemands } from "@/lib/worker-observation-react";
 import { type AppToastInput } from "@/components/ui/app-toast";
-import { getChatRelocations, updateProjectSurfaceLauncher } from "@/lib/api";
+import { getChatRelocations } from "@/lib/api";
 import {
   projectBuiltInDefinitionForSection,
   projectBuiltInSurfaceAvailable,
@@ -531,6 +532,10 @@ export function App() {
     surfaceOpenRequestRef,
     setWorkspaceSelection,
   });
+  const newProjectToolSurface = useProjectToolSurfaceCreationOperation({
+    openCreatedTab,
+    queryClient,
+  });
   const applicationInventory = useApplicationInventory({
     isPopout,
     projectResourcesLive,
@@ -598,7 +603,6 @@ export function App() {
     repositoryStats,
     runConfigurationRuntimes,
     runConfigurations,
-    surfaceLaunchers,
     tabLayout,
     terminals,
     worktreeStatuses,
@@ -625,31 +629,6 @@ export function App() {
       tabLayout.data?.panes,
     ],
   );
-  const updateSurfaceLauncherPin = useMutation({
-    mutationFn: ({
-      definitionId,
-      pinned,
-      projectId,
-    }: {
-      definitionId: ProjectBuiltInSurfaceDefinitionId;
-      pinned: boolean;
-      projectId: string;
-    }) =>
-      updateProjectSurfaceLauncher(projectId, {
-        definitionId,
-        location: "project-navigator",
-        pinned,
-      }),
-    onSuccess: (launcher) => {
-      queryClient.setQueryData(
-        ["project-surface-launchers", launcher.projectId],
-        (current: typeof surfaceLaunchers.data) =>
-          current?.map((candidate) =>
-            candidate.id === launcher.id ? launcher : candidate,
-          ),
-      );
-    },
-  });
   const newChat = useProjectChatCreationOperation({
     openCreatedTab,
     queryClient,
@@ -768,36 +747,26 @@ export function App() {
       ),
     [openOrFocusSurface, tabLayout.data, workspaceSelection.focusedPaneId],
   );
-  const openProjectToolSurface = useCallback(
-    async (
-      projectId: string,
-      section: typeof projectOverviewSection,
-      worktreeId?: string,
-    ) => {
-      const opened = await openProjectNavigatorSurface(
+  const openProjectBuiltinSurface = useCallback(
+    (projectId: string, section: "overview" | "tasks") =>
+      openProjectNavigatorSurface(
         projectId,
         projectBuiltInSurfaceResourceRef(
           projectBuiltInDefinitionForSection(section),
         ),
-      );
-      if (!opened || !worktreeId) return;
-      await bindWorktreeMutation.mutateAsync({
-        target: {
-          kind: "builtin",
-          projectId,
-          definitionId: projectBuiltInDefinitionForSection(section),
-        },
+      ),
+    [openProjectNavigatorSurface],
+  );
+  const openProjectToolSection = useCallback(
+    (section: GitViewSection, worktreeId?: string) => {
+      if (!selectedProjectId) return;
+      newProjectToolSurface.mutate({
+        kind: section,
+        projectId: selectedProjectId,
         worktreeId,
       });
     },
-    [bindWorktreeMutation, openProjectNavigatorSurface],
-  );
-  const openProjectToolSection = useCallback(
-    (section: typeof projectOverviewSection, worktreeId?: string) => {
-      if (!selectedProjectId) return;
-      void openProjectToolSurface(selectedProjectId, section, worktreeId);
-    },
-    [openProjectToolSurface, selectedProjectId],
+    [newProjectToolSurface, selectedProjectId],
   );
   const projectToolBridgeAttemptRef = useRef<string | null>(null);
   useEffect(() => {
@@ -810,14 +779,27 @@ export function App() {
     ) {
       return;
     }
-    const attempt = `${selectedProjectId}:${tabLayout.data.revision}`;
+    const attempt = `${selectedProjectId}:${tabLayout.data.revision}:${projectOverviewSection}:${projectOverviewWorktreeId ?? ""}`;
     if (projectToolBridgeAttemptRef.current === attempt) return;
     projectToolBridgeAttemptRef.current = attempt;
-    void openProjectToolSurface(selectedProjectId, projectOverviewSection);
+    if (
+      projectOverviewSection === "overview" ||
+      projectOverviewSection === "tasks"
+    ) {
+      void openProjectBuiltinSurface(selectedProjectId, projectOverviewSection);
+      return;
+    }
+    newProjectToolSurface.mutate({
+      kind: projectOverviewSection,
+      projectId: selectedProjectId,
+      worktreeId: projectOverviewWorktreeId ?? undefined,
+    });
   }, [
     isPopout,
-    openProjectToolSurface,
+    newProjectToolSurface,
+    openProjectBuiltinSurface,
     projectOverviewSection,
+    projectOverviewWorktreeId,
     selectedBuiltInDefinitionId,
     selectedProjectId,
     tabLayout.data,
@@ -1045,7 +1027,10 @@ export function App() {
   const selectedProjectView =
     !sidebarFilePreviewVisible &&
     (selectedSurface?.kind === "history" ||
+      selectedSurface?.kind === "graph" ||
       selectedSurface?.kind === "issues" ||
+      selectedSurface?.kind === "prs" ||
+      selectedSurface?.kind === "actions" ||
       selectedSurface?.kind === "remote-desktop")
       ? selectedSurface.entity
       : undefined;
@@ -1055,8 +1040,8 @@ export function App() {
       : undefined;
   const gitHistoryProject =
     selectedProject?.capabilities.git &&
-    (selectedProjectView?.kind === "history" ||
-      selectedProjectView?.kind === "issues")
+    selectedProjectView &&
+    selectedProjectView.kind !== "remote-desktop"
       ? selectedProject
       : undefined;
   const projectOverviewGitSection: GitViewSection | null =
@@ -1419,7 +1404,7 @@ export function App() {
               projectId: selectedCodeTab.projectId,
               tabId: selectedCodeTab.id,
             }
-          : selectedProjectView?.kind === "history"
+          : selectedProjectView && selectedProjectView.kind !== "remote-desktop"
             ? {
                 kind: "history",
                 projectId: selectedProjectView.projectId,
@@ -1445,7 +1430,8 @@ export function App() {
           ? selectedCodeTab.worktreeId
           : selectedBuiltInSurface
             ? selectedBuiltInSurface.entity.worktreeId
-            : selectedProjectView?.kind === "history"
+            : selectedProjectView &&
+                selectedProjectView.kind !== "remote-desktop"
               ? selectedProjectView.worktreeId
               : null;
   const activeWorktree = worktrees.data?.find(
@@ -1531,11 +1517,11 @@ export function App() {
       worktreeId: chat.activeWorktreeId,
     });
   const openChatHistoryHere = (chat: ChatSummary) =>
-    void openProjectToolSurface(
-      chat.projectId,
-      "history",
-      chat.activeWorktreeId,
-    );
+    newProjectToolSurface.mutate({
+      kind: "history",
+      projectId: chat.projectId,
+      worktreeId: chat.activeWorktreeId,
+    });
   const currentSurface = useMemo<{
     tabKey: string;
     title: string;
@@ -1939,6 +1925,7 @@ export function App() {
       chat: newChat,
       code: newCodeTab,
       explorer: newExplorer,
+      projectView: newProjectToolSurface,
       remoteDesktop: newRemoteDesktop,
       terminal: newTerminal,
     },
@@ -2045,7 +2032,7 @@ export function App() {
     sidebarInlineExplorer, sidebarPreviewExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
-    surfaceLaunchers, tabLayout, tabLayoutMutation, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation, updateSurfaceLauncherPin,
+    tabLayout, tabLayoutMutation, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
     visibleProjects, workers, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };

@@ -7,9 +7,6 @@ import type {
   ExplorerSummary,
   ProjectFolderSetupJobSummary,
   ProjectSummary,
-  ProjectSurfaceResourceRef,
-  ProjectSurfaceLauncher,
-  ProjectBuiltInSurfaceDefinitionId,
   ProjectReplicaJobSummary,
 } from "@cantrip/protocol";
 import {
@@ -32,7 +29,6 @@ import {
   ProjectSidebarFileTree,
   type ExplorerFileMutationAuthorization,
 } from "@/components/sidebar/project-sidebar-file-tree";
-import { ProjectToolLaunchers } from "@/components/sidebar/project-tool-launchers";
 import {
   ProjectContextMenu,
   ProjectDropdownMenu,
@@ -40,7 +36,6 @@ import {
 } from "@/components/projects/project-actions-menu";
 import { ProjectRemovalDialog } from "@/components/projects/project-removal-dialog";
 import { cn } from "@/lib/utils";
-import type { ProjectSurface } from "@/lib/project-surface";
 
 const projectId = (id: string) => `project:${id}`;
 
@@ -169,7 +164,6 @@ export function ProjectChatList({
   fileTreeWorkerOnline,
   fileRevealLabel,
   overviewSelected,
-  surfaceLaunchers = [],
   onFilePin,
   onFileCreateFolder,
   onFileDelete,
@@ -180,21 +174,15 @@ export function ProjectChatList({
   onFilePreview,
   onFileRename,
   onFileTreeRetry,
-  onCloseSurface,
   onOpenProjectSettings,
-  onOpenSurface,
-  onPinProjectTool,
   onRevealProject,
   onRemoveProject,
-  onSelectTab,
   onSelectProject,
   folderSetupJobs,
   projects,
   projectSetupJobs,
   projectRevealLabel,
-  selectedTabKey,
   selectedProjectId,
-  surfaces,
 }: {
   fileExplorer: ExplorerSummary | null;
   filePreviewPath: string | null;
@@ -206,7 +194,6 @@ export function ProjectChatList({
   fileTreeWorkerOnline: boolean;
   fileRevealLabel?: string;
   overviewSelected: boolean;
-  surfaceLaunchers: ProjectSurfaceLauncher[];
   onFilePin(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFileCreateFolder(
     explorer: ExplorerSummary,
@@ -234,27 +221,18 @@ export function ProjectChatList({
     authorization: ExplorerFileMutationAuthorization,
   ): Promise<void>;
   onFileTreeRetry?(): void;
-  onCloseSurface(surface: ProjectSurface): void;
   onOpenProjectSettings(projectId: string): void;
-  onOpenSurface(surfaceRef: ProjectSurfaceResourceRef): void;
-  onPinProjectTool(
-    definitionId: ProjectBuiltInSurfaceDefinitionId,
-    pinned: boolean,
-  ): void;
   onRevealProject?: (
     project: ProjectSummary,
     localFolder: boolean,
   ) => Promise<void>;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
-  onSelectTab(tabKey: string): void;
   onSelectProject(projectId: string): void;
   folderSetupJobs: ReadonlyMap<string, ProjectFolderSetupJobSummary>;
   projects: ProjectSummary[];
   projectSetupJobs: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projectRevealLabel?: string;
-  selectedTabKey: string | null;
   selectedProjectId: string | null;
-  surfaces: readonly ProjectSurface[];
 }) {
   const [removeProjectTarget, setRemoveProjectTarget] =
     useState<ProjectSummary | null>(null);
@@ -309,18 +287,6 @@ export function ProjectChatList({
               >
                 {active ? (
                   <div className="flex min-h-8 flex-1 flex-col rounded-md transition-colors">
-                    <ProjectToolLaunchers
-                      capabilities={project.capabilities}
-                      launchers={surfaceLaunchers}
-                      selectedTabKey={selectedTabKey}
-                      surfaces={surfaces}
-                      onClose={onCloseSurface}
-                      onOpen={(definitionId) =>
-                        onOpenSurface({ kind: "builtin", definitionId })
-                      }
-                      onPin={onPinProjectTool}
-                      onSelect={onSelectTab}
-                    />
                     <ProjectSidebarFileTree
                       activePath={filePreviewPath}
                       error={fileTreeError}

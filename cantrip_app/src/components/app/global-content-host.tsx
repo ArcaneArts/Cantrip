@@ -540,14 +540,17 @@ export function GlobalContentHost({
                   ? `overview:${projectOverviewGitProject.id}`
                   : selectedProjectView?.id
               }
-              activeSection={projectOverviewGitSection ?? undefined}
               chats={chats.data ?? []}
               contentScrolled={contentScrolled}
               includeOverviewTab={false}
+              activeSection={
+                projectOverviewGitSection ??
+                (selectedProjectView?.kind !== "remote-desktop"
+                  ? selectedProjectView?.kind
+                  : undefined)
+              }
               view={
-                projectOverviewGitSection === "issues"
-                  ? "issues"
-                  : (selectedProjectView?.kind ?? "history")
+                selectedProjectView?.kind === "issues" ? "issues" : "history"
               }
               standalone={isPopout || Boolean(projectOverviewGitProject)}
               project={displayedGitProject}
@@ -582,7 +585,7 @@ export function GlobalContentHost({
                 }
                 if (
                   !selectedProjectView ||
-                  selectedProjectView.kind !== "history"
+                  selectedProjectView.kind === "remote-desktop"
                 )
                   return;
                 queryClient.setQueryData<ProjectViewSummary[]>(

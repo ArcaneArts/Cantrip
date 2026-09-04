@@ -1,5 +1,4 @@
 import { DndContext } from "@dnd-kit/core";
-import type { ProjectSurfaceLauncher } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -30,21 +29,11 @@ const surface = {
 } as unknown as ProjectSurface;
 
 function renderRail(region: "right" | "bottom") {
-  const launcher = {
-    id: `launcher-${region}`,
-    location: `${region}-rail`,
-    pinned: true,
-    projectId: "project-1",
-    target: { definitionId: "git.history", kind: "definition" },
-  } as ProjectSurfaceLauncher;
-
   return renderToStaticMarkup(
     <DndContext>
       <TooltipProvider delayDuration={0}>
         <DockRail
           activeTabKey={null}
-          allSurfaces={[surface]}
-          launchers={[launcher]}
           onCreate={vi.fn()}
           onClose={vi.fn()}
           onDelete={vi.fn()}
@@ -53,7 +42,6 @@ function renderRail(region: "right" | "bottom") {
           projectId="project-1"
           region={region}
           surfaces={[surface]}
-          onOpenLauncher={vi.fn()}
           onSelect={vi.fn()}
         />
       </TooltipProvider>
@@ -74,7 +62,9 @@ describe("dock rail tooltips", () => {
         `aria-label="Focus Agent chat in ${region} dock"`,
       );
       expect(markup).toContain(`aria-label="Add surface to ${region} dock"`);
-      expect(markup).toContain(`aria-label="Open History in ${region} dock"`);
+      expect(markup).not.toContain(
+        `aria-label="Open History in ${region} dock"`,
+      );
       expect(markup).toContain('aria-haspopup="menu"');
       expect(markup).not.toContain('role="tablist"');
       expect(markup).not.toContain(" title=");

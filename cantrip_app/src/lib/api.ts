@@ -533,6 +533,7 @@ import type {
   McpServerConfiguration,
   McpServerCopy,
   EncryptedMcpServerCreate,
+  ProjectPaneRegion,
   ProjectViewKind,
   ProjectReplicaJobCancel,
   ProjectReplicaJobRetry,
@@ -6952,10 +6953,11 @@ export async function setCodeTabTheme(
 
 export async function createProjectView(
   projectId: string,
-  kind: ProjectViewKind,
+  kind: Exclude<ProjectViewKind, "remote-desktop">,
   title: string,
   worktreeId?: string,
   paneId?: string,
+  targetRegion?: ProjectPaneRegion,
 ) {
   const id = crypto.randomUUID();
   const titleProtection = await surfaceTitleEncryption.protect(
@@ -6971,6 +6973,7 @@ export async function createProjectView(
         kind,
         ...(worktreeId ? { worktreeId } : {}),
         ...(paneId ? { paneId } : {}),
+        ...(targetRegion ? { targetRegion } : {}),
       }),
     ),
   );

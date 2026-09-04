@@ -1,7 +1,4 @@
-import type {
-  ProjectPaneSummary,
-  ProjectSurfaceLauncher,
-} from "@cantrip/protocol";
+import type { ProjectPaneSummary } from "@cantrip/protocol";
 import type { ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -152,8 +149,6 @@ function textContent(node: TestRenderer.ReactTestInstance): string {
 
 function renderRail({
   activeTabKey,
-  allSurfaces,
-  launchers = [],
   onClose = vi.fn(),
   onDelete = vi.fn(),
   onSelect = vi.fn(),
@@ -163,8 +158,6 @@ function renderRail({
   workspaceDndState,
 }: {
   activeTabKey: string | null;
-  allSurfaces: readonly ProjectSurface[];
-  launchers?: readonly ProjectSurfaceLauncher[];
   onClose?(surface: ProjectSurface): void;
   onDelete?(surface: ProjectSurface): void;
   onSelect?(surface: ProjectSurface, active: boolean): void;
@@ -176,13 +169,10 @@ function renderRail({
   const rail = (
     <DockRail
       activeTabKey={activeTabKey}
-      allSurfaces={allSurfaces}
-      launchers={launchers}
       onClose={onClose}
       onCreate={vi.fn()}
       onDelete={onDelete}
       onMoveToRegion={vi.fn()}
-      onOpenLauncher={vi.fn()}
       onSelect={onSelect}
       pane={pane}
       pending={false}
@@ -224,7 +214,6 @@ describe("dock rail tabs", () => {
       await act(async () => {
         renderer = renderRail({
           activeTabKey: browser.tabKey,
-          allSurfaces: [browser, terminal],
           region,
           surfaces: [browser, terminal],
         });
@@ -269,7 +258,6 @@ describe("dock rail tabs", () => {
     await act(async () => {
       renderer = renderRail({
         activeTabKey: browser.tabKey,
-        allSurfaces: [browser, terminal],
         onClose,
         onDelete,
         onSelect,
@@ -308,7 +296,6 @@ describe("dock rail tabs", () => {
     await act(async () => {
       renderer = renderRail({
         activeTabKey: browser.tabKey,
-        allSurfaces: [browser],
         onClose,
         surfaces: [browser],
       });
@@ -342,92 +329,6 @@ describe("dock rail tabs", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("replaces an opened launcher with the sortable placed surface", async () => {
-    const history = surface("history", "history", "History", 0, "git.history");
-    const launcher = {
-      id: "launcher-history",
-      location: "right-rail",
-      pinned: true,
-      projectId: "project-1",
-      target: { definitionId: "git.history", kind: "definition" },
-    } as ProjectSurfaceLauncher;
-    const onSelect =
-      vi.fn<(surface: ProjectSurface, active: boolean) => void>();
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    await act(async () => {
-      renderer = renderRail({
-        activeTabKey: history.tabKey,
-        allSurfaces: [history],
-        launchers: [launcher],
-        onSelect,
-        surfaces: [history],
-      });
-    });
-
-    expect(
-      renderer.root.findAll(
-        (node) =>
-          node.type === "button" &&
-          node.props["aria-label"] === "Collapse History in right dock",
-      ),
-    ).toHaveLength(1);
-    expect(
-      renderer.root.findAll(
-        (node) =>
-          node.type === "button" &&
-          node.props["aria-label"] === "Open History in right dock",
-      ),
-    ).toHaveLength(0);
-    expect(sortableState.options).toHaveLength(1);
-
-    const historyTab = renderer.root.findByProps({
-      "aria-label": "Collapse History in right dock",
-    });
-    await act(async () => historyTab.props.onClick());
-    expect(onSelect).toHaveBeenCalledWith(history, true);
-
-    await act(async () => renderer.unmount());
-  });
-
-  it("does not render a synthetic launcher for multi-instance rail resources", async () => {
-    const launcher = {
-      id: "launcher-terminal",
-      location: "bottom-rail",
-      pinned: false,
-      projectId: "project-1",
-      target: { definitionId: "project.terminal", kind: "definition" },
-    } as ProjectSurfaceLauncher;
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    await act(async () => {
-      renderer = renderRail({
-        activeTabKey: null,
-        allSurfaces: [],
-        launchers: [launcher],
-        region: "bottom",
-        surfaces: [],
-      });
-    });
-
-    expect(
-      renderer.root.findAll(
-        (node) =>
-          node.type === "button" &&
-          node.props["aria-label"] === "Open Terminal in bottom dock",
-      ),
-    ).toHaveLength(0);
-    expect(
-      renderer.root.findAll(
-        (node) =>
-          node.type === "button" &&
-          node.props["aria-label"] === "Add surface to bottom dock",
-      ),
-    ).toHaveLength(1);
-
-    await act(async () => renderer.unmount());
-  });
-
   it("shows a live insertion placeholder for a cross-rail drag", async () => {
     const browser = surface("browser", "one", "Browser", 0);
     const terminal = surface("terminal", "two", "Terminal", 0);
@@ -438,7 +339,6 @@ describe("dock rail tabs", () => {
     await act(async () => {
       renderer = renderRail({
         activeTabKey: browser.tabKey,
-        allSurfaces: [browser, terminal],
         pane: {
           id: "pane-right",
           region: "right",

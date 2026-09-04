@@ -99,6 +99,23 @@ export class ProjectViewRepository {
     projectId: string,
     input: EncryptedProjectViewCreate,
   ): Promise<ProjectViewWireSummary | null> {
+    const selected = input.worktreeId
+      ? await this.collaborators.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          input.worktreeId,
+        )
+      : null;
+    const source = !input.worktreeId
+      ? await this.collaborators.getProjectSource(ownerId, projectId)
+      : null;
+    const worktreeId = selected?.worktree.id ?? source?.worktreeId ?? null;
+    if (
+      !worktreeId ||
+      (selected && selected.worktree.lifecycleState !== "ready")
+    ) {
+      return null;
+    }
     const position = await this.collaborators.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
       const result = await transaction
@@ -108,7 +125,7 @@ export class ProjectViewRepository {
           projectId,
           protectedLabel: input.titleProtection,
           kind: input.kind,
-          worktreeId: null,
+          worktreeId,
           position,
         })
         .returning();
@@ -157,8 +174,21 @@ export class ProjectViewRepository {
       .limit(1);
     const view = rows[0]?.view;
     if (!view) return null;
-    void input;
-    throw new Error("This project view does not use worktrees.");
+    if (view.kind === "remote-desktop") {
+      throw new Error("Remote Desktop views do not use worktrees.");
+    }
+    const selected = await this.collaborators.getProjectWorktreeContext(
+      ownerId,
+      view.projectId,
+      input.worktreeId,
+    );
+    if (!selected || selected.worktree.lifecycleState !== "ready") return null;
+    const result = await this.database
+      .update(schema.projectViews)
+      .set({ worktreeId: selected.worktree.id, updatedAt: new Date() })
+      .where(eq(schema.projectViews.id, viewId))
+      .returning();
+    return result[0] ? toProjectViewWireSummary(result[0]) : null;
   }
 
   async deleteProjectView(ownerId: string, viewId: string): Promise<boolean> {

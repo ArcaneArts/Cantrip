@@ -2435,7 +2435,7 @@ export const tabGroupMembers = pgTable(
     ),
     check(
       "tab_group_members_kind_check",
-      sql`${table.tabKind} IN ('chat', 'terminal', 'explorer', 'browser', 'code', 'history', 'issues', 'remote-desktop', 'builtin')`,
+      sql`${table.tabKind} IN ('chat', 'terminal', 'explorer', 'browser', 'code', 'history', 'graph', 'issues', 'prs', 'actions', 'remote-desktop', 'builtin')`,
     ),
   ],
 );
@@ -4030,7 +4030,10 @@ export const projectViews = pgTable(
       .defaultNow(),
   },
   (table) => [
-    check("project_views_kind_check", sql`${table.kind} = 'remote-desktop'`),
+    check(
+      "project_views_kind_check",
+      sql`${table.kind} IN ('remote-desktop', 'history', 'graph', 'issues', 'prs', 'actions')`,
+    ),
   ],
 );
 

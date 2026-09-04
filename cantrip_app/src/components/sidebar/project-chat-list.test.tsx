@@ -100,8 +100,7 @@ describe("project root sidebar row", () => {
 });
 
 describe("sidebar surface inventory", () => {
-  it("does not duplicate open workspace surfaces in the project sidebar", async () => {
-    const onOpenSurface = vi.fn();
+  it("does not render project tools or duplicate open workspace surfaces", async () => {
     const props = {
       browsers: [],
       chats: [chat],
@@ -136,7 +135,6 @@ describe("sidebar surface inventory", () => {
       onOpenChatHistory: vi.fn(),
       onOpenChatTerminal: vi.fn(),
       onOpenProjectSettings: vi.fn(),
-      onOpenSurface,
       onPinProjectTool: vi.fn(),
       onRemoveProject: vi.fn(),
       onRenameBrowser: vi.fn(),
@@ -242,7 +240,7 @@ describe("sidebar surface inventory", () => {
     });
 
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Open views");
-    expect(onOpenSurface).not.toHaveBeenCalled();
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Project tools");
     await act(async () => renderer.unmount());
   });
 });

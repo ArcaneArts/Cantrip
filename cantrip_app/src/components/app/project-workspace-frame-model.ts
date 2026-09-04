@@ -2,7 +2,6 @@ import {
   PROJECT_SURFACE_DEFINITIONS,
   type ProjectPaneRegion,
   type ProjectPaneSummary,
-  type ProjectSurfaceLauncher,
 } from "@cantrip/protocol";
 
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
@@ -62,6 +61,11 @@ export const definitionIdByCreateKind = {
   chat: "project.agent",
   code: "project.code",
   explorer: "project.explorer",
+  graph: "project.git-graph",
+  history: "project.git-history",
+  issues: "project.github-issues",
+  prs: "project.github-pull-requests",
+  actions: "project.github-actions",
   "remote-desktop": "project.remote-desktop",
   terminal: "project.terminal",
 } as const satisfies Record<ProjectSurfaceCreateKind, string>;
@@ -168,23 +172,6 @@ export function responsiveProjectWorkspaceGridModel({
     }),
     rightFraction,
   } as const;
-}
-
-export function railLauncherDisposition(
-  launcher: ProjectSurfaceLauncher,
-  surfaces: readonly ProjectSurface[],
-):
-  | { type: "focus"; tabKey: string }
-  | { type: "open"; definitionId: string }
-  | { type: "unavailable" } {
-  if (launcher.target.kind !== "definition") return { type: "unavailable" };
-  const definitionId = launcher.target.definitionId;
-  const existing = surfaces.find(
-    ({ definition }) => definition.id === definitionId,
-  );
-  return existing
-    ? { type: "focus", tabKey: existing.tabKey }
-    : { type: "open", definitionId };
 }
 
 export function createKindsForPaneRegion(

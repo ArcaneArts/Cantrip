@@ -9,11 +9,20 @@ import { projectBuiltinSurfaceDefinitionIdSchema } from "./project-surface-ident
 
 export const projectViewKindSchema = z.enum([
   "history",
+  "graph",
   "issues",
+  "prs",
+  "actions",
   "remote-desktop",
 ]);
 
-export const projectViewCreateKindSchema = z.literal("remote-desktop");
+export const projectViewCreateKindSchema = z.enum([
+  "history",
+  "graph",
+  "issues",
+  "prs",
+  "actions",
+]);
 
 const projectViewCreateBaseSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -59,7 +68,10 @@ export const projectTabKindSchema = z.enum([
   "browser",
   "code",
   "history",
+  "graph",
   "issues",
+  "prs",
+  "actions",
   "remote-desktop",
   "builtin",
 ]);

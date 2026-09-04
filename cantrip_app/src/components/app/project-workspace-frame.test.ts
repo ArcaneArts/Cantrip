@@ -9,7 +9,6 @@ import {
   legacyTopStripShowsSidebarPreview,
   projectWorkspaceGridModel,
   partitionVisibleWorkspacePanes,
-  railLauncherDisposition,
   responsiveProjectWorkspaceGridModel,
   visibleWorkspacePanes,
 } from "./project-workspace-frame-model";
@@ -230,6 +229,11 @@ describe("workspace region create capabilities", () => {
       "chat",
       "code",
       "explorer",
+      "graph",
+      "history",
+      "issues",
+      "prs",
+      "actions",
       "remote-desktop",
       "terminal",
     ]);
@@ -369,34 +373,5 @@ describe("workspace frame topology", () => {
       "minmax(0, calc(68% - 3px)) 6px minmax(0, calc(32% - 3px))",
     );
     expect(model.gridTemplateAreas).not.toContain("tabs");
-  });
-});
-
-describe("dock rail launchers", () => {
-  const launcher = {
-    id: "launcher:history",
-    location: "right-rail",
-    pinned: false,
-    projectId: "project-1",
-    target: { kind: "definition", definitionId: "git.history" },
-  } as const;
-
-  it("focuses an existing placement without moving it to the clicked rail", () => {
-    expect(
-      railLauncherDisposition(launcher, [
-        {
-          definition: { id: "git.history" },
-          paneId: "center-pane",
-          tabKey: "builtin:history",
-        } as ProjectSurface,
-      ]),
-    ).toEqual({ type: "focus", tabKey: "builtin:history" });
-  });
-
-  it("opens a missing definition into the requested rail path", () => {
-    expect(railLauncherDisposition(launcher, [])).toEqual({
-      type: "open",
-      definitionId: "git.history",
-    });
   });
 });

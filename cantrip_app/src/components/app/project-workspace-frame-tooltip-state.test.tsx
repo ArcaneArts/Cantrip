@@ -69,12 +69,9 @@ describe("dock rail add tooltip state", () => {
         renderer = TestRenderer.create(
           <DockRail
             activeTabKey={null}
-            allSurfaces={[]}
-            launchers={[]}
             onCreate={vi.fn()}
             onClose={vi.fn()}
             onDelete={vi.fn()}
-            onOpenLauncher={vi.fn()}
             onSelect={vi.fn()}
             pane={undefined}
             pending={false}

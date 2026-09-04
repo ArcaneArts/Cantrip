@@ -21,6 +21,7 @@ import {
   projectSurfaceViewCloseResultSchema,
   projectSurfaceViewOpenResultSchema,
   projectSurfaceViewId,
+  projectViewWireSummarySchema,
   protectedScriptCommandListSchema,
   remoteDesktopWireSummarySchema,
   serverBootstrapSchema,
@@ -2486,6 +2487,22 @@ describe.sequential("project execution placement API", () => {
           target.definitionId === "project.terminal",
       ),
     ).toBeUndefined();
+    for (const definitionId of [
+      "git.history",
+      "git.graph",
+      "github.issues",
+      "github.pull-requests",
+      "github.actions",
+    ] as const) {
+      expect(
+        launchers.find(
+          ({ location, target }) =>
+            location === "right-rail" &&
+            target.kind === "definition" &&
+            target.definitionId === definitionId,
+        ),
+      ).toBeUndefined();
+    }
     expect(
       launchers.find(
         ({ location, target }) =>
@@ -2552,19 +2569,68 @@ describe.sequential("project execution placement API", () => {
     ).toMatchObject({ pinned: false });
   });
 
-  it("rejects legacy History and Issues ProjectView creation", async () => {
-    const fields = protectedDisplayLabelFields("project-view");
-    for (const kind of ["history", "issues"] as const) {
+  it("creates independent Git and GitHub tool surfaces", async () => {
+    const ids = new Set<string>();
+    const expectedRegionByTabKey = new Map<
+      string,
+      "center" | "right" | "bottom"
+    >();
+    for (const { kind, targetRegion } of [
+      { kind: "history", targetRegion: "center" },
+      { kind: "history", targetRegion: "right" },
+      { kind: "graph", targetRegion: "bottom" },
+      { kind: "issues", targetRegion: "center" },
+      { kind: "prs", targetRegion: "right" },
+      { kind: "actions", targetRegion: "bottom" },
+    ] as const) {
+      const fields = protectedDisplayLabelFields("project-view");
       const response = await app.inject({
         method: "POST",
         url: `/api/projects/${projectId}/views`,
         payload: {
           id: fields.id,
           kind,
+          targetRegion,
           titleProtection: fields.titleProtection,
         },
       });
-      expect(response.statusCode, response.body).toBe(400);
+      expect(response.statusCode, `${kind}: ${response.body}`).toBe(201);
+      const view = projectViewWireSummarySchema.parse(response.json());
+      expect(view).toMatchObject({
+        id: fields.id,
+        kind,
+        projectId,
+        worktreeId: betaWorktreeId,
+      });
+      ids.add(view.id);
+      expectedRegionByTabKey.set(`view:${view.id}`, targetRegion);
+      if (kind === "history" && ids.size === 1) {
+        const reboundResponse = await app.inject({
+          method: "PATCH",
+          url: `/api/project-views/${view.id}/worktree`,
+          payload: { worktreeId: alphaWorktreeId },
+        });
+        expect(reboundResponse.statusCode, reboundResponse.body).toBe(200);
+        expect(
+          projectViewWireSummarySchema.parse(reboundResponse.json()).worktreeId,
+        ).toBe(alphaWorktreeId);
+      }
+    }
+    expect(ids.size).toBe(6);
+    const layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    for (const [tabKey, region] of expectedRegionByTabKey) {
+      expect(
+        layout.panes.find(({ members }) =>
+          members.some((member) => member.tabKey === tabKey),
+        )?.region,
+      ).toBe(region);
     }
   });
 

@@ -187,7 +187,10 @@ function closeInputForSurface(
   return {
     kind:
       surface.kind === "history" ||
+      surface.kind === "graph" ||
       surface.kind === "issues" ||
+      surface.kind === "prs" ||
+      surface.kind === "actions" ||
       surface.kind === "remote-desktop"
         ? "view"
         : surface.kind,
