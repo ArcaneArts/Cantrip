@@ -14,8 +14,13 @@ import { ProjectWorkspaceFrame } from "@/components/app/project-workspace-frame"
 import { ShellHeader } from "@/components/app/shell-header";
 import { ShellOverlays } from "@/components/app/shell-overlays";
 import { ShellSidebar } from "@/components/app/shell-sidebar";
+import type { useTabLayoutOperations } from "@/components/app/tab-layout-operations";
 
-type ApplicationShellRenderBindings = Readonly<Record<string, any>>;
+type ApplicationShellRenderBindings = Readonly<Record<string, any>> & {
+  tabLayoutMutation: ReturnType<
+    typeof useTabLayoutOperations
+  >["tabLayoutMutation"];
+};
 
 function ShellContent({
   bindings,
