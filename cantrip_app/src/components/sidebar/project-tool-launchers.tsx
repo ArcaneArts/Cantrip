@@ -3,6 +3,7 @@ import type {
   ProjectCapabilities,
   ProjectSurfaceLauncher,
 } from "@cantrip/protocol";
+import { projectBuiltinSurfaceDefinitionIdSchema } from "@cantrip/protocol";
 import {
   CircleDot,
   CirclePlay,
@@ -69,8 +70,11 @@ function ToolRow({
   surface: BuiltInSurface | undefined;
 }) {
   if (launcher.target.kind !== "definition") return null;
-  const definitionId = launcher.target
-    .definitionId as ProjectBuiltInSurfaceDefinitionId;
+  const parsedDefinitionId = projectBuiltinSurfaceDefinitionIdSchema.safeParse(
+    launcher.target.definitionId,
+  );
+  if (!parsedDefinitionId.success) return null;
+  const definitionId = parsedDefinitionId.data;
   const available = projectBuiltInSurfaceAvailable(definitionId, capabilities);
   const label = projectSurfaceDefinition(definitionId).label;
   const active = Boolean(surface && surface.tabKey === selectedTabKey);
@@ -156,7 +160,10 @@ export function ProjectToolLaunchers({
   const navigatorLaunchers = launchers.filter(
     (launcher) =>
       launcher.location === "project-navigator" &&
-      launcher.target.kind === "definition",
+      launcher.target.kind === "definition" &&
+      projectBuiltinSurfaceDefinitionIdSchema.safeParse(
+        launcher.target.definitionId,
+      ).success,
   );
   const openByDefinition = new Map(
     surfaces
@@ -169,8 +176,12 @@ export function ProjectToolLaunchers({
   const catalogLaunchers = navigatorLaunchers.filter(({ pinned }) => !pinned);
   const renderTool = (launcher: ProjectSurfaceLauncher) => {
     if (launcher.target.kind !== "definition") return null;
-    const definitionId = launcher.target
-      .definitionId as ProjectBuiltInSurfaceDefinitionId;
+    const parsedDefinitionId =
+      projectBuiltinSurfaceDefinitionIdSchema.safeParse(
+        launcher.target.definitionId,
+      );
+    if (!parsedDefinitionId.success) return null;
+    const definitionId = parsedDefinitionId.data;
     return (
       <ToolRow
         key={launcher.id}

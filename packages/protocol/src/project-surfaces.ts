@@ -174,7 +174,7 @@ export const PROJECT_SURFACE_DEFINITIONS = projectSurfaceRegistrySchema.parse([
     category: "resources",
     capabilityRequirements: ["worker"],
     suggestedPlacement: "center",
-    supportedPlacements: ["center", "left", "right", "detached"],
+    supportedPlacements: ["center", "left", "right", "bottom", "detached"],
     deletable: true,
     archivable: false,
     launcherLocations: commonLauncherLocations,
@@ -569,7 +569,7 @@ export const projectSurfaceLauncherPinSchema = z
 
 export function projectSurfaceLauncherId(input: {
   projectId: string;
-  definitionId: ProjectBuiltInSurfaceDefinitionId;
+  definitionId: ProjectSurfaceDefinitionId;
   location: z.infer<typeof surfaceLauncherLocationSchema>;
 }): string {
   return `launcher:${encodeURIComponent(input.projectId)}:${input.location}:${input.definitionId}`;
@@ -580,8 +580,13 @@ export const projectSurfaceViewOpenSchema = z
     revision: z.number().int().nonnegative(),
     surfaceRef: projectSurfaceResourceRefSchema,
     targetPaneId: z.string().min(1).optional(),
+    targetRegion: surfacePlacementRegionSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((input) => !(input.targetPaneId && input.targetRegion), {
+    message: "Specify either a target pane or a target region, not both.",
+    path: ["targetRegion"],
+  });
 
 export const projectSurfaceViewCloseSchema = z
   .object({

@@ -25,7 +25,8 @@ const projectViewCreateBaseSchema = z.object({
 export const projectViewCreateSchema = projectViewCreateBaseSchema.refine(
   hasUnambiguousProjectPaneDestination,
   {
-    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    message:
+      "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
     path: ["paneId"],
   },
 );
@@ -38,7 +39,8 @@ export const encryptedProjectViewCreateSchema = projectViewCreateBaseSchema
   })
   .strict()
   .refine(hasUnambiguousProjectPaneDestination, {
-    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    message:
+      "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
     path: ["paneId"],
   })
   .refine(
@@ -346,11 +348,24 @@ export const projectPaneMemberMoveSchema = z
     revision: z.number().int().nonnegative(),
     tabKey: z.string().min(1),
     targetPaneId: z.string().min(1).nullable(),
+    targetRegion: projectPaneRegionSchema.optional(),
     targetMemberPosition: z.number().int().nonnegative(),
     targetPanePosition: z.number().int().nonnegative().optional(),
   })
   .superRefine((input, context) => {
-    if (input.targetPaneId === null && input.targetPanePosition === undefined) {
+    if (input.targetPaneId !== null && input.targetRegion !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "Specify either a target pane or a target region, not both.",
+        path: ["targetRegion"],
+      });
+    }
+    if (
+      input.targetPaneId === null &&
+      input.targetPanePosition === undefined &&
+      input.targetRegion !== "right" &&
+      input.targetRegion !== "bottom"
+    ) {
       context.addIssue({
         code: "custom",
         message:

@@ -2476,6 +2476,22 @@ describe.sequential("project execution placement API", () => {
           target.definitionId === "project.overview",
       ),
     ).toMatchObject({ pinned: true });
+    expect(
+      launchers.find(
+        ({ location, target }) =>
+          location === "bottom-rail" &&
+          target.kind === "definition" &&
+          target.definitionId === "project.terminal",
+      ),
+    ).toMatchObject({ pinned: false });
+    expect(
+      launchers.find(
+        ({ location, target }) =>
+          location === "right-rail" &&
+          target.kind === "definition" &&
+          target.definitionId === "project.browser",
+      ),
+    ).toMatchObject({ pinned: false });
 
     const pinResponse = await app.inject({
       method: "PATCH",
@@ -2615,6 +2631,7 @@ describe.sequential("project execution placement API", () => {
           url: `/api/projects/${projectId}/terminals`,
           payload: {
             ...protectedTerminalFields(),
+            targetRegion: "center",
             target: {
               kind: "worktree",
               projectId,
@@ -2774,7 +2791,10 @@ describe.sequential("project execution placement API", () => {
       2,
     );
 
-    const reversedGroups = layout.panes.map(({ id }) => id).reverse();
+    const reversedGroups = layout.panes
+      .filter(({ region }) => region === "center")
+      .map(({ id }) => id)
+      .reverse();
     const reordered = await app.inject({
       method: "PATCH",
       url: `/api/projects/${projectId}/panes/order`,
@@ -2788,7 +2808,335 @@ describe.sequential("project execution placement API", () => {
     expect(
       projectTabLayoutWireSummarySchema
         .parse(reordered.json())
-        .panes.map(({ id }) => id),
+        .panes.filter(({ region }) => region === "center")
+        .map(({ id }) => id),
     ).toEqual(reversedGroups);
+  });
+
+  it("places surfaces in singleton docks and keeps legacy pane ordering compatible", async () => {
+    let layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const dockViewIds = layout.panes
+      .filter(({ region }) => region === "right" || region === "bottom")
+      .flatMap(({ members }) => members.map(({ tabKey }) => tabKey));
+    for (const viewId of dockViewIds) {
+      const closed = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/panes/member/close`,
+        payload: { revision: layout.revision, viewId },
+      });
+      expect(closed.statusCode, closed.body).toBe(200);
+      layout = projectSurfaceViewCloseResultSchema.parse(closed.json()).layout;
+    }
+    expect(
+      layout.panes.filter(
+        ({ region }) => region === "right" || region === "bottom",
+      ),
+    ).toHaveLength(0);
+
+    const concurrentBrowsers = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/browsers`,
+          payload: {
+            ...protectedBrowserFields(),
+            target: { kind: "worker", projectId, workerId: "worker-alpha" },
+          },
+        }),
+      ),
+    );
+    expect(concurrentBrowsers.map(({ statusCode }) => statusCode)).toEqual([
+      201, 201,
+    ]);
+    const concurrentBrowserIds = concurrentBrowsers.map(
+      (response) => browserWireSummarySchema.parse(response.json()).id,
+    );
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    expect(
+      layout.panes.filter(({ region }) => region === "right"),
+    ).toHaveLength(1);
+    for (const browserId of concurrentBrowserIds) {
+      const closed = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/panes/member/close`,
+        payload: { revision: layout.revision, viewId: `browser:${browserId}` },
+      });
+      expect(closed.statusCode, closed.body).toBe(200);
+      layout = projectSurfaceViewCloseResultSchema.parse(closed.json()).layout;
+    }
+    expect(
+      layout.panes.filter(({ region }) => region === "right"),
+    ).toHaveLength(0);
+
+    const centeredBrowser = browserWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/browsers`,
+          payload: {
+            ...protectedBrowserFields(),
+            target: { kind: "worker", projectId, workerId: "worker-alpha" },
+            targetRegion: "center",
+          },
+        })
+      ).json(),
+    );
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const centeredPane = layout.panes.find(({ members }) =>
+      members.some(({ tabId }) => tabId === centeredBrowser.id),
+    )!;
+    expect(centeredPane).toMatchObject({ region: "center" });
+
+    const moveRevision = layout.revision;
+    const moved = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member`,
+      payload: {
+        revision: moveRevision,
+        tabKey: `browser:${centeredBrowser.id}`,
+        targetPaneId: null,
+        targetRegion: "right",
+        targetMemberPosition: 0,
+      },
+    });
+    expect(moved.statusCode, moved.body).toBe(200);
+    layout = projectTabLayoutWireSummarySchema.parse(moved.json());
+    expect(layout.panes.find(({ id }) => id === centeredPane.id)).toMatchObject(
+      { region: "right" },
+    );
+    expect(
+      layout.panes.filter(({ region }) => region === "right"),
+    ).toHaveLength(1);
+    const staleMove = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member`,
+      payload: {
+        revision: moveRevision,
+        tabKey: `browser:${centeredBrowser.id}`,
+        targetPaneId: null,
+        targetRegion: "right",
+        targetMemberPosition: 0,
+      },
+    });
+    expect(staleMove.statusCode).toBe(409);
+
+    const secondBrowser = browserWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/browsers`,
+          payload: {
+            ...protectedBrowserFields(),
+            target: { kind: "worker", projectId, workerId: "worker-alpha" },
+          },
+        })
+      ).json(),
+    );
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const rightPane = layout.panes.find(({ region }) => region === "right")!;
+    expect(rightPane.id).toBe(centeredPane.id);
+    expect(rightPane.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tabId: centeredBrowser.id }),
+        expect.objectContaining({ tabId: secondBrowser.id }),
+      ]),
+    );
+
+    const focused = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/panes/member/open`,
+      payload: {
+        revision: layout.revision,
+        surfaceRef: {
+          kind: "entity",
+          definitionId: "project.browser",
+          resourceId: centeredBrowser.id,
+        },
+        targetRegion: "bottom",
+      },
+    });
+    expect(focused.statusCode, focused.body).toBe(200);
+    const focusedResult = projectSurfaceViewOpenResultSchema.parse(
+      focused.json(),
+    );
+    expect(focusedResult).toMatchObject({
+      disposition: "focused",
+      paneId: rightPane.id,
+    });
+    expect(focusedResult.layout.revision).toBe(layout.revision);
+    expect(
+      focusedResult.layout.panes.filter(({ region }) => region === "bottom"),
+    ).toHaveLength(0);
+
+    const terminals = [];
+    for (let index = 0; index < 2; index += 1) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/terminals`,
+        payload: {
+          ...protectedTerminalFields(),
+          target: {
+            kind: "worktree",
+            projectId,
+            worktreeId: alphaWorktreeId,
+          },
+        },
+      });
+      expect(response.statusCode, response.body).toBe(201);
+      terminals.push(terminalWireSummarySchema.parse(response.json()));
+    }
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const bottomPanes = layout.panes.filter(
+      ({ region }) => region === "bottom",
+    );
+    expect(bottomPanes).toHaveLength(1);
+    expect(bottomPanes[0]!.members.map(({ tabId }) => tabId)).toEqual(
+      expect.arrayContaining(terminals.map(({ id }) => id)),
+    );
+    const dockedExplorer = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        targetRegion: "center",
+        target: {
+          kind: "worktree",
+          projectId,
+          worktreeId: alphaWorktreeId,
+        },
+      },
+    });
+    expect(dockedExplorer.statusCode, dockedExplorer.body).toBe(201);
+    const dockedExplorerId = explorerWireSummarySchema.parse(
+      dockedExplorer.json(),
+    ).id;
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    const explorerPane = layout.panes.find(({ members }) =>
+      members.some(({ tabId }) => tabId === dockedExplorerId),
+    )!;
+    expect(explorerPane.region).toBe("center");
+    const movedExplorer = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member`,
+      payload: {
+        revision: layout.revision,
+        tabKey: `explorer:${dockedExplorerId}`,
+        targetPaneId: null,
+        targetRegion: "bottom",
+        targetMemberPosition: 0,
+      },
+    });
+    expect(movedExplorer.statusCode, movedExplorer.body).toBe(200);
+    layout = projectTabLayoutWireSummarySchema.parse(movedExplorer.json());
+    expect(
+      layout.panes
+        .filter(({ region }) => region === "bottom")
+        .flatMap(({ members }) => members)
+        .some(({ tabId }) => tabId === dockedExplorerId),
+    ).toBe(true);
+
+    const joinedBottom = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/panes/member`,
+      payload: {
+        revision: layout.revision,
+        tabKey: `browser:${centeredBrowser.id}`,
+        targetPaneId: null,
+        targetRegion: "bottom",
+        targetMemberPosition: 1,
+      },
+    });
+    expect(joinedBottom.statusCode, joinedBottom.body).toBe(200);
+    layout = projectTabLayoutWireSummarySchema.parse(joinedBottom.json());
+    expect(
+      layout.panes.filter(({ region }) => region === "right"),
+    ).toHaveLength(1);
+    expect(
+      layout.panes.filter(({ region }) => region === "bottom"),
+    ).toHaveLength(1);
+    expect(
+      layout.panes
+        .flatMap(({ members }) => members)
+        .filter(({ tabKey }) => tabKey === `browser:${centeredBrowser.id}`),
+    ).toHaveLength(1);
+
+    const legacy = legacyProjectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+    const reversedLegacyIds = legacy.groups.map(({ id }) => id).reverse();
+    const reorderedLegacy = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tab-groups/order`,
+      payload: {
+        revision: legacy.revision,
+        groupIds: reversedLegacyIds,
+      },
+    });
+    expect(reorderedLegacy.statusCode, reorderedLegacy.body).toBe(200);
+    const reorderedLayout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/panes`,
+        })
+      ).json(),
+    );
+    for (const region of ["center", "right", "bottom"] as const) {
+      const expectedIds = reversedLegacyIds.filter((id) =>
+        layout.panes.some((pane) => pane.id === id && pane.region === region),
+      );
+      expect(
+        reorderedLayout.panes
+          .filter((pane) => pane.region === region)
+          .map(({ id }) => id),
+      ).toEqual(expectedIds);
+    }
   });
 });

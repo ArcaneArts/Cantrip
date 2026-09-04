@@ -160,6 +160,7 @@ export function PersistentExplorerViews({
   prewarmExplorer,
   prewarmSuccessorExplorer,
   repositoryGraphAvailable,
+  visiblePlacements,
 }: {
   activeExplorer: ExplorerSummary | null;
   transientFile?: {
@@ -199,6 +200,12 @@ export function PersistentExplorerViews({
   prewarmExplorer?: ExplorerSummary | null;
   prewarmSuccessorExplorer?: ExplorerSummary | null;
   repositoryGraphAvailable: boolean;
+  visiblePlacements?: readonly {
+    explorer: ExplorerSummary;
+    focused: boolean;
+    gridArea: string;
+    paneId: string;
+  }[];
 }) {
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -282,10 +289,22 @@ export function PersistentExplorerViews({
       ]),
     [handoffExplorer, handoffSourceExplorer, openExplorers],
   );
+  const placementById = useMemo(
+    () =>
+      new Map(
+        visiblePlacements?.map((placement) => [
+          placement.explorer.id,
+          placement,
+        ]) ?? [],
+      ),
+    [visiblePlacements],
+  );
   const ownershipDiagnostics = useMemo<ExplorerOwnershipDiagnostic[]>(
     () =>
       renderedExplorers.map((explorer) => {
-        const active = activeExplorer?.id === explorer.id;
+        const active = visiblePlacements
+          ? placementById.has(explorer.id)
+          : activeExplorer?.id === explorer.id;
         const handoffDestination = handoffExplorer?.id === explorer.id;
         const handoffSource = handoffSourceExplorer?.id === explorer.id;
         const openOwner = Boolean(
@@ -325,6 +344,7 @@ export function PersistentExplorerViews({
       prewarmSuccessorExplorer?.id,
       renderedExplorers,
       transientFile?.explorerId,
+      placementById,
     ],
   );
   const previousOwnershipRef = useRef(
@@ -394,7 +414,10 @@ export function PersistentExplorerViews({
   );
 
   return renderedExplorers.map((explorer) => {
-    const active = activeExplorer?.id === explorer.id;
+    const placement = placementById.get(explorer.id);
+    const active = visiblePlacements
+      ? Boolean(placement)
+      : activeExplorer?.id === explorer.id;
     const explorerTransientFile =
       transientFile?.explorerId === explorer.id
         ? transientFile.file
@@ -403,7 +426,7 @@ export function PersistentExplorerViews({
     const prewarm =
       prewarmExplorer?.id === explorer.id ||
       prewarmSuccessorExplorer?.id === explorer.id;
-    return (
+    const view = (
       <ExplorerView
         active={active}
         appearance={appearance}
@@ -415,9 +438,16 @@ export function PersistentExplorerViews({
         }
         gitStatus={gitStatuses[explorer.worktreeId]}
         keepInlineCodeWarm={inlineCodeOwnerIds.has(explorer.id)}
-        key={explorer.id}
         onChanged={onChanged}
-        onHeaderChange={active ? onHeaderChange : undefined}
+        onHeaderChange={
+          visiblePlacements
+            ? placement?.focused
+              ? onHeaderChange
+              : undefined
+            : active
+              ? onHeaderChange
+              : undefined
+        }
         onInlineCodeReady={
           onInlineCodeReady ? () => onInlineCodeReady(explorer.id) : undefined
         }
@@ -438,6 +468,20 @@ export function PersistentExplorerViews({
             : undefined
         }
       />
+    );
+    return (
+      <div
+        aria-hidden={!active}
+        className={
+          active ? "flex min-h-0 min-w-0 flex-1 overflow-hidden" : "hidden"
+        }
+        data-explorer-pane={placement?.gridArea}
+        data-project-pane-id={placement?.paneId}
+        key={explorer.id}
+        style={placement ? { gridArea: placement.gridArea } : undefined}
+      >
+        {view}
+      </div>
     );
   });
 }

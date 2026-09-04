@@ -89,9 +89,11 @@ function builtInSurface(
 }
 
 function renderLaunchers({
+  extraLaunchers = [],
   projectCapabilities = capabilities,
   surfaces = [],
 }: {
+  extraLaunchers?: readonly ProjectSurfaceLauncher[];
   projectCapabilities?: ProjectCapabilities;
   surfaces?: readonly ProjectSurface[];
 } = {}) {
@@ -109,6 +111,7 @@ function renderLaunchers({
         launchers={[
           launcher("project.overview", true),
           launcher("github.issues", false),
+          ...extraLaunchers,
         ]}
         selectedTabKey={null}
         surfaces={surfaces}
@@ -120,6 +123,32 @@ function renderLaunchers({
 }
 
 describe("project tool launchers", () => {
+  it("ignores resource-definition launchers in the built-in project tools catalog", () => {
+    const { renderer } = renderLaunchers({
+      extraLaunchers: [
+        {
+          id: "launcher:project-1:project-navigator:project.terminal",
+          projectId: "project-1",
+          location: "project-navigator",
+          target: { kind: "definition", definitionId: "project.terminal" },
+          pinned: false,
+        },
+      ],
+    });
+
+    const catalog = renderer.root.findByProps({
+      "aria-label": "Project tools catalog",
+    });
+    act(() => catalog.findByProps({ "aria-expanded": false }).props.onClick());
+    expect(
+      renderer.root.findAllByProps({
+        "data-project-tool": "project.terminal",
+      }),
+    ).toHaveLength(0);
+
+    act(() => renderer.unmount());
+  });
+
   it("keeps unpinned tools out of permanent navigator rows", () => {
     const { renderer } = renderLaunchers();
     const pinned = renderer.root.findByProps({

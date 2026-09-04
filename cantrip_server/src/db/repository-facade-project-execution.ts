@@ -47,6 +47,7 @@ import type {
   McpServerOpaqueRuntime,
   McpServerWireSummary,
   PrivateDisplayLabelOpaque,
+  ProjectPaneRegion,
   ProjectCloneResult,
   ProjectFolderSetupJobSummary,
   ProjectReplicaSummary,
@@ -1666,6 +1667,7 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     workerId: string,
     stateProtection: SurfacePrivateStateOpaque,
     paneId?: string,
+    targetRegion?: ProjectPaneRegion,
   ): Promise<RemoteDesktopWireSummary | null> {
     return this.remoteSurfaces.createRemoteDesktop(
       ownerId,
@@ -1675,6 +1677,7 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
       workerId,
       stateProtection,
       paneId,
+      targetRegion,
     );
   }
   async listProjectViews(

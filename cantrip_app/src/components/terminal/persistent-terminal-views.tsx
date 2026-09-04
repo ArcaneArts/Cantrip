@@ -58,6 +58,7 @@ export function PersistentTerminalViews({
   pendingInputs,
   selectedTerminal,
   servicePanelTerminalId,
+  visiblePlacements,
 }: {
   active: boolean;
   commandPaletteTerminalId: string | null;
@@ -71,26 +72,49 @@ export function PersistentTerminalViews({
   pendingInputs: readonly PendingTerminalInput[];
   selectedTerminal: TerminalSummary | null;
   servicePanelTerminalId: string | null;
+  visiblePlacements?: readonly {
+    focused: boolean;
+    gridArea: string;
+    paneId: string;
+    terminal: TerminalSummary;
+  }[];
 }) {
+  const visibleTerminals = useMemo(
+    () => visiblePlacements?.map(({ terminal }) => terminal) ?? [],
+    [visiblePlacements],
+  );
   const [retainedTerminals, setRetainedTerminals] = useState<TerminalSummary[]>(
-    () => retainTerminalSurfaceTabs([], ownedTerminals, selectedTerminal),
+    () =>
+      visibleTerminals.reduce(
+        (retained, terminal) =>
+          retainTerminalSurfaceTabs(retained, ownedTerminals, terminal),
+        retainTerminalSurfaceTabs([], ownedTerminals, selectedTerminal),
+      ),
   );
   const renderedTerminals = useMemo(
     () =>
-      retainTerminalSurfaceTabs(
-        retainedTerminals,
-        ownedTerminals,
-        selectedTerminal,
+      visibleTerminals.reduce(
+        (retained, terminal) =>
+          retainTerminalSurfaceTabs(retained, ownedTerminals, terminal),
+        retainTerminalSurfaceTabs(
+          retainedTerminals,
+          ownedTerminals,
+          selectedTerminal,
+        ),
       ),
-    [ownedTerminals, retainedTerminals, selectedTerminal],
+    [ownedTerminals, retainedTerminals, selectedTerminal, visibleTerminals],
   );
   const previousOwnershipRef = useRef(new Map<string, TerminalSummary>());
 
   useEffect(() => {
     setRetainedTerminals((current) =>
-      retainTerminalSurfaceTabs(current, ownedTerminals, selectedTerminal),
+      visibleTerminals.reduce(
+        (retained, terminal) =>
+          retainTerminalSurfaceTabs(retained, ownedTerminals, terminal),
+        retainTerminalSurfaceTabs(current, ownedTerminals, selectedTerminal),
+      ),
     );
-  }, [ownedTerminals, selectedTerminal]);
+  }, [ownedTerminals, selectedTerminal, visibleTerminals]);
 
   useEffect(() => {
     const current = new Map(
@@ -128,9 +152,16 @@ export function PersistentTerminalViews({
     }
     previousOwnershipRef.current = current;
   }, [ownedTerminals, renderedTerminals]);
+  const placementById = new Map(
+    visiblePlacements?.map((placement) => [placement.terminal.id, placement]) ??
+      [],
+  );
 
   return renderedTerminals.map((terminal) => {
-    const visible = active && selectedTerminal?.id === terminal.id;
+    const placement = placementById.get(terminal.id);
+    const visible = visiblePlacements
+      ? Boolean(placement)
+      : active && selectedTerminal?.id === terminal.id;
     const linkedChatId = terminal.linkedChatId;
     return (
       <div
@@ -142,7 +173,9 @@ export function PersistentTerminalViews({
         data-active={visible ? "true" : "false"}
         data-slot="persistent-terminal-surface"
         data-terminal-id={terminal.id}
+        data-project-pane-id={placement?.paneId}
         key={terminal.id}
+        style={placement ? { gridArea: placement.gridArea } : undefined}
       >
         <TerminalView
           commandPaletteOpen={

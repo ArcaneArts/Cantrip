@@ -56,6 +56,29 @@ const layout: ProjectTabLayoutSummary = {
         },
       ],
     },
+    {
+      id: "pane-right",
+      projectId: "project-1",
+      region: "right",
+      title: "Right dock",
+      position: 0,
+      anchorTabKey: "browser:reference",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      members: [
+        {
+          paneId: "pane-right",
+          projectId: "project-1",
+          tabKind: "browser",
+          tabId: "reference",
+          tabKey: "browser:reference",
+          title: "Reference",
+          position: 0,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+    },
   ],
 };
 
@@ -127,6 +150,97 @@ describe("workspace pane drag legality", () => {
         type: "pane-target",
         projectId: "project-2",
         paneId: "other",
+      }),
+    ).toMatchObject({ status: "invalid" });
+  });
+
+  it("moves a supported surface into a new empty dock region", () => {
+    expect(
+      decideWorkspaceDrop(
+        layout,
+        { ...drag, supportedRegions: ["center", "bottom"] },
+        {
+          type: "region",
+          projectId: "project-1",
+          region: "bottom",
+          paneId: null,
+        },
+      ),
+    ).toMatchObject({
+      status: "valid",
+      operation: {
+        command: {
+          type: "move-member",
+          tabKey: "chat:agent",
+          targetPaneId: null,
+          targetMemberPosition: 0,
+          targetRegion: "bottom",
+        },
+      },
+    });
+  });
+
+  it("appends to an existing dock pane without sending a redundant region", () => {
+    expect(
+      decideWorkspaceDrop(
+        layout,
+        { ...drag, supportedRegions: ["center", "right"] },
+        {
+          type: "region",
+          projectId: "project-1",
+          region: "right",
+          paneId: "pane-right",
+        },
+      ),
+    ).toMatchObject({
+      status: "valid",
+      operation: {
+        command: {
+          type: "move-member",
+          tabKey: "chat:agent",
+          targetPaneId: "pane-right",
+          targetMemberPosition: 1,
+        },
+      },
+    });
+    const decision = decideWorkspaceDrop(
+      layout,
+      { ...drag, supportedRegions: ["center", "right"] },
+      {
+        type: "region",
+        projectId: "project-1",
+        region: "right",
+        paneId: "pane-right",
+      },
+    );
+    expect(
+      decision.status === "valid"
+        ? decision.operation.type === "tab-layout"
+          ? decision.operation.command
+          : null
+        : null,
+    ).not.toHaveProperty("targetRegion");
+  });
+
+  it("rejects unsupported or stale region targets", () => {
+    expect(
+      decideWorkspaceDrop(
+        layout,
+        { ...drag, supportedRegions: ["center"] },
+        {
+          type: "region",
+          projectId: "project-1",
+          region: "bottom",
+          paneId: null,
+        },
+      ),
+    ).toMatchObject({ status: "invalid" });
+    expect(
+      decideWorkspaceDrop(layout, drag, {
+        type: "region",
+        projectId: "project-1",
+        region: "bottom",
+        paneId: "pane-right",
       }),
     ).toMatchObject({ status: "invalid" });
   });

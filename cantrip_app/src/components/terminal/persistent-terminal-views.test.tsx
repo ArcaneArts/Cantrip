@@ -185,4 +185,66 @@ describe("Persistent terminal views", () => {
       [],
     );
   });
+
+  it("mounts every visible pane terminal once and moves its wrapper without replacing the owner", async () => {
+    const center = terminal("terminal-center");
+    const bottom = terminal("terminal-bottom");
+    const renderVisible = (bottomArea: string) =>
+      createElement(PersistentTerminalViews, {
+        active: false,
+        commandPaletteTerminalId: null,
+        onCommandPaletteOpenChange: vi.fn(),
+        onLinkedConsoleExit: vi.fn(),
+        onPendingInputSent: vi.fn(),
+        onServicePanelOpenChange: vi.fn(),
+        ownedTerminals: [center, bottom],
+        pendingInputs: [],
+        selectedTerminal: null,
+        servicePanelTerminalId: null,
+        visiblePlacements: [
+          {
+            focused: true,
+            gridArea: "center-body",
+            paneId: "pane-center",
+            terminal: center,
+          },
+          {
+            focused: false,
+            gridArea: bottomArea,
+            paneId: "pane-bottom",
+            terminal: bottom,
+          },
+        ],
+      });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(renderVisible("bottom-body"));
+    });
+    expect(lifecycle.created).toEqual([center.id, bottom.id]);
+    const bottomInstance = renderer.root.findByProps({
+      "data-mock-terminal-view": true,
+      "data-terminal-id": bottom.id,
+    }).props["data-instance"];
+    expect(
+      renderer.root.findByProps({
+        "data-slot": "persistent-terminal-surface",
+        "data-terminal-id": bottom.id,
+      }).props.style,
+    ).toEqual({ gridArea: "bottom-body" });
+
+    await act(async () => renderer.update(renderVisible("right-body")));
+    expect(lifecycle.created).toEqual([center.id, bottom.id]);
+    expect(
+      renderer.root.findByProps({
+        "data-mock-terminal-view": true,
+        "data-terminal-id": bottom.id,
+      }).props["data-instance"],
+    ).toBe(bottomInstance);
+    expect(
+      renderer.root.findByProps({
+        "data-slot": "persistent-terminal-surface",
+        "data-terminal-id": bottom.id,
+      }).props.style,
+    ).toEqual({ gridArea: "right-body" });
+  });
 });

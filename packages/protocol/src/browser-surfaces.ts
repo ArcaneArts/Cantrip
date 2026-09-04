@@ -31,7 +31,8 @@ export const browserCreateSchema = browserCreateBaseSchema
   })
   .strict()
   .refine(hasUnambiguousProjectPaneDestination, {
-    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    message:
+      "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
     path: ["paneId"],
   });
 
@@ -43,7 +44,8 @@ export const encryptedBrowserCreateSchema = browserCreateBaseSchema
   })
   .strict()
   .refine(hasUnambiguousProjectPaneDestination, {
-    message: "Specify either paneId or the deprecated tabGroupId, not both.",
+    message:
+      "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
     path: ["paneId"],
   })
   .refine(

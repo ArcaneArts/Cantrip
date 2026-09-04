@@ -1,0 +1,239 @@
+import type { ProjectPaneRegion, ProjectPaneSummary } from "@cantrip/protocol";
+import { describe, expect, it } from "vitest";
+
+import type { ProjectSurface } from "@/lib/project-surface";
+
+import {
+  createKindsForPaneRegion,
+  dockDividerFractionForKey,
+  projectWorkspaceGridModel,
+  railLauncherDisposition,
+  visibleWorkspacePanes,
+} from "./project-workspace-frame-model";
+
+const timestamp = "2026-09-04T12:00:00.000Z";
+
+function pane(
+  id: string,
+  region: ProjectPaneRegion,
+  tabKey = `${id}:tab`,
+): ProjectPaneSummary {
+  return {
+    id,
+    projectId: "project-1",
+    region,
+    title: id,
+    position: 0,
+    anchorTabKey: tabKey,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    members: [],
+  };
+}
+
+function surface(tabKey: string): ProjectSurface {
+  return { tabKey } as ProjectSurface;
+}
+
+function visible(
+  panes: readonly ProjectPaneSummary[],
+  options: {
+    activeTabByPane?: Readonly<Record<string, string>>;
+    focusedPaneId?: string | null;
+    visiblePaneIdByRegion?: Readonly<
+      Partial<Record<ProjectPaneRegion, string>>
+    >;
+  } = {},
+) {
+  return visibleWorkspacePanes({
+    activeTabByPane: options.activeTabByPane ?? {},
+    focusedPaneId: options.focusedPaneId ?? null,
+    panes,
+    surfaceByPaneId: new Map(
+      panes.map((entry) => [
+        entry.id,
+        [surface(entry.anchorTabKey), surface(`${entry.id}:alternate`)],
+      ]),
+    ),
+    visiblePaneIdByRegion: options.visiblePaneIdByRegion,
+  });
+}
+
+describe("visible workspace panes", () => {
+  it.each([
+    {
+      name: "center only",
+      panes: [pane("center", "center")],
+      expected: [["center", "center-body"]],
+    },
+    {
+      name: "right only",
+      panes: [pane("right", "right")],
+      expected: [["right", "right-body"]],
+    },
+    {
+      name: "bottom only",
+      panes: [pane("bottom", "bottom")],
+      expected: [["bottom", "bottom-body"]],
+    },
+    {
+      name: "center, right, and bottom",
+      panes: [
+        pane("center", "center"),
+        pane("right", "right"),
+        pane("bottom", "bottom"),
+      ],
+      expected: [
+        ["center", "center-body"],
+        ["right", "right-body"],
+        ["bottom", "bottom-body"],
+      ],
+    },
+  ])("selects the $name topology", ({ panes, expected }) => {
+    expect(
+      visible(panes).map(({ gridArea, pane: entry }) => [entry.id, gridArea]),
+    ).toEqual(expected);
+  });
+
+  it("keeps the remembered pane visible in every region while another region is focused", () => {
+    const panes = [
+      pane("center-a", "center"),
+      pane("center-b", "center"),
+      pane("right-a", "right"),
+      pane("bottom-a", "bottom"),
+    ];
+
+    expect(
+      visible(panes, {
+        focusedPaneId: "right-a",
+        visiblePaneIdByRegion: {
+          center: "center-b",
+          bottom: "bottom-a",
+        },
+      }).map(({ focused, pane: entry }) => [entry.id, focused]),
+    ).toEqual([
+      ["center-b", false],
+      ["right-a", true],
+      ["bottom-a", false],
+    ]);
+  });
+
+  it("uses a valid pane-local active tab and falls back to the anchor", () => {
+    const panes = [pane("center", "center"), pane("right", "right")];
+
+    expect(
+      visible(panes, {
+        activeTabByPane: {
+          center: "center:alternate",
+          right: "missing:tab",
+        },
+      }).map(({ activeTabKey }) => activeTabKey),
+    ).toEqual(["center:alternate", "right:tab"]);
+  });
+});
+
+describe("workspace region create capabilities", () => {
+  it("offers only definitions that support the target region", () => {
+    const centerAndDockKinds = new Set([
+      "browser",
+      "chat",
+      "code",
+      "explorer",
+      "remote-desktop",
+      "terminal",
+    ]);
+    expect(createKindsForPaneRegion("center")).toEqual(centerAndDockKinds);
+    expect(createKindsForPaneRegion("right")).toEqual(centerAndDockKinds);
+    expect(createKindsForPaneRegion("bottom")).toEqual(centerAndDockKinds);
+    expect(createKindsForPaneRegion("left")).toEqual(new Set(["explorer"]));
+  });
+});
+
+describe("workspace frame topology", () => {
+  it.each([
+    {
+      center: true,
+      right: false,
+      bottom: false,
+      area: "center-body",
+      columns: "minmax(0, 1fr)",
+    },
+    {
+      center: false,
+      right: true,
+      bottom: false,
+      area: "right-body",
+      columns: "minmax(0, 1fr)",
+    },
+    {
+      center: false,
+      right: false,
+      bottom: true,
+      area: "bottom-body",
+      columns: "minmax(0, 1fr)",
+    },
+    {
+      center: true,
+      right: true,
+      bottom: true,
+      area: "bottom-body bottom-body bottom-body",
+      columns: "68% 6px minmax(0, 1fr)",
+    },
+  ])(
+    "lays out center=$center right=$right bottom=$bottom without residual tracks",
+    ({ area, bottom, center, columns, right }) => {
+      const model = projectWorkspaceGridModel({
+        bottom,
+        bottomFraction: 0.68,
+        center,
+        right,
+        rightFraction: 0.68,
+      });
+      expect(model.gridTemplateAreas).toContain(area);
+      expect(model.gridTemplateColumns).toBe(columns);
+      expect(model.showRightDivider).toBe(center && right);
+      expect(model.showBottomDivider).toBe(bottom && (center || right));
+    },
+  );
+
+  it("supports arrow, Home, and End keyboard divider controls", () => {
+    expect(dockDividerFractionForKey("vertical", 0.5, "ArrowLeft")).toBe(0.45);
+    expect(dockDividerFractionForKey("vertical", 0.5, "ArrowRight")).toBe(0.55);
+    expect(dockDividerFractionForKey("horizontal", 0.5, "ArrowUp")).toBe(0.45);
+    expect(dockDividerFractionForKey("horizontal", 0.5, "ArrowDown")).toBe(
+      0.55,
+    );
+    expect(dockDividerFractionForKey("vertical", 0.5, "Home")).toBe(0.2);
+    expect(dockDividerFractionForKey("vertical", 0.5, "End")).toBe(0.8);
+    expect(dockDividerFractionForKey("vertical", 0.5, "Enter")).toBeNull();
+  });
+});
+
+describe("dock rail launchers", () => {
+  const launcher = {
+    id: "launcher:history",
+    location: "right-rail",
+    pinned: false,
+    projectId: "project-1",
+    target: { kind: "definition", definitionId: "git.history" },
+  } as const;
+
+  it("focuses an existing placement without moving it to the clicked rail", () => {
+    expect(
+      railLauncherDisposition(launcher, [
+        {
+          definition: { id: "git.history" },
+          paneId: "center-pane",
+          tabKey: "builtin:history",
+        } as ProjectSurface,
+      ]),
+    ).toEqual({ type: "focus", tabKey: "builtin:history" });
+  });
+
+  it("opens a missing definition into the requested rail path", () => {
+    expect(railLauncherDisposition(launcher, [])).toEqual({
+      type: "open",
+      definitionId: "git.history",
+    });
+  });
+});

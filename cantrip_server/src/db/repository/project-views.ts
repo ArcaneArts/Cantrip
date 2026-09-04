@@ -116,6 +116,7 @@ export class ProjectViewRepository {
       await attachProjectTab(transaction, {
         projectId,
         paneId: input.paneId ?? input.tabGroupId,
+        region: input.targetRegion,
         tabId: view.id,
         tabKind: input.kind,
       });

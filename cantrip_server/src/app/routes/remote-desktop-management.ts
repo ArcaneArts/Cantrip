@@ -11,6 +11,7 @@ import {
   SurfacePrivateStateConflictError,
   type ServerRepository,
 } from "../../db/repository.js";
+import { TabLayoutInvariantError } from "../../db/tab-layouts.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 
@@ -175,6 +176,7 @@ export function installRemoteDesktopManagementRoutes(
           workerId,
           input.data.stateProtection,
           input.data.paneId ?? input.data.tabGroupId,
+          input.data.targetRegion,
         );
         if (!desktop) {
           return reply
@@ -185,6 +187,9 @@ export function installRemoteDesktopManagementRoutes(
           .code(201)
           .send(remoteDesktopWireSummarySchema.parse(desktop));
       } catch (error) {
+        if (error instanceof TabLayoutInvariantError) {
+          return reply.code(400).send({ error: error.message });
+        }
         return reply.code(502).send({ error: errorMessage(error) });
       }
     },

@@ -145,6 +145,7 @@ export function projectSurfaceCreateOptions(
 }
 
 export function ProjectSurfaceCreateMenu({
+  allowedKinds,
   align = "start",
   contentClassName,
   creatingKinds = noCreatingKinds,
@@ -152,6 +153,7 @@ export function ProjectSurfaceCreateMenu({
   placement,
   trigger,
 }: {
+  allowedKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   align?: "start" | "center" | "end";
   contentClassName?: string;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
@@ -165,7 +167,9 @@ export function ProjectSurfaceCreateMenu({
     placement.workers.length > 1,
   );
   const capabilityFilteredProjectSurfaceCreateOptions =
-    projectSurfaceCreateOptions(creatingKinds, placement?.capabilities);
+    projectSurfaceCreateOptions(creatingKinds, placement?.capabilities).filter(
+      ({ kind }) => !allowedKinds || allowedKinds.has(kind),
+    );
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>

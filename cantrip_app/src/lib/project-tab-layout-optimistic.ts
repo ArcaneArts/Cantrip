@@ -168,14 +168,13 @@ export function applyOptimisticTabLayoutCommand(
 
   if (command.targetPaneId === null && sourcePane.members.length === 1) {
     const remaining = layout.panes.filter(({ id }) => id !== sourcePane.id);
+    const movedPane = command.targetRegion
+      ? { ...sourcePane, region: command.targetRegion }
+      : sourcePane;
     return {
       ...layout,
       panes: positionedPanes(
-        insertedInRegion(
-          remaining,
-          sourcePane,
-          command.targetPanePosition ?? 0,
-        ),
+        insertedInRegion(remaining, movedPane, command.targetPanePosition ?? 0),
       ),
     };
   }
@@ -210,7 +209,7 @@ export function applyOptimisticTabLayoutCommand(
         projectId: layout.projectId,
         title: movedMember.title,
         position: command.targetPanePosition ?? panes.length,
-        region: sourcePane.region,
+        region: command.targetRegion ?? sourcePane.region,
         anchorTabKey: command.tabKey,
         members: [{ ...movedMember, paneId, position: 0 }],
         createdAt: movedMember.createdAt,

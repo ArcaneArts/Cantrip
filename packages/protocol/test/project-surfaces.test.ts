@@ -53,6 +53,10 @@ describe("project surface registry", () => {
         ({ id }) => id === "project.git-history",
       ),
     ).toMatchObject({ cardinality: "multi-instance", deletable: true });
+    expect(
+      PROJECT_SURFACE_DEFINITIONS.find(({ id }) => id === "project.explorer")
+        ?.supportedPlacements,
+    ).toEqual(expect.arrayContaining(["center", "right", "bottom"]));
   });
 
   it("derives stable view identities without duplicating resources", () => {

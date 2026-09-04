@@ -68,7 +68,7 @@ const codeTabCreateBaseSchema = z
       context.addIssue({
         code: "custom",
         message:
-          "Specify either paneId or the deprecated tabGroupId, not both.",
+          "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
         path: ["paneId"],
       });
     }

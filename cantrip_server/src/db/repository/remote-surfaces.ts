@@ -2,6 +2,7 @@ import type {
   EncryptedRemoteSurfaceCreate,
   EncryptedRemoteSurfaceUpdate,
   PrivateDisplayLabelOpaque,
+  ProjectPaneRegion,
   RemoteDesktopWireSummary,
   RemoteSurfaceCapabilities,
   RemoteSurfaceStatus,
@@ -435,6 +436,7 @@ export class RemoteSurfaceRepository {
     workerId: string,
     stateProtection: SurfacePrivateStateOpaque,
     paneId?: string,
+    targetRegion?: ProjectPaneRegion,
   ): Promise<RemoteDesktopWireSummary | null> {
     const [projectRows, workerRows] = await Promise.all([
       this.database
@@ -482,6 +484,7 @@ export class RemoteSurfaceRepository {
       await attachProjectTab(transaction, {
         projectId,
         paneId,
+        region: targetRegion,
         tabId: desktopId,
         tabKind: "remote-desktop",
       });
