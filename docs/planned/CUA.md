@@ -1112,7 +1112,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 12 — Preserve encryption recovery transitions
 
 - Branch: `codex/cua-12-recovery-transition`, based on merged cycle 11
-  (`149010e9f`). PR and merge metadata will be recorded when observed.
+  (`149010e9f`). Implementation commit: `1421c0c5`.
+  PR: [#1754](https://github.com/ArcaneArts/Cantrip/pull/1754), open with
+  checks running. Final merge metadata will be reconciled when observed.
 - Fixed the existing application session transition exposed by live acceptance:
   callers supplied a complete prior state through a structural context type,
   then its spread overwrote the destination `kind` and retained stale recovery
