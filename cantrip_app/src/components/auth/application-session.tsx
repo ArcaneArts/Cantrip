@@ -287,10 +287,18 @@ function sessionState(
   };
 }
 
-async function encryptionSessionState(
-  context: AuthenticatedSessionContext,
+export async function encryptionSessionState(
+  input: AuthenticatedSessionContext,
   password?: string,
 ): Promise<ApplicationSessionState> {
+  // Callers may pass a full prior session state despite the structural type.
+  // Carry only identity fields across transitions, never its kind or recovery data.
+  const context: AuthenticatedSessionContext = {
+    bootstrap: input.bootstrap,
+    csrfToken: input.csrfToken,
+    expiresAt: input.expiresAt,
+    user: input.user,
+  };
   setClientSession({
     authMode: context.bootstrap.auth.mode,
     csrfToken: context.csrfToken,

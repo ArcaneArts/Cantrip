@@ -1038,8 +1038,13 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-11-native-acceptance`, based on merged cycle 10
   (`0f00cdfc8`). Implementation commit: `bfceee05c531022fd74e863542c992d1b0cf761d`.
-- PR: [#1753](https://github.com/ArcaneArts/Cantrip/pull/1753), open;
-  portable CI and merge observation are pending.
+- PR: [#1753](https://github.com/ArcaneArts/Cantrip/pull/1753), final head
+  `80e6fc28b36971ad85b9253ceda69dc81383acfb`, squash-auto-merged at
+  `2026-09-05T13:50:24Z` as `149010e9fc22817dbc867b1863d531b9c0d9c48f`.
+  CI run `33969829006` passed macOS, Windows, Linux and PostgreSQL before
+  auto-merge was enabled. Primary synchronized cleanly and the cycle-owned
+  worktree/branch were removed. Owned QA profile/build state was preserved
+  outside that worktree for the follow-up application walkthrough.
 - Native finding: a fresh actual probe returned 224 targets from 473 native
   windows plus three displays, rejected 24 invalid capture rectangles, and
   omitted the owned fixture through initial, covered, closed and recreated
@@ -1103,6 +1108,41 @@ is the authoritative merge record until the next ledger update.
   startup/idle/latency measurements, relevant broad regressions and final audit.
   Deferred native input, Accessibility, clipboard/files, other OS backends and
   the remaining roadmap are unchanged.
+
+### Tranche cycle 12 — Preserve encryption recovery transitions
+
+- Branch: `codex/cua-12-recovery-transition`, based on merged cycle 11
+  (`149010e9f`). PR and merge metadata will be recorded when observed.
+- Fixed the existing application session transition exposed by live acceptance:
+  callers supplied a complete prior state through a structural context type,
+  then its spread overwrote the destination `kind` and retained stale recovery
+  fields. The transition now copies only the four shared identity fields before
+  selecting the next state. Credential authorization and recovery requirements
+  remain enforced; account data is not reset or replaced.
+- Verification: eight of nine new transition cases failed with the prior
+  semantics. All 53 focused transition, recovery-screen, account-encryption,
+  workspace-encryption and client-session tests now pass across five files.
+  App typecheck and production build pass. `pnpm check` again stops at the
+  unchanged server decomposition budgets recorded in cycle 9; subsequent
+  chained checks are not claimed.
+- Actual macOS development launch: the preserved profile's moved Cargo cache
+  referenced removed cycle-11 generated Tauri permissions and failed. Clearing
+  only its owned Cargo target output and repeating normal
+  `pnpm devtop -- --profile cua-cycle-three-qa` rebuilt Tauri in 29.32 seconds
+  and launched the desktop, server, worker and Vite. Account and worker data,
+  stable helper path and signing identity were preserved.
+- User-observed Tauri result: the normal IDE is visible. Its empty projects and
+  settings belong to this isolated QA profile. Browser result: stable anonymous
+  recovery-required screen for a client without that profile's device key;
+  this is expected authorization behavior, not an authenticated remount loop.
+  The browser recovery import and native recovery setup walkthrough were not
+  completed. Native UI automation cannot attach to the raw Tauri dev executable.
+  Per user direction, broader recovery work is outside this CUA acceptance pass.
+- Remaining first-tranche work: live CUA preview/managed-agent acceptance,
+  enclosing packaged-app and update permission evidence, comparative performance
+  measurements, relevant broad regressions and final completion audit. No new
+  native capture or permission-continuity claim is made by this auth fix.
+  Later-tranche deferrals remain unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
