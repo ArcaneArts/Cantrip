@@ -6,11 +6,16 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("publishes native releases only when the release branch advances", async () => {
+async function readWorkflow() {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),
     "utf8",
   );
+  return workflow.replace(/\r\n/g, "\n");
+}
+
+test("publishes native releases only when the release branch advances", async () => {
+  const workflow = await readWorkflow();
   assert.match(workflow, /^on:\n {2}push:\n {4}branches:\n {6}- release$/mu);
   assert.doesNotMatch(workflow, /^\s*(?:pull_request|workflow_dispatch):/mu);
   assert.match(workflow, /blacksmith-6vcpu-macos-15/u);
@@ -18,10 +23,7 @@ test("publishes native releases only when the release branch advances", async ()
 });
 
 test("caches verified heavyweight runtimes and publishes the requested assets", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(
     workflow,
@@ -46,10 +48,7 @@ test("caches verified heavyweight runtimes and publishes the requested assets", 
 });
 
 test("smokes the packaged worker MCP on macOS and Windows before archiving", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
   const workerJob =
     workflow.match(/^ {2}worker:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
   assert.match(workerJob, /target: darwin-arm64/u);
@@ -69,10 +68,7 @@ test("smokes the packaged worker MCP on macOS and Windows before archiving", asy
 });
 
 test("builds mobile releases in parallel and gates publication on them", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(workflow, /^ {2}android:\n {4}name: Android signed release$/mu);
   assert.match(workflow, /^ {2}ios:\n {4}name: iOS TestFlight$/mu);
@@ -115,10 +111,7 @@ test("builds mobile releases in parallel and gates publication on them", async (
 });
 
 test("publishes signed Android artifacts and uploads iOS to TestFlight", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
   const androidBuild = await readFile(
     path.join(root, "cantrip_app", "android", "app", "build.gradle"),
     "utf8",
@@ -166,10 +159,7 @@ test("publishes signed Android artifacts and uploads iOS to TestFlight", async (
 });
 
 test("reuses matching iOS development and distribution identities", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(
     workflow,
@@ -187,10 +177,7 @@ test("reuses matching iOS development and distribution identities", async () => 
 });
 
 test("saves Codex before building Cantrip Code", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   const codexBuild = workflow.indexOf("- name: Build Codex runtime");
   const codexSave = workflow.indexOf("- name: Save verified Codex runtime");
@@ -203,10 +190,7 @@ test("saves Codex before building Cantrip Code", async () => {
 });
 
 test("installs the native libraries required by Windows Code modules", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(
     workflow,
@@ -217,30 +201,32 @@ test("installs the native libraries required by Windows Code modules", async () 
 });
 
 test("fails closed while signing and notarizing the macOS updater and DMG", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
+  const workflow = await readWorkflow();
+
+  const importer = await readFile(
+    path.join(root, "scripts", "import-macos-developer-id.sh"),
     "utf8",
   );
-
   assert.match(workflow, /- name: Import macOS Developer ID certificate/u);
   assert.match(workflow, /APPLE_CERTIFICATE/u);
-  assert.match(workflow, /Developer ID Application/u);
+  assert.match(workflow, /run: bash scripts\/import-macos-developer-id\.sh/u);
+  assert.match(importer, /Developer ID Application/u);
   assert.match(
-    workflow,
+    importer,
     /security list-keychains -d user -s "\$keychain" "\$\{existing_keychains\[@\]\}"/u,
   );
-  assert.doesNotMatch(workflow, /security default-keychain -s "\$keychain"/u);
-  assert.match(workflow, /DeveloperIDCA\.cer/u);
-  assert.match(workflow, /DeveloperIDG2CA\.cer/u);
+  assert.doesNotMatch(importer, /security default-keychain/u);
+  assert.match(importer, /DeveloperIDCA\.cer/u);
+  assert.match(importer, /DeveloperIDG2CA\.cer/u);
   assert.match(
-    workflow,
+    importer,
     /7afc9d01a62f03a2de9637936d4afe68090d2de18d03f29c88cfb0b1ba63587f/u,
   );
   assert.match(
-    workflow,
+    importer,
     /f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a/u,
   );
-  assert.match(workflow, /leaf_fingerprint/u);
+  assert.match(importer, /leaf_fingerprint/u);
   assert.match(workflow, /CANTRIP_REQUIRE_MACOS_SIGNING: "1"/u);
   assert.match(workflow, /APPSTORE_CONNECT_ISSUER_ID/u);
   assert.match(workflow, /APPSTORE_CONNECT_KEY_ID/u);
@@ -250,10 +236,7 @@ test("fails closed while signing and notarizing the macOS updater and DMG", asyn
 });
 
 test("requires updater secrets and publishes the static manifest last", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(
     workflow,
@@ -277,10 +260,7 @@ test("requires updater secrets and publishes the static manifest last", async ()
 });
 
 test("builds generated desktop dependencies before packaging installers", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   const protocolBuild = workflow.indexOf(
     "- name: Build desktop workspace dependencies",
@@ -310,4 +290,57 @@ test("builds generated desktop dependencies before packaging installers", async 
   );
   assert.ok(macosPackage > protocolBuild);
   assert.ok(windowsPackage > protocolBuild);
+});
+
+test("signs the packaged macOS worker helper and verifies it before archive publication", async () => {
+  const workflow = await readWorkflow();
+  const worker =
+    workflow.match(/^ {2}worker:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
+  const steps = [
+    "Package worker from verified runtimes",
+    "Import macOS Developer ID certificate",
+    "Sign standalone macOS worker CUA",
+    "Verify signed packaged macOS worker CUA",
+    "archive-distribution.mjs worker",
+    "actions/upload-artifact@v4",
+    "Remove temporary signing keychain",
+  ].map((name) => worker.indexOf(name));
+  assert.ok(
+    steps.every(
+      (position, index) =>
+        position >= 0 && (index === 0 || position > steps[index - 1]),
+    ),
+  );
+  assert.match(
+    worker,
+    /--binary artifacts\/cantrip-worker-\$\{\{ matrix\.target \}\}\/bin\/cantrip-cua --identity "\$APPLE_SIGNING_IDENTITY"/u,
+  );
+  assert.match(
+    worker,
+    /verify-packaged-worker-cua\.mjs artifacts\/cantrip-worker-\$\{\{ matrix\.target \}\} --require-developer-id/u,
+  );
+  for (const jobName of ["worker", "client"]) {
+    const job =
+      workflow.match(
+        new RegExp(`^ {2}${jobName}:[\\s\\S]*?(?=^ {2}\\w+:)`, "mu"),
+      )?.[0] ?? "";
+    assert.match(
+      job,
+      /Import macOS Developer ID certificate\n {8}if: matrix.target == 'darwin-arm64'/u,
+    );
+    assert.match(
+      job,
+      /APPLE_CERTIFICATE: \$\{\{ secrets\.APPLE_CERTIFICATE \}\}/u,
+    );
+    assert.match(job, /run: bash scripts\/import-macos-developer-id\.sh/u);
+    assert.match(
+      job,
+      /Remove temporary signing keychain\n {8}if: always\(\) && matrix.target == 'darwin-arm64'/u,
+    );
+    assert.match(job, /bash scripts\/import-macos-developer-id\.sh cleanup/u);
+  }
+  assert.match(
+    worker,
+    /Verify packaged Windows worker CUA\n {8}if: matrix.target == 'win32-x64'\n {8}run: node scripts\/verify-packaged-worker-cua\.mjs artifacts\/cantrip-worker-\$\{\{ matrix\.target \}\}\n/u,
+  );
 });

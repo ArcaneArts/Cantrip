@@ -15,7 +15,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildCantripCua, bundleCantripCua } from "./build.mjs";
-import { verifyPackagedWorkerCua } from "../verify-packaged-worker-cua.mjs";
+import {
+  verifyPackagedWorkerCua,
+  verifyPackagedCuaSignature,
+  parsePackagedWorkerCuaArguments,
+} from "../verify-packaged-worker-cua.mjs";
 import { verifyMacosDistribution } from "../verify-macos-distribution.mjs";
 import { installDevelopmentCua } from "./development.mjs";
 import { withInstallationLock } from "./install-lock.mjs";
@@ -24,6 +28,64 @@ const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
+
+const releaseSignature = [
+  "Identifier=art.cantrip.cua",
+  "CodeDirectory v=20500 size=123 flags=0x10000(runtime) hashes=1+7",
+  "Authority=Developer ID Application: Cantrip Test (TEAMID)",
+  "TeamIdentifier=TEAMID",
+].join("\n");
+
+test("standalone release verification checks the actual signature and rejects invalid release identities", () => {
+  const binary = "/final worker/bin/cantrip-cua";
+  const calls = [];
+  verifyPackagedCuaSignature(binary, (args) => {
+    calls.push(args);
+    return releaseSignature;
+  });
+  assert.deepEqual(calls, [
+    ["--verify", "--strict", "--verbose=2", binary],
+    ["--display", "--verbose=4", binary],
+  ]);
+  const rejected = new Error("codesign found a modified executable");
+  assert.throws(
+    () =>
+      verifyPackagedCuaSignature(binary, () => {
+        throw rejected;
+      }),
+    (error) => error === rejected,
+  );
+  for (const details of [
+    releaseSignature.replace("art.cantrip.cua", "unstable.identifier"),
+    releaseSignature.replace("Developer ID Application:", "Apple Development:"),
+    releaseSignature.replace("0x10000(runtime)", "0x0(none)"),
+    `${releaseSignature}\nSignature=adhoc`,
+    releaseSignature.replace("TeamIdentifier=TEAMID", "TeamIdentifier=not set"),
+    releaseSignature.replace(/^Authority=.+$/mu, ""),
+  ])
+    assert.throws(() => verifyPackagedCuaSignature(binary, () => details));
+  assert.deepEqual(
+    parsePackagedWorkerCuaArguments([
+      "/final worker",
+      "--require-developer-id",
+    ]),
+    {
+      workerDirectory: path.resolve("/final worker"),
+      requireDeveloperId: true,
+    },
+  );
+  assert.equal(
+    parsePackagedWorkerCuaArguments(["/final worker"]).requireDeveloperId,
+    false,
+  );
+  for (const args of [
+    [],
+    ["--require-developer-id"],
+    ["worker", "--unknown"],
+    ["worker", "--require-developer-id", "extra"],
+  ])
+    assert.throws(() => parsePackagedWorkerCuaArguments(args));
+});
 
 test(
   "development CLI installs without a circular top-level import",
@@ -97,6 +159,20 @@ test(
       assert.equal(result.backend, "fake");
       assert.equal(result.modelImageEncoder.sharpVersion, "0.34.4");
       assert.ok(result.modelImageEncoder.outputBytes <= 2.5 * 1024 * 1024);
+      const verifiedBinaries = [];
+      const signedResult = await verifyPackagedWorkerCua(worker, {
+        requireDeveloperId: true,
+        runCodesign(args) {
+          verifiedBinaries.push(args.at(-1));
+          return releaseSignature;
+        },
+      });
+      assert.equal(signedResult.backend, "fake");
+      assert.equal(signedResult.modelImageEncoder.sharpVersion, "0.34.4");
+      assert.deepEqual(verifiedBinaries, [
+        path.join(worker, "bin", path.basename(binary)),
+        path.join(worker, "bin", path.basename(binary)),
+      ]);
       const copied = path.join(
         fixture,
         "Cantrip.app",
@@ -107,6 +183,17 @@ test(
       );
       await cp(worker, copied, { recursive: true });
       assert.equal((await verifyPackagedWorkerCua(copied)).backend, "fake");
+      await writeFile(
+        path.join(copied, "bin", path.basename(binary)),
+        Buffer.alloc(32),
+      );
+      // Signature metadata alone cannot make an unlaunchable final copy pass.
+      await assert.rejects(
+        verifyPackagedWorkerCua(copied, {
+          requireDeveloperId: true,
+          runCodesign: () => releaseSignature,
+        }),
+      );
       await assert.rejects(
         verifyPackagedWorkerCua(path.join(fixture, "missing")),
       );

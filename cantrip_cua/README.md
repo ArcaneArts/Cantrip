@@ -371,9 +371,26 @@ runtime, and the distribution's existing certificate. It does not grant CUA JIT
 entitlements. Final `.app` verification checks the helper's signature/identifier
 and executes its real protocol. Its normal installed location is
 `Cantrip.app/Contents/Resources/runtime/worker/bin/cantrip-cua`; moving/translocating
-the outer app can change the absolute path. The standalone worker artifact is
-not yet certificate-signed by its release job; do not treat desktop signing
-coverage as standalone-worker signing coverage.
+the outer app can change the absolute path.
+
+The standalone Darwin worker release job imports the same Developer ID
+certificate and signs its final `bin/cantrip-cua` before verification and
+archival. The importer preserves existing keychains and removes only the
+successfully created temporary signing keychain on failure or job cleanup.
+The CUA verifier checks the actual code signature, `art.cantrip.cua` identifier,
+Developer ID authority and hardened runtime, then launches that exact executable
+and exercises the final worker's Sharp image encoder. To reproduce the signing
+and verification portion after `pnpm package:worker --target darwin-arm64`:
+
+```sh
+node scripts/sign-macos-runtime.mjs --binary artifacts/cantrip-worker-darwin-arm64/bin/cantrip-cua --identity 'Developer ID Application: Your Company (TEAMID)'
+node scripts/verify-packaged-worker-cua.mjs artifacts/cantrip-worker-darwin-arm64 --require-developer-id
+```
+
+This helper signature does not establish standalone-worker notarization, native
+capture authorization, or a signature on unrelated worker binaries. Desktop
+packaging retains its existing nested-runtime and enclosing-app signing path.
+See the progress ledger for actual artifact and permission evidence.
 
 The CUA native CI matrix runs actual fake-backend tests on macOS, Windows, and
 Linux. Windows/Linux native capture remains unavailable. Fake CI intentionally

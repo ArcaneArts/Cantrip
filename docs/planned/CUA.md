@@ -2,7 +2,7 @@
 
 Status: First-tranche implementation in progress; experimental preview and native
 capture, managed MCP and shared agent observations implemented. Protected
-operation Trajectory is implemented and locally verified, awaiting its PR merge;
+operation Trajectory is implemented and verified locally and in portable CI;
 final product/release verification remains incomplete.
 
 ## First-tranche implementation progress
@@ -936,9 +936,12 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-09-protected-trajectory`, based on merged cycle 8e
   (`c9e516f51`). Implementation commit: `1a3ee9f5`.
-- PR: [#1751](https://github.com/ArcaneArts/Cantrip/pull/1751), open; local
-  implementation and focused verification are complete. Cross-platform CI and
-  merge observation are pending; no merge is claimed.
+- PR: [#1751](https://github.com/ArcaneArts/Cantrip/pull/1751), final head
+  `26af414ddd9b5b44ca90a5a5d5eb00402602d937`, squash-auto-merged at
+  `2026-09-05T12:39:45Z` as `42c4f9c0cf6709a14c9750933c583b53e9befe26`.
+  CI run `33966480732` passed macOS, Windows, Linux and PostgreSQL before
+  auto-merge was enabled. Primary fast-forwarded cleanly; only the cycle-owned
+  worktree and branch were removed.
 - Implemented: actual agent MCP and user preview operations use the existing
   encrypted chat/task message and Trajectory paths. Agent records retain the
   runtime's root/child scope; idle preview sessions have a distinct Preview
@@ -979,6 +982,54 @@ is the authoritative merge record until the next ledger update.
 - Remaining tranche work also includes standalone release signing,
   installed/packaged update and permission evidence, startup/idle/latency
   measurements, live product acceptance and final regression/completion audit.
+
+### Tranche cycle 10 — Standalone Darwin helper release signing
+
+- Branch: `codex/cua-10-worker-release-signing`, based on merged cycle 9
+  (`42c4f9c0c`). Implementation commit: `f797d21c`.
+- PR: [#1752](https://github.com/ArcaneArts/Cantrip/pull/1752), open. CI and
+  merge observation are pending; local packaged-artifact signing verification
+  is complete, and no merge is claimed yet.
+- Implemented: the standalone Darwin worker job imports the shared Developer
+  ID certificate, signs its final CUA executable before verification/archival,
+  and checks its actual signature, stable identifier, Developer ID authority
+  and hardened runtime before final-layout helper/Sharp smoke. Desktop and
+  worker jobs share the existing import behavior; cleanup only owns a keychain
+  after successful creation and preserves existing keychains/default selection.
+- Local verification: 83 signing, workflow, importer and CUA script tests pass;
+  one explicit GUI test is skipped. Importer tests execute the actual Bash
+  script with synthetic signing tools/credentials; they do not prove real CI
+  certificate availability. Initial CI passed macOS, Linux and PostgreSQL but
+  exposed three Windows workflow-test CRLF assumptions. The shared test reader
+  now normalizes line endings; all 12 workflow tests pass with LF and actual CRLF
+  copies, while the original CRLF copy reproduced the three failures. Bash
+  syntax, formatting and diff checks pass. `pnpm check` again stops at the
+  unchanged server decomposition budgets recorded in cycle 9; no later chained
+  check is claimed.
+- Actual artifact verification on macOS arm64: the real
+  `pnpm package:worker --target darwin-arm64` completed, including bundled Codex
+  and Cantrip Code. Its final CUA helper was signed with
+  `Developer ID Application: Arcane Arts Inc. (RK2CYG6XRV)`; codesign reports
+  `art.cantrip.cua`, hardened runtime and a secure timestamp, with no JIT
+  entitlements. Signature validation and real final-layout helper/Sharp smoke
+  passed both before and after the real worker archive was extracted. The
+  extracted worker MCP smoke also passed. Signed helper SHA-256:
+  `16dfa9d20b64540a5c8315cc5cc36a5f9a12e40b74f96b809f4080ee54761f87`;
+  worker archive SHA-256:
+  `050f457eac1e924558e2818b256165bc20a9edca7ac1f7421b4bfbd2b1a27377`.
+- Native artifact attempt: the extracted signed helper captured and pixel-verified
+  the owned fixture's foreground, partial/full occlusion, movement and resize
+  states on a repeated run. This is not a complete fixture pass: the first run
+  returned `requested-target-unavailable` initially, and the repeated run returned
+  it after window recreation. A paired inventory probe between runs found the
+  fixture for both release and installed-development helpers. Newly created
+  fixture visibility remains an acceptance investigation; no permission cause,
+  stable repeatability or packaged-app update authorization is inferred.
+- These local artifacts are not a dispatched release or standalone-worker
+  notarization. CI certificate import, enclosing app/DMG notarization and actual
+  installed update permission behavior are not established by helper signing.
+- Native/product acceptance, installed/packaged update permission continuity,
+  performance measurements and final regression/completion audit remain required.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

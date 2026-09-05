@@ -15,12 +15,71 @@ import {
   findMachOBinaries,
   isMachOHeader,
   signMacosRuntime,
+  signMacosBinary,
+  parseMacosSigningArguments,
 } from "./sign-macos-runtime.mjs";
 import { notarizeMacosDistribution } from "./notarize-macos-distribution.mjs";
 import { signMacosDiskImages } from "./sign-macos-disk-images.mjs";
 import { verifyMacosDistribution } from "./verify-macos-distribution.mjs";
 
 const thinMachO = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]);
+
+test("single-binary release signing targets only the explicit CUA artifact and propagates signing failure", () => {
+  const binary = path.resolve("worker artifact/bin/cantrip-cua");
+  const identity = "Developer ID Application: Cantrip Test (TEAMID)";
+  const calls = [];
+  const input = parseMacosSigningArguments([
+    "--binary",
+    binary,
+    "--identity",
+    identity,
+  ]);
+  assert.equal(
+    signMacosBinary({ ...input, run: (args) => calls.push(args) }),
+    binary,
+  );
+  assert.deepEqual(calls, [
+    [
+      "--force",
+      "--sign",
+      identity,
+      "--identifier",
+      "art.cantrip.cua",
+      "--timestamp",
+      "--options",
+      "runtime",
+      binary,
+    ],
+  ]);
+  const failure = new Error("codesign rejected the actual artifact");
+  assert.throws(
+    () =>
+      signMacosBinary({
+        ...input,
+        run: () => {
+          throw failure;
+        },
+      }),
+    (error) => error === failure,
+  );
+  assert.deepEqual(
+    parseMacosSigningArguments([
+      "--directory",
+      "/tmp/worker",
+      "--identity",
+      "-",
+    ]),
+    { directory: path.resolve("/tmp/worker"), identity: "-" },
+  );
+  for (const args of [
+    ["--binary", binary, "--directory", "/tmp/worker", "--identity", identity],
+    ["--identity", identity],
+    ["--binary"],
+    ["--binary", "--identity", identity],
+    ["--binary", binary, "--identity"],
+  ])
+    assert.throws(() => parseMacosSigningArguments(args));
+});
 
 test("recognizes thin and universal Mach-O headers", () => {
   assert.equal(isMachOHeader(thinMachO), true);
