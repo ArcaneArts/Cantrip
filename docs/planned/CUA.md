@@ -473,7 +473,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 7 — macOS target inventory and native snapshots
 
 - Branch: `codex/cua-07-native-capture`, based on merged cycle 6 (`86322d280`).
-  Implementation in progress; no PR or merge yet.
+  [PR #1743](https://github.com/ArcaneArts/Cantrip/pull/1743), implementation
+  commit `6f913c84357aeade38427a6ed5caba31fe1a6276`; ready, awaiting CI and
+  squash auto-merge. No merge recorded yet.
 - Current work: ScreenCaptureKit backend, explicit bounded-inventory disclosure,
   portable fake/default-handshake tests, and fixture-owned native capture QA.
 - Native QA exposed and fixed a real helper crash: `CGS_REQUIRE_INIT` asserted
