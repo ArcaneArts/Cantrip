@@ -1037,7 +1037,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 11 — Bounded native inventory pagination and acceptance
 
 - Branch: `codex/cua-11-native-acceptance`, based on merged cycle 10
-  (`0f00cdfc8`). PR and implementation commit are pending.
+  (`0f00cdfc8`). Implementation commit: `bfceee05c531022fd74e863542c992d1b0cf761d`.
+- PR: [#1753](https://github.com/ArcaneArts/Cantrip/pull/1753), open;
+  portable CI and merge observation are pending.
 - Native finding: a fresh actual probe returned 224 targets from 473 native
   windows plus three displays, rejected 24 invalid capture rectangles, and
   omitted the owned fixture through initial, covered, closed and recreated
