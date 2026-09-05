@@ -862,7 +862,10 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 8e — Observe completed agent images from the shared preview
 
 - Branch: `codex/cua-08e-agent-preview`, based on merged cycle 8d (`38da8c6e5`).
-  Local integration and verification are in progress; no PR or merge claimed yet.
+- PR: [#1750](https://github.com/ArcaneArts/Cantrip/pull/1750).
+  Implementation commit: `f53c20822e084ca797ab5b615fd5c480bdf44a39`.
+  Local integration and verification passed; PR is open and portable CI is
+  running. Final merge evidence will be reconciled in the next pass.
 - Implemented: **Manual preview** / **Follow agent** in the existing shared
   responsive panel. Follow agent lists actual root/child execution sources and
   retrieves their latest completed observation through the same protected
