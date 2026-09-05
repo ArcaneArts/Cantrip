@@ -2,6 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   CuaNativeError,
   CuaProcessError,
+  CUA_NATIVE_ERROR_CODES,
+  type CuaNativeErrorCode,
   type CuaProcessErrorCode,
 } from "./errors.js";
 import {
@@ -9,6 +11,7 @@ import {
   CUA_PROTOCOL_VERSION,
   encodeCuaFrame,
   type CuaFrame,
+  type CuaOutcome,
 } from "./framing.js";
 
 export interface CuaTransport {
@@ -25,6 +28,8 @@ export interface CuaRequestOptions {
   timeoutMs?: number;
   /** Trusted owner cleanup only; never populate from an agent/client request. */
   lifecycle?: boolean;
+  /** Trusted execution owner authorizes each host action; never supplied by JS. */
+  onHostCall?: (action: unknown, signal: AbortSignal) => Promise<unknown>;
 }
 
 export interface CuaTransportOptions {
@@ -40,13 +45,34 @@ interface Pending {
   reject: (error: Error) => void;
   timer: NodeJS.Timeout;
   disposeSignal: () => void;
+  onHostCall: CuaRequestOptions["onHostCall"];
+  hostController: AbortController;
+  lastHostCallId: number;
+  hostCallPending: boolean;
 }
 
-const MAX_OUTSTANDING = 32;
+// Sixteen ordinary correlations plus sixteen native closes and four JS resets.
+// The lifecycle owners retain their resource reservations until cleanup settles.
+const MAX_OUTSTANDING = 36;
 const MAX_ORDINARY_OUTSTANDING = 16;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const CANCELLATION_GRACE_MS = 2_000;
 const SHUTDOWN_GRACE_MS = 2_000;
+const MAX_HOST_CALLS = 64;
+
+function hostFailure(error: unknown): CuaOutcome {
+  let code: CuaNativeErrorCode = "invalid-request";
+  if (error instanceof CuaNativeError || error instanceof CuaProcessError) {
+    if (CUA_NATIVE_ERROR_CODES.includes(error.code as CuaNativeErrorCode))
+      code = error.code as CuaNativeErrorCode;
+    else if (error.code === "timeout" || error.code === "closed")
+      code = "cancelled";
+  }
+  return {
+    status: "error",
+    error: { code, message: new CuaNativeError(code).message },
+  };
+}
 
 function callback<T>(
   listener: ((value: T) => void) | undefined,
@@ -148,6 +174,7 @@ class ChildTransport implements CuaTransport {
       this.#pending.delete(id);
       clearTimeout(pending.timer);
       pending.disposeSignal();
+      pending.hostController.abort();
     }
     return pending;
   }
@@ -191,6 +218,10 @@ class ChildTransport implements CuaTransport {
   #receive(frame: CuaFrame): void {
     if (this.#closing || this.#failure) return;
     const message = frame.header.message;
+    if (message.kind === "hostCall") {
+      this.#hostCall(message);
+      return;
+    }
     if (message.kind === "event") {
       if (message.sequence <= this.#eventSequence) {
         this.#fail("protocol-error");
@@ -210,6 +241,16 @@ class ChildTransport implements CuaTransport {
       this.#cancelled.delete(message.requestId);
       return;
     }
+    // An evaluator cannot report successful completion before its dispatched
+    // host action has an authoritative result. Error/cancellation responses can
+    // terminate that wait, but must not turn an ambiguous action into success.
+    if (
+      message.result.status === "ok" &&
+      this.#pending.get(message.requestId)?.hostCallPending
+    ) {
+      this.#fail("protocol-error");
+      return;
+    }
     const pending = this.#settlePending(message.requestId);
     if (!pending) {
       this.#fail("protocol-error");
@@ -218,6 +259,72 @@ class ChildTransport implements CuaTransport {
     if (message.result.status === "error")
       pending.reject(new CuaNativeError(message.result.error.code));
     else pending.resolve({ data: message.result.data, payload: frame.payload });
+  }
+
+  #hostCall(
+    message: Extract<CuaFrame["header"]["message"], { kind: "hostCall" }>,
+  ): void {
+    const id = message.evaluationRequestId;
+    // Cancellation acknowledgement owns this bounded tombstone. Never invoke
+    // policy or emit a host result for an already-cancelled evaluation.
+    if (this.#cancelled.has(id)) return;
+    const pending = this.#pending.get(id);
+    if (
+      !pending?.onHostCall ||
+      pending.hostCallPending ||
+      message.callId !== pending.lastHostCallId + 1 ||
+      message.callId > MAX_HOST_CALLS
+    ) {
+      this.#fail("protocol-error");
+      return;
+    }
+    pending.lastHostCallId = message.callId;
+    pending.hostCallPending = true;
+    const active = () =>
+      !this.closed &&
+      this.#pending.get(id) === pending &&
+      !pending.hostController.signal.aborted;
+    const send = (result: CuaOutcome) => {
+      if (!active()) return;
+      const header = (value: CuaOutcome): CuaFrame["header"] => ({
+        version: CUA_PROTOCOL_VERSION,
+        message: {
+          kind: "hostResult",
+          evaluationRequestId: id,
+          callId: message.callId,
+          result: value,
+        },
+      });
+      let encoded: Buffer;
+      try {
+        encoded = encodeCuaFrame(header(result));
+      } catch (error) {
+        encoded = encodeCuaFrame(header(hostFailure(error)));
+      }
+      // Serialization can invoke a user-defined getter; recheck ownership before
+      // writing. Host replies use no ordinary request slot and no binary payload.
+      if (!active()) return;
+      pending.hostCallPending = false;
+      this.#child.stdin.write(encoded, (error) => {
+        if (error) this.#fail("transport-failed");
+      });
+    };
+    // Invoke asynchronously: parsing other frames and native command responses
+    // cannot wait behind policy, approval, or a native action's Promise.
+    void Promise.resolve()
+      .then(() =>
+        active()
+          ? pending.onHostCall!(message.action, pending.hostController.signal)
+          : undefined,
+      )
+      .then(
+        (data) =>
+          send({ status: "ok", data: data === undefined ? null : data }),
+        (error: unknown) => send(hostFailure(error)),
+      )
+      .catch(() => {
+        if (active()) this.#fail("transport-failed");
+      });
   }
 
   #cancel(id: number, code: "cancelled" | "timeout"): void {
@@ -247,6 +354,7 @@ class ChildTransport implements CuaTransport {
       signal,
       timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
       lifecycle = false,
+      onHostCall,
     }: CuaRequestOptions = {},
   ): Promise<{ data: unknown; payload: Buffer }> {
     if (this.closed)
@@ -288,6 +396,10 @@ class ChildTransport implements CuaTransport {
         reject,
         timer,
         disposeSignal: () => signal?.removeEventListener("abort", abort),
+        onHostCall,
+        hostController: new AbortController(),
+        lastHostCallId: 0,
+        hostCallPending: false,
       });
       signal?.addEventListener("abort", abort, { once: true });
       this.#child.stdin.write(encoded, (error) => {

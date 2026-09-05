@@ -94,6 +94,13 @@ pub enum Operation {
     },
     #[serde(rename = "session.close")]
     SessionClose { binding: SessionBinding },
+    #[serde(rename = "javascript.evaluate")]
+    JavascriptEvaluate {
+        binding: SessionBinding,
+        source: String,
+    },
+    #[serde(rename = "javascript.reset")]
+    JavascriptReset { binding: SessionBinding },
 }
 
 pub struct OperationResult {
@@ -122,6 +129,7 @@ impl OperationResult {
 pub struct CuaService<B: CaptureBackend> {
     backend: B,
     sessions: HashMap<String, SessionState>,
+    javascript: bool,
 }
 
 impl<B: CaptureBackend> CuaService<B> {
@@ -129,7 +137,11 @@ impl<B: CaptureBackend> CuaService<B> {
         Self {
             backend,
             sessions: HashMap::new(),
+            javascript: false,
         }
+    }
+    pub(crate) fn enable_javascript(&mut self) {
+        self.javascript = true;
     }
     pub fn session_count(&self) -> usize {
         self.sessions.len()
@@ -196,14 +208,34 @@ impl<B: CaptureBackend> CuaService<B> {
     ) -> Result<OperationResult> {
         cancel.check()?;
         match operation {
-            Operation::CapabilitiesGet {} => Ok(OperationResult::json(json!({
-                "protocolVersion": PROTOCOL_VERSION, "runtimeVersion": env!("CARGO_PKG_VERSION"),
-                "backend": self.backend.name(), "capture": self.backend.available(),
-                "nativeInput": false, "javascript": false, "cursorAppearanceVersion": 1,
-                "operations": ["capabilities.get", "targets.list", "target.attach", "target.detach",
-                    "observation.snapshot", "cursor.configure", "cursor.move", "session.close"],
-                "maxSessions": MAX_SESSIONS, "maxImageBytes": MAX_PAYLOAD_BYTES,
-            }))),
+            Operation::CapabilitiesGet {} => {
+                let mut operations = vec![
+                    "capabilities.get",
+                    "targets.list",
+                    "target.attach",
+                    "target.detach",
+                    "observation.snapshot",
+                    "cursor.configure",
+                    "cursor.move",
+                    "session.close",
+                ];
+                if self.javascript {
+                    operations.extend(["javascript.evaluate", "javascript.reset"]);
+                }
+                Ok(OperationResult::json(json!({
+                    "protocolVersion": PROTOCOL_VERSION, "runtimeVersion": env!("CARGO_PKG_VERSION"),
+                    "backend": self.backend.name(), "capture": self.backend.available(),
+                    "nativeInput": false, "javascript": self.javascript, "cursorAppearanceVersion": 1,
+                    "operations": operations,
+                    "maxSessions": MAX_SESSIONS, "maxImageBytes": MAX_PAYLOAD_BYTES,
+                })))
+            }
+            Operation::JavascriptEvaluate { .. } | Operation::JavascriptReset { .. } => {
+                Err(CuaError::new(
+                    ErrorCode::Unsupported,
+                    "JavaScript requires the framed runtime owner.",
+                ))
+            }
             Operation::TargetsList {} => {
                 let targets = self.inventory(cancel)?;
                 cancel.check()?;

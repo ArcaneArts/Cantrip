@@ -18,11 +18,12 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const MAX_PENDING: usize = 32;
+// Sixteen ordinary correlations, sixteen native closes, four JS resets.
+const MAX_PENDING: usize = 36;
 const MAX_OUTBOUND: usize = 4;
-type Pending = Arc<Mutex<HashMap<u64, Cancellation>>>;
+pub(crate) type Pending = Arc<Mutex<HashMap<u64, Cancellation>>>;
 
-enum Work {
+pub(crate) enum Work {
     Request {
         id: u64,
         operation: serde_json::Value,
@@ -32,7 +33,7 @@ enum Work {
     OutputFailed,
 }
 
-fn frame(message: Message) -> Frame {
+pub(crate) fn frame(message: Message) -> Frame {
     Frame {
         header: Header {
             version: PROTOCOL_VERSION,
@@ -51,7 +52,7 @@ fn error_response(id: u64, code: ErrorCode, message: &'static str) -> Frame {
     })
 }
 
-fn emit(
+pub(crate) fn emit(
     sender: &crossbeam_channel::Sender<Frame>,
     mut output: Frame,
     wait_for_capacity: bool,
@@ -85,7 +86,7 @@ fn cancel_all(pending: &Pending) {
     }
 }
 
-/// At most 32 accepted jobs and four outgoing images can be pending. Rejected
+/// At most 36 accepted jobs and four outgoing images can be pending. Rejected
 /// overload never blocks the reader. Exhausted output capacity terminates the
 /// stream rather than accumulating memory or replaying ambiguous operations.
 pub fn run<B: CaptureBackend + 'static>(
@@ -97,6 +98,8 @@ pub fn run<B: CaptureBackend + 'static>(
     let (jobs_tx, jobs_rx) = mpsc::channel();
     let (frames_tx, frames_rx) = crossbeam_channel::bounded(MAX_OUTBOUND);
     let (writer_done_tx, writer_done_rx) = mpsc::sync_channel(1);
+    let (javascript, javascript_done) =
+        crate::javascript::spawn(frames_tx.clone(), pending.clone(), jobs_tx.clone())?;
     let writer_jobs = jobs_tx.clone();
     let writer_pending = pending.clone();
     std::thread::spawn(move || {
@@ -115,6 +118,7 @@ pub fn run<B: CaptureBackend + 'static>(
     });
     let reader_pending = pending.clone();
     let reader_frames = frames_tx.clone();
+    let reader_javascript = javascript.clone();
     std::thread::spawn(move || {
         let result = (|| {
             let mut last_id = 0;
@@ -126,6 +130,14 @@ pub fn run<B: CaptureBackend + 'static>(
                         if let Some(token) = reader_pending.lock().unwrap().get(&request_id) {
                             token.cancel();
                         }
+                        reader_javascript.wake();
+                    }
+                    Message::HostResult {
+                        evaluation_request_id,
+                        call_id,
+                        result,
+                    } => {
+                        reader_javascript.reply(evaluation_request_id, call_id, result)?;
                     }
                     Message::Request {
                         request_id,
@@ -149,6 +161,21 @@ pub fn run<B: CaptureBackend + 'static>(
                             }
                         };
                         if accepted {
+                            match serde_json::from_value::<Operation>(operation.clone()) {
+                                Ok(Operation::JavascriptEvaluate { binding, source }) => {
+                                    reader_javascript
+                                        .evaluate(request_id, binding, source, token)?;
+                                    continue;
+                                }
+                                Ok(Operation::JavascriptReset { binding }) => {
+                                    reader_javascript.reset(request_id, binding, token)?;
+                                    continue;
+                                }
+                                Ok(Operation::SessionClose { binding }) => {
+                                    reader_javascript.close(binding)?
+                                }
+                                _ => {}
+                            }
                             // This channel cannot grow beyond MAX_PENDING plus
                             // two control messages, because registration is bounded.
                             jobs_tx
@@ -185,6 +212,7 @@ pub fn run<B: CaptureBackend + 'static>(
     });
 
     let mut service = CuaService::new(backend);
+    service.enable_javascript();
     let mut sequence = 0;
     let result = (|| {
         for work in jobs_rx {
@@ -246,11 +274,14 @@ pub fn run<B: CaptureBackend + 'static>(
         Ok(())
     })();
     cancel_all(&pending);
+    javascript.shutdown();
     drop(service);
+    let javascript_closed = javascript_done.recv_timeout(Duration::from_secs(2));
     drop(frames_tx);
     // A parent that stops draining stdout must not make EOF shutdown hang.
     // The process owner exits after this bound, discarding blocked I/O threads.
     if result.is_ok() {
+        javascript_closed.map_err(|_| io::Error::other("CUA JavaScript shutdown timed out."))?;
         writer_done_rx
             .recv_timeout(Duration::from_secs(2))
             .map_err(|_| io::Error::other("CUA output shutdown timed out."))??;

@@ -3,6 +3,10 @@ import { z } from "zod";
 import { resolveCuaBinary } from "./binary.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import { CuaProcessError } from "./errors.js";
+import {
+  CuaJavascriptContexts,
+  type CuaJavascriptOptions,
+} from "./javascript.js";
 import { launchCuaTransport, type CuaTransport } from "./transport.js";
 import {
   CUA_REQUIRED_OPERATIONS,
@@ -95,8 +99,21 @@ export class CantripCuaService {
   private pending = new Set<PendingOperation>();
   private cleanup = new Set<Promise<void>>();
   private lastFailure: string | null = null;
+  private readonly javascript: CuaJavascriptContexts;
 
-  constructor(private readonly options: CantripCuaServiceOptions) {}
+  constructor(private readonly options: CantripCuaServiceOptions) {
+    this.javascript = new CuaJavascriptContexts(this, {
+      runtime: async (signal) => {
+        const runtime = await waitBeforeCuaSend(this.ensureRuntime(), signal);
+        this.assertActive(signal);
+        if (this.runtime !== runtime)
+          throw new CuaProcessError("process-exited", "not-sent");
+        return runtime;
+      },
+      cleanup: (work) => this.background(work),
+      protocolFailure: (runtime) => this.protocolFailure(runtime),
+    });
+  }
 
   status() {
     return {
@@ -162,6 +179,7 @@ export class CantripCuaService {
     this.lastFailure = error.code;
     this.crashes += 1;
     this.terminal = !restartable || !runtime.capabilities || this.crashes > 1;
+    this.javascript.runtimeFailed(runtime);
     for (const record of this.sessions.values()) {
       if (record.runtime === runtime) {
         this.sessions.delete(record.binding.sessionId);
@@ -264,6 +282,29 @@ export class CantripCuaService {
         throw new CuaProcessError("process-exited", "not-sent");
       return structuredClone(runtime.capabilities!);
     });
+  }
+  /** Worker-internal only until the managed MCP adapter binds real turn authority.
+   * Never hold a native session queue while JS waits for an authorized host call. */
+  async evaluateJavascript(
+    input: CuaScope,
+    source: string,
+    options: CuaJavascriptOptions,
+  ) {
+    this.assertActive(options.executionSignal);
+    return this.javascript.evaluate(this.scope(input), source, options);
+  }
+  resetJavascript(
+    input: CuaScope,
+    executionSignal: AbortSignal,
+  ): Promise<void> {
+    return this.javascript.reset(this.scope(input), executionSignal);
+  }
+  javascriptSession(
+    input: CuaScope,
+    executionSignal: AbortSignal,
+  ): CuaSession | null {
+    this.assertActive(executionSignal);
+    return this.javascript.session(this.scope(input), executionSignal);
   }
   async targets(input: CuaScope, signal?: AbortSignal) {
     return (await this.inventory(input, signal)).targets;
@@ -521,9 +562,13 @@ export class CantripCuaService {
       true,
     ) as Promise<CuaSnapshot>;
   }
-  private invalidate(record: SessionRecord) {
+  private invalidate(record: SessionRecord, revokeJavascript = false) {
     if (this.sessions.get(record.binding.sessionId) !== record) return;
     this.sessions.delete(record.binding.sessionId);
+    this.javascript.nativeSessionClosed(
+      record.binding.sessionId,
+      revokeJavascript,
+    );
     record.controller.abort();
     if (!record.runtime.transport.closed)
       this.background(
@@ -539,13 +584,14 @@ export class CantripCuaService {
       );
   }
   stopSession(input: CuaScope, sessionId: string): void {
-    this.invalidate(this.record(input, sessionId));
+    this.invalidate(this.record(input, sessionId), true);
   }
   /** Release one exact owner lifetime. Null task/thread/turn fields are values,
    * not wildcards for the agent executions sharing a preview's chat. */
   cancelScope(input: CuaScope): void {
     const identity = JSON.stringify(this.scope(input));
     const matches = (scope: CuaScope) => JSON.stringify(scope) === identity;
+    this.javascript.cancel(matches);
     for (const pending of this.pending)
       if (matches(pending.scope)) pending.controller.abort();
     for (const record of this.sessions.values())
@@ -556,12 +602,14 @@ export class CantripCuaService {
     const matches = (scope: CuaScope) =>
       scope.chatId === chatId &&
       (threadId == null || scope.threadId === threadId);
+    this.javascript.cancel(matches);
     for (const pending of this.pending)
       if (matches(pending.scope)) pending.controller.abort();
     for (const record of this.sessions.values())
       if (matches(record.scope)) this.invalidate(record);
   }
   cancelThread(threadId: string): void {
+    this.javascript.cancel((scope) => scope.threadId === threadId);
     for (const pending of this.pending)
       if (pending.scope.threadId === threadId) pending.controller.abort();
     for (const record of this.sessions.values())
@@ -569,6 +617,7 @@ export class CantripCuaService {
   }
   disconnect(): void {
     this.connected = false;
+    this.javascript.cancel(() => true);
     for (const pending of this.pending) pending.controller.abort();
     for (const record of this.sessions.values()) this.invalidate(record);
   }

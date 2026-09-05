@@ -55,6 +55,20 @@ pub enum Message {
         #[serde(deserialize_with = "deserialize_sequence")]
         request_id: u64,
     },
+    HostCall {
+        #[serde(deserialize_with = "deserialize_sequence")]
+        evaluation_request_id: u64,
+        #[serde(deserialize_with = "deserialize_sequence")]
+        call_id: u64,
+        action: Value,
+    },
+    HostResult {
+        #[serde(deserialize_with = "deserialize_sequence")]
+        evaluation_request_id: u64,
+        #[serde(deserialize_with = "deserialize_sequence")]
+        call_id: u64,
+        result: Outcome,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -84,12 +98,25 @@ fn validate_header(header: &Header, payload_len: usize, kind: io::ErrorKind) -> 
         | Message::Response { request_id, .. }
         | Message::Cancel { request_id } => *request_id,
         Message::Event { sequence, .. } => *sequence,
+        Message::HostCall {
+            evaluation_request_id,
+            ..
+        }
+        | Message::HostResult {
+            evaluation_request_id,
+            ..
+        } => *evaluation_request_id,
     };
     if !(1..=MAX_SEQUENCE).contains(&sequence) {
         return Err(io::Error::new(
             kind,
             "Invalid CUA request identifier or sequence.",
         ));
+    }
+    if let Message::HostCall { call_id, .. } | Message::HostResult { call_id, .. } = &header.message
+        && !(1..=MAX_SEQUENCE).contains(call_id)
+    {
+        return Err(io::Error::new(kind, "Invalid CUA host call identifier."));
     }
     if payload_len > MAX_PAYLOAD_BYTES {
         return Err(io::Error::new(kind, "CUA payload exceeds its byte limit."));
@@ -222,6 +249,66 @@ mod tests {
         bytes.extend_from_slice(&payload_len.to_be_bytes());
         bytes.extend_from_slice(header);
         bytes
+    }
+
+    #[test]
+    fn host_rendezvous_frames_are_exact_bounded_control_only() {
+        for message in [
+            Message::HostCall {
+                evaluation_request_id: 1,
+                call_id: 1,
+                action: json!({"operation":"state"}),
+            },
+            Message::HostResult {
+                evaluation_request_id: MAX_SEQUENCE,
+                call_id: MAX_SEQUENCE,
+                result: Outcome::Ok {
+                    data: json!({"targets":[]}),
+                },
+            },
+        ] {
+            let mut frame = Frame {
+                header: Header {
+                    version: PROTOCOL_VERSION,
+                    message,
+                },
+                payload: vec![],
+            };
+            assert_eq!(
+                read_frame(Cursor::new(encode(&frame))).unwrap(),
+                Some(frame.clone())
+            );
+            frame.payload.push(1);
+            assert!(write_frame(io::sink(), &frame).is_err());
+            let raw = raw_frame(&serde_json::to_vec(&frame.header).unwrap(), 1);
+            let error = read_frame(Cursor::new(raw)).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        }
+        for kind in ["hostCall", "hostResult"] {
+            for field in ["evaluationRequestId", "callId"] {
+                for invalid in [
+                    json!(0),
+                    json!(-1),
+                    json!(1.25),
+                    Value::Null,
+                    json!(MAX_SEQUENCE + 1),
+                    json!("1"),
+                ] {
+                    let mut message = json!({"kind":kind,"evaluationRequestId":1,"callId":1});
+                    message[field] = invalid;
+                    if kind == "hostCall" {
+                        message["action"] = json!({"operation":"state"});
+                    } else {
+                        message["result"] = json!({"status":"ok","data":null});
+                    }
+                    let raw = raw_frame(
+                        &serde_json::to_vec(&json!({"version":1,"message":message})).unwrap(),
+                        0,
+                    );
+                    assert!(read_frame(Cursor::new(raw)).is_err());
+                }
+            }
+        }
     }
 
     #[test]
