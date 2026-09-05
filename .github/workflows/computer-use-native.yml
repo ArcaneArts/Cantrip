@@ -55,6 +55,10 @@ on:
       - "scripts/verify-packaged-worker-cua.mjs"
       - "scripts/package-distributions.mjs"
       - "scripts/sign-macos-runtime.mjs"
+      - "scripts/import-macos-developer-id.sh"
+      - "scripts/import-macos-developer-id.test.mjs"
+      - "scripts/macos-signing.test.mjs"
+      - "scripts/native-release-workflow.test.mjs"
       - "scripts/verify-macos-distribution.mjs"
       - "package.json"
 
@@ -132,6 +136,8 @@ jobs:
       - run: cargo clippy --locked --manifest-path cantrip_cua/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --locked --manifest-path cantrip_cua/Cargo.toml
       - run: node --test scripts/cantrip-cua/*.test.mjs
+      - name: Verify macOS helper signing and release wiring
+        run: node --test scripts/macos-signing.test.mjs scripts/native-release-workflow.test.mjs scripts/import-macos-developer-id.test.mjs
       - run: node scripts/cantrip-cua/smoke.mjs
       - run: node scripts/cantrip-cua/build.mjs --release
       - run: pnpm cua:test:worker

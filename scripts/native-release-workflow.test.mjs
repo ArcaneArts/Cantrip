@@ -222,25 +222,30 @@ test("fails closed while signing and notarizing the macOS updater and DMG", asyn
     "utf8",
   );
 
+  const importer = await readFile(
+    path.join(root, "scripts", "import-macos-developer-id.sh"),
+    "utf8",
+  );
   assert.match(workflow, /- name: Import macOS Developer ID certificate/u);
   assert.match(workflow, /APPLE_CERTIFICATE/u);
-  assert.match(workflow, /Developer ID Application/u);
+  assert.match(workflow, /run: bash scripts\/import-macos-developer-id\.sh/u);
+  assert.match(importer, /Developer ID Application/u);
   assert.match(
-    workflow,
+    importer,
     /security list-keychains -d user -s "\$keychain" "\$\{existing_keychains\[@\]\}"/u,
   );
-  assert.doesNotMatch(workflow, /security default-keychain -s "\$keychain"/u);
-  assert.match(workflow, /DeveloperIDCA\.cer/u);
-  assert.match(workflow, /DeveloperIDG2CA\.cer/u);
+  assert.doesNotMatch(importer, /security default-keychain/u);
+  assert.match(importer, /DeveloperIDCA\.cer/u);
+  assert.match(importer, /DeveloperIDG2CA\.cer/u);
   assert.match(
-    workflow,
+    importer,
     /7afc9d01a62f03a2de9637936d4afe68090d2de18d03f29c88cfb0b1ba63587f/u,
   );
   assert.match(
-    workflow,
+    importer,
     /f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a/u,
   );
-  assert.match(workflow, /leaf_fingerprint/u);
+  assert.match(importer, /leaf_fingerprint/u);
   assert.match(workflow, /CANTRIP_REQUIRE_MACOS_SIGNING: "1"/u);
   assert.match(workflow, /APPSTORE_CONNECT_ISSUER_ID/u);
   assert.match(workflow, /APPSTORE_CONNECT_KEY_ID/u);
@@ -310,4 +315,60 @@ test("builds generated desktop dependencies before packaging installers", async 
   );
   assert.ok(macosPackage > protocolBuild);
   assert.ok(windowsPackage > protocolBuild);
+});
+
+test("signs the packaged macOS worker helper and verifies it before archive publication", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github/workflows/native-release.yml"),
+    "utf8",
+  );
+  const worker =
+    workflow.match(/^ {2}worker:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
+  const steps = [
+    "Package worker from verified runtimes",
+    "Import macOS Developer ID certificate",
+    "Sign standalone macOS worker CUA",
+    "Verify signed packaged macOS worker CUA",
+    "archive-distribution.mjs worker",
+    "actions/upload-artifact@v4",
+    "Remove temporary signing keychain",
+  ].map((name) => worker.indexOf(name));
+  assert.ok(
+    steps.every(
+      (position, index) =>
+        position >= 0 && (index === 0 || position > steps[index - 1]),
+    ),
+  );
+  assert.match(
+    worker,
+    /--binary artifacts\/cantrip-worker-\$\{\{ matrix\.target \}\}\/bin\/cantrip-cua --identity "\$APPLE_SIGNING_IDENTITY"/u,
+  );
+  assert.match(
+    worker,
+    /verify-packaged-worker-cua\.mjs artifacts\/cantrip-worker-\$\{\{ matrix\.target \}\} --require-developer-id/u,
+  );
+  for (const jobName of ["worker", "client"]) {
+    const job =
+      workflow.match(
+        new RegExp(`^ {2}${jobName}:[\\s\\S]*?(?=^ {2}\\w+:)`, "mu"),
+      )?.[0] ?? "";
+    assert.match(
+      job,
+      /Import macOS Developer ID certificate\n {8}if: matrix.target == 'darwin-arm64'/u,
+    );
+    assert.match(
+      job,
+      /APPLE_CERTIFICATE: \$\{\{ secrets\.APPLE_CERTIFICATE \}\}/u,
+    );
+    assert.match(job, /run: bash scripts\/import-macos-developer-id\.sh/u);
+    assert.match(
+      job,
+      /Remove temporary signing keychain\n {8}if: always\(\) && matrix.target == 'darwin-arm64'/u,
+    );
+    assert.match(job, /bash scripts\/import-macos-developer-id\.sh cleanup/u);
+  }
+  assert.match(
+    worker,
+    /Verify packaged Windows worker CUA\n {8}if: matrix.target == 'win32-x64'\n {8}run: node scripts\/verify-packaged-worker-cua\.mjs artifacts\/cantrip-worker-\$\{\{ matrix\.target \}\}\n/u,
+  );
 });

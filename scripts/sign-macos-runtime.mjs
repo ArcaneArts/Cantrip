@@ -80,58 +80,87 @@ export async function signMacosRuntime({
     throw new Error(`No Mach-O binaries were found in ${directory}.`);
   }
   for (const binary of binaries) {
-    const arguments_ = ["--force", "--sign", identity];
-    if (path.basename(binary) === "cantrip-cua") {
-      arguments_.push("--identifier", CUA_SIGNING_IDENTIFIER);
-    }
-    if (identity !== "-") arguments_.push("--timestamp");
-    // Packagers may strip the executable bit from helper binaries while
-    // preserving their Mach-O executable file type. Apple evaluates the
-    // binary itself during notarization, so every bundled Mach-O must carry
-    // the hardened-runtime flag rather than relying on its filesystem mode.
-    arguments_.push("--options", "runtime");
-    if (requiresJitEntitlements(binary)) {
-      arguments_.push("--entitlements", entitlements);
-    }
-    arguments_.push(binary);
-    run(arguments_);
+    signMacosBinary({ binary, entitlements, identity, run });
   }
   return binaries;
 }
 
-function parseArguments(arguments_) {
+/** Sign the requested artifact directly; codesign validates the actual file. */
+export function signMacosBinary({
+  binary,
+  entitlements,
+  identity,
+  run = runCodesign,
+}) {
+  if (!identity?.trim())
+    throw new Error("A macOS signing identity is required.");
+  const arguments_ = ["--force", "--sign", identity];
+  if (path.basename(binary) === "cantrip-cua") {
+    arguments_.push("--identifier", CUA_SIGNING_IDENTIFIER);
+  }
+  if (identity !== "-") arguments_.push("--timestamp");
+  // All Mach-O executables need this flag, even if packaging stripped +x.
+  arguments_.push("--options", "runtime");
+  if (requiresJitEntitlements(binary)) {
+    arguments_.push("--entitlements", entitlements);
+  }
+  arguments_.push(binary);
+  run(arguments_);
+  return binary;
+}
+
+export function parseMacosSigningArguments(arguments_) {
   let directory;
+  let binary;
   let identity;
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
+    const value = arguments_[index + 1];
+    if (
+      ["--directory", "--binary", "--identity"].includes(argument) &&
+      (!value || value.startsWith("--"))
+    ) {
+      throw new Error(`${argument} requires a value.`);
+    }
     if (argument === "--directory") {
-      directory = arguments_[index + 1];
+      directory = value;
+      index += 1;
+    } else if (argument === "--binary") {
+      binary = value;
       index += 1;
     } else if (argument === "--identity") {
-      identity = arguments_[index + 1];
+      identity = value;
       index += 1;
     } else {
       throw new Error(`Unknown signing argument: ${argument}`);
     }
   }
-  if (!directory) throw new Error("--directory is required.");
+  if (Boolean(directory) === Boolean(binary))
+    throw new Error("Exactly one of --directory or --binary is required.");
   if (!identity) throw new Error("--identity is required.");
-  return { directory: path.resolve(directory), identity };
+  return {
+    ...(binary
+      ? { binary: path.resolve(binary) }
+      : { directory: path.resolve(directory) }),
+    identity,
+  };
 }
 
 const isMain =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const input = parseArguments(process.argv.slice(2));
-  const binaries = await signMacosRuntime({
-    ...input,
+  const input = {
+    ...parseMacosSigningArguments(process.argv.slice(2)),
     entitlements: path.join(
       scriptRoot,
       "cantrip_app",
       "src-tauri",
       "macos-node-entitlements.plist",
     ),
-  });
+  };
+  const binaries = input.binary
+    ? [signMacosBinary(input)]
+    : await signMacosRuntime(input);
   console.log(`Signed ${binaries.length} embedded macOS runtime binaries.`);
 }

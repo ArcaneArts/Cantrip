@@ -2,7 +2,7 @@
 
 Status: First-tranche implementation in progress; experimental preview and native
 capture, managed MCP and shared agent observations implemented. Protected
-operation Trajectory is implemented and locally verified, awaiting its PR merge;
+operation Trajectory is implemented and verified locally and in portable CI;
 final product/release verification remains incomplete.
 
 ## First-tranche implementation progress
@@ -936,9 +936,12 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-09-protected-trajectory`, based on merged cycle 8e
   (`c9e516f51`). Implementation commit: `1a3ee9f5`.
-- PR: [#1751](https://github.com/ArcaneArts/Cantrip/pull/1751), open; local
-  implementation and focused verification are complete. Cross-platform CI and
-  merge observation are pending; no merge is claimed.
+- PR: [#1751](https://github.com/ArcaneArts/Cantrip/pull/1751), final head
+  `26af414ddd9b5b44ca90a5a5d5eb00402602d937`, squash-auto-merged at
+  `2026-09-05T12:39:45Z` as `42c4f9c0cf6709a14c9750933c583b53e9befe26`.
+  CI run `33966480732` passed macOS, Windows, Linux and PostgreSQL before
+  auto-merge was enabled. Primary fast-forwarded cleanly; only the cycle-owned
+  worktree and branch were removed.
 - Implemented: actual agent MCP and user preview operations use the existing
   encrypted chat/task message and Trajectory paths. Agent records retain the
   runtime's root/child scope; idle preview sessions have a distinct Preview
@@ -979,6 +982,28 @@ is the authoritative merge record until the next ledger update.
 - Remaining tranche work also includes standalone release signing,
   installed/packaged update and permission evidence, startup/idle/latency
   measurements, live product acceptance and final regression/completion audit.
+
+### Tranche cycle 10 — Standalone Darwin helper release signing
+
+- Branch: `codex/cua-10-worker-release-signing`, based on merged cycle 9
+  (`42c4f9c0c`). Implementation and verification are in progress; no PR or merge
+  is claimed yet.
+- Implemented: the standalone Darwin worker job imports the shared Developer
+  ID certificate, signs its final CUA executable before verification/archival,
+  and checks its actual signature, stable identifier, Developer ID authority
+  and hardened runtime before final-layout helper/Sharp smoke. Desktop and
+  worker jobs share the existing import behavior; cleanup only owns a keychain
+  after successful creation and preserves existing keychains/default selection.
+- Local verification: 83 signing, workflow, importer and CUA script tests pass;
+  one explicit GUI test is skipped. Importer tests execute the actual Bash
+  script with synthetic signing tools/credentials; they do not prove real CI
+  certificate availability. The real `pnpm package:worker --target darwin-arm64`
+  build is running; actual packaged signing and archive-extraction verification
+  are pending, not inferred from these tests. Bash syntax, formatting and diff
+  checks pass. `pnpm check` again stops at the unchanged server decomposition
+  budgets recorded in cycle 9; no later chained check is claimed.
+- Native/product acceptance, installed/packaged update permission continuity,
+  performance measurements and final regression/completion audit remain required.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
