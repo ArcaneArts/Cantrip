@@ -1238,7 +1238,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 14 — Preview identity and responsive target selection
 
 - Branch: `codex/cua-14-preview-attribution`, based on cycle 13's observed
-  merge `96ac98106`. PR, commit and merge metadata will be recorded when known.
+  merge `96ac98106`. [PR #1758](https://github.com/ArcaneArts/Cantrip/pull/1758),
+  implementation commit `81d7f5a4`. PR is open; final CI and observed merge
+  remain pending.
 - Implemented: manual preview displays the server-authorized lease's worker
   and the actual native session ID, with an explicit not-started state before
   session creation. Stop removes this attribution with the cleared image.
