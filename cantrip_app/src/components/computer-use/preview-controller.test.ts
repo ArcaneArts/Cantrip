@@ -55,7 +55,7 @@ const sessionFixture = (): CuaSession => ({
   },
   observationRevision: 1,
 });
-function fixture() {
+function fixture(inventoryTruncated?: boolean) {
   let session = sessionFixture();
   const buffers: Uint8Array[] = [];
   const operation = vi.fn(
@@ -78,7 +78,7 @@ function fixture() {
           };
           break;
         case "targets.list":
-          data = { targets: [previewTarget] };
+          data = { targets: [previewTarget], truncated: inventoryTruncated };
           break;
         case "session.open":
           session = { ...session, target: previewTarget };
@@ -154,6 +154,84 @@ function deferred<T>() {
 }
 
 describe("ComputerUsePreviewController", () => {
+  it.each([
+    "target-not-found",
+    "stale-target",
+    "permission-denied",
+    "capture-failed",
+  ])(
+    "clears stale pixels after actual %s without creating or retrying a session",
+    async (code) => {
+      const { controller, operation, images, client } = fixture();
+      await controller.connect();
+      await controller.selectTarget(previewTarget);
+      const session = controller.getSnapshot().session;
+      const before = operation.mock.calls.length;
+      operation.mockResolvedValueOnce({
+        content: {
+          status: "error",
+          operation: "observation.snapshot",
+          code,
+          message: "Native capture failed.",
+        } as ComputerUseResultContent,
+        bytes: null,
+      });
+      await controller.snapshot();
+      expect(controller.getSnapshot().observation).toBeNull();
+      expect(controller.getSnapshot().session).toEqual(session);
+      expect(controller.getSnapshot().error?.code).toBe(code);
+      expect(images.revoke).toHaveBeenCalledWith("blob:fixture-1");
+      expect(operation).toHaveBeenCalledTimes(before + 1);
+      expect(client.open).toHaveBeenCalledOnce();
+      expect(client.stop).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["transport", "schema", "image"])(
+    "clears stale pixels on a thrown %s snapshot failure without replay",
+    async (failure) => {
+      const { controller, operation, images } = fixture();
+      await controller.connect();
+      await controller.selectTarget(previewTarget);
+      const before = operation.mock.calls.length;
+      const bytes = new Uint8Array([1, 2, 3]);
+      if (failure === "transport") {
+        operation.mockRejectedValueOnce(new Error("Connection interrupted."));
+      } else if (failure === "schema") {
+        operation.mockResolvedValueOnce({
+          content: {
+            status: "ok",
+            operation: "observation.snapshot",
+            data: {},
+            chunkCount: 1,
+          } as ComputerUseResultContent,
+          bytes,
+        });
+      } else {
+        images.create.mockImplementationOnce(() => {
+          throw new Error("Image creation failed.");
+        });
+      }
+      await controller.snapshot();
+      expect(controller.getSnapshot().observation).toBeNull();
+      expect(controller.getSnapshot().error?.code).toBe("request-failed");
+      expect(images.revoke).toHaveBeenCalledWith("blob:fixture-1");
+      expect(operation).toHaveBeenCalledTimes(before + 1);
+      if (failure === "schema") expect(bytes).toEqual(new Uint8Array(3));
+    },
+  );
+  it.each([true, false, undefined])(
+    "preserves bounded inventory disclosure (%s) and clears it on Stop",
+    async (truncated) => {
+      const { controller } = fixture(truncated);
+      await controller.connect();
+      expect(controller.getSnapshot().targetsTruncated).toBe(
+        truncated ?? false,
+      );
+      expect(controller.getSnapshot().targets).toEqual([previewTarget]);
+      await controller.stop();
+      expect(controller.getSnapshot().targetsTruncated).toBe(false);
+    },
+  );
   it("is inert until explicitly connected and then renders a target snapshot", async () => {
     const { controller, client, images, buffers } = fixture();
     expect(client.open).not.toHaveBeenCalled();

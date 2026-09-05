@@ -61,6 +61,7 @@ function fixture(patch: Partial<PreviewState> = {}) {
     },
     capabilities: null,
     targets: [target],
+    targetsTruncated: false,
     session,
     observation: {
       url: "blob:fixture",
@@ -103,6 +104,31 @@ function fixture(patch: Partial<PreviewState> = {}) {
 }
 
 describe("ComputerUsePreviewPanel", () => {
+  it.each(["target-not-found", "stale-target"])(
+    "offers explicit reselection for %s",
+    (code) => {
+      const { props } = fixture({
+        error: { code, message: "Native target closed." },
+      });
+      const markup = renderToStaticMarkup(
+        <ComputerUsePreviewPanel {...props} />,
+      );
+      expect(markup).toContain(
+        "Refresh targets and select the current window or monitor",
+      );
+      expect(markup).toContain("No other target was captured as a fallback");
+    },
+  );
+  it("discloses a bounded native target inventory without hiding existing targets", () => {
+    const { props } = fixture({ targetsTruncated: true });
+    const markup = renderToStaticMarkup(<ComputerUsePreviewPanel {...props} />);
+    expect(markup).toContain("Some native targets were omitted");
+    expect(markup).toContain("Fake monitor");
+    const complete = fixture();
+    expect(
+      renderToStaticMarkup(<ComputerUsePreviewPanel {...complete.props} />),
+    ).not.toContain("Some native targets were omitted");
+  });
   it("has a responsive shared layout and marks snapshots as non-live logical input", () => {
     const { props } = fixture();
     const markup = renderToStaticMarkup(<ComputerUsePreviewPanel {...props} />);

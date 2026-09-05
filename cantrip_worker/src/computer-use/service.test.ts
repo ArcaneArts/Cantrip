@@ -3,8 +3,8 @@ import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CantripCuaService } from "./service.js";
 import { launchCuaTransport } from "./transport.js";
-import { CuaProcessError } from "./errors.js";
-import type { CuaScope, CuaCursorAppearance } from "./types.js";
+import { CuaNativeError, CuaProcessError } from "./errors.js";
+import type { CuaScope, CuaCursorAppearance, CuaSnapshot } from "./types.js";
 
 const scope: CuaScope = {
   serverId: "server",
@@ -109,6 +109,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
   () => {
     function create(
       options: {
+        beforeRequest?: (operation: unknown) => void;
         transform?: (
           operation: unknown,
           response: { data: unknown; payload: Buffer },
@@ -136,6 +137,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
             close: () => transport.close(),
             request: async (operation, requestOptions) => {
               operations.push(operation);
+              options.beforeRequest?.(operation);
               const response = await transport.request(
                 operation,
                 requestOptions,
@@ -159,6 +161,156 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       child.kill("SIGKILL");
       await closed;
     }
+    it.each([undefined, false, true])(
+      "preserves native inventory truncation %s while retaining array callers",
+      async (truncated) => {
+        const { service, launch } = create({
+          transform: (operation, response) => {
+            if (
+              (operation as { operation: string }).operation ===
+                "targets.list" &&
+              truncated !== undefined
+            )
+              Object.assign(response.data as object, { truncated });
+            return response;
+          },
+        });
+        const inventory = await service.inventory(scope);
+        expect(inventory.targets).toHaveLength(2);
+        if (truncated === undefined)
+          expect(inventory).not.toHaveProperty("truncated");
+        else expect(inventory.truncated).toBe(truncated);
+        expect(await service.targets(scope)).toEqual(inventory.targets);
+        expect(launch).toHaveBeenCalledTimes(1);
+      },
+    );
+    it("accepts actual PNG bytes with a downscaled, then resized logical target without changing its generation", async () => {
+      let logicalWidth = 800;
+      const { service, launch } = create({
+        transform: (operation, response) => {
+          if (
+            (operation as { operation: string }).operation ===
+            "observation.snapshot"
+          ) {
+            const data = response.data as CuaSnapshot;
+            // Only native geometry is simulated. The pixels, dimensions and
+            // digest remain the real fake helper's valid 320x200 PNG.
+            const target = data.session.target!;
+            target.bounds = {
+              x: -500,
+              y: 25,
+              width: logicalWidth,
+              height: logicalWidth * 0.625,
+            };
+            target.pixelWidth = data.image.width;
+            target.pixelHeight = data.image.height;
+            target.scaleFactor = data.image.width / logicalWidth;
+          }
+          return response;
+        },
+      });
+      const { binding } = await service.open(scope, windowTarget);
+      const id = binding.sessionId;
+      await service.move(scope, id, windowTarget, { x: 40, y: 25 });
+      for (const width of [800, 400]) {
+        logicalWidth = width;
+        const captured = await service.snapshot(scope, id, windowTarget);
+        expect(captured.image).toMatchObject({ width: 320, height: 200 });
+        expect(captured.payload.readUInt32BE(16)).toBe(320);
+        expect(captured.payload.readUInt32BE(20)).toBe(200);
+        expect(captured.session.target).toMatchObject({
+          id: windowTarget.targetId,
+          generation: 1,
+          bounds: { x: -500, y: 25, width, height: width * 0.625 },
+          pixelWidth: 320,
+          pixelHeight: 200,
+          scaleFactor: 320 / width,
+        });
+        expect(captured.session.cursor.position).toEqual({ x: 40, y: 25 });
+        expect(service.state(scope, id)).toEqual(captured.session);
+        captured.payload.fill(0);
+      }
+      expect(service.status().sessions).toBe(1);
+      expect(launch).toHaveBeenCalledTimes(1);
+    });
+    it("does not cache an inventory permission denial or relaunch after an explicit retry", async () => {
+      let denied = true;
+      const { service, launch, operations } = create({
+        beforeRequest: (operation) => {
+          if (
+            denied &&
+            (operation as { operation: string }).operation === "targets.list"
+          )
+            throw new CuaNativeError("permission-denied");
+        },
+      });
+      await expect(service.inventory(scope)).rejects.toMatchObject({
+        name: "CuaNativeError",
+        code: "permission-denied",
+      });
+      expect(service.status()).toMatchObject({
+        state: "running",
+        sessions: 0,
+        processGeneration: 1,
+        lastFailure: null,
+      });
+      expect(operations).toHaveLength(2); // One handshake and one actual attempt.
+      denied = false;
+      expect((await service.inventory(scope)).targets).toHaveLength(2);
+      expect(launch).toHaveBeenCalledTimes(1);
+    });
+    it.each(["permission-denied", "target-not-found", "stale-target"] as const)(
+      "preserves authoritative %s without restarting, replacing the session, or retrying",
+      async (code) => {
+        let rejected = true;
+        const { service, launch, operations } = create({
+          beforeRequest: (operation) => {
+            if (
+              rejected &&
+              (operation as { operation: string }).operation ===
+                "observation.snapshot"
+            )
+              throw new CuaNativeError(code);
+          },
+        });
+        const { binding } = await service.open(scope, windowTarget);
+        const before = service.state(scope, binding.sessionId);
+        await expect(
+          service.snapshot(scope, binding.sessionId, windowTarget),
+        ).rejects.toMatchObject({ name: "CuaNativeError", code });
+        expect(service.state(scope, binding.sessionId)).toEqual(before);
+        expect(service.status()).toMatchObject({
+          state: "running",
+          sessions: 1,
+          processGeneration: 1,
+          lastFailure: null,
+        });
+        expect(
+          operations.filter(
+            (operation) =>
+              (operation as { operation: string }).operation ===
+              "observation.snapshot",
+          ),
+        ).toHaveLength(1);
+        rejected = false;
+        const retryTarget =
+          code === "permission-denied" ? windowTarget : monitor;
+        // A closed/replaced window needs explicit selection of a current
+        // target. Do not suggest that retrying its old generation revives it.
+        if (code !== "permission-denied")
+          await service.attach(scope, binding.sessionId, retryTarget);
+        const retried = await service.snapshot(
+          scope,
+          binding.sessionId,
+          retryTarget,
+        );
+        expect(retried.session.binding).toEqual(binding);
+        expect(retried.session.target?.id).toBe(retryTarget.targetId);
+        expect(retried.session.observationRevision).toBe(1);
+        retried.payload.fill(0);
+        expect(launch).toHaveBeenCalledTimes(1);
+      },
+    );
     it("shares one lazy handshake, configures all styles, returns binary snapshots, detaches and closes", async () => {
       const { service, launch, operations } = create();
       const [capabilities, targets] = await Promise.all([

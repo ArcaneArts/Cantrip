@@ -266,6 +266,9 @@ export class CantripCuaService {
     });
   }
   async targets(input: CuaScope, signal?: AbortSignal) {
+    return (await this.inventory(input, signal)).targets;
+  }
+  async inventory(input: CuaScope, signal?: AbortSignal) {
     return this.track(this.scope(input), signal, async (active) => {
       const runtime = await waitBeforeCuaSend(this.ensureRuntime(), active);
       this.assertActive(active);
@@ -277,7 +280,7 @@ export class CantripCuaService {
       if (this.runtime !== runtime)
         throw new CuaProcessError("process-exited", "unknown");
       if (response.payload.length) return this.protocolFailure(runtime);
-      return this.parse(runtime, cuaInventorySchema, response.data).targets;
+      return this.parse(runtime, cuaInventorySchema, response.data);
     });
   }
   async open(

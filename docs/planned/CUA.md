@@ -411,7 +411,11 @@ is the authoritative merge record until the next ledger update.
 - Branch: `codex/cua-06-client-preview`, based on merged cycle 5c
   (`3a5628d23`). PR [#1742](https://github.com/ArcaneArts/Cantrip/pull/1742),
   implementation commit `c6824fec969d8a1c6c6edab3ec7da95bb2e8e0a7`.
-  CI and squash auto-merge are pending; merge has not yet been observed.
+  Squash auto-merged 2026-09-05 as
+  `86322d280bf5a2d1f8f40c2e5ebfad4813ef77b0` (observed via GitHub).
+  Final-head CI run `33937234829` passed all four macOS/Windows/Linux fake
+  capture and PostgreSQL authority jobs before auto-merge. Primary was
+  fast-forwarded; only this cycle's clean worktree/branch were removed.
 - Implemented: reachable experimental preview above both project and standalone
   chat transcripts; actual worker capability request, monitor/window inventory,
   attach/detach, snapshots and customizable logical cursor. Click coordinates
@@ -465,6 +469,71 @@ is the authoritative merge record until the next ledger update.
   and native installed/packaged verification. Native input, Accessibility,
   clipboard/files, other native platforms, custom cursor assets, continuous
   video and cross-worker control remain deferred.
+
+### Tranche cycle 7 — macOS target inventory and native snapshots
+
+- Branch: `codex/cua-07-native-capture`, based on merged cycle 6 (`86322d280`).
+  [PR #1743](https://github.com/ArcaneArts/Cantrip/pull/1743), implementation
+  commit `6f913c84357aeade38427a6ed5caba31fe1a6276`; ready, awaiting CI and
+  squash auto-merge. No merge recorded yet.
+- Current work: ScreenCaptureKit backend, explicit bounded-inventory disclosure,
+  portable fake/default-handshake tests, and fixture-owned native capture QA.
+- Native QA exposed and fixed a real helper crash: `CGS_REQUIRE_INIT` asserted
+  because CoreGraphics had not been initialized before constructing a window
+  filter. Public `CGMainDisplayID()` now initializes it on the original main
+  thread; its return value does not gate capture. A prior zero-frame validation
+  patch alone did not fix the assertion. Empty/invalid native rectangles are
+  still rejected before creating a filter, with a focused regression test.
+- The same signed development helper now enumerates real targets and produces
+  a decoded 1920 × 1080 monitor snapshot in the actual product panel through
+  the encrypted client/server/worker fixture route. Custom crosshair, RGBA,
+  size, label, trail and logical movement produced subsequent snapshots.
+  No production account, encryption profile or server database was changed.
+- The owned native fixture exposed a separate short-pipe-read issue: Foundation
+  waited to fill the pipe read, preventing short control messages from being
+  handled. Bounded POSIX reads fixed it; all 13 explicit fixture IPC checks pass.
+  Cross-process window capture still returns ScreenCaptureKit `-3811` and the
+  occlusion matrix is not verified. AppKit initialization, minimal capture
+  settings and explicit asynchronous input retention did not resolve that error.
+  The input-retention fix remains for correct native object ownership; unrelated
+  configuration experiments were removed.
+- A fixture-only diagnostic independently confirmed WindowServer reports the
+  inactive fixture as 288 × 216 while AppKit reports 320 × 240. The decisive
+  subsequent check was `CGSessionCopyCurrentDictionary`: `screenLocked=1`.
+  ScreenCaptureKit itself returned zero displays, not a display rejected by our
+  catalog. Fixture activation experiments were removed; the user was asked to
+  unlock the desktop for further native QA. This is diagnostic evidence, not a
+  new lock-state preflight in production. No lock-screen or permission bypass,
+  automatic permission reset, identity switch or monitor fallback was added.
+- Inventory now reads native metadata without constructing filters for every
+  unrelated window. It checks cancellation between entries and reports a bounded
+  nominal 1x inventory raster; selected capture alone creates a filter and
+  refreshes actual output geometry and scale. This reduces unnecessary native
+  work; it is not claimed as the cause of the locked-session capture failure.
+- Failed native, transport, decryption/schema and image-creation snapshots clear
+  old preview pixels without replay. An older cancelled request cannot clear a
+  newer observation. Focused controller/component tests: 32 passed.
+- ColorSync display UUID is optional additional incarnation evidence, not a
+  prerequisite for capturing a valid native display. A registry regression
+  verifies metadata stability and disappearance invalidation without a UUID.
+- Local validation: 66 Rust tests; formatting and all-targets Clippy with denied
+  warnings; 43 script tests (one explicit GUI test skipped); 641 focused
+  protocol/crypto/worker/server/client tests (two PostgreSQL checks reserved for
+  dedicated CI); app/worker/server typechecks and builds. Release helper install,
+  strict Apple Development signature verification, equal designated requirement
+  across rebuilds, and the installed executable's actual fake smoke passed.
+  Equal signing requirements do not establish native permission continuity.
+- Manual QA artifact ledger records five pass checkpoints, one native-window
+  failure and one locked-desktop warning. Existing full-suite failures remain
+  recorded under cycle 6/final hardening; no failing native QA is reported green.
+- Native permission denial, target closure, Retina, complete occlusion coverage,
+  release rebuild and permission continuity are not yet verified. The earlier
+  three-monitor route checks decoded 1920 × 1080 PNGs and exercised negative
+  origins; they did not independently verify desktop pixel content. All three
+  observed native monitor scale factors were 1, not Retina evidence.
+- Remaining first tranche: native capture verification, managed MCP/persistent
+  JS, preview/MCP coordination, protected Trajectory, release signing and full
+  regression/performance verification. Later-tranche deferrals are unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

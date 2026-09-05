@@ -9,6 +9,7 @@ import {
   encodeFrame,
   FrameDecoder,
   FramedCuaProcess,
+  CuaOperationError,
   MAX_HEADER_BYTES,
   MAX_PAYLOAD_BYTES,
 } from "./wire.mjs";
@@ -52,6 +53,16 @@ function fixtureProcess(source, timeoutMs = 3_000) {
     timeoutMs,
   });
 }
+
+test("native error codes preserve known outcomes but never echo arbitrary details", () => {
+  assert.equal(
+    new CuaOperationError("permission-denied").code,
+    "permission-denied",
+  );
+  const error = new CuaOperationError("private-title-canary");
+  assert.equal(error.code, "unknown-native-error");
+  assert.doesNotMatch(String(error), /private-title-canary/u);
+});
 
 test("decoder preserves fragmented binary payloads and coalesced events/responses", () => {
   const expected = [
@@ -253,7 +264,10 @@ test("actual child errors are bounded and do not disclose native messages", asyn
   try {
     await assert.rejects(
       child.request({ operation: "targets.list" }),
-      (error) => error.message === "CUA operation returned an error outcome.",
+      (error) =>
+        error instanceof CuaOperationError &&
+        error.code === "permission-denied" &&
+        error.message === "CUA operation returned an error outcome.",
     );
     await child.close();
   } finally {

@@ -1,7 +1,4 @@
-use cantrip_cua::{
-    backend::{FakeBackend, UnavailableBackend},
-    runtime::run,
-};
+use cantrip_cua::{backend::FakeBackend, runtime::run};
 
 mod installation_lock;
 
@@ -13,7 +10,7 @@ fn main() {
         .collect::<Vec<_>>()
         .as_slice()
     {
-        [] => run(UnavailableBackend, std::io::stdin(), std::io::stdout()),
+        [] => run_default(),
         ["--backend", "fake"] => run(FakeBackend, std::io::stdin(), std::io::stdout()),
         ["--version"] => {
             println!("cantrip-cua {} protocol 1", env!("CARGO_PKG_VERSION"));
@@ -39,5 +36,20 @@ fn main() {
             "{{\"event\":\"cua.process.failed\",\"reason\":\"transport-or-runtime-failure\"}}"
         );
         std::process::exit(1);
+    }
+}
+
+fn run_default() -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        cantrip_cua::macos::run()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        run(
+            cantrip_cua::backend::UnavailableBackend,
+            std::io::stdin(),
+            std::io::stdout(),
+        )
     }
 }

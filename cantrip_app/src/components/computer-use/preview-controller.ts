@@ -21,6 +21,7 @@ export interface PreviewState {
   lease: CuaPreviewLease | null;
   capabilities: CuaCapabilities | null;
   targets: CuaTarget[];
+  targetsTruncated: boolean;
   session: CuaSession | null;
   observation: { url: string; metadata: CuaSnapshot } | null;
   error: { code: string; message: string } | null;
@@ -33,6 +34,7 @@ const initial = (): PreviewState => ({
   lease: null,
   capabilities: null,
   targets: [],
+  targetsTruncated: false,
   session: null,
   observation: null,
   error: null,
@@ -135,8 +137,10 @@ export class ComputerUsePreviewController {
           capabilities: cuaCapabilitiesSchema.parse(result.content.data),
         });
       } else if (action.operation === "targets.list") {
+        const inventory = cuaInventorySchema.parse(result.content.data);
         this.update({
-          targets: cuaInventorySchema.parse(result.content.data).targets,
+          targets: inventory.targets,
+          targetsTruncated: inventory.truncated ?? false,
         });
       } else if (action.operation === "session.close") {
         this.clearImage();
@@ -185,11 +189,19 @@ export class ComputerUsePreviewController {
       targetGeneration: session.target.generation,
     };
   }
-  private capture(signal: AbortSignal) {
-    return this.action(
-      { operation: "observation.snapshot", ...this.targetAction() },
-      signal,
-    );
+  private async capture(signal: AbortSignal) {
+    try {
+      await this.action(
+        { operation: "observation.snapshot", ...this.targetAction() },
+        signal,
+      );
+    } catch (error) {
+      // Native, transport, decryption and image failures must not leave stale
+      // pixels looking current. An older cancelled flight cannot clear a newer
+      // observation; Stop/disposal already owns clearing its display.
+      if (!signal.aborted && !this.disposed) this.clearImage();
+      throw error;
+    }
   }
   snapshot = () => this.run((signal) => this.capture(signal));
   configure = (appearance: CuaCursorAppearance) =>
@@ -231,6 +243,7 @@ export class ComputerUsePreviewController {
       busy: false,
       session: null,
       targets: [],
+      targetsTruncated: false,
       error: null,
     });
     if (!lease) return;
@@ -268,6 +281,7 @@ export class ComputerUsePreviewController {
       busy: false,
       session: null,
       targets: [],
+      targetsTruncated: false,
       error: {
         code: "encryption-unavailable",
         message:

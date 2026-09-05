@@ -21,11 +21,13 @@ import {
 } from "../../src/app/routes/computer-use.js";
 import type { ChatExecutionContext } from "../../src/db/repository.js";
 
-/** Synthetic local QA fixture only. No application database, native capture,
- * installed profile, keychain, real account, or RemoteDesktop machinery. */
+/** Synthetic local QA fixture only. No application database, encryption profile,
+ * keychain, real account, or RemoteDesktop machinery. Native capture requires
+ * an explicit opt-in; ordinary tests always use the fake backend. */
 export function createComputerUsePreviewFixture(options: {
   binary: string;
   permissionProfile?: string;
+  backend?: "fake" | "native";
 }) {
   const wire: string[] = [];
   const logs: string[] = [];
@@ -43,7 +45,7 @@ export function createComputerUsePreviewFixture(options: {
   const service = new CantripCuaService({
     workerId: credentials.workerId,
     binary: options.binary,
-    args: ["--backend", "fake"],
+    args: options.backend === "native" ? [] : ["--backend", "fake"],
     launch: (...args) => {
       launches += 1;
       return launchCuaTransport(...args);

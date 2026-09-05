@@ -6,6 +6,29 @@ export const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024;
 const EMPTY = Buffer.alloc(0);
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 
+const NATIVE_ERROR_CODES = new Set([
+  "invalid-request",
+  "protocol-version",
+  "capacity",
+  "cancelled",
+  "unsupported",
+  "session-not-found",
+  "ownership-mismatch",
+  "target-not-found",
+  "stale-target",
+  "capture-failed",
+  "permission-denied",
+]);
+
+/** Public codes only: never copy a helper's potentially sensitive message. */
+export class CuaOperationError extends Error {
+  constructor(code) {
+    super("CUA operation returned an error outcome.");
+    this.name = "CuaOperationError";
+    this.code = NATIVE_ERROR_CODES.has(code) ? code : "unknown-native-error";
+  }
+}
+
 function record(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -347,7 +370,7 @@ export class FramedCuaProcess {
     this.#pending.delete(message.requestId);
     if (message.result.status === "error") {
       // Do not echo arbitrary native messages, target titles, or identifiers.
-      pending.reject(new Error("CUA operation returned an error outcome."));
+      pending.reject(new CuaOperationError(message.result.error.code));
     } else {
       pending.resolve({ data: message.result.data, payload: frame.payload });
     }
