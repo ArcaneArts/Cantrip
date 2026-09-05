@@ -21,6 +21,8 @@ on:
       - "cantrip_worker/src/interaction-encryption.ts"
       - "cantrip_app/src/lib/endpoint-content-encryption*.ts"
       - "cantrip_app/src/lib/computer-use-client*.ts"
+      - "cantrip_app/src/lib/computer-use-worker-encryption*.ts"
+      - "cantrip_app/src/lib/worker-encryption-grants*.ts"
       - "cantrip_app/src/lib/api-client*.ts"
       - "cantrip_app/src/components/computer-use/**"
       - "cantrip_app/src/components/chat/chat-transcript-view.tsx"

@@ -49,13 +49,18 @@ const defaultApi: WorkerGrantApi = {
   revokeGrant: revokeEncryptionGrant,
 };
 
-const pendingGrantAuthorizations = new WeakMap<
+export type WorkerGrantEncryptionService = Pick<
   ClientEncryptionService,
+  "getSnapshot" | "componentKey"
+>;
+
+const pendingGrantAuthorizations = new WeakMap<
+  WorkerGrantEncryptionService,
   WeakMap<WorkerGrantApi, Map<string, Promise<EncryptionKeyGrant>>>
 >();
 
 function pendingGrantMap(
-  service: ClientEncryptionService,
+  service: WorkerGrantEncryptionService,
   api: WorkerGrantApi,
 ): Map<string, Promise<EncryptionKeyGrant>> {
   let serviceAuthorizations = pendingGrantAuthorizations.get(service);
@@ -103,7 +108,7 @@ export async function authorizeWorkerEncryption(input: {
   components: WorkerEncryptionComponentScope[];
   identity: ClientEncryptionIdentity;
   keyRevision?: number;
-  service?: ClientEncryptionService;
+  service?: WorkerGrantEncryptionService;
   workerId: string;
 }): Promise<EncryptionKeyGrant[]> {
   const api = input.api ?? defaultApi;

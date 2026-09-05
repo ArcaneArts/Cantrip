@@ -239,6 +239,14 @@ panel does not launch the helper; **Connect to agent worker** in **Manual previe
 performs its real capability request. The default backend uses ScreenCaptureKit on supported
 macOS versions; fake pixels are used only by explicitly configured tests.
 
+The first operation also prepares this worker's existing encrypted control,
+approval and history channels, including on a new chat that has never run an
+agent. The server-owned lease identifies chat or task history; preparation
+grants only that history component, `client-control-content` and
+`interaction-content`. It does not grant provider credentials or other agent
+execution secrets. Account/server changes and Stop cancel preparation; a
+failure does not silently replay the operation or disable Stop.
+
 Choose a monitor/window, request **Snapshot**, or click its displayed image to
 move the logical cursor. The four direction buttons provide a keyboard-accessible
 alternative. This never moves the system pointer or sends an OS click/key.

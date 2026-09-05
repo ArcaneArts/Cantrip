@@ -207,6 +207,8 @@ export function installComputerUsePreviewRoutes(
         if (
           lease.workerId !== authority.workerId ||
           lease.chatId !== authority.chatId ||
+          lease.contentDomain !==
+            (context.experience === "task" ? "task" : "chat") ||
           lease.generation !== authority.generation
         )
           throw new Error("Invalid preview lease.");

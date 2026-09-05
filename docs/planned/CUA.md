@@ -1113,8 +1113,13 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-12-recovery-transition`, based on merged cycle 11
   (`149010e9f`). Implementation commit: `1421c0c5`.
-  PR: [#1754](https://github.com/ArcaneArts/Cantrip/pull/1754), open with
-  checks running. Final merge metadata will be reconciled when observed.
+  PR: [#1754](https://github.com/ArcaneArts/Cantrip/pull/1754), final head
+  `8f959570943c32d7a8b1935e6c78a6effcfad762`, squash-auto-merged at
+  `2026-09-05T14:11:50Z` as `420c4f90e5c1219461e21bead0fdf19431750acf`.
+  No CI workflow ran for this auth-only change; the optional check was skipped.
+  Primary synchronized cleanly. Its clean worktree is temporarily retained for
+  the running QA profile and development app; cycle 13 authors changes in a
+  separate worktree based on the observed merge.
 - Fixed the existing application session transition exposed by live acceptance:
   callers supplied a complete prior state through a structural context type,
   then its spread overwrote the destination `kind` and retained stale recovery
@@ -1145,6 +1150,85 @@ is the authoritative merge record until the next ledger update.
   measurements, relevant broad regressions and final completion audit. No new
   native capture or permission-continuity claim is made by this auth fix.
   Later-tranche deferrals remain unchanged.
+
+### Tranche cycle 13 — First-use protected preview grants and live acceptance
+
+- Branch: `codex/cua-13-product-acceptance`, started from cycle 12's observed
+  merge (`420c4f90e`). [PR #1757](https://github.com/ArcaneArts/Cantrip/pull/1757),
+  implementation commit `8a36720834757df4eee05575d6b292ca759176df`.
+  PR is open; final CI and observed merge remain pending.
+- Live first use exposed a real missing prerequisite: an idle chat with no
+  prior agent turn had endpoint control authorization but lacked the history
+  component grant needed to publish protected CUA activity. Preview opening
+  returned 200; the first operation returned 502 with a protected-publication
+  failure. Existing universal-key fixtures masked the missing scope.
+- Implemented: the server-validated worker lease identifies its real chat/task
+  content domain. Before its first operation, the client uses existing principal
+  approval and wrapped-key grants for only client control, interactions and the
+  matching history domain, then performs the actual worker encryption refresh.
+  Server/account/key revision, worker principal, grant recipient, scope and
+  cancellation remain bound through asynchronous work. Successful preparation
+  is cached only for that owned lease. Stop retains its independent path and
+  can cancel preparation. No key bypass, extra permission mode or native gate.
+- Regression evidence: four genuine wrapped-key server/client cases cover chat
+  and task missing-history failure and successful first-use preparation with
+  the real HPKE worker service. Removing client preparation makes both positive
+  cases fail. Opposite-domain grants do not authorize history publication.
+  Focused client tests cover cancellation, identity changes and exact principal,
+  recipient, revision and scope validation.
+- Local verification: `pnpm cua:test:worker` passes 1,230 tests against the
+  compiled Rust helper: 133 protocol, 25 crypto, 571 worker, 220 server and
+  281 app. Three explicit server skips remain (two dedicated PostgreSQL cases
+  and the opt-in native fixture). Full protocol: 666 tests across 69 files.
+  App typecheck/build and worker/server builds pass. `pnpm check` stops at the
+  unchanged server decomposition counts 2,156 and 2,149 versus 1,999; later
+  chained checks did not run. This pass does not claim whole-repository green.
+- Actual macOS arm64 product acceptance: the same named QA profile, stable
+  Apple Development helper and normal devtop-built native executable were used.
+  A debug `.app` wrapper made that devUrl executable accessible to native UI
+  tooling; the ordinary server/worker/Vite services run cycle 13 source. This
+  wrapper is not production app signing, packaging or notarization evidence.
+  The user configured a model directly in the isolated dev app. No credentials
+  were read from files or copied into the test harness.
+- Live preview: real native backend and four inventory pages; Cantrip itself
+  was present on page four. Durable Workspace inventory/attachment/capture
+  approvals resolved through chat and required explicit retry. The fully
+  covered owned fixture rendered red with green/yellow/cyan/magenta corners at
+  320 × 240. YOLO added no extra confirmation. A white translucent ring, size
+  40, label `QA`, trail and logical movement appeared in subsequent snapshots.
+  Expired fixture targets reported disappearance without fallback; Stop cleared
+  the preview. The large untitled-window list remains awkward to navigate.
+- Live managed agent: actual `cantrip_cua/js` calls returned 73 twice across
+  calls; `js_reset` succeeded and a subsequent `typeof` returned `undefined`.
+  The agent received the covered fixture image with its white `MCP` ring at
+  (160,120). Follow agent displayed that same 320 × 240 image with one cursor
+  and real root/turn/session/worker attribution. Stop cleared it during the
+  active turn. Protected Trajectory exposed both successful operations and
+  failures, including the exact initial `console.log` misuse in protected Raw.
+  `console` is unavailable; final-expression returns succeeded. No screenshot
+  file or second image audit store was created by this walkthrough.
+- Measurements on the signed debug helper: 20 fresh-process handshakes median
+  26.919 ms / p95 40.422 ms; 30 warm fixture snapshots median 158.510 ms / p95
+  169.076 ms (320 × 240, 980-byte PNG). After session close, 29.002 seconds idle
+  added 0.00 seconds CPU at `ps`'s 0.01-second resolution; RSS median 35,136 KiB,
+  peak 35,280 KiB. These use warm filesystem cache and concurrent dev services,
+  include capture/encoding/pipe time, and are not release or startup comparisons.
+- Separate in-process protected transport, one warm-up plus 30 samples per size:
+  1,129-byte PNG median 1.469 ms / p95 2.848 ms; 2,618,198-byte PNG median
+  256.670 ms / p95 262.359 ms, ten chunks and 3,495,740-byte HTTP response.
+  Large-image route median 81.552 ms; client decrypt/reassembly 170.609 ms.
+  Actual AEAD, server handler and client codec verified exact bytes/digest/raster;
+  capture was synthetic and no helper launched. Fixture copying contributes to
+  these timings; real network latency and startup impact are not measured here.
+- Evidence: native and transport harnesses, raw samples and structured live QA
+  are retained outside the checkout under `/tmp/cua-13-evidence`.
+- Remaining tranche work: browser live-account walkthrough, independently
+  measured human-pointer isolation, remaining live approval/cancellation and
+  child-observer coverage, enclosing packaged-app/update permission evidence,
+  normal startup comparison, relevant broad regressions and completion audit.
+  Better target discovery and managed evaluator guidance remain follow-ups.
+  Native input, Accessibility, clipboard/files, other native OS backends and
+  the full roadmap below remain deferred.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

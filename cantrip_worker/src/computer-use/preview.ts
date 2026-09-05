@@ -402,6 +402,7 @@ export class CuaPreviewCoordinator {
       leaseId: preview.id,
       workerId: preview.scope.workerId,
       chatId: preview.scope.chatId,
+      contentDomain: preview.contentDomain,
       generation: preview.authority.generation,
     };
   }
