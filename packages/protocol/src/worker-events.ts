@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { computerUseChunkEventSchema } from "./computer-use.js";
 import {
+  cuaApprovalRequestEventSchema,
+  cuaApprovalTerminalSchema,
+} from "./computer-use-preview.js";
+import {
   chatPlanOpaqueStateSchema,
   chatMessageOpaqueContentSchema,
 } from "./communication-content.js";
@@ -185,6 +189,8 @@ export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const workerEventSchema = z.discriminatedUnion("type", [
+  cuaApprovalRequestEventSchema,
+  cuaApprovalTerminalSchema,
   computerUseChunkEventSchema,
   z
     .object({
@@ -288,6 +294,7 @@ export const workerEventEnvelopeSchema = z.object({
 });
 
 export const workerNotificationSchema = z.discriminatedUnion("type", [
+  cuaApprovalTerminalSchema,
   workerLinkPeerSignalNotificationSchema,
   workerLinkPeerCandidateNotificationSchema,
   z

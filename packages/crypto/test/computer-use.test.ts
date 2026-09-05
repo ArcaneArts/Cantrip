@@ -232,6 +232,110 @@ describe("protected computer-use request", () => {
 });
 
 describe("protected computer-use results", () => {
+  it("binds requests, manifests, and every image chunk to the preview lifetime", async () => {
+    const first = {
+      ...context,
+      previewLeaseId: "61dd30e8-fce4-4087-8e57-c998106ed0e1",
+    };
+    const second = {
+      ...context,
+      previewLeaseId: "16bff064-11cc-49ea-9636-bf5788924fc6",
+    };
+    const request = {
+      operation: "observation.snapshot" as const,
+      sessionId: "session-fixture",
+      targetId: "window-fixture",
+      targetGeneration: 1,
+    };
+    const protectedRequest = await protectComputerUseRequest({
+      context: first,
+      request,
+      seal: crypto().seal,
+    });
+    expect(
+      await openComputerUseRequest({
+        context: first,
+        opaque: protectedRequest,
+        open: crypto().open,
+      }),
+    ).toEqual(request);
+    for (const swapped of [second, context]) {
+      await expect(
+        openComputerUseRequest({
+          context: swapped,
+          opaque: {
+            ...protectedRequest,
+            previewLeaseId: swapped.previewLeaseId,
+          },
+          open: crypto().open,
+        }),
+      ).rejects.toThrow();
+    }
+    const fixture = imageFixture(CUA_CHUNK_BYTES + 1);
+    async function protect(bound: ComputerUseContentContext) {
+      const chunks: ComputerUseChunkEvent[] = [];
+      const opaque = await protectComputerUseResult({
+        context: bound,
+        ...fixture,
+        seal: crypto().seal,
+        emit: async (chunk) => {
+          chunks.push(chunk);
+        },
+      });
+      return { opaque, chunks };
+    }
+    const old = await protect(first);
+    const current = await protect(second);
+    expect(
+      (
+        await openComputerUseResult({
+          context: first,
+          ...old,
+          open: crypto().open,
+        })
+      ).payload,
+    ).toEqual(fixture.payload);
+    for (const swapped of [second, context]) {
+      await expect(
+        openComputerUseResult({
+          context: swapped,
+          ...old,
+          open: crypto().open,
+        }),
+      ).rejects.toThrow();
+    }
+    for (let index = 0; index < current.chunks.length; index += 1) {
+      const chunks = [...current.chunks];
+      chunks[index] = old.chunks[index]!;
+      await expect(
+        openComputerUseResult({
+          context: second,
+          opaque: current.opaque,
+          chunks,
+          open: crypto().open,
+        }),
+      ).rejects.toThrow();
+    }
+  });
+
+  it.each(["", "not-a-lease", "a".repeat(10_000)])(
+    "rejects malformed preview lease metadata before sealing: %s",
+    async (previewLeaseId) => {
+      let seals = 0;
+      await expect(
+        protectComputerUseRequest({
+          context: { ...context, operation: "targets.list", previewLeaseId },
+          request: { operation: "targets.list" },
+          seal: async (...args) => {
+            seals += 1;
+            return crypto().seal(...args);
+          },
+        }),
+      ).rejects.toThrow();
+      expect(seals).toBe(0);
+    },
+  );
+
   it("round-trips one real PNG and retains no temporary plaintext", async () => {
     const fixture = imageFixture();
     const original = fixture.payload.slice();

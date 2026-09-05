@@ -69,6 +69,8 @@ const cuaRuntimeExports = [
   "computerUseRequestSchema",
   "computerUseResponseSchema",
   "computerUseResultContentSchema",
+  "cuaApprovalRequestEventSchema",
+  "cuaApprovalTerminalSchema",
   "cuaBindingSchema",
   "cuaCapabilitiesSchema",
   "cuaCursorAppearanceSchema",
@@ -76,6 +78,11 @@ const cuaRuntimeExports = [
   "cuaImageSchema",
   "cuaInventorySchema",
   "cuaPointSchema",
+  "cuaPreviewAuthoritySchema",
+  "cuaPreviewBindingSchema",
+  "cuaPreviewLeaseSchema",
+  "cuaPreviewRevocationSchema",
+  "cuaPreviewStopSchema",
   "cuaScopeSchema",
   "cuaSessionResultSchema",
   "cuaSessionSchema",
@@ -84,6 +91,9 @@ const cuaRuntimeExports = [
   "cuaTargetSchema",
   "workerComputerUseApprovalResponseCommandSchema",
   "workerComputerUseCommandSchema",
+  "workerComputerUsePreviewOpenCommandSchema",
+  "workerComputerUsePreviewRevokeCommandSchema",
+  "workerComputerUsePreviewStopCommandSchema",
 ];
 
 describe("protocol public surface compatibility", () => {
@@ -93,7 +103,7 @@ describe("protocol public surface compatibility", () => {
       (name) => !cuaRuntimeExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(1_972);
+    expect(exportNames).toHaveLength(1_982);
     expect(
       exportNames.filter((name) => cuaRuntimeExports.includes(name)),
     ).toEqual(cuaRuntimeExports);
@@ -112,17 +122,29 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(275);
+    expect(commandTypes).toHaveLength(278);
     expect(commandTypes[0]).toBe("computer-use.operation");
     expect(commandTypes[1]).toBe("computer-use.approval.respond");
-    expect(stableFingerprint(commandTypes.slice(2))).toBe(
+    expect(commandTypes.slice(2, 5)).toEqual([
+      "computer-use.preview.open",
+      "computer-use.preview.stop",
+      "computer-use.preview.revoke",
+    ]);
+    expect(stableFingerprint(commandTypes.slice(5))).toBe(
       "9715f45e8704a82a:7004",
     );
-    expect(eventTypes).toHaveLength(19);
-    expect(eventTypes[0]).toBe("computer-use.snapshot.chunk");
-    expect(stableFingerprint(eventTypes.slice(1))).toBe("1d616530daf5093c:466");
-    expect(notificationTypes).toHaveLength(14);
-    expect(stableFingerprint(notificationTypes)).toBe("6768707e4d303352:420");
+    expect(eventTypes).toHaveLength(21);
+    expect(eventTypes.slice(0, 3)).toEqual([
+      "computer-use.approval.request",
+      "computer-use.approval.terminal",
+      "computer-use.snapshot.chunk",
+    ]);
+    expect(stableFingerprint(eventTypes.slice(3))).toBe("1d616530daf5093c:466");
+    expect(notificationTypes).toHaveLength(15);
+    expect(notificationTypes[0]).toBe("computer-use.approval.terminal");
+    expect(stableFingerprint(notificationTypes.slice(1))).toBe(
+      "6768707e4d303352:420",
+    );
   });
 
   it("keeps representative type-only exports available from the root", () => {

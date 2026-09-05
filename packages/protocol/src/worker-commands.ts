@@ -8,11 +8,17 @@ import { workerChatCommandSchemas } from "./worker-command-chat.js";
 import {
   workerComputerUseCommandSchema,
   workerComputerUseApprovalResponseCommandSchema,
+  workerComputerUsePreviewOpenCommandSchema,
+  workerComputerUsePreviewStopCommandSchema,
+  workerComputerUsePreviewRevokeCommandSchema,
 } from "./worker-command-computer-use.js";
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
   workerComputerUseCommandSchema,
   workerComputerUseApprovalResponseCommandSchema,
+  workerComputerUsePreviewOpenCommandSchema,
+  workerComputerUsePreviewStopCommandSchema,
+  workerComputerUsePreviewRevokeCommandSchema,
   ...workerCoreCommandSchemas,
   ...workerGithubProjectCommandSchemas,
   ...workerGitCommandSchemas,

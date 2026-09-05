@@ -31,6 +31,7 @@ import {
   releaseChatLogicalBranchLease,
 } from "../logical-branch-leases.js";
 import * as schema from "../schema.js";
+import { projectChatExecutionLock } from "./chat-execution-lock.js";
 import {
   firstOrThrow,
   toISOString,
@@ -49,6 +50,8 @@ import {
 interface ChatExecutionContextBase {
   automationPaused: boolean;
   chatId: string;
+  /** Filled by getChatExecutionContext; optional for older execution adapters. */
+  computerUseAuthorityGeneration?: number;
   cwd: string;
   experience: ChatWireSummary["experience"];
   defaultPermissionProfileId?: UserSettings["defaultPermissionProfileId"];
@@ -379,18 +382,7 @@ export class ChatExecutionLaneRepository {
     }
     try {
       return await this.database.transaction(async (transaction) => {
-        await transaction
-          .select({ id: schema.chats.id })
-          .from(schema.chats)
-          .innerJoin(
-            schema.projects,
-            and(
-              eq(schema.projects.id, schema.chats.projectId),
-              eq(schema.projects.ownerId, ownerId),
-            ),
-          )
-          .where(eq(schema.chats.id, chatId))
-          .for("update");
+        await transaction.execute(projectChatExecutionLock(ownerId, chatId));
         const rows = await transaction
           .select({
             chat: schema.chats,

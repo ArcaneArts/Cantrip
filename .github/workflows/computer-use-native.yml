@@ -13,7 +13,15 @@ on:
       - "cantrip_worker/src/interaction-encryption.ts"
       - "cantrip_app/src/lib/endpoint-content-encryption*.ts"
       - "cantrip_app/src/components/chat/agent-interaction-panel*"
-      - "cantrip_server/src/app/routes/computer-use.ts"
+      - "cantrip_server/src/app/routes/computer-use*.ts"
+      - "cantrip_server/src/app/build-app.ts"
+      - "cantrip_server/src/app/runtime/worker-notification-runtime.ts"
+      - "cantrip_server/src/db/repository.ts"
+      - "cantrip_server/src/db/index.ts"
+      - "cantrip_server/src/db/repository/chat-*.ts"
+      - "cantrip_server/src/db/repository/settings.ts"
+      - "cantrip_server/src/db/repository/projects.ts"
+      - "cantrip_server/src/db/repository/computer-use*.ts"
       - "cantrip_server/src/app/routes/agent-interactions.ts"
       - "cantrip_server/src/db/repository/agent-interactions.ts"
       - "cantrip_server/src/db/schema.ts"
@@ -37,6 +45,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  authority-postgres:
+    name: CUA committed authority (PostgreSQL)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cua_fixture
+          POSTGRES_PASSWORD: cua_fixture
+          POSTGRES_DB: cua_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cua_fixture -d cua_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version build
+      - run: pnpm --filter @cantrip/logging build
+      - run: pnpm --filter @cantrip/protocol build
+      - name: Verify post-commit notifications and production lock ordering
+        env:
+          CANTRIP_CUA_TEST_POSTGRES_URL: postgres://cua_fixture:cua_fixture@127.0.0.1:5432/cua_fixture
+        run: pnpm --filter @cantrip/server exec vitest run test/computer-use-authority-postgres.test.ts
+
   portable-cua:
     name: CUA fake capture (${{ matrix.target }})
     strategy:

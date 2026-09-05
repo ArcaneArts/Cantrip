@@ -59,8 +59,8 @@ export interface ComputerUseHandlerDependencies {
   }): Promise<void>;
 }
 
-/** Encrypted boundary for authorized CUA. No route/index/MCP registration until
- * the existing durable-approval owner supplies resolveExecution and authorize. */
+/** Encrypted boundary for authorized CUA. Production preview routing supplies
+ * the worker-owned lifetime and existing durable-approval policy. */
 export async function handleComputerUseOperation(
   command: WorkerComputerUseCommand,
   emit: (event: ComputerUseChunkEvent) => Promise<void>,
@@ -81,6 +81,9 @@ export async function handleComputerUseOperation(
     chatId: command.chatId,
     operationId: command.request.operationId,
     operation: command.request.operation,
+    ...(command.request.previewLeaseId
+      ? { previewLeaseId: command.request.previewLeaseId }
+      : {}),
   };
   const seal = (
     context: Parameters<typeof protectWorkerEndpointBytes>[0]["context"],

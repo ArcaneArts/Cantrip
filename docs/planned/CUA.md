@@ -268,7 +268,8 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-05b-durable-approvals`, based on merged cycle 5 (`0d23ecbae`).
 - PR: [#1740](https://github.com/ArcaneArts/Cantrip/pull/1740).
-  Initial implementation commit: `e9589426b`; merge not yet observed.
+  Initial implementation commit: `e9589426b`; merged 2026-09-05 as
+  `5e18d1c104fe919927d3c743451af131bdaf590c` (observed via GitHub).
 - Implemented: an explicit `computer-use` owner in existing durable agent
   interactions; a versioned migration adds owner metadata and allows genuine
   null native thread/turn identity for CUA permissions. No new session tables,
@@ -313,19 +314,93 @@ is the authoritative merge record until the next ledger update.
   Rust: 50 passes; CUA build/smoke scripts: 30 passes. Worker/server/app
   typechecks, worker build, Clippy, Rust and
   touched-file formatting, large-file check and server-boundary audit pass.
-  Portable CI and merge are not yet observed. The existing server
+  Portable CI run `33932973259` passed on macOS, Windows and Linux before
+  squash auto-merge. The existing server
   local-foundation provider-fixture failure was reproduced unchanged on Primary
   before interaction assertions; full-suite baseline gaps recorded above remain
   final-hardening work, not a claim of a green whole-repository suite.
 - Platform/manual: synthetic encrypted permissions and macOS fake-process tests
   only. No native capture, Screen Recording prompt, real profile/key access or
-  live UI approval was performed. Portable fake CI will exercise these same
+  live UI approval was performed. Portable fake CI exercised these same
   boundary tests on macOS, Windows and Linux; it is not native capture evidence.
 - Remaining first tranche: trusted production activation/capability, preview,
   native inventory/capture, persistent JS/MCP, protected Trajectory, signing and
   end-to-end/manual performance verification. Earlier signing and baseline-test
   risks remain. Later native input, other native platforms, arbitrary cursor
   assets, continuous video and cross-worker control remain deferred.
+
+### Tranche cycle 5c — Trusted preview lifetime and production routing
+
+- Branch: `codex/cua-05c-preview-authority`, based on merged cycle 5b
+  (`5e18d1c10`). PR: [#1741](https://github.com/ArcaneArts/Cantrip/pull/1741).
+  Initial implementation commit: `81f2b8a42`; merge not yet observed.
+- Implemented: production preview/open/Stop routes and encrypted operation
+  dispatch through the same agent worker, one inert worker-owned preview lease
+  per chat, and actual selected/effective permission policy. Native helper
+  construction and preview opening do not launch a process or prompt. Existing
+  durable protected interactions carry requests and replies; an approval never
+  automatically replays an action. Selected YOLO adds no CUA confirmation.
+- A preview is a real client actor with null task/thread/turn/lane fields, not
+  an invented native execution. Its lifetime follows worker, chat, account,
+  placement and permission authority. Ordinary agent turns, status, messages
+  and reused execution-lane IDs do not restart it. Multiple observers receive
+  the same active lease. Stop, chat interruption, terminal disconnect, shutdown
+  and authority changes invalidate the lease, operations and approvals. Stop
+  remains routable after chat archival or placement changes.
+- Requests, result manifests and individual image chunks are authenticated to
+  the random preview lease as well as the existing endpoint context. Reopening
+  cannot reuse an old encrypted action or grant. Strict shared control schemas
+  contain no public target titles, cursor labels or pixels. Existing historical
+  protocol export/discriminator baselines remain unchanged outside explicit CUA
+  additions.
+- Migration 0199 adds only a chat authority generation, not a native-session
+  table. Narrow transactional triggers advance it for permission, inherited
+  default, placement and archive changes, including A-to-B-to-A transitions;
+  no-op writes and ordinary turn activity leave it alone. Post-commit database
+  notifications deliver best-effort scoped interruption across server instances.
+  The generation remains the next-request fence if notification delivery fails;
+  there is no claim of instantaneous cancellation across a network failure.
+- Review fixes: real PostgreSQL reproduced a project-policy/turn-start lock
+  inversion (`40P01`). The production lock now uses a materialized project-lock
+  dependency before locking its chat, in one statement; the same harness runs
+  the old failure and verifies the actual replacement SQL. Post-commit
+  notification delivery/rollback/deduplication/unsubscribe are also tested on
+  PostgreSQL and PGlite. Notifications carry only owner/scope IDs, use bounded
+  coalesced delivery, and never hold an ordinary committed mutation open for
+  an offline worker.
+- A real two-instance coordinated-relay test reproduces Stop notification
+  delivery before its approval event and during the approval insert. The
+  request-origin server now subscribes before dispatch and orders standalone
+  terminal notifications behind already-active scoped commands and inserts.
+  The bounded completion registries hold no protected payloads, add no RPC or
+  polling, and do not evict an insert merely because HTTP timed out. Ordered
+  same-command terminal events do not wait on their own completion. Live
+  updates retain the captured account owner.
+- Integration tests exercise the actual preview and operation route factories,
+  worker coordinator, permission manager, Rust fake subprocess and client AEAD:
+  target inventory, window attachment, cursor configuration/movement, PNG
+  digest/pixels, generation invalidation, ordinary-turn stability and Stop.
+  The client UI, production macOS backend and MCP are not implemented by this
+  pass. The default Rust backend still reports unavailable truthfully.
+- Validation: 472 focused tests pass (protocol 68, crypto 24, worker 219,
+  server 147, client 14), plus 2 real PostgreSQL tests run independently on an
+  isolated local cluster. The ordinary runner skips those two without an
+  explicit dedicated database URL; a dedicated PostgreSQL CI job runs them.
+  Full protocol 536 passes, crypto 64 passes, full worker
+  1,234 passes / 14 expected skips; the artifact-dependent preview test passes
+  against the actual Rust binary separately. Rust 50 and script 30 tests pass;
+  Clippy/format, worker/server builds, worker/crypto/app/server typechecks,
+  server-boundary audit and repository decomposition check pass. Portable CI
+  and PR merge are not yet observed. Prior whole-server baseline gaps remain tracked
+  final-hardening work, not a claim that all repository tests are green.
+- Platform/manual: synthetic keys, encrypted fixtures and the fake backend
+  only; no user key access, native Screen Recording prompt, live preview UI or
+  real screenshot was exercised. Portable CI is pending.
+- Remaining first tranche: client preview/capability presentation, native
+  inventory/capture, managed bounded JS/MCP using actual runtime identity,
+  protected Trajectory, standalone release signing, full regression and native
+  end-to-end/performance/manual verification. The later native-input/platform,
+  custom-asset, continuous-video and cross-worker scope remains deferred.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

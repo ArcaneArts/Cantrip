@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./computer-use-preview": {
+      "types": "./src/computer-use-preview.ts",
+      "import": "./dist/computer-use-preview.js"
+    },
     ".": {
       "types": "./src/index.ts",
       "import": "./dist/index.js"

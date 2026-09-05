@@ -133,6 +133,7 @@ import { interruptChatAcrossRuntimes } from "./codex/runtime.js";
 import { CantripCliBroker } from "./cli-broker.js";
 import { CantripCuaService } from "./computer-use/service.js";
 import { CuaApprovalManager } from "./computer-use/approvals.js";
+import { CuaPreviewCoordinator } from "./computer-use/preview.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
@@ -737,13 +738,26 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }),
     { workerId: config.workerId },
   );
-  // Construction is inert: permissions do not launch CUA or read key material.
+  let workerNotificationEmitter:
+    ((notification: WorkerNotification) => boolean) | null = null;
+  // Construction is inert: permissions and preview leases do not launch CUA
+  // or read key material. Only an authorized operation may start the helper.
   const computerUseApprovals = new CuaApprovalManager({
     workerId: config.workerId,
     encryption: workerEncryption,
+    onTerminal: (terminal) => {
+      workerNotificationEmitter?.({
+        type: "computer-use.approval.terminal",
+        ...terminal,
+      });
+    },
   });
-  let workerNotificationEmitter:
-    ((notification: WorkerNotification) => boolean) | null = null;
+  const computerUsePreviews = new CuaPreviewCoordinator({
+    workerId: config.workerId,
+    encryption: workerEncryption,
+    service: computerUse,
+    approvals: computerUseApprovals,
+  });
   const workerLinkGateway = new WorkerLinkGateway({
     ownerId: () => {
       try {
@@ -5351,6 +5365,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: command.threadId,
         });
       case "chat.interrupt":
+        computerUsePreviews.cancelChat(command.chatId);
         computerUseApprovals.revokeChat(command.chatId);
         computerUse.cancelChat(command.chatId, command.threadId);
         return interruptChatAcrossRuntimes(
@@ -5359,12 +5374,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.threadId,
         );
       case "computer-use.approval.respond":
-        return computerUseApprovals.answer(command);
+        return computerUsePreviews.answer(command);
+      case "computer-use.preview.open":
+        return computerUsePreviews.open(command.authority);
+      case "computer-use.preview.stop":
+        return computerUsePreviews.stop(command);
+      case "computer-use.preview.revoke":
+        return computerUsePreviews.revoke(command);
       case "computer-use.operation":
-        // The encrypted handler is tested independently in this pass. Its
-        // production registration requires the durable permission owner; do
-        // not expose native capture through authentication alone meanwhile.
-        throw new Error("Computer-use permission routing is not installed.");
+        return computerUsePreviews.execute(command, async (event) =>
+          emit(event),
+        );
       case "chat.turn.rollback":
         return runtimeFor({
           executionProfile: command.executionProfile,
@@ -5705,6 +5725,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       directBroker.revokeAll();
       void workerLinkGateway.revokeAll("endpoint-disconnected");
       codeDirectEndpoints.disconnect();
+      computerUsePreviews.disconnect();
       computerUse.disconnect();
       computerUseApprovals.disconnect();
     },
@@ -5948,6 +5969,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    computerUsePreviews.close();
     computerUseApprovals.close();
     const computerUseClosed = computerUse.close();
     requestRuntimeRestart = null;

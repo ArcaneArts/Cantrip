@@ -1394,6 +1394,13 @@
       "when": 1788566943477,
       "tag": "0198_computer_use_interaction_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1788568526166,
+      "tag": "0199_computer_use_authority_generation",
+      "breakpoints": true
     }
   ]
 }

@@ -21,9 +21,11 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "../../workers/bridge.js";
+import { computerUsePreviewAuthority } from "./computer-use-preview.js";
 
 export interface AgentInteractionRouteDependencies {
   applicationOwnerId: () => string;
+  serverId?: string;
   bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
   repository: Pick<
     ServerRepository,
@@ -51,6 +53,7 @@ export function installAgentInteractionRoutes(
   app: FastifyInstance,
   {
     applicationOwnerId,
+    serverId,
     bridge,
     repository,
     resolveLiveAgentInteractionRequest,
@@ -123,7 +126,12 @@ export function installAgentInteractionRoutes(
             applicationOwnerId(),
             existing,
             protectedInput,
-            { bridge, repository, resolveLiveEncryptedAgentInteractionRequest },
+            {
+              bridge,
+              repository,
+              resolveLiveEncryptedAgentInteractionRequest,
+              serverId,
+            },
           );
         }
         if (existing.status !== "pending") {
@@ -242,9 +250,13 @@ async function respondToComputerUseApproval(
     bridge,
     repository,
     resolveLiveEncryptedAgentInteractionRequest,
+    serverId,
   }: Pick<
     AgentInteractionRouteDependencies,
-    "bridge" | "repository" | "resolveLiveEncryptedAgentInteractionRequest"
+    | "bridge"
+    | "repository"
+    | "resolveLiveEncryptedAgentInteractionRequest"
+    | "serverId"
   >,
 ): Promise<FastifyReply> {
   if (!input) {
@@ -253,6 +265,11 @@ async function respondToComputerUseApproval(
     });
   }
   try {
+    const preview =
+      existing.provenance.threadId === null &&
+      existing.provenance.turnId === null &&
+      existing.provenance.itemId === null &&
+      existing.provenance.executionLaneId === null;
     const context = existing.provenance.chatId
       ? await repository.getChatExecutionContext(
           ownerId,
@@ -262,13 +279,17 @@ async function respondToComputerUseApproval(
     if (
       !context ||
       context.workerId !== existing.provenance.workerId ||
-      context.executionLaneId !== existing.provenance.executionLaneId ||
+      (!preview &&
+        context.executionLaneId !== existing.provenance.executionLaneId) ||
       (existing.status !== "pending" && existing.status !== "resolved")
     ) {
       return reply.code(409).send({
         error: "The computer-use approval is no longer active.",
       });
     }
+    const previewAuthority = preview
+      ? computerUsePreviewAuthority({ ownerId, serverId: serverId!, context })
+      : undefined;
     // A durable replay verifies its original idempotency key below. Never
     // re-authorize an action that the worker has already acknowledged.
     if (existing.status === "pending") {
@@ -280,12 +301,13 @@ async function respondToComputerUseApproval(
               type: "computer-use.approval.respond",
               ownerId,
               chatId: context.chatId,
-              executionLaneId: context.executionLaneId,
+              executionLaneId: preview ? null : context.executionLaneId,
               requestKey: existing.requestKey,
               response: {
                 classification: input.classification,
                 protectedResponse: input.protectedResponse,
               },
+              ...(previewAuthority ? { previewAuthority } : {}),
             },
             { ownerId, timeoutMs: 30_000 },
           ),

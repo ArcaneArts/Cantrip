@@ -104,6 +104,7 @@ export class ChatRuntimeContextRepository {
       contextKind: "project",
       automationPaused: row.chat.automationPaused,
       chatId: row.chat.id,
+      computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
       cwd: row.worktree.absolutePath,
       experience: row.chat.experience as ChatWireSummary["experience"],
       defaultPermissionProfileId:
@@ -193,6 +194,7 @@ export class ChatRuntimeContextRepository {
       contextKind: "standalone",
       automationPaused: row.chat.automationPaused,
       chatId,
+      computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
       cwd: row.root.protectedPathHandle ?? "standalone-root-unavailable",
       experience: "agent",
       defaultPermissionProfileId:

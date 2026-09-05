@@ -203,17 +203,17 @@ binding, revocation, byte-preserving opaque storage, migration application,
 the worker-authenticated registration and delivery path, and the server
 dependency boundary.
 
-### Computer-use routing foundation (not yet activated)
+### Computer-use preview routing
 
-The CUA route factory relays the existing `client-control-content` encryption
+The registered CUA preview routes relay the existing `client-control-content` encryption
 domain. Target inventory, window titles/IDs, cursor labels/appearance/positions,
 session bindings, snapshot metadata and PNG bytes remain endpoint-only. The
-server receives public operation/correlation IDs, the owning chat/worker lane,
+server receives public operation/correlation IDs, the owning chat/worker scope,
 and bounded opaque envelopes; it imports no decryption code and writes no
 native session or screenshot records.
 
 The client and worker bind each envelope to account, server, worker, chat,
-operation ID/kind, direction, sequence and key revision. A protected final
+operation ID/kind, worker-issued preview lease, direction, sequence and key revision. A protected final
 manifest authenticates the complete image length and SHA-256 digest. PNGs use
 at most 64 sequential 256 KiB protected chunks; control metadata is limited to
 64 KiB. Clients reject missing, reordered, duplicate, substituted, wrong-length,
@@ -221,9 +221,14 @@ wrong-digest or wrong-revision chunks, without returning partial pixels.
 Temporary plaintext and per-operation key copies are cleared after use; a
 successfully returned image belongs to its endpoint consumer for clearing.
 
-This foundation does not register the route or expose native capture. Live
-activation requires the existing permission system and a trusted worker
-execution-lifetime owner; authentication alone is not its approval policy.
+Opening a preview creates an inert worker-owned lease, not a native process or
+permission grant. Each operation derives current owner, worker, placement and
+selected/effective profiles from server state. The worker validates that
+authority and applies the existing permission system before native work.
+The preview has genuinely null native task/thread/turn/lane identity; ordinary
+agent turns do not restart it. These leases are transient and are never stored
+as native sessions in the server database. UI and native capture remain later
+first-tranche work; the current default Rust backend reports unavailable.
 The existing durable interaction path now has an explicit `computer-use`
 provenance owner, with protected `permissions` payloads and responses using
 `interaction-content`. The server sees routing/classification/expiry only;
@@ -232,8 +237,18 @@ Native approvals can have genuinely null thread/turn IDs and do not change chat
 runtime status. Historical Codex records preserve their absent-owner wire
 format. Worker approval receipts accept only an exact protected-response retry
 and never replay an operation or renew a consumed one-use grant. Production
-approval-response routing is installed, but request publication and trusted
-execution-lifetime integration remain prerequisites for activating capture.
+approval-response routing, protected request publication, and the preview
+lifetime owner are installed. Stop aborts the exact preview, pending operations
+and approvals without waiting for a native-session ID. Reopening cannot reuse
+an old encrypted operation, image chunk or approval under its new lease.
+
+Migration 0199 adds a positive authority generation to existing chat metadata.
+Relevant policy, placement and archive changes advance it transactionally;
+ordinary messages, turns and unchanged writes do not. This fences subsequent
+requests even after an A-to-B-to-A change or a missed revocation notification.
+It is not a promise that work already authorized on another process can be
+cancelled instantaneously during a network failure. The protected native
+approval content and existing account/device-key model remain unchanged.
 See [CUA implementation progress](planned/CUA.md#implementation-progress).
 
 ### Client key custody
