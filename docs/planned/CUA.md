@@ -653,7 +653,11 @@ is the authoritative merge record until the next ledger update.
   Script tests: 43 passed, one explicit native-GUI skip. Worker typecheck/build,
   release Rust build and exact-release-binary fake smoke (eight snapshots, all
   cursor styles), changed-file formatting and diff checks passed.
-  Cross-platform CI remains pending. Real native unlocked-window QA remains pending;
+  Initial cross-platform CI stopped at a Rust 1.95 `collapsible_match` lint;
+  PostgreSQL passed. Follow-up `b9058e55993cbef5c47453df1fa3271536510daa`
+  uses the equivalent match guard. Local strict Clippy and all 79 Rust tests
+  also pass on the exact CI toolchain, 1.95.0. Cross-platform rerun remains
+  pending. Real native unlocked-window QA remains pending;
   this pass does not request Screen Recording or change helper identity. The
   subsequent managed-MCP pass must connect actual turn provenance, durable
   approval waits, cancellation and protected image redaction before activation.
