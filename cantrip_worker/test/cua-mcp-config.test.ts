@@ -1,4 +1,5 @@
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isManagedMcpName } from "@cantrip/protocol";
 import {
@@ -20,7 +21,8 @@ describe("managed CUA MCP configuration", () => {
     expect(
       cuaMcpHostInvocation({
         execPath: "node",
-        moduleUrl: "file:///worker/dist/mcp/managed.js",
+        moduleUrl: pathToFileURL(path.resolve("/worker/dist/mcp/managed.js"))
+          .href,
       }),
     ).toEqual({
       command: "node",
@@ -29,7 +31,8 @@ describe("managed CUA MCP configuration", () => {
     expect(
       cuaMcpHostInvocation({
         execPath: "node",
-        moduleUrl: "file:///worker/src/mcp/managed.ts",
+        moduleUrl: pathToFileURL(path.resolve("/worker/src/mcp/managed.ts"))
+          .href,
         execArguments: ["--import", "tsx"],
       }),
     ).toEqual({
