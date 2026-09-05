@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+  symlink,
+  realpath,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -73,8 +82,21 @@ test(
       const binary = buildCantripCua(root);
       const worker = path.join(fixture, "worker artifact");
       await bundleCantripCua(binary, path.join(worker, "bin"));
+      // The helper fixture is not a complete pnpm deployment; provide its actual
+      // installed Sharp package explicitly. The production verifier resolves
+      // from the final worker and never falls back to repository dependencies.
+      await mkdir(path.join(worker, "node_modules"));
+      await symlink(
+        await realpath(
+          path.join(root, "cantrip_worker", "node_modules", "sharp"),
+        ),
+        path.join(worker, "node_modules", "sharp"),
+        "junction",
+      );
       const result = await verifyPackagedWorkerCua(worker);
       assert.equal(result.backend, "fake");
+      assert.equal(result.modelImageEncoder.sharpVersion, "0.34.4");
+      assert.ok(result.modelImageEncoder.outputBytes <= 2.5 * 1024 * 1024);
       const copied = path.join(
         fixture,
         "Cantrip.app",

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   CANTRIP_MCP_TOOL_NAMES,
   MANAGED_CANTRIP_MCP_NAME,
+  MANAGED_CUA_MCP_NAME,
   isManagedMcpName,
   type McpServerConfiguration,
 } from "@cantrip/protocol";
@@ -71,4 +72,33 @@ export function mergeManagedMcpServers(
     managedServers.set(server.name.trim().toLowerCase(), server);
   }
   return [...userServers, ...managedServers.values()];
+}
+
+export function cuaMcpHostInvocation(
+  options: Parameters<typeof cantripMcpHostInvocation>[0] = {},
+): CantripMcpHostInvocation {
+  const invocation = cantripMcpHostInvocation(options);
+  invocation.arguments[invocation.arguments.length - 1] = invocation.arguments
+    .at(-1)!
+    .replace(/stdio\.(ts|js)$/u, "cua-stdio.$1");
+  return invocation;
+}
+
+export function managedCuaMcpServer(
+  invocation: CantripMcpHostInvocation,
+  connectionPath: string,
+): McpServerConfiguration & { managedToolNames: string[] } {
+  return {
+    name: MANAGED_CUA_MCP_NAME,
+    enabled: true,
+    transport: "stdio",
+    command: invocation.command,
+    args: [
+      ...invocation.arguments,
+      "--connection",
+      path.resolve(connectionPath),
+    ],
+    environment: {},
+    managedToolNames: ["js", "js_reset"],
+  };
 }

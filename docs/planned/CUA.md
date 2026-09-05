@@ -1,9 +1,10 @@
 # Cantrip Computer Use
 
-Status: First-tranche implementation in progress; experimental preview available,
-production native capture and managed MCP not yet available.
+Status: First-tranche implementation in progress; experimental preview and native
+capture implementation available. Native window acceptance, managed MCP delivery,
+protected operation Trajectory, and final verification remain incomplete.
 
-## Implementation progress
+## First-tranche implementation progress
 
 The active first tranche is observation and a customizable logical cursor:
 Rust process, worker service, encrypted server routing, client preview,
@@ -673,7 +674,10 @@ is the authoritative merge record until the next ledger update.
 - Branch: `codex/cua-08c1-agent-authority`, based on merged cycle 8b
   (`fb0111e2a`). [PR #1747](https://github.com/ArcaneArts/Cantrip/pull/1747),
   implementation commit `ecea7a7690de4d0f7a0f7c8dc8e1d9be618589ab`.
-  Local validation complete; portable CI and merge pending.
+  Squash-merged at `2026-09-05T04:50:16Z` as
+  `08dd5919c8ca8cd31f25142f16aea45d7107bac7`. All four macOS, Windows, Linux
+  and PostgreSQL jobs passed in CI run `33945484818` before auto-merge.
+  Primary was synchronized and the clean cycle worktree was removed.
 - Scope: prerequisites for managed MCP activation. The server exposes a
   worker-authenticated CUA authority route using the existing agent-tools
   credential scope. Every request reads current durable placement and selected/
@@ -703,8 +707,9 @@ is the authoritative merge record until the next ledger update.
   credential-protected authority route and its metadata classification; its
   regenerated audit passes. Review found and fixed publication/admission and
   final-response cancellation races with deterministic regressions.
-- Platform/manual: portable CI/merge pending. Local native execution in this
-  pass uses the deterministic fake backend, not unlocked-window capture.
+- Platform/manual: portable fake execution passed on macOS, Windows and Linux;
+  PostgreSQL authority CI passed. Local native execution in this pass uses the
+  deterministic fake backend, not unlocked-window capture.
   No Screen Recording prompt, native GUI action, helper identity change or
   new native platform support is part of this pass. Existing unlocked-window,
   packaged signing/permission continuity and final regression work remain open.
@@ -712,6 +717,80 @@ is the authoritative merge record until the next ledger update.
   protected operation Trajectory, native/window/release QA and final hardening.
   Native input, Accessibility, human event taps, clipboard/filesystem mutations,
   other native operating systems and cross-worker control remain deferred.
+
+### Tranche cycle 8c2 — Managed MCP activation and model images
+
+- Branch: `codex/cua-08c2-managed-mcp`, based on merged cycle 8c1
+  (`08dd5919c`). This is the recovered interrupted worktree.
+  [PR #1748](https://github.com/ArcaneArts/Cantrip/pull/1748), implementation
+  commit `8087c9c2`. Local verification below is complete; portable CI and merge
+  remain pending. No merge is claimed by this entry.
+- Implemented: dedicated worker-managed `cantrip_cua` tools `js` and `js_reset`
+  through the existing authenticated broker and sole `CantripCuaService` owner.
+  Actual Codex thread/turn metadata selects an observed root/child lifetime;
+  tool arguments cannot invent execution authority. Protected chat and direct
+  Task contexts receive the managed host. Older dispatches without trusted CUA
+  authority retain ordinary behavior without that host. Host startup does not
+  launch Rust; the first actual operation performs the required handshake.
+- Current authority: server dispatch carries the durable generation and selected/
+  effective profile, including whether the selection inherits the default.
+  Both project and standalone lane acquisition return that real generation.
+  Every operation refreshes authority through the authenticated server route;
+  host actions recheck it after approval. Stop/revocation fences a registration
+  before its first call and after reset, including YOLO with no approval record.
+  Child teardown uses actual runtime ancestry and preserves unrelated roots.
+- Durable approvals use the existing protected computer-use interaction owner
+  and the originating command stream. Terminal events follow request insertion,
+  and the server validates chat/worker/project/lane provenance without rewriting
+  the native thread or routing the reply to Codex CLI approvals. Failed terminal
+  publication cannot permanently retain registration capacity.
+- Images: actual MCP image blocks, strict PNG/digest/dimension validation, two
+  images and 16 MiB aggregate native input. Valid PNGs up to 2.5 MiB are preserved;
+  larger images resize once to at most 600,000 pixels, without crop/enlargement.
+  Model output is bounded at 2.5 MiB/image, 5 MiB total and the actual 8 MiB MCP
+  JSON-RPC line. Native metadata stays separate from model rendition dimensions.
+  Four encoder jobs retain their capacity through cancellation until native work
+  settles. Temporary byte buffers are cleared; raw Trajectory still omits pixels.
+- Deadlines: CUA-only trusted 345-second JS wall budget permits the five-minute
+  approval wait, within 360-second broker and 370-second Codex tool deadlines.
+  The two-second active JS budget remains unchanged. Generic MCP retains its
+  512 KiB/55-second limits; worker-internal JS defaults to 45 seconds.
+- Local verification: 995 focused CUA boundary tests passed (96 protocol,
+  24 crypto, 535 worker, 182 server, 158 client); two PostgreSQL tests remain
+  dedicated-CI checks. Actual compiled Rust -> worker coordinator/service ->
+  authenticated broker -> real MCP stdio returns decoded PNG images and proves
+  persistence/reset, root/child isolation, encrypted approval/denial, stale
+  authority and Stop. The real PGlite dispatch harness verifies selected/inherited
+  policy and both project/standalone acquired generations. All 572 protocol,
+  85 Rust, and 44 CUA script tests pass; one explicit GUI script test skips in
+  the ordinary runner. Strict Rust 1.95 Clippy/format, worker/server builds and
+  typechecks, release build and exact-release fake smoke (eight snapshots, four
+  cursor styles), route-boundary audit and large-file check pass. Real Sharp tests
+  cover aggregate input/output bounds and cancelled-job capacity; packaged
+  verification resolves Sharp from the final worker dependency layout.
+- Broad worker run: 1,443 passed, 36 skipped, three goal-streaming failures.
+  The same three failures reproduce on unchanged Primary `08dd5919c` and in
+  the branch's isolated goal-streaming file; no whole-worker green claim.
+  App decomposition still exceeds the recorded baseline budgets:
+  `chat-turn-runtime.ts` is now 2,156 lines (Primary 2,124; budget 1,999), and
+  unchanged `task-routes.ts` is 2,149. These remain final-hardening work.
+- Native retry: the existing Apple Development-signed stable
+  `cua-cycle-three-qa` helper completed handshake/inventory but its first owned
+  fixture-window snapshot was reported as `native-operation-failed` by the QA
+  wrapper. A subsequent fixture-only diagnostic decoded the correct foreground,
+  partially/fully occluded, moved and resized fixture pixels; it exposed the
+  wrapper's initial geometry mismatch and then an immediate post-close assertion.
+  Native error callbacks did not report a capture error in that run. The current
+  session reports on-console/login-complete with no screen-locked key. This is
+  positive native pixel evidence, not a completed lifecycle/permission-continuity
+  matrix. No privacy setting or signing identity was changed. Fixture/native
+  lifecycle timing remains under investigation for the native acceptance pass.
+- Remaining required tranche work: preview/MCP observation coordination,
+  protected per-operation Trajectory, native occluded-window/product acceptance,
+  release identity/permission checks, performance measurements and final
+  regression/completion audit. Native input, Accessibility, clipboard/files,
+  human event taps, other native platforms, continuous video and cross-worker
+  control remain deferred. The full roadmap below remains unfinished.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

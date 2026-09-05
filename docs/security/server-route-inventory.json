@@ -130,6 +130,7 @@
       "cantrip_server/src/app/runtime/chat-thread-sync-runtime.ts",
       "cantrip_server/src/app/runtime/chat-turn-runtime.ts",
       "cantrip_server/src/app/runtime/cli-operation-runtime.ts",
+      "cantrip_server/src/app/runtime/computer-use-agent-events.ts",
       "cantrip_server/src/app/runtime/direct-attachment-runtime.ts",
       "cantrip_server/src/app/runtime/interactive-surface-runtime.ts",
       "cantrip_server/src/app/runtime/live-infrastructure-runtime.ts",
@@ -792,7 +793,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 64,
+      "line": 65,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests",
@@ -805,7 +806,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 82,
+      "line": 83,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId",
@@ -818,7 +819,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 96,
+      "line": 97,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId/respond",

@@ -45,6 +45,8 @@ export interface CuaPreviewCoordinatorOptions {
   encryption: WorkerEndpointEncryptionService & { serverIdentity(): string };
   service: CantripCuaService;
   approvals: CuaApprovalManager;
+  /** Trusted Stop/authority revocation reaches agent lifetimes, even without sessions. */
+  onRevokeChat?: (chatId: string) => void;
 }
 
 /** One worker-owned lifetime per chat preview. Native session/turn identities
@@ -320,6 +322,7 @@ export class CuaPreviewCoordinator {
   /** Explicit Stop, trusted policy/placement revocation and chat interruption
    * remain chat-wide. Ordinary preview cleanup must not own agent lifetimes. */
   private revokeChatPreview(preview: Preview) {
+    this.options.onRevokeChat?.(preview.scope.chatId);
     this.remove(preview);
     this.options.approvals.revokeChat(preview.scope.chatId);
     this.options.service.cancelChat(preview.scope.chatId);

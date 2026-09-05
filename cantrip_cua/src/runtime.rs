@@ -162,9 +162,18 @@ pub fn run<B: CaptureBackend + 'static>(
                         };
                         if accepted {
                             match serde_json::from_value::<Operation>(operation.clone()) {
-                                Ok(Operation::JavascriptEvaluate { binding, source }) => {
-                                    reader_javascript
-                                        .evaluate(request_id, binding, source, token)?;
+                                Ok(Operation::JavascriptEvaluate {
+                                    binding,
+                                    source,
+                                    wall_timeout_ms,
+                                }) => {
+                                    reader_javascript.evaluate(
+                                        request_id,
+                                        binding,
+                                        source,
+                                        wall_timeout_ms,
+                                        token,
+                                    )?;
                                     continue;
                                 }
                                 Ok(Operation::JavascriptReset { binding }) => {

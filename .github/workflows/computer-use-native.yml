@@ -7,6 +7,8 @@ on:
       - ".github/workflows/native-release.yml"
       - "cantrip_cua/**"
       - "cantrip_worker/src/computer-use/**"
+      - "cantrip_worker/src/mcp/**"
+      - "cantrip_worker/test/cua-*.test.ts"
       - "cantrip_worker/src/codex/app-server.ts"
       - "cantrip_worker/src/codex/runtime.ts"
       - "cantrip_worker/src/codex/execution-lifetime.ts"
@@ -26,6 +28,8 @@ on:
       - "cantrip_server/src/app/routes/computer-use*.ts"
       - "cantrip_server/src/app/build-app.ts"
       - "cantrip_server/src/app/runtime/worker-notification-runtime.ts"
+      - "cantrip_server/src/app/runtime/chat-turn-runtime.ts"
+      - "cantrip_server/src/app/runtime/computer-use-agent-events.ts"
       - "cantrip_server/src/db/repository.ts"
       - "cantrip_server/src/db/index.ts"
       - "cantrip_server/src/db/repository/chat-*.ts"
@@ -37,6 +41,7 @@ on:
       - "cantrip_server/src/db/schema.ts"
       - "cantrip_server/drizzle/**"
       - "cantrip_server/test/computer-use*.test.ts"
+      - "cantrip_server/test/model-configuration-api.test.ts"
       - "cantrip_server/test/support/computer-use-preview-fixture.ts"
       - "packages/protocol/**"
       - "packages/crypto/**"
@@ -108,6 +113,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
@@ -122,6 +129,4 @@ jobs:
       - run: node --test scripts/cantrip-cua/*.test.mjs
       - run: node scripts/cantrip-cua/smoke.mjs
       - run: node scripts/cantrip-cua/build.mjs --release
-      - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
       - run: pnpm cua:test:worker

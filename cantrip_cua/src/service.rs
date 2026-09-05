@@ -94,10 +94,12 @@ pub enum Operation {
     },
     #[serde(rename = "session.close")]
     SessionClose { binding: SessionBinding },
-    #[serde(rename = "javascript.evaluate")]
+    #[serde(rename = "javascript.evaluate", rename_all = "camelCase")]
     JavascriptEvaluate {
         binding: SessionBinding,
         source: String,
+        #[serde(default = "crate::javascript::default_wall_timeout_ms")]
+        wall_timeout_ms: u64,
     },
     #[serde(rename = "javascript.reset")]
     JavascriptReset { binding: SessionBinding },

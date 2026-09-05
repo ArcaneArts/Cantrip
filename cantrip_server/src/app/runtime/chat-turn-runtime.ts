@@ -29,6 +29,8 @@ import type { JsonObject } from "@cantrip/protocol/bounded-json";
 import { cantripVersion } from "@cantrip/version";
 import type { FastifyInstance } from "fastify";
 
+import { applyComputerUseAgentEvent } from "./computer-use-agent-events.js";
+import { computerUsePreviewAuthority } from "../routes/computer-use-preview.js";
 import { ModelBehaviorTracker } from "../../analytics/model-behavior.js";
 import {
   canFailOverRoute,
@@ -190,6 +192,7 @@ export interface ChatTurnRuntimeDependencies
   extends ChatTurnLiveMutationDependencies, ChatTurnModelRoutingDependencies {
   app: Pick<FastifyInstance, "log">;
   applicationOwnerId: () => string;
+  serverId: string;
   bridge: LimitedWorkerCommandBus;
   cancelChatTurnOutcomeRecovery: (
     workerId: string,
@@ -224,6 +227,7 @@ export interface ChatTurnRuntimeDependencies
  */
 export function createChatTurnRuntime({
   app,
+  serverId,
   applicationOwnerId,
   appendLiveChatMessage,
   appendLiveEncryptedChatMessage,
@@ -964,6 +968,14 @@ export function createChatTurnRuntime({
               execution.workerId,
               {
                 type: "chat.turn",
+                computerUseAuthority: {
+                  ...computerUsePreviewAuthority({
+                    context: execution,
+                    ownerId,
+                    serverId,
+                  }),
+                  executionLaneId,
+                },
                 executionProfile:
                   execution.contextKind === "standalone"
                     ? "standalone-chat"
@@ -1060,6 +1072,26 @@ export function createChatTurnRuntime({
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
                 onEvent: (event) =>
                   runAsOwner(ownerId, async () => {
+                    if (
+                      (event.type === "computer-use.approval.request" ||
+                        event.type === "computer-use.approval.terminal") &&
+                      (await applyComputerUseAgentEvent({
+                        event,
+                        ownerId,
+                        chatId: execution.chatId,
+                        workerId: execution.workerId,
+                        projectId: execution.projectId,
+                        executionLaneId,
+                        record: recordLiveEncryptedAgentInteractionRequest,
+                        terminalize: terminalizeLiveAgentInteractionRequest,
+                        lookup: (owner, requestKey) =>
+                          repository.getAgentInteractionRequestByKey(
+                            owner,
+                            requestKey,
+                          ),
+                      }))
+                    )
+                      return;
                     const observedAt = new Date();
                     const sourceEvent = observationIdentity(event);
                     if (

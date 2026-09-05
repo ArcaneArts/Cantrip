@@ -1,14 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   unprobedCodexRuntimeReport,
+  workerCommandSchema,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
+import { computerUsePreviewAuthority } from "../src/app/routes/computer-use-preview.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
@@ -63,6 +66,9 @@ const workerBridge: WorkerCommandBus = {
     if (command.type === "code.agentTurnState") {
       return { notifiedSessions: 0, refreshed: [], conflicts: [] };
     }
+    if (command.type === "computer-use.preview.revoke") {
+      return { closed: true };
+    }
     if (command.type === "chat.turn") {
       observedTurn = command;
       throw new Error("Stop after capturing the routed turn.");
@@ -88,6 +94,122 @@ afterAll(async () => {
 });
 
 describe.sequential("atomic model configuration API", () => {
+  it("acquires standalone CUA authority with the actual durable generation and chat default", async () => {
+    const workerId = "standalone-authority-worker";
+    await database.repository.recordWorker(LOCAL_USER_ID, {
+      workerId,
+      name: "Standalone authority fixture",
+      platform: "darwin",
+      architecture: "arm64",
+      codexVersion: "0.149.0",
+      codexRuntime: unprobedCodexRuntimeReport,
+      standaloneChat: {
+        protocolVersion: 1,
+        scratch: {
+          provision: true,
+          resolve: true,
+          archive: true,
+          restore: true,
+          remove: true,
+          reconcile: true,
+          routingHandles: true,
+        },
+        files: {
+          list: true,
+          read: true,
+          write: true,
+          remove: true,
+          download: true,
+          archive: true,
+          networkShare: true,
+        },
+      },
+      remoteSurfaces: {
+        browser: false,
+        transports: ["websocket"],
+        maxSessions: 1,
+      },
+      startedAt: new Date().toISOString(),
+    });
+    await database.repository.updateSettings(LOCAL_USER_ID, {
+      defaultPermissionProfileId: ":read-only",
+      defaultChatPermissionProfileId: ":workspace",
+    });
+    const created = await database.repository.createStandaloneChat(
+      LOCAL_USER_ID,
+      protectedChatFields(),
+      () => true,
+    );
+    const job = await database.repository.standaloneChatRootJobs.claimNext();
+    expect(job?.job.id).toBe(created.provisionJob.id);
+    await database.repository.standaloneChatRootJobs.completeProvision(
+      job!.job.id,
+      job!.commandId,
+      {
+        status: "ready",
+        jobId: job!.job.id,
+        attempt: job!.job.attempt,
+        rootId: job!.job.rootId,
+        chatId: created.chat.id,
+        path: `ctrr_${"a".repeat(43)}`,
+        displayPath: "Fixture scratch",
+        reused: false,
+      },
+    );
+    await database.repository.setChatPermissionProfile(
+      LOCAL_USER_ID,
+      created.chat.id,
+      ":yolo",
+    );
+    await database.repository.setChatPermissionProfile(
+      LOCAL_USER_ID,
+      created.chat.id,
+      null,
+    );
+    const before = await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      created.chat.id,
+    );
+    expect(before?.computerUseAuthorityGeneration).toBeGreaterThan(1);
+    const acquired = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      created.chat.id,
+      "user",
+      "CUA authority fixture",
+    );
+    expect(acquired).toMatchObject({
+      contextKind: "standalone",
+      computerUseAuthorityGeneration: before!.computerUseAuthorityGeneration,
+      defaultPermissionProfileId: ":workspace",
+      permissionProfileId: null,
+    });
+    expect(
+      computerUsePreviewAuthority({
+        ownerId: LOCAL_USER_ID,
+        serverId: await database.repository.getOrCreateServerId(),
+        context: acquired!,
+      }),
+    ).toMatchObject({
+      workerId,
+      chatId: created.chat.id,
+      projectId: null,
+      contextKind: "standalone",
+      placementId: job!.job.rootId,
+      generation: before!.computerUseAuthorityGeneration,
+      profile: {
+        selectedId: ":workspace",
+        effectiveId: ":workspace",
+        forcedByWorktreePolicy: false,
+        usesDefault: true,
+      },
+    });
+    await database.repository.finishChatExecutionLane(
+      created.chat.id,
+      acquired!.executionLaneId!,
+      "idle",
+    );
+  });
+
   it("validates route pairs and carries the resolved child runtime to the worker", async () => {
     const workerId = "model-configuration-worker";
     await database.repository.recordWorker(LOCAL_USER_ID, {
@@ -337,59 +459,108 @@ describe.sequential("atomic model configuration API", () => {
     });
     connected = true;
 
-    const protectedContent = {
-      formatVersion: 1 as const,
-      keyRevision: 1,
-      envelope: {
-        version: 1 as const,
-        algorithm: "AES-256-GCM" as const,
+    await database.repository.updateSettings(LOCAL_USER_ID, {
+      defaultPermissionProfileId: ":read-only",
+    });
+    for (const selectedProfile of [":yolo", null]) {
+      observedTurn = null;
+      await database.repository.setChatPermissionProfile(
+        LOCAL_USER_ID,
+        chat.id,
+        selectedProfile,
+      );
+      const beforeDispatch = await database.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chat.id,
+      );
+      expect(beforeDispatch?.computerUseAuthorityGeneration).toBeGreaterThan(1);
+      const protectedContent = {
+        formatVersion: 1 as const,
         keyRevision: 1,
-        nonce: "AAAAAAAAAAAAAAAA",
-        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
-      },
-    };
-    const message = {
-      id: "11111111-1111-4111-8111-111111111111",
-      classification: {
-        role: "user" as const,
-        mode: "default" as const,
-        attachmentIds: [] as string[],
-      },
-      protectedContent,
-      reasoningEffort: null,
-      idempotencyKey: "custom-subagent-turn",
-    };
-    const turn = await app.inject({
-      method: "POST",
-      url: `/api/chats/${chat.id}/turns`,
-      payload: {
-        message,
-        modelId: root.id,
-        queuedPrompt: {
-          id: "22222222-2222-4222-8222-222222222222",
-          classification: {
-            mode: "default",
-            attachmentIds: [],
-          },
-          protectedContent,
-          modelId: root.id,
-          reasoningEffort: null,
-          customSubagentModel: true,
-          subagentModelId: child.id,
-          subagentReasoningEffort: null,
-          worktreeId: null,
-          frozen: false,
-          idempotencyKey: "custom-subagent-turn",
-          pendingMessage: message,
+        envelope: {
+          version: 1 as const,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
         },
-      },
-    });
-    expect(turn.statusCode, turn.body).toBe(202);
-    await expect.poll(() => observedTurn).not.toBeNull();
-    expect(observedTurn?.subagentDefaults).toMatchObject({
-      model: { id: child.id, name: "child-native" },
-      provider: { id: providerA.id },
-    });
-    expect(observedTurn?.subagentProtocolVersion).toBe(1);
+      };
+      const message = {
+        id: randomUUID(),
+        classification: {
+          role: "user" as const,
+          mode: "default" as const,
+          attachmentIds: [] as string[],
+        },
+        protectedContent,
+        reasoningEffort: null,
+        idempotencyKey: `custom-subagent-turn:${selectedProfile}`,
+      };
+      const turn = await app.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/turns`,
+        payload: {
+          message,
+          modelId: root.id,
+          queuedPrompt: {
+            id: randomUUID(),
+            classification: {
+              mode: "default",
+              attachmentIds: [],
+            },
+            protectedContent,
+            modelId: root.id,
+            reasoningEffort: null,
+            customSubagentModel: true,
+            subagentModelId: child.id,
+            subagentReasoningEffort: null,
+            worktreeId: null,
+            frozen: false,
+            idempotencyKey: `custom-subagent-turn:${selectedProfile}`,
+            pendingMessage: message,
+          },
+        },
+      });
+      expect(turn.statusCode, turn.body).toBe(202);
+      await expect.poll(() => observedTurn).not.toBeNull();
+      expect(observedTurn?.subagentDefaults).toMatchObject({
+        model: { id: child.id, name: "child-native" },
+        provider: { id: providerA.id },
+      });
+      expect(observedTurn?.subagentProtocolVersion).toBe(1);
+      expect(observedTurn?.computerUseAuthority).toEqual({
+        ownerId: LOCAL_USER_ID,
+        serverId: await database.repository.getOrCreateServerId(),
+        workerId,
+        chatId: chat.id,
+        projectId: createdProject.project.id,
+        contextKind: "project",
+        placementId: beforeDispatch!.worktreeId,
+        executionLaneId: observedTurn!.executionLaneId,
+        generation: beforeDispatch!.computerUseAuthorityGeneration,
+        profile: {
+          selectedId: selectedProfile ?? ":read-only",
+          effectiveId: selectedProfile ?? ":read-only",
+          forcedByWorktreePolicy: false,
+          usesDefault: selectedProfile === null,
+        },
+      });
+      expect(
+        workerCommandSchema.parse(JSON.parse(JSON.stringify(observedTurn))),
+      ).toMatchObject({
+        computerUseAuthority: observedTurn!.computerUseAuthority,
+      });
+      await expect
+        .poll(
+          async () =>
+            (
+              await database.repository.getChatExecutionContext(
+                LOCAL_USER_ID,
+                chat.id,
+              )
+            )?.status,
+        )
+        .toBe("failed");
+    }
   });
 });

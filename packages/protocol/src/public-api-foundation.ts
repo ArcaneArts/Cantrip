@@ -473,6 +473,7 @@ export {
   MCP_SECRET_MASK,
   MANAGED_CODEGRAPH_MCP_NAME,
   MANAGED_CANTRIP_MCP_NAME,
+  MANAGED_CUA_MCP_NAME,
   isManagedCodeGraphMcpName,
   isManagedCantripMcpName,
   isManagedMcpName,

@@ -1,3 +1,4 @@
+import { cuaAgentAuthoritySchema } from "@cantrip/protocol/computer-use-agent";
 import {
   agentInteractionAcceptedSchema,
   agentInteractionRequestQuerySchema,
@@ -290,6 +291,16 @@ async function respondToComputerUseApproval(
     const previewAuthority = preview
       ? computerUsePreviewAuthority({ ownerId, serverId: serverId!, context })
       : undefined;
+    const agentAuthority = !preview
+      ? cuaAgentAuthoritySchema.parse({
+          ...computerUsePreviewAuthority({
+            ownerId,
+            serverId: serverId!,
+            context,
+          }),
+          executionLaneId: context.executionLaneId,
+        })
+      : undefined;
     // A durable replay verifies its original idempotency key below. Never
     // re-authorize an action that the worker has already acknowledged.
     if (existing.status === "pending") {
@@ -307,7 +318,7 @@ async function respondToComputerUseApproval(
                 classification: input.classification,
                 protectedResponse: input.protectedResponse,
               },
-              ...(previewAuthority ? { previewAuthority } : {}),
+              ...(previewAuthority ? { previewAuthority } : { agentAuthority }),
             },
             { ownerId, timeoutMs: 30_000 },
           ),

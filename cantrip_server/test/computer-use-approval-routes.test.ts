@@ -214,6 +214,31 @@ function setup(options: { preview?: boolean } = {}) {
 }
 
 describe("computer-use approval responses", () => {
+  it("refreshes agent approval authority while preserving actual child turn ownership", async () => {
+    const f = setup();
+    f.state.interaction.provenance.threadId = "child-thread";
+    f.state.interaction.provenance.turnId = "child-turn";
+    f.state.context.threadId = "root-thread";
+    f.state.context.computerUseAuthorityGeneration = 3;
+    f.state.context.permissionProfileId = ":read-only";
+    expect((await f.send()).statusCode).toBe(200);
+    expect(f.request.mock.lastCall?.[1]).toMatchObject({
+      type: "computer-use.approval.respond",
+      executionLaneId: "lane-one",
+      agentAuthority: {
+        ownerId: "owner-one",
+        serverId: "server-one",
+        chatId: "chat-one",
+        workerId: "worker-one",
+        executionLaneId: "lane-one",
+        generation: 3,
+        profile: { selectedId: ":read-only" },
+      },
+    });
+    expect(f.request.mock.lastCall?.[1]).not.toHaveProperty("previewAuthority");
+    expect(f.runtimeForContext).not.toHaveBeenCalled();
+  });
+
   it("authorizes an idle preview without borrowing the active agent lane", async () => {
     const f = setup({ preview: true });
     expect((await f.send()).statusCode).toBe(200);
@@ -286,6 +311,11 @@ describe("computer-use approval responses", () => {
         chatId: "chat-one",
         executionLaneId: "lane-one",
         requestKey: "native-request-one",
+        agentAuthority: expect.objectContaining({
+          ownerId: "owner-one",
+          serverId: "server-one",
+          executionLaneId: "lane-one",
+        }),
         response: {
           classification: resolution().classification,
           protectedResponse: resolution().protectedResponse,

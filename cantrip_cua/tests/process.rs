@@ -450,6 +450,79 @@ fn native_session_close_also_disposes_its_matching_javascript_context() {
 }
 
 #[test]
+fn javascript_trusted_wall_timeout_uses_camel_case_and_validates_bounds() {
+    let mut child = Process::start(true);
+    let mut operation = evaluate(binding(), "42");
+    operation["wallTimeoutMs"] = json!(345_000);
+    assert_eq!(child.call(operation.clone()).0, json!({"value":42}));
+    for limit in [0, 345_001, u64::MAX] {
+        operation["wallTimeoutMs"] = json!(limit);
+        let id = child.send(operation.clone());
+        assert!(
+            matches!(child.response(id).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Capacity)
+        );
+    }
+    for limit in [json!(-1), json!(1.5), json!("345000"), Value::Null] {
+        operation["wallTimeoutMs"] = limit;
+        let id = child.send(operation.clone());
+        assert!(
+            matches!(child.response(id).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::InvalidRequest)
+        );
+    }
+    // Optional field preserves the ordinary deadline and persistent protocol.
+    assert_eq!(child.call(evaluate(binding(), "42")).0, json!({"value":42}));
+    child.stop(true);
+}
+
+#[test]
+fn javascript_pending_host_deadline_is_per_evaluation_and_wakes_without_a_reply() {
+    let mut child = Process::start(true);
+    let mut long = evaluate(binding(), "await cua.getState()");
+    long["wallTimeoutMs"] = json!(345_000);
+    let long_id = child.send(long);
+    host_call(&mut child, long_id, 1);
+    let mut short_binding = binding();
+    short_binding["sessionId"] = json!("short-deadline");
+    let mut short = evaluate(
+        short_binding.clone(),
+        "let expired = true; await cua.getState()",
+    );
+    short["wallTimeoutMs"] = json!(100);
+    let short_id = child.send(short);
+    host_call(&mut child, short_id, 1);
+    // A real receive timeout must wake the engine; no host reply or extra
+    // request is sent to force the expired context to be examined.
+    assert!(
+        matches!(child.response(short_id).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Capacity)
+    );
+    host_result(&mut child, short_id, 1, json!({"late":true}));
+    host_result(&mut child, long_id, 1, json!({"live":true}));
+    assert!(
+        matches!(child.response(long_id).0, Outcome::Ok { data } if data == json!({"value":{"live":true}}))
+    );
+    assert_eq!(
+        child.call(evaluate(short_binding, "typeof expired")).0,
+        json!({"value":"undefined"})
+    );
+    child.stop(true);
+}
+
+#[test]
+fn javascript_extended_approval_deadline_does_not_extend_busy_code_budget() {
+    let mut child = Process::start(true);
+    let mut operation = evaluate(binding(), "while (true) {}");
+    operation["wallTimeoutMs"] = json!(345_000);
+    let id = child.send(operation);
+    // The harness waits five seconds, well below the 345-second wall deadline.
+    // Only the independent two-second active execution budget can settle this.
+    assert!(
+        matches!(child.response(id).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Capacity)
+    );
+    assert_eq!(child.call(evaluate(binding(), "42")).0, json!({"value":42}));
+    child.stop(true);
+}
+
+#[test]
 fn javascript_output_and_source_boundaries_include_the_response_envelope() {
     let mut child = Process::start(true);
     let (value, _) = child.call(evaluate(binding(), "'x'.repeat(32756)"));

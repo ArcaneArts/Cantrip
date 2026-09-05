@@ -134,6 +134,12 @@ import { CantripCliBroker } from "./cli-broker.js";
 import { CantripCuaService } from "./computer-use/service.js";
 import { CuaApprovalManager } from "./computer-use/approvals.js";
 import { CuaPreviewCoordinator } from "./computer-use/preview.js";
+import { CuaAgentCoordinator } from "./computer-use/agent.js";
+import {
+  CuaAgentApprovalEvents,
+  type CuaAgentApprovalPublisher,
+} from "./computer-use/agent-approval-events.js";
+import { requestComputerUseAuthority } from "./computer-use/authority-client.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
@@ -158,6 +164,8 @@ import { CodeGraphObservationCoordinator } from "./codegraph/observations.js";
 import { CantripMcpBroker } from "./mcp/broker.js";
 import {
   cantripMcpHostInvocation,
+  cuaMcpHostInvocation,
+  managedCuaMcpServer,
   managedCantripMcpServer,
   mergeManagedMcpServers,
 } from "./mcp/managed.js";
@@ -742,17 +750,40 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ((notification: WorkerNotification) => boolean) | null = null;
   // Construction is inert: permissions and preview leases do not launch CUA
   // or read key material. Only an authorized operation may start the helper.
+  const computerUseAgentEvents = new CuaAgentApprovalEvents();
   const computerUseApprovals = new CuaApprovalManager({
     workerId: config.workerId,
     encryption: workerEncryption,
     onTerminal: (terminal) => {
+      if (computerUseAgentEvents.terminal(terminal)) return;
       workerNotificationEmitter?.({
         type: "computer-use.approval.terminal",
         ...terminal,
       });
     },
   });
+  const computerUseAgents = new CuaAgentCoordinator({
+    service: computerUse,
+    approvals: computerUseApprovals,
+    events: computerUseAgentEvents,
+    identity: () => ({
+      ownerId: workerEncryption.ownerId(),
+      serverId: workerEncryption.serverIdentity(),
+      workerId: config.workerId,
+    }),
+    authority: (binding, signal) =>
+      requestComputerUseAuthority({
+        binding,
+        signal,
+        serverUrl: config.serverUrl,
+        token: config.token,
+      }),
+  });
+  mcpBroker.setComputerUseExecutor((...args) =>
+    computerUseAgents.execute(...args),
+  );
   const computerUsePreviews = new CuaPreviewCoordinator({
+    onRevokeChat: (chatId) => computerUseAgents.cancelChat(chatId),
     workerId: config.workerId,
     encryption: workerEncryption,
     service: computerUse,
@@ -1419,6 +1450,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           worktreeId: null;
         },
     profile: CantripMcpProfile = "ide",
+    computerUseEnabled = false,
   ): Promise<McpServerConfiguration[]> => {
     let managedCodeGraph: McpServerConfiguration | null = null;
     if (profile === "ide" && codegraphProjects && codegraphInvocation) {
@@ -1502,6 +1534,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     const cantripAttachment = effectiveAttachment
       ? (() => {
           const commonClaims = {
+            computerUse: computerUseEnabled,
             ownerId: workerEncryption.ownerId(),
             chatId: effectiveAttachment.chatId,
             executionLaneId: effectiveAttachment.executionLaneId,
@@ -1551,7 +1584,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     }
     return mergeManagedMcpServers(
       await openMcpServers({ servers: configured, service: workerEncryption }),
-      [managedCodeGraph, managedCantrip],
+      [
+        managedCodeGraph,
+        managedCantrip,
+        computerUseEnabled && cantripAttachment
+          ? managedCuaMcpServer(
+              cuaMcpHostInvocation(),
+              cantripAttachment.connectionPath,
+            )
+          : null,
+      ],
     );
   };
   const automationScheduler = new ProjectAutomationScheduler({
@@ -4973,6 +5015,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   worktreeId: command.worktreeId!,
                 },
           standalone ? "standalone-web" : "ide",
+          Boolean(command.computerUseAuthority) &&
+            (encryptedChat || encryptedTask) &&
+            (!encryptedTaskOperation || directTaskOperation),
         );
         const openedAttachments = await openWorkerAttachments(
           command.attachments,
@@ -5026,6 +5071,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           resultMode: AgentTurnResultMode,
         ) => {
           let observation: InferenceProgressObservation | null = null;
+          const computerUseRegistration: {
+            release: (() => Promise<void>) | null;
+            root: string | null;
+          } = { release: null, root: null };
+          const publishComputerUse: CuaAgentApprovalPublisher = async (
+            event,
+          ) => {
+            const queued = protectedEventQueue.then(() =>
+              emitAgentEvent(event),
+            );
+            protectedEventQueue = queued.catch((error: unknown) => {
+              protectedEventFailure ??= error;
+            });
+            await queued;
+          };
           try {
             observation = await inferenceProgress.observe({
               modelName:
@@ -5241,6 +5301,35 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                           }),
                   }),
               onThreadLoaded: (threadId) => {
+                if (
+                  computerUseRegistration.root !== threadId &&
+                  command.computerUseAuthority &&
+                  (encryptedChat || encryptedTask) &&
+                  (!encryptedTaskOperation || directTaskOperation)
+                ) {
+                  void computerUseRegistration.release?.().catch(() => {});
+                  computerUseRegistration.root = threadId;
+                  computerUseRegistration.release = computerUseAgents.register({
+                    initialAuthority: command.computerUseAuthority,
+                    ownerId: workerEncryption.ownerId(),
+                    serverId: workerEncryption.serverIdentity(),
+                    workerId: config.workerId,
+                    chatId: command.chatId,
+                    projectId: command.policyProjectId,
+                    contextKind: command.contextKind,
+                    placementId: standalone
+                      ? command.scratchRootId!
+                      : command.worktreeId!,
+                    executionLaneId: command.executionLaneId,
+                    taskId: encryptedTask ? command.chatId : null,
+                    rootThreadId: threadId,
+                    ownsThread: (childThreadId) =>
+                      runtime.ownsComputerUseThread(threadId, childThreadId),
+                    resolve: (input) =>
+                      runtime.resolveComputerUseExecution(input),
+                    publish: publishComputerUse,
+                  });
+                }
                 cliBroker.bindCodexThread(threadId, {
                   chatId: command.chatId,
                   executionLaneId: command.executionLaneId,
@@ -5249,24 +5338,28 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             });
           } finally {
             try {
-              await observation?.close();
-            } catch (error) {
-              workerLogger.event(
-                "warn",
-                "Inference progress observer did not close cleanly",
-                {
-                  event: "provider.inference-progress.close-failed",
-                  subsystem: "provider",
-                  operation: "close-inference-progress-observer",
-                  reasonCode: "observer-close-failed",
-                  status: "degraded",
-                  providerId: provider().id,
-                  providerKind: provider().kind,
-                  error: workerLogError(error),
-                },
-              );
+              await computerUseRegistration.release?.();
             } finally {
-              clearInferenceProgress();
+              try {
+                await observation?.close();
+              } catch (error) {
+                workerLogger.event(
+                  "warn",
+                  "Inference progress observer did not close cleanly",
+                  {
+                    event: "provider.inference-progress.close-failed",
+                    subsystem: "provider",
+                    operation: "close-inference-progress-observer",
+                    reasonCode: "observer-close-failed",
+                    status: "degraded",
+                    providerId: provider().id,
+                    providerKind: provider().kind,
+                    error: workerLogError(error),
+                  },
+                );
+              } finally {
+                clearInferenceProgress();
+              }
             }
           }
         };
@@ -5365,6 +5458,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: command.threadId,
         });
       case "chat.interrupt":
+        computerUseAgents.cancelChat(command.chatId);
         computerUsePreviews.cancelChat(command.chatId);
         computerUseApprovals.revokeChat(command.chatId);
         computerUse.cancelChat(command.chatId, command.threadId);
@@ -5374,12 +5468,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.threadId,
         );
       case "computer-use.approval.respond":
-        return computerUsePreviews.answer(command);
+        return command.agentAuthority
+          ? computerUseAgents.answer(command)
+          : computerUsePreviews.answer(command);
       case "computer-use.preview.open":
         return computerUsePreviews.open(command.authority);
       case "computer-use.preview.stop":
         return computerUsePreviews.stop(command);
       case "computer-use.preview.revoke":
+        computerUseAgents.revoke(command);
         return computerUsePreviews.revoke(command);
       case "computer-use.operation":
         return computerUsePreviews.execute(command, async (event) =>
@@ -5586,7 +5683,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "chat.relocation.thread.release":
         if (command.threadId)
           computerUseApprovals.revokeThread(command.threadId);
-        if (command.threadId) computerUse.cancelThread(command.threadId);
+        if (command.threadId) {
+          computerUseAgents.cancelThread(command.threadId);
+          computerUse.cancelThread(command.threadId);
+        }
         if (command.discard && command.threadId) {
           await runtimeFor({
             model: command.model,
@@ -5725,6 +5825,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       directBroker.revokeAll();
       void workerLinkGateway.revokeAll("endpoint-disconnected");
       codeDirectEndpoints.disconnect();
+      computerUseAgents.disconnect();
       computerUsePreviews.disconnect();
       computerUse.disconnect();
       computerUseApprovals.disconnect();
@@ -5969,6 +6070,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    computerUseAgents.close();
     computerUsePreviews.close();
     computerUseApprovals.close();
     const computerUseClosed = computerUse.close();

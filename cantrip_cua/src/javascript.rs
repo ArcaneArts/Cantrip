@@ -34,7 +34,12 @@ const MAX_OUTPUT: usize = 32 * 1024;
 const MAX_HOST_CALLS: u64 = 64;
 const MAX_HEAP: usize = 8 * 1024 * 1024;
 const ACTIVE_LIMIT: Duration = Duration::from_secs(2);
+#[cfg(test)]
 const WALL_LIMIT: Duration = Duration::from_secs(45);
+const MAX_WALL_TIMEOUT_MS: u64 = 345_000;
+pub(crate) fn default_wall_timeout_ms() -> u64 {
+    45_000
+}
 const JOB_BATCH: usize = 16;
 const MAX_JOBS: u32 = 10_000;
 
@@ -142,6 +147,7 @@ struct Evaluation {
     id: u64,
     cancellation: Cancellation,
     started: Instant,
+    wall_limit: Duration,
     clock: Rc<Cell<ActiveClock>>,
     promise: Persistent<Promise<'static>>,
     jobs: Cell<u32>,
@@ -273,11 +279,18 @@ impl Session {
         value.entered = None;
         clock.set(value);
     }
-    fn start(&mut self, id: u64, source: String, cancellation: Cancellation) -> Result<()> {
+    fn start(
+        &mut self,
+        id: u64,
+        source: String,
+        wall_timeout_ms: u64,
+        cancellation: Cancellation,
+    ) -> Result<()> {
         cancellation.check()?;
-        if source.len() > MAX_SOURCE {
+        if source.len() > MAX_SOURCE || !(1..=MAX_WALL_TIMEOUT_MS).contains(&wall_timeout_ms) {
             return Err(capacity());
         }
+        let wall_limit = Duration::from_millis(wall_timeout_ms);
         let started = Instant::now();
         let clock = Rc::new(Cell::new(ActiveClock::default()));
         let fault = {
@@ -292,7 +305,7 @@ impl Session {
         self.runtime.set_interrupt_handler(Some(Box::new(move || {
             let reason = if interrupt_cancel.is_cancelled() {
                 Some(ErrorCode::Cancelled)
-            } else if started.elapsed() >= WALL_LIMIT
+            } else if started.elapsed() >= wall_limit
                 || interrupt_clock.get().elapsed() >= ACTIVE_LIMIT
             {
                 Some(ErrorCode::Capacity)
@@ -312,12 +325,13 @@ impl Session {
                 .map(|promise| Persistent::save(&ctx, promise))
         });
         Self::leave(&clock);
-        self.check_budget(&cancellation, started, &clock)?;
+        self.check_budget(&cancellation, started, wall_limit, &clock)?;
         let promise = promise.map_err(|_| script_error())?;
         self.active = Some(Evaluation {
             id,
             cancellation,
             started,
+            wall_limit,
             clock,
             promise,
             jobs: Cell::new(0),
@@ -328,10 +342,11 @@ impl Session {
         &self,
         cancellation: &Cancellation,
         started: Instant,
+        wall_limit: Duration,
         clock: &Cell<ActiveClock>,
     ) -> Result<()> {
         cancellation.check()?;
-        if started.elapsed() >= WALL_LIMIT || clock.get().elapsed() >= ACTIVE_LIMIT {
+        if started.elapsed() >= wall_limit || clock.get().elapsed() >= ACTIVE_LIMIT {
             return Err(capacity());
         }
         match self.bridge.borrow().fault.get() {
@@ -361,7 +376,12 @@ impl Session {
                     .transpose()
             });
         Self::leave(&active.clock);
-        self.check_budget(&active.cancellation, active.started, &active.clock)?;
+        self.check_budget(
+            &active.cancellation,
+            active.started,
+            active.wall_limit,
+            &active.clock,
+        )?;
         // JSON serialization can execute user getters/toJSON and enqueue more
         // jobs or host calls. None may escape into the next evaluation.
         if self.bridge.borrow().pending.is_some() || self.runtime.is_job_pending() {
@@ -381,9 +401,12 @@ impl Session {
     fn step(&mut self) -> Option<Result<Value>> {
         let active = self.active.as_ref()?;
         for _ in 0..JOB_BATCH {
-            if let Err(error) =
-                self.check_budget(&active.cancellation, active.started, &active.clock)
-            {
+            if let Err(error) = self.check_budget(
+                &active.cancellation,
+                active.started,
+                active.wall_limit,
+                &active.clock,
+            ) {
                 return Some(Err(error));
             }
             let state = self.context.with(|ctx| {
@@ -411,9 +434,12 @@ impl Session {
             Self::enter(&active.clock);
             let job = self.runtime.execute_pending_job();
             Self::leave(&active.clock);
-            if let Err(error) =
-                self.check_budget(&active.cancellation, active.started, &active.clock)
-            {
+            if let Err(error) = self.check_budget(
+                &active.cancellation,
+                active.started,
+                active.wall_limit,
+                &active.clock,
+            ) {
                 return Some(Err(error));
             }
             match job {
@@ -431,7 +457,12 @@ impl Session {
         let Some(active) = self.active.as_ref().filter(|active| active.id == id) else {
             return Ok(());
         };
-        self.check_budget(&active.cancellation, active.started, &active.clock)?;
+        self.check_budget(
+            &active.cancellation,
+            active.started,
+            active.wall_limit,
+            &active.clock,
+        )?;
         let pending = {
             let mut bridge = self.bridge.borrow_mut();
             if bridge
@@ -457,7 +488,12 @@ impl Session {
             function.call((value,))
         });
         Self::leave(&active.clock);
-        self.check_budget(&active.cancellation, active.started, &active.clock)?;
+        self.check_budget(
+            &active.cancellation,
+            active.started,
+            active.wall_limit,
+            &active.clock,
+        )?;
         settled.map_err(|_| script_error())
     }
     fn clear_active(&mut self) -> Option<u64> {
@@ -480,6 +516,7 @@ enum Command {
         id: u64,
         binding: SessionBinding,
         source: String,
+        wall_timeout_ms: u64,
         cancellation: Cancellation,
     },
     Reset {
@@ -510,6 +547,7 @@ impl Router {
         id: u64,
         binding: SessionBinding,
         source: String,
+        wall_timeout_ms: u64,
         cancellation: Cancellation,
     ) -> io::Result<()> {
         self.evaluations
@@ -520,6 +558,7 @@ impl Router {
             id,
             binding,
             source,
+            wall_timeout_ms,
             cancellation,
         })
     }
@@ -612,7 +651,7 @@ pub(crate) fn spawn(
                     receiver.try_recv().ok()
                 } else {
                     let remaining = sessions.values().filter_map(|session| session.active.as_ref())
-                        .map(|active| WALL_LIMIT.saturating_sub(active.started.elapsed())).min();
+                        .map(|active| active.wall_limit.saturating_sub(active.started.elapsed())).min();
                     let received = match remaining {
                         Some(remaining) => receiver.recv_timeout(remaining),
                         None => receiver.recv().map_err(|_| crossbeam_channel::RecvTimeoutError::Disconnected),
@@ -625,7 +664,7 @@ pub(crate) fn spawn(
                 };
                 let Some(command) = command else { continue; };
                 match command {
-                    Command::Evaluate { id, binding, source, cancellation } => {
+                    Command::Evaluate { id, binding, source, wall_timeout_ms, cancellation } => {
                         let result = binding.validate().and_then(|_| cancellation.check()).and_then(|_| {
                             if source.len() > MAX_SOURCE { return Err(capacity()); }
                             if let Some(session) = sessions.get(&binding.session_id) {
@@ -635,7 +674,7 @@ pub(crate) fn spawn(
                                 if sessions.len() >= MAX_CONTEXTS { return Err(capacity()); }
                                 sessions.insert(binding.session_id.clone(), Session::new(binding.clone(), frames.clone())?);
                             }
-                            sessions.get_mut(&binding.session_id).expect("owned session").start(id, source, cancellation)
+                            sessions.get_mut(&binding.session_id).expect("owned session").start(id, source, wall_timeout_ms, cancellation)
                         });
                         if let Err(error) = result {
                             // Do not dispose a different owner's or already active context.
@@ -707,7 +746,12 @@ mod tests {
         let (frames, _receiver) = crossbeam_channel::bounded(4);
         let mut session = Session::new(binding, frames).unwrap();
         session
-            .start(1, "await cua.getState()".into(), Cancellation::default())
+            .start(
+                1,
+                "await cua.getState()".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
             .unwrap();
         let active = session.active.as_mut().unwrap();
         assert!(active.clock.get().entered.is_none());
@@ -721,6 +765,98 @@ mod tests {
         );
         // Drop with a saved root promise and unresolved host resolvers must be safe.
         drop(session);
+    }
+
+    fn deadline_session() -> Session {
+        let binding: SessionBinding = serde_json::from_value(
+            json!({"sessionId":"deadline-fixture","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let (frames, _receiver) = crossbeam_channel::bounded(4);
+        Session::new(binding, frames).unwrap()
+    }
+
+    #[test]
+    fn trusted_wall_deadline_is_bounded_before_evaluation_starts() {
+        let mut session = deadline_session();
+        for limit in [0, MAX_WALL_TIMEOUT_MS + 1, u64::MAX] {
+            let error = session
+                .start(1, "42".into(), limit, Cancellation::default())
+                .unwrap_err();
+            assert_eq!(error.code, ErrorCode::Capacity);
+            assert!(session.active.is_none());
+            assert!(session.bridge.borrow().evaluation_id.is_none());
+        }
+    }
+
+    #[test]
+    fn extended_approval_wait_keeps_its_wall_deadline_and_active_execution_limit() {
+        // Keep the receiver alive: the host send must actually succeed.
+        let (frames, _receiver) = crossbeam_channel::bounded(4);
+        let binding: SessionBinding = serde_json::from_value(
+            json!({"sessionId":"deadline-fixture","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let mut session = Session::new(binding, frames).unwrap();
+        session
+            .start(
+                1,
+                "await cua.getState()".into(),
+                MAX_WALL_TIMEOUT_MS,
+                Cancellation::default(),
+            )
+            .unwrap();
+        let active = session.active.as_mut().unwrap();
+        assert_eq!(
+            active.wall_limit,
+            Duration::from_millis(MAX_WALL_TIMEOUT_MS)
+        );
+        active.started = Instant::now() - Duration::from_secs(46);
+        let consumed = active.clock.get().elapsed;
+        assert!(session.step().is_none());
+        let active = session.active.as_mut().unwrap();
+        assert!(active.clock.get().elapsed >= consumed);
+        assert!(active.clock.get().elapsed < ACTIVE_LIMIT);
+        assert!(active.clock.get().entered.is_none());
+        // Increasing the approval wall time cannot replenish/exempt actual JS.
+        active.clock.set(ActiveClock {
+            elapsed: ACTIVE_LIMIT,
+            entered: None,
+        });
+        assert_eq!(
+            session.step().unwrap().unwrap_err().code,
+            ErrorCode::Capacity
+        );
+    }
+
+    #[test]
+    fn a_completed_evaluation_does_not_lend_its_extended_timeout_to_the_next() {
+        let (frames, _receiver) = crossbeam_channel::bounded(4);
+        let binding: SessionBinding = serde_json::from_value(
+            json!({"sessionId":"deadline-fixture","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let mut session = Session::new(binding, frames).unwrap();
+        session
+            .start(1, "42".into(), MAX_WALL_TIMEOUT_MS, Cancellation::default())
+            .unwrap();
+        assert_eq!(session.step().unwrap().unwrap(), json!(42));
+        assert_eq!(session.clear_active(), Some(1));
+        session
+            .start(
+                2,
+                "await cua.getState()".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap();
+        let active = session.active.as_mut().unwrap();
+        assert_eq!(active.wall_limit, WALL_LIMIT);
+        active.started = Instant::now() - WALL_LIMIT;
+        assert_eq!(
+            session.step().unwrap().unwrap_err().code,
+            ErrorCode::Capacity
+        );
     }
 
     #[test]

@@ -575,6 +575,8 @@ export class ChatExecutionLaneRepository {
         return {
           contextKind: "project",
           automationPaused: row.chat.automationPaused,
+          computerUseAuthorityGeneration:
+            row.chat.computerUseAuthorityGeneration,
           chatId,
           cwd: row.worktree.absolutePath,
           experience: row.chat.experience as ChatWireSummary["experience"],
@@ -783,6 +785,7 @@ export class ChatExecutionLaneRepository {
       return {
         contextKind: "standalone",
         automationPaused: false,
+        computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
         chatId,
         cwd: row.root.protectedPathHandle,
         experience: "agent",
