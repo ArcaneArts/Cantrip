@@ -1,9 +1,9 @@
 # Cantrip Computer Use
 
-Status: First-tranche implementation in progress; experimental preview and native
-capture, managed MCP and shared agent observations implemented. Protected
-operation Trajectory is implemented and verified locally and in portable CI;
-final product/release verification remains incomplete.
+Status: First-tranche observation, logical cursor, managed MCP, shared preview
+and protected Trajectory implemented and verified with the release qualifications
+recorded in cycle 16. Updater signing, notarization and installed-update permission
+verification remain unperformed. The full computer-use roadmap is unfinished.
 
 ## First-tranche implementation progress
 
@@ -1313,8 +1313,12 @@ src/lib/computer-use-preview-encryption.test.ts`. New rendering cases cover
 
 - Branch: `codex/cua-15-cursor-preferences`, based on cycle 14's observed
   merge `03b71c402`. [PR #1759](https://github.com/ArcaneArts/Cantrip/pull/1759),
-  implementation commit `72ec1c14`. PR is open; final CI and observed merge
-  remain pending.
+  implementation commit `72ec1c14`, final head
+  `4cf0df4d3c75865f037ef4919a1b01577b224984`. All four jobs in replacement CI
+  run `33982586919` passed before squash auto-merge. Observed merged at
+  `2026-09-05T18:02:23Z` as `991040c7ada9286a281905f049de95419661bd5b`;
+  Primary fast-forwarded cleanly. The worktree remains for its packaged artifacts
+  and the active QA frontend/server.
 - Implemented: explicit Save applied appearance and Forget saved appearance
   controls use the existing account settings route and row. The nullable JSONB
   column contains a bounded authenticated ciphertext record under the existing
@@ -1357,7 +1361,8 @@ src/lib/computer-use-preview-encryption.test.ts`. New rendering cases cover
   default five seconds; their actual PGlite migration initialization alone
   exceeded five seconds. The new case now uses the same bounded 30-second
   timeout as every existing case in `auth-api.test.ts`. All five account cases
-  pass locally after this test-only correction; replacement CI remains pending.
+  pass locally after this test-only correction; replacement CI passed on all
+  three hosts, each with 1,252 boundary tests. PostgreSQL also passed separately.
 - Actual browser/native acceptance used the existing isolated QA account,
   cycle 15 frontend/server, cycle 13 worker and stable signed native helper.
   On fully covered fixture `macos-window-45605:396`, a white size-36 ring
@@ -1388,6 +1393,89 @@ src/lib/computer-use-preview-encryption.test.ts`. New rendering cases cover
   provide the final reproducible manual procedure, and perform the complete
   requirement audit. Native input, Accessibility, clipboard/files, human event
   monitoring, other native OS backends and the full roadmap remain deferred.
+
+### Tranche cycle 16 — Acceptance procedure and closing evidence audit
+
+- Branch: `codex/cua-16-acceptance-guide`, based on cycle 15's observed merge
+  `991040c7a`. Documentation-only closing pass; its own PR is the authoritative
+  merge record once published. All 24 preceding implementation PRs were checked
+  through GitHub and confirmed merged. No subagents were started.
+- Added a short [acceptance procedure](../COMPUTER_USE_ACCEPTANCE.md) with exact
+  development commands, UI entry, approval/Stop behavior, saved cursor preferences,
+  actual managed MCP examples, native fixture commands and platform limitations.
+  The runtime reference links it and documents the saved appearance controls.
+  The [requirement audit](../CUA_FIRST_TRANCHE_AUDIT.md) separates native product,
+  compiled deterministic, packaging and unavailable release evidence.
+- Final cycle 15 CI run `33982586919` passes on macOS, Windows and Linux, with
+  1,252 compiled-boundary cases per host; PostgreSQL passes separately. The initial
+  Linux/Windows account-test timeout remains recorded in cycle 15. Relevant builds
+  and the 666-test full protocol suite already passed; this documentation pass
+  does not claim a new full source-suite run or whole-repository green.
+- Additional live browser acceptance: Workspace inventory requested an ordinary
+  approval before listing native targets. While it remained outstanding, Stop
+  immediately returned Preview stopped, disabled capture controls, removed the
+  approval controls and recorded a completed protected Preview operator Stop.
+  The QA chat's prior YOLO setting was restored; account defaults were untouched.
+  Evidence: `/tmp/cua-15-live-stop-evidence.md`. Compiled tests separately cover
+  Stop/reset during busy JavaScript, late replies and root/child isolation.
+- Actual macOS desktop packaging ran in the retained cycle 15 worktree using
+  `pnpm package:app --target darwin-arm64`, Node 24.14.0, Rust 1.95.0,
+  `CANTRIP_REQUIRE_MACOS_SIGNING=1` and the available Developer ID certificate.
+  Bundled Codex 0.153.4, worker/runtime and the optimized Tauri application built;
+  nested runtime signing preceded enclosing app signing. The chain emitted
+  Cantrip 1.1.1810 `.app`, DMG and updater archive, then exited 1 because
+  `TAURI_SIGNING_PRIVATE_KEY` was absent. Tauri also explicitly skipped
+  notarization for absent Apple credentials. This is not a green package run.
+- Verification of the actually emitted artifacts succeeded with the existing
+  `scripts/verify-macos-distribution.mjs`: one certificate-signed app, one signed
+  DMG and 28 embedded runtime binaries, including real helper protocol/fake
+  snapshot and packaged Sharp checks. The exact helper inside the signed app
+  passed all six native decoded-fixture scenarios: foreground, partial/full
+  occlusion, movement, resize and recreation, plus retired-target rejection and
+  session shutdown. Native snapshots were 320 × 240 then 384 × 288; individual
+  capture samples 123–264 ms are smoke timings, not a performance comparison.
+- Artifact paths are under
+  `/private/tmp/cantrip-cua-15/cantrip_app/src-tauri/target/release/bundle/`.
+  Helper SHA-256:
+  `92c9250dcef146a726293cf7e96e8ca74a019edf509bfcbce70806caec746d1d`;
+  DMG SHA-256:
+  `05e7265665a60010e1e592aab1b1991c07326f3a2cb9074e68fa63ba0d91e583`;
+  updater archive SHA-256:
+  `452a61989abe2e3e2058d4d33694a973bffff60ac985472442a2c82aab700026`.
+  Helper identity is `art.cantrip.cua`, Developer ID Application: Arcane Arts
+  Inc. (RK2CYG6XRV), hardened runtime with secure timestamp. No synthetic/ad-hoc
+  fallback or release upload occurred. Logs: `/tmp/cua-15-package-app.log`,
+  `/tmp/cua-15-distribution-verify.log`, `/tmp/cua-15-packaged-native.log`.
+- Changed-development-build check: the existing debug helper SHA-256
+  `9567fa9b78e180bc885943c7caf70d3e79c62594802049cb6d93053e3130ed01`
+  was replaced by the ordinary `cua:install:dev --release` command with
+  `CANTRIP_DEV_PROFILE=cua-cycle-three-qa`. New SHA-256:
+  `e4179599ae5a9646579f36ff6c3527a3e8b37642d4dde72cc1a8c1828f8f6381`.
+  The native user-data path and Apple Development designated requirement remained
+  identical. Direct smoke launches returned `capture-failed` both before and after
+  replacement; this does not prove a signing or permission cause.
+- After restarting only the owned QA services to load the replacement, the actual
+  browser -> server -> worker -> stable helper path captured fully covered fixture
+  `macos-window-45705:397` in native session
+  `80db3b46-d280-4ddb-abcb-497055b0afc3`. Snapshot #1 was 320 × 240 with the expected
+  red center and green/yellow/cyan/magenta corners, visually inspected in the UI.
+  Stop and fixture cleanup completed. No privacy reset or permission action was
+  performed by the agent. Prior debug product captures plus this changed release
+  product capture establish this observed update path, not universal TCC continuity
+  for all parent processes or installed application updates.
+- Release qualification/manual step: supply the real updater private key and
+  normal Apple notarization credentials in the private release environment, rerun
+  the existing packaging/notarization workflow, then verify a real installed update
+  and record capture prompts/results. The goal permits explicit documentation when
+  signing credentials are unavailable. Neither notarization nor installed-update
+  authorization is inferred from successful native helper capture.
+- Cleanup/retention: all owned fixture windows and preview sessions are closed.
+  Cycle 12 retains the isolated configured QA profile/native app, cycle 13 the
+  worker/tooling, and cycle 15 the QA frontend/server and actual signed artifacts.
+  The installed Cantrip application and unrelated worktrees remain untouched.
+  Closing documentation delivery/merge observation is the remaining repository
+  action. Native input, Accessibility, clipboard/files, human event monitoring,
+  continuous video, other native platforms and cross-worker control remain deferred.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
