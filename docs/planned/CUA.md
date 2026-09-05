@@ -474,8 +474,11 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-07-native-capture`, based on merged cycle 6 (`86322d280`).
   [PR #1743](https://github.com/ArcaneArts/Cantrip/pull/1743), implementation
-  commit `6f913c84357aeade38427a6ed5caba31fe1a6276`; ready, awaiting CI and
-  squash auto-merge. No merge recorded yet.
+  commit `6f913c84357aeade38427a6ed5caba31fe1a6276`, ledger commit
+  `c22ad19b9e207bc01a0ea0161373da3343d224f0`; squash-merged on
+  2026-09-05 as `76d8baa7ce235c529088f26c49b49892b85be2d5`. All four CUA
+  macOS/Windows/Linux/PostgreSQL jobs and twelve managed-web-runtime jobs passed.
+  Primary fast-forwarded cleanly; the cycle worktree and branch were removed.
 - Current work: ScreenCaptureKit backend, explicit bounded-inventory disclosure,
   portable fake/default-handshake tests, and fixture-owned native capture QA.
 - Native QA exposed and fixed a real helper crash: `CGS_REQUIRE_INIT` asserted
@@ -534,6 +537,55 @@ is the authoritative merge record until the next ledger update.
 - Remaining first tranche: native capture verification, managed MCP/persistent
   JS, preview/MCP coordination, protected Trajectory, release signing and full
   regression/performance verification. Later-tranche deferrals are unchanged.
+
+### Tranche cycle 8a — Runtime execution lifetimes and preview isolation
+
+- Branch: `codex/cua-08a-execution-lifetimes`, based on merged cycle 7
+  (`76d8baa7c`). Implementation and local validation complete; PR/merge pending.
+- Scope: runtime-derived root/child execution ownership and cancellation, plus
+  preview-specific teardown that cannot revoke a different agent lifetime.
+  Managed MCP activation and the bounded Rust JavaScript engine are subsequent
+  independently mergeable parts of cycle 8, not implemented by this entry.
+- Exact-scope service cancellation now treats null task/thread/turn IDs as
+  values, not wildcards. Approval revocation can release one authority signal,
+  including its pending requests, grants and completed-response records.
+  Ordinary preview teardown releases only its native scope and signal;
+  explicit Stop, trusted policy/placement changes and chat interruption retain
+  their intentional chat-wide cancellation. A stale Stop cannot cancel a newer
+  lease. Actual Rust fake-backend tests verify a same-chat agent session remains
+  usable after ordinary preview cleanup.
+- The runtime resolver is read-only: it derives root/child ancestry from native
+  runtime ownership and does not invent account, server, task or execution-lane
+  identity. Only native turn starts establish cancellation lifetimes; caller
+  claims and telemetry cannot create authority. Terminal, interruption,
+  replacement and process shutdown cancel captured signals.
+- Event-ordering regressions are fixed alongside that ownership primitive:
+  delayed old completions/start acknowledgements cannot cancel or rewind a newer
+  root/child turn, genuine new child starts advance UI activity, and obsolete
+  asynchronous workspace/reconciliation/goal reads cannot overwrite the new
+  turn's state. Native thread closure/unloaded/error events end the current
+  thread lifetime even without a turn-completed event; those native statuses
+  carry no turn ID and are explicitly treated as thread-level authority.
+- Pre-activation requirement: the upcoming MCP coordinator must register every
+  active agent lifetime, including YOLO without an approval or preview record,
+  and receive trusted Stop/policy revocations directly. Session cancellation
+  alone must not allow that still-live execution to open another session.
+- Local validation: 755 cross-boundary tests passed (76 protocol, 24 crypto,
+  348 worker including 23 new runtime-lifetime tests, 149 server and 158 client);
+  two PostgreSQL cases remain dedicated-CI checks. Seventeen additional runtime
+  regression tests, 66 Rust tests, Rust formatting/strict Clippy, 43 script tests
+  (one explicit GUI test skipped), worker typecheck/build and diff/format checks
+  passed. The root CUA test command now includes runtime-lifetime and existing
+  app-server/subagent regression suites. Actual helper tests used the fake
+  backend; no native capture or permission changes occurred in this cycle.
+- Platform status: macOS arm64 local portable/fake checks passed; Windows/Linux
+  CI and PR merge remain pending. Existing whole-suite baseline gaps and
+  release/manual checks remain final-hardening work, not claimed green here.
+  Unlocked native window/occlusion QA remains outstanding;
+  the desktop was confirmed locked during cycle 7 and the user was asked to
+  unlock it. No native permission or lock-setting changes are authorized here.
+- Later-tranche input, Accessibility, clipboard/files, other native platforms,
+  continuous video and cross-worker control remain deferred.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

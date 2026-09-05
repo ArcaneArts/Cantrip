@@ -402,7 +402,57 @@ describe("computer-use durable permission owner", () => {
     });
   });
 
-  it.each(["abort", "chat", "thread", "disconnect", "close"] as const)(
+  it("revokes exactly one authority signal, including pending, granted and completed approvals", async () => {
+    const f = fixture();
+    const own = await f.request();
+    await f.manager.answer(await answer(own));
+    await f.authorize("cursor.move");
+    const survivor = {
+      ...f.context,
+      signal: new AbortController().signal,
+      scope: { ...f.context.scope, threadId: "agent", turnId: "turn" },
+    };
+    const other = await f.manager.authorize({
+      context: survivor,
+      operation: "observation.snapshot",
+      target: { targetId: "window", targetGeneration: 1 },
+    });
+    if (other.status !== "approval-required")
+      throw new Error("Expected approval");
+    await f.manager.answer(await answer(other.request));
+    f.manager.revokeContext(f.context.signal);
+    expect(f.manager.status()).toMatchObject({
+      pending: 0,
+      grants: 1,
+      completed: 1,
+    });
+    expect(f.manager.contextForResponse(own.requestKey)).toBeNull();
+    await expect(f.authorize()).rejects.toMatchObject({ code: "revoked" });
+    await expect(
+      f.manager.authorize({
+        context: survivor,
+        operation: "observation.snapshot",
+        target: { targetId: "window", targetGeneration: 1 },
+      }),
+    ).resolves.toEqual({ status: "allowed" });
+    expect(f.onTerminal).toHaveBeenCalledTimes(1);
+  });
+
+  it("remembers explicit lifetime revocation before its first approval is published", async () => {
+    const f = fixture();
+    f.manager.revokeContext(f.context.signal);
+    await expect(f.request()).rejects.toMatchObject({ code: "revoked" });
+    expect(f.encryption.componentKey).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "abort",
+    "context",
+    "chat",
+    "thread",
+    "disconnect",
+    "close",
+  ] as const)(
     "revokes pending requests and grants on %s and never accepts late approval",
     async (kind) => {
       const f = fixture();
@@ -415,6 +465,7 @@ describe("computer-use durable permission owner", () => {
       });
       await f.manager.answer(response);
       if (kind === "abort") f.controller.abort();
+      if (kind === "context") f.manager.revokeContext(f.context.signal);
       if (kind === "chat") f.manager.revokeChat("chat");
       if (kind === "thread") f.manager.revokeThread("thread");
       if (kind === "disconnect") f.manager.disconnect();

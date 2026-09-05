@@ -170,6 +170,19 @@ bounded; pending work never retries itself.
 Transport admission counts cancelled requests awaiting acknowledgment and
 reserves cleanup slots, so a saturated request queue cannot crowd out Stop.
 
+Preview cleanup releases an exact server/account/worker/chat/task/thread/turn
+scope and its approval signal. A preview's null task/thread/turn values never
+match a live agent's scope as wildcards. Explicit Stop, trusted placement or
+policy revocation, and chat interruption still cancel chat-wide CUA work.
+
+The Codex runtime exposes a read-only resolver for genuine root/child native
+turn identities and cancellation signals. Only actual turn starts establish
+that lifetime; telemetry and caller-supplied identities cannot create one.
+Completion, interruption, replacement and shutdown end the signal before
+asynchronous cleanup. This is a prerequisite for managed MCP, not an enabled
+agent tool. The future MCP coordinator must register every execution lifetime,
+including YOLO use, and revoke it on Stop/policy changes even without a preview.
+
 One unexpected helper crash permits one new launch on a **fresh explicit
 request**. Old session IDs remain invalid. A second crash, a launch failure, or
 an incompatible protocol is terminal until the worker is restarted. Ordinary

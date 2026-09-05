@@ -145,6 +145,7 @@ function fixture(actualBinary?: string) {
     encryption,
   });
   const cancelChat = vi.spyOn(service, "cancelChat");
+  const cancelScope = vi.spyOn(service, "cancelScope");
   const authorize = vi.spyOn(approvals, "authorize");
   cleanups.push(async () => {
     coordinator.close();
@@ -158,6 +159,7 @@ function fixture(actualBinary?: string) {
     encryption,
     launch,
     cancelChat,
+    cancelScope,
     authorize,
   };
 }
@@ -564,6 +566,100 @@ describe("worker-owned preview authority", () => {
     expect(stop(f, next)).toEqual({ closed: true });
     expect(f.launch).not.toHaveBeenCalled();
   });
+
+  it.each(["disconnect", "invalid-packet"] as const)(
+    "ordinary preview %s cleanup leaves same-chat agent approvals alive",
+    async (kind) => {
+      const f = fixture();
+      const lease = f.coordinator.open(authority);
+      const previewRequest = approval(
+        (await execute(f, { operation: "targets.list" }, lease)).events,
+      );
+      const agentContext = {
+        ...f.authorize.mock.calls[0]![0].context,
+        previewLeaseId: undefined,
+        signal: new AbortController().signal,
+        executionLaneId: "agent-lane",
+        scope: {
+          ...f.authorize.mock.calls[0]![0].context.scope,
+          taskId: "task",
+          threadId: "thread",
+          turnId: "turn",
+        },
+      };
+      const agent = await f.approvals.authorize({
+        context: agentContext,
+        operation: "targets.list",
+      });
+      if (agent.status !== "approval-required")
+        throw new Error("Expected approval");
+      if (kind === "disconnect") f.coordinator.disconnect();
+      else
+        await expect(
+          f.coordinator.execute(
+            await command({ operation: "targets.list" }, lease, {
+              ...authority,
+              placementId: "invalid-change-without-generation",
+            }),
+            async () => {},
+          ),
+        ).rejects.toMatchObject({ code: "ownership-mismatch" });
+      expect(
+        f.approvals.contextForResponse(previewRequest.requestKey),
+      ).toBeNull();
+      expect(
+        f.approvals.contextForResponse(agent.request.requestKey)?.signal,
+      ).toBe(agentContext.signal);
+      expect(f.approvals.status().pending).toBe(1);
+      expect(f.cancelChat).not.toHaveBeenCalled();
+      expect(f.cancelScope).toHaveBeenCalledWith({
+        ...agentContext.scope,
+        taskId: null,
+        threadId: null,
+        turnId: null,
+      });
+      // A stale Stop for the released preview cannot terminate another owner.
+      expect(stop(f, lease)).toEqual({ closed: true });
+      expect(f.approvals.status().pending).toBe(1);
+      expect(f.cancelChat).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["stop", "revocation", "placement", "interrupt"] as const)(
+    "%s intentionally revokes chat-wide authority, unlike ordinary preview cleanup",
+    async (kind) => {
+      const f = fixture();
+      const lease = f.coordinator.open(authority);
+      await execute(f, { operation: "targets.list" }, lease);
+      const context = f.authorize.mock.calls[0]![0].context;
+      await f.approvals.authorize({
+        context: {
+          ...context,
+          signal: new AbortController().signal,
+          previewLeaseId: undefined,
+          scope: { ...context.scope, threadId: "agent", turnId: "turn" },
+        },
+        operation: "targets.list",
+      });
+      expect(f.approvals.status().pending).toBe(2);
+      if (kind === "stop") stop(f, lease);
+      if (kind === "revocation")
+        f.coordinator.revoke({
+          ownerId: "owner",
+          serverId: "server",
+          scope: { kind: "chat", chatId: "chat" },
+        });
+      if (kind === "placement")
+        f.coordinator.open({
+          ...authority,
+          generation: 2,
+          placementId: "new-placement",
+        });
+      if (kind === "interrupt") f.coordinator.cancelChat("chat");
+      expect(f.approvals.status().pending).toBe(0);
+      expect(f.cancelChat).toHaveBeenCalledExactlyOnceWith("chat");
+    },
+  );
 });
 
 describe("one native session per shared preview lease", () => {
@@ -1023,6 +1119,43 @@ describe("preview approvals use the existing encrypted interaction path", () => 
 describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
   "preview -> actual Rust fake capture",
   () => {
+    it("preview cleanup releases its actual native session but leaves the same-chat agent session usable", async () => {
+      const f = fixture(process.env.CANTRIP_CUA_TEST_BINARY!);
+      const selected = {
+        ...authority,
+        profile: {
+          ...authority.profile,
+          selectedId: ":yolo",
+          effectiveId: ":yolo",
+        },
+      };
+      const lease = f.coordinator.open(selected);
+      const opened = await execute(
+        f,
+        { operation: "session.open", ...target },
+        lease,
+        selected,
+      );
+      expect(opened.result.status).toBe("ok");
+      const agentScope: CuaScope = {
+        ownerId: "owner",
+        serverId: "server",
+        workerId: "worker",
+        chatId: "chat",
+        taskId: "task",
+        threadId: "thread",
+        turnId: "turn",
+      };
+      const agent = await f.service.open(agentScope, target);
+      expect(f.service.status().sessions).toBe(2);
+      f.coordinator.disconnect();
+      expect(f.service.status().sessions).toBe(1);
+      expect(
+        (await f.service.snapshot(agentScope, agent.binding.sessionId, target))
+          .image.width,
+      ).toBeGreaterThan(0);
+      expect(f.cancelChat).not.toHaveBeenCalled();
+    });
     it("starts no helper until inventory/session approval, then captures only after the separately approved explicit retry", async () => {
       const f = fixture(process.env.CANTRIP_CUA_TEST_BINARY!);
       const lease = f.coordinator.open(authority);

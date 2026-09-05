@@ -70,7 +70,7 @@ export class CuaPreviewCoordinator {
       if (fingerprint === prior.fingerprint) return this.publicLease(prior);
       if (authority.generation === prior.authority.generation)
         throw new CuaAuthorizationError("ownership-mismatch");
-      this.remove(prior);
+      this.revokeChatPreview(prior);
     }
     if (this.previews.size >= 32)
       throw new CuaAuthorizationError("execution-unavailable");
@@ -197,7 +197,7 @@ export class CuaPreviewCoordinator {
       preview.scope.ownerId !== input.ownerId
     )
       throw new CuaAuthorizationError("ownership-mismatch");
-    this.remove(preview);
+    this.revokeChatPreview(preview);
     return { closed: true as const };
   }
 
@@ -217,13 +217,13 @@ export class CuaPreviewCoordinator {
             : preview.authority.contextKind === scope.contextKind &&
               preview.authority.profile.usesDefault
       )
-        this.remove(preview);
+        this.revokeChatPreview(preview);
     }
     return { closed: true as const };
   }
   cancelChat(chatId: string) {
     const preview = this.byChat.get(chatId);
-    if (preview) this.remove(preview);
+    if (preview) this.revokeChatPreview(preview);
   }
   disconnect() {
     for (const preview of this.previews.values()) this.remove(preview);
@@ -274,7 +274,7 @@ export class CuaPreviewCoordinator {
         );
       const session = await this.options.service.open(scope, target, active);
       // Stop may race an already-resolved native operation. Its service-level
-      // cancelChat has invalidated that handle; never repopulate a closed lease.
+      // cancellation has invalidated that handle; never repopulate a closed lease.
       if (active.aborted) throw new CuaProcessError("cancelled", "unknown");
       preview.sessionId = session.binding.sessionId;
       return session;
@@ -314,6 +314,13 @@ export class CuaPreviewCoordinator {
     this.previews.delete(preview.id);
     this.byChat.delete(preview.scope.chatId);
     preview.controller.abort();
+    this.options.approvals.revokeContext(preview.controller.signal);
+    this.options.service.cancelScope(preview.scope);
+  }
+  /** Explicit Stop, trusted policy/placement revocation and chat interruption
+   * remain chat-wide. Ordinary preview cleanup must not own agent lifetimes. */
+  private revokeChatPreview(preview: Preview) {
+    this.remove(preview);
     this.options.approvals.revokeChat(preview.scope.chatId);
     this.options.service.cancelChat(preview.scope.chatId);
   }

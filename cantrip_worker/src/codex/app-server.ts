@@ -81,6 +81,10 @@ import {
 import { spawnGuardedProcess } from "../code/process-guard.js";
 import { workerLogError, workerLogger } from "../logger.js";
 import {
+  CodexExecutionLifetime,
+  type CodexComputerUseExecution,
+} from "./execution-lifetime.js";
+import {
   ProviderAccessTokenRequestError,
   type ProviderAccessTokenClient,
 } from "../provider-access-tokens.js";
@@ -253,6 +257,7 @@ type AgentRuntimeStatus =
   "starting" | "running" | "idle" | "completed" | "failed" | "interrupted";
 
 interface AgentRuntimeState extends AgentEventState {
+  computerUseLifetime: CodexExecutionLifetime;
   agentPath: string[];
   currentTurnId: string | null;
   depth: number;
@@ -266,6 +271,7 @@ interface AgentRuntimeState extends AgentEventState {
 }
 
 interface RootExecution {
+  computerUseLifetime: CodexExecutionLifetime;
   active: ActiveTurn;
   agents: Map<string, AgentRuntimeState>;
   rootThreadId: string;
@@ -5505,6 +5511,10 @@ export class CodexAppServer implements CodexRuntime {
     }
     const previousRequest = active[1].interruptionRequestedAtMs;
     active[1].interruptionRequestedAtMs = Date.now();
+    const execution = this.#rootExecutionsByActive.get(active[1]);
+    // A user Stop cancels local host work immediately, even while the native
+    // interrupt acknowledgement is pending or ultimately fails.
+    if (execution) this.abortComputerUseExecution(execution);
     try {
       await this.request("turn/interrupt", {
         threadId: active[1].threadId,
@@ -6119,6 +6129,85 @@ export class CodexAppServer implements CodexRuntime {
     return this.#rootExecutionsByThread.has(threadId);
   }
 
+  /** Resolve an exact observed native turn without creating or rebinding one.
+   * The caller separately supplies trusted worker/account/lane authority. */
+  resolveComputerUseExecution(input: {
+    chatId: string;
+    threadId: string;
+    turnId: string;
+  }): CodexComputerUseExecution | null {
+    const execution = this.#rootExecutionsByThread.get(input.threadId);
+    const rootTurnId = execution?.computerUseLifetime.turnId;
+    if (
+      !execution ||
+      execution.active.executionKind !== "chat" ||
+      execution.active.chatId !== input.chatId ||
+      !rootTurnId ||
+      !execution.computerUseLifetime.signal(rootTurnId)
+    )
+      return null;
+    const child = execution.agents.get(input.threadId);
+    const signal = child
+      ? child.computerUseLifetime.signal(input.turnId)
+      : input.threadId === execution.rootThreadId && input.turnId === rootTurnId
+        ? execution.computerUseLifetime.signal(input.turnId)
+        : null;
+    if (!signal) return null;
+    return {
+      chatId: execution.active.chatId,
+      threadId: input.threadId,
+      turnId: input.turnId,
+      rootThreadId: execution.rootThreadId,
+      rootTurnId,
+      parentThreadId: child?.parentThreadId ?? null,
+      signal,
+    };
+  }
+
+  private abortComputerUseExecution(
+    execution: RootExecution,
+    turnId?: string,
+  ): void {
+    if (!execution.computerUseLifetime.abort(turnId)) return;
+    for (const state of execution.agents.values())
+      state.computerUseLifetime.abort();
+  }
+
+  private turnFinalizationCurrent(
+    active: ActiveTurn,
+    turnId: string,
+  ): () => boolean {
+    const execution = this.#rootExecutionsByActive.get(active);
+    // Operation timeouts can release before entering their terminal handler.
+    // Otherwise an awaited read belongs to this exact observed runtime turn.
+    return () =>
+      !execution ||
+      (this.#rootExecutionsByActive.get(active) === execution &&
+        execution.computerUseLifetime.turnId === turnId);
+  }
+
+  private observeComputerUseTurnStart(threadId: string, turnId: string): void {
+    const execution = this.#rootExecutionsByThread.get(threadId);
+    if (!execution) return;
+    if (threadId === execution.rootThreadId) {
+      if (execution.computerUseLifetime.observe(turnId))
+        for (const state of execution.agents.values())
+          state.computerUseLifetime.abort();
+    } else {
+      const rootTurnId = execution.computerUseLifetime.turnId;
+      if (rootTurnId && execution.computerUseLifetime.signal(rootTurnId))
+        execution.agents.get(threadId)?.computerUseLifetime.observe(turnId);
+    }
+  }
+
+  private abortComputerUseThread(threadId: string): void {
+    const execution = this.#rootExecutionsByThread.get(threadId);
+    if (!execution) return;
+    if (threadId === execution.rootThreadId)
+      this.abortComputerUseExecution(execution);
+    else execution.agents.get(threadId)?.computerUseLifetime.abort();
+  }
+
   private agentScope(
     execution: RootExecution,
     state: AgentRuntimeState | null,
@@ -6148,6 +6237,7 @@ export class CodexAppServer implements CodexRuntime {
     const existing = this.#rootExecutionsByActive.get(active);
     if (existing) return existing;
     const execution: RootExecution = {
+      computerUseLifetime: new CodexExecutionLifetime(),
       active,
       agents: new Map(),
       rootThreadId: active.threadId,
@@ -6197,6 +6287,7 @@ export class CodexAppServer implements CodexRuntime {
     const path = agentPathSegments(metadata.agentPath);
     const now = Date.now();
     const state: AgentRuntimeState = {
+      computerUseLifetime: new CodexExecutionLifetime(),
       agentScope: null,
       agentPath:
         path.length > 0 ? path : this.childFallbackPath(execution, metadata),
@@ -6420,6 +6511,20 @@ export class CodexAppServer implements CodexRuntime {
         }
         if (state) {
           const tool = item.tool.replaceAll("_", "").toLowerCase();
+          const execution =
+            this.#rootExecutionsByThread.get(notificationThreadId);
+          if (
+            tool === "closeagent" &&
+            item.status === "completed" &&
+            execution?.active.chatId &&
+            this.#rootExecutionsByThread.get(threadId) === execution &&
+            this.resolveComputerUseExecution({
+              chatId: execution.active.chatId,
+              threadId: notificationThreadId,
+              turnId: notificationTurnId,
+            })
+          )
+            state.computerUseLifetime.abort();
           const advertisedMessage = boundedText(advertised?.message, 100_000);
           const kind: AgentCommunicationKind =
             tool === "spawnagent"
@@ -6476,6 +6581,7 @@ export class CodexAppServer implements CodexRuntime {
 
   private async discoverSubagentThreads(
     execution: RootExecution,
+    isCurrent: () => boolean,
   ): Promise<void> {
     if (!this.methodAvailable("thread/list")) return;
     let cursor: string | null = null;
@@ -6493,6 +6599,7 @@ export class CodexAppServer implements CodexRuntime {
         },
         COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS,
       )) as CodexThreadListResponse;
+      if (!isCurrent()) return;
       if (!Array.isArray(response.data)) {
         throw new Error("Codex returned an invalid descendant thread page.");
       }
@@ -6531,12 +6638,14 @@ export class CodexAppServer implements CodexRuntime {
     execution: RootExecution,
     state: AgentRuntimeState,
     executionCompletedAtMs: number,
+    isCurrent: () => boolean,
   ): Promise<void> {
     const response = (await this.request(
       "thread/read",
       { threadId: state.threadId, includeTurns: true },
       COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS,
     )) as CodexThreadReadResponse;
+    if (!isCurrent()) return;
     const metadata = childThreadMetadataFromNotification({
       thread: response.thread,
     });
@@ -6625,6 +6734,7 @@ export class CodexAppServer implements CodexRuntime {
   private async reconcileSubagentExecution(
     active: ActiveTurn,
     executionCompletedAtMs: number,
+    isCurrent: () => boolean,
   ): Promise<void> {
     if (active.executionKind !== "chat") return;
     const execution = this.#rootExecutionsByActive.get(active);
@@ -6632,7 +6742,7 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
     try {
-      await this.discoverSubagentThreads(execution);
+      await this.discoverSubagentThreads(execution, isCurrent);
     } catch (error) {
       workerLogger.event(
         "warn",
@@ -6649,10 +6759,12 @@ export class CodexAppServer implements CodexRuntime {
         },
       );
     }
+    if (!isCurrent()) return;
     const states = [...execution.agents.values()]
       .sort((left, right) => left.depth - right.depth)
       .slice(0, MAX_RECOVERED_AGENT_THREADS);
     for (let offset = 0; offset < states.length; offset += 4) {
+      if (!isCurrent()) return;
       await Promise.all(
         states.slice(offset, offset + 4).map(async (state) => {
           try {
@@ -6660,6 +6772,7 @@ export class CodexAppServer implements CodexRuntime {
               execution,
               state,
               executionCompletedAtMs,
+              isCurrent,
             );
           } catch (error) {
             workerLogger.event(
@@ -6756,9 +6869,15 @@ export class CodexAppServer implements CodexRuntime {
   private notificationTarget(
     threadId: string,
     turnId: string,
+    startingTurn = false,
   ): AgentNotificationTarget | null {
     const execution = this.#rootExecutionsByThread.get(threadId);
     if (!execution) return null;
+    const startedTurnId =
+      threadId === execution.rootThreadId
+        ? execution.computerUseLifetime.turnId
+        : execution.agents.get(threadId)?.computerUseLifetime.turnId;
+    if (startedTurnId && startedTurnId !== turnId && !startingTurn) return null;
     if (threadId === execution.rootThreadId) {
       this.bindRootTurn(execution, turnId);
       return {
@@ -6773,7 +6892,8 @@ export class CodexAppServer implements CodexRuntime {
     if (
       state.currentTurnId &&
       state.currentTurnId !== turnId &&
-      state.status === "running"
+      state.status === "running" &&
+      !startingTurn
     ) {
       return null;
     }
@@ -6813,18 +6933,35 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private bindTurnStartResponse(turnId: string, active: ActiveTurn): void {
-    this.bindRootTurn(this.registerRootExecution(active), turnId);
+    const execution = this.#rootExecutionsByActive.get(active);
+    if (!execution) return;
+    // Notifications can precede this acknowledgement, including a native goal's
+    // next turn. The response may initialize, but never roll that lifetime back.
+    if (
+      !execution.computerUseLifetime.turnId ||
+      execution.computerUseLifetime.turnId === turnId
+    ) {
+      this.bindRootTurn(execution, turnId);
+      this.observeComputerUseTurnStart(active.threadId, turnId);
+    }
   }
 
-  private releaseActiveTurn(active: ActiveTurn): void {
+  private releaseActiveTurn(active: ActiveTurn, turnId?: string): boolean {
+    const execution = this.#rootExecutionsByActive.get(active);
+    if (
+      turnId !== undefined &&
+      execution?.computerUseLifetime.turnId &&
+      execution.computerUseLifetime.turnId !== turnId
+    )
+      return false;
     if (this.#activeTurnsByThread.get(active.threadId) === active) {
       this.#activeTurnsByThread.delete(active.threadId);
     }
     for (const [turnId, candidate] of this.#activeTurns) {
       if (candidate === active) this.#activeTurns.delete(turnId);
     }
-    const execution = this.#rootExecutionsByActive.get(active);
-    if (!execution) return;
+    if (!execution) return true;
+    this.abortComputerUseExecution(execution);
     const releasedThreadIds = new Set([
       execution.rootThreadId,
       ...execution.agents.keys(),
@@ -6843,6 +6980,7 @@ export class CodexAppServer implements CodexRuntime {
         this.#orphanAgentThreads.delete(threadId);
       }
     }
+    return true;
   }
 
   private forgetThread(threadId: string): void {
@@ -7486,8 +7624,21 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
+    if (message.method === "thread/closed") {
+      const params = message.params as { threadId: string };
+      this.abortComputerUseThread(params.threadId);
+      return;
+    }
+
     if (message.method === "thread/status/changed") {
       const params = message.params as ThreadStatusChangedParams;
+      // These native events describe the thread itself (no turnId). Ordinary
+      // idle/active status and historical item status do not revoke authority.
+      if (
+        params.status.type === "notLoaded" ||
+        params.status.type === "systemError"
+      )
+        this.abortComputerUseThread(params.threadId);
       const execution = this.#rootExecutionsByThread.get(params.threadId);
       const state = execution?.agents.get(params.threadId);
       if (state) {
@@ -7505,7 +7656,14 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/started") {
       const params = message.params as TurnStartedParams;
-      const target = this.notificationTarget(params.threadId, params.turn.id);
+      this.observeComputerUseTurnStart(params.threadId, params.turn.id);
+      // A genuine start supersedes the prior child turn even if its completion
+      // is delayed. Ordinary telemetry cannot perform that transition.
+      const target = this.notificationTarget(
+        params.threadId,
+        params.turn.id,
+        true,
+      );
       if (target) {
         emitTurnActivity(
           target.state,
@@ -8234,6 +8392,19 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/completed") {
       const params = message.params as TurnCompletedParams;
+      const execution = this.#rootExecutionsByThread.get(params.threadId);
+      const lifetime =
+        params.threadId === execution?.rootThreadId
+          ? execution.computerUseLifetime
+          : execution?.agents.get(params.threadId)?.computerUseLifetime;
+      // Late completion of A must not release the still-running B execution.
+      // Only real turn starts advance this bounded lifetime, not telemetry.
+      if (lifetime?.turnId && lifetime.turnId !== params.turn.id) return;
+      // End before resolving UI telemetry: that association may still contain
+      // an older turn, and native goals retain their surrounding execution.
+      if (execution && params.threadId === execution.rootThreadId)
+        this.abortComputerUseExecution(execution, params.turn.id);
+      else lifetime?.abort(params.turn.id);
       const target = this.notificationTarget(params.threadId, params.turn.id);
       if (!target) {
         this.observeExternalThreadChange(params.threadId, "turn");
@@ -8435,12 +8606,16 @@ export class CodexAppServer implements CodexRuntime {
     observedAtMs: number,
     diagnosticId: string | null,
   ): Promise<void> {
+    const isCurrent = this.turnFinalizationCurrent(active, turnId);
+    if (!isCurrent()) return;
     try {
       this.clearInteractionsForTurn(
         active,
         "The Codex turn completed before the interaction was answered.",
       );
-      active.diffChanges = await workspaceChanges(active);
+      const changes = await workspaceChanges(active);
+      if (!isCurrent()) return;
+      active.diffChanges = changes;
       emitFileActivity(
         active,
         turnId,
@@ -8453,7 +8628,8 @@ export class CodexAppServer implements CodexRuntime {
           null,
         ),
       );
-      await this.reconcileSubagentExecution(active, observedAtMs);
+      await this.reconcileSubagentExecution(active, observedAtMs, isCurrent);
+      if (!isCurrent()) return;
       const execution = this.#rootExecutionsByActive.get(active);
       if (execution) {
         this.settleDescendantsAtRootBoundary(
@@ -8465,11 +8641,13 @@ export class CodexAppServer implements CodexRuntime {
       }
       const text = active.finalText ?? active.delta;
       if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
-        await this.replayCompletedTurn(active, turnId);
+        await this.replayCompletedTurn(active, turnId, isCurrent);
+        if (!isCurrent()) return;
       }
       clearTurnInspectionTelemetry(active);
       if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
-        const response = await this.refreshGoal(active.threadId);
+        const response = await this.refreshGoal(active.threadId, isCurrent);
+        if (!isCurrent()) return;
         if (
           goalShouldContinue(
             response.goal,
@@ -8481,7 +8659,9 @@ export class CodexAppServer implements CodexRuntime {
           )
         ) {
           active.onCheckpoint?.({ text, turnId });
-          active.baseline = await workspaceSnapshot(active.cwd);
+          const baseline = await workspaceSnapshot(active.cwd);
+          if (!isCurrent()) return;
+          active.baseline = baseline;
           active.delta = "";
           active.diffChanges = [];
           active.finalText = null;
@@ -8503,7 +8683,7 @@ export class CodexAppServer implements CodexRuntime {
           return;
         }
       }
-      this.releaseActiveTurn(active);
+      if (!this.releaseActiveTurn(active, turnId)) return;
       workerLogger.event("info", "Codex turn completed", {
         event: "codex.turn.lifecycle",
         subsystem: "codex",
@@ -8558,7 +8738,8 @@ export class CodexAppServer implements CodexRuntime {
             }),
       );
     } catch (error) {
-      this.releaseActiveTurn(active);
+      if (!isCurrent()) return;
+      if (!this.releaseActiveTurn(active, turnId)) return;
       clearTurnInspectionTelemetry(active);
       workerLogger.event("error", "Codex turn completion failed", {
         event: "codex.turn.lifecycle",
@@ -8583,6 +8764,7 @@ export class CodexAppServer implements CodexRuntime {
   private async replayCompletedTurn(
     active: ActiveTurn,
     turnId: string,
+    isCurrent: () => boolean,
   ): Promise<void> {
     if (!active.onActivity && !active.onMessage) return;
     try {
@@ -8594,6 +8776,7 @@ export class CodexAppServer implements CodexRuntime {
         },
         COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS,
       )) as CodexThreadReadResponse;
+      if (!isCurrent()) return;
       const turn = completedCodexThreadTurnFromRead(
         response,
         active.cwd,
@@ -8649,10 +8832,14 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
-  private async refreshGoal(threadId: string): Promise<ChatGoalResponse> {
+  private async refreshGoal(
+    threadId: string,
+    isCurrent = () => true,
+  ): Promise<ChatGoalResponse> {
     const response = chatGoalResponseSchema.parse(
       await this.request("thread/goal/get", { threadId }),
     );
+    if (!isCurrent()) return response;
     if (response.goal) {
       this.#goals.set(threadId, response.goal);
     } else {
@@ -8669,13 +8856,19 @@ export class CodexAppServer implements CodexRuntime {
     observedAtMs = Date.now(),
     diagnosticId: string | null = null,
   ): Promise<void> {
+    const isCurrent = this.turnFinalizationCurrent(active, turnId);
+    if (!isCurrent()) return;
+    const lifetime = this.#rootExecutionsByActive.get(active);
+    if (lifetime) this.abortComputerUseExecution(lifetime, turnId);
     try {
       if (active.timeout) {
         clearTimeout(active.timeout);
         active.timeout = null;
       }
       this.clearInteractionsForTurn(active, error.message);
-      active.diffChanges = await workspaceChanges(active);
+      const changes = await workspaceChanges(active);
+      if (!isCurrent()) return;
+      active.diffChanges = changes;
       emitFileActivity(
         active,
         turnId,
@@ -8688,7 +8881,8 @@ export class CodexAppServer implements CodexRuntime {
           null,
         ),
       );
-      await this.reconcileSubagentExecution(active, observedAtMs);
+      await this.reconcileSubagentExecution(active, observedAtMs, isCurrent);
+      if (!isCurrent()) return;
       const execution = this.#rootExecutionsByActive.get(active);
       if (execution) {
         this.settleDescendantsAtRootBoundary(
@@ -8699,7 +8893,8 @@ export class CodexAppServer implements CodexRuntime {
         );
       }
     } finally {
-      this.releaseActiveTurn(active);
+      if (!isCurrent()) return;
+      if (!this.releaseActiveTurn(active, turnId)) return;
       clearTurnInspectionTelemetry(active);
       workerLogger.event("error", "Codex turn failed", {
         event: "codex.turn.lifecycle",
@@ -9076,6 +9271,8 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private handleExit(error: Error): void {
+    for (const execution of this.#rootExecutionsByActive.values())
+      this.abortComputerUseExecution(execution);
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timeout);
       pending.reject(error);
