@@ -262,6 +262,23 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           ]),
         },
       });
+      // The cursor is protected in the same client -> server -> worker route.
+      const page = await first.operation(lease, {
+        operation: "targets.list",
+        after: "fake-monitor",
+      });
+      expect(page.content).toMatchObject({
+        status: "ok",
+        data: { targets: [{ id: "fake-window" }] },
+      });
+      const end = await first.operation(lease, {
+        operation: "targets.list",
+        after: "fake-window",
+      });
+      expect(end.content).toMatchObject({
+        status: "ok",
+        data: { targets: [] },
+      });
       const target = { targetId: "fake-window", targetGeneration: 1 };
       const opened = session(
         await first.operation(lease, { operation: "session.open", ...target }),

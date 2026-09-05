@@ -207,6 +207,149 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function pagedFixture(pageCount = 3) {
+  const f = fixture();
+  const original = f.operation.getMockImplementation()!;
+  const pageId = (index: number) =>
+    index === 0 ? previewTarget.id : `page-${String(index).padStart(3, "0")}`;
+  f.operation.mockImplementation(async (lease, action) => {
+    if (action.operation !== "targets.list") return original(lease, action);
+    const index =
+      action.after === undefined
+        ? 0
+        : action.after === previewTarget.id
+          ? 1
+          : Number(action.after.slice(5)) + 1;
+    return {
+      content: {
+        status: "ok",
+        operation: "targets.list",
+        chunkCount: 0,
+        data: {
+          targets: [{ ...previewTarget, id: pageId(index) }],
+          ...(index + 1 < pageCount
+            ? { nextCursor: pageId(index), truncated: true }
+            : {}),
+        },
+      },
+      bytes: null,
+    } as Awaited<ReturnType<ComputerUseClient["operation"]>>;
+  });
+  return f;
+}
+
+describe("preview target pagination", () => {
+  it("requests next and previous cursors, refreshes current page, and preserves attachment and pixels", async () => {
+    const { controller, operation, images } = pagedFixture();
+    await controller.connect();
+    await controller.selectTarget(previewTarget);
+    const session = controller.getSnapshot().session;
+    const observation = controller.getSnapshot().observation;
+    await controller.nextTargets();
+    expect(controller.getSnapshot().targets.map((t) => t.id)).toEqual([
+      "page-001",
+    ]);
+    expect(controller.getSnapshot().targetPage).toEqual({
+      after: previewTarget.id,
+      nextCursor: "page-001",
+      previous: [null],
+    });
+    expect(controller.getSnapshot().session).toBe(session);
+    expect(controller.getSnapshot().observation).toBe(observation);
+    expect(images.revoke).not.toHaveBeenCalled();
+    await controller.refreshTargets();
+    expect(operation.mock.calls.at(-1)?.[1]).toEqual({
+      operation: "targets.list",
+      after: previewTarget.id,
+    });
+    await controller.nextTargets();
+    expect(controller.getSnapshot().targetPage.nextCursor).toBeNull();
+    const calls = operation.mock.calls.length;
+    await controller.nextTargets();
+    expect(operation).toHaveBeenCalledTimes(calls);
+    await controller.previousTargets();
+    expect(operation.mock.calls.at(-1)?.[1]).toEqual({
+      operation: "targets.list",
+      after: previewTarget.id,
+    });
+    await controller.previousTargets();
+    expect(operation.mock.calls.at(-1)?.[1]).toEqual({
+      operation: "targets.list",
+    });
+    expect(controller.getSnapshot().targetPage.previous).toEqual([]);
+  });
+  it("bounds back history to 32 cursors and keeps First page reachable without retaining old target lists", async () => {
+    const { controller } = pagedFixture(40);
+    await controller.connect();
+    for (let i = 0; i < 36; i++) await controller.nextTargets();
+    expect(controller.getSnapshot().targets).toHaveLength(1);
+    expect(controller.getSnapshot().targetPage.previous).toHaveLength(32);
+    await controller.firstTargets();
+    expect(controller.getSnapshot().targets[0]?.id).toBe(previewTarget.id);
+    expect(controller.getSnapshot().targetPage.previous).toEqual([]);
+    expect(controller.getSnapshot().targetPage.after).toBeNull();
+  });
+  it.each(["stop", "mode", "encryption", "dispose"] as const)(
+    "discards a late page after %s",
+    async (boundary) => {
+      const { controller, operation, client } = pagedFixture();
+      await controller.connect();
+      const pending =
+        deferred<Awaited<ReturnType<ComputerUseClient["operation"]>>>();
+      operation.mockImplementationOnce(() => pending.promise);
+      const page = controller.nextTargets();
+      const stopResult = deferred<void>();
+      let stopping: Promise<void> | undefined;
+      if (boundary === "stop") {
+        vi.mocked(client.stop).mockImplementationOnce(() => stopResult.promise);
+        stopping = controller.stop();
+        expect(client.stop).toHaveBeenCalledOnce();
+        expect(controller.getSnapshot().stopping).toBe(true);
+      } else if (boundary === "mode") controller.setMode("agent");
+      else if (boundary === "encryption") controller.encryptionUnavailable();
+      else controller.dispose();
+      pending.resolve({
+        content: {
+          status: "ok",
+          operation: "targets.list",
+          data: {
+            targets: [{ ...previewTarget, id: "page-001" }],
+            nextCursor: "page-001",
+            truncated: true,
+          },
+          chunkCount: 0,
+        },
+        bytes: null,
+      });
+      await page;
+      expect(controller.getSnapshot().targets).toEqual([]);
+      expect(controller.getSnapshot().targetPage).toEqual({
+        after: null,
+        nextCursor: null,
+        previous: [],
+      });
+      if (stopping) {
+        expect(controller.getSnapshot().stopping).toBe(true);
+        stopResult.resolve();
+        await stopping;
+        expect(controller.getSnapshot().phase).toBe("stopped");
+      }
+    },
+  );
+  it("keeps current page and navigation on a failed page request", async () => {
+    const { controller, operation } = pagedFixture();
+    await controller.connect();
+    const before = controller.getSnapshot();
+    operation.mockRejectedValueOnce(new Error("Native inventory unavailable"));
+    await controller.nextTargets();
+    expect(controller.getSnapshot().targets).toBe(before.targets);
+    expect(controller.getSnapshot().targetPage).toBe(before.targetPage);
+    expect(controller.getSnapshot().error?.message).toBe(
+      "Native inventory unavailable",
+    );
+  });
+});
+
 describe("ComputerUsePreviewController", () => {
   it.each([
     "target-not-found",

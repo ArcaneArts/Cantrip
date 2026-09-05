@@ -54,12 +54,21 @@ struct TargetReference {
 #[serde(tag = "operation", rename_all = "camelCase", deny_unknown_fields)]
 enum HostAction {
     State {},
-    Targets {},
-    Attach { target: TargetReference },
+    Targets {
+        #[serde(default, deserialize_with = "crate::inventory::deserialize_cursor")]
+        after: Option<String>,
+    },
+    Attach {
+        target: TargetReference,
+    },
     Snapshot {},
     Cursor {},
-    ConfigureCursor { appearance: CursorAppearance },
-    MoveCursor { point: Point },
+    ConfigureCursor {
+        appearance: CursorAppearance,
+    },
+    MoveCursor {
+        point: Point,
+    },
     Detach {},
 }
 
@@ -69,6 +78,7 @@ fn validate_action(source: &str) -> Result<Value> {
     }
     let action: HostAction = serde_json::from_str(source).map_err(|_| script_error())?;
     match action {
+        HostAction::Targets { after: Some(after) } => validate_id(&after)?,
         HostAction::Attach { target } => {
             validate_id(&target.target_id)?;
             if !(1..=MAX_SEQUENCE).contains(&target.target_generation) {
@@ -106,7 +116,12 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
   const call = action => host(stringify(action));
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
     getState: () => call({operation:'state'}),
-    targets: () => call({operation:'targets'}),
+    targets: (options = {}) => {
+      if (options === null || typeof options !== 'object' || Array.isArray(options) ||
+          Object.keys(options).some(key => key !== 'after') ||
+          ('after' in options && typeof options.after !== 'string')) throw new Error('Invalid target page options');
+      return call({operation:'targets', ...options});
+    },
     attach: target => call({operation:'attach', target}),
     snapshot: () => call({operation:'snapshot'}),
     cursor: () => call({operation:'cursor'}),

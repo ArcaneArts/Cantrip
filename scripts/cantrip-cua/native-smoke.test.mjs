@@ -230,6 +230,7 @@ function mockNative({
   captureClosedWindow = false,
   mutateSnapshot,
   cleanupError,
+  mutateInventory,
 } = {}) {
   let windowId = 100,
     generation = 1,
@@ -276,8 +277,14 @@ function mockNative({
             cursorAppearanceVersion: 1,
             ...capabilityOverride,
           });
-        case "targets.list":
-          return result({ targets: [target()] });
+        case "targets.list": {
+          const inventory = {
+            targets: targetClosed ? [] : [target()],
+            truncated: false,
+          };
+          mutateInventory?.(inventory, operation);
+          return result(inventory);
+        }
         case "target.attach":
           session = {
             binding: operation.binding,
@@ -435,7 +442,7 @@ test("fixture smoke covers occlusion, geometry changes, stale close, recreate, c
   assert.equal(
     mock.requests.filter(({ operation }) => operation === "targets.list")
       .length,
-    2,
+    3,
   );
   assert.equal(
     mock.requests.filter(({ operation }) => operation === "target.attach")
@@ -581,7 +588,8 @@ test(
     timeout: 70_000,
   },
   async () => {
-    const fixture = await launchNativeFixture();
+    const fixture = await launchNativeFixture({ lifetimeMs: 300_000 });
+    assert.equal(fixture.initial.lifetimeMs, 300_000);
     const assertCommitted = (state) => {
       assert.deepEqual(state.windowServerBounds, {
         x: state.x,
@@ -652,5 +660,267 @@ test("native QA progress contains only bounded scenario and phase metadata", asy
   assert.doesNotMatch(
     JSON.stringify(events),
     /PRIVATE|macos-window|4242|payload|title/,
+  );
+});
+
+test("fixture lifetime rejects invalid bounds before compiling or opening windows", async () => {
+  for (const lifetimeMs of [0, -1, 300001, 1.5, NaN, Infinity, "300000", null])
+    await assert.rejects(
+      launchNativeFixture({ lifetimeMs }),
+      rejectsCode("invalid-fixture-lifetime"),
+    );
+  for (const lifetimeMs of [undefined, 1, 20000, 300000])
+    await assert.rejects(
+      launchNativeFixture({ lifetimeMs, signal: AbortSignal.abort() }),
+      rejectsCode("cancelled"),
+    );
+});
+
+test("fixture discovery reports only bounded owned identity matching and never captures a substitute", async () => {
+  for (const mode of [
+    "missing",
+    "wrong-pid",
+    "invalid-generation",
+    "matched",
+  ]) {
+    const events = [];
+    const mock = mockNative({
+      fixture: true,
+      mutateInventory(inventory) {
+        inventory.truncated = true;
+        if (mode === "missing") inventory.targets = [];
+        if (mode === "wrong-pid" && inventory.targets[0])
+          inventory.targets[0].processId = 9000;
+        if (mode === "invalid-generation" && inventory.targets[0])
+          inventory.targets[0].generation = 0;
+        inventory.targets.push({
+          id: "PRIVATE UNRELATED ID",
+          title: "PRIVATE UNRELATED TITLE",
+          processId: 98765,
+          kind: "window",
+          generation: 123,
+        });
+      },
+    });
+    const run = smokeNativeCantripCua(
+      binary,
+      { fixture: true },
+      { ...mock.dependencies, onDiscovery: (event) => events.push(event) },
+    );
+    if (mode === "matched") await run;
+    else await assert.rejects(run, rejectsCode("requested-target-unavailable"));
+    assert.deepEqual(events[0], {
+      event: "native-cua-fixture-discovery",
+      page: 1,
+      totalCount: mode === "missing" ? 1 : 2,
+      hasNext: false,
+      inventoryCount: mode === "missing" ? 1 : 2,
+      truncated: true,
+      requestedTargetId: "macos-window-100",
+      idMatched: mode !== "missing",
+      processMatched: mode !== "missing" && mode !== "wrong-pid",
+      windowMatched: mode !== "missing",
+      generationValid: mode === "matched",
+      generation: mode === "matched" ? 1 : null,
+    });
+    assert.equal(events.length, mode === "matched" ? 3 : 1);
+    assert.doesNotMatch(
+      JSON.stringify(events),
+      /PRIVATE|9000|98765|title|application/,
+    );
+    assert.equal(
+      mock.requests.filter((request) => request.operation === "targets.list")
+        .length,
+      mode === "matched" ? 3 : 1,
+    );
+    assert.equal(
+      mock.requests.some(
+        (request) => request.operation === "observation.snapshot",
+      ),
+      mode === "matched",
+    );
+  }
+});
+
+test(
+  "long-lived actual Swift fixture still cancels and disposes its owned windows",
+  {
+    skip: process.env.CANTRIP_CUA_NATIVE_FIXTURE_TEST !== "1",
+    timeout: 70_000,
+  },
+  async () => {
+    const controller = new AbortController();
+    const fixture = await launchNativeFixture({
+      lifetimeMs: 300_000,
+      signal: controller.signal,
+    });
+    try {
+      assert.equal(fixture.initial.lifetimeMs, 300_000);
+      controller.abort();
+      assert.throws(
+        () => fixture.command("state"),
+        rejectsCode("fixture-command-unavailable"),
+      );
+    } finally {
+      const outcome = await fixture.dispose();
+      assert.ok(outcome.signal === "SIGTERM" || outcome.code === 0);
+    }
+  },
+);
+
+test("fixture discovery traverses pages for its target, closed handle and replacement", async () => {
+  const events = [];
+  const mock = mockNative({
+    fixture: true,
+    mutateInventory(inventory, request) {
+      if (!request.after) {
+        inventory.targets = [
+          {
+            id: "macos-window-001",
+            kind: "window",
+            processId: 9999,
+            generation: 1,
+          },
+        ];
+        inventory.nextCursor = "macos-window-001";
+      }
+    },
+  });
+  const summary = await smokeNativeCantripCua(
+    binary,
+    { fixture: true },
+    { ...mock.dependencies, onDiscovery: (event) => events.push(event) },
+  );
+  assert.equal(summary.snapshots.length, 6);
+  assert.deepEqual(
+    mock.requests
+      .filter((request) => request.operation === "targets.list")
+      .map((request) => request.after ?? null),
+    [
+      null,
+      "macos-window-001",
+      null,
+      "macos-window-001",
+      null,
+      "macos-window-001",
+    ],
+  );
+  assert.deepEqual(
+    events.map((event) => [event.page, event.idMatched, event.hasNext]),
+    [
+      [1, false, true],
+      [2, true, false],
+      [1, false, true],
+      [2, false, false],
+      [1, false, true],
+      [2, true, false],
+    ],
+  );
+  assert.doesNotMatch(JSON.stringify(events), /macos-window-001|9999/);
+});
+
+test("a retired fixture handle on a later page still fails strict close verification", async () => {
+  let retired;
+  const mock = mockNative({
+    fixture: true,
+    mutateInventory(inventory, request) {
+      retired ??= inventory.targets[0];
+      if (!request.after) {
+        inventory.targets = [
+          {
+            id: "macos-window-001",
+            kind: "window",
+            processId: 9999,
+            generation: 1,
+          },
+        ];
+        inventory.nextCursor = "macos-window-001";
+      } else if (!inventory.targets.length) inventory.targets = [retired];
+    },
+  });
+  await assert.rejects(
+    smokeNativeCantripCua(binary, { fixture: true }, mock.dependencies),
+    rejectsCode("closed-window-still-listed"),
+  );
+  assert.equal(
+    mock.requests.filter((request) => request.operation === "target.attach")
+      .length,
+    1,
+  );
+  assert.equal(mock.counters.fixtureDisposed, 1);
+});
+
+test("inventory traversal rejects stalled or malformed cursors and enforces page and row bounds", async () => {
+  for (const [mode, expectedCode, expectedPages] of [
+    ["stalled", "invalid-inventory-cursor", 2],
+    ["wrong-last", "invalid-inventory-cursor", 1],
+    ["empty", "invalid-inventory-cursor", 1],
+    ["pages", "inventory-pagination-limit", 64],
+    ["rows", "inventory-pagination-limit", 17],
+  ]) {
+    let page = 0;
+    const mock = mockNative({
+      fixture: true,
+      mutateInventory(inventory) {
+        page++;
+        inventory.targets = Array.from(
+          { length: mode === "rows" ? 256 : 1 },
+          (_, index) => ({
+            id: `macos-window-${String((mode === "stalled" ? 0 : page) * 256 + index).padStart(6, "0")}`,
+            processId: 9999,
+            kind: "window",
+            generation: 1,
+          }),
+        );
+        inventory.nextCursor = inventory.targets.at(-1).id;
+        if (mode === "wrong-last") inventory.nextCursor = "macos-window-999999";
+        if (mode === "empty") inventory.targets = [];
+      },
+    });
+    await assert.rejects(
+      smokeNativeCantripCua(binary, { fixture: true }, mock.dependencies),
+      rejectsCode(expectedCode),
+    );
+    assert.equal(page, expectedPages);
+    assert.equal(
+      mock.requests.some((request) => request.operation === "target.attach"),
+      false,
+    );
+    assert.equal(mock.counters.fixtureDisposed, 1);
+  }
+});
+
+test("page native failures propagate without retries and first-page monitor selection stops immediately", async () => {
+  let page = 0;
+  const mock = mockNative({
+    fixture: true,
+    mutateInventory(inventory) {
+      if (++page === 2) throw new CuaOperationError("permission-denied");
+      inventory.targets = [
+        {
+          id: "macos-window-001",
+          kind: "window",
+          processId: 9999,
+          generation: 1,
+        },
+      ];
+      inventory.nextCursor = "macos-window-001";
+    },
+  });
+  await assert.rejects(
+    smokeNativeCantripCua(binary, { fixture: true }, mock.dependencies),
+    rejectsCode("permission-denied"),
+  );
+  assert.equal(page, 2);
+  const monitor = mockNative({
+    mutateInventory(inventory) {
+      inventory.nextCursor = inventory.targets.at(-1).id;
+    },
+  });
+  await smokeNativeCantripCua(binary, {}, monitor.dependencies);
+  assert.equal(
+    monitor.requests.filter((request) => request.operation === "targets.list")
+      .length,
+    1,
   );
 });

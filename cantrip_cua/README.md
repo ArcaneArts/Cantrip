@@ -125,6 +125,15 @@ pnpm cua:smoke:native --binary /absolute/stable/cantrip-cua --fixture
 pnpm cua:smoke:native --binary /absolute/stable/cantrip-cua --fixture --output /absolute/new-fixture.png
 ```
 
+Fixture discovery follows bounded pages (at most 64 pages and 4,096 returned
+targets), reports only page counts and fixture-owned matching information, and
+never retries a failed capture. The fixture launcher defaults to 20 seconds;
+interactive product QA can explicitly use
+`launchNativeFixture({lifetimeMs: 300_000})` from
+`scripts/cantrip-cua/native-smoke.mjs`. Both its JavaScript owner and independent
+Swift watchdog enforce that five-minute maximum; EOF, cancellation and `dispose()`
+close only the owned fixture.
+
 Fixture mode briefly opens its own patterned window and covering window. It
 checks foreground, partially/fully covered, moved, resized, closed and recreated
 windows; decoded corner colors verify orientation and channel order. It exercises
@@ -461,7 +470,7 @@ batch after its owner vanished.
 | Operation              | Fields beyond `operation`                                       |
 | ---------------------- | --------------------------------------------------------------- |
 | `capabilities.get`     | None                                                            |
-| `targets.list`         | None                                                            |
+| `targets.list`         | Optional `after` target-ID cursor                               |
 | `target.attach`        | `binding`, `targetId`, `targetGeneration`                       |
 | `target.detach`        | `binding`                                                       |
 | `observation.snapshot` | `binding`, `targetId`, `targetGeneration`                       |
@@ -504,6 +513,14 @@ The tools are `js` (arguments: `{ "script": "..." }`) and `js_reset`
 ```json
 { "script": "await cua.targets()" }
 ```
+
+The result is a bounded page: `{targets, truncated?, nextCursor?}`. If it has
+`nextCursor`, request the next page with `await cua.targets({after: page.nextCursor})`.
+Pages are ordered by target ID; native windows can change between requests.
+`truncated` without `nextCursor` means some native metadata could not be returned,
+not that another page exists. Inspect pages separately to keep JS results bounded.
+The preview offers the same pagination and retains its attached target when you
+browse a different page.
 
 Then pass an exact returned target's ID and generation to `cua.attach`, using
 the API below, and call `cua.snapshot()`. The result contains an actual MCP PNG

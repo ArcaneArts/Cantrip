@@ -30,6 +30,11 @@ export interface PreviewState {
   capabilities: CuaCapabilities | null;
   targets: CuaTarget[];
   targetsTruncated: boolean;
+  targetPage: {
+    after: string | null;
+    nextCursor: string | null;
+    previous: (string | null)[];
+  };
   session: CuaSession | null;
   observation: {
     url: string;
@@ -51,6 +56,7 @@ const initial = (): PreviewState => ({
   capabilities: null,
   targets: [],
   targetsTruncated: false,
+  targetPage: { after: null, nextCursor: null, previous: [] },
   session: null,
   observation: null,
   error: null,
@@ -126,7 +132,14 @@ export class ComputerUsePreviewController {
     signal.throwIfAborted();
     if (this.disposed) throw new Error("Computer use preview is closed.");
   }
-  private async action(action: ComputerUseAction, signal: AbortSignal) {
+  private async action(
+    action: ComputerUseAction,
+    signal: AbortSignal,
+    targetPage: Omit<PreviewState["targetPage"], "nextCursor"> = {
+      after: null,
+      previous: [],
+    },
+  ) {
     this.assertActive(signal);
     const lease = this.state.lease;
     if (!lease) throw new Error("Connect the computer use preview first.");
@@ -203,6 +216,10 @@ export class ComputerUsePreviewController {
         this.update({
           targets: inventory.targets,
           targetsTruncated: inventory.truncated ?? false,
+          targetPage: {
+            ...targetPage,
+            nextCursor: inventory.nextCursor ?? null,
+          },
         });
       } else if (action.operation === "session.close") {
         this.clearImage();
@@ -244,6 +261,7 @@ export class ComputerUsePreviewController {
       agentSource: null,
       targets: [],
       targetsTruncated: false,
+      targetPage: { after: null, nextCursor: null, previous: [] },
       capabilities: null,
       error: null,
     });
@@ -284,8 +302,45 @@ export class ComputerUsePreviewController {
   private manual(work: (signal: AbortSignal) => Promise<void>) {
     return this.state.mode === "manual" ? this.run(work) : Promise.resolve();
   }
+  private loadTargetPage(
+    signal: AbortSignal,
+    page: Omit<PreviewState["targetPage"], "nextCursor">,
+  ) {
+    return this.action(
+      {
+        operation: "targets.list",
+        ...(page.after === null ? {} : { after: page.after }),
+      },
+      signal,
+      page,
+    );
+  }
   refreshTargets = () =>
-    this.manual((signal) => this.action({ operation: "targets.list" }, signal));
+    this.manual((signal) => this.loadTargetPage(signal, this.state.targetPage));
+  firstTargets = () =>
+    this.manual((signal) =>
+      this.loadTargetPage(signal, { after: null, previous: [] }),
+    );
+  nextTargets = () =>
+    this.manual(async (signal) => {
+      const page = this.state.targetPage;
+      if (!page.nextCursor) return;
+      await this.loadTargetPage(signal, {
+        after: page.nextCursor,
+        // Retain cursor strings only, never whole inventories. First page stays
+        // reachable after older entries fall out of the bounded back history.
+        previous: [...page.previous, page.after].slice(-32),
+      });
+    });
+  previousTargets = () =>
+    this.manual(async (signal) => {
+      const page = this.state.targetPage;
+      if (!page.previous.length) return;
+      await this.loadTargetPage(signal, {
+        after: page.previous.at(-1)!,
+        previous: page.previous.slice(0, -1),
+      });
+    });
   selectTarget = (target: CuaTarget) =>
     this.manual(async (signal) => {
       this.clearImage();
@@ -367,6 +422,7 @@ export class ComputerUsePreviewController {
       sourceId: null,
       agentSource: null,
       targetsTruncated: false,
+      targetPage: { after: null, nextCursor: null, previous: [] },
       error: null,
     });
     if (!lease) return;
@@ -408,6 +464,7 @@ export class ComputerUsePreviewController {
       sourceId: null,
       agentSource: null,
       targetsTruncated: false,
+      targetPage: { after: null, nextCursor: null, previous: [] },
       error: {
         code: "encryption-unavailable",
         message:

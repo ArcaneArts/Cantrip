@@ -91,17 +91,30 @@ export const cuaCapabilitiesSchema = z.strictObject({
     .min(1)
     .max(CUA_CHUNK_BYTES * CUA_MAX_CHUNKS),
 });
-export const cuaInventorySchema = z.strictObject({
-  // Older/fake helpers omit this; a bounded native list must disclose omission.
-  truncated: z.boolean().optional(),
-  targets: z
-    .array(cuaTargetSchema)
-    .max(256)
-    .refine(
-      (targets) =>
-        new Set(targets.map((target) => target.id)).size === targets.length,
-    ),
-});
+export const cuaInventorySchema = z
+  .strictObject({
+    // Older/fake helpers omit this; a bounded native list must disclose omission.
+    truncated: z.boolean().optional(),
+    nextCursor: cuaIdSchema.optional(),
+    targets: z
+      .array(cuaTargetSchema)
+      .max(256)
+      .refine(
+        (targets) =>
+          new Set(targets.map((target) => target.id)).size === targets.length,
+      ),
+  })
+  .refine(
+    (page) =>
+      page.nextCursor === undefined ||
+      (page.truncated === true &&
+        page.targets.length > 0 &&
+        page.nextCursor === page.targets.at(-1)?.id &&
+        page.targets.every(
+          (target, index) =>
+            index === 0 || page.targets[index - 1]!.id < target.id,
+        )),
+  );
 export const cuaSessionResultSchema = z.strictObject({
   session: cuaSessionSchema,
 });
@@ -204,7 +217,10 @@ export const computerUseActionSchema = z.discriminatedUnion("operation", [
     operation: z.literal("agent.observation.get"),
     sourceId: z.string().uuid(),
   }),
-  z.strictObject({ operation: z.literal("targets.list") }),
+  z.strictObject({
+    operation: z.literal("targets.list"),
+    after: cuaIdSchema.optional(),
+  }),
   z.strictObject({ operation: z.literal("session.open"), ...targetFields }),
   z.strictObject({ operation: z.literal("session.state"), ...sessionFields }),
   z.strictObject({

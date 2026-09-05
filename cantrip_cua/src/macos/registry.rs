@@ -72,9 +72,12 @@ impl Registry {
         Ok((targets, inventory.truncated))
     }
     pub(super) fn identity(&self, target: &Target) -> Result<Identity> {
+        self.identity_for(&target.id, target.generation)
+    }
+    pub(super) fn identity_for(&self, id: &str, generation: u64) -> Result<Identity> {
         self.entries
-            .get(&target.id)
-            .filter(|(_, generation)| *generation == target.generation)
+            .get(id)
+            .filter(|(_, actual)| *actual == generation)
             .map(|(identity, _)| identity.clone())
             .ok_or_else(|| {
                 CuaError::new(

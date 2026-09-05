@@ -207,7 +207,14 @@ async function decodeFixture(payload) {
 }
 
 /** Only explicit fixture mode compiles/launches this owned AppKit app. */
-export async function launchNativeFixture({ signal } = {}) {
+export async function launchNativeFixture({
+  signal,
+  lifetimeMs = 20_000,
+} = {}) {
+  requireResult(
+    Number.isInteger(lifetimeMs) && lifetimeMs >= 1 && lifetimeMs <= 300_000,
+    "invalid-fixture-lifetime",
+  );
   const directory = await mkdtemp(
     path.join(tmpdir(), "cantrip-cua-native-fixture-"),
   );
@@ -229,7 +236,9 @@ export async function launchNativeFixture({ signal } = {}) {
     );
     requireResult(!build.error && build.status === 0, "fixture-build-failed");
     requireResult(!signal?.aborted, "cancelled");
-    const child = spawn(executable, [], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(executable, ["--lifetime-ms", String(lifetimeMs)], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     let requestId = 0,
       buffered = "",
       stderrBytes = 0,
@@ -305,7 +314,7 @@ export async function launchNativeFixture({ signal } = {}) {
     const abort = () => fail();
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) fail();
-    const timeout = setTimeout(fail, 20_000);
+    const timeout = setTimeout(fail, lifetimeMs);
     async function dispose() {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", abort);
@@ -404,38 +413,86 @@ export async function smokeNativeCantripCua(
         capabilities.cursorAppearanceVersion === 1,
       "native-capture-unavailable",
     );
-    const list = async () => {
-      progress("inventory");
-      const inventory = noPayload(
-        await child.request({ operation: "targets.list" }),
-      );
-      requireResult(
-        Array.isArray(inventory?.targets) && inventory.targets.length <= 256,
-        "invalid-inventory",
-      );
-      return inventory.targets;
+    const findTarget = async (state) => {
+      let after,
+        total = 0;
+      for (let page = 1; page <= 64; page++) {
+        progress("inventory");
+        const inventory = noPayload(
+          await child.request({
+            operation: "targets.list",
+            ...(after ? { after } : {}),
+          }),
+        );
+        const { targets, truncated, nextCursor } = inventory ?? {};
+        requireResult(
+          Array.isArray(targets) && targets.length <= 256,
+          "invalid-inventory",
+        );
+        total += targets.length;
+        requireResult(total <= 4096, "inventory-pagination-limit");
+        const hasNext = nextCursor !== undefined && nextCursor !== null;
+        if (hasNext)
+          requireResult(
+            typeof nextCursor === "string" &&
+              Buffer.byteLength(nextCursor) <= 256 &&
+              nextCursor.length > 0 &&
+              targets.length > 0 &&
+              nextCursor === targets.at(-1)?.id &&
+              (!after || nextCursor > after),
+            "invalid-inventory-cursor",
+          );
+        if (state) {
+          const requestedTargetId = `macos-window-${state.windowId}`;
+          const candidate = targets.find(
+            (target) => target.id === requestedTargetId,
+          );
+          const processMatched = candidate?.processId === state.processId;
+          const generationValid =
+            processMatched &&
+            Number.isSafeInteger(candidate.generation) &&
+            candidate.generation > 0;
+          dependencies.onDiscovery?.({
+            event: "native-cua-fixture-discovery",
+            page,
+            inventoryCount: targets.length,
+            totalCount: total,
+            hasNext,
+            truncated: typeof truncated === "boolean" ? truncated : null,
+            requestedTargetId,
+            idMatched: Boolean(candidate),
+            processMatched,
+            windowMatched: candidate?.kind === "window",
+            generationValid,
+            generation: generationValid ? candidate.generation : null,
+          });
+        }
+        const selected = state
+          ? targets.find(
+              (target) =>
+                target.id === `macos-window-${state.windowId}` &&
+                target.processId === state.processId &&
+                target.kind === "window",
+            )
+          : options.targetId
+            ? targets.find((target) => target.id === options.targetId)
+            : targets.find((target) => target.kind === "monitor");
+        if (selected) {
+          requireResult(
+            typeof selected.id === "string" &&
+              Number.isSafeInteger(selected.generation) &&
+              selected.generation > 0,
+            "requested-target-unavailable",
+          );
+          return selected;
+        }
+        if (!hasNext) return null;
+        after = nextCursor;
+      }
+      throw new NativeSmokeError("inventory-pagination-limit");
     };
-    const choose = (targets, state) => {
-      const selected = state
-        ? targets.find(
-            (target) =>
-              target.id === `macos-window-${state.windowId}` &&
-              target.processId === state.processId &&
-              target.kind === "window",
-          )
-        : options.targetId
-          ? targets.find((target) => target.id === options.targetId)
-          : targets.find((target) => target.kind === "monitor");
-      requireResult(
-        selected &&
-          typeof selected.id === "string" &&
-          Number.isSafeInteger(selected.generation) &&
-          selected.generation > 0,
-        "requested-target-unavailable",
-      );
-      return selected;
-    };
-    let target = choose(await list(), fixture?.initial);
+    let target = await findTarget(fixture?.initial);
+    requireResult(target, "requested-target-unavailable");
     const attach = async () => {
       const result = noPayload(
         await child.request({
@@ -533,6 +590,10 @@ export async function smokeNativeCantripCua(
         await snapshot(command, await fixture.command(command));
       progress("fixture-command", "close");
       await fixture.command("close");
+      requireResult(
+        !(await findTarget(fixture.initial)),
+        "closed-window-still-listed",
+      );
       let rejected = false;
       try {
         const unexpected = await child.request({
@@ -553,7 +614,8 @@ export async function smokeNativeCantripCua(
       requireResult(rejected, "closed-window-was-captured");
       progress("fixture-command", "recreate");
       const state = await fixture.command("recreate");
-      const replacement = choose(await list(), state);
+      const replacement = await findTarget(state);
+      requireResult(replacement, "requested-target-unavailable");
       requireResult(
         replacement.id !== target.id ||
           replacement.generation !== target.generation,
@@ -618,6 +680,7 @@ if (
     else {
       const summary = await smokeNativeCantripCua(options.binary, options, {
         onProgress: (event) => console.log(`QA_EVT ${JSON.stringify(event)}`),
+        onDiscovery: (event) => console.log(`QA_EVT ${JSON.stringify(event)}`),
       });
       console.log(
         `QA_EVT ${JSON.stringify({ event: "native-cua-smoke", status: "pass", ...summary })}`,

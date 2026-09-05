@@ -24,6 +24,7 @@ final class PatternView: NSView {
 
 @MainActor
 final class NativeFixture {
+  private let lifetimeMs: Int
   private var target: NSWindow?
   private let cover: NSWindow
   private var frame: NSRect
@@ -31,7 +32,8 @@ final class NativeFixture {
   private var lastRequest = 0
   private var retiredWindowId: Int?
 
-  init() {
+  init(lifetimeMs: Int) {
+    self.lifetimeMs = lifetimeMs
     let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
     frame = NSRect(x: visible.minX + 80, y: visible.minY + 80, width: 320, height: 240)
     cover = Self.window(frame: frame)
@@ -128,6 +130,7 @@ final class NativeFixture {
     let primaryTop = NSScreen.screens.first?.frame.maxY ?? 0
     let body: [String: Any] = [
       "version": 1, "requestId": requestId, "status": "ok", "state": state,
+      "lifetimeMs": lifetimeMs,
       "windowId": target.map { $0.windowNumber as Any } ?? NSNull(),
       "coverWindowId": cover.windowNumber, "processId": ProcessInfo.processInfo.processIdentifier,
       "x": actualFrame.minX, "y": primaryTop - actualFrame.maxY,
@@ -178,15 +181,24 @@ final class NativeFixture {
 @main
 struct FixtureMain {
   @MainActor static func main() {
+    let arguments = CommandLine.arguments
+    let lifetimeMs: Int
+    if arguments.count == 1 {
+      lifetimeMs = 20_000
+    } else {
+      guard arguments.count == 3, arguments[1] == "--lifetime-ms",
+        let requested = Int(arguments[2]), (1...300_000).contains(requested) else { exit(2) }
+      lifetimeMs = requested
+    }
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
     app.finishLaunching()
     // Initialization runs before AppKit's event-loop autorelease pools exist.
     // Drain temporary orderedWindows arrays so they cannot retain a closed
     // target for the entire fixture process lifetime.
-    let fixture = autoreleasepool { NativeFixture() }
+    let fixture = autoreleasepool { NativeFixture(lifetimeMs: lifetimeMs) }
     // Independent watchdog still ends a blocked AppKit main loop.
-    DispatchQueue.global().asyncAfter(deadline: .now() + 20) { exit(2) }
+    DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(lifetimeMs)) { exit(2) }
     DispatchQueue.global().async {
       var buffer = Data()
       var bytes = [UInt8](repeating: 0, count: 4096)

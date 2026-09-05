@@ -66,6 +66,7 @@ function fixture(patch: Partial<PreviewState> = {}) {
     capabilities: null,
     targets: [target],
     targetsTruncated: false,
+    targetPage: { after: null, nextCursor: null, previous: [] },
     session,
     observation: {
       url: "blob:fixture",
@@ -94,6 +95,9 @@ function fixture(patch: Partial<PreviewState> = {}) {
     refreshObservation: vi.fn(),
     stop: vi.fn(),
     refreshTargets: vi.fn(),
+    firstTargets: vi.fn(),
+    nextTargets: vi.fn(),
+    previousTargets: vi.fn(),
     selectTarget: vi.fn(),
     snapshot: vi.fn(),
     detach: vi.fn(),
@@ -112,6 +116,40 @@ function fixture(patch: Partial<PreviewState> = {}) {
 }
 
 describe("ComputerUsePreviewPanel", () => {
+  it("shows the attached target outside the page and offers bounded navigation without switching it", async () => {
+    const { props, controller, state } = fixture({
+      targets: [],
+      targetsTruncated: true,
+      targetPage: { after: "page-0", nextCursor: "page-1", previous: [null] },
+    });
+    const markup = renderToStaticMarkup(<ComputerUsePreviewPanel {...props} />);
+    expect(markup).toContain("Attached: Fake monitor (outside this page)");
+    expect(markup).toContain("More native targets are available");
+    expect(markup).toContain('aria-label="Target pages"');
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<ComputerUsePreviewPanel {...props} />);
+    });
+    const select = renderer.root.findByProps({
+      "aria-label": "Monitor or window",
+    });
+    expect(select.props.value).toBe(`${state.session!.target!.id}:1`);
+    for (const [label, method] of [
+      ["First page", "firstTargets"],
+      ["Previous page", "previousTargets"],
+      ["Next page", "nextTargets"],
+    ] as const) {
+      const button = renderer.root
+        .findAllByType("button")
+        .find((button) => button.props.children === label)!;
+      expect(button.props.disabled).toBe(false);
+      await act(async () => button.props.onClick());
+      expect(controller[method]).toHaveBeenCalledOnce();
+    }
+    expect(controller.selectTarget).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+  });
+
   it.each(["target-not-found", "stale-target"])(
     "offers explicit reselection for %s",
     (code) => {

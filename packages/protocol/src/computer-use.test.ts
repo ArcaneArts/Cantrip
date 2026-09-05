@@ -627,3 +627,42 @@ describe("completed agent observation contract", () => {
     ).toBe(true);
   });
 });
+
+describe("bounded inventory pages", () => {
+  it("accepts a continuation only at the end of a sorted nonempty truncated page", () => {
+    const page = {
+      targets: [
+        { ...target, id: "a" },
+        { ...target, id: "b" },
+      ],
+      truncated: true,
+      nextCursor: "b",
+    };
+    expect(cuaInventorySchema.parse(page)).toEqual(page);
+    for (const invalid of [
+      { ...page, targets: [] },
+      { ...page, truncated: false },
+      { ...page, nextCursor: "a" },
+      { ...page, targets: [...page.targets].reverse() },
+      { ...page, nextCursor: "x".repeat(257) },
+    ])
+      expect(cuaInventorySchema.safeParse(invalid).success).toBe(false);
+    expect(cuaInventorySchema.parse({ targets: [], truncated: true })).toEqual({
+      targets: [],
+      truncated: true,
+    });
+  });
+  it("keeps a continuation inside the protected action with ordinary bounded target identity validation", () => {
+    expect(
+      computerUseActionSchema.parse({
+        operation: "targets.list",
+        after: "macos-window-123",
+      }),
+    ).toEqual({ operation: "targets.list", after: "macos-window-123" });
+    for (const after of ["", "x".repeat(257), "bad\n", 42, null])
+      expect(
+        computerUseActionSchema.safeParse({ operation: "targets.list", after })
+          .success,
+      ).toBe(false);
+  });
+});

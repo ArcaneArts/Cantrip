@@ -6,6 +6,7 @@ import type { CantripCuaService } from "./service.js";
 import type { CuaTransport } from "./transport.js";
 import {
   cuaCursorAppearanceSchema,
+  cuaIdSchema,
   cuaPointSchema,
   cuaTargetReferenceSchema,
   type CuaBinding,
@@ -26,7 +27,10 @@ export const CUA_JAVASCRIPT_MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 /** Script arguments contain no session, account, worker, or execution authority. */
 export const cuaJavascriptActionSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("state") }),
-  z.strictObject({ operation: z.literal("targets") }),
+  z.strictObject({
+    operation: z.literal("targets"),
+    after: cuaIdSchema.optional(),
+  }),
   z.strictObject({
     operation: z.literal("attach"),
     target: cuaTargetReferenceSchema,
@@ -416,7 +420,7 @@ export class CuaJavascriptContexts {
   ): Promise<unknown> {
     const { scope } = context;
     if (action.operation === "targets")
-      return this.service.inventory(scope, signal);
+      return this.service.inventory(scope, signal, action.after);
     const state = () =>
       context.sessionId ? this.service.state(scope, context.sessionId) : null;
     if (action.operation === "state") return { session: state() };
