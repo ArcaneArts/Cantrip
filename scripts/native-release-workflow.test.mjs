@@ -6,11 +6,16 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("publishes native releases only when the release branch advances", async () => {
+async function readWorkflow() {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),
     "utf8",
   );
+  return workflow.replace(/\r\n/g, "\n");
+}
+
+test("publishes native releases only when the release branch advances", async () => {
+  const workflow = await readWorkflow();
   assert.match(workflow, /^on:\n {2}push:\n {4}branches:\n {6}- release$/mu);
   assert.doesNotMatch(workflow, /^\s*(?:pull_request|workflow_dispatch):/mu);
   assert.match(workflow, /blacksmith-6vcpu-macos-15/u);
@@ -18,10 +23,7 @@ test("publishes native releases only when the release branch advances", async ()
 });
 
 test("caches verified heavyweight runtimes and publishes the requested assets", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(
     workflow,
@@ -46,10 +48,7 @@ test("caches verified heavyweight runtimes and publishes the requested assets", 
 });
 
 test("smokes the packaged worker MCP on macOS and Windows before archiving", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
   const workerJob =
     workflow.match(/^ {2}worker:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
   assert.match(workerJob, /target: darwin-arm64/u);
@@ -69,10 +68,7 @@ test("smokes the packaged worker MCP on macOS and Windows before archiving", asy
 });
 
 test("builds mobile releases in parallel and gates publication on them", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(workflow, /^ {2}android:\n {4}name: Android signed release$/mu);
   assert.match(workflow, /^ {2}ios:\n {4}name: iOS TestFlight$/mu);
@@ -115,10 +111,7 @@ test("builds mobile releases in parallel and gates publication on them", async (
 });
 
 test("publishes signed Android artifacts and uploads iOS to TestFlight", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
   const androidBuild = await readFile(
     path.join(root, "cantrip_app", "android", "app", "build.gradle"),
     "utf8",
@@ -166,10 +159,7 @@ test("publishes signed Android artifacts and uploads iOS to TestFlight", async (
 });
 
 test("reuses matching iOS development and distribution identities", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(
     workflow,
@@ -187,10 +177,7 @@ test("reuses matching iOS development and distribution identities", async () => 
 });
 
 test("saves Codex before building Cantrip Code", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   const codexBuild = workflow.indexOf("- name: Build Codex runtime");
   const codexSave = workflow.indexOf("- name: Save verified Codex runtime");
@@ -203,10 +190,7 @@ test("saves Codex before building Cantrip Code", async () => {
 });
 
 test("installs the native libraries required by Windows Code modules", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(
     workflow,
@@ -217,10 +201,7 @@ test("installs the native libraries required by Windows Code modules", async () 
 });
 
 test("fails closed while signing and notarizing the macOS updater and DMG", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   const importer = await readFile(
     path.join(root, "scripts", "import-macos-developer-id.sh"),
@@ -255,10 +236,7 @@ test("fails closed while signing and notarizing the macOS updater and DMG", asyn
 });
 
 test("requires updater secrets and publishes the static manifest last", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   assert.match(
     workflow,
@@ -282,10 +260,7 @@ test("requires updater secrets and publishes the static manifest last", async ()
 });
 
 test("builds generated desktop dependencies before packaging installers", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github", "workflows", "native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
 
   const protocolBuild = workflow.indexOf(
     "- name: Build desktop workspace dependencies",
@@ -318,10 +293,7 @@ test("builds generated desktop dependencies before packaging installers", async 
 });
 
 test("signs the packaged macOS worker helper and verifies it before archive publication", async () => {
-  const workflow = await readFile(
-    path.join(root, ".github/workflows/native-release.yml"),
-    "utf8",
-  );
+  const workflow = await readWorkflow();
   const worker =
     workflow.match(/^ {2}worker:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
   const steps = [

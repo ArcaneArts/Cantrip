@@ -986,8 +986,10 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 10 — Standalone Darwin helper release signing
 
 - Branch: `codex/cua-10-worker-release-signing`, based on merged cycle 9
-  (`42c4f9c0c`). Implementation and verification are in progress; no PR or merge
-  is claimed yet.
+  (`42c4f9c0c`). Implementation commit: `f797d21c`.
+- PR: [#1752](https://github.com/ArcaneArts/Cantrip/pull/1752), open. CI and
+  merge observation are pending; local packaged-artifact signing verification
+  is complete, and no merge is claimed yet.
 - Implemented: the standalone Darwin worker job imports the shared Developer
   ID certificate, signs its final CUA executable before verification/archival,
   and checks its actual signature, stable identifier, Developer ID authority
@@ -997,11 +999,35 @@ is the authoritative merge record until the next ledger update.
 - Local verification: 83 signing, workflow, importer and CUA script tests pass;
   one explicit GUI test is skipped. Importer tests execute the actual Bash
   script with synthetic signing tools/credentials; they do not prove real CI
-  certificate availability. The real `pnpm package:worker --target darwin-arm64`
-  build is running; actual packaged signing and archive-extraction verification
-  are pending, not inferred from these tests. Bash syntax, formatting and diff
-  checks pass. `pnpm check` again stops at the unchanged server decomposition
-  budgets recorded in cycle 9; no later chained check is claimed.
+  certificate availability. Initial CI passed macOS, Linux and PostgreSQL but
+  exposed three Windows workflow-test CRLF assumptions. The shared test reader
+  now normalizes line endings; all 12 workflow tests pass with LF and actual CRLF
+  copies, while the original CRLF copy reproduced the three failures. Bash
+  syntax, formatting and diff checks pass. `pnpm check` again stops at the
+  unchanged server decomposition budgets recorded in cycle 9; no later chained
+  check is claimed.
+- Actual artifact verification on macOS arm64: the real
+  `pnpm package:worker --target darwin-arm64` completed, including bundled Codex
+  and Cantrip Code. Its final CUA helper was signed with
+  `Developer ID Application: Arcane Arts Inc. (RK2CYG6XRV)`; codesign reports
+  `art.cantrip.cua`, hardened runtime and a secure timestamp, with no JIT
+  entitlements. Signature validation and real final-layout helper/Sharp smoke
+  passed both before and after the real worker archive was extracted. The
+  extracted worker MCP smoke also passed. Signed helper SHA-256:
+  `16dfa9d20b64540a5c8315cc5cc36a5f9a12e40b74f96b809f4080ee54761f87`;
+  worker archive SHA-256:
+  `050f457eac1e924558e2818b256165bc20a9edca7ac1f7421b4bfbd2b1a27377`.
+- Native artifact attempt: the extracted signed helper captured and pixel-verified
+  the owned fixture's foreground, partial/full occlusion, movement and resize
+  states on a repeated run. This is not a complete fixture pass: the first run
+  returned `requested-target-unavailable` initially, and the repeated run returned
+  it after window recreation. A paired inventory probe between runs found the
+  fixture for both release and installed-development helpers. Newly created
+  fixture visibility remains an acceptance investigation; no permission cause,
+  stable repeatability or packaged-app update authorization is inferred.
+- These local artifacts are not a dispatched release or standalone-worker
+  notarization. CI certificate import, enclosing app/DMG notarization and actual
+  installed update permission behavior are not established by helper signing.
 - Native/product acceptance, installed/packaged update permission continuity,
   performance measurements and final regression/completion audit remain required.
 
