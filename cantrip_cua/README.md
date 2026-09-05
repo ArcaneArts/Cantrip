@@ -140,8 +140,27 @@ selects an exact current inventory target. No image file is saved unless
 existing files are never overwritten. Native smoke never builds, installs,
 signs, resets permission, or switches identity on the user's behalf.
 
+To additionally exercise native fixture pixels through the real app client
+codec, protected server route and worker service, run the explicit integration
+test after building workspace test dependencies:
+
+```sh
+pnpm cua:test:worker
+CANTRIP_CUA_NATIVE_TEST_BINARY="/absolute/stable/cantrip-cua" pnpm --filter @cantrip/server exec vitest run test/computer-use-native-preview.test.ts
+```
+
+The native test skips unless that separate opt-in variable is set. It uses
+synthetic account keys and only selects its own fixture window; normal test
+runs continue to use fake capture. Its route fixture does not prove that a
+packaged Tauri app or a real account has completed manual acceptance.
+
+The fixture waits for its own WindowServer geometry and window destruction
+before acknowledging resize/close commands. Native capture assertions still
+require exact geometry, decoded fixture colors and rejection of the retired
+target; no monitor fallback or capture retry is used.
+
 The actual observed platform/fixture results and outstanding manual checks are
-recorded in [the cycle-7 progress ledger](../docs/planned/CUA.md#tranche-cycle-7--macos-target-inventory-and-native-snapshots).
+recorded in the [first-tranche progress ledger](../docs/planned/CUA.md#first-tranche-implementation-progress).
 
 ### Worker ownership and lifecycle
 

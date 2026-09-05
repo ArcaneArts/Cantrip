@@ -1,8 +1,9 @@
 # Cantrip Computer Use
 
 Status: First-tranche implementation in progress; experimental preview and native
-capture implementation available. Native window acceptance, managed MCP delivery,
-protected operation Trajectory, and final verification remain incomplete.
+capture and managed MCP implemented. Native window acceptance, preview/MCP
+observation coordination, protected operation Trajectory, and final verification
+remain incomplete.
 
 ## First-tranche implementation progress
 
@@ -723,8 +724,11 @@ is the authoritative merge record until the next ledger update.
 - Branch: `codex/cua-08c2-managed-mcp`, based on merged cycle 8c1
   (`08dd5919c`). This is the recovered interrupted worktree.
   [PR #1748](https://github.com/ArcaneArts/Cantrip/pull/1748), implementation
-  commit `8087c9c2`. Local verification below is complete; portable CI and merge
-  remain pending. No merge is claimed by this entry.
+  commit `8087c9c2`, ledger commit `772d4cb1c`, and Windows fixture correction
+  `5e03389c5`. Squash-merged at `2026-09-05T10:46:25Z` as
+  `281a4a1732a0d005fc633bf6b04959c3d75d5beb`. Final CI run `33961418395`
+  passed macOS, Windows, Linux and PostgreSQL before auto-merge was requested.
+  Primary was synchronized; the clean cycle worktree and local branch were removed.
 - Implemented: dedicated worker-managed `cantrip_cua` tools `js` and `js_reset`
   through the existing authenticated broker and sole `CantripCuaService` owner.
   Actual Codex thread/turn metadata selects an observed root/child lifetime;
@@ -768,6 +772,10 @@ is the authoritative merge record until the next ledger update.
   cursor styles), route-boundary audit and large-file check pass. Real Sharp tests
   cover aggregate input/output bounds and cancelled-job capacity; packaged
   verification resolves Sharp from the final worker dependency layout.
+- CI correction: the initial Windows run exposed a test-only `file:///worker`
+  URL without a drive letter. The fixture now builds its URL from the host's
+  resolved path. Production transport behavior and assertions are unchanged;
+  the final four-job run above passed with that correction.
 - Broad worker run: 1,443 passed, 36 skipped, three goal-streaming failures.
   The same three failures reproduce on unchanged Primary `08dd5919c` and in
   the branch's isolated goal-streaming file; no whole-worker green claim.
@@ -791,6 +799,64 @@ is the authoritative merge record until the next ledger update.
   regression/completion audit. Native input, Accessibility, clipboard/files,
   human event taps, other native platforms, continuous video and cross-worker
   control remain deferred. The full roadmap below remains unfinished.
+
+### Tranche cycle 8d — Native fixture acceptance and coordinate precision
+
+- Branch: `codex/cua-08d-native-acceptance`, based on merged cycle 8c2
+  (`281a4a173`). [PR #1749](https://github.com/ArcaneArts/Cantrip/pull/1749),
+  implementation commit `997af3731`. Local focused/native verification below
+  is complete; portable CI and merge are pending.
+- Native acceptance exposed a real protocol precision defect: the default JSON
+  parser changed certain fractional logical coordinates by one IEEE-754 ULP.
+  Enable `serde_json`'s maintained `float_roundtrip` feature. A regression sends
+  independently constructed fractional values through the actual framed
+  executable and checks exact bits in both cursor and snapshot responses. It
+  failed before the change and passes afterward; strict smoke assertions remain.
+- Fixture ownership diagnosis: an autoreleased `orderedWindows` array created
+  before AppKit's event loop retained a closed target for the fixture process's
+  lifetime. An initialization autorelease pool drains that temporary ownership.
+  Native state also changes asynchronously after AppKit resize/close calls;
+  the fixture's acknowledgment must reflect its own actual WindowServer state.
+  This is test-fixture synchronization, not a production readiness gate.
+- Verification: all 86 Rust tests, strict Rust 1.95 Clippy/format, and
+  995 focused CUA boundary tests pass (96 protocol, 24 crypto, 535 worker,
+  182 server, 158 client). Two PostgreSQL tests remain dedicated-CI checks.
+  Local platform is macOS 27.0 build 26A5421a, arm64. Native fixture verification
+  uses the installed Apple Development-signed `cua-cycle-three-qa` helper,
+  synthetic accounts/keys, and fixture-owned window pixels only.
+- Native fixture: all six scenarios pass on installed debug and release builds:
+  foreground, partial/full occlusion, move, resize and recreation, plus strict
+  old-target rejection after close. Decoded color patches verify the selected
+  window rather than the blue occluder; all four logical cursor styles are
+  exercised. Initial captures are 320 × 240; resized captures are 384 × 288.
+  All 14 opt-in fixture tests pass. Ordinary CUA script tests: 45 pass and one
+  explicit GUI skip. No screenshot file is saved.
+- Added an opt-in native app-client -> Fastify -> worker coordinator/service ->
+  installed Rust test. It passes once with each signed debug/release build,
+  verifying foreground and fully occluded fixture pixels, exact geometry,
+  the logical cursor's decoded pixel, protected metadata/image delivery and
+  Stop releasing the session/preview/approval state. The ordinary runner skips
+  it unless `CANTRIP_CUA_NATIVE_TEST_BINARY` is explicitly provided. This uses
+  actual production route/client/service implementations with synthetic endpoint
+  dependencies; it does not prove live-account UI or packaged Tauri acceptance.
+- Development identity: replaced the installed debug helper with the distinct
+  release binary at the same named-profile path. Strict codesign verification
+  and installed fake smoke passed; both builds have identical designated
+  requirements (`art.cantrip.cua.dev`, Apple Development certificate). Both then
+  completed native fixture and protected-route capture without a permission
+  response or privacy-setting change between installs. Prompt presentation was
+  not independently observed; this is successful native capture across changed
+  development builds, not proof of outer-app/release update permission reuse.
+- Timing samples: debug fixture smoke 2,738 ms total, first snapshot 233 ms,
+  subsequent snapshots 138–158 ms; release 2,682 ms total, first snapshot 229 ms,
+  subsequent snapshots 146–151 ms. These single fixture runs include native
+  capture/encoding/IPC and verification, not an isolated transport benchmark or
+  performance improvement claim. Warm/cold/idle/startup measurements remain.
+- Remaining required tranche work: preview/MCP observation coordination,
+  protected per-operation
+  Trajectory, standalone release signing and packaged update/permission checks,
+  actual `pnpm devtop` acceptance, performance measurements, and final regression
+  and completion audit. Later-tranche deferrals remain unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
