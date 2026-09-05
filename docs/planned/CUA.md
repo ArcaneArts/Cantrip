@@ -1312,7 +1312,9 @@ src/lib/computer-use-preview-encryption.test.ts`. New rendering cases cover
 ### Tranche cycle 15 — Encrypted cursor appearance preferences
 
 - Branch: `codex/cua-15-cursor-preferences`, based on cycle 14's observed
-  merge `03b71c402`. Commit, PR and merge metadata will be recorded when known.
+  merge `03b71c402`. [PR #1759](https://github.com/ArcaneArts/Cantrip/pull/1759),
+  implementation commit `72ec1c14`. PR is open; final CI and observed merge
+  remain pending.
 - Implemented: explicit Save applied appearance and Forget saved appearance
   controls use the existing account settings route and row. The nullable JSONB
   column contains a bounded authenticated ciphertext record under the existing
