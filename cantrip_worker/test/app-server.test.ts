@@ -785,12 +785,12 @@ describe("Codex rich event normalization", () => {
       type: "fileChange",
       changes: [
         {
-          path: "src/path with spaces.ts",
+          path: path.join("src", "path with spaces.ts"),
           latestLine: "new value",
           diffPreview: "-old\n+new value",
           lastActivityAtMs: 2_100,
         },
-        { path: "assets/image.png" },
+        { path: path.join("assets", "image.png") },
       ],
     });
     expect(latestChangedLine("Binary files differ")).toBeNull();
@@ -1361,8 +1361,8 @@ describe("managed Cantrip MCP guidance", () => {
 describe("codexWorkspaceContext", () => {
   it("binds every app-server operation to one resolved worktree root", () => {
     expect(codexWorkspaceContext("/tmp/project/../project/worktree")).toEqual({
-      cwd: "/tmp/project/worktree",
-      runtimeWorkspaceRoots: ["/tmp/project/worktree"],
+      cwd: path.resolve("/tmp/project/worktree"),
+      runtimeWorkspaceRoots: [path.resolve("/tmp/project/worktree")],
     });
   });
 });
@@ -1399,7 +1399,7 @@ describe("codexWorktreeTurnPolicy", () => {
     });
     expect(policy.sandboxPolicy).toEqual({
       type: "workspaceWrite",
-      writableRoots: ["/scratch/chat-one"],
+      writableRoots: [path.resolve("/scratch/chat-one")],
       networkAccess: false,
       excludeTmpdirEnvVar: false,
       excludeSlashTmp: false,
@@ -1447,7 +1447,7 @@ describe("codexWorktreeTurnPolicy", () => {
     });
     expect(policy.sandboxPolicy).toEqual({
       type: "workspaceWrite",
-      writableRoots: ["/workspace/project/feature"],
+      writableRoots: [path.resolve("/workspace/project/feature")],
       networkAccess: false,
       excludeTmpdirEnvVar: false,
       excludeSlashTmp: false,
@@ -1532,7 +1532,7 @@ describe("codexWorktreeTurnPolicy", () => {
 
     expect(policy.sandboxPolicy).toEqual({
       type: "workspaceWrite",
-      writableRoots: ["/workspace/folder"],
+      writableRoots: [path.resolve("/workspace/folder")],
       networkAccess: false,
       excludeTmpdirEnvVar: false,
       excludeSlashTmp: false,
@@ -1602,7 +1602,7 @@ describe("Codex agent operation policy", () => {
     ).toEqual({
       sandboxPolicy: {
         type: "workspaceWrite",
-        writableRoots: ["/workspace/project"],
+        writableRoots: [path.resolve("/workspace/project")],
         networkAccess: true,
         excludeTmpdirEnvVar: false,
         excludeSlashTmp: false,

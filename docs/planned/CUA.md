@@ -543,7 +543,9 @@ is the authoritative merge record until the next ledger update.
 - Branch: `codex/cua-08a-execution-lifetimes`, based on merged cycle 7
   (`76d8baa7c`). [PR #1744](https://github.com/ArcaneArts/Cantrip/pull/1744),
   implementation commit `0aa1b1e1b8e1387a00b5109b55930f7ee8c90664`.
-  Local validation complete; squash auto-merge/CI pending.
+  Ledger/CI commits `0fa652c0b` and `eea02a1fc`; squash-merged on
+  2026-09-05 as `42fa6e9b076718fffbff0d8a0e9a74f575ebdaac`.
+  Primary fast-forwarded cleanly; the cycle worktree and branch were removed.
 - Scope: runtime-derived root/child execution ownership and cancellation, plus
   preview-specific teardown that cannot revoke a different agent lifetime.
   Managed MCP activation and the bounded Rust JavaScript engine are subsequent
@@ -581,14 +583,38 @@ is the authoritative merge record until the next ledger update.
   app-server/subagent regression suites; native-CUA CI path filters include
   their source and tests. Actual helper tests used the fake
   backend; no native capture or permission changes occurred in this cycle.
-- Platform status: macOS arm64 local portable/fake checks passed; Windows/Linux
-  CI and PR merge remain pending. Existing whole-suite baseline gaps and
+- Platform status: macOS/Linux portable CI and PostgreSQL CI passed. Windows
+  compiled the helper and passed the new lifecycle/CUA tests, but six existing
+  app-server test expectations failed because they hard-coded Unix absolute
+  paths or separators. Those tests were newly included in the CUA matrix by
+  this pass. GitHub accepted `--auto --squash` immediately because these checks
+  are not required merge rules; the failure was observed after the merge request.
+  Cycle 8a2 fixes the fixtures before further product integration. For subsequent
+  passes, wait for all running CI results before requesting auto-merge; no
+  repository protection setting was changed. Existing whole-suite baseline gaps and
   release/manual checks remain final-hardening work, not claimed green here.
   Unlocked native window/occlusion QA remains outstanding;
   the desktop was confirmed locked during cycle 7 and the user was asked to
   unlock it. No native permission or lock-setting changes are authorized here.
 - Later-tranche input, Accessibility, clipboard/files, other native platforms,
   continuous video and cross-worker control remain deferred.
+
+### Tranche cycle 8a2 — Portable runtime regression fixtures
+
+- Branch: `codex/cua-08a2-portable-runtime-fixtures`, based on merged cycle 8a
+  (`42fa6e9b0`). [PR #1745](https://github.com/ArcaneArts/Cantrip/pull/1745),
+  implementation commit `afb9e7c50f7e8f94735f72848ea9fcfed0cf49d8`.
+  Local validation complete; CI and squash auto-merge pending.
+- Correct six pre-existing runtime test expectations to use the host's native
+  resolved root and path separators, matching the unchanged runtime's Node
+  path semantics. Preserve exact sandbox roots, policy flags, file previews and
+  all enabled tests. No production behavior or CI skip is changed.
+- Local validation: 102 focused runtime tests and the full 755-test CUA
+  boundary matrix passed; two PostgreSQL cases remain dedicated-CI checks.
+  Worker typecheck, changed-file formatting and diff checks passed.
+  Actual Windows/macOS/Linux CI and merge are pending. Managed MCP,
+  JavaScript, native unlocked-window QA, Trajectory and final hardening remain
+  first-tranche work; all later-tranche deferrals remain unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
