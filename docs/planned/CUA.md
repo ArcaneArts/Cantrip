@@ -267,7 +267,8 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 5b — Durable computer-use permission owner
 
 - Branch: `codex/cua-05b-durable-approvals`, based on merged cycle 5 (`0d23ecbae`).
-- PR/commit/merge: not created yet; implementation and local validation complete.
+- PR: [#1740](https://github.com/ArcaneArts/Cantrip/pull/1740).
+  Initial implementation commit: `e9589426b`; merge not yet observed.
 - Implemented: an explicit `computer-use` owner in existing durable agent
   interactions; a versioned migration adds owner metadata and allows genuine
   null native thread/turn identity for CUA permissions. No new session tables,
@@ -309,7 +310,8 @@ is the authoritative merge record until the next ledger update.
   Migration rollback is exercised after each of its three statements; all 89
   existing tables remain. Full protocol: 516 passes; full worker: 1,202 passes,
   13 expected skips (the artifact-dependent CUA cases run in the focused suite).
-  Rust: 50 passes. Worker/server/app typechecks, worker build, Clippy, Rust and
+  Rust: 50 passes; CUA build/smoke scripts: 30 passes. Worker/server/app
+  typechecks, worker build, Clippy, Rust and
   touched-file formatting, large-file check and server-boundary audit pass.
   Portable CI and merge are not yet observed. The existing server
   local-foundation provider-fixture failure was reproduced unchanged on Primary
