@@ -36,13 +36,13 @@ const compatibility = {
     experimentalApi: true,
     platformFamily: "unix",
     platformOs: "macos",
-    userAgent: "codex_cli_rs/0.153.1",
+    userAgent: "codex_cli_rs/0.153.4",
   },
   methods: {
     ...unprobedCodexRuntimeReport.methods,
     "account/login/start": "available" as const,
   },
-  version: { raw: "codex-cli 0.153.1", semantic: "0.153.1" },
+  version: { raw: "codex-cli 0.153.4", semantic: "0.153.4" },
 };
 
 const chatGptProvider = {

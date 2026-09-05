@@ -47,7 +47,7 @@ function thread(overrides: Record<string, unknown> = {}) {
     updatedAt: 1_786_810_000,
     status: { type: "notLoaded" },
     cwd: "/workspace/Cantrip",
-    cliVersion: "0.153.1",
+    cliVersion: "0.153.4",
     source: "vscode",
     gitInfo: {
       sha: "abc123",
@@ -74,7 +74,7 @@ function sourceWithResponses(
     pathExists: async () => true,
     resolvePath: async (candidate) => candidate,
     resolveGitOrigin: async () => "github.com/arcanearts/cantrip",
-    readRuntimeVersion: async () => "codex-cli 0.153.1",
+    readRuntimeVersion: async () => "codex-cli 0.153.4",
     attachmentStore,
     createClient: () => ({
       async request(method, params) {
@@ -83,7 +83,7 @@ function sourceWithResponses(
           return {
             id: 1,
             result: {
-              userAgent: "codex-cli/0.153.1",
+              userAgent: "codex-cli/0.153.4",
               platformFamily: "unix",
               platformOs: "macos",
             },
@@ -109,7 +109,7 @@ describe("external Codex chat history discovery", () => {
       pathExists: async () => false,
       resolvePath: async (candidate) => candidate,
       resolveGitOrigin: async () => null,
-      readRuntimeVersion: async () => "codex-cli 0.153.1",
+      readRuntimeVersion: async () => "codex-cli 0.153.4",
       createClient: () => {
         created = true;
         throw new Error("Unexpected Codex client creation.");
@@ -144,7 +144,7 @@ describe("external Codex chat history discovery", () => {
       pathExists: async () => true,
       resolvePath: async (candidate) => candidate,
       resolveGitOrigin: async () => null,
-      readRuntimeVersion: async () => "codex-cli 0.153.1",
+      readRuntimeVersion: async () => "codex-cli 0.153.4",
       createClient: (codexHome) => {
         openedHomes.push(codexHome);
         return {
@@ -154,7 +154,7 @@ describe("external Codex chat history discovery", () => {
               return {
                 id: 1,
                 result: {
-                  userAgent: "codex-cli/0.153.1",
+                  userAgent: "codex-cli/0.153.4",
                   platformFamily: "windows",
                   platformOs: "windows",
                 },

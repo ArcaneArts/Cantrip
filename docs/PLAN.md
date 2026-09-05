@@ -812,7 +812,7 @@ The first meaningful release is complete when all of the following are true:
 | Risk | Mitigation |
 | --- | --- |
 | Codex app-server evolves quickly. | Pin a tested range, generate schemas from the installed CLI, isolate it behind `CodexRuntime`, preserve unknown events, and run compatibility CI. |
-| Codex 0.153's `chatgptAuthTokens` methods are experimental. | Pin exactly 0.153.1 in packaged workers, capability-gate login, test the refresh server request, and fail with an explicit compatibility error before using a server-owned ChatGPT account. |
+| Codex 0.153's `chatgptAuthTokens` methods are experimental. | Pin exactly 0.153.4 in packaged workers, capability-gate login, test the refresh server request, and fail with an explicit compatibility error before using a server-owned ChatGPT account. |
 | Arbitrary provider/model compatibility is uneven. | Require Responses compatibility, probe capabilities per model, label unverified models, and avoid claiming universal support. |
 | A server compromise can become worker RCE. | Outbound authenticated workers, strict ownership, sandbox defaults, source scoping, approval UX, secret isolation, audit logs, and focused security testing. |
 | Server and Codex histories diverge. | Treat the server log as logical conversation/UI authority and each worker's Codex rollout as runtime-continuation authority; reconcile by stable IDs/cursors and label history-based handoffs. |

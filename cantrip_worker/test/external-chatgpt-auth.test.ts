@@ -12,12 +12,12 @@ import {
 const externalAuthReport = {
   ...unprobedCodexRuntimeReport,
   compatibility: "compatible" as const,
-  version: { raw: "codex-cli 0.153.1", semantic: "0.153.1" },
+  version: { raw: "codex-cli 0.153.4", semantic: "0.153.4" },
   initialize: {
     experimentalApi: true,
     platformFamily: "unix",
     platformOs: "macos",
-    userAgent: "codex_cli_rs/0.153.1",
+    userAgent: "codex_cli_rs/0.153.4",
   },
   methods: { "account/login/start": "available" as const },
   degradedReasons: [],

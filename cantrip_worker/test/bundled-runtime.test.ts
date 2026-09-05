@@ -11,9 +11,9 @@ import {
 } from "../src/codex/bundled-runtime.js";
 
 const temporaryDirectories: string[] = [];
-const PINNED_CODEX_VERSION = "0.153.1";
-const PINNED_CODEX_REF = "rust-v0.153.1";
-const PINNED_CODEX_COMMIT = "985641272869835d01d025ed2a218fbbce35fa9f";
+const PINNED_CODEX_VERSION = "0.153.4";
+const PINNED_CODEX_REF = "rust-v0.153.4";
+const PINNED_CODEX_COMMIT = "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a";
 const BUNDLED_MODELS_PATH = fileURLToPath(
   new URL(
     "../../cantrip_codex/upstream/codex-rs/models-manager/models.json",
@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 describe("bundled Codex source", () => {
-  it("keeps GPT-6-Astra API-configurable without making it the picker default", async () => {
+  it("exposes GPT-6-Astra as the bundled picker default", async () => {
     const catalog = JSON.parse(await readFile(BUNDLED_MODELS_PATH, "utf8")) as {
       models: Array<{
         priority: number;
@@ -47,9 +47,9 @@ describe("bundled Codex source", () => {
     expect(astra).toMatchObject({
       slug: "gpt-6-astra",
       supported_in_api: true,
-      visibility: "hide",
+      visibility: "list",
     });
-    expect(firstPickerModel?.slug).toBe("gpt-5.6-sol");
+    expect(firstPickerModel?.slug).toBe("gpt-6-astra");
   });
 });
 

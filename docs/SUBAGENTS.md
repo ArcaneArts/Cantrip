@@ -37,7 +37,7 @@ The feature must preserve Cantrip's encrypted-content boundary. Subagent prompts
 
 ### Codex runtime
 
-Cantrip pins Codex 0.153.1. Upstream exposes native collaboration through `multi_agent`, has `[agents].enabled` enabled by default, and accepts:
+Cantrip pins Codex 0.153.4. Upstream exposes native collaboration through `multi_agent`, has `[agents].enabled` enabled by default, and accepts:
 
 - `agents.enabled`
 - `agents.default_subagent_model`

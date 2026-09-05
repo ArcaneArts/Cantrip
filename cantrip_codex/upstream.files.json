@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "upstream": {
     "repository": "https://github.com/openai/codex.git",
-    "ref": "rust-v0.153.1",
-    "commit": "985641272869835d01d025ed2a218fbbce35fa9f",
-    "version": "0.153.1"
+    "ref": "rust-v0.153.4",
+    "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+    "version": "0.153.4"
   },
   "files": [
     {
@@ -7879,7 +7879,7 @@
     },
     {
       "path": "codex-rs/Cargo.toml",
-      "sha256": "64bccf036dc7ab02371a4f204f50db59eb2efea343f1e5c2de74c68aa34a4ec5",
+      "sha256": "673bd2b14aad8194d5db7f86c99a6a06f214542c3a51d1551ee958cc228805db",
       "size": 18786
     },
     {
@@ -18579,8 +18579,8 @@
     },
     {
       "path": "codex-rs/model-provider/src/amazon_bedrock/catalog.rs",
-      "sha256": "8f928d9104a5a84a85c0c62b201e398271ae1b2986d91ef9c633e0be8d9e8461",
-      "size": 10489
+      "sha256": "de84958d8ea2f9c8d863f7f01f1d4945a5f098047bc59366b4d7dfc4e0f3519f",
+      "size": 11305
     },
     {
       "path": "codex-rs/model-provider/src/amazon_bedrock/error_tests.rs",
@@ -18604,13 +18604,13 @@
     },
     {
       "path": "codex-rs/model-provider/src/amazon_bedrock/runtime_catalog_tests.rs",
-      "sha256": "ce485fa55bd17aabc6f4934764ca385e1ed159881be9982f89ea3a3e3326f048",
-      "size": 2612
+      "sha256": "6b99e52915d81612ef2ebcd39f0640125b15369cfcac56213f7a629d773b0c4c",
+      "size": 3081
     },
     {
       "path": "codex-rs/model-provider/src/amazon_bedrock/runtime_catalog.rs",
-      "sha256": "b5c97c4f2cb0e3461c93cea0c61ac9b1216b676846ecda60c2ab1d143b2f70cf",
-      "size": 1548
+      "sha256": "0ead78fbc364b2001934dc765bb857ff756cd96d0a04a175dd20219f274428bb",
+      "size": 1674
     },
     {
       "path": "codex-rs/model-provider/src/amazon_bedrock/runtime_tests.rs",
@@ -18644,8 +18644,8 @@
     },
     {
       "path": "codex-rs/model-provider/src/provider.rs",
-      "sha256": "5f69326004492cd35ab4f59ccf9eb9ca858c6e33acbcd0bb2236e31bbf934603",
-      "size": 44778
+      "sha256": "b76d1837802ef08b12cada67de9080a1361a7b43ba45155e452c930180fe874a",
+      "size": 44972
     },
     {
       "path": "codex-rs/model-provider/src/shared_state.rs",
@@ -18664,8 +18664,8 @@
     },
     {
       "path": "codex-rs/model-provider-info/src/lib.rs",
-      "sha256": "4457c4a78a3adb7a926ff3756ee56d4e2c103007e5b6cc23413cec8bc822bd9a",
-      "size": 25157
+      "sha256": "03ba8ea303b9763f7c5e25a468b7f6675c9970dfb91109205beb6d0509f574d1",
+      "size": 25233
     },
     {
       "path": "codex-rs/model-provider-info/src/model_provider_info_tests.rs",
@@ -18684,8 +18684,8 @@
     },
     {
       "path": "codex-rs/models-manager/models.json",
-      "sha256": "22c9b18dc86a995e398178dcd5ba6d6a4af7cb900fb51e17d5f1357fea4903c3",
-      "size": 515131
+      "sha256": "d7136a413cfac1b5b1686d9e0dcc5c80ca05bebed5e9fc3911376561d0ef6ee8",
+      "size": 515145
     },
     {
       "path": "codex-rs/models-manager/prompt.md",
@@ -26963,6 +26963,26 @@
       "size": 439
     },
     {
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__bedrock_mantle_astra_reasoning.snap",
+      "sha256": "fb9a48724c94a3a7efa0a0546e9e6d18242b4ce1a20f1d351f955994046b0d42",
+      "size": 537
+    },
+    {
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__bedrock_mantle_models.snap",
+      "sha256": "9015c7ff44a0e17afe825f5d62b5e6d0851387e4ede0a58f4868fa280a58a627",
+      "size": 790
+    },
+    {
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__bedrock_runtime_astra_reasoning.snap",
+      "sha256": "26788ef0dc35f1f882f6582ae59a075fae2d398b02b9adb73c051602541a2077",
+      "size": 544
+    },
+    {
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__bedrock_runtime_models.snap",
+      "sha256": "de2d6a71a3e8f876e52817704ed1a2fd55291432d9d0f97c08c5113e977c921d",
+      "size": 962
+    },
+    {
       "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__binary_size_ideal_response.snap",
       "sha256": "aaf92b8eca7e29a0b3ab1c830cf253442c092be340695f7ae49fe4dd72ca5c22",
       "size": 7861
@@ -27449,8 +27469,8 @@
     },
     {
       "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__model_selection_popup.snap",
-      "sha256": "0b50be975fe640dfe4b2cb2507cc70a83ed33d4b46982d9aafe60c731f342ca1",
-      "size": 682
+      "sha256": "1ac85ef2a8aa51df8acf23884c2dc6ec6f238fa8bf12d8c43f25b65ac8e699c2",
+      "size": 790
     },
     {
       "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__multi_agent_enable_prompt.snap",
@@ -28123,6 +28143,11 @@
       "size": 19456
     },
     {
+      "path": "codex-rs/tui/src/chatwidget/tests/bedrock_catalog_tests.rs",
+      "sha256": "ccadc2ada21fd2e56de6e3c257c4bd8e2b30db836cef4607486a3bc689d90313",
+      "size": 2039
+    },
+    {
       "path": "codex-rs/tui/src/chatwidget/tests/composer_submission.rs",
       "sha256": "98d4128240b2204c4af5d226137851e870e06c3d5c11430f9e7317a1d00ae595",
       "size": 92659
@@ -28334,8 +28359,8 @@
     },
     {
       "path": "codex-rs/tui/src/chatwidget/tests.rs",
-      "sha256": "35a99e7bbc9abc416ae85582173dc29b8bd4569986eb3f9edcb909eb3fedeb8d",
-      "size": 14622
+      "sha256": "c4aaa4562ef4db6dc4790145ebea0e6a493ce44bfa8be10e5d0e6485836adf83",
+      "size": 14692
     },
     {
       "path": "codex-rs/tui/src/chatwidget/thread_usage_tests.rs",
