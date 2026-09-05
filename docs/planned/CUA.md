@@ -578,7 +578,8 @@ is the authoritative merge record until the next ledger update.
   regression tests, 66 Rust tests, Rust formatting/strict Clippy, 43 script tests
   (one explicit GUI test skipped), worker typecheck/build and diff/format checks
   passed. The root CUA test command now includes runtime-lifetime and existing
-  app-server/subagent regression suites. Actual helper tests used the fake
+  app-server/subagent regression suites; native-CUA CI path filters include
+  their source and tests. Actual helper tests used the fake
   backend; no native capture or permission changes occurred in this cycle.
 - Platform status: macOS arm64 local portable/fake checks passed; Windows/Linux
   CI and PR merge remain pending. Existing whole-suite baseline gaps and
