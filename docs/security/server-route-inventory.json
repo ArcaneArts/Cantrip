@@ -46,6 +46,7 @@
       "cantrip_server/src/app/routes/code-tab-attachments.ts",
       "cantrip_server/src/app/routes/code-tab-management.ts",
       "cantrip_server/src/app/routes/code-tab-worker-controls.ts",
+      "cantrip_server/src/app/routes/computer-use.ts",
       "cantrip_server/src/app/routes/core-infrastructure-registry.ts",
       "cantrip_server/src/app/routes/direct-attachment-control.ts",
       "cantrip_server/src/app/routes/explorer-management.ts",
@@ -159,20 +160,20 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 465,
+    "application-principal": 466,
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 13,
-    "http": 478,
+    "http": 479,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 412,
-    "total": 485,
+    "requestPrincipalRoutes": 414,
+    "total": 486,
     "websocket": 7,
     "workerCredentialRoutes": 13,
     "durableTables": 89,
     "agentOperations": 44,
-    "workerCommands": 273,
+    "workerCommands": 274,
     "liveResources": 43,
     "clientControlCommands": 4,
     "cliCommands": 35,
@@ -188,11 +189,11 @@
   },
   "contractSetDigests": {
     "agentOperations": "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
-    "applicationRoutes": "8d928a0765d5fe24a54460a3efcd7c2621136f2de3fc1713fb1d91c1ba099d96",
+    "applicationRoutes": "bbb816a6c73d57eef0691561a25486c686dad8ec8017027b821ec0bd09b548a9",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
-    "workerCommands": "fc63ee379629457138cb3ddd623e100e1c260b8b485d94977107020957db633d",
+    "workerCommands": "b62cada76d550fa7c971632f246737f81f64ddbb58c1869470ba06029f540972",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -1265,6 +1266,19 @@
       "contentBoundary": {
         "classification": "endpoint-protected",
         "rationale": "opaque or endpoint-protected route contract"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/computer-use.ts",
+      "line": 46,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/chats/:chatId/computer-use/operation",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "unregistered CUA relay factory; operation-bound client-control-content protects native target details, cursor state, results, and bounded image chunks; only routing and correlation metadata is public"
       }
     },
     {
@@ -2817,7 +2831,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-views.ts",
-      "line": 116,
+      "line": 141,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/project-views/:viewId",
@@ -2830,7 +2844,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-views.ts",
-      "line": 69,
+      "line": 94,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/project-views/:viewId",
@@ -2843,7 +2857,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-views.ts",
-      "line": 87,
+      "line": 112,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/project-views/:viewId/worktree",
@@ -4143,7 +4157,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-views.ts",
-      "line": 42,
+      "line": 45,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/views",
@@ -4156,9 +4170,9 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-views.ts",
-      "line": 55,
+      "line": 58,
       "method": "POST",
-      "ownerEvidence": "delegated-or-missing-review",
+      "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/views",
       "transport": "http",
       "contentBoundary": {
@@ -7237,6 +7251,7 @@
     "codex.auth.login.start",
     "codex.auth.logout",
     "codex.auth.status",
+    "computer-use.operation",
     "customization.external.apply",
     "customization.external.preview",
     "customization.external.status",
@@ -7771,6 +7786,11 @@
       "command": "codex.auth.status",
       "classification": "intentionally-public-control-plane",
       "rationale": "reviewed worker lifecycle or capability contract"
+    },
+    {
+      "command": "computer-use.operation",
+      "classification": "endpoint-protected",
+      "rationale": "CUA handler remains unregistered pending permission-owner integration; native targets, cursor state, results, and image chunks use operation-bound client-control-content ciphertext rather than public worker metadata"
     },
     {
       "command": "customization.external.apply",
@@ -11418,97 +11438,97 @@
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 596,
+      "line": 638,
       "method": "get",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 846,
+      "line": 888,
       "method": "updatePane",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 891,
+      "line": 933,
       "method": "updateDockPresentation",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 949,
+      "line": 991,
       "method": "reorderPanes",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 995,
+      "line": 1037,
       "method": "reorderLegacyPanes",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1050,
+      "line": 1086,
       "method": "reorderMembers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1092,
+      "line": 1128,
       "method": "moveMember",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1377,
+      "line": 1413,
       "method": "splitMember",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1545,
+      "line": 1581,
       "method": "resizeCenterSplit",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1570,
+      "line": 1606,
       "method": "openSurfaceView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1670,
+      "line": 1706,
       "method": "closeSurfaceView",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1706,
+      "line": 1742,
       "method": "listSurfaceLaunchers",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1745,
+      "line": 1781,
       "method": "setSurfaceLauncherPin",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1782,
+      "line": 1818,
       "method": "updateBuiltInSurfaceWorktree",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1833,
+      "line": 1869,
       "method": "nextProjectTabPosition",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1880,
+      "line": 1916,
       "method": "reorderProjects",
       "ownerEvidence": "explicit-owner"
     }

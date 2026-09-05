@@ -10,18 +10,33 @@ const root = path.resolve(
 const binary = buildCantripCua(root);
 // Exercise production worker service and transport against this exact artifact.
 // No installed-helper inference, native capture, or Screen Recording prompt.
-const result = spawnSync(
-  process.execPath,
+for (const [project, ...tests] of [
+  ["packages/protocol", "src/computer-use.test.ts"],
+  ["packages/crypto", "test/computer-use.test.ts"],
   [
-    path.join(root, "node_modules/vitest/vitest.mjs"),
-    "run",
+    "cantrip_worker",
     "src/computer-use",
+    "src/endpoint-content-encryption.test.ts",
   ],
-  {
-    cwd: path.join(root, "cantrip_worker"),
-    env: { ...process.env, CANTRIP_CUA_TEST_BINARY: binary },
-    stdio: "inherit",
-  },
-);
-if (result.error) throw result.error;
-process.exitCode = result.status ?? 1;
+  [
+    "cantrip_server",
+    "test/computer-use-routes.test.ts",
+    "test/computer-use-roundtrip.test.ts",
+  ],
+  ["cantrip_app", "src/lib/endpoint-content-encryption.test.ts"],
+]) {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(root, "node_modules/vitest/vitest.mjs"), "run", ...tests],
+    {
+      cwd: path.join(root, project),
+      env: { ...process.env, CANTRIP_CUA_TEST_BINARY: binary },
+      stdio: "inherit",
+    },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    process.exitCode = result.status ?? 1;
+    break;
+  }
+}

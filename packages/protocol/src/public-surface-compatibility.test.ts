@@ -57,12 +57,47 @@ function stableFingerprint(value: unknown) {
   return `${firstHex}${secondHex}:${input.length}`;
 }
 
-describe("protocol public surface compatibility", () => {
-  it("keeps the root runtime export surface stable", () => {
-    const exportNames = Object.keys(protocol).sort();
+const cuaRuntimeExports = [
+  "CUA_CHUNK_BYTES",
+  "CUA_CONTROL_BYTES",
+  "CUA_MAX_CHUNKS",
+  "CUA_REQUIRED_OPERATIONS",
+  "computerUseActionSchema",
+  "computerUseChunkEventSchema",
+  "computerUseHttpResultSchema",
+  "computerUseOperationSchema",
+  "computerUseRequestSchema",
+  "computerUseResponseSchema",
+  "computerUseResultContentSchema",
+  "cuaBindingSchema",
+  "cuaCapabilitiesSchema",
+  "cuaCursorAppearanceSchema",
+  "cuaIdSchema",
+  "cuaImageSchema",
+  "cuaInventorySchema",
+  "cuaPointSchema",
+  "cuaScopeSchema",
+  "cuaSessionResultSchema",
+  "cuaSessionSchema",
+  "cuaSnapshotSchema",
+  "cuaTargetReferenceSchema",
+  "cuaTargetSchema",
+  "workerComputerUseCommandSchema",
+];
 
-    expect(exportNames).toHaveLength(1_946);
-    expect(stableFingerprint(exportNames)).toBe("abf3ec23c24613e7:63806");
+describe("protocol public surface compatibility", () => {
+  it("preserves the root runtime export baseline with exactly the CUA additions", () => {
+    const exportNames = Object.keys(protocol).sort();
+    const baselineNames = exportNames.filter(
+      (name) => !cuaRuntimeExports.includes(name),
+    );
+
+    expect(exportNames).toHaveLength(1_971);
+    expect(
+      exportNames.filter((name) => cuaRuntimeExports.includes(name)),
+    ).toEqual(cuaRuntimeExports);
+    expect(baselineNames).toHaveLength(1_946);
+    expect(stableFingerprint(baselineNames)).toBe("abf3ec23c24613e7:63806");
   });
 
   it("keeps worker discriminators stable and ordered", () => {
@@ -76,10 +111,14 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(273);
-    expect(stableFingerprint(commandTypes)).toBe("9715f45e8704a82a:7004");
-    expect(eventTypes).toHaveLength(18);
-    expect(stableFingerprint(eventTypes)).toBe("1d616530daf5093c:466");
+    expect(commandTypes).toHaveLength(274);
+    expect(commandTypes[0]).toBe("computer-use.operation");
+    expect(stableFingerprint(commandTypes.slice(1))).toBe(
+      "9715f45e8704a82a:7004",
+    );
+    expect(eventTypes).toHaveLength(19);
+    expect(eventTypes[0]).toBe("computer-use.snapshot.chunk");
+    expect(stableFingerprint(eventTypes.slice(1))).toBe("1d616530daf5093c:466");
     expect(notificationTypes).toHaveLength(14);
     expect(stableFingerprint(notificationTypes)).toBe("6768707e4d303352:420");
   });

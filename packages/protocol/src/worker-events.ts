@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { computerUseChunkEventSchema } from "./computer-use.js";
 import {
   chatPlanOpaqueStateSchema,
   chatMessageOpaqueContentSchema,
@@ -184,6 +185,7 @@ export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const workerEventSchema = z.discriminatedUnion("type", [
+  computerUseChunkEventSchema,
   z
     .object({
       type: z.literal("workspace.repositories.discovery-progress"),

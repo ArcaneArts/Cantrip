@@ -203,6 +203,29 @@ binding, revocation, byte-preserving opaque storage, migration application,
 the worker-authenticated registration and delivery path, and the server
 dependency boundary.
 
+### Computer-use routing foundation (not yet activated)
+
+The CUA route factory relays the existing `client-control-content` encryption
+domain. Target inventory, window titles/IDs, cursor labels/appearance/positions,
+session bindings, snapshot metadata and PNG bytes remain endpoint-only. The
+server receives public operation/correlation IDs, the owning chat/worker lane,
+and bounded opaque envelopes; it imports no decryption code and writes no
+native session or screenshot records.
+
+The client and worker bind each envelope to account, server, worker, chat,
+operation ID/kind, direction, sequence and key revision. A protected final
+manifest authenticates the complete image length and SHA-256 digest. PNGs use
+at most 64 sequential 256 KiB protected chunks; control metadata is limited to
+64 KiB. Clients reject missing, reordered, duplicate, substituted, wrong-length,
+wrong-digest or wrong-revision chunks, without returning partial pixels.
+Temporary plaintext and per-operation key copies are cleared after use; a
+successfully returned image belongs to its endpoint consumer for clearing.
+
+This foundation does not register the route or expose native capture. Live
+activation requires the existing permission system and a trusted worker
+execution-lifetime owner; authentication alone is not its approval policy.
+See [CUA implementation progress](planned/CUA.md#implementation-progress).
+
 ### Client key custody
 
 #### Durable native installation storage
