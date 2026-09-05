@@ -803,8 +803,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 8d — Native fixture acceptance and coordinate precision
 
 - Branch: `codex/cua-08d-native-acceptance`, based on merged cycle 8c2
-  (`281a4a173`). Local implementation and focused/native verification below
-  are complete; PR/CI and merge metadata will be recorded when observed.
+  (`281a4a173`). [PR #1749](https://github.com/ArcaneArts/Cantrip/pull/1749),
+  implementation commit `997af3731`. Local focused/native verification below
+  is complete; portable CI and merge are pending.
 - Native acceptance exposed a real protocol precision defect: the default JSON
   parser changed certain fractional logical coordinates by one IEEE-754 ULP.
   Enable `serde_json`'s maintained `float_roundtrip` feature. A regression sends
