@@ -3230,6 +3230,9 @@ export const chats = pgTable(
     ),
     subagentReasoningEffort: text("subagent_reasoning_effort"),
     permissionProfileId: text("permission_profile_id"),
+    computerUseAuthorityGeneration: integer("computer_use_authority_generation")
+      .notNull()
+      .default(1),
     automationPaused: boolean("automation_paused").notNull().default(false),
     planMode: text("plan_mode").notNull().default("default"),
     githubItemKind: text("github_item_kind"),
@@ -3281,6 +3284,10 @@ export const chats = pgTable(
     check(
       "chats_context_kind_check",
       sql`${table.contextKind} IN ('project', 'standalone')`,
+    ),
+    check(
+      "chats_computer_use_authority_generation_check",
+      sql`${table.computerUseAuthorityGeneration} >= 1`,
     ),
     check(
       "chats_github_agent_context_check",

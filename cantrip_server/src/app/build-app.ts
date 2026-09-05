@@ -62,6 +62,13 @@ import {
 import { createApplicationServer } from "./http/server.js";
 import { installTransportSecurity } from "./http/transport-security.js";
 import { installAgentInteractionRoutes } from "./routes/agent-interactions.js";
+import { installComputerUseRoutes } from "./routes/computer-use.js";
+import {
+  computerUsePreviewAuthority,
+  createComputerUseApprovalPublications,
+  installComputerUsePreviewRoutes,
+  revokeComputerUsePreviews,
+} from "./routes/computer-use-preview.js";
 import { installPolicyRoutes } from "./routes/policies.js";
 import { installChatBasicRoutes } from "./routes/chat-basic-routes.js";
 import { installChatArchiveLifecycleRoutes } from "./routes/chat-archive-lifecycle.js";
@@ -300,6 +307,8 @@ export async function buildApp({
     publishLiveInvalidation,
     repository,
   });
+  const computerUseApprovalPublications =
+    createComputerUseApprovalPublications();
   const workerNotificationRuntime = createWorkerNotificationRuntime({
     activeProviderAuthObservations,
     app,
@@ -307,6 +316,7 @@ export async function buildApp({
     bridge,
     chatThreadChangeReconciler,
     chatTurnOutcomeRecoveryScheduler,
+    computerUseApprovalPublications,
     loadProviderCatalog: (...args) => loadProviderCatalog(...args),
     providerCredentialMigrations,
     publishCodeGraphStatus,
@@ -322,6 +332,8 @@ export async function buildApp({
     resolveAccountAuthTarget: (...args) => resolveAccountAuthTarget(...args),
     runAsOwner,
     serverId: () => serverId,
+    terminalizeLiveAgentInteractionRequest: (...args) =>
+      terminalizeLiveAgentInteractionRequest(...args),
     updateTerminalStatus: (...args) => updateTerminalStatus(...args),
     worktreeCoordinator: {
       serialize: (projectId, operation) =>
@@ -901,12 +913,45 @@ export async function buildApp({
 
   installAgentInteractionRoutes(app, {
     applicationOwnerId,
+    serverId,
     bridge,
     repository,
     resolveLiveAgentInteractionRequest,
     resolveLiveEncryptedAgentInteractionRequest,
     runtimeForContext,
   });
+
+  installComputerUsePreviewRoutes(app, {
+    applicationOwnerId,
+    serverId,
+    repository,
+    bridge,
+  });
+  installComputerUseRoutes(app, {
+    applicationOwnerId,
+    serverId,
+    repository,
+    bridge,
+    requirePreviewLease: true,
+    approvalPublications: computerUseApprovalPublications,
+    runAsOwner,
+    ensureWorkerNotificationSubscription,
+    authorize: async ({ ownerId, context }) =>
+      computerUsePreviewAuthority({ ownerId, serverId, context }),
+    recordLiveEncryptedAgentInteractionRequest,
+    terminalizeLiveAgentInteractionRequest,
+  });
+  const stopComputerUseAuthoritySubscription =
+    repository.subscribeComputerUseAuthorityChanges(async (change) => {
+      const workers = await repository.listWorkers(change.ownerId);
+      await revokeComputerUsePreviews({
+        bridge,
+        ownerId: change.ownerId,
+        serverId,
+        workerIds: workers.map((worker) => worker.workerId),
+        scope: change.scope,
+      });
+    });
 
   const { prepareProviderAccountSignOut, resolveAccountAuthTarget } =
     installProviderAccountAuthRoutes(app, {
@@ -1319,6 +1364,7 @@ export async function buildApp({
   installPolicyRoutes(app, { applicationOwnerId, repository });
 
   app.addHook("onClose", async () => {
+    stopComputerUseAuthoritySubscription();
     liveInfrastructureRuntime.stopPublishing();
     sessionSocketRuntime.stopValidation();
     tunnelControlPlaneRuntime.stopExpirySweep();

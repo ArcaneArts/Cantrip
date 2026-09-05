@@ -25,7 +25,7 @@ recorded in [NETWORK_ACCEPTANCE.md](NETWORK_ACCEPTANCE.md).
 ## Computer-use routing foundation
 
 CUA is separate from Remote Desktop and is not a new WorkerLink channel in
-this tranche. Its tested, currently unregistered route factory uses the normal
+this tranche. Its registered preview and operation routes use the normal
 client -> server -> same worker hosting the agent -> private Rust child
 process path. No app-to-worker/native bypass or public native listener exists.
 
@@ -37,16 +37,39 @@ assembly to fail rather than silently returning incomplete pixels or replaying
 an operation. This is not a resumable image stream, and the bounded HTTP request
 deadline is not a promise of worker cancellation on HTTP disconnect.
 
-Production activation, effective-policy authorization and capability publication
-remain tracked in [the CUA ledger](planned/CUA.md#implementation-progress).
+Opening `/api/chats/:chatId/computer-use/preview` resolves the actual agent
+worker and creates only an inert worker-owned lease. Protected operations use
+`/api/chats/:chatId/computer-use/operation`; their current placement, permission
+profiles and durable authority generation are supplied by the server, never
+the client. The random lease is also authenticated in endpoint encryption.
+Ordinary turn/lane activity does not replace a client-preview lifetime. Native
+MCP execution must retain its own actual runtime identity in its later pass.
+
 The existing `/api/agent-requests/:requestId/respond` route recognizes native
 CUA provenance and forwards `computer-use.approval.respond` to that request's
-current owning worker/lane. Replies remain protected by `interaction-content`;
+current owning worker and preview authority. Replies remain protected by `interaction-content`;
 the server cannot grant permissions by decoding them. This path requires no
 Codex thread, runtime lookup or online-status preflight. Worker acknowledgment
 precedes durable resolution, and bounded exact-response receipts support a
-retry after persistence failure without repeating native work. Capture
-activation and its trusted lifecycle owner are not yet installed.
+retry after persistence failure without repeating native work. The separate
+`/api/chats/:chatId/computer-use/preview/stop` endpoint can close an owned lease
+after relocation or archival without requiring the old chat execution context.
+It does not select a new desktop or launch a helper. Terminal worker disconnect
+and shutdown also dispose previews. The current default Rust backend reports
+unavailable; native capture and client UI are still tracked in
+[the CUA ledger](planned/CUA.md#implementation-progress).
+
+The request-origin server subscribes to existing coordinated worker
+notifications before dispatch, even if another server owns the worker socket.
+Bounded scoped command/insert completion barriers order terminal notifications
+behind approval publication without an extra worker round trip, polling, or
+retaining protected payloads. A still-running insert is not forgotten solely
+because its HTTP request timed out. Post-commit database notifications send
+scoped lease revocations with bounded two-second acknowledgments; delivery is
+best-effort and does not delay ordinary committed mutations. A transactional
+chat authority generation rejects subsequent stale operations when a push is
+missed. Neither mechanism promises instantaneous cancellation of an already
+authorized operation during a network partition.
 
 ## Product decisions
 

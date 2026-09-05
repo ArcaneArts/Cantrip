@@ -65,6 +65,8 @@ export interface CuaApprovalContext {
   profile: CuaPermissionProfile;
   /** Owned by the execution coordinator; abort on policy/scope revocation. */
   signal: AbortSignal;
+  /** Present only for a genuine client-preview lifetime, never a native turn. */
+  previewLeaseId?: string;
 }
 type PermissionRequest = {
   computerUse: {
@@ -126,6 +128,19 @@ export class CuaApprovalManager {
       completed: this.completed.size,
       closed: this.closed,
     };
+  }
+
+  contextForResponse(requestKey: string): CuaApprovalContext | null {
+    const context =
+      this.pending.get(requestKey)?.context ??
+      this.completed.get(requestKey)?.context;
+    return context
+      ? {
+          ...context,
+          scope: { ...context.scope },
+          profile: { ...context.profile },
+        }
+      : null;
   }
 
   async authorize(input: {

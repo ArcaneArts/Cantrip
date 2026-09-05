@@ -32,6 +32,7 @@ export interface ComputerUseContentContext {
   chatId: string;
   operationId: string;
   operation: ComputerUseOperation;
+  previewLeaseId?: string;
 }
 
 /** Seal borrows plaintext until its promise settles; it must not retain it. */
@@ -54,11 +55,18 @@ function contextFor(
   direction: "request" | "response" | "event",
   sequence = 0,
 ): EndpointContentContext {
+  const previewLeaseId = computerUseRequestSchema.shape.previewLeaseId.parse(
+    context.previewLeaseId,
+  );
   return endpointContentContextSchema.parse({
     domain: "client-control-content",
     serverId: context.serverId,
     workerId: context.workerId,
-    scopeId: context.chatId,
+    // Preview leases are worker-owned random identities. Binding them here
+    // prevents a relay from moving an old action/result onto a new lifetime.
+    scopeId: previewLeaseId
+      ? JSON.stringify(["cua-preview-v1", context.chatId, previewLeaseId])
+      : context.chatId,
     operationId: context.operationId,
     operation: computerUseOperationSchema.parse(context.operation),
     direction,
@@ -126,6 +134,9 @@ export async function protectComputerUseRequest(input: {
   return computerUseRequestSchema.parse({
     operationId: context.operationId,
     operation: request.operation,
+    ...(context.previewLeaseId
+      ? { previewLeaseId: context.previewLeaseId }
+      : {}),
     protectedContent: await sealJson(
       contextFor(context, "request"),
       request,
@@ -144,7 +155,8 @@ export async function openComputerUseRequest(input: {
     const request = computerUseRequestSchema.parse(input.opaque);
     if (
       request.operationId !== context.operationId ||
-      request.operation !== context.operation
+      request.operation !== context.operation ||
+      request.previewLeaseId !== context.previewLeaseId
     )
       failure();
     const action = await openJson(

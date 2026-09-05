@@ -116,6 +116,10 @@ import { TaskDispatchRepository } from "./task-dispatch.js";
 import { ProjectTabLayoutRepository } from "./tab-layouts.js";
 import { WorkspaceRepositoryDiscoveryJobRepository } from "./workspace-repository-discovery-jobs.js";
 import { ProjectExecutionRepositoryFacade } from "./repository-facade-project-execution.js";
+import {
+  ComputerUseAuthorityChanges,
+  type ComputerUseAuthorityListener,
+} from "./repository/computer-use-authority.js";
 
 export type { RepositoryDatabase } from "./repository/database.js";
 export {
@@ -255,6 +259,20 @@ function toExplorerWireSummary(
 }
 
 export class ServerRepository extends ProjectExecutionRepositoryFacade {
+  private readonly computerUseAuthorityChanges =
+    new ComputerUseAuthorityChanges();
+
+  subscribeComputerUseAuthorityChanges(
+    listener: ComputerUseAuthorityListener,
+  ): () => void {
+    return this.computerUseAuthorityChanges.subscribe(listener);
+  }
+
+  /** Called only by the database connection's committed NOTIFY listener. */
+  receiveComputerUseAuthorityNotification(payload: string): void {
+    this.computerUseAuthorityChanges.receive(payload);
+  }
+
   readonly accounts: AccountRepository;
   readonly accountResourceUsage: AccountResourceUsageRepository;
   readonly desktopUpdateState: DesktopUpdateStateRepository;

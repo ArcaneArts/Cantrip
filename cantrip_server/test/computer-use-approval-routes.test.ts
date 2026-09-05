@@ -75,7 +75,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-function setup() {
+function setup(options: { preview?: boolean } = {}) {
   const logs: string[] = [];
   const app = Fastify({
     logger: { stream: { write: (line: string) => logs.push(line) } },
@@ -91,9 +91,20 @@ function setup() {
       threadId: null,
       modelId: null,
       status: "idle",
+      scratchRootId: "scratch-one",
+      projectId: null,
+      computerUseAuthorityGeneration: 1,
+      permissionProfileId: ":workspace",
+      isPrimary: true,
+      worktreePolicy: null,
     } as ChatExecutionContext,
     idempotencyKey: null as string | null,
   };
+  if (options.preview) {
+    state.interaction.provenance.executionLaneId = null;
+    state.context.threadId = "real-agent-thread";
+    state.context.status = "running";
+  }
   const applicationOwnerId = vi.fn(() => "owner-one");
   const repository = {
     listAgentInteractionRequests:
@@ -179,6 +190,7 @@ function setup() {
   runtimeForContext.mockResolvedValue(null);
   installAgentInteractionRoutes(app, {
     applicationOwnerId,
+    serverId: "server-one",
     bridge: { request, isConnected },
     repository,
     resolveLiveAgentInteractionRequest: resolveVisible,
@@ -202,6 +214,55 @@ function setup() {
 }
 
 describe("computer-use approval responses", () => {
+  it("authorizes an idle preview without borrowing the active agent lane", async () => {
+    const f = setup({ preview: true });
+    expect((await f.send()).statusCode).toBe(200);
+    expect(f.request.mock.lastCall?.[1]).toMatchObject({
+      type: "computer-use.approval.respond",
+      executionLaneId: null,
+      previewAuthority: {
+        ownerId: "owner-one",
+        serverId: "server-one",
+        workerId: "worker-one",
+        chatId: "chat-one",
+        contextKind: "standalone",
+        projectId: null,
+        placementId: "scratch-one",
+        generation: 1,
+        profile: {
+          selectedId: ":workspace",
+          effectiveId: ":workspace",
+          forcedByWorktreePolicy: false,
+          usesDefault: false,
+        },
+      },
+    });
+    expect(f.runtimeForContext).not.toHaveBeenCalled();
+    expect(f.isConnected).not.toHaveBeenCalled();
+  });
+
+  it("sends refreshed authority so the worker rejects approval after a policy change", async () => {
+    const f = setup({ preview: true });
+    f.state.context.computerUseAuthorityGeneration = 2;
+    f.state.context.permissionProfileId = ":read-only";
+    f.request.mockRejectedValue(new Error("revoked"));
+    expect((await f.send()).statusCode).toBe(409);
+    expect(f.request.mock.lastCall?.[1]).toMatchObject({
+      previewAuthority: {
+        generation: 2,
+        profile: { selectedId: ":read-only" },
+      },
+    });
+    expect(f.resolveProtected).not.toHaveBeenCalled();
+  });
+
+  it("rejects a preview approval after the chat moves to another worker", async () => {
+    const f = setup({ preview: true });
+    f.state.context.workerId = "other-worker";
+    expect((await f.send()).statusCode).toBe(409);
+    expect(f.request).not.toHaveBeenCalled();
+  });
+
   it("routes an idle native approval without a Codex thread or selected model", async () => {
     const f = setup();
     const response = await f.send();

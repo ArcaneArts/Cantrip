@@ -15,6 +15,7 @@ import {
   runConfigurationRuntimeWorkerReconciliationSchema,
 } from "@cantrip/protocol/run-configuration-runtime";
 import { workerLinkIdentityResolveResultSchema } from "@cantrip/protocol/worker-link";
+import { cuaApprovalTerminalSchema } from "@cantrip/protocol/computer-use-preview";
 import type { FastifyInstance } from "fastify";
 
 import type {
@@ -35,6 +36,7 @@ import {
   gitOperationObservationMatches,
 } from "../shared/git-managed-operations.js";
 import { worktreeStatusFromGitStatus } from "../shared/worktree-status.js";
+import type { ComputerUseApprovalPublications } from "../routes/computer-use-preview.js";
 
 interface ProviderAuthObservation {
   accountId: string;
@@ -109,6 +111,8 @@ export interface WorkerNotificationRuntimeDependencies {
   ) => Promise<{ providerKind: "chatgpt" | "grok" }>;
   runAsOwner: OwnerRunner;
   serverId: () => string;
+  terminalizeLiveAgentInteractionRequest: ServerRepository["terminalizeAgentInteractionRequestFromWorker"];
+  computerUseApprovalPublications?: ComputerUseApprovalPublications;
   updateTerminalStatus: (
     terminalId: string,
     status: Parameters<ServerRepository["setTerminalStatus"]>[1],
@@ -141,6 +145,8 @@ export function createWorkerNotificationRuntime({
   resolveAccountAuthTarget,
   runAsOwner,
   serverId,
+  terminalizeLiveAgentInteractionRequest,
+  computerUseApprovalPublications,
   updateTerminalStatus,
   worktreeCoordinator,
 }: WorkerNotificationRuntimeDependencies) {
@@ -521,6 +527,17 @@ export function createWorkerNotificationRuntime({
     workerId: string,
     notification: WorkerNotification,
   ): Promise<void> => {
+    if (notification.type === "computer-use.approval.terminal") {
+      await applyComputerUseApprovalTerminal({
+        ownerId,
+        workerId,
+        notification,
+        repository,
+        terminalizeLiveAgentInteractionRequest,
+        approvalPublications: computerUseApprovalPublications,
+      });
+      return;
+    }
     if (notification.type === "terminal.runtime.observed") {
       const identity = workerLinkIdentityResolveResultSchema.safeParse(
         await bridge.request(
@@ -916,4 +933,56 @@ export function createWorkerNotificationRuntime({
     scheduleProjectWorktreeObservation,
     scheduleWorkerWorktreeObservation,
   };
+}
+
+/** Authenticated subscription identity, not notification claims, owns the row. */
+export async function applyComputerUseApprovalTerminal(input: {
+  ownerId: string;
+  workerId: string;
+  notification: unknown;
+  repository: Pick<ServerRepository, "getAgentInteractionRequestByKey">;
+  terminalizeLiveAgentInteractionRequest: ServerRepository["terminalizeAgentInteractionRequestFromWorker"];
+  approvalPublications?: ComputerUseApprovalPublications;
+}): Promise<void> {
+  const terminal = cuaApprovalTerminalSchema.safeParse(input.notification);
+  if (!terminal.success) return;
+  try {
+    const scope = {
+      ownerId: input.ownerId,
+      workerId: input.workerId,
+      chatId: terminal.data.chatId,
+      requestKey: terminal.data.requestKey,
+    };
+    // Independent coordinated notifications may beat the first command event.
+    // The dispatch fence exists before bridge.request and its completion waits
+    // for that command's async event queue; ordered terminal events bypass this
+    // helper so they cannot deadlock on their own command.
+    await input.approvalPublications?.waitCommands(scope);
+    // An HTTP timeout may end dispatch while a started insert can still commit.
+    await input.approvalPublications?.wait(scope);
+    const lookup = () =>
+      input.repository.getAgentInteractionRequestByKey(
+        input.ownerId,
+        terminal.data.requestKey,
+      );
+    const existing = await lookup();
+    if (
+      !existing ||
+      existing.provenance.owner !== "computer-use" ||
+      existing.requestKey !== terminal.data.requestKey ||
+      existing.provenance.chatId !== terminal.data.chatId ||
+      existing.provenance.workerId !== input.workerId
+    )
+      return;
+    await input.terminalizeLiveAgentInteractionRequest(
+      terminal.data.requestKey,
+      terminal.data.chatId,
+      input.workerId,
+      terminal.data.status,
+    );
+  } catch {
+    throw new Error(
+      "Computer-use approval terminal state could not be applied.",
+    );
+  }
 }

@@ -19,6 +19,7 @@ import {
 } from "../security/secret-vault.js";
 import { LOCAL_USER_ID, ServerRepository } from "./repository.js";
 import * as schema from "./schema.js";
+import { COMPUTER_USE_AUTHORITY_CHANNEL } from "./repository/computer-use-authority.js";
 
 const migrationsFolder = fileURLToPath(
   new URL("../../drizzle", import.meta.url),
@@ -186,6 +187,10 @@ async function openPglite(
       throw new PgliteMigrationError(error);
     }
     const repository = new ServerRepository(database, secretVault);
+    const stopAuthorityNotifications = await client.listen(
+      COMPUTER_USE_AUTHORITY_CHANNEL,
+      (payload) => repository.receiveComputerUseAuthorityNotification(payload),
+    );
     await repository.ensureLocalIdentity();
     await repository.policies.ensureOwnerState(LOCAL_USER_ID);
     await repository.migrateProviderSecrets();
@@ -210,7 +215,11 @@ async function openPglite(
         );
       },
       async close() {
-        await client.close();
+        try {
+          await stopAuthorityNotifications();
+        } finally {
+          await client.close();
+        }
       },
     };
   } catch (error) {
@@ -238,6 +247,13 @@ async function connectPostgres(
       await database.execute(sql`select 1`);
       await migratePostgres(database, { migrationsFolder });
       const repository = new ServerRepository(database, secretVault);
+      // postgres-js owns a dedicated LISTEN connection and reconnects it; no
+      // request transaction connection is borrowed or retained here.
+      const authorityNotifications = await client.listen(
+        COMPUTER_USE_AUTHORITY_CHANNEL,
+        (payload) =>
+          repository.receiveComputerUseAuthorityNotification(payload),
+      );
       await repository.ensureLocalIdentity();
       await repository.policies.ensureOwnerState(LOCAL_USER_ID);
       await repository.migrateProviderSecrets();
@@ -263,7 +279,11 @@ async function connectPostgres(
           );
         },
         async close() {
-          await client.end({ timeout: 5 });
+          try {
+            await authorityNotifications.unlisten();
+          } finally {
+            await client.end({ timeout: 5 });
+          }
         },
       };
     } catch (error) {

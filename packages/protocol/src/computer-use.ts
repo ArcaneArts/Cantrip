@@ -194,6 +194,7 @@ export const computerUseRequestSchema = z.strictObject({
   operationId: z.string().uuid(),
   operation: computerUseOperationSchema,
   protectedContent: controlContentSchema,
+  previewLeaseId: z.string().uuid().optional(),
 });
 export const computerUseChunkEventSchema = z.strictObject({
   type: z.literal("computer-use.snapshot.chunk"),

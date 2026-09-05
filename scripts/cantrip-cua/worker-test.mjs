@@ -14,6 +14,7 @@ for (const [project, ...tests] of [
   [
     "packages/protocol",
     "src/computer-use.test.ts",
+    "src/computer-use-preview.test.ts",
     "src/agent-interaction-provenance.test.ts",
     "src/public-surface-compatibility.test.ts",
   ],
@@ -29,6 +30,11 @@ for (const [project, ...tests] of [
     "test/computer-use-roundtrip.test.ts",
     "test/computer-use-approval-routes.test.ts",
     "test/computer-use-interaction-migration.test.ts",
+    "test/computer-use-authority-generation.test.ts",
+    "test/computer-use-authority-publisher.test.ts",
+    "test/computer-use-authority-postgres.test.ts",
+    "test/computer-use-preview-routes.test.ts",
+    "test/computer-use-preview-roundtrip.test.ts",
   ],
   [
     "cantrip_app",

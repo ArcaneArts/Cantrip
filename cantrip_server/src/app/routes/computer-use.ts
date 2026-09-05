@@ -7,6 +7,11 @@ import {
   type ComputerUseChunkEvent,
   type ComputerUseOperation,
 } from "@cantrip/protocol/computer-use";
+import {
+  cuaApprovalRequestEventSchema,
+  cuaApprovalTerminalSchema,
+  type CuaPreviewAuthority,
+} from "@cantrip/protocol/computer-use-preview";
 import type { FastifyInstance } from "fastify";
 
 import type {
@@ -14,24 +19,37 @@ import type {
   ServerRepository,
 } from "../../db/repository.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
+import type { ComputerUseApprovalPublications } from "./computer-use-preview.js";
 
 export interface ComputerUseRouteDependencies {
   applicationOwnerId: () => string;
   serverId: string;
   repository: Pick<ServerRepository, "getChatExecutionContext">;
   bridge: Pick<WorkerCommandBus, "request">;
+  /** Production requires a worker-issued preview lease; legacy unit fixtures do not. */
+  requirePreviewLease?: boolean;
+  recordLiveEncryptedAgentInteractionRequest?: ServerRepository["recordEncryptedAgentInteractionRequest"];
+  terminalizeLiveAgentInteractionRequest?: ServerRepository["terminalizeAgentInteractionRequestFromWorker"];
+  approvalPublications?: ComputerUseApprovalPublications;
+  runAsOwner?: <T>(ownerId: string, operation: () => T) => T;
+  ensureWorkerNotificationSubscription?: (
+    ownerId: string,
+    workerId: string,
+  ) => void;
   authorize: (input: {
     ownerId: string;
     context: ChatExecutionContext;
     operation: ComputerUseOperation;
     operationId: string;
-  }) => Promise<void>;
+    previewLeaseId?: string;
+  }) => Promise<void | CuaPreviewAuthority>;
 }
 
 /**
- * An unregistered relay factory: production installation requires the existing
- * permission system to supply authorization first. The server never opens CUA
- * content, stores snapshots, or selects a desktop from client-provided IDs.
+ * Production requests carry current server authority and a worker-issued lease;
+ * the worker applies the existing permission system before native operations.
+ * The server never opens CUA content, stores snapshots, or selects a desktop
+ * from client-provided IDs.
  */
 export function installComputerUseRoutes(
   app: FastifyInstance,
@@ -41,6 +59,12 @@ export function installComputerUseRoutes(
     repository,
     bridge,
     authorize,
+    requirePreviewLease = false,
+    recordLiveEncryptedAgentInteractionRequest,
+    terminalizeLiveAgentInteractionRequest,
+    approvalPublications,
+    runAsOwner = (_ownerId, operation) => operation(),
+    ensureWorkerNotificationSubscription,
   }: ComputerUseRouteDependencies,
 ): void {
   app.post<{ Params: { chatId: string } }>(
@@ -57,6 +81,10 @@ export function installComputerUseRoutes(
       if (!input.success) {
         return reply.code(400).send({ error: "Invalid computer-use request." });
       }
+      if (requirePreviewLease && !input.data.previewLeaseId)
+        return reply
+          .code(400)
+          .send({ error: "A computer-use preview lease is required." });
 
       let ownerId: string;
       let context: ChatExecutionContext | null;
@@ -75,14 +103,27 @@ export function installComputerUseRoutes(
       // Stopping remains available after approval is revoked. The worker must
       // authenticate the sealed action, require this exact operation, and
       // validate its session scope before closing anything.
-      if (input.data.operation !== "session.close") {
+      let previewAuthority: CuaPreviewAuthority | void = undefined;
+      if (
+        input.data.operation !== "session.close" ||
+        requirePreviewLease ||
+        input.data.previewLeaseId
+      ) {
         try {
-          await authorize({
+          previewAuthority = await authorize({
             ownerId,
             context,
             operation: input.data.operation,
             operationId: input.data.operationId,
+            ...(input.data.previewLeaseId
+              ? { previewLeaseId: input.data.previewLeaseId }
+              : {}),
           });
+          if (
+            (requirePreviewLease && !previewAuthority) ||
+            (previewAuthority && !input.data.previewLeaseId)
+          )
+            throw new Error("Missing preview authority.");
         } catch {
           return reply
             .code(403)
@@ -91,25 +132,107 @@ export function installComputerUseRoutes(
       }
 
       const chunks: ComputerUseChunkEvent[] = [];
+      let approvalRequestKey: string | null = null;
+      let approvalTerminalSeen = false;
       let acceptingChunks = true;
+      let finishCommand: (() => void) | undefined;
       try {
+        // Subscribe on the request-origin server too: its worker may be
+        // connected to another instance of the existing coordinated relay.
+        ensureWorkerNotificationSubscription?.(ownerId, context.workerId);
+        finishCommand = approvalPublications?.beginCommand({
+          ownerId,
+          workerId: context.workerId,
+          chatId: context.chatId,
+        });
         const raw = await bridge.request(
           context.workerId,
           {
             type: "computer-use.operation",
             serverId,
             chatId: context.chatId,
-            executionLaneId: context.executionLaneId,
+            executionLaneId: previewAuthority ? null : context.executionLaneId,
             request: input.data,
+            ...(previewAuthority
+              ? {
+                  preview: {
+                    leaseId: input.data.previewLeaseId!,
+                    authority: previewAuthority,
+                  },
+                }
+              : {}),
           },
           {
             ownerId,
             timeoutMs: 30_000,
-            onEvent: (event) => {
+            onEvent: async (event) => {
               if (!acceptingChunks) return;
+              if (event.type === "computer-use.approval.request") {
+                const approval = cuaApprovalRequestEventSchema.parse(event);
+                const provenance = approval.request.provenance;
+                if (
+                  !previewAuthority ||
+                  !recordLiveEncryptedAgentInteractionRequest ||
+                  approvalRequestKey ||
+                  chunks.length ||
+                  approval.operationId !== input.data.operationId ||
+                  provenance.owner !== "computer-use" ||
+                  provenance.chatId !== context.chatId ||
+                  provenance.workerId !== context.workerId ||
+                  approval.request.projectId !== context.projectId ||
+                  provenance.threadId !== null ||
+                  provenance.turnId !== null ||
+                  provenance.itemId !== null ||
+                  provenance.executionLaneId !== null ||
+                  input.data.operation === "session.close"
+                )
+                  throw new Error("Invalid computer-use approval request.");
+                approvalRequestKey = approval.request.requestKey;
+                const record = () =>
+                  runAsOwner(ownerId, () =>
+                    recordLiveEncryptedAgentInteractionRequest(
+                      approval.request,
+                    ),
+                  );
+                if (approvalPublications)
+                  await approvalPublications.publish(
+                    {
+                      ownerId,
+                      workerId: context.workerId,
+                      chatId: context.chatId,
+                      requestKey: approval.request.requestKey,
+                    },
+                    record,
+                  );
+                else await record();
+                return;
+              }
+              if (event.type === "computer-use.approval.terminal") {
+                const terminal = cuaApprovalTerminalSchema.parse(event);
+                if (
+                  !terminalizeLiveAgentInteractionRequest ||
+                  approvalTerminalSeen ||
+                  terminal.chatId !== context.chatId ||
+                  terminal.requestKey !== approvalRequestKey
+                )
+                  throw new Error(
+                    "Invalid computer-use approval terminal event.",
+                  );
+                approvalTerminalSeen = true;
+                await runAsOwner(ownerId, () =>
+                  terminalizeLiveAgentInteractionRequest(
+                    terminal.requestKey,
+                    context.chatId,
+                    context.workerId,
+                    terminal.status,
+                  ),
+                );
+                return;
+              }
               const chunk = computerUseChunkEventSchema.safeParse(event);
               if (
                 !chunk.success ||
+                approvalRequestKey !== null ||
                 input.data.operation !== "observation.snapshot" ||
                 chunk.data.operationId !== input.data.operationId ||
                 chunk.data.sequence !== chunks.length ||
@@ -144,6 +267,7 @@ export function installComputerUseRoutes(
       } finally {
         acceptingChunks = false;
         chunks.length = 0;
+        finishCommand?.();
       }
     },
   );

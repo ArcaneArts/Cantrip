@@ -102,7 +102,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
   applicationRoutes:
-    "bbb816a6c73d57eef0691561a25486c686dad8ec8017027b821ec0bd09b548a9",
+    "5ec753c518253bdcf5d5b1f107039887ca8a4bc4358a23bfebeb5bad518c23de",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
   workerCommands:
-    "25026d83ec8976190e45ae6f52f672e84a6f72bbea9e7f20297bd1b0b1b54e54",
+    "d6c1af7ed515c1451c6e8626bfdd8a42d1483548db113e32fe4a952e0f9fe769",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3624,6 +3624,13 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command.startsWith("computer-use.preview.")) {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "server-derived CUA preview authority and opaque lease lifecycle IDs; no native titles, cursor content, or pixels; worker validates owner/server/chat/placement/profile generation and Stop invalidates the exact lease",
+    };
+  }
   if (command === "computer-use.approval.respond") {
     return {
       classification: "endpoint-protected",
@@ -3635,7 +3642,7 @@ function workerCommandContentClassification(command) {
     return {
       classification: "endpoint-protected",
       rationale:
-        "CUA handler remains unregistered pending permission-owner integration; native targets, cursor state, results, and image chunks use operation-bound client-control-content ciphertext rather than public worker metadata",
+        "CUA operations require a server-authorized worker-owned preview lease and existing durable permission policy; native targets, cursor state, results, and image chunks use operation-and-lease-bound client-control-content ciphertext rather than public worker metadata",
     };
   }
   if (command === "project.run-configuration-runtime.output") {
