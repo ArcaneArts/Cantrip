@@ -935,8 +935,10 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 9 — Protected per-operation Trajectory
 
 - Branch: `codex/cua-09-protected-trajectory`, based on merged cycle 8e
-  (`c9e516f51`). Local implementation and focused verification are complete;
-  PR and cross-platform CI are pending.
+  (`c9e516f51`). Implementation commit: `1a3ee9f5`.
+- PR: [#1751](https://github.com/ArcaneArts/Cantrip/pull/1751), open; local
+  implementation and focused verification are complete. Cross-platform CI and
+  merge observation are pending; no merge is claimed.
 - Implemented: actual agent MCP and user preview operations use the existing
   encrypted chat/task message and Trajectory paths. Agent records retain the
   runtime's root/child scope; idle preview sessions have a distinct Preview
