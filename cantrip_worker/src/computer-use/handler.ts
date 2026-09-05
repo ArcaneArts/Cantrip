@@ -8,6 +8,8 @@ import {
   type ComputerUseAction,
   type ComputerUseChunkEvent,
   type ComputerUseResultContent,
+  type CuaAgentObservation,
+  type CuaAgentSources,
   type CuaScope,
   type WorkerComputerUseCommand,
 } from "@cantrip/protocol";
@@ -45,6 +47,15 @@ export interface ComputerUseHandlerDependencies {
   /** Preview leases may reuse their one owned session; agent scopes use the
    * ordinary service path. Called only after scope and permission validation. */
   openSession?: CantripCuaService["open"];
+  /** Read existing completed agent observations. This never dispatches native work. */
+  agentObservations?: {
+    list(): CuaAgentSources;
+    read(sourceId: string): CuaAgentObservation & {
+      payload: Buffer;
+      signal: AbortSignal;
+      release(): void;
+    };
+  };
   encryption: WorkerEndpointEncryptionService & { serverIdentity(): string };
   /** Resolve from trusted worker runtime/broker state, not request turn IDs. */
   resolveExecution(command: WorkerComputerUseCommand): Promise<{
@@ -93,6 +104,7 @@ export async function handleComputerUseOperation(
     plaintext: Uint8Array,
   ) => protectWorkerEndpointBytes({ context, plaintext, service: encryption });
   let payload: Buffer | null = null;
+  let releaseObservation: (() => void) | undefined;
   let result: ComputerUseResultContent;
   try {
     const execution = await dependencies.resolveExecution(command);
@@ -126,6 +138,30 @@ export async function handleComputerUseOperation(
       throw new CuaProcessError("cancelled", "not-sent");
     let data: Extract<ComputerUseResultContent, { status: "ok" }>["data"];
     switch (action.operation) {
+      case "agent.sources.list":
+        if (!dependencies.agentObservations)
+          throw new CuaAuthorizationError("execution-unavailable");
+        data = dependencies.agentObservations.list();
+        break;
+      case "agent.observation.get": {
+        if (!dependencies.agentObservations)
+          throw new CuaAuthorizationError("execution-unavailable");
+        const observation = dependencies.agentObservations.read(
+          action.sourceId,
+        );
+        payload = observation.payload;
+        releaseObservation = observation.release;
+        // Retiring the agent image (including a subsequent evaluation/reset)
+        // also fences a copy already being encrypted for a still-live preview.
+        signal = AbortSignal.any([signal, observation.signal]);
+        data = {
+          source: observation.source,
+          session: observation.session,
+          image: observation.image,
+          nativeImage: observation.nativeImage,
+        };
+        break;
+      }
       case "capabilities.get":
         data = await service.capabilities(scope, signal);
         break;
@@ -242,7 +278,11 @@ export async function handleComputerUseOperation(
     // Ciphertext delivery/encryption failures must not expose native context.
     throw new Error("Protected computer-use response could not be delivered.");
   } finally {
-    if (payload) clearSensitiveBytes(payload);
+    try {
+      if (payload) clearSensitiveBytes(payload);
+    } finally {
+      releaseObservation?.();
+    }
   }
 }
 

@@ -306,6 +306,15 @@ export class CantripCuaService {
     this.assertActive(executionSignal);
     return this.javascript.session(this.scope(input), executionSignal);
   }
+  /** Actual attached JavaScript context lifetime, including native-helper loss.
+   * Reading it never creates a context/session or launches the native helper. */
+  javascriptSessionSignal(
+    input: CuaScope,
+    executionSignal: AbortSignal,
+  ): AbortSignal | null {
+    this.assertActive(executionSignal);
+    return this.javascript.sessionSignal(this.scope(input), executionSignal);
+  }
   async targets(input: CuaScope, signal?: AbortSignal) {
     return (await this.inventory(input, signal)).targets;
   }

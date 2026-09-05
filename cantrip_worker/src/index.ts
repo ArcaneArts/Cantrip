@@ -783,6 +783,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     computerUseAgents.execute(...args),
   );
   const computerUsePreviews = new CuaPreviewCoordinator({
+    agentObservations: computerUseAgents,
     onRevokeChat: (chatId) => computerUseAgents.cancelChat(chatId),
     workerId: config.workerId,
     encryption: workerEncryption,

@@ -10,6 +10,8 @@ import {
 } from "@cantrip/crypto";
 import {
   CUA_CHUNK_BYTES,
+  type CuaSession,
+  type CuaAgentSource,
   type ComputerUseAction,
   type ComputerUseChunkEvent,
   type ComputerUseHttpResult,
@@ -62,10 +64,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function sessionResult(): Extract<
-  ComputerUseResultContent,
-  { status: "ok" }
->["data"] {
+function sessionResult(): { session: CuaSession } {
   return {
     session: {
       binding: {
@@ -107,6 +106,23 @@ function sessionResult(): Extract<
       },
       observationRevision: 1,
     },
+  };
+}
+const agentSourceId = "55555555-5555-4555-8555-555555555555";
+function agentSource(): CuaAgentSource {
+  const { session } = sessionResult();
+  return {
+    sourceId: agentSourceId,
+    rootThreadId: "root-thread",
+    binding: {
+      ...session.binding,
+      threadId: "child-thread",
+      turnId: "actual-turn",
+    },
+    target: session.target!,
+    cursorRevision: session.cursor.revision,
+    observationRevision: session.observationRevision,
+    observedAtMs: 1000,
   };
 }
 const snapshotAction: ComputerUseAction = {
@@ -189,7 +205,8 @@ function fixture() {
     });
     actions.push(action);
     let result: ComputerUseResultContent =
-      action.operation === "observation.snapshot"
+      action.operation === "observation.snapshot" ||
+      action.operation === "agent.observation.get"
         ? {
             status: "ok",
             operation: action.operation,
@@ -215,13 +232,39 @@ function fixture() {
             data: { targets: [] },
             chunkCount: 0,
           };
+    if (action.operation === "agent.sources.list")
+      result = {
+        status: "ok",
+        operation: action.operation,
+        data: { sources: [agentSource()] },
+        chunkCount: 0,
+      };
+    if (
+      action.operation === "agent.observation.get" &&
+      result.status === "ok" &&
+      "image" in result.data
+    ) {
+      const source = agentSource();
+      result = {
+        ...result,
+        operation: action.operation,
+        data: {
+          ...result.data,
+          source,
+          session: { ...sessionResult().session, binding: source.binding },
+          nativeImage: { ...result.data.image, sha256: "b".repeat(64) },
+        },
+      };
+    }
     result = resultTransform(result);
     const chunks: ComputerUseChunkEvent[] = [];
     const response = await protectComputerUseResult({
       context: contextTransform(context),
       result,
       payload:
-        action.operation === "observation.snapshot" && result.status === "ok"
+        (action.operation === "observation.snapshot" ||
+          action.operation === "agent.observation.get") &&
+        result.status === "ok"
           ? bytes
           : null,
       seal: (endpoint, plaintext) =>
@@ -703,5 +746,120 @@ describe("bound computer-use preview client", () => {
     await expect(f.client.stop(lease)).resolves.toBeUndefined();
     expect(f.send).toHaveBeenCalledTimes(3);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("encrypted agent observation attribution", () => {
+  it("opens a real encrypted agent source and rendition while preserving native metadata and real thread/turn identities", async () => {
+    const f = fixture();
+    const lease = await f.client.open();
+    const listed = await f.client.operation(lease, {
+      operation: "agent.sources.list",
+    });
+    expect(listed.content).toMatchObject({
+      status: "ok",
+      data: { sources: [agentSource()] },
+    });
+    expect(listed.bytes).toBeNull();
+    const result = await f.client.operation(lease, {
+      operation: "agent.observation.get",
+      sourceId: agentSourceId,
+    });
+    expect(result.content).toMatchObject({
+      status: "ok",
+      data: {
+        source: agentSource(),
+        session: { binding: agentSource().binding },
+        nativeImage: { sha256: "b".repeat(64) },
+      },
+    });
+    expect(result.bytes).toEqual(f.bytes);
+    result.bytes?.fill(0);
+    expect(f.send.mock.calls.at(-1)?.[1]?.body).not.toContain("child-thread");
+    expect(f.send.mock.calls.at(-1)?.[1]?.body).not.toContain(agentSourceId);
+  });
+  it.each(["chatId", "workerId"] as const)(
+    "rejects encrypted source-list results with a different %s",
+    async (field) => {
+      const f = fixture();
+      const lease = await f.client.open();
+      f.setResultTransform((result) =>
+        result.status === "ok" && "sources" in result.data
+          ? {
+              ...result,
+              data: {
+                sources: result.data.sources.map((source) => ({
+                  ...source,
+                  binding: { ...source.binding, [field]: "other" },
+                })),
+              },
+            }
+          : result,
+      );
+      await expect(
+        f.client.operation(lease, { operation: "agent.sources.list" }),
+      ).rejects.toMatchObject({ code: "invalid-response" });
+    },
+  );
+  it.each(["sourceId", "chatId", "workerId"] as const)(
+    "rejects encrypted observations attributed to a different %s",
+    async (field) => {
+      const f = fixture();
+      const lease = await f.client.open();
+      f.setResultTransform((result) => {
+        if (result.status !== "ok" || !("source" in result.data)) return result;
+        const data = result.data;
+        if (field === "sourceId")
+          return {
+            ...result,
+            data: {
+              ...data,
+              source: {
+                ...data.source,
+                sourceId: "66666666-6666-4666-8666-666666666666",
+              },
+            },
+          };
+        const binding = { ...data.source.binding, [field]: "other" };
+        return {
+          ...result,
+          data: {
+            ...data,
+            source: { ...data.source, binding },
+            session: { ...data.session, binding },
+          },
+        };
+      });
+      await expect(
+        f.client.operation(lease, {
+          operation: "agent.observation.get",
+          sourceId: agentSourceId,
+        }),
+      ).rejects.toMatchObject({ code: "invalid-response" });
+      expect(
+        f.openedPlaintext.every((bytes) => bytes.every((byte) => byte === 0)),
+      ).toBe(true);
+    },
+  );
+  it("keeps manual preview strict when an encrypted snapshot uses agent identities", async () => {
+    const f = fixture();
+    const lease = await f.client.open();
+    f.setResultTransform((result) =>
+      result.status === "ok" && "session" in result.data
+        ? {
+            ...result,
+            data: {
+              ...result.data,
+              session: {
+                ...result.data.session,
+                binding: agentSource().binding,
+              },
+            },
+          }
+        : result,
+    );
+    await expect(
+      f.client.operation(lease, snapshotAction),
+    ).rejects.toMatchObject({ code: "invalid-response" });
   });
 });

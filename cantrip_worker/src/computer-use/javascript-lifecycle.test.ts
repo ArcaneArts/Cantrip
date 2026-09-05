@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CuaNativeError, CuaProcessError } from "./errors.js";
 import type { CuaJavascriptOptions } from "./javascript.js";
 import { CantripCuaService } from "./service.js";
-import type { CuaRequestOptions } from "./transport.js";
+import type { CuaRequestOptions, CuaTransportOptions } from "./transport.js";
 import {
   CUA_REQUIRED_OPERATIONS,
   type CuaBinding,
@@ -91,6 +91,7 @@ function session(binding: CuaBinding): CuaSession {
 // Only the process transport is controlled. Ownership, native session tracking,
 // result validation and cancellation all run through the real worker service.
 function fixture() {
+  let onFailure: CuaTransportOptions["onFailure"];
   const nativeSessions = new Map<string, CuaSession>();
   const payloads: Buffer[] = [];
   let snapshotBytes = png.length;
@@ -156,7 +157,10 @@ function fixture() {
   );
   const service = new CantripCuaService({
     workerId: scope.workerId,
-    launch: vi.fn(() => ({ closed: false, request, close: async () => {} })),
+    launch: vi.fn((_binary: string, opts: CuaTransportOptions = {}) => {
+      onFailure = opts.onFailure;
+      return { closed: false, request, close: async () => {} };
+    }),
   });
   services.push(service);
   return {
@@ -164,6 +168,7 @@ function fixture() {
     nativeSessions,
     payloads,
     request,
+    failRuntime: () => onFailure!(new CuaProcessError("process-exited")),
     setEvaluate: (handler: typeof evaluate) => {
       evaluate = handler;
     },
@@ -183,6 +188,48 @@ async function attach(opts: CuaRequestOptions) {
 }
 
 describe("JavaScript lifetime and reset regressions", () => {
+  it.each(["reset", "script error", "runtime failure", "native session close"])(
+    "exposes the actual attached context signal and aborts it on %s without ending the native turn",
+    async (ending) => {
+      const { service, setEvaluate, request, failRuntime } = fixture();
+      const opts = options();
+      expect(
+        service.javascriptSessionSignal(scope, opts.executionSignal),
+      ).toBeNull();
+      expect(request).not.toHaveBeenCalled();
+      setEvaluate(async (_source, requestOptions) => attach(requestOptions));
+      await service.evaluateJavascript(scope, "attach", opts);
+      const signal = service.javascriptSessionSignal(
+        scope,
+        opts.executionSignal,
+      )!;
+      expect(signal.aborted).toBe(false);
+      expect(() =>
+        service.javascriptSessionSignal(scope, new AbortController().signal),
+      ).toThrow();
+      if (ending === "reset")
+        await service.resetJavascript(scope, opts.executionSignal);
+      if (ending === "script error") {
+        setEvaluate(async () => {
+          throw new CuaNativeError("invalid-request");
+        });
+        await expect(
+          service.evaluateJavascript(scope, "fail", opts),
+        ).rejects.toThrow();
+      }
+      if (ending === "runtime failure") failRuntime();
+      if (ending === "native session close") {
+        const current = service.javascriptSession(scope, opts.executionSignal)!;
+        service.stopSession(scope, current.binding.sessionId);
+      }
+      expect(signal.aborted).toBe(true);
+      expect(opts.executionSignal.aborted).toBe(false);
+      expect(
+        service.javascriptSessionSignal(scope, opts.executionSignal),
+      ).toBeNull();
+    },
+  );
+
   it.each(["reset", "script-error"])(
     "Stop after %s still revokes the same actual execution signal",
     async (ending) => {

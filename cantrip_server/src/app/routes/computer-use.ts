@@ -233,7 +233,8 @@ export function installComputerUseRoutes(
               if (
                 !chunk.success ||
                 approvalRequestKey !== null ||
-                input.data.operation !== "observation.snapshot" ||
+                (input.data.operation !== "observation.snapshot" &&
+                  input.data.operation !== "agent.observation.get") ||
                 chunk.data.operationId !== input.data.operationId ||
                 chunk.data.sequence !== chunks.length ||
                 chunks.length >= CUA_MAX_CHUNKS

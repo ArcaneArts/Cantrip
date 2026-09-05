@@ -48,6 +48,7 @@ for (const [project, ...tests] of [
     "test/computer-use-preview-roundtrip.test.ts",
     "test/computer-use-client-preview.test.ts",
     "test/computer-use-native-preview.test.ts",
+    "test/computer-use-agent-observation.test.ts",
   ],
   [
     "cantrip_app",

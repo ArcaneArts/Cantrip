@@ -391,14 +391,30 @@ describe("unregistered computer-use relay factory", () => {
     expect(response.json()).toEqual({ response: result(), chunks: [] });
   });
 
-  it("rejects image chunks accompanying a non-snapshot operation", async () => {
+  it("relays completed agent observation chunks through the same bounded opaque path", async () => {
     const fixture = setup();
     fixture.request.mockImplementation(async (_workerId, _command, options) => {
       await emit(options, chunk());
       return result();
     });
-    expect((await fixture.send(body("targets.list"))).statusCode).toBe(502);
+    const response = await fixture.send(body("agent.observation.get"));
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ response: result(), chunks: [chunk()] });
   });
+
+  it.each(["targets.list", "agent.sources.list"] as const)(
+    "rejects image chunks accompanying %s",
+    async (operation) => {
+      const fixture = setup();
+      fixture.request.mockImplementation(
+        async (_workerId, _command, options) => {
+          await emit(options, chunk());
+          return result();
+        },
+      );
+      expect((await fixture.send(body(operation))).statusCode).toBe(502);
+    },
+  );
 
   it.each([
     ["wrong correlation", { ...result(), operationId: otherOperationId }],

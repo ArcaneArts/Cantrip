@@ -1,9 +1,13 @@
 import {
+  cuaAgentObservationSchema,
+  cuaAgentSourcesSchema,
   cuaCapabilitiesSchema,
   cuaInventorySchema,
   cuaSessionResultSchema,
   cuaSnapshotSchema,
   type ComputerUseAction,
+  type CuaAgentSource,
+  type CuaImage,
   type CuaCapabilities,
   type CuaCursorAppearance,
   type CuaPoint,
@@ -15,6 +19,10 @@ import type { CuaPreviewLease } from "@cantrip/protocol/computer-use-preview";
 import type { ComputerUseClient } from "@/lib/computer-use-client";
 
 export interface PreviewState {
+  mode: "manual" | "agent";
+  sources: CuaAgentSource[];
+  sourceId: string | null;
+  agentSource: CuaAgentSource | null;
   phase: "idle" | "connected" | "stopped" | "disposed";
   busy: boolean;
   stopping: boolean;
@@ -23,11 +31,19 @@ export interface PreviewState {
   targets: CuaTarget[];
   targetsTruncated: boolean;
   session: CuaSession | null;
-  observation: { url: string; metadata: CuaSnapshot } | null;
+  observation: {
+    url: string;
+    metadata: CuaSnapshot;
+    nativeImage?: CuaImage;
+  } | null;
   error: { code: string; message: string } | null;
 }
 
 const initial = (): PreviewState => ({
+  mode: "manual",
+  sources: [],
+  sourceId: null,
+  agentSource: null,
   phase: "idle",
   busy: false,
   stopping: false,
@@ -82,6 +98,10 @@ export class ComputerUsePreviewController {
       await work(flight.signal);
     } catch (error) {
       if (!flight.signal.aborted && !this.disposed) {
+        if (this.state.mode === "agent") {
+          this.clearImage();
+          this.update({ agentSource: null, session: null });
+        }
         this.update({
           error: {
             code:
@@ -122,7 +142,49 @@ export class ComputerUsePreviewController {
       if (result.content.operation !== action.operation) {
         throw new Error("Computer use returned a mismatched operation.");
       }
-      if (action.operation === "observation.snapshot") {
+      if (action.operation === "agent.sources.list") {
+        const { sources } = cuaAgentSourcesSchema.parse(result.content.data);
+        const selected = sources.find(
+          (source) => source.sourceId === this.state.sourceId,
+        );
+        // Refreshing a list never fetches pixels implicitly. A newer observation
+        // makes the displayed rendition stale until explicitly refreshed.
+        if (
+          !selected ||
+          selected.observationRevision !==
+            this.state.agentSource?.observationRevision ||
+          selected.cursorRevision !== this.state.agentSource?.cursorRevision
+        ) {
+          this.clearImage();
+          this.update({ session: null, agentSource: null });
+        }
+        this.update({ sources, sourceId: selected?.sourceId ?? null });
+      } else if (action.operation === "agent.observation.get") {
+        const metadata = cuaAgentObservationSchema.parse(result.content.data);
+        if (
+          metadata.source.sourceId !== action.sourceId ||
+          action.sourceId !== this.state.sourceId
+        )
+          throw new Error("Computer use returned a different agent source.");
+        if (!result.bytes)
+          throw new Error("The agent has no observation pixels available.");
+        const url = this.images.create(result.bytes);
+        this.clearImage();
+        this.update({
+          session: metadata.session,
+          agentSource: metadata.source,
+          sources: this.state.sources.map((source) =>
+            source.sourceId === metadata.source.sourceId
+              ? metadata.source
+              : source,
+          ),
+          observation: {
+            url,
+            metadata: { session: metadata.session, image: metadata.image },
+            nativeImage: metadata.nativeImage,
+          },
+        });
+      } else if (action.operation === "observation.snapshot") {
         const metadata = cuaSnapshotSchema.parse(result.content.data);
         if (!result.bytes)
           throw new Error("Computer use returned no snapshot pixels.");
@@ -160,14 +222,72 @@ export class ComputerUsePreviewController {
         this.assertActive(signal);
         this.update({ lease, phase: "connected" });
       }
+      if (this.state.mode === "agent") {
+        await this.action({ operation: "agent.sources.list" }, signal);
+        return;
+      }
       await this.action({ operation: "capabilities.get" }, signal);
       // Report actual target-list failures, not a guessed OS or heartbeat gate.
       await this.action({ operation: "targets.list" }, signal);
     });
+  setMode = (mode: PreviewState["mode"]) => {
+    if (this.disposed || this.stopFlight || this.state.mode === mode) return;
+    this.flight?.abort();
+    this.flight = null;
+    this.clearImage();
+    this.update({
+      mode,
+      busy: false,
+      session: null,
+      sources: [],
+      sourceId: null,
+      agentSource: null,
+      targets: [],
+      targetsTruncated: false,
+      capabilities: null,
+      error: null,
+    });
+  };
+  refreshSources = () =>
+    this.state.mode === "agent"
+      ? this.run((signal) =>
+          this.action({ operation: "agent.sources.list" }, signal),
+        )
+      : Promise.resolve();
+  selectSource = (sourceId: string) => {
+    if (
+      this.disposed ||
+      this.stopFlight ||
+      this.state.mode !== "agent" ||
+      !this.state.sources.some((source) => source.sourceId === sourceId)
+    )
+      return Promise.resolve();
+    this.flight?.abort();
+    this.flight = null;
+    this.clearImage();
+    this.update({ sourceId, agentSource: null, session: null, busy: false });
+    return this.refreshObservation();
+  };
+  refreshObservation = () =>
+    this.state.mode === "agent"
+      ? this.run(async (signal) => {
+          const sourceId = this.state.sourceId;
+          if (!sourceId)
+            throw new Error("Select an agent observation source first.");
+          this.clearImage();
+          await this.action(
+            { operation: "agent.observation.get", sourceId },
+            signal,
+          );
+        })
+      : Promise.resolve();
+  private manual(work: (signal: AbortSignal) => Promise<void>) {
+    return this.state.mode === "manual" ? this.run(work) : Promise.resolve();
+  }
   refreshTargets = () =>
-    this.run((signal) => this.action({ operation: "targets.list" }, signal));
+    this.manual((signal) => this.action({ operation: "targets.list" }, signal));
   selectTarget = (target: CuaTarget) =>
-    this.run(async (signal) => {
+    this.manual(async (signal) => {
       this.clearImage();
       await this.action(
         {
@@ -203,9 +323,9 @@ export class ComputerUsePreviewController {
       throw error;
     }
   }
-  snapshot = () => this.run((signal) => this.capture(signal));
+  snapshot = () => this.manual((signal) => this.capture(signal));
   configure = (appearance: CuaCursorAppearance) =>
-    this.run(async (signal) => {
+    this.manual(async (signal) => {
       this.clearImage();
       await this.action(
         { operation: "cursor.configure", ...this.targetAction(), appearance },
@@ -214,7 +334,7 @@ export class ComputerUsePreviewController {
       await this.capture(signal);
     });
   move = (position: CuaPoint) =>
-    this.run(async (signal) => {
+    this.manual(async (signal) => {
       this.clearImage();
       await this.action(
         { operation: "cursor.move", ...this.targetAction(), position },
@@ -223,7 +343,7 @@ export class ComputerUsePreviewController {
       await this.capture(signal);
     });
   detach = () =>
-    this.run(async (signal) => {
+    this.manual(async (signal) => {
       const session = this.state.session;
       if (!session) return;
       this.clearImage();
@@ -243,6 +363,9 @@ export class ComputerUsePreviewController {
       busy: false,
       session: null,
       targets: [],
+      sources: [],
+      sourceId: null,
+      agentSource: null,
       targetsTruncated: false,
       error: null,
     });
@@ -281,6 +404,9 @@ export class ComputerUsePreviewController {
       busy: false,
       session: null,
       targets: [],
+      sources: [],
+      sourceId: null,
+      agentSource: null,
       targetsTruncated: false,
       error: {
         code: "encryption-unavailable",

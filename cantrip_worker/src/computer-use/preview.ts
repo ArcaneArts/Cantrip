@@ -27,6 +27,7 @@ import {
 import { CantripCuaService, CuaServiceError } from "./service.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import { CuaProcessError } from "./errors.js";
+import type { CuaAgentCoordinator } from "./agent.js";
 
 export type CuaPreviewEvent =
   ComputerUseChunkEvent | CuaApprovalRequestEvent | CuaApprovalTerminal;
@@ -45,6 +46,10 @@ export interface CuaPreviewCoordinatorOptions {
   encryption: WorkerEndpointEncryptionService & { serverIdentity(): string };
   service: CantripCuaService;
   approvals: CuaApprovalManager;
+  agentObservations?: Pick<
+    CuaAgentCoordinator,
+    "listObservations" | "readObservation"
+  >;
   /** Trusted Stop/authority revocation reaches agent lifetimes, even without sessions. */
   onRevokeChat?: (chatId: string) => void;
 }
@@ -119,6 +124,19 @@ export class CuaPreviewCoordinator {
       workerId: this.options.workerId,
       service: this.options.service,
       encryption: this.options.encryption,
+      agentObservations: this.options.agentObservations
+        ? {
+            list: () =>
+              this.options.agentObservations!.listObservations(
+                preview.authority,
+              ),
+            read: (sourceId) =>
+              this.options.agentObservations!.readObservation(
+                preview.authority,
+                sourceId,
+              ),
+          }
+        : undefined,
       openSession: (scope, target, signal) =>
         this.openSession(preview, scope, target, signal),
       resolveExecution: async () => ({

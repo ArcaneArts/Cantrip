@@ -31,8 +31,27 @@ export function ComputerUsePreviewPanel({
   const active = Boolean(state.lease) && state.phase === "connected";
   const disabled = state.busy || state.stopping || !active;
   const target = state.session?.target;
+  const following = state.mode === "agent";
+  const selectedSource =
+    state.agentSource ??
+    state.sources.find((source) => source.sourceId === state.sourceId);
   return (
     <div className="grid min-w-0 gap-4" data-slot="computer-use-preview">
+      <label className="grid gap-1 text-xs sm:max-w-xs">
+        Preview mode
+        <select
+          aria-label="Preview mode"
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          value={state.mode}
+          disabled={state.stopping || state.phase === "disposed"}
+          onChange={(event) =>
+            controller.setMode(event.currentTarget.value as "manual" | "agent")
+          }
+        >
+          <option value="manual">Manual preview</option>
+          <option value="agent">Follow agent</option>
+        </select>
+      </label>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
@@ -63,9 +82,11 @@ export function ComputerUsePreviewPanel({
             ? "Request in progress…"
             : state.phase === "stopped"
               ? "Preview stopped"
-              : state.capabilities
-                ? `${state.capabilities.backend} · ${state.capabilities.capture ? "Capture supported" : "Capture unavailable"}`
-                : "The worker is contacted only when you connect."}
+              : following && active
+                ? "Latest completed agent observations · refresh explicitly"
+                : state.capabilities
+                  ? `${state.capabilities.backend} · ${state.capabilities.capture ? "Capture supported" : "Capture unavailable"}`
+                  : "The worker is contacted only when you connect."}
         </p>
       </div>
       {state.error ? (
@@ -91,6 +112,11 @@ export function ComputerUsePreviewPanel({
                 Review approval in chat
               </Button>
             </>
+          ) : following ? (
+            <p className="text-xs text-muted-foreground">
+              Refresh agent sources and select a currently available
+              observation.
+            </p>
           ) : state.error.code === "target-not-found" ||
             state.error.code === "stale-target" ? (
             <p className="text-xs text-muted-foreground">
@@ -105,83 +131,197 @@ export function ComputerUsePreviewPanel({
           )}
         </div>
       ) : null}
-      <div className="flex min-w-0 flex-wrap items-end gap-2">
-        <label className="grid min-w-0 flex-1 gap-1 text-xs">
-          Monitor or window
-          <select
-            aria-label="Monitor or window"
-            className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm"
-            disabled={disabled}
-            value={target ? `${target.id}:${target.generation}` : ""}
-            onChange={(event) => {
-              const next = state.targets.find(
-                (item) =>
-                  `${item.id}:${item.generation}` === event.currentTarget.value,
-              );
-              if (next) void controller.selectTarget(next);
-            }}
-          >
-            <option value="" disabled>
-              Select a target
-            </option>
-            {state.targets.map((item) => (
-              <option
-                key={`${item.id}:${item.generation}`}
-                value={`${item.id}:${item.generation}`}
+      {following ? (
+        <div className="grid min-w-0 gap-3">
+          <div className="flex min-w-0 flex-wrap items-end gap-2">
+            <label className="grid min-w-0 flex-1 gap-1 text-xs">
+              Agent observation source
+              <select
+                aria-label="Agent observation source"
+                className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm"
+                disabled={!active || state.stopping}
+                value={state.sourceId ?? ""}
+                onChange={(event) =>
+                  void controller.selectSource(event.currentTarget.value)
+                }
               >
-                {item.kind === "monitor"
-                  ? "Monitor"
-                  : (item.application ?? "Window")}{" "}
-                — {item.title ?? item.id}
+                <option value="" disabled>
+                  Select an agent observation
+                </option>
+                {state.sources.map((source) => (
+                  <option key={source.sourceId} value={source.sourceId}>
+                    {source.binding.threadId === source.rootThreadId
+                      ? "Root"
+                      : "Child"}{" "}
+                    {source.binding.threadId} ·{" "}
+                    {source.target.title ?? source.target.id} · #
+                    {source.observationRevision}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled}
+              onClick={() => void controller.refreshSources()}
+            >
+              Refresh agent sources
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={disabled || !state.sourceId}
+              onClick={() => void controller.refreshObservation()}
+            >
+              Refresh observation
+            </Button>
+          </div>
+          {active && !state.sources.length ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              No completed agent observation is available. Refresh after the
+              agent captures a target.
+            </p>
+          ) : null}
+          {selectedSource ? (
+            <dl className="grid min-w-0 gap-1 break-all text-xs sm:grid-cols-2">
+              <div>
+                <dt className="text-muted-foreground">Root thread</dt>
+                <dd>{selectedSource.rootThreadId}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">
+                  {selectedSource.binding.threadId ===
+                  selectedSource.rootThreadId
+                    ? "Root execution thread"
+                    : "Child execution thread"}
+                </dt>
+                <dd>{selectedSource.binding.threadId}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Turn</dt>
+                <dd>{selectedSource.binding.turnId}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Session</dt>
+                <dd>{selectedSource.binding.sessionId}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Worker</dt>
+                <dd>{selectedSource.binding.workerId}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Target</dt>
+                <dd>
+                  {selectedSource.target.title ?? selectedSource.target.id} (
+                  {selectedSource.target.id})
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">
+                  Last completed observation
+                </dt>
+                <dd>
+                  #{selectedSource.observationRevision} ·{" "}
+                  {new Date(selectedSource.observedAtMs).toLocaleString()} ·{" "}
+                  {state.observation ? "Displayed" : "Image not loaded"}
+                </dd>
+              </div>
+            </dl>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-wrap items-end gap-2">
+          <label className="grid min-w-0 flex-1 gap-1 text-xs">
+            Monitor or window
+            <select
+              aria-label="Monitor or window"
+              className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm"
+              disabled={disabled}
+              value={target ? `${target.id}:${target.generation}` : ""}
+              onChange={(event) => {
+                const next = state.targets.find(
+                  (item) =>
+                    `${item.id}:${item.generation}` ===
+                    event.currentTarget.value,
+                );
+                if (next) void controller.selectTarget(next);
+              }}
+            >
+              <option value="" disabled>
+                Select a target
               </option>
-            ))}
-          </select>
-        </label>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          onClick={() => void controller.refreshTargets()}
-        >
-          Refresh targets
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          disabled={disabled || !target}
-          onClick={() => void controller.snapshot()}
-        >
-          <Camera aria-hidden="true" className="size-4" /> Snapshot
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={disabled || !target}
-          onClick={() => void controller.detach()}
-        >
-          Detach target
-        </Button>
-      </div>
-      {state.targetsTruncated ? (
+              {state.targets.map((item) => (
+                <option
+                  key={`${item.id}:${item.generation}`}
+                  value={`${item.id}:${item.generation}`}
+                >
+                  {item.kind === "monitor"
+                    ? "Monitor"
+                    : (item.application ?? "Window")}{" "}
+                  — {item.title ?? item.id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+            onClick={() => void controller.refreshTargets()}
+          >
+            Refresh targets
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={disabled || !target}
+            onClick={() => void controller.snapshot()}
+          >
+            <Camera aria-hidden="true" className="size-4" /> Snapshot
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={disabled || !target}
+            onClick={() => void controller.detach()}
+          >
+            Detach target
+          </Button>
+        </div>
+      )}
+      {!following && state.targetsTruncated ? (
         <p role="status" className="text-xs text-muted-foreground">
           Some native targets were omitted because their metadata is unavailable
           or the inventory reached its size limit. Refresh targets to try again.
         </p>
       ) : null}
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
+      <div
+        className={
+          following
+            ? "grid min-w-0 gap-4"
+            : "grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]"
+        }
+      >
         <div className="grid min-w-0 content-start gap-2">
           <div className="grid min-h-48 place-items-center overflow-hidden rounded-lg border bg-black/30 p-2">
             {state.observation ? (
               <button
                 type="button"
                 className="block max-w-full cursor-crosshair p-0 disabled:cursor-default"
-                disabled={disabled || !target}
-                aria-label="Move logical agent cursor on snapshot"
+                disabled={following || disabled || !target}
+                aria-label={
+                  following
+                    ? "Latest completed agent observation"
+                    : "Move logical agent cursor on snapshot"
+                }
                 onClick={(event) => {
                   // The image itself supplies the rect; no object-fit/letterbox or
                   // desktop-origin guessing enters target-local coordinates.
+                  if (following) return;
                   const img = event.currentTarget.querySelector("img");
                   if (!img || !target || event.detail === 0) return;
                   const point = previewPointToTarget({
@@ -203,16 +343,18 @@ export function ComputerUsePreviewPanel({
               </button>
             ) : (
               <p className="px-4 text-center text-sm text-muted-foreground">
-                Select a target and request a snapshot. Images are not a live
-                video feed.
+                {following
+                  ? "Select an agent source to view its latest completed observation. Refresh explicitly for changes."
+                  : "Select a target and request a snapshot. Images are not a live video feed."}
               </p>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Click the snapshot to move the logical cursor. No system mouse or
-            keyboard input is sent. The cursor is already rendered in the image.
+            {following
+              ? "This is the agent’s completed observation. Its cursor is already rendered in the image. Refreshing reads the captured image without requesting another capture."
+              : "Click the snapshot to move the logical cursor. No system mouse or keyboard input is sent. The cursor is already rendered in the image."}
           </p>
-          {target ? (
+          {!following && target ? (
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span>Keyboard cursor movement:</span>
               {(
@@ -253,10 +395,18 @@ export function ComputerUsePreviewPanel({
               Snapshot #{state.observation.metadata.session.observationRevision}{" "}
               · {state.observation.metadata.image.width} ×{" "}
               {state.observation.metadata.image.height}
+              {state.observation.nativeImage ? (
+                <>
+                  {" "}
+                  rendition · Native {
+                    state.observation.nativeImage.width
+                  } × {state.observation.nativeImage.height}
+                </>
+              ) : null}
             </p>
           ) : null}
         </div>
-        {state.session ? (
+        {!following && state.session ? (
           <CursorControls
             appearance={state.session.cursor.appearance}
             disabled={disabled || !target}
@@ -265,9 +415,10 @@ export function ComputerUsePreviewPanel({
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        Observers share this chat’s target and cursor. Closing this panel leaves
-        the session available; Stop ends computer use for all preview observers
-        of this chat.
+        Closing this panel or switching modes preserves the agent execution.
+        Manual preview observers share this chat’s manual target and cursor.
+        Stop ends computer use for all preview observers and agent executions of
+        this chat.
       </p>
     </div>
   );

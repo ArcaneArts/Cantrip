@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   ComputerUseAction,
   ComputerUseResultContent,
+  CuaAgentSource,
   CuaSession,
   CuaTarget,
 } from "@cantrip/protocol/computer-use";
@@ -55,6 +56,51 @@ const sessionFixture = (): CuaSession => ({
   },
   observationRevision: 1,
 });
+const agentSessionFixture = (): CuaSession => {
+  const session = sessionFixture();
+  return {
+    ...session,
+    binding: { ...session.binding, threadId: "child-thread", turnId: "turn" },
+  };
+};
+const agentSourceFixture = (): CuaAgentSource => ({
+  sourceId: "00000000-0000-4000-8000-000000000002",
+  rootThreadId: "root-thread",
+  binding: {
+    ...agentSessionFixture().binding,
+    threadId: "child-thread",
+    turnId: "turn",
+  },
+  target: previewTarget,
+  cursorRevision: 1,
+  observationRevision: 1,
+  observedAtMs: 1000,
+});
+function agentResult(source = agentSourceFixture()) {
+  const session = { ...agentSessionFixture(), binding: source.binding };
+  const image = {
+    mediaType: "image/png" as const,
+    width: 320,
+    height: 180,
+    byteCount: 3,
+    sha256: "a".repeat(64),
+    cursorIncluded: true as const,
+  };
+  return {
+    content: {
+      status: "ok",
+      operation: "agent.observation.get",
+      data: {
+        source,
+        session,
+        image,
+        nativeImage: { ...image, width: 640, height: 360 },
+      },
+      chunkCount: 1,
+    } as ComputerUseResultContent,
+    bytes: new Uint8Array([1, 2, 3]),
+  };
+}
 function fixture(inventoryTruncated?: boolean) {
   let session = sessionFixture();
   const buffers: Uint8Array[] = [];
@@ -63,6 +109,14 @@ function fixture(inventoryTruncated?: boolean) {
       let data: object;
       let bytes: Uint8Array | null = null;
       switch (action.operation) {
+        case "agent.sources.list":
+          data = { sources: [agentSourceFixture()] };
+          break;
+        case "agent.observation.get": {
+          const result = agentResult();
+          buffers.push(result.bytes);
+          return result;
+        }
         case "capabilities.get":
           data = {
             protocolVersion: 1,
@@ -403,5 +457,162 @@ describe("ComputerUsePreviewController", () => {
     await work;
     expect(operation).not.toHaveBeenCalled();
     expect(controller.getSnapshot().phase).toBe("stopped");
+  });
+});
+
+describe("following completed agent observations", () => {
+  async function follow() {
+    const result = fixture();
+    result.controller.setMode("agent");
+    await result.controller.connect();
+    await result.controller.selectSource(agentSourceFixture().sourceId);
+    return result;
+  }
+  it("reads existing agent images and attribution without native/manual mutations or a second cursor", async () => {
+    const { controller, operation, buffers } = await follow();
+    expect(operation.mock.calls.map((call) => call[1].operation)).toEqual([
+      "agent.sources.list",
+      "agent.observation.get",
+    ]);
+    const state = controller.getSnapshot();
+    expect(state.agentSource).toEqual(agentSourceFixture());
+    expect(state.observation?.metadata.image.width).toBe(320);
+    expect(state.observation?.nativeImage?.width).toBe(640);
+    expect(buffers[0]).toEqual(new Uint8Array(3));
+    await controller.selectTarget(previewTarget);
+    await controller.configure(sessionFixture().cursor.appearance);
+    await controller.move({ x: 2, y: 3 });
+    await controller.detach();
+    await controller.snapshot();
+    await controller.refreshTargets();
+    expect(operation).toHaveBeenCalledTimes(2);
+    controller.dispose();
+  });
+  it("clears an expired source on explicit list refresh without choosing or fetching another source", async () => {
+    const { controller, operation, images } = await follow();
+    operation.mockResolvedValueOnce({
+      content: {
+        status: "ok",
+        operation: "agent.sources.list",
+        data: { sources: [] },
+        chunkCount: 0,
+      },
+      bytes: null,
+    });
+    await controller.refreshSources();
+    expect(controller.getSnapshot()).toMatchObject({
+      sources: [],
+      sourceId: null,
+      agentSource: null,
+      session: null,
+      observation: null,
+    });
+    expect(images.revoke).toHaveBeenCalledWith("blob:fixture-1");
+    expect(operation).toHaveBeenCalledTimes(3);
+    controller.dispose();
+  });
+  it.each(["mode", "source", "stop", "encryption", "dispose"] as const)(
+    "discards late image bytes after %s invalidates a pending read",
+    async (change) => {
+      const { controller, operation, client, images } = await follow();
+      const pending =
+        deferred<Awaited<ReturnType<ComputerUseClient["operation"]>>>();
+      operation.mockImplementationOnce(() => pending.promise);
+      const work = controller.refreshObservation();
+      if (change === "mode") controller.setMode("manual");
+      if (change === "source")
+        await controller.selectSource(agentSourceFixture().sourceId);
+      if (change === "stop") await controller.stop();
+      if (change === "encryption") controller.encryptionUnavailable();
+      if (change === "dispose") controller.dispose();
+      const late = agentResult();
+      pending.resolve(late);
+      await work;
+      expect(late.bytes).toEqual(new Uint8Array(3));
+      expect(images.create).toHaveBeenCalledTimes(change === "source" ? 2 : 1);
+      expect(controller.getSnapshot().observation).toEqual(
+        change === "source"
+          ? expect.objectContaining({ url: "blob:fixture-2" })
+          : null,
+      );
+      expect(client.stop).toHaveBeenCalledTimes(change === "stop" ? 1 : 0);
+      controller.dispose();
+    },
+  );
+  it("clears the current rendition on a missing-source error and permits explicit recovery", async () => {
+    const { controller, operation, images } = await follow();
+    operation.mockResolvedValueOnce({
+      content: {
+        status: "error",
+        operation: "agent.observation.get",
+        code: "target-not-found",
+        message: "Source expired.",
+        outcome: "rejected",
+      },
+      bytes: null,
+    });
+    await controller.refreshObservation();
+    expect(controller.getSnapshot()).toMatchObject({
+      observation: null,
+      session: null,
+      agentSource: null,
+      error: { code: "target-not-found" },
+    });
+    expect(images.revoke).toHaveBeenCalledWith("blob:fixture-1");
+    await controller.refreshSources();
+    await controller.selectSource(agentSourceFixture().sourceId);
+    expect(controller.getSnapshot().observation).not.toBeNull();
+    controller.dispose();
+  });
+  it("keeps a newly selected child source when the previous source returns late", async () => {
+    const { controller, operation } = await follow();
+    const first = agentSourceFixture();
+    const second = {
+      ...first,
+      sourceId: "00000000-0000-4000-8000-000000000003",
+      binding: { ...first.binding, threadId: "second-child" },
+    };
+    operation.mockResolvedValueOnce({
+      content: {
+        status: "ok",
+        operation: "agent.sources.list",
+        data: { sources: [first, second] },
+        chunkCount: 0,
+      },
+      bytes: null,
+    });
+    await controller.refreshSources();
+    const pending =
+      deferred<Awaited<ReturnType<ComputerUseClient["operation"]>>>();
+    operation.mockImplementationOnce(() => pending.promise);
+    const oldRead = controller.refreshObservation();
+    operation.mockResolvedValueOnce(agentResult(second));
+    await controller.selectSource(second.sourceId);
+    const late = agentResult(first);
+    pending.resolve(late);
+    await oldRead;
+    expect(late.bytes).toEqual(new Uint8Array(3));
+    expect(controller.getSnapshot().agentSource).toEqual(second);
+    expect(controller.getSnapshot().session?.binding.threadId).toBe(
+      "second-child",
+    );
+    expect(controller.getSnapshot().observation?.url).toBe("blob:fixture-2");
+    controller.dispose();
+  });
+  it("keeps two observers independent when one changes mode or closes; explicit Stop uses the shared chat lease", async () => {
+    const first = await follow();
+    const second = await follow();
+    first.controller.setMode("manual");
+    first.controller.dispose();
+    expect(first.client.stop).not.toHaveBeenCalled();
+    expect(second.controller.getSnapshot().observation).not.toBeNull();
+    expect(second.images.revoke).not.toHaveBeenCalled();
+    await second.controller.stop();
+    expect(second.client.stop).toHaveBeenCalledWith(
+      lease,
+      expect.any(AbortSignal),
+    );
+    expect(second.controller.getSnapshot().observation).toBeNull();
+    second.controller.dispose();
   });
 });
