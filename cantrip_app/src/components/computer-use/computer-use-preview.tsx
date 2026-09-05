@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { createComputerUseClient } from "@/lib/computer-use-client";
+import { createComputerUseCursorPreferences } from "@/lib/computer-use-cursor-preferences";
 import { onClientSessionIdentityChanged } from "@/lib/client-session";
 import { clientEncryption } from "@/lib/client-encryption";
 import { CursorControls } from "./cursor-controls";
@@ -467,13 +468,45 @@ export function ComputerUsePreviewPanel({
           ) : null}
         </div>
         {!following && state.session ? (
-          <CursorControls
-            appearance={state.session.cursor.appearance}
-            disabled={disabled || !target}
-            onChange={(appearance) => void controller.configure(appearance)}
-          />
+          <div className="grid content-start gap-3">
+            <CursorControls
+              appearance={state.session.cursor.appearance}
+              disabled={disabled || !target}
+              onChange={(appearance) => void controller.configure(appearance)}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => void controller.saveAppearance()}
+              >
+                Save applied appearance
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={disabled}
+                onClick={() => void controller.forgetAppearance()}
+              >
+                Forget saved appearance
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Apply edits before saving. Saved appearance is encrypted in your
+              account settings and restored when you select a target in a new
+              preview session.
+            </p>
+          </div>
         ) : null}
       </div>
+      {!following && state.preferenceMessage ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          {state.preferenceMessage}
+        </p>
+      ) : null}
       <p className="text-xs text-muted-foreground">
         Closing this panel or switching modes preserves the agent execution.
         Manual preview observers share this chat’s manual target and cursor.
@@ -525,7 +558,11 @@ export function ComputerUsePreviewLauncher({ chatId }: { chatId: string }) {
           setError(null);
           try {
             setController(
-              new ComputerUsePreviewController(createComputerUseClient(chatId)),
+              new ComputerUsePreviewController(
+                createComputerUseClient(chatId),
+                undefined,
+                createComputerUseCursorPreferences(),
+              ),
             );
           } catch (cause) {
             setError(

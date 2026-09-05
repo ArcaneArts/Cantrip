@@ -17,6 +17,7 @@ import {
 } from "@cantrip/protocol/computer-use";
 import type { CuaPreviewLease } from "@cantrip/protocol/computer-use-preview";
 import type { ComputerUseClient } from "@/lib/computer-use-client";
+import type { ComputerUseCursorPreferences } from "@/lib/computer-use-cursor-preferences";
 
 export interface PreviewState {
   mode: "manual" | "agent";
@@ -42,6 +43,7 @@ export interface PreviewState {
     nativeImage?: CuaImage;
   } | null;
   error: { code: string; message: string } | null;
+  preferenceMessage: string | null;
 }
 
 const initial = (): PreviewState => ({
@@ -60,6 +62,7 @@ const initial = (): PreviewState => ({
   session: null,
   observation: null,
   error: null,
+  preferenceMessage: null,
 });
 
 /** One mounted observer. Closing it releases pixels and requests, not another
@@ -70,6 +73,7 @@ export class ComputerUsePreviewController {
   private flight: AbortController | null = null;
   private stopFlight: AbortController | null = null;
   private disposed = false;
+  private restoredSessionId: string | null = null;
   constructor(
     private readonly client: ComputerUseClient,
     private readonly images = {
@@ -79,6 +83,7 @@ export class ComputerUsePreviewController {
         ),
       revoke: (url: string) => URL.revokeObjectURL(url),
     },
+    private readonly preferences?: ComputerUseCursorPreferences,
   ) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
@@ -352,7 +357,58 @@ export class ComputerUsePreviewController {
         },
         signal,
       );
+      await this.restoreAppearance(signal);
       await this.capture(signal);
+    });
+  private async restoreAppearance(signal: AbortSignal) {
+    const sessionId = this.state.session?.binding.sessionId;
+    if (!this.preferences || !sessionId || this.restoredSessionId === sessionId)
+      return;
+    let appearance: CuaCursorAppearance | null;
+    try {
+      appearance = await this.preferences.load(signal);
+      this.assertActive(signal);
+    } catch {
+      this.assertActive(signal);
+      // A settings failure must not block the requested native capture.
+      this.update({
+        preferenceMessage:
+          "Saved appearance could not be loaded. The current session appearance is in use.",
+      });
+      return;
+    }
+    if (appearance) {
+      // Uses the ordinary permission/Trajectory path. If approval is required,
+      // retain restoration pending until an explicit target-selection retry.
+      await this.action(
+        { operation: "cursor.configure", ...this.targetAction(), appearance },
+        signal,
+      );
+    }
+    this.restoredSessionId = sessionId;
+    this.update({
+      preferenceMessage: appearance ? "Saved appearance restored." : null,
+    });
+  }
+  saveAppearance = () =>
+    this.manual(async (signal) => {
+      if (!this.preferences || !this.state.session) return;
+      await this.preferences.save(this.state.session.cursor.appearance, signal);
+      this.assertActive(signal);
+      this.update({
+        preferenceMessage:
+          "Applied appearance saved for future preview sessions.",
+      });
+    });
+  forgetAppearance = () =>
+    this.manual(async (signal) => {
+      if (!this.preferences) return;
+      await this.preferences.save(null, signal);
+      this.assertActive(signal);
+      this.update({
+        preferenceMessage:
+          "Saved appearance removed. The current session is unchanged.",
+      });
     });
   private targetAction() {
     const session = this.state.session;
@@ -412,6 +468,7 @@ export class ComputerUsePreviewController {
     const lease = this.state.lease;
     this.flight?.abort();
     this.flight = null;
+    this.restoredSessionId = null;
     this.clearImage();
     this.update({
       phase: "stopped",

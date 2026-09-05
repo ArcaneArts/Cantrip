@@ -11,6 +11,7 @@ import {
   reasoningEffortSchema,
 } from "./providers.js";
 import { workspaceLayoutProfileSchema } from "./workspace-layout-profiles.js";
+import { cuaCursorPreferenceRecordSchema } from "./computer-use-preferences.js";
 
 export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
 
@@ -41,6 +42,9 @@ export const configurablePermissionProfileIdSchema = z.enum([
 ]);
 
 export const userSettingsSchema = z.object({
+  protectedComputerUseCursor: cuaCursorPreferenceRecordSchema
+    .nullable()
+    .optional(),
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
   proMode: z.boolean(),

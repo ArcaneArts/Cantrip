@@ -84,6 +84,7 @@ function fixture(patch: Partial<PreviewState> = {}) {
       },
     },
     error: null,
+    preferenceMessage: null,
     ...patch,
   };
   const controller = {
@@ -103,6 +104,8 @@ function fixture(patch: Partial<PreviewState> = {}) {
     snapshot: vi.fn(),
     detach: vi.fn(),
     configure: vi.fn(),
+    saveAppearance: vi.fn(),
+    forgetAppearance: vi.fn(),
     move: vi.fn(),
   };
   return {
@@ -117,6 +120,29 @@ function fixture(patch: Partial<PreviewState> = {}) {
 }
 
 describe("ComputerUsePreviewPanel", () => {
+  it("saves or forgets appearance only through the explicit settings controls", async () => {
+    const { props, controller } = fixture();
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<ComputerUsePreviewPanel {...props} />);
+    });
+    expect(controller.saveAppearance).not.toHaveBeenCalled();
+    expect(controller.forgetAppearance).not.toHaveBeenCalled();
+    for (const [label, method] of [
+      ["Save applied appearance", "saveAppearance"],
+      ["Forget saved appearance", "forgetAppearance"],
+    ] as const) {
+      const button = renderer.root
+        .findAllByType("button")
+        .find((item) => item.props.children === label)!;
+      expect(button.props.disabled).toBe(false);
+      await act(async () => button.props.onClick());
+      expect(controller[method]).toHaveBeenCalledOnce();
+    }
+    expect(controller.configure).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+  });
+
   it("identifies the authorized worker before a native session starts", () => {
     const { props } = fixture({ session: null, observation: null });
     const markup = renderToStaticMarkup(<ComputerUsePreviewPanel {...props} />);

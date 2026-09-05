@@ -1239,8 +1239,12 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-14-preview-attribution`, based on cycle 13's observed
   merge `96ac98106`. [PR #1758](https://github.com/ArcaneArts/Cantrip/pull/1758),
-  implementation commit `81d7f5a4`. PR is open; final CI and observed merge
-  remain pending.
+  implementation commit `81d7f5a4`, final head
+  `1ec4db0379f0a0097a8382d8be9e1c6756bc1756`. All four jobs in CI run
+  `33979939094` passed before squash auto-merge. Observed merged 2026-09-05
+  at 17:14:45 UTC as `03b71c40216302d8ac6cbbf75f565d036127e31b`; Primary
+  was fast-forwarded cleanly. Its clean worktree was retained for live QA
+  until cycle 15 moved the frontend forward.
 - Implemented: manual preview displays the server-authorized lease's worker
   and the actual native session ID, with an explicit not-started state before
   session creation. Stop removes this attribution with the cleared image.
@@ -1304,6 +1308,78 @@ src/lib/computer-use-preview-encryption.test.ts`. New rendering cases cover
   Remaining live lifecycle coverage, enclosing packaged-app/update identity
   evidence, final manual procedure and requirement-by-requirement completion
   audit remain open. Full-roadmap deferrals remain unchanged.
+
+### Tranche cycle 15 — Encrypted cursor appearance preferences
+
+- Branch: `codex/cua-15-cursor-preferences`, based on cycle 14's observed
+  merge `03b71c402`. Commit, PR and merge metadata will be recorded when known.
+- Implemented: explicit Save applied appearance and Forget saved appearance
+  controls use the existing account settings route and row. The nullable JSONB
+  column contains a bounded authenticated ciphertext record under the existing
+  customization-content component. Only the typed appearance is encrypted;
+  native target IDs, session IDs, coordinates and observations are excluded.
+  Migration `0200_computer_use_cursor_preference` adds no CUA session table.
+  Forgetting the saved preference does not change the current session.
+- Restoration occurs when a target is explicitly selected in a new manual
+  session, before its first snapshot, through the normal authorized cursor
+  operation and protected Trajectory path. Later unsaved session changes are
+  preserved across target selection. Required cursor approval remains pending
+  for an explicit retry; no operation is replayed automatically. Settings reads
+  are bounded to 15 seconds, and a failed preference read reports its actual
+  inability to restore while still attempting native capture. Stop cancels
+  restoration and suppresses late configuration/capture. Save/load are pinned
+  to the authenticated account/server lifetime and encryption key revision.
+- Regression found and fixed during verification: placing the nullable column
+  before the primary key made Drizzle classify an existing left-joined settings
+  row as missing, changing inherited CUA policy to its fallback. The merged
+  baseline passed the same test; keeping the non-null ID first restores the
+  real policy. The current-repository authority fixture now applies all
+  migrations, while historical migration-specific fixtures retain their
+  deliberate boundaries. All 24 focused authority/model/account cases pass.
+- Verification on macOS arm64 with Node 24.14.0 and Rust 1.95.0:
+  `pnpm cua:test:worker` passes 1,252 tests against the compiled helper:
+  133 protocol, 25 crypto, 571 worker, 225 server, 298 app. The same three
+  explicit server skips remain (two dedicated PostgreSQL cases and opt-in
+  native fixture). The boundary command now includes cursor preference and
+  account API regression cases. Full protocol: 666 tests across 69 files.
+  `pnpm --filter @cantrip/app... build` and
+  `pnpm --filter @cantrip/server --filter @cantrip/worker build` pass.
+  New real-AEAD cases reject changed owner/server/operation/ciphertext/key
+  revision, enforce envelope bounds, exclude transient state, and suppress
+  late saves on account/key/Stop changes. Actual account HTTP/database cases
+  prove CSRF enforcement, owner isolation, persistence, and partial-update
+  preservation. `pnpm check` still stops at unchanged server decomposition
+  counts 2,156/2,149 versus 1,999, before later chained checks.
+- Actual browser/native acceptance used the existing isolated QA account,
+  cycle 15 frontend/server, cycle 13 worker and stable signed native helper.
+  On fully covered fixture `macos-window-45605:396`, a white size-36 ring
+  labeled `Saved QA` was explicitly applied and saved. The session was stopped,
+  the app reloaded and the development server restarted during the package
+  rebuild. After reconnecting normally, selecting new covered fixture
+  `macos-window-45626:437` created session
+  `9eb38476-f47b-4c56-8dcf-040773a23b4b`; its first real 320 × 240 snapshot
+  showed the saved ring/label and the fixture's expected colors. The UI reported
+  Saved appearance restored. Forget confirmed removal without changing the
+  current ring, then Stop succeeded and both owned fixtures exited. No provider
+  credentials, recovery contents or screenshot files were read or stored.
+- Follow-up cycle 14 pointer evidence: actual preview moves to center, right,
+  down, left and up advanced native snapshots #2 through #7. Six read-only
+  `CGEvent(source:nil).location` samples all remained exactly
+  `(567.63671875, 411.57421875)` while the visible logical cursor moved.
+  No native input, event tap or continuous input monitoring was used. Sampling
+  does not exclude transient movement between readings; source inspection of
+  `service.rs` CursorMove and `cursor.rs` move_to confirms this path only updates
+  logical state, with raster composition separate and no OS pointer API call.
+  Earlier inconclusive readings and failed inventory probes remain recorded.
+  Raw samples/method: `/tmp/cua-14-pointer-results.json`.
+- Cleanup: cycle 14's clean worktree was removed after its baseline comparison
+  completed and the live frontend moved to cycle 15. Cycle 12 retains the QA
+  profile/native app; cycle 13 retains the running worker and fixture tooling.
+- Remaining first-tranche work: finish the live lifecycle and enclosing
+  packaged-app/update identity acceptance, reconcile final build/CI evidence,
+  provide the final reproducible manual procedure, and perform the complete
+  requirement audit. Native input, Accessibility, clipboard/files, human event
+  monitoring, other native OS backends and the full roadmap remain deferred.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

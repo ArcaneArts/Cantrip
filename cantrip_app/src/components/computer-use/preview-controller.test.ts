@@ -7,6 +7,7 @@ import type {
   CuaTarget,
 } from "@cantrip/protocol/computer-use";
 import type { ComputerUseClient } from "@/lib/computer-use-client";
+import type { ComputerUseCursorPreferences } from "@/lib/computer-use-cursor-preferences";
 import { ComputerUsePreviewController } from "./preview-controller";
 
 const lease = {
@@ -102,7 +103,10 @@ function agentResult(source = agentSourceFixture()) {
     bytes: new Uint8Array([1, 2, 3]),
   };
 }
-function fixture(inventoryTruncated?: boolean) {
+function fixture(
+  inventoryTruncated?: boolean,
+  preferences?: ComputerUseCursorPreferences,
+) {
   let session = sessionFixture();
   const buffers: Uint8Array[] = [];
   const operation = vi.fn(
@@ -197,7 +201,11 @@ function fixture(inventoryTruncated?: boolean) {
     create: vi.fn(() => `blob:fixture-${++image}`),
     revoke: vi.fn(),
   };
-  const controller = new ComputerUsePreviewController(client, images);
+  const controller = new ComputerUsePreviewController(
+    client,
+    images,
+    preferences,
+  );
   return { controller, client, operation, images, buffers };
 }
 function deferred<T>() {
@@ -758,5 +766,126 @@ describe("following completed agent observations", () => {
     );
     expect(second.controller.getSnapshot().observation).toBeNull();
     second.controller.dispose();
+  });
+});
+
+describe("saved cursor appearance", () => {
+  const appearance = {
+    ...sessionFixture().cursor.appearance,
+    style: "crosshair" as const,
+    label: "Private label",
+    size: 32,
+  };
+  function preferences() {
+    return {
+      load: vi.fn<ComputerUseCursorPreferences["load"]>(async () => appearance),
+      save: vi.fn<ComputerUseCursorPreferences["save"]>(async () => {}),
+    };
+  }
+  it("restores once before the first snapshot and preserves later unsaved session customization", async () => {
+    const prefs = preferences();
+    const f = fixture(false, prefs);
+    await f.controller.connect();
+    expect(prefs.load).not.toHaveBeenCalled();
+    await f.controller.selectTarget(previewTarget);
+    expect(
+      f.operation.mock.calls.slice(-3).map(([, action]) => action.operation),
+    ).toEqual(["session.open", "cursor.configure", "observation.snapshot"]);
+    expect(f.controller.getSnapshot().session?.cursor.appearance).toEqual(
+      appearance,
+    );
+    await f.controller.configure({ ...appearance, style: "dot" });
+    await f.controller.selectTarget(previewTarget);
+    expect(prefs.load).toHaveBeenCalledOnce();
+    expect(prefs.save).not.toHaveBeenCalled();
+    expect(f.controller.getSnapshot().session?.cursor.appearance.style).toBe(
+      "dot",
+    );
+    await f.controller.saveAppearance();
+    expect(prefs.save).toHaveBeenCalledWith(
+      { ...appearance, style: "dot" },
+      expect.any(AbortSignal),
+    );
+    await f.controller.forgetAppearance();
+    expect(prefs.save).toHaveBeenLastCalledWith(null, expect.any(AbortSignal));
+    expect(f.controller.getSnapshot().session?.cursor.appearance.style).toBe(
+      "dot",
+    );
+    f.controller.dispose();
+  });
+  it("still attempts native capture if saved preferences cannot load", async () => {
+    const prefs = preferences();
+    prefs.load.mockRejectedValueOnce(new Error("Unavailable settings"));
+    const f = fixture(false, prefs);
+    await f.controller.connect();
+    await f.controller.selectTarget(previewTarget);
+    expect(f.controller.getSnapshot().observation).not.toBeNull();
+    expect(f.controller.getSnapshot().preferenceMessage).toContain(
+      "could not be loaded",
+    );
+    expect(
+      f.operation.mock.calls.some(
+        ([, action]) => action.operation === "cursor.configure",
+      ),
+    ).toBe(false);
+    f.controller.dispose();
+  });
+  it("Stop cancels restoration and suppresses late configuration/capture", async () => {
+    const pending = deferred<typeof appearance>();
+    const prefs = preferences();
+    prefs.load.mockImplementationOnce(() => pending.promise);
+    const f = fixture(false, prefs);
+    await f.controller.connect();
+    const selecting = f.controller.selectTarget(previewTarget);
+    await vi.waitFor(() => expect(prefs.load).toHaveBeenCalledOnce());
+    await f.controller.stop();
+    expect(prefs.load.mock.calls[0]![0].aborted).toBe(true);
+    pending.resolve(appearance);
+    await selecting;
+    expect(f.controller.getSnapshot().phase).toBe("stopped");
+    expect(f.controller.getSnapshot().session).toBeNull();
+    expect(
+      f.operation.mock.calls.some(([, action]) =>
+        ["cursor.configure", "observation.snapshot"].includes(action.operation),
+      ),
+    ).toBe(false);
+    f.controller.dispose();
+  });
+  it("keeps approval-required restoration pending for an explicit retry", async () => {
+    const prefs = preferences();
+    const f = fixture(false, prefs);
+    const original = f.operation.getMockImplementation()!;
+    let requiresApproval = true;
+    f.operation.mockImplementation(async (lease, action) => {
+      if (action.operation === "cursor.configure" && requiresApproval) {
+        return {
+          content: {
+            status: "error",
+            operation: "cursor.configure",
+            code: "approval-required",
+            message: "Review the cursor request.",
+            outcome: "not-sent",
+          } as ComputerUseResultContent,
+          bytes: null,
+        };
+      }
+      return original(lease, action);
+    });
+    await f.controller.connect();
+    await f.controller.selectTarget(previewTarget);
+    expect(f.controller.getSnapshot().error?.code).toBe("approval-required");
+    expect(f.controller.getSnapshot().observation).toBeNull();
+    requiresApproval = false;
+    expect(
+      f.operation.mock.calls.some(
+        ([, action]) => action.operation === "observation.snapshot",
+      ),
+    ).toBe(false);
+    await f.controller.selectTarget(previewTarget);
+    expect(f.controller.getSnapshot().session?.cursor.appearance).toEqual(
+      appearance,
+    );
+    expect(f.controller.getSnapshot().observation).not.toBeNull();
+    f.controller.dispose();
   });
 });
