@@ -541,7 +541,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 8a — Runtime execution lifetimes and preview isolation
 
 - Branch: `codex/cua-08a-execution-lifetimes`, based on merged cycle 7
-  (`76d8baa7c`). Implementation and local validation complete; PR/merge pending.
+  (`76d8baa7c`). [PR #1744](https://github.com/ArcaneArts/Cantrip/pull/1744),
+  implementation commit `0aa1b1e1b8e1387a00b5109b55930f7ee8c90664`.
+  Local validation complete; squash auto-merge/CI pending.
 - Scope: runtime-derived root/child execution ownership and cancellation, plus
   preview-specific teardown that cannot revoke a different agent lifetime.
   Managed MCP activation and the bounded Rust JavaScript engine are subsequent
