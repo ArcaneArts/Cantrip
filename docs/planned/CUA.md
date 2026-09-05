@@ -1,6 +1,7 @@
 # Cantrip Computer Use
 
-Status: First-tranche implementation in progress; no product CUA capability yet.
+Status: First-tranche implementation in progress; experimental preview available,
+production native capture and managed MCP not yet available.
 
 ## Implementation progress
 
@@ -333,7 +334,9 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-05c-preview-authority`, based on merged cycle 5b
   (`5e18d1c10`). PR: [#1741](https://github.com/ArcaneArts/Cantrip/pull/1741).
-  Initial implementation commit: `81f2b8a42`; merge not yet observed.
+  Initial implementation commit: `81f2b8a42`; merged at
+  `2026-09-05T01:11:07Z` as `3a5628d234933b1d10278b4ee7a044f45a93323e`.
+  Primary fast-forwarded; only the cycle worktree/branch were removed.
 - Implemented: production preview/open/Stop routes and encrypted operation
   dispatch through the same agent worker, one inert worker-owned preview lease
   per chat, and actual selected/effective permission policy. Native helper
@@ -390,17 +393,78 @@ is the authoritative merge record until the next ledger update.
   1,234 passes / 14 expected skips; the artifact-dependent preview test passes
   against the actual Rust binary separately. Rust 50 and script 30 tests pass;
   Clippy/format, worker/server builds, worker/crypto/app/server typechecks,
-  server-boundary audit and repository decomposition check pass. Portable CI
-  and PR merge are not yet observed. Prior whole-server baseline gaps remain tracked
+  server-boundary audit and repository decomposition check pass. Final-head CI
+  run `33935269532` passed all three portable jobs and PostgreSQL 16 authority
+  verification before squash auto-merge. Prior whole-server baseline gaps remain tracked
   final-hardening work, not a claim that all repository tests are green.
 - Platform/manual: synthetic keys, encrypted fixtures and the fake backend
   only; no user key access, native Screen Recording prompt, live preview UI or
-  real screenshot was exercised. Portable CI is pending.
+  real screenshot was exercised. Portable fake CI passed on all three platforms.
 - Remaining first tranche: client preview/capability presentation, native
   inventory/capture, managed bounded JS/MCP using actual runtime identity,
   protected Trajectory, standalone release signing, full regression and native
   end-to-end/performance/manual verification. The later native-input/platform,
   custom-asset, continuous-video and cross-worker scope remains deferred.
+
+### Tranche cycle 6 — Encrypted client preview and shared cursor
+
+- Branch: `codex/cua-06-client-preview`, based on merged cycle 5c
+  (`3a5628d23`). PR [#1742](https://github.com/ArcaneArts/Cantrip/pull/1742),
+  implementation commit `c6824fec969d8a1c6c6edab3ec7da95bb2e8e0a7`.
+  CI and squash auto-merge are pending; merge has not yet been observed.
+- Implemented: reachable experimental preview above both project and standalone
+  chat transcripts; actual worker capability request, monitor/window inventory,
+  attach/detach, snapshots and customizable logical cursor. Click coordinates
+  use the displayed image and target-local bounds, not desktop origin or device
+  pixel ratio guesses. Keyboard direction controls never inject OS input.
+  Applying appearance or moving the cursor requests fresh cursor-baked pixels.
+- Client lifetime: pinned server/account incarnation, encrypted key revision and
+  preview lease; validated AEAD scope/chunks/result binding; cleared temporary
+  buffers and revoked object URLs. Close affects only this observer. Account
+  switching cancels/clears it; encryption lock clears pixels but preserves Stop.
+  Stop bypasses an in-flight operation and retains its exact lease on failure.
+  Explicit reconnect obtains a new lease. Open/operations have a 35-second
+  deadline; Stop has an independent 30-second deadline. No polling/replay added.
+- Multiple observers reuse one serialized native session per preview lease;
+  repeated panel reopen no longer allocates new sessions until capacity is hit.
+  Scope validation remains in the worker service. Failed/cancelled native state
+  is not silently replaced; explicit Stop/reconnect is the recovery path.
+- Existing durable approvals are reached through **Review approval in chat**;
+  reopening and retrying remain user actions. The generic API client gained an
+  opt-in authenticated lifetime binding so delayed 401/CSRF responses from a
+  previous account cannot sign out or replay work into the new account. Existing
+  unbound API semantics remain unchanged.
+- Validation: 610 focused tests pass (protocol 68, crypto 24, worker 224,
+  server 149, client 145). The two explicit PostgreSQL authority tests skip
+  without their isolated database URL and remain a dedicated CI job. New real
+  app-client → Fastify → worker → Rust fake integration verifies cursor pixels,
+  20 shared observers, encrypted non-YOLO approval and explicit retry. App,
+  worker and server typechecks/builds pass. Full worker: 1,239 passes and 14
+  expected skips; full app: 2,216 passes, 3 skips and the one reproduced settings
+  baseline failure below. Server boundary audit and large-file check pass.
+  Rust 50 tests, CUA script 30 tests, Clippy and touched-file formatting pass.
+  PR/CI results are recorded when observed.
+- Browser QA: actual product panel through encrypted fixture routing and real
+  fake subprocess. Observed 640 × 360 monitor and 320 × 200 window images;
+  arrow/crosshair/ring/dot, RGBA, size, label, trail, image click, Stop and explicit
+  reconnect. At 390 × 844, dialog client/scroll width both 345; image
+  279 × 174.375 preserves aspect ratio. Invalid size 97 disables Apply; 8 works.
+  QA report: 7 pass checkpoints, 50 informational events, no failures. Synthetic
+  keys/pixels only; no production profile/key, TCC prompt or native capture.
+- Known baseline failures reproduced on unchanged Primary: account settings
+  search expects removed `project-membership`; decomposition budgets are exceeded
+  by `chat-turn-runtime.ts` (2124 vs 1999) and `task-routes.ts` (2149 vs 1999).
+  These join earlier whole-suite gaps for the final hardening cycle; they are not
+  bypassed or reported as green. Existing build chunk-size warnings remain.
+- Platforms: responsive browser QA on local macOS; shared desktop/browser client
+  code, portable fake tests. Packaged Tauri, iOS/Android and real macOS capture
+  remain unverified. No direct Tauri invocation or RemoteDesktop change.
+- Remaining first tranche: production macOS inventory/capture, bounded persistent
+  JS/managed MCP with actual agent identity, preview/MCP session coordination,
+  protected Trajectory, standalone release signing, full regression/performance
+  and native installed/packaged verification. Native input, Accessibility,
+  clipboard/files, other native platforms, custom cursor assets, continuous
+  video and cross-worker control remain deferred.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

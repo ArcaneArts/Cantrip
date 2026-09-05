@@ -4,6 +4,7 @@ import { apiRouteTemplate, request, requestResponse } from "./api-client";
 import {
   clearClientSession,
   getClientSession,
+  getClientSessionIdentitySnapshot,
   onAuthenticationRequired,
   scopedClientStorageKey,
   setClientSession,
@@ -25,6 +26,125 @@ afterEach(() => {
 });
 
 describe("authenticated API client", () => {
+  it("does not send a bound request after its account lifetime changes", async () => {
+    setClientSession({
+      authMode: "accounts",
+      csrfToken: "c".repeat(32),
+      expiresAt: null,
+      serverId: "server-one",
+      user,
+    });
+    const expectedIdentity = getClientSessionIdentitySnapshot()!;
+    setClientSession({
+      authMode: "accounts",
+      csrfToken: "d".repeat(32),
+      expiresAt: null,
+      serverId: "server-one",
+      user: { ...user, id: "account-two" },
+    });
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      request(
+        "/api/bound",
+        { method: "POST", body: "{}" },
+        { expectedIdentity },
+      ),
+    ).rejects.toMatchObject({ code: "client-identity-changed" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("never signs out a new account when a bound old request returns a delayed 401 body", async () => {
+    setClientSession({
+      authMode: "accounts",
+      csrfToken: "c".repeat(32),
+      expiresAt: null,
+      serverId: "server-one",
+      user,
+    });
+    const expectedIdentity = getClientSessionIdentitySnapshot()!;
+    let finish!: (value: unknown) => void;
+    const body = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const response = new Response(null, { status: 401 });
+    vi.spyOn(response, "json").mockReturnValue(body);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const listener = vi.fn();
+    const unsubscribe = onAuthenticationRequired(listener);
+    try {
+      const pending = request("/api/bound", undefined, { expectedIdentity });
+      await Promise.resolve();
+      setClientSession({
+        authMode: "accounts",
+        csrfToken: "d".repeat(32),
+        expiresAt: null,
+        serverId: "server-one",
+        user: { ...user, id: "account-two" },
+      });
+      finish({ error: "Old account expired." });
+      await expect(pending).rejects.toMatchObject({
+        code: "client-identity-changed",
+      });
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("rejects a delayed bound JSON success after signing out and back into the same account", async () => {
+    const session = {
+      authMode: "accounts" as const,
+      csrfToken: "c".repeat(32),
+      expiresAt: null,
+      serverId: "server-one",
+      user,
+    };
+    setClientSession(session);
+    const expectedIdentity = getClientSessionIdentitySnapshot()!;
+    let finish!: (value: unknown) => void;
+    const response = new Response();
+    vi.spyOn(response, "json").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const pending = request("/api/bound", undefined, { expectedIdentity });
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    clearClientSession();
+    setClientSession(session);
+    finish({ private: "old account data" });
+    await expect(pending).rejects.toMatchObject({
+      code: "client-identity-changed",
+    });
+  });
+
+  it("never automatically replays a bound mutation after a CSRF rejection", async () => {
+    setClientSession({
+      authMode: "accounts",
+      csrfToken: "c".repeat(32),
+      expiresAt: null,
+      serverId: "server-one",
+      user,
+    });
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "CSRF validation failed." }), {
+        status: 403,
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      request(
+        "/api/bound",
+        { method: "POST", body: "{}" },
+        { expectedIdentity: getClientSessionIdentitySnapshot()! },
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("reduces operational request metadata to a query-free route template", () => {
     expect(
       apiRouteTemplate(

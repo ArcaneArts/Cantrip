@@ -3,8 +3,9 @@
 Worker-owned Rust computer-use library and executable. The portable
 process/session/image/cursor core and build-chain integration use an explicit
 deterministic test backend. A lazy worker service owns the actual process and
-private protocol. Native capture, server/app integration, managed JavaScript,
-permissions, and Trajectory are subsequent cycles in
+private protocol. Encrypted server routing, existing durable permission requests,
+and the experimental shared client preview are implemented. Native capture,
+managed JavaScript, and Trajectory remain subsequent cycles in
 [the CUA plan](../docs/planned/CUA.md). Nothing launches this crate from ordinary
 Cantrip worker startup yet. Development preparation builds, installs, and smoke
 tests the helper without capturing a real desktop or requesting capture permission.
@@ -89,9 +90,53 @@ to worker tests. It covers the real worker-service/process boundary, both fake
 targets, all cursor styles, binary observations, ownership, cancellation,
 disconnect, and crash restart. Generic worker unit runs skip these explicit
 artifact tests; the dedicated CUA command and portable CI run them without a
-native desktop. This is not yet client/server/MCP end-to-end or native capture QA.
-The worker service has no public command or managed MCP entry point in this pass;
-authenticated encrypted routing and permission policy precede product exposure.
+native desktop. The same command now exercises the real app client codec,
+Fastify routes, worker permissions/coordinator and Rust fake backend. It is not
+yet MCP end-to-end or native capture QA.
+
+### Experimental client preview
+
+Open any project or standalone agent chat and choose **Computer use ·
+Experimental** above the transcript. Desktop, browser and responsive mobile
+clients use the same encrypted app → server → agent-worker route. Opening the
+panel does not launch the helper; **Connect to agent worker** performs its real
+capability request. The current default native backend is unavailable until the
+macOS capture cycle; fake pixels are used only by explicitly configured tests.
+
+Choose a monitor/window, request **Snapshot**, or click its displayed image to
+move the logical cursor. The four direction buttons provide a keyboard-accessible
+alternative. This never moves the system pointer or sends an OS click/key.
+Cursor controls support arrow/dot/ring/crosshair, RGB/RGBA color, size 8–96,
+optional bounded label, trail and visibility. **Apply cursor** updates the worker
+state and requests fresh pixels immediately. Images are snapshots, not video;
+they already contain the cursor, so the client never overlays a second cursor.
+
+Preview observers of one chat share a target and cursor. Closing the panel
+disposes local requests, image buffers and object URLs without stopping another
+observer. **Detach target** changes the shared target; **Stop computer use**
+revokes the entire preview lease out of band, even during a pending request or
+after encryption locks. If Stop cannot reach the worker, its exact lease remains
+available for an explicit retry. Reconnect is explicit and gets a new lease.
+
+Selected YOLO adds no new prompt. Otherwise **Review approval in chat** closes
+the preview and refreshes the existing durable interaction panel. Approve or deny
+there, reopen, and explicitly retry the intended action. Approval never replays
+an action. A changed account/server cancels the observer; encryption lock clears
+its displayed pixels while preserving Stop. Protected operations are bounded to
+35 seconds, independently from the 30-second Stop deadline. No polling or replay
+loop is added.
+
+Focused client and full protected fake-boundary checks:
+
+```sh
+pnpm --filter @cantrip/app exec vitest run src/components/computer-use src/lib/computer-use-client.test.ts src/lib/api-client.test.ts
+pnpm cua:test:worker
+```
+
+The server test fixture uses fresh synthetic keys and an in-memory repository;
+it does not access installed profiles, Keychain, production accounts or real
+desktop pixels. Shared client tests plus browser QA are not a claim that a
+packaged Tauri/iOS/Android build has been manually verified.
 
 ### Stable development helper
 

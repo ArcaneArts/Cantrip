@@ -15,6 +15,8 @@ import {
 import type {
   ComputerUseChunkEvent,
   CuaScope,
+  CuaSession,
+  CuaTargetReference,
 } from "@cantrip/protocol/computer-use";
 import type { WorkerEndpointEncryptionService } from "../endpoint-content-encryption.js";
 import { CuaApprovalManager } from "./approvals.js";
@@ -22,7 +24,9 @@ import {
   CuaAuthorizationError,
   handleComputerUseOperation,
 } from "./handler.js";
-import { CantripCuaService } from "./service.js";
+import { CantripCuaService, CuaServiceError } from "./service.js";
+import { waitBeforeCuaSend } from "./cancellation.js";
+import { CuaProcessError } from "./errors.js";
 
 export type CuaPreviewEvent =
   ComputerUseChunkEvent | CuaApprovalRequestEvent | CuaApprovalTerminal;
@@ -32,6 +36,9 @@ interface Preview {
   fingerprint: string;
   controller: AbortController;
   scope: CuaScope;
+  sessionId: string | null;
+  sessionQueue: Promise<void>;
+  queuedOpens: number;
 }
 export interface CuaPreviewCoordinatorOptions {
   workerId: string;
@@ -72,6 +79,9 @@ export class CuaPreviewCoordinator {
       authority,
       fingerprint,
       controller: new AbortController(),
+      sessionId: null,
+      sessionQueue: Promise.resolve(),
+      queuedOpens: 0,
       scope: {
         ownerId: authority.ownerId,
         serverId: authority.serverId,
@@ -107,6 +117,8 @@ export class CuaPreviewCoordinator {
       workerId: this.options.workerId,
       service: this.options.service,
       encryption: this.options.encryption,
+      openSession: (scope, target, signal) =>
+        this.openSession(preview, scope, target, signal),
       resolveExecution: async () => ({
         scope: preview.scope,
         executionLaneId: null,
@@ -234,6 +246,46 @@ export class CuaPreviewCoordinator {
       throw new CuaAuthorizationError("ownership-mismatch");
     }
     return preview;
+  }
+  private openSession(
+    preview: Preview,
+    scope: CuaScope,
+    target: CuaTargetReference,
+    signal?: AbortSignal,
+  ): Promise<CuaSession> {
+    if (preview.queuedOpens >= 32)
+      return Promise.reject(new CuaServiceError("capacity"));
+    const active = signal
+      ? AbortSignal.any([signal, preview.controller.signal])
+      : preview.controller.signal;
+    const previous = preview.sessionQueue;
+    preview.queuedOpens += 1;
+    const work = (async () => {
+      await waitBeforeCuaSend(previous, active);
+      if (active.aborted) throw new CuaProcessError("cancelled", "not-sent");
+      // Full owner/server/worker/chat/task/thread/turn checks remain inside the
+      // service. Reattach validates the actual target and preserves its cursor.
+      if (preview.sessionId)
+        return this.options.service.attach(
+          scope,
+          preview.sessionId,
+          target,
+          active,
+        );
+      const session = await this.options.service.open(scope, target, active);
+      // Stop may race an already-resolved native operation. Its service-level
+      // cancelChat has invalidated that handle; never repopulate a closed lease.
+      if (active.aborted) throw new CuaProcessError("cancelled", "unknown");
+      preview.sessionId = session.binding.sessionId;
+      return session;
+    })();
+    preview.sessionQueue = work.then(
+      () => {},
+      () => {},
+    );
+    return work.finally(() => {
+      preview.queuedOpens -= 1;
+    });
   }
   private authority(input: CuaPreviewAuthority) {
     const authority = cuaPreviewAuthoritySchema.parse(input);

@@ -4,6 +4,8 @@ import {
 } from "@/lib/server-connections";
 import {
   type ClientSessionContext,
+  type ClientSessionIdentitySnapshot,
+  clientSessionIdentityMatches,
   getClientSession,
   notifyAuthenticationRequired,
   setClientSession,
@@ -33,6 +35,26 @@ export class CantripApiError extends Error {
     this.requestId = context.requestId ?? null;
     this.workerId = context.workerId ?? null;
     this.workerRequestId = context.workerRequestId ?? null;
+  }
+}
+
+export interface ApiRequestBehavior {
+  allowCsrfRecovery?: boolean;
+  /** Pins a request to one authenticated lifetime, including delayed errors.
+   * Bound mutations are never automatically replayed for CSRF recovery.
+   */
+  expectedIdentity?: ClientSessionIdentitySnapshot;
+}
+
+function assertRequestIdentity(
+  expected: ClientSessionIdentitySnapshot | undefined,
+): void {
+  if (expected && !clientSessionIdentityMatches(expected)) {
+    throw new CantripApiError(
+      "The account or server changed while the request was in progress.",
+      409,
+      "client-identity-changed",
+    );
   }
 }
 
@@ -248,18 +270,30 @@ function sendRequest(
 export async function request(
   path: string,
   init?: RequestInit,
-  behavior: { allowCsrfRecovery?: boolean } = {},
+  behavior: ApiRequestBehavior = {},
 ): Promise<unknown> {
-  const response = await requestResponse(path, init, [], behavior);
-  return response.status === 204 ? null : response.json();
+  const expectedIdentity = behavior.expectedIdentity && {
+    ...behavior.expectedIdentity,
+  };
+  const response = await requestResponse(path, init, [], {
+    ...behavior,
+    expectedIdentity,
+  });
+  const result = response.status === 204 ? null : await response.json();
+  assertRequestIdentity(expectedIdentity);
+  return result;
 }
 
 export async function requestResponse(
   path: string,
   init?: RequestInit,
   allowedStatuses: readonly number[] = [],
-  behavior: { allowCsrfRecovery?: boolean } = {},
+  behavior: ApiRequestBehavior = {},
 ): Promise<Response> {
+  const expectedIdentity = behavior.expectedIdentity && {
+    ...behavior.expectedIdentity,
+  };
+  assertRequestIdentity(expectedIdentity);
   const method = (init?.method ?? "GET").toUpperCase();
   const url = /^https?:\/\//u.test(path)
     ? path
@@ -288,15 +322,18 @@ export async function requestResponse(
     );
     throw error;
   }
+  assertRequestIdentity(expectedIdentity);
 
   if (!response.ok && !allowedStatuses.includes(response.status)) {
     let body = (await response.json().catch(() => null)) as ApiErrorBody | null;
+    assertRequestIdentity(expectedIdentity);
     if (
       response.status === 403 &&
       body?.error === "CSRF validation failed." &&
       !SAFE_METHODS.has(method) &&
       !path.endsWith("/api/auth/session") &&
       behavior.allowCsrfRecovery !== false &&
+      !expectedIdentity &&
       (await recoverCsrfSession())
     ) {
       clientLogger.info("Retrying Cantrip API request after CSRF recovery", {

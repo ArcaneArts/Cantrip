@@ -42,6 +42,9 @@ export class CuaAuthorizationError extends Error {
 export interface ComputerUseHandlerDependencies {
   workerId: string;
   service: CantripCuaService;
+  /** Preview leases may reuse their one owned session; agent scopes use the
+   * ordinary service path. Called only after scope and permission validation. */
+  openSession?: CantripCuaService["open"];
   encryption: WorkerEndpointEncryptionService & { serverIdentity(): string };
   /** Resolve from trusted worker runtime/broker state, not request turn IDs. */
   resolveExecution(command: WorkerComputerUseCommand): Promise<{
@@ -130,7 +133,11 @@ export async function handleComputerUseOperation(
         data = { targets: await service.targets(scope, signal) };
         break;
       case "session.open":
-        data = { session: await service.open(scope, target(action), signal) };
+        data = {
+          session: await (dependencies.openSession
+            ? dependencies.openSession(scope, target(action), signal)
+            : service.open(scope, target(action), signal)),
+        };
         break;
       case "session.state":
         data = { session: service.state(scope, action.sessionId) };
