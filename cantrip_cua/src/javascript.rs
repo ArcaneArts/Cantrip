@@ -71,10 +71,10 @@ fn validate_action(source: &str) -> Result<Value> {
             }
         }
         HostAction::ConfigureCursor { appearance } => appearance.validate()?,
-        HostAction::MoveCursor { point } => {
-            if !point.x.is_finite() || !point.y.is_finite() || point.x < 0.0 || point.y < 0.0 {
-                return Err(script_error());
-            }
+        HostAction::MoveCursor { point }
+            if !point.x.is_finite() || !point.y.is_finite() || point.x < 0.0 || point.y < 0.0 =>
+        {
+            return Err(script_error());
         }
         _ => {}
     }
