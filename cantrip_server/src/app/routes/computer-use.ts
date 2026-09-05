@@ -20,8 +20,12 @@ import type {
 } from "../../db/repository.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import type { ComputerUseApprovalPublications } from "./computer-use-preview.js";
+import {
+  createComputerUseActivityPublisher,
+  type ComputerUseActivityDependencies,
+} from "./computer-use-activity.js";
 
-export interface ComputerUseRouteDependencies {
+export interface ComputerUseRouteDependencies extends ComputerUseActivityDependencies {
   applicationOwnerId: () => string;
   serverId: string;
   repository: Pick<ServerRepository, "getChatExecutionContext">;
@@ -65,6 +69,8 @@ export function installComputerUseRoutes(
     approvalPublications,
     runAsOwner = (_ownerId, operation) => operation(),
     ensureWorkerNotificationSubscription,
+    upsertLiveEncryptedChatMessage,
+    upsertLiveTaskMessage,
   }: ComputerUseRouteDependencies,
 ): void {
   app.post<{ Params: { chatId: string } }>(
@@ -131,6 +137,15 @@ export function installComputerUseRoutes(
         }
       }
 
+      const publishActivity = createComputerUseActivityPublisher({
+        ownerId,
+        chatId: context.chatId,
+        operationId: input.data.operationId,
+        contentDomain: context.experience === "task" ? "task" : "chat",
+        upsertLiveEncryptedChatMessage,
+        upsertLiveTaskMessage,
+        runAsOwner,
+      });
       const chunks: ComputerUseChunkEvent[] = [];
       let approvalRequestKey: string | null = null;
       let approvalTerminalSeen = false;
@@ -167,6 +182,10 @@ export function installComputerUseRoutes(
             timeoutMs: 30_000,
             onEvent: async (event) => {
               if (!acceptingChunks) return;
+              if (event.type === "computer-use.activity") {
+                await publishActivity(event);
+                return;
+              }
               if (event.type === "computer-use.approval.request") {
                 const approval = cuaApprovalRequestEventSchema.parse(event);
                 const provenance = approval.request.provenance;

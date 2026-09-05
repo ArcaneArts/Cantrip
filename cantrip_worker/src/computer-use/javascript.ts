@@ -10,9 +10,11 @@ import {
   cuaTargetReferenceSchema,
   type CuaBinding,
   type CuaCapabilities,
+  type CuaImage,
   type CuaScope,
   type CuaSession,
   type CuaSnapshot,
+  type CuaTargetReference,
 } from "./types.js";
 
 export const CUA_JAVASCRIPT_MAX_CONTEXTS = 4;
@@ -39,6 +41,17 @@ export const cuaJavascriptActionSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("detach") }),
 ]);
 export type CuaJavascriptAction = z.infer<typeof cuaJavascriptActionSchema>;
+export interface CuaJavascriptOperationOutcome {
+  action: CuaJavascriptAction;
+  session: CuaSession | null;
+  target: CuaTargetReference | null;
+  image: CuaImage | null;
+  startedAtMs: number;
+  completedAtMs: number;
+  error: unknown;
+  failed: boolean;
+  cancelled: boolean;
+}
 
 export interface CuaJavascriptOptions {
   /** Actual runtime turn lifetime, not the transient MCP HTTP request signal. */
@@ -51,6 +64,8 @@ export interface CuaJavascriptOptions {
     action: CuaJavascriptAction,
     signal: AbortSignal,
   ) => Promise<void>;
+  /** Synchronous metadata-only queue hook. Native work never waits on logging. */
+  onOperation?: (outcome: CuaJavascriptOperationOutcome) => void;
 }
 export interface CuaJavascriptResult {
   value: unknown;
@@ -314,12 +329,57 @@ export class CuaJavascriptContexts {
             const parsed = cuaJavascriptActionSchema.safeParse(input);
             if (!parsed.success) throw new CuaNativeError("invalid-request");
             const action = parsed.data;
-            // Cancellation wins even if a durable-approval adapter resolves late.
-            await waitBeforeCuaSend(options.authorize(action, signal), signal);
-            this.live(context, signal);
-            const result = await this.host(context, action, signal, images);
-            this.live(context, signal);
-            return result;
+            const startedAtMs = Date.now();
+            const state = () => {
+              try {
+                return context.sessionId
+                  ? this.service.state(scope, context.sessionId)
+                  : null;
+              } catch {
+                return null;
+              }
+            };
+            const before = options.onOperation ? state() : null;
+            let error: unknown;
+            let failed = false;
+            try {
+              // Cancellation wins even if a durable-approval adapter resolves late.
+              await waitBeforeCuaSend(
+                options.authorize(action, signal),
+                signal,
+              );
+              this.live(context, signal);
+              const result = await this.host(context, action, signal, images);
+              this.live(context, signal);
+              return result;
+            } catch (caught) {
+              failed = true;
+              error = caught;
+              throw caught;
+            } finally {
+              options.onOperation?.({
+                action,
+                session: state() ?? before,
+                target:
+                  action.operation === "attach"
+                    ? action.target
+                    : action.operation === "detach" && before?.target
+                      ? {
+                          targetId: before.target.id,
+                          targetGeneration: before.target.generation,
+                        }
+                      : null,
+                image:
+                  !failed && action.operation === "snapshot"
+                    ? (images.at(-1)?.image ?? null)
+                    : null,
+                startedAtMs,
+                completedAtMs: Date.now(),
+                error,
+                failed,
+                cancelled: signal.aborted,
+              });
+            }
           },
         },
       );

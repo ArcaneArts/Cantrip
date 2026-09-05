@@ -2,7 +2,8 @@
 
 Status: First-tranche implementation in progress; experimental preview and native
 capture, managed MCP and shared agent observations implemented. Protected
-operation Trajectory and final product/release verification remain incomplete.
+operation Trajectory is implemented and locally verified, awaiting its PR merge;
+final product/release verification remains incomplete.
 
 ## First-tranche implementation progress
 
@@ -864,8 +865,11 @@ is the authoritative merge record until the next ledger update.
 - Branch: `codex/cua-08e-agent-preview`, based on merged cycle 8d (`38da8c6e5`).
 - PR: [#1750](https://github.com/ArcaneArts/Cantrip/pull/1750).
   Implementation commit: `f53c20822e084ca797ab5b615fd5c480bdf44a39`.
-  Local integration and verification passed; PR is open and portable CI is
-  running. Final merge evidence will be reconciled in the next pass.
+  Squash auto-merged 2026-09-05 at 11:54:42 UTC as
+  `c9e516f51497debab6bdf536d4c9a0fc8e00ca4b` (observed via GitHub).
+  CI run `33964194801` passed macOS, Windows, Linux and PostgreSQL on final
+  head `9e784dd963a93b82e962032c046105fc0db1e2d1`. Primary was fast-forwarded;
+  this pass's clean worktree and squash-merged local branch were removed.
 - Implemented: **Manual preview** / **Follow agent** in the existing shared
   responsive panel. Follow agent lists actual root/child execution sources and
   retrieves their latest completed observation through the same protected
@@ -920,13 +924,59 @@ is the authoritative merge record until the next ledger update.
   are separate evidence. Full protocol suite: 606 tests pass.
 - Platforms/manual: local macOS fake backend for these tests; native fixture
   acceptance remains the separately verified cycle 8d evidence. Portable CI
-  remains pending; no native capture or privacy/signing changes
+  passed as recorded above; no native capture or privacy/signing changes
   are part of this pass. Live `pnpm devtop`, packaged Tauri, mobile-device and
   native MCP/observer product acceptance remain final verification work.
 - Remaining tranche work: protected per-operation Trajectory, standalone release
   signing, installed/packaged update and permission evidence, startup/idle/latency
   measurements, live product acceptance, and the final regression/completion
   audit. The full roadmap and later-tranche deferrals below remain unchanged.
+
+### Tranche cycle 9 — Protected per-operation Trajectory
+
+- Branch: `codex/cua-09-protected-trajectory`, based on merged cycle 8e
+  (`c9e516f51`). Local implementation and focused verification are complete;
+  PR and cross-platform CI are pending.
+- Implemented: actual agent MCP and user preview operations use the existing
+  encrypted chat/task message and Trajectory paths. Agent records retain the
+  runtime's root/child scope; idle preview sessions have a distinct Preview
+  operator actor with no invented agent thread or turn. Records include bounded
+  operation, timing, outcome, cursor and image metadata, never another screenshot
+  copy, native inventory or JavaScript source. The server relays and stores opaque
+  content through existing ownership-aware message paths.
+- Lifecycle: preview payloads/readers are released before history publication.
+  Stop revokes native sessions and pending work before publishing history; an
+  unavailable/archived history cannot reverse Stop. Failed runtime turns release
+  CUA and settle queued protected activities before returning the original error.
+- Review corrections: MCP detach retains the prior target identity; rejected
+  runtime turns cannot skip the protected queue; reversed/shuffled persisted
+  preview messages are sorted before deriving their latest status. Actual agent
+  inference progress remains separate from preview sessions.
+- Browser QA: the actual shared Trajectory components passed seven synthetic
+  scenario groups: root/child attribution, two-session history/back navigation,
+  metadata-only tabs, failure/cancellation search and filtering, 358-pixel layout,
+  actor/session labels, and matching operation identity in Raw. Evidence and a
+  hash manifest are retained outside the repository at
+  `/tmp/cua-09-qa-evidence/20260905-071132-verify-protected-computer-use-tr`.
+  The fixture used synthetic protected activity records, not a signed-in account
+  or native capture. Repeated hot-reload layout events are not separate scenarios;
+  temporary harness hot-reload console warnings prevent a clean-console claim.
+  The owned server and temporary harness were removed after QA.
+- Verification: `pnpm cua:test:worker` passes 1,188 tests against the compiled
+  Rust executable: 130 protocol, 25 crypto, 566 worker, 214 server, 253 app.
+  Three explicit skips remain: two PostgreSQL tests run in dedicated CI and one
+  opt-in native preview test. This includes actual MCP/preview success, failure,
+  approval denial, cancellation, protected chat/task decoding, and held-sealer
+  runtime-rejection tests. Full protocol suite passes 660 tests; worker, server
+  and app builds, app typecheck, formatting and diff checks pass. Local execution
+  is macOS arm64 with explicit fake capture. `pnpm check` stops at unchanged server decomposition
+  budgets: `chat-turn-runtime.ts` 2,156 and `task-routes.ts` 2,149 lines, each with
+  a 1,999-line limit; both counts match this pass's base. Later commands in that
+  chained check are not claimed to have run. Native product, packaged Tauri and
+  physical mobile acceptance are not established by this pass's fixtures.
+- Remaining tranche work also includes standalone release signing,
+  installed/packaged update and permission evidence, startup/idle/latency
+  measurements, live product acceptance and final regression/completion audit.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

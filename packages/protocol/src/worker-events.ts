@@ -91,6 +91,43 @@ const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+const protectedChatActivityEventSchema = z.strictObject({
+  type: z.literal("agent.protected-message"),
+  message: chatMessageOpaqueContentSchema,
+  telemetry: protectedAgentEventTelemetrySchema,
+});
+const protectedTaskActivityEventSchema = z.strictObject({
+  type: z.literal("agent.protected-task-message"),
+  message: taskMessageOpaqueContentSchema,
+  telemetry: protectedAgentEventTelemetrySchema,
+});
+
+/** Request-scoped relay for a preview operation's existing protected message.
+ * No target, cursor, script, image, or native error data travels in this wrapper. */
+export const computerUseActivityEventSchema = z.strictObject({
+  type: z.literal("computer-use.activity"),
+  operationId: z.string().uuid(),
+  event: z.discriminatedUnion("type", [
+    protectedChatActivityEventSchema.extend({
+      telemetry: z.strictObject({
+        kind: z.literal("activity"),
+        activityType: z.literal("computerUse"),
+        turnId: z.null(),
+      }),
+    }),
+    protectedTaskActivityEventSchema.extend({
+      telemetry: z.strictObject({
+        kind: z.literal("activity"),
+        activityType: z.literal("computerUse"),
+        turnId: z.null(),
+      }),
+    }),
+  ]),
+});
+export type ComputerUseActivityEvent = z.infer<
+  typeof computerUseActivityEventSchema
+>;
+
 export const inferenceProgressPhaseSchema = z.enum([
   "queued",
   "loading",
@@ -220,20 +257,9 @@ export const workerEventSchema = z.discriminatedUnion("type", [
       progress: inferenceProgressUpdateSchema,
     })
     .strict(),
-  z
-    .object({
-      type: z.literal("agent.protected-message"),
-      message: chatMessageOpaqueContentSchema,
-      telemetry: protectedAgentEventTelemetrySchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("agent.protected-task-message"),
-      message: taskMessageOpaqueContentSchema,
-      telemetry: protectedAgentEventTelemetrySchema,
-    })
-    .strict(),
+  protectedChatActivityEventSchema,
+  protectedTaskActivityEventSchema,
+  computerUseActivityEventSchema,
   z.object({ type: z.literal("terminal.ready") }),
   z.object({
     type: z.literal("agent.checkpoint"),

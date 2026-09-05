@@ -1,3 +1,8 @@
+import {
+  computerUseActivitySummary,
+  isPreviewActivity,
+  splitPreviewMessages,
+} from "./computer-use-activity";
 import type {
   AgentActivity,
   AgentScope,
@@ -95,6 +100,7 @@ export interface TrajectoryFilters {
 }
 
 interface TurnSlice {
+  preview?: boolean;
   key: string;
   messages: ChatMessage[];
   runtimeTurnId: string | null;
@@ -163,7 +169,8 @@ function correlationTurnId(message: ChatMessage): string | null {
 }
 
 function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
-  const ordered = [...messages].sort(
+  const { agentMessages, previewGroups } = splitPreviewMessages(messages);
+  const ordered = [...agentMessages].sort(
     (left, right) =>
       left.sequence - right.sequence ||
       timestamp(left.createdAt) - timestamp(right.createdAt) ||
@@ -198,7 +205,20 @@ function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
     }
     merged.push(slice);
   }
-  return merged;
+  const previewSlices: TurnSlice[] = [...previewGroups].map(
+    ([key, messages]) => ({
+      key,
+      messages,
+      runtimeTurnId: null,
+      preview: true,
+    }),
+  );
+  return [...merged, ...previewSlices].sort(
+    (a, b) =>
+      Math.max(...a.messages.map((message) => message.sequence)) -
+        Math.max(...b.messages.map((message) => message.sequence)) ||
+      timestamp(a.messages[0]!.createdAt) - timestamp(b.messages[0]!.createdAt),
+  );
 }
 
 function activityLane(activity: AgentActivity): TrajectoryLane {
@@ -256,6 +276,9 @@ function latestReasoningLines(summary: string[], limit = 3): string {
 function activityPreview(activity: AgentActivity): string | null {
   let preview = "";
   switch (activity.type) {
+    case "computerUse":
+      preview = computerUseActivitySummary(activity);
+      break;
     case "instructionContext":
       preview = activity.text ?? activity.sources.join(" · ");
       break;
@@ -332,6 +355,7 @@ function activityPreview(activity: AgentActivity): string | null {
 }
 
 function rawSearchText(activity: AgentActivity): string {
+  if (activity.type === "computerUse") return JSON.stringify(activity);
   return [activity.raw?.request?.text, activity.raw?.response?.text]
     .filter((value): value is string => Boolean(value))
     .join(" ");
@@ -352,6 +376,8 @@ function terminalMessage(message: ChatMessage): boolean {
 }
 
 function lifecycleKey(activity: AgentActivity): string {
+  if (activity.type === "computerUse")
+    return `computer-use:${activity.source}:${activity.operationId}`;
   const owner = activity.agentScope
     ? `${activity.agentScope.rootTurnId}:${activity.agentScope.agentThreadId}`
     : (activity.correlation?.threadId ?? "root");
@@ -668,7 +694,7 @@ function eventAgent(
   correlationThreadId: string | null | undefined,
   agents: readonly TrajectoryAgent[],
 ): TrajectoryAgent {
-  const root = agents.find((agent) => agent.root)!;
+  const root = agents.find((agent) => agent.root) ?? agents[0]!;
   if (scope?.isRoot) return root;
   if (scope) {
     return (
@@ -686,6 +712,7 @@ function eventAgent(
 }
 
 function activityFocusItemKey(activity: AgentActivity): string | null {
+  if (isPreviewActivity(activity)) return null;
   const scope = activity.agentScope;
   return scope && !scope.isRoot
     ? `${scope.rootTurnId}:${scope.agentThreadId}:activity:${activity.id}`
@@ -890,30 +917,83 @@ export function projectTrajectory(input: {
     .find((value): value is number => value !== null);
   const terminal = [...selected.messages].reverse().find(terminalMessage);
   const followingCurrent = !input.targetTurnKey && selected === slices.at(-1);
-  const completed = !followingCurrent || !input.active;
+  const completed = selected.preview
+    ? !selected.messages.some((message) =>
+        message.content.some(
+          (content) =>
+            content.type === "activity" &&
+            content.activity.status === "running",
+        ),
+      )
+    : !followingCurrent || !input.active;
   const terminalSummary = [...summaryActivities]
     .reverse()
     .find((activity) => activity.status !== "running");
-  const terminalActivityStatus = completed
-    ? terminalSummary?.status === "failed" ||
-      terminalSummary?.status === "declined" ||
-      terminal?.role === "system"
-      ? "failed"
-      : "completed"
-    : null;
-  const startedAtMs = summaryStartedAtMs ?? timestamp(opening.createdAt);
+  const terminalActivityStatus =
+    completed && !selected.preview
+      ? terminalSummary?.status === "failed" ||
+        terminalSummary?.status === "declined" ||
+        terminal?.role === "system"
+        ? "failed"
+        : "completed"
+      : null;
+  const startedAtMs = selected.preview
+    ? Math.min(
+        ...selected.messages.flatMap((message) =>
+          recordsForMessage(message).map(
+            (record) => record.startedAtMs ?? timestamp(message.createdAt),
+          ),
+        ),
+      )
+    : (summaryStartedAtMs ?? timestamp(opening.createdAt));
   const completedAtMs = completed
-    ? (summaryCompletedAtMs ??
-      (terminal ? timestamp(terminal.createdAt) : null) ??
-      timestamp(selected.messages.at(-1)!.createdAt))
+    ? selected.preview
+      ? Math.max(
+          ...selected.messages.flatMap((message) =>
+            recordsForMessage(message).map(
+              (record) => record.completedAtMs ?? timestamp(message.createdAt),
+            ),
+          ),
+        )
+      : (summaryCompletedAtMs ??
+        (terminal ? timestamp(terminal.createdAt) : null) ??
+        timestamp(selected.messages.at(-1)!.createdAt))
     : null;
-  const agents = trajectoryAgents({
-    agentProjection: input.agentProjection,
-    completed,
-    failed: terminalActivityStatus === "failed",
-    messages: selected.messages,
-    selectedKey: selected.key,
-  });
+  const latestPreviewActivity = selected.preview
+    ? selected.messages.flatMap(recordsForMessage).at(-1)?.activity
+    : null;
+  const previewStatus: AgentTurnStatus = !completed
+    ? "running"
+    : latestPreviewActivity?.type === "computerUse" &&
+        latestPreviewActivity.outcome === "failed"
+      ? "failed"
+      : latestPreviewActivity?.type === "computerUse" &&
+          (latestPreviewActivity.outcome === "cancelled" ||
+            latestPreviewActivity.outcome === "declined")
+        ? "interrupted"
+        : "completed";
+  const agents: TrajectoryAgent[] = selected.preview
+    ? [
+        {
+          active: !completed,
+          depth: 0,
+          key: `operator:${selected.key}`,
+          label: "Preview operator",
+          lastActiveAtMs: completedAtMs ?? input.nowMs,
+          parentThreadId: null,
+          path: ["Preview operator"],
+          root: false,
+          status: previewStatus,
+          threadId: null,
+        },
+      ]
+    : trajectoryAgents({
+        agentProjection: input.agentProjection,
+        completed,
+        failed: terminalActivityStatus === "failed",
+        messages: selected.messages,
+        selectedKey: selected.key,
+      });
   const progressEvents = inferenceProgressEvents({
     agents,
     current: input.inferenceProgress,
@@ -1016,7 +1096,11 @@ export function projectTrajectory(input: {
       rawSearchText: protectedSearchText,
     } = activityPresentation(activity);
     const correlation = activity.correlation;
-    const agent = eventAgent(record.agentScope, correlation?.threadId, agents);
+    const agent = eventAgent(
+      isPreviewActivity(activity) ? null : record.agentScope,
+      isPreviewActivity(activity) ? null : correlation?.threadId,
+      agents,
+    );
     events.push({
       activity,
       agentDepth: agent.depth,
@@ -1039,9 +1123,15 @@ export function projectTrajectory(input: {
       sequence: record.sequence,
       startMs: timing.startMs,
       status: activity.status,
-      threadId: correlation?.threadId ?? null,
+      threadId:
+        activity.type === "computerUse"
+          ? activity.binding.threadId
+          : (correlation?.threadId ?? null),
       timingQuality: timing.quality,
-      turnId: correlation?.turnId ?? null,
+      turnId:
+        activity.type === "computerUse"
+          ? activity.binding.turnId
+          : (correlation?.turnId ?? null),
       updatedAtMs: timing.endMs,
     });
   }
@@ -1092,7 +1182,13 @@ export function projectTrajectory(input: {
     statusCounts,
     timelineEndMs,
     timelineStartMs,
-    title: formatTurnTitle(opening),
+    title: selected.preview
+      ? opening.content[0]?.type === "activity" &&
+        opening.content[0].activity.type === "computerUse" &&
+        opening.content[0].activity.binding.sessionId
+        ? `Preview session · ${opening.content[0].activity.binding.sessionId}`
+        : "Preview operation"
+      : formatTurnTitle(opening),
   };
 }
 

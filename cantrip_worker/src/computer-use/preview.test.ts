@@ -28,7 +28,11 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CuaApprovalManager } from "./approvals.js";
-import { CuaPreviewCoordinator, type CuaPreviewEvent } from "./preview.js";
+import {
+  CuaPreviewCoordinator,
+  type CuaPreviewEvent,
+  type CuaPreviewCoordinatorOptions,
+} from "./preview.js";
 import { CantripCuaService, CuaServiceError } from "./service.js";
 import { launchCuaTransport } from "./transport.js";
 
@@ -116,7 +120,10 @@ function session(scope: CuaScope): CuaSession {
   };
 }
 
-function fixture(actualBinary?: string) {
+function fixture(
+  actualBinary?: string,
+  publishActivity?: CuaPreviewCoordinatorOptions["publishActivity"],
+) {
   const encryption = {
     ownerId: vi.fn(() => "owner"),
     serverIdentity: vi.fn(() => "server"),
@@ -143,6 +150,7 @@ function fixture(actualBinary?: string) {
     service,
     approvals,
     encryption,
+    publishActivity,
   });
   const cancelChat = vi.spyOn(service, "cancelChat");
   const cancelScope = vi.spyOn(service, "cancelScope");
@@ -672,6 +680,53 @@ describe("one native session per shared preview lease", () => {
     },
   };
   const openAction = { operation: "session.open", ...target } as const;
+
+  it("clears captured bytes before a held activity publication and releases Stop before audit failure", async () => {
+    const entered = deferred();
+    const publication = deferred();
+    const publish = vi.fn<
+      NonNullable<CuaPreviewCoordinatorOptions["publishActivity"]>
+    >(async () => {
+      entered.resolve();
+      await publication.promise;
+      throw new Error("private encryption failure");
+    });
+    const f = fixture(undefined, publish);
+    const native = stubCapture(f.service);
+    const lease = f.coordinator.open(selected, "task");
+    const pending = execute(
+      f,
+      {
+        operation: "observation.snapshot",
+        sessionId: "fixture-session",
+        ...target,
+      },
+      lease,
+      selected,
+    );
+    const failure = expect(pending).rejects.toThrow(
+      "Protected computer-use activity could not be published.",
+    );
+    await entered.promise;
+    const captured = await native.snapshot.mock.results[0]!.value;
+    expect(captured.payload.every((byte: number) => byte === 0)).toBe(true);
+    expect(publish.mock.calls[0]![0].binding).toMatchObject({
+      taskId: "chat",
+      threadId: null,
+      turnId: null,
+    });
+    const stopped = f.coordinator.stop(
+      { ...authority, leaseId: lease.leaseId, operationId: randomUUID() },
+      async () => {},
+    );
+    expect(f.cancelChat).toHaveBeenCalledExactlyOnceWith("chat");
+    publication.resolve();
+    await failure;
+    expect(await stopped).toEqual({
+      closed: true,
+      activityPublicationFailed: true,
+    });
+  });
 
   function shared() {
     const f = fixture();

@@ -1,3 +1,8 @@
+import {
+  isPreviewActivity,
+  previewActivityGroupKey,
+  splitPreviewMessages,
+} from "./computer-use-activity";
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
 
 export interface ChatTurnMetadata {
@@ -110,6 +115,13 @@ export function resolveChatTurnIdentity(input: {
   terminalMessage?: ChatMessage;
   turnMessages: readonly ChatMessage[];
 }): ChatTurnIdentity {
+  const previewActivities = input.turnMessages.flatMap(messageActivities);
+  if (previewActivities.length && previewActivities.every(isPreviewActivity)) {
+    return {
+      turnId: null,
+      turnKey: previewActivityGroupKey(previewActivities[0]!),
+    };
+  }
   const openingMessage = precedingTurnAnchor(input.messages, input.startIndex);
   const turnId =
     input.turnMessages.map(messageTurnId).find(Boolean) ??
@@ -363,9 +375,7 @@ function projectWorkEntries(input: {
   return projected;
 }
 
-export function buildChatTimeline(
-  messages: ChatMessage[],
-): ChatTimelineEntry[] {
+function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
   const entries: ChatTimelineEntry[] = [];
   const pendingTurnMetadata = new Map<string, ChatTurnMetadata>();
   for (let index = 0; index < messages.length; index += 1) {
@@ -499,6 +509,50 @@ export function buildChatTimeline(
     index = endIndex;
   }
   return entries;
+}
+
+/** Preview activities remain durable chat content, but never inherit an agent
+ * prompt, terminal response, runtime turn or elapsed-time group. */
+export function buildChatTimeline(
+  messages: ChatMessage[],
+): ChatTimelineEntry[] {
+  const { agentMessages, previewGroups } = splitPreviewMessages(messages);
+  const entries = buildAgentChatTimeline(agentMessages);
+  if (!previewGroups.size) return entries;
+  for (const [turnKey, group] of previewGroups) {
+    const events = group.flatMap(messageActivities);
+    const startedAtMs = Math.min(
+      ...events.map(
+        (event, index) =>
+          event.startedAtMs ?? Date.parse(group[index]!.createdAt),
+      ),
+    );
+    const endedAtMs = Math.max(
+      ...events.map(
+        (event, index) =>
+          event.completedAtMs ??
+          event.updatedAtMs ??
+          Date.parse(group[index]!.createdAt),
+      ),
+    );
+    entries.push({
+      type: "activityGroup",
+      kind: "tool",
+      key: turnKey,
+      turnKey,
+      turnId: null,
+      messages: group,
+      startedAt: new Date(startedAtMs).toISOString(),
+      endedAt: events.some((event) => event.status === "running")
+        ? null
+        : new Date(endedAtMs).toISOString(),
+    });
+  }
+  const sequence = (entry: ChatTimelineEntry) =>
+    entry.type === "message"
+      ? entry.message.sequence
+      : entry.messages[0]!.sequence;
+  return entries.sort((a, b) => sequence(a) - sequence(b));
 }
 
 function formatDuration(durationMs: number): string {

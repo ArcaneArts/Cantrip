@@ -151,6 +151,13 @@ describe("Codex runtime computer-use scope", () => {
       rootThreadId: "root",
       rootTurnId: "root-turn",
       parentThreadId: null,
+      agentScope: {
+        agentThreadId: "root",
+        rootThreadId: "root",
+        isRoot: true,
+        depth: 0,
+        agentPath: ["root"],
+      },
     });
     expect(f.resolve("nested", "nested-turn")).toMatchObject({
       chatId: "chat",
@@ -159,6 +166,13 @@ describe("Codex runtime computer-use scope", () => {
       rootThreadId: "root",
       rootTurnId: "root-turn",
       parentThreadId: "child",
+      agentScope: {
+        agentThreadId: "nested",
+        rootThreadId: "root",
+        parentThreadId: "child",
+        isRoot: false,
+        depth: 1,
+      },
     });
     expect(f.resolve()?.signal).toBe(f.resolve()?.signal);
     expect(Object.keys(f.resolve()!)).not.toContain("ownerId");

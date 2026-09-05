@@ -20,6 +20,7 @@ import {
 } from "./agent-approval-events.js";
 import { CuaApprovalManager } from "./approvals.js";
 import { CuaAgentObservations } from "./agent-observations.js";
+import { computerUseActivity, type CuaActivityPublisher } from "./activity.js";
 import { CuaAuthorizationError } from "./handler.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import type { CuaJavascriptAction } from "./javascript.js";
@@ -27,6 +28,7 @@ import { adaptCuaModelImages } from "./model-images.js";
 import { CantripCuaService } from "./service.js";
 import type {
   ComputerUseOperation,
+  CuaSession,
   CuaScope,
   CuaTargetReference,
 } from "./types.js";
@@ -50,6 +52,8 @@ export interface CuaAgentCommand {
     turnId: string;
   }): CodexComputerUseExecution | null;
   publish: CuaAgentApprovalPublisher;
+  /** Existing protected activity queue; metadata enqueue must not await native work. */
+  publishActivity?: CuaActivityPublisher;
 }
 interface Lifetime {
   native: CodexComputerUseExecution;
@@ -233,6 +237,43 @@ export class CuaAgentCoordinator {
     // Snapshot broker claims before a renewal can change its selected lane.
     const claims = structuredClone(binding);
     const { record, lifetime } = this.resolve(claims, request);
+    const startedAtMs = Date.now();
+    let priorSession: CuaSession | null = null;
+    if (record.command.publishActivity) {
+      try {
+        priorSession = this.options.service.javascriptSession(
+          lifetime.scope,
+          lifetime.signal,
+        );
+      } catch {}
+    }
+    const publishTerminal = (failed: boolean, error?: unknown) => {
+      if (!record.command.publishActivity) return;
+      let session = priorSession;
+      try {
+        session =
+          this.options.service.javascriptSession(
+            lifetime.scope,
+            lifetime.signal,
+          ) ?? priorSession;
+      } catch {}
+      record.command.publishActivity(
+        computerUseActivity({
+          source: "agent-mcp",
+          operation: request.operation === "js" ? "js.evaluate" : "js.reset",
+          operationId: requestId,
+          requestId,
+          scope: lifetime.scope,
+          session,
+          agentScope: lifetime.native.agentScope,
+          itemId: request.itemId,
+          startedAtMs,
+          failed,
+          error,
+          cancelled: signal.aborted || lifetime.signal.aborted,
+        }),
+      );
+    };
     // Clear before authority refresh or evaluation. Even a failed next call
     // invalidates the prior image, and overlapping calls cannot restore it.
     const token = this.observations.begin(lifetime);
@@ -244,10 +285,17 @@ export class CuaAgentCoordinator {
       requestId,
       signal,
       token,
-    ).catch((error: unknown) => {
-      this.observations.clear(lifetime, token);
-      throw error;
-    });
+    ).then(
+      (value) => {
+        publishTerminal(false);
+        return value;
+      },
+      (error: unknown) => {
+        this.observations.clear(lifetime, token);
+        publishTerminal(true, error);
+        throw error;
+      },
+    );
     record.calls.add(work);
     void work.finally(() => record.calls.delete(work)).catch(() => {});
     return work;
@@ -312,6 +360,22 @@ export class CuaAgentCoordinator {
         executionSignal: lifetime.signal,
         signal: active,
         wallTimeoutMs: 345_000,
+        onOperation: record.command.publishActivity
+          ? (outcome) => {
+              record.command.publishActivity!(
+                computerUseActivity({
+                  ...outcome,
+                  source: "agent-mcp",
+                  operation: operations[outcome.action.operation],
+                  operationId: crypto.randomUUID(),
+                  requestId,
+                  scope: lifetime.scope,
+                  agentScope: lifetime.native.agentScope,
+                  itemId: request.itemId,
+                }),
+              );
+            }
+          : undefined,
         authorize: async (action, callSignal) => {
           const authority = await this.refresh(record, binding, callSignal);
           const state = this.options.service.javascriptSession(

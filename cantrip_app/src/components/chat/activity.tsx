@@ -1,3 +1,7 @@
+import {
+  computerUseActivitySummary,
+  computerUseOperationLabel,
+} from "./computer-use-activity";
 import type { AgentActivity } from "@cantrip/protocol";
 import {
   AlertTriangle,
@@ -203,6 +207,8 @@ function RichActivityIcon({ activity }: { activity: AgentActivity }) {
 
 export function activityLabel(activity: AgentActivity): string {
   switch (activity.type) {
+    case "computerUse":
+      return `Computer use · ${activity.source === "user-preview" ? "Preview operator · " : ""}${computerUseOperationLabel(activity.operation)} · ${activity.outcome}`;
     case "instructionContext":
       return `Effective instructions · ${activity.provenance === "exact" ? "Exact" : activity.provenance === "assembled" ? "Assembled" : "Unavailable"}`;
     case "plan":
@@ -292,6 +298,10 @@ export function latestActivityLabel(activity: AgentActivity): string {
 
 function RichActivityDetails({ activity }: { activity: AgentActivity }) {
   switch (activity.type) {
+    case "computerUse":
+      return (
+        <p className="break-words">{computerUseActivitySummary(activity)}</p>
+      );
     case "instructionContext":
       return (
         <div className="space-y-1">

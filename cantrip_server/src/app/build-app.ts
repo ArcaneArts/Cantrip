@@ -924,12 +924,17 @@ export async function buildApp({
   });
 
   installComputerUsePreviewRoutes(app, {
+    upsertLiveEncryptedChatMessage,
+    upsertLiveTaskMessage,
+    runAsOwner,
     applicationOwnerId,
     serverId,
     repository,
     bridge,
   });
   installComputerUseRoutes(app, {
+    upsertLiveEncryptedChatMessage,
+    upsertLiveTaskMessage,
     applicationOwnerId,
     serverId,
     repository,

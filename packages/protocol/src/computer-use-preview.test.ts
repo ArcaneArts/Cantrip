@@ -5,6 +5,7 @@ import {
   cuaPreviewLeaseSchema,
   cuaPreviewRevocationSchema,
   cuaPreviewStopSchema,
+  cuaPreviewStoppedSchema,
   cuaApprovalTerminalSchema,
 } from "./computer-use-preview.js";
 import {
@@ -32,6 +33,27 @@ const authority = {
 const leaseId = "4822bfb8-0f60-4de4-a8e4-335c4099d61f";
 
 describe("CUA preview authority contracts", () => {
+  it("distinguishes completed Stop from subsequent history publication failure", () => {
+    expect(cuaPreviewStoppedSchema.parse({ closed: true })).toEqual({
+      closed: true,
+    });
+    expect(
+      cuaPreviewStoppedSchema.parse({
+        closed: true,
+        activityPublicationFailed: true,
+      }),
+    ).toEqual({ closed: true, activityPublicationFailed: true });
+    for (const result of [
+      { closed: false, activityPublicationFailed: true },
+      { closed: true, activityPublicationFailed: false },
+      {
+        closed: true,
+        activityPublicationFailed: true,
+        error: "Private native detail",
+      },
+    ])
+      expect(cuaPreviewStoppedSchema.safeParse(result).success).toBe(false);
+  });
   it("carries server-derived placement and profiles without fabricated native turn fields", () => {
     expect(cuaPreviewAuthoritySchema.parse(authority)).toEqual(authority);
     expect(cuaPreviewBindingSchema.parse({ leaseId, authority })).toEqual({
@@ -118,8 +140,13 @@ describe("CUA preview authority contracts", () => {
       workerCommandSchema.parse({
         type: "computer-use.preview.open",
         authority,
+        contentDomain: "chat",
       }),
-    ).toEqual({ type: "computer-use.preview.open", authority });
+    ).toEqual({
+      type: "computer-use.preview.open",
+      authority,
+      contentDomain: "chat",
+    });
     expect(
       workerCommandSchema.parse({
         type: "computer-use.preview.stop",
@@ -127,6 +154,7 @@ describe("CUA preview authority contracts", () => {
         serverId: "server",
         chatId: "chat",
         leaseId,
+        operationId: leaseId,
       }).type,
     ).toBe("computer-use.preview.stop");
     for (const scope of [

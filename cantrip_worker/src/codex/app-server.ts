@@ -6178,6 +6178,7 @@ export class CodexAppServer implements CodexRuntime {
       rootThreadId: execution.rootThreadId,
       rootTurnId,
       parentThreadId: child?.parentThreadId ?? null,
+      agentScope: this.agentScope(execution, child ?? null),
       signal,
     };
   }

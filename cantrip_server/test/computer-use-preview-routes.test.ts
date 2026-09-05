@@ -250,6 +250,7 @@ describe("explicit computer-use preview activation", () => {
       "worker-one",
       {
         type: "computer-use.preview.open",
+        contentDomain: "chat",
         authority: {
           ownerId: "owner-one",
           serverId: "server-one",
@@ -395,12 +396,17 @@ describe("explicit computer-use preview activation", () => {
       "worker-one",
       {
         type: "computer-use.preview.stop",
+        operationId: expect.stringMatching(/^[a-f0-9-]{36}$/),
         ownerId: "owner-one",
         serverId: "server-one",
         chatId: "chat-one",
         leaseId,
       },
-      { ownerId: "owner-one", timeoutMs: 30_000 },
+      {
+        ownerId: "owner-one",
+        timeoutMs: 30_000,
+        onEvent: expect.any(Function),
+      },
     );
   });
 

@@ -29,6 +29,12 @@ export const cuaPreviewStopSchema = z.strictObject({
   leaseId: z.string().uuid(),
   workerId: cuaIdSchema,
 });
+/** Worker result: Stop has completed even if its subsequent history write fails.
+ * The server keeps this diagnostic out of the public Stop response. */
+export const cuaPreviewStoppedSchema = z.strictObject({
+  closed: z.literal(true),
+  activityPublicationFailed: z.literal(true).optional(),
+});
 export const cuaPreviewBindingSchema = z.strictObject({
   leaseId: z.string().uuid(),
   authority: cuaPreviewAuthoritySchema,
@@ -54,6 +60,7 @@ export const cuaPreviewRevocationSchema = z.discriminatedUnion("kind", [
 ]);
 export type CuaPreviewAuthority = z.infer<typeof cuaPreviewAuthoritySchema>;
 export type CuaPreviewLease = z.infer<typeof cuaPreviewLeaseSchema>;
+export type CuaPreviewStopped = z.infer<typeof cuaPreviewStoppedSchema>;
 export type CuaPreviewBinding = z.infer<typeof cuaPreviewBindingSchema>;
 export type CuaApprovalRequestEvent = z.infer<
   typeof cuaApprovalRequestEventSchema

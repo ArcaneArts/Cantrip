@@ -4,7 +4,11 @@ import Fastify from "fastify";
 import type {
   ComputerUseChunkEvent,
   EncryptedAgentInteractionRequest,
+  ChatMessageOpaqueContent,
+  TaskMessageOpaqueContent,
 } from "@cantrip/protocol";
+import { publishCuaPreviewActivity } from "../../../cantrip_worker/src/computer-use/activity-publication.js";
+import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
 import { CuaApprovalManager } from "../../../cantrip_worker/src/computer-use/approvals.js";
 import type { CuaAgentCoordinator } from "../../../cantrip_worker/src/computer-use/agent.js";
 import { CuaPreviewCoordinator } from "../../../cantrip_worker/src/computer-use/preview.js";
@@ -88,11 +92,19 @@ export function createComputerUsePreviewFixture(options: {
     encryption,
     approvals,
     service,
+    publishActivity: (activity, contentDomain, emit) =>
+      publishCuaPreviewActivity({
+        encryption: encryption as WorkerEncryptionService,
+        activity,
+        contentDomain,
+        emit,
+      }),
     agentObservations: options.agentObservations,
     onRevokeChat: options.onRevokeChat,
   });
   const context = {
     chatId: credentials.chatId,
+    experience: "agent",
     workerId: credentials.workerId,
     projectId: null,
     contextKind: "standalone",
@@ -137,10 +149,13 @@ export function createComputerUsePreviewFixture(options: {
     let result: unknown;
     switch (command.type) {
       case "computer-use.preview.open":
-        result = coordinator.open(command.authority);
+        result = coordinator.open(command.authority, command.contentDomain);
         break;
       case "computer-use.preview.stop":
-        result = coordinator.stop(command);
+        result = await coordinator.stop(command, async (event) => {
+          wire.push(JSON.stringify(event));
+          await operation?.onEvent?.(event);
+        });
         break;
       case "computer-use.approval.respond":
         result = await coordinator.answer(command);
@@ -183,13 +198,47 @@ export function createComputerUsePreviewFixture(options: {
       );
     },
   };
+  const chatActivities = new Map<string, ChatMessageOpaqueContent>();
+  const taskActivities = new Map<string, TaskMessageOpaqueContent>();
+  const activityPersistence = {
+    upsertLiveEncryptedChatMessage: async (
+      owner: string,
+      chat: string,
+      message: ChatMessageOpaqueContent,
+    ) => {
+      if (
+        owner !== credentials.ownerId ||
+        chat !== credentials.chatId ||
+        context.experience !== "agent"
+      )
+        return null;
+      chatActivities.set(message.id, structuredClone(message));
+      return message;
+    },
+    upsertLiveTaskMessage: async (
+      owner: string,
+      chat: string,
+      message: TaskMessageOpaqueContent,
+    ) => {
+      if (
+        owner !== credentials.ownerId ||
+        chat !== credentials.chatId ||
+        context.experience !== "task"
+      )
+        return null;
+      taskActivities.set(message.id, structuredClone(message));
+      return message;
+    },
+  };
   installComputerUsePreviewRoutes(app, {
+    ...activityPersistence,
     applicationOwnerId: () => credentials.ownerId,
     serverId: credentials.serverId,
     repository: { getChatExecutionContext, getWorker },
     bridge,
   });
   installComputerUseRoutes(app, {
+    ...activityPersistence,
     applicationOwnerId: () => credentials.ownerId,
     serverId: credentials.serverId,
     repository: { getChatExecutionContext },
@@ -284,6 +333,9 @@ export function createComputerUsePreviewFixture(options: {
     wire,
     logs,
     records,
+    chatActivities,
+    taskActivities,
+    activityPersistence,
     get launchCount() {
       return launches;
     },

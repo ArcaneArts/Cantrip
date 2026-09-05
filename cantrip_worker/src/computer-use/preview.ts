@@ -4,6 +4,7 @@ import type {
   WorkerComputerUseCommand,
 } from "@cantrip/protocol";
 import {
+  cuaPreviewStoppedSchema,
   cuaPreviewAuthoritySchema,
   type CuaApprovalRequestEvent,
   type CuaApprovalTerminal,
@@ -28,10 +29,16 @@ import { CantripCuaService, CuaServiceError } from "./service.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import { CuaProcessError } from "./errors.js";
 import type { CuaAgentCoordinator } from "./agent.js";
+import { computerUseActivity, type CuaActivity } from "./activity.js";
+import type { ComputerUseActivityEvent } from "@cantrip/protocol";
 
 export type CuaPreviewEvent =
-  ComputerUseChunkEvent | CuaApprovalRequestEvent | CuaApprovalTerminal;
+  | ComputerUseChunkEvent
+  | CuaApprovalRequestEvent
+  | CuaApprovalTerminal
+  | ComputerUseActivityEvent;
 interface Preview {
+  contentDomain: "chat" | "task";
   id: string;
   authority: CuaPreviewAuthority;
   fingerprint: string;
@@ -52,6 +59,11 @@ export interface CuaPreviewCoordinatorOptions {
   >;
   /** Trusted Stop/authority revocation reaches agent lifetimes, even without sessions. */
   onRevokeChat?: (chatId: string) => void;
+  publishActivity?: (
+    activity: CuaActivity,
+    contentDomain: "chat" | "task",
+    emit: (event: ComputerUseActivityEvent) => Promise<void>,
+  ) => Promise<void>;
 }
 
 /** One worker-owned lifetime per chat preview. Native session/turn identities
@@ -66,12 +78,17 @@ export class CuaPreviewCoordinator {
     return { previews: this.previews.size, closed: this.closed };
   }
 
-  open(input: CuaPreviewAuthority): CuaPreviewLease {
+  open(
+    input: CuaPreviewAuthority,
+    contentDomain: "chat" | "task" = "chat",
+  ): CuaPreviewLease {
     if (this.closed) throw new CuaAuthorizationError("execution-unavailable");
     const authority = this.authority(input);
     const fingerprint = JSON.stringify(authority);
     const prior = this.byChat.get(authority.chatId);
     if (prior) {
+      if (prior.contentDomain !== contentDomain)
+        throw new CuaAuthorizationError("ownership-mismatch");
       if (authority.generation < prior.authority.generation)
         throw new CuaAuthorizationError("ownership-mismatch");
       if (fingerprint === prior.fingerprint) return this.publicLease(prior);
@@ -82,6 +99,7 @@ export class CuaPreviewCoordinator {
     if (this.previews.size >= 32)
       throw new CuaAuthorizationError("execution-unavailable");
     const preview: Preview = {
+      contentDomain,
       id: randomUUID(),
       authority,
       fingerprint,
@@ -124,6 +142,9 @@ export class CuaPreviewCoordinator {
       workerId: this.options.workerId,
       service: this.options.service,
       encryption: this.options.encryption,
+      publishActivity: this.options.publishActivity
+        ? (activity) => this.publishActivity(preview, activity, emit)
+        : undefined,
       agentObservations: this.options.agentObservations
         ? {
             list: () =>
@@ -202,12 +223,17 @@ export class CuaPreviewCoordinator {
     return this.options.approvals.answer(command);
   }
 
-  stop(input: {
-    ownerId: string;
-    serverId: string;
-    chatId: string;
-    leaseId: string;
-  }) {
+  stop(
+    input: {
+      ownerId: string;
+      serverId: string;
+      chatId: string;
+      leaseId: string;
+      operationId?: string;
+    },
+    emit?: (event: ComputerUseActivityEvent) => Promise<void>,
+  ) {
+    const startedAtMs = Date.now();
     this.identity(input.ownerId, input.serverId);
     const preview = this.previews.get(input.leaseId);
     // Idempotent Stop never creates a lease or starts the helper.
@@ -217,8 +243,58 @@ export class CuaPreviewCoordinator {
       preview.scope.ownerId !== input.ownerId
     )
       throw new CuaAuthorizationError("ownership-mismatch");
+    let session = null;
+    try {
+      session = preview.sessionId
+        ? this.options.service.state(preview.scope, preview.sessionId)
+        : null;
+    } catch {}
     this.revokeChatPreview(preview);
+    if (this.options.publishActivity && emit) {
+      if (!input.operationId)
+        throw new Error(
+          "Computer-use Stop activity correlation is unavailable.",
+        );
+      const activity = computerUseActivity({
+        source: "user-preview",
+        operation: "preview.stop",
+        operationId: input.operationId,
+        requestId: null,
+        scope: preview.scope,
+        session,
+        startedAtMs,
+      });
+      // Stop already happened and owns no pixels. Encryption/publication errors
+      // are surfaced without delaying or rolling back revocation.
+      return this.publishActivity(preview, activity, emit).then(
+        () => cuaPreviewStoppedSchema.parse({ closed: true }),
+        () =>
+          cuaPreviewStoppedSchema.parse({
+            closed: true,
+            activityPublicationFailed: true,
+          }),
+      );
+    }
     return { closed: true as const };
+  }
+
+  private publishActivity(
+    preview: Preview,
+    activity: CuaActivity,
+    emit: (event: ComputerUseActivityEvent) => Promise<void>,
+  ) {
+    return this.options.publishActivity!(
+      {
+        ...activity,
+        binding: {
+          ...activity.binding,
+          taskId:
+            preview.contentDomain === "task" ? preview.scope.chatId : null,
+        },
+      },
+      preview.contentDomain,
+      emit,
+    );
   }
 
   revoke(input: {

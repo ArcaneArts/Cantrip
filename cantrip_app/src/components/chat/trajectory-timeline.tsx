@@ -246,7 +246,11 @@ export function TrajectoryTimeline({
     >
       <div className="flex min-w-0" style={{ height: svgHeight }}>
         <div
-          aria-label="Trajectory agents"
+          aria-label={
+            turn.key.startsWith("preview:")
+              ? "Trajectory actors"
+              : "Trajectory agents"
+          }
           className="relative w-28 shrink-0 border-r bg-background/40"
         >
           {tracks.map((agent, index) => (
@@ -266,7 +270,11 @@ export function TrajectoryTimeline({
           ))}
         </div>
         <svg
-          aria-label="Turn trajectory timeline"
+          aria-label={
+            turn.key.startsWith("preview:")
+              ? "Preview trajectory timeline"
+              : "Turn trajectory timeline"
+          }
           aria-valuemax={turn.timelineEndMs}
           aria-valuemin={turn.timelineStartMs}
           aria-valuenow={Math.round(playheadMs)}

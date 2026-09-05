@@ -44,6 +44,8 @@ export function canFailOverRoute(error: unknown): boolean {
 
 function activityContinuationSummary(activity: AgentActivity): string {
   switch (activity.type) {
+    case "computerUse":
+      return `[computer use: ${activity.operation} ${activity.outcome}]`;
     case "instructionContext":
       return `[effective instructions: ${activity.provenance}]`;
     case "command":

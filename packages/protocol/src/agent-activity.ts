@@ -1,4 +1,12 @@
 import { z } from "zod";
+import {
+  computerUseOperationSchema,
+  cuaBindingSchema,
+  cuaIdSchema,
+  cuaImageSchema,
+  cuaSessionSchema,
+  cuaTargetReferenceSchema,
+} from "./computer-use.js";
 
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
 export const agentMessagePhaseSchema = z.enum(["commentary", "final_answer"]);
@@ -133,6 +141,62 @@ const rateLimitWindowSchema = z.object({
 });
 
 export const agentActivitySchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      ...agentActivityBaseShape,
+      type: z.literal("computerUse"),
+      source: z.enum(["agent-mcp", "user-preview"]),
+      operation: z.enum([
+        ...computerUseOperationSchema.options,
+        "js.evaluate",
+        "js.reset",
+        "preview.stop",
+      ]),
+      operationId: z.string().uuid(),
+      requestId: cuaIdSchema.nullable(),
+      binding: cuaBindingSchema.extend({ sessionId: cuaIdSchema.nullable() }),
+      target: cuaTargetReferenceSchema.nullable(),
+      cursor: cuaSessionSchema.shape.cursor.nullable(),
+      observation: z
+        .strictObject({
+          revision: z.number().int().positive().safe(),
+          image: cuaImageSchema,
+        })
+        .nullable(),
+      outcome: z.enum(["completed", "failed", "declined", "cancelled"]),
+      errorCode: cuaIdSchema.nullable(),
+      durationMs: z.number().nonnegative().finite(),
+      startedAtMs: agentActivityTimestampSchema,
+      updatedAtMs: agentActivityTimestampSchema,
+      completedAtMs: agentActivityTimestampSchema,
+    })
+    .strict()
+    .superRefine((activity, context) => {
+      const { binding, agentScope: scope, correlation } = activity;
+      const expectedStatus =
+        activity.outcome === "cancelled" ? "failed" : activity.outcome;
+      const invalidActor =
+        activity.source === "user-preview"
+          ? binding.threadId !== null || binding.turnId !== null || !!scope
+          : !scope ||
+            binding.threadId !== scope.agentThreadId ||
+            binding.turnId === null;
+      if (
+        invalidActor ||
+        (correlation &&
+          (correlation.threadId !== binding.threadId ||
+            correlation.turnId !== binding.turnId)) ||
+        activity.status !== expectedStatus ||
+        activity.completedAtMs < activity.startedAtMs ||
+        activity.updatedAtMs < activity.startedAtMs
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Computer-use activity must retain its actual actor, outcome and timing.",
+        });
+      }
+    }),
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("instructionContext"),

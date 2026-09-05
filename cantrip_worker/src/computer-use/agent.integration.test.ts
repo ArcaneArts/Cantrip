@@ -5,7 +5,10 @@ import {
   decryptInteractionRequestContent,
   encryptInteractionResponseContent,
 } from "@cantrip/crypto";
-import { agentInteractionRequestPayloadSchema } from "@cantrip/protocol";
+import {
+  agentActivitySchema,
+  agentInteractionRequestPayloadSchema,
+} from "@cantrip/protocol";
 import type { CuaAgentAuthority } from "@cantrip/protocol/computer-use-agent";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -13,6 +16,7 @@ import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CantripMcpBroker } from "../mcp/broker.js";
 import { CuaAgentCoordinator } from "./agent.js";
+import type { CuaActivity } from "./activity.js";
 import {
   CuaAgentApprovalEvents,
   type CuaAgentApprovalEvent,
@@ -96,6 +100,7 @@ async function fixture(
   });
   const native = { root: new AbortController(), child: new AbortController() };
   const published: CuaAgentApprovalEvent[] = [];
+  const activities: CuaActivity[] = [];
   let notify!: () => void;
   const firstApproval = new Promise<void>((resolve) => {
     notify = resolve;
@@ -162,6 +167,9 @@ async function fixture(
     rootThreadId: "root",
     ownsThread: (threadId: string) => threadId in native,
     publish,
+    publishActivity: (activity) => {
+      activities.push(agentActivitySchema.parse(activity) as CuaActivity);
+    },
     resolve: ({ chatId, threadId, turnId }) => {
       if (!(threadId in native) || turnId !== `${threadId}-turn`) return null;
       return {
@@ -171,6 +179,17 @@ async function fixture(
         rootThreadId: "root",
         rootTurnId: "root-turn",
         parentThreadId: threadId === "root" ? null : "root",
+        agentScope: {
+          agentThreadId: threadId,
+          rootThreadId: "root",
+          rootTurnId: "root-turn",
+          nickname: null,
+          role: null,
+          parentThreadId: threadId === "root" ? null : "root",
+          isRoot: threadId === "root",
+          depth: threadId === "root" ? 0 : 1,
+          agentPath: threadId === "root" ? ["root"] : ["root", "child"],
+        },
         signal: native[threadId as keyof typeof native].signal,
       };
     },
@@ -213,6 +232,7 @@ async function fixture(
     service,
     approvals,
     published,
+    activities,
     firstApproval,
     launch,
     native,
@@ -236,6 +256,35 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         "let secret = 41; await cua.attach({ targetId: 'fake-window', targetGeneration: 1 }); await cua.moveCursor({ x: 20, y: 30 }); await cua.snapshot(); secret",
       );
       expect(value(result)).toBe(41);
+      expect(f.activities.map((activity) => activity.operation)).toEqual([
+        "target.attach",
+        "cursor.move",
+        "observation.snapshot",
+        "js.evaluate",
+      ]);
+      for (const activity of f.activities) {
+        expect(activity).toMatchObject({
+          source: "agent-mcp",
+          outcome: "completed",
+          binding: {
+            chatId: "chat",
+            taskId: "task",
+            threadId: "root",
+            turnId: "root-turn",
+          },
+          agentScope: {
+            agentThreadId: "root",
+            rootThreadId: "root",
+            isRoot: true,
+            depth: 0,
+          },
+        });
+        expect(JSON.stringify(activity.raw)).not.toContain("let secret");
+      }
+      expect(f.activities[2]!.observation?.image).toMatchObject({
+        width: 320,
+        height: 200,
+      });
       const image = (
         result.content as Array<{ type: string; data: string }>
       ).find((item) => item.type === "image");
@@ -248,10 +297,35 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       ).toMatchObject({ width: 320, height: 200, format: "png" });
       expect(value(await f.call("secret += 1; secret"))).toBe(42);
       expect(value(await f.call("typeof secret", "child"))).toBe("undefined");
+      expect(f.activities.at(-1)).toMatchObject({
+        agentScope: {
+          agentThreadId: "child",
+          parentThreadId: "root",
+          depth: 1,
+        },
+        binding: { threadId: "child", turnId: "child-turn" },
+      });
+      const priorSessionId = f.activities[0]!.binding.sessionId;
+      await f.call("await cua.detach();");
+      expect(f.activities.at(-2)).toMatchObject({
+        operation: "target.detach",
+        outcome: "completed",
+        target: { targetId: "fake-window", targetGeneration: 1 },
+        binding: { sessionId: priorSessionId },
+      });
+      expect(f.activities.at(-1)).toMatchObject({
+        operation: "js.evaluate",
+        target: null,
+      });
       await f.client.callTool({
         name: "js_reset",
         arguments: {},
         _meta: metadata(),
+      });
+      expect(f.activities.at(-1)).toMatchObject({
+        operation: "js.reset",
+        outcome: "completed",
+        binding: { sessionId: priorSessionId },
       });
       expect(value(await f.call("typeof secret"))).toBe("undefined");
       expect(f.published).toEqual([]);
@@ -297,6 +371,13 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           ),
         ).toBe(false);
         expect(f.approvals.status().grants).toBe(0);
+        expect(
+          f.activities.some(
+            (activity) =>
+              activity.operation === "target.attach" &&
+              activity.outcome === "declined",
+          ),
+        ).toBe(decision === "deny");
       },
       20000,
     );
@@ -328,6 +409,13 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       ]);
       f.coordinator.cancelChat("chat");
       expect((await pending).isError).toBe(true);
+      expect(
+        f.activities.some(
+          (activity) =>
+            activity.operation === "targets.list" &&
+            activity.outcome === "cancelled",
+        ),
+      ).toBe(true);
       expect((await f.call("await cua.targets()")).isError).toBe(true);
       expect(f.approvals.status().pending).toBe(0);
       expect(
@@ -335,6 +423,21 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           (event) => event.type === "computer-use.approval.terminal",
         ),
       ).toBe(true);
+    }, 20000);
+
+    it("records an evaluation error before any host call without retaining source or error text", async () => {
+      const f = await fixture();
+      expect(
+        (await f.call("throw new Error('private-script-secret')")).isError,
+      ).toBe(true);
+      expect(f.activities).toHaveLength(1);
+      expect(f.activities[0]).toMatchObject({
+        operation: "js.evaluate",
+        outcome: "failed",
+      });
+      expect(JSON.stringify(f.activities)).not.toContain(
+        "private-script-secret",
+      );
     }, 20000);
   },
 );

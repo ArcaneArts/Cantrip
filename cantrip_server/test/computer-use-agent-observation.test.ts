@@ -9,6 +9,15 @@ import {
   Client,
   StdioClientTransport,
 } from "../../cantrip_worker/test/support/cua-mcp-test-client.js";
+import {
+  decryptChatMessageProtectedContent,
+  decryptTaskMessageProtectedContent,
+  encryptInteractionResponseContent,
+} from "../../packages/crypto/src/index.js";
+import { EncryptedChatEventSealer } from "../../cantrip_worker/src/chat-message-encryption.js";
+import { EncryptedTaskEventSealer } from "../../cantrip_worker/src/task-operation.js";
+import type { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.js";
+import { agentActivitySchema } from "@cantrip/protocol";
 import type { CuaAgentAuthority } from "@cantrip/protocol/computer-use-agent";
 import type { CuaSnapshot } from "@cantrip/protocol/computer-use";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +26,7 @@ import {
   type ComputerUseClient,
   type ComputerUseClientDependencies,
 } from "../../cantrip_app/src/lib/computer-use-client";
+import { finalizeCuaAgentTurn } from "../../cantrip_worker/src/computer-use/turn-finalization.js";
 import { CuaAgentCoordinator } from "../../cantrip_worker/src/computer-use/agent.js";
 import { CuaApprovalManager } from "../../cantrip_worker/src/computer-use/approvals.js";
 import {
@@ -121,13 +131,17 @@ async function fixture(
   afterChunkPublished?: Parameters<
     typeof createComputerUsePreviewFixture
   >[0]["afterChunkPublished"],
+  contentDomain: "chat" | "task" = "chat",
 ) {
   let agents!: CuaAgentCoordinator;
+  let activityQueue = Promise.resolve();
+  let activityFailure: unknown;
   const f = createComputerUsePreviewFixture({
     binary: process.env.CANTRIP_CUA_TEST_BINARY!,
     permissionProfile: profile,
     afterChunkPublished,
     context: {
+      experience: contentDomain === "task" ? "task" : "agent",
       contextKind: "project",
       projectId: "fixture-project",
       worktreeId: "fixture-worktree",
@@ -142,7 +156,11 @@ async function fixture(
     },
     onRevokeChat: (chatId) => agents.cancelChat(chatId),
   });
-  cleanup.push(() => f.close());
+  cleanup.push(async () => {
+    await activityQueue;
+    await f.close();
+    if (activityFailure) throw activityFailure;
+  });
   const events = new CuaAgentApprovalEvents();
   const approvals = new CuaApprovalManager({
     workerId: f.credentials.workerId,
@@ -177,11 +195,44 @@ async function fixture(
   const pendingApproval = new Promise<void>((resolve) => {
     approvedRequest = resolve;
   });
+  const sealer =
+    contentDomain === "task"
+      ? new EncryptedTaskEventSealer(
+          f.encryption as WorkerEncryptionService,
+          "default",
+        )
+      : new EncryptedChatEventSealer(
+          f.encryption as WorkerEncryptionService,
+          f.credentials.chatId,
+          { explanation: null, steps: [], question: null },
+        );
   const unregister = agents.register({
     ...authority(),
     initialAuthority: authority(),
-    taskId: "fixture-chat",
+    taskId: contentDomain === "task" ? "fixture-chat" : null,
     rootThreadId: "root",
+    publishActivity: (activity) => {
+      activityQueue = activityQueue
+        .then(async () => {
+          const event = await sealer.activity(activity);
+          f.wire.push(JSON.stringify(event));
+          if (event.type === "agent.protected-task-message")
+            await f.activityPersistence.upsertLiveTaskMessage(
+              f.credentials.ownerId,
+              f.credentials.chatId,
+              event.message,
+            );
+          else
+            await f.activityPersistence.upsertLiveEncryptedChatMessage(
+              f.credentials.ownerId,
+              f.credentials.chatId,
+              event.message,
+            );
+        })
+        .catch((error: unknown) => {
+          activityFailure ??= error;
+        });
+    },
     ownsThread: (threadId) => threadId in native,
     publish: async (event) => {
       publications.push(event);
@@ -196,6 +247,17 @@ async function fixture(
             rootThreadId: "root",
             rootTurnId: "root-turn",
             parentThreadId: threadId === "root" ? null : "root",
+            agentScope: {
+              agentThreadId: threadId,
+              rootThreadId: "root",
+              parentThreadId: threadId === "root" ? null : "root",
+              rootTurnId: "root-turn",
+              agentPath: threadId === "root" ? ["root"] : ["root", "child"],
+              nickname: null,
+              role: null,
+              depth: threadId === "root" ? 0 : 1,
+              isRoot: threadId === "root",
+            },
             signal: native[threadId as keyof typeof native].signal,
           }
         : null,
@@ -259,7 +321,12 @@ async function fixture(
     pendingApproval,
     publications,
     complete: unregister,
+    sealer,
     snapshots: vi.spyOn(f.service, "snapshot"),
+    drainActivities: async () => {
+      await activityQueue;
+      if (activityFailure) throw activityFailure;
+    },
   };
 }
 type Source = {
@@ -291,6 +358,41 @@ function modelImage(result: Awaited<ReturnType<Client["callTool"]>>) {
   const image = content.find((item) => item.type === "image");
   if (!image) throw new Error("MCP result did not contain an image.");
   return Buffer.from(image.data, "base64");
+}
+
+async function recordedActivities(f: Fixture) {
+  const { ownerId, componentKey } = f.credentials;
+  const decrypted = await Promise.all([
+    ...[...f.chatActivities.values()].map((message) =>
+      decryptChatMessageProtectedContent({
+        ownerId,
+        componentKey,
+        messageId: message.id,
+        keyRevision: 1,
+        encrypted: message.protectedContent,
+        publicClassification: message.classification,
+      }),
+    ),
+    ...[...f.taskActivities.values()].map((message) =>
+      decryptTaskMessageProtectedContent({
+        ownerId,
+        componentKey,
+        messageId: message.id,
+        keyRevision: 1,
+        encrypted: message.protectedContent,
+        publicClassification: message.classification,
+      }),
+    ),
+  ]);
+  return decrypted
+    .flatMap((message) =>
+      message.content.flatMap((part) =>
+        part.type === "activity"
+          ? [agentActivitySchema.parse(part.activity)]
+          : [],
+      ),
+    )
+    .filter((activity) => activity.type === "computerUse");
 }
 
 describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
@@ -648,6 +750,186 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       expect(t.snapshots).toHaveBeenCalledTimes(2);
     }, 20000);
 
+    it.each(["chat", "task"] as const)(
+      "seals actual managed-MCP root/child operations, reset, and script failure into %s messages",
+      async (domain) => {
+        const t = await fixture(":yolo", undefined, domain);
+        modelImage(await t.call(capture())).fill(0);
+        modelImage(await t.call(capture("fake-window"), "child")).fill(0);
+        const reset = await t.mcp.callTool({
+          name: "js_reset",
+          arguments: {},
+          _meta: meta("child"),
+        });
+        expect(reset.isError).not.toBe(true);
+        const failed = await t.call("throw new Error('PRIVATE SCRIPT ERROR');");
+        expect(failed.isError).toBe(true);
+        await t.drainActivities();
+        const activities = await recordedActivities(t.f);
+        expect(activities.length).toBeGreaterThanOrEqual(10);
+        for (const activity of activities) {
+          expect(activity.source).toBe("agent-mcp");
+          expect(activity.binding.chatId).toBe(t.f.credentials.chatId);
+          expect(activity.binding.taskId).toBe(
+            domain === "task" ? t.f.credentials.chatId : null,
+          );
+          expect(activity.agentScope?.rootTurnId).toBe("root-turn");
+          expect(activity.agentScope?.rootThreadId).toBe("root");
+          expect(activity.correlation?.threadId).toBe(
+            activity.binding.threadId,
+          );
+          expect(activity.correlation?.turnId).toBe(activity.binding.turnId);
+          expect(activity.completedAtMs).toBeGreaterThanOrEqual(
+            activity.startedAtMs,
+          );
+        }
+        const child = activities.filter(
+          (activity) => activity.binding.threadId === "child",
+        );
+        expect(
+          child.some(
+            (activity) => activity.operation === "observation.snapshot",
+          ),
+        ).toBe(true);
+        for (const activity of child)
+          expect(activity.agentScope).toMatchObject({
+            parentThreadId: "root",
+            agentPath: ["root", "child"],
+            depth: 1,
+            isRoot: false,
+          });
+        expect(
+          activities.find((activity) => activity.operation === "js.reset"),
+        ).toMatchObject({
+          binding: { threadId: "child", turnId: "child-turn" },
+          outcome: "completed",
+        });
+        expect(
+          activities.some(
+            (activity) =>
+              activity.operation === "js.evaluate" &&
+              activity.outcome === "failed" &&
+              activity.binding.threadId === "root",
+          ),
+        ).toBe(true);
+        const wire = t.f.wire.join("\n") + t.f.logs.join("\n");
+        for (const secret of [
+          "PRIVATE SCRIPT ERROR",
+          "Private observer cursor",
+          "CUA fixture monitor",
+          capture(),
+        ])
+          expect(wire.includes(secret)).toBe(false);
+        expect(
+          JSON.stringify(activities).includes("PRIVATE SCRIPT ERROR"),
+        ).toBe(false);
+        expect(
+          domain === "chat" ? t.f.taskActivities.size : t.f.chatActivities.size,
+        ).toBe(0);
+      },
+      20000,
+    );
+
+    it.each(["chat", "task"] as const)(
+      "releases the actual MCP session and waits for delayed %s terminal sealing before rejecting the runtime turn",
+      async (domain) => {
+        const t = await fixture(":yolo", undefined, domain);
+        let entered!: () => void;
+        let resume!: () => void;
+        let draining!: () => void;
+        const sealEntered = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const continueSeal = new Promise<void>((resolve) => {
+          resume = resolve;
+        });
+        const drainEntered = new Promise<void>((resolve) => {
+          draining = resolve;
+        });
+        const realActivity = t.sealer.activity.bind(t.sealer);
+        const sealing = vi
+          .spyOn(t.sealer, "activity")
+          .mockImplementation(async (activity) => {
+            if (
+              activity.type === "computerUse" &&
+              activity.operation === "js.evaluate"
+            ) {
+              entered();
+              await continueSeal;
+            }
+            return realActivity(activity);
+          });
+        const runtimeFailure = new Error(
+          "Synthetic original runtime rejection",
+        );
+        let settled = false;
+        const finished = finalizeCuaAgentTurn(
+          async () => {
+            modelImage(await t.call(capture())).fill(0);
+            expect(t.f.service.status().sessions).toBe(1);
+            await sealEntered;
+            throw runtimeFailure;
+          },
+          async () => {
+            await t.complete();
+            expect(t.f.service.status().sessions).toBe(0);
+          },
+          async () => {
+            draining();
+            await t.drainActivities();
+          },
+        ).then(
+          () => {
+            settled = true;
+            return null;
+          },
+          (error: unknown) => {
+            settled = true;
+            return error;
+          },
+        );
+        try {
+          await Promise.race([
+            drainEntered,
+            finished.then(() => {
+              throw new Error(
+                "Runtime settled before draining protected activities.",
+              );
+            }),
+          ]);
+          expect(settled).toBe(false);
+          expect(t.f.service.status().sessions).toBe(0);
+          expect(t.snapshots).toHaveBeenCalledTimes(1);
+          const before = await recordedActivities(t.f);
+          expect(
+            before.some(
+              (activity) => activity.operation === "observation.snapshot",
+            ),
+          ).toBe(true);
+          expect(
+            before.some((activity) => activity.operation === "js.evaluate"),
+          ).toBe(false);
+        } finally {
+          resume();
+        }
+        expect(await finished).toBe(runtimeFailure);
+        const after = await recordedActivities(t.f);
+        expect(
+          after.filter((activity) => activity.operation === "js.evaluate"),
+        ).toHaveLength(1);
+        expect(
+          after.find((activity) => activity.operation === "js.evaluate"),
+        ).toMatchObject({
+          source: "agent-mcp",
+          outcome: "completed",
+          binding: { threadId: "root", turnId: "root-turn" },
+        });
+        expect(t.f.service.status().sessions).toBe(0);
+        sealing.mockRestore();
+      },
+      20000,
+    );
+
     it("rejects foreign preview scope and stale durable authority before publishing pixels", async () => {
       const t = await fixture();
       const client = viewer(t.f);
@@ -679,6 +961,62 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       expect(t.snapshots).toHaveBeenCalledTimes(1);
     }, 20000);
 
+    it("records an explicit encrypted approval denial for the actual managed-MCP host action", async () => {
+      const t = await fixture(":workspace");
+      const pending = t.call("await cua.targets()");
+      await Promise.race([
+        t.pendingApproval,
+        pending.then(() => {
+          throw new Error("MCP completed before approval.");
+        }),
+      ]);
+      const event = t.publications.find(
+        (event) => event.type === "computer-use.approval.request",
+      )!;
+      if (event.type !== "computer-use.approval.request")
+        throw new Error("Expected approval.");
+      const classification = { kind: "permissions" as const };
+      await t.agents.answer({
+        type: "computer-use.approval.respond",
+        ownerId: t.f.credentials.ownerId,
+        chatId: t.f.credentials.chatId,
+        executionLaneId: t.f.context.executionLaneId,
+        requestKey: event.request.requestKey,
+        agentAuthority: t.authority(),
+        response: {
+          classification,
+          protectedResponse: await encryptInteractionResponseContent({
+            ownerId: t.f.credentials.ownerId,
+            requestKey: event.request.requestKey,
+            keyRevision: 1,
+            componentKey: t.f.credentials.componentKey,
+            content: {
+              version: 1,
+              classification,
+              response: {
+                kind: "permissions",
+                permissions: {},
+                scope: "session",
+                strictAutoReview: false,
+              },
+            },
+          }),
+        },
+      });
+      expect((await pending).isError).toBe(true);
+      await t.drainActivities();
+      const actions = await recordedActivities(t.f);
+      expect(
+        actions.find((activity) => activity.operation === "targets.list"),
+      ).toMatchObject({
+        outcome: "declined",
+        errorCode: "denied",
+        binding: { threadId: "root", turnId: "root-turn" },
+      });
+      expect(t.snapshots).not.toHaveBeenCalled();
+      expect(t.f.service.status().sessions).toBe(0);
+    }, 20000);
+
     it("preview Stop cancels a pending agent approval before any observation exists", async () => {
       const t = await fixture(":workspace");
       const client = viewer(t.f);
@@ -692,6 +1030,13 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       ]);
       await client.stop(lease);
       expect((await pending).isError).toBe(true);
+      await t.drainActivities();
+      const actions = (await recordedActivities(t.f)).filter(
+        (activity) => activity.source === "agent-mcp",
+      );
+      expect(actions.some((activity) => activity.outcome === "cancelled")).toBe(
+        true,
+      );
       expect(t.approvals.status().pending).toBe(0);
       expect(
         t.publications.some(
