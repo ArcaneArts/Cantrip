@@ -240,7 +240,7 @@ describe("server account authentication", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 
   it("fails closed when session cookies or the pinned account disagree", async () => {
     const config = await createConfig("accounts");

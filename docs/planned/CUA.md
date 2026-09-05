@@ -1352,6 +1352,12 @@ src/lib/computer-use-preview-encryption.test.ts`. New rendering cases cover
   prove CSRF enforcement, owner isolation, persistence, and partial-update
   preservation. `pnpm check` still stops at unchanged server decomposition
   counts 2,156/2,149 versus 1,999, before later chained checks.
+- CI follow-up: run `33982230565` passed macOS and PostgreSQL. Linux and
+  Windows each timed out only the new account integration case at Vitest's
+  default five seconds; their actual PGlite migration initialization alone
+  exceeded five seconds. The new case now uses the same bounded 30-second
+  timeout as every existing case in `auth-api.test.ts`. All five account cases
+  pass locally after this test-only correction; replacement CI remains pending.
 - Actual browser/native acceptance used the existing isolated QA account,
   cycle 15 frontend/server, cycle 13 worker and stable signed native helper.
   On fully covered fixture `macos-window-45605:396`, a white size-36 ring
