@@ -602,7 +602,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 8a2 — Portable runtime regression fixtures
 
 - Branch: `codex/cua-08a2-portable-runtime-fixtures`, based on merged cycle 8a
-  (`42fa6e9b0`). Implementation/local validation complete; PR/merge pending.
+  (`42fa6e9b0`). [PR #1745](https://github.com/ArcaneArts/Cantrip/pull/1745),
+  implementation commit `afb9e7c50f7e8f94735f72848ea9fcfed0cf49d8`.
+  Local validation complete; CI and squash auto-merge pending.
 - Correct six pre-existing runtime test expectations to use the host's native
   resolved root and path separators, matching the unchanged runtime's Node
   path semantics. Preserve exact sandbox roots, policy flags, file previews and
