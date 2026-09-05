@@ -26,6 +26,7 @@ import type {
   RunAgentTurnOptions,
   RunAgentOperationOptions,
 } from "./app-server.js";
+import type { CodexComputerUseExecution } from "./execution-lifetime.js";
 
 export interface CodexRuntimeDiagnostic {
   id: string;
@@ -54,6 +55,12 @@ export async function interruptChatAcrossRuntimes(
 
 export interface CodexRuntime {
   readonly compatibility: CodexRuntimeReport;
+
+  resolveComputerUseExecution(input: {
+    chatId: string;
+    threadId: string;
+    turnId: string;
+  }): CodexComputerUseExecution | null;
 
   setChatPaused(chatId: string, paused: boolean): void;
   setActiveChatPaused(

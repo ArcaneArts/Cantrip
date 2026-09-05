@@ -22,6 +22,9 @@ for (const [project, ...tests] of [
   [
     "cantrip_worker",
     "src/computer-use",
+    "test/computer-use-execution-lifetime.test.ts",
+    "test/app-server.test.ts",
+    "test/subagent-ownership.test.ts",
     "src/endpoint-content-encryption.test.ts",
   ],
   [

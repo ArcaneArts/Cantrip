@@ -541,6 +541,16 @@ export class CantripCuaService {
   stopSession(input: CuaScope, sessionId: string): void {
     this.invalidate(this.record(input, sessionId));
   }
+  /** Release one exact owner lifetime. Null task/thread/turn fields are values,
+   * not wildcards for the agent executions sharing a preview's chat. */
+  cancelScope(input: CuaScope): void {
+    const identity = JSON.stringify(this.scope(input));
+    const matches = (scope: CuaScope) => JSON.stringify(scope) === identity;
+    for (const pending of this.pending)
+      if (matches(pending.scope)) pending.controller.abort();
+    for (const record of this.sessions.values())
+      if (matches(record.scope)) this.invalidate(record);
+  }
   /** Local lifecycle control: never waits for approval or a backend response. */
   cancelChat(chatId: string, threadId?: string | null): void {
     const matches = (scope: CuaScope) =>

@@ -47,6 +47,7 @@ describe("CUA worker composition without activation", () => {
       processGeneration: 0,
     });
     service.cancelChat("chat");
+    service.cancelScope(scope);
     service.disconnect();
     service.reconnect();
     const first = service.close();
@@ -405,6 +406,69 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         service.state(otherScope, other.binding.sessionId),
       ).toThrow();
       expect((await service.targets(scope)).length).toBe(2);
+    });
+    it("releases only an exact canonical scope, with null fields never acting as wildcards", async () => {
+      const { service } = create();
+      const preview = { ...scope, taskId: null, threadId: null, turnId: null };
+      const own = await service.open(preview, monitor);
+      const survivors = await Promise.all(
+        [
+          scope,
+          { ...preview, ownerId: "other-owner" },
+          { ...preview, serverId: "other-server" },
+          { ...preview, chatId: "other-chat" },
+          { ...preview, taskId: "task" },
+          { ...preview, threadId: "thread" },
+          { ...preview, turnId: "turn" },
+        ].map(async (identity) => ({
+          identity,
+          session: await service.open(identity, monitor),
+        })),
+      );
+      expect(() =>
+        service.cancelScope({ ...preview, workerId: "other-worker" }),
+      ).toThrow(/another worker or execution context/u);
+      expect(service.state(preview, own.binding.sessionId)).toEqual(own);
+      // Object property insertion order does not create a different identity.
+      service.cancelScope(
+        Object.fromEntries(Object.entries(preview).reverse()) as CuaScope,
+      );
+      expect(() => service.state(preview, own.binding.sessionId)).toThrow(
+        /no longer active/u,
+      );
+      for (const survivor of survivors)
+        expect(
+          service.state(survivor.identity, survivor.session.binding.sessionId),
+        ).toEqual(survivor.session);
+      expect(service.status().sessions).toBe(survivors.length);
+    });
+
+    it("cancels only its exact pending handshake waiter without stopping an agent in the same chat", async () => {
+      const entered = deferred();
+      const release = deferred();
+      const { service } = create({
+        transform: async (operation, response) => {
+          if (
+            (operation as { operation: string }).operation ===
+            "capabilities.get"
+          ) {
+            entered.resolve();
+            await release.promise;
+          }
+          return response;
+        },
+      });
+      const preview = { ...scope, taskId: null, threadId: null, turnId: null };
+      const cancelled = service.capabilities(preview);
+      const survivor = service.capabilities(scope);
+      await entered.promise;
+      service.cancelScope(preview);
+      await expect(cancelled).rejects.toMatchObject({
+        code: "cancelled",
+        outcome: "not-sent",
+      });
+      release.resolve();
+      expect((await survivor).capture).toBe(true);
     });
     it("allows exactly one explicit crash restart and never revives or replays old sessions", async () => {
       const { service, children, launch } = create();

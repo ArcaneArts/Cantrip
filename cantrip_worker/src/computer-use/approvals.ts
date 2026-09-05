@@ -311,6 +311,11 @@ export class CuaApprovalManager {
     return { accepted: true };
   }
 
+  revokeContext(signal: AbortSignal) {
+    // Revoke the lifetime even if it has not yet published an approval.
+    this.revokedLeases.add(signal);
+    this.revoke((context) => context.signal === signal);
+  }
   revokeChat(chatId: string) {
     this.revoke((context) => context.scope.chatId === chatId);
   }
