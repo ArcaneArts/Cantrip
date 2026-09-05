@@ -4,8 +4,10 @@ import {
   agentInteractionRequestWireListSchema,
   agentInteractionRequestWireSchema,
   agentInteractionResolutionWireCreateSchema,
+  type AgentInteractionRequestWire,
+  type EncryptedAgentInteractionResolutionCreate,
 } from "@cantrip/protocol";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 
 import {
   AgentInteractionConflictError,
@@ -23,7 +25,14 @@ import {
 export interface AgentInteractionRouteDependencies {
   applicationOwnerId: () => string;
   bridge: Pick<WorkerCommandBus, "isConnected" | "request">;
-  repository: ServerRepository;
+  repository: Pick<
+    ServerRepository,
+    | "listAgentInteractionRequests"
+    | "getAgentInteractionRequest"
+    | "validateEncryptedAgentInteractionResolution"
+    | "validateAgentInteractionResolution"
+    | "getChatExecutionContext"
+  >;
   resolveLiveAgentInteractionRequest: (
     ...input: Parameters<ServerRepository["resolveAgentInteractionRequest"]>
   ) => ReturnType<ServerRepository["resolveAgentInteractionRequest"]>;
@@ -107,6 +116,15 @@ export function installAgentInteractionRoutes(
             );
         if (!existing) {
           return reply.code(404).send({ error: "Agent request not found." });
+        }
+        if (existing.provenance.owner === "computer-use") {
+          return respondToComputerUseApproval(
+            reply,
+            applicationOwnerId(),
+            existing,
+            protectedInput,
+            { bridge, repository, resolveLiveEncryptedAgentInteractionRequest },
+          );
         }
         if (existing.status !== "pending") {
           const replay = protectedInput
@@ -212,4 +230,83 @@ export function installAgentInteractionRoutes(
       }
     },
   );
+}
+
+/** Native approvals belong to the worker, not a selected model or Codex RPC. */
+async function respondToComputerUseApproval(
+  reply: FastifyReply,
+  ownerId: string,
+  existing: AgentInteractionRequestWire,
+  input: EncryptedAgentInteractionResolutionCreate | null,
+  {
+    bridge,
+    repository,
+    resolveLiveEncryptedAgentInteractionRequest,
+  }: Pick<
+    AgentInteractionRouteDependencies,
+    "bridge" | "repository" | "resolveLiveEncryptedAgentInteractionRequest"
+  >,
+): Promise<FastifyReply> {
+  if (!input) {
+    return reply.code(409).send({
+      error: "Computer-use approvals require a protected response.",
+    });
+  }
+  try {
+    const context = existing.provenance.chatId
+      ? await repository.getChatExecutionContext(
+          ownerId,
+          existing.provenance.chatId,
+        )
+      : null;
+    if (
+      !context ||
+      context.workerId !== existing.provenance.workerId ||
+      context.executionLaneId !== existing.provenance.executionLaneId ||
+      (existing.status !== "pending" && existing.status !== "resolved")
+    ) {
+      return reply.code(409).send({
+        error: "The computer-use approval is no longer active.",
+      });
+    }
+    // A durable replay verifies its original idempotency key below. Never
+    // re-authorize an action that the worker has already acknowledged.
+    if (existing.status === "pending") {
+      try {
+        agentInteractionAcceptedSchema.parse(
+          await bridge.request(
+            context.workerId,
+            {
+              type: "computer-use.approval.respond",
+              ownerId,
+              chatId: context.chatId,
+              executionLaneId: context.executionLaneId,
+              requestKey: existing.requestKey,
+              response: {
+                classification: input.classification,
+                protectedResponse: input.protectedResponse,
+              },
+            },
+            { ownerId, timeoutMs: 30_000 },
+          ),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof WorkerUnavailableError ? 503 : 409)
+          .send({
+            error: "The worker no longer accepts this computer-use approval.",
+          });
+      }
+    }
+    const resolved = await resolveLiveEncryptedAgentInteractionRequest(
+      ownerId,
+      existing.id,
+      input,
+    );
+    return reply.send(agentInteractionRequestWireSchema.parse(resolved));
+  } catch (error) {
+    return reply
+      .code(error instanceof AgentInteractionConflictError ? 409 : 503)
+      .send({ error: "The computer-use approval could not be resolved." });
+  }
 }

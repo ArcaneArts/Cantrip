@@ -132,6 +132,7 @@ import { workerGlobalCodexSkillsRoot } from "./codex/global-skills.js";
 import { interruptChatAcrossRuntimes } from "./codex/runtime.js";
 import { CantripCliBroker } from "./cli-broker.js";
 import { CantripCuaService } from "./computer-use/service.js";
+import { CuaApprovalManager } from "./computer-use/approvals.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
@@ -736,6 +737,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }),
     { workerId: config.workerId },
   );
+  // Construction is inert: permissions do not launch CUA or read key material.
+  const computerUseApprovals = new CuaApprovalManager({
+    workerId: config.workerId,
+    encryption: workerEncryption,
+  });
   let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
   const workerLinkGateway = new WorkerLinkGateway({
@@ -5345,12 +5351,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: command.threadId,
         });
       case "chat.interrupt":
+        computerUseApprovals.revokeChat(command.chatId);
         computerUse.cancelChat(command.chatId, command.threadId);
         return interruptChatAcrossRuntimes(
           codexRuntimes.values(),
           command.chatId,
           command.threadId,
         );
+      case "computer-use.approval.respond":
+        return computerUseApprovals.answer(command);
       case "computer-use.operation":
         // The encrypted handler is tested independently in this pass. Its
         // production registration requires the durable permission owner; do
@@ -5555,6 +5564,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       }
       case "chat.relocation.thread.release":
+        if (command.threadId)
+          computerUseApprovals.revokeThread(command.threadId);
         if (command.threadId) computerUse.cancelThread(command.threadId);
         if (command.discard && command.threadId) {
           await runtimeFor({
@@ -5695,6 +5706,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       void workerLinkGateway.revokeAll("endpoint-disconnected");
       codeDirectEndpoints.disconnect();
       computerUse.disconnect();
+      computerUseApprovals.disconnect();
     },
     undefined,
     (serverControlPlaneGeneration) => {
@@ -5936,6 +5948,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    computerUseApprovals.close();
     const computerUseClosed = computerUse.close();
     requestRuntimeRestart = null;
     process.off("SIGINT", handleSigint);

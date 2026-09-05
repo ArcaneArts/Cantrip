@@ -137,3 +137,102 @@ describe("agent interaction response builders", () => {
     expect(markup).not.toContain("bg-amber-500/5");
   });
 });
+
+describe("computer-use permission approval labels", () => {
+  function permissionRequest(
+    owner: "computer-use" | "codex" | undefined,
+    turnId: string | null,
+    reason: string | null = null,
+  ): AgentInteractionRequest {
+    return {
+      id: "00000000-0000-4000-8000-000000000001",
+      requestKey: "permission-one",
+      projectId: null,
+      provenance:
+        owner === "computer-use"
+          ? {
+              owner,
+              chatId: "chat-one",
+              threadId: turnId ? "thread-one" : null,
+              turnId,
+              itemId: null,
+              executionLaneId: null,
+              workerId: "worker-one",
+            }
+          : {
+              ...(owner ? { owner } : {}),
+              chatId: "chat-one",
+              threadId: "thread-one",
+              turnId,
+              itemId: null,
+              executionLaneId: null,
+              workerId: "worker-one",
+            },
+      payload: {
+        kind: "permissions",
+        ...(owner === "computer-use"
+          ? { source: "native-computer-use" as const }
+          : {}),
+        startedAtMs: 1,
+        environmentId: null,
+        cwd: owner === "computer-use" ? null : "/repo",
+        reason,
+        requestedPermissions: { capture: true },
+      },
+      status: "pending",
+      response: null,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      expiresAt: null,
+      resolvedAt: null,
+      resolvedByUserId: null,
+    };
+  }
+
+  function renderRequest(request: AgentInteractionRequest) {
+    return renderToStaticMarkup(
+      createElement(AgentInteractionPanel, {
+        requests: [request],
+        pendingRequestId: null,
+        onRespond: () => undefined,
+      }),
+    );
+  }
+
+  it.each([
+    ["computer-use", null, "Grant once"],
+    ["computer-use", "turn-one", "Grant for turn"],
+    ["codex", null, "Grant for turn"],
+    ["codex", "turn-one", "Grant for turn"],
+    [undefined, null, "Grant for turn"],
+  ] as const)(
+    "labels %s approval with turn %s as %s",
+    (owner, turnId, label) => {
+      const markup = renderRequest(permissionRequest(owner, turnId));
+      const labels = [
+        ...markup.matchAll(/<button\b[^>]*>(.*?)<\/button>/g),
+      ].map(([, text]) => text);
+      expect(labels).toEqual([label, "Grant for session", "Deny"]);
+      if (owner === "computer-use") {
+        expect(markup).toContain("Computer-use approval");
+        expect(markup).toContain(
+          "requested access to this worker&#x27;s desktop.",
+        );
+        expect(markup).toContain('aria-label="Pending agent requests"');
+        expect(markup).not.toContain("Codex requested additional permissions.");
+      } else {
+        expect(markup).toContain("Permission grant");
+        expect(markup).toContain("Codex requested additional permissions.");
+        expect(markup).toContain('aria-label="Pending Codex requests"');
+      }
+    },
+  );
+
+  it("retains the worker's specific approval reason", () => {
+    const markup = renderRequest(
+      permissionRequest("computer-use", null, "Capture the selected window."),
+    );
+    expect(markup).toContain("Capture the selected window.");
+    expect(markup).not.toContain("requested access to this worker");
+  });
+});

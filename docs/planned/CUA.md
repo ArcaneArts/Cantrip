@@ -196,7 +196,9 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-05-protected-routing`, based on merged cycle 4 (`16218ed0d`).
 - PR: [#1739](https://github.com/ArcaneArts/Cantrip/pull/1739).
-  Initial implementation commit: `9c8b442fe`; merge not yet observed.
+  Initial implementation commit: `9c8b442fe`; merged at
+  `2026-09-05T00:02:16Z` as `0d23ecbae`. Primary fast-forwarded; only the
+  cycle-owned worktree and branch were removed.
 - Implemented: one browser-safe shared CUA schema; strict worker command/event
   contracts; endpoint-only control/result encryption and sequential 256 KiB
   screenshot chunks (16 MiB total); raw-byte adapters using existing component
@@ -234,7 +236,8 @@ is the authoritative merge record until the next ledger update.
   First portable CI run `33931195514` passed the Rust round-trip tests on all
   three platforms but exposed a missing logging-package build prerequisite in
   the new server test command; the command now builds its workspace dependencies
-  explicitly. Portable CI rerun remains pending. Native capture, live app entry
+  explicitly. Final portable CI `33931458355` passed on macOS, Windows and Linux
+  before auto-merge was enabled. Native capture, live app entry
   points, real policy prompts and MCP are not claimed by this factory integration.
 - Sequencing decision: existing durable interactions are Codex RPC-owned and
   currently require a real native thread; they are not a generic CUA approval
@@ -256,10 +259,73 @@ is the authoritative merge record until the next ledger update.
   protected Trajectory; real macOS/packaged end-to-end verification. Native
   inventory must respect the existing 64 KiB response-header budget. Previously
   noted standalone-worker signing and unrelated baseline script failures remain.
-- Platform/manual: local macOS fake process; portable CI pending. No OS privacy
+- Platform/manual: local macOS fake process and three-platform fake CI passed. No OS privacy
   prompt, screen access, profile or native key access occurs in this test suite.
 - Deferred: native input/mutations, human event taps, other native operating
   systems, arbitrary cursor assets, continuous video and cross-worker control.
+
+### Tranche cycle 5b — Durable computer-use permission owner
+
+- Branch: `codex/cua-05b-durable-approvals`, based on merged cycle 5 (`0d23ecbae`).
+- PR: [#1740](https://github.com/ArcaneArts/Cantrip/pull/1740).
+  Initial implementation commit: `e9589426b`; merge not yet observed.
+- Implemented: an explicit `computer-use` owner in existing durable agent
+  interactions; a versioned migration adds owner metadata and allows genuine
+  null native thread/turn identity for CUA permissions. No new session tables,
+  encryption profiles, grant formats or key custody. Historical absent-owner
+  Codex JSON and ciphertext remain unchanged; its real thread requirement and
+  waiting/running restoration remain in force. CUA create, resolve, expiry and
+  interruption never rewrite the chat's runtime status.
+- Worker policy maps inventory, capture and logical cursor operations onto the
+  existing selected/effective profile. Exact selected YOLO requires no extra
+  approval, including Primary's effective read-only override for this
+  non-filesystem/non-native-input tranche. Other selections use the existing
+  protected permission interaction; capability discovery and scoped Stop do not
+  prompt. There is no application blocklist or connectivity preflight.
+- The inert approval manager seals requests and opens replies using existing
+  `interaction-content` grants. It coalesces exact requests, binds grants to
+  account/server/worker/chat/lane/profile/target-generation/execution lease,
+  expires pending requests after five minutes, and bounds pending requests (32),
+  grants (64) and exact-response receipts (128). Denial grants nothing; retries
+  never replay native operations or replenish consumed one-use grants. Idle
+  preview requests show **Grant once**, not a fabricated turn. Active native
+  turns retain their actual identity and the existing turn button.
+- Server response routing validates current account/chat/worker/lane and routes
+  the encrypted reply to the originating worker without selecting a model or
+  Codex RPC. Durable resolution follows worker acknowledgment. A bounded worker
+  receipt handles an exact retry after a database-write failure; it never treats
+  arbitrary modified response bytes as the same approval. Interrupted/stale
+  approvals report bounded errors. Existing Codex response paths are preserved.
+- Lifecycle verified in isolation: cancellation during seal/open, direct expiry
+  checks after asynchronous work, chat/thread revocation, terminal disconnect,
+  shutdown, stale target/profile/lease rejection, and Stop after revocation.
+  Production construction and response dispatch are installed and inert; native
+  operation routing is still deliberately unregistered. The next activation
+  pass must own trusted leases, publish/terminalize durable requests, and abort
+  them on actual turn completion, policy/lane change and preview Stop. This
+  prerequisite does not claim that a live preview or MCP is already available.
+- Validation: 346 focused tests pass (protocol 58, crypto 20, worker 186,
+  server 68, client 14), including actual Rust fake routing, 9 real PGlite
+  migration/lifecycle tests and historical Codex response/JSON compatibility.
+  Migration rollback is exercised after each of its three statements; all 89
+  existing tables remain. Full protocol: 516 passes; full worker: 1,202 passes,
+  13 expected skips (the artifact-dependent CUA cases run in the focused suite).
+  Rust: 50 passes; CUA build/smoke scripts: 30 passes. Worker/server/app
+  typechecks, worker build, Clippy, Rust and
+  touched-file formatting, large-file check and server-boundary audit pass.
+  Portable CI and merge are not yet observed. The existing server
+  local-foundation provider-fixture failure was reproduced unchanged on Primary
+  before interaction assertions; full-suite baseline gaps recorded above remain
+  final-hardening work, not a claim of a green whole-repository suite.
+- Platform/manual: synthetic encrypted permissions and macOS fake-process tests
+  only. No native capture, Screen Recording prompt, real profile/key access or
+  live UI approval was performed. Portable fake CI will exercise these same
+  boundary tests on macOS, Windows and Linux; it is not native capture evidence.
+- Remaining first tranche: trusted production activation/capability, preview,
+  native inventory/capture, persistent JS/MCP, protected Trajectory, signing and
+  end-to-end/manual performance verification. Earlier signing and baseline-test
+  risks remain. Later native input, other native platforms, arbitrary cursor
+  assets, continuous video and cross-worker control remain deferred.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

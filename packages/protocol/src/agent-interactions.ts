@@ -21,7 +21,7 @@ export const agentInteractionRequestStatusSchema = z.enum([
   "interrupted",
 ]);
 
-export const agentInteractionProvenanceSchema = z
+const codexInteractionProvenanceSchema = z
   .object({
     chatId: z.string().min(1).nullable(),
     threadId: z.string().min(1),
@@ -29,8 +29,18 @@ export const agentInteractionProvenanceSchema = z
     itemId: z.string().min(1).nullable(),
     executionLaneId: z.string().min(1).nullable(),
     workerId: z.string().min(1),
+    // No default: adding owner to historical JSON changes request-key replay.
+    owner: z.literal("codex").optional(),
   })
   .strict();
+export const agentInteractionProvenanceSchema = z.discriminatedUnion("owner", [
+  codexInteractionProvenanceSchema,
+  codexInteractionProvenanceSchema.extend({
+    owner: z.literal("computer-use"),
+    chatId: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
+  }),
+]);
 
 export const agentInteractionRequestPayloadSchema = z.discriminatedUnion(
   "kind",
@@ -79,14 +89,25 @@ export const agentInteractionRequestPayloadSchema = z.discriminatedUnion(
       reason: z.string().nullable(),
       grantRoot: z.string().nullable(),
     }),
-    z.object({
-      kind: z.literal("permissions"),
-      startedAtMs: z.number().int().nonnegative(),
-      environmentId: z.string().min(1).nullable(),
-      cwd: z.string().min(1),
-      reason: z.string().nullable(),
-      requestedPermissions: z.json(),
-    }),
+    z
+      .object({
+        kind: z.literal("permissions"),
+        startedAtMs: z.number().int().nonnegative(),
+        environmentId: z.string().min(1).nullable(),
+        cwd: z.string().min(1).nullable(),
+        reason: z.string().nullable(),
+        requestedPermissions: z.json(),
+        source: z.literal("native-computer-use").optional(),
+      })
+      .refine(
+        (payload) =>
+          payload.cwd !== null || payload.source === "native-computer-use",
+        {
+          message:
+            "Only native computer-use permission requests may omit a working directory.",
+          path: ["cwd"],
+        },
+      ),
     z.object({
       kind: z.literal("userInput"),
       questions: z
@@ -177,6 +198,64 @@ function fitsAgentInteractionStorageLimit(value: unknown): boolean {
   }
 }
 
+function validateInteractionPayloadOwner(
+  request: {
+    provenance: z.infer<typeof agentInteractionProvenanceSchema>;
+    payload: z.infer<typeof agentInteractionRequestPayloadSchema>;
+  },
+  context: z.RefinementCtx,
+) {
+  validateComputerUseRequestId(request, context);
+  const native =
+    request.payload.kind === "permissions" &&
+    request.payload.source === "native-computer-use";
+  if ((request.provenance.owner === "computer-use") !== native) {
+    context.addIssue({
+      code: "custom",
+      path: ["payload"],
+      message:
+        "Native computer-use permissions require computer-use provenance, and no other payload kind may use that owner.",
+    });
+  }
+}
+
+function validateProtectedInteractionOwner(
+  request: {
+    provenance: z.infer<typeof agentInteractionProvenanceSchema>;
+    classification: { kind: string };
+  },
+  context: z.RefinementCtx,
+) {
+  validateComputerUseRequestId(request, context);
+  if (
+    request.provenance.owner === "computer-use" &&
+    request.classification.kind !== "permissions"
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["classification", "kind"],
+      message: "Computer-use interactions require permissions classification.",
+    });
+  }
+}
+
+function validateComputerUseRequestId(
+  request: { provenance: z.infer<typeof agentInteractionProvenanceSchema> },
+  context: z.RefinementCtx,
+) {
+  if (
+    request.provenance.owner === "computer-use" &&
+    "id" in request &&
+    !z.uuid().safeParse(request.id).success
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["id"],
+      message: "Computer-use interaction IDs must be genuine request UUIDs.",
+    });
+  }
+}
+
 export const agentInteractionRequestCreateSchema = z
   .object({
     requestKey: z.string().min(1).max(200),
@@ -185,6 +264,7 @@ export const agentInteractionRequestCreateSchema = z
     payload: agentInteractionRequestPayloadSchema,
     expiresAt: z.string().datetime().nullable(),
   })
+  .superRefine(validateInteractionPayloadOwner)
   .refine(fitsAgentInteractionStorageLimit, {
     message: "Agent interaction request exceeds the 1 MB storage limit.",
   });
@@ -207,6 +287,7 @@ export const encryptedAgentInteractionRequestCreateSchema = z
     expiresAt: z.string().datetime().nullable(),
   })
   .strict()
+  .superRefine(validateProtectedInteractionOwner)
   .refine(fitsAgentInteractionStorageLimit, {
     message: "Protected agent interaction request exceeds the storage limit.",
   });
@@ -261,6 +342,7 @@ export const agentInteractionRequestSchema = z
     updatedAt: z.string().datetime(),
   })
   .superRefine((request, context) => {
+    validateInteractionPayloadOwner(request, context);
     if (request.response && request.response.kind !== request.payload.kind) {
       context.addIssue({
         code: "custom",
@@ -326,6 +408,7 @@ export const encryptedAgentInteractionRequestSchema = z
   })
   .strict()
   .superRefine((request, context) => {
+    validateProtectedInteractionOwner(request, context);
     if (request.status === "pending") {
       if (
         request.protectedResponse ||
