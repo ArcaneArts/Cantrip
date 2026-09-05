@@ -64,6 +64,7 @@ const operationLabels: Record<string, string> = {
   "cursor.move": "Move cursor",
   "controls.inspect": "Inspect controls",
   "input.press": "Press control",
+  "input.click": "Click position",
   "observation.snapshot": "Snapshot",
   "session.close": "Close session",
   "agent.sources.list": "List agent observations",
@@ -89,6 +90,9 @@ export function computerUseActivitySummary(
       : null,
     activity.target
       ? `Target ${activity.target.targetId} · generation ${activity.target.targetGeneration}`
+      : null,
+    activity.input?.position
+      ? `Position ${activity.input.position.x}, ${activity.input.position.y}`
       : null,
     activity.observation
       ? `Observation #${activity.observation.revision} · ${activity.observation.image.width} × ${activity.observation.image.height}`

@@ -234,6 +234,15 @@ export async function handleComputerUseOperation(
           ),
         };
         break;
+      case "input.click":
+        data = await service.click(
+          scope,
+          action.sessionId,
+          target(action),
+          action.position,
+          signal,
+        );
+        break;
       case "controls.inspect":
         data = await service.controls(
           scope,
@@ -351,6 +360,10 @@ export async function handleComputerUseOperation(
             scope: activityScope,
             session,
             image,
+            position:
+              activityAction?.operation === "input.click"
+                ? activityAction.position
+                : null,
             input:
               data && "input" in data
                 ? cuaInputReceiptSchema.parse(data.input)

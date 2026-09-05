@@ -61,6 +61,9 @@ enum HostAction {
     Attach {
         target: TargetReference,
     },
+    Click {
+        point: Point,
+    },
     Controls {},
     Press {
         reference: String,
@@ -91,7 +94,7 @@ fn validate_action(source: &str) -> Result<Value> {
         }
         HostAction::Press { reference } => validate_id(&reference)?,
         HostAction::ConfigureCursor { appearance } => appearance.validate()?,
-        HostAction::MoveCursor { point }
+        HostAction::MoveCursor { point } | HostAction::Click { point }
             if !point.x.is_finite() || !point.y.is_finite() || point.x < 0.0 || point.y < 0.0 =>
         {
             return Err(script_error());
@@ -128,6 +131,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
       return call({operation:'targets', ...options});
     },
     attach: target => call({operation:'attach', target}),
+    click: point => call({operation:'click', point}),
     controls: () => call({operation:'controls'}),
     press: reference => call({operation:'press', reference}),
     snapshot: () => call({operation:'snapshot'}),

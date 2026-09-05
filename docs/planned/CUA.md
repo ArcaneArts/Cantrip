@@ -13,7 +13,8 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
 
 ### Clicking cycle 1 — Accessibility inspection and press
 
-- Branch: `codex/cua-clicking-accessibility`; PR and merge pending.
+- Branch: `codex/cua-clicking-accessibility`; [PR #1761](https://github.com/ArcaneArts/Cantrip/pull/1761)
+  merged 2026-09-05 as `7bb8d943e28e888178e869b6ec713f62ed29a3a8` (observed).
 - Implemented: managed `cua.controls()` and `cua.press(reference)`, bounded
   Rust-owned references, current application/window matching, separate `controls`
   observation and `native-input` mutation approval classes, protected Trajectory
@@ -24,7 +25,9 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
   No AX values or secure-field descendants are read. Inspection replaces old
   references; press consumes them, including when the outcome is unknown.
 - Validation: Rust compile/Clippy, protocol build, worker/server/app typechecks,
-  31 focused worker permission/contract unit tests. Native and integration tests
+  31 focused worker permission/contract unit tests and one Rust wire unit test.
+  CI subsequently caught the three new public schemas missing from the explicit
+  export baseline; cycle 2 corrects that baseline. Native and integration tests
   were not run. User testing: pending.
 - Limitations: macOS application windows only. Requires a unique AX window with
   matching current PID, geometry and available title; ambiguous matches fail.
@@ -36,6 +39,29 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
   and take a fresh snapshot. Expect a separate input approval outside YOLO and
   a protected Press control event. Use Stop while approval is pending to cancel.
 - Next: coordinate single-left click and necessary activation/focus handling.
+
+### Clicking cycle 2 — Coordinate single-left click
+
+- Branch: `codex/cua-clicking-coordinate`; PR and merge pending.
+- Implemented: `cua.click({x,y})` through the same managed tool, mutation approval,
+  session queue and protected Trajectory path. Window clicks request AX activation
+  and raise, resolve the resulting geometry and verify the live hit target.
+  Monitor clicks use their current global origin. Receipts report actual method,
+  activation, logical/global positions and dispatch; no application result is
+  inferred. The single-button pair always releases after down, even during Stop.
+- Corrected the cycle-1 public export baseline to include exactly its three new
+  schemas; unrelated baseline names and fingerprints remain checked.
+- Lightweight validation: Rust Clippy; three Rust input/dispatch unit tests;
+  three protocol export unit tests; 32 worker permission/contract unit tests;
+  protocol build and worker/server/app typechecks. No native, GUI, integration,
+  packaged-app or release tests were run. User testing: pending.
+- User steps and limitations: [clicking guide](../COMPUTER_USE_CLICKING.md).
+  Coordinate input can affect focus and the human system pointer; dispatch is
+  not proof of an application action. macOS only, with explicit unsupported
+  errors for unsuitable AX windows. No double/right clicks, keyboard or drag.
+- Remaining: user confirmation that an agent can inspect, click and inspect the
+  result. Implementation cycles proceed without feedback pauses; user acceptance
+  stays pending until actually reported.
 
 The installed Cantrip 1.1.1781 worker inspected during this task lacked the CUA
 MCP module. The current source registers managed `cantrip_cua`; testing requires a

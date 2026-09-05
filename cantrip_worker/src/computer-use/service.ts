@@ -436,9 +436,23 @@ export class CantripCuaService {
       const extra =
         operation === "controls.inspect"
           ? this.parse(record.runtime, cuaControlsResultSchema, response.data)
-          : operation === "input.press"
+          : operation === "input.press" || operation === "input.click"
             ? this.parse(record.runtime, cuaInputResultSchema, response.data)
             : null;
+      if (extra && "input" in extra) {
+        const receipt = extra.input;
+        if (
+          receipt.method !==
+            (operation === "input.click" ? "coordinate" : "accessibility") ||
+          (operation === "input.click" &&
+            (!receipt.position ||
+              !receipt.globalPosition ||
+              !("position" in fields) ||
+              JSON.stringify(receipt.position) !==
+                JSON.stringify(fields.position)))
+        )
+          return this.protocolFailure(record.runtime);
+      }
       const data =
         extra ??
         snapshotData ??
@@ -579,6 +593,24 @@ export class CantripCuaService {
       },
       signal,
     ) as Promise<CuaSession>;
+  }
+  click(
+    input: CuaScope,
+    sessionId: string,
+    target: CuaTargetReference,
+    position: CuaPoint,
+    signal?: AbortSignal,
+  ) {
+    return this.mutate(
+      input,
+      sessionId,
+      "input.click",
+      {
+        ...cuaTargetReferenceSchema.parse(target),
+        position: cuaPointSchema.parse(position),
+      },
+      signal,
+    ) as Promise<CuaInputResult>;
   }
   controls(
     input: CuaScope,

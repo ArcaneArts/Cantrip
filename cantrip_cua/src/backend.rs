@@ -56,6 +56,18 @@ pub trait CaptureBackend: Send {
             "Accessibility press is unsupported.",
         ))
     }
+    fn click(
+        &mut self,
+        _session: &str,
+        _target: &Target,
+        _position: crate::target::Point,
+        _cancel: &Cancellation,
+    ) -> Result<(Target, crate::input::InputReceipt)> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Coordinate click is unsupported.",
+        ))
+    }
     fn name(&self) -> &'static str;
     fn available(&self) -> bool;
     fn targets(&mut self, cancellation: &Cancellation) -> Result<Vec<Target>>;

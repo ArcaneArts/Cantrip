@@ -160,6 +160,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
       cursor: cuaSessionSchema.shape.cursor.nullable(),
       input: cuaInputReceiptSchema
         .extend({
+          activation: z.boolean().nullable(),
           outcome: z.enum([
             "dispatched",
             "unknown",
