@@ -89,6 +89,18 @@ export function ComputerUsePreviewPanel({
                   : "The worker is contacted only when you connect."}
         </p>
       </div>
+      {!following && active && state.lease ? (
+        <dl className="grid min-w-0 gap-1 break-all text-xs sm:grid-cols-2">
+          <div>
+            <dt className="text-muted-foreground">Worker</dt>
+            <dd>{state.lease.workerId}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Session</dt>
+            <dd>{state.session?.binding.sessionId ?? "Not started"}</dd>
+          </div>
+        </dl>
+      ) : null}
       {state.error ? (
         <div
           role="alert"
@@ -134,7 +146,7 @@ export function ComputerUsePreviewPanel({
       {following ? (
         <div className="grid min-w-0 gap-3">
           <div className="flex min-w-0 flex-wrap items-end gap-2">
-            <label className="grid min-w-0 flex-1 gap-1 text-xs">
+            <label className="grid min-w-0 flex-1 basis-full gap-1 text-xs sm:basis-0">
               Agent observation source
               <select
                 aria-label="Agent observation source"
@@ -233,7 +245,7 @@ export function ComputerUsePreviewPanel({
         </div>
       ) : (
         <div className="flex min-w-0 flex-wrap items-end gap-2">
-          <label className="grid min-w-0 flex-1 gap-1 text-xs">
+          <label className="grid min-w-0 flex-1 basis-full gap-1 text-xs sm:basis-0">
             Monitor or window
             <select
               aria-label="Monitor or window"

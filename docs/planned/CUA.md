@@ -1156,7 +1156,12 @@ is the authoritative merge record until the next ledger update.
 - Branch: `codex/cua-13-product-acceptance`, started from cycle 12's observed
   merge (`420c4f90e`). [PR #1757](https://github.com/ArcaneArts/Cantrip/pull/1757),
   implementation commit `8a36720834757df4eee05575d6b292ca759176df`.
-  PR is open; final CI and observed merge remain pending.
+  Final head `d95cbb80fb4a050916d2f45fd97a86f4ff6aa98e` passed all four
+  actually running macOS/Windows/Linux/PostgreSQL jobs in CI run
+  `33976714131` before squash auto-merge was enabled. Observed merged
+  2026-09-05 at 16:09:14 UTC as `96ac98106975a04ec0225889a33aead59c5995c9`;
+  Primary was fast-forwarded cleanly. The cycle 12/13 worktrees remain owned
+  by the active isolated QA profile and runtime until acceptance finishes.
 - Live first use exposed a real missing prerequisite: an idle chat with no
   prior agent turn had endpoint control authorization but lacked the history
   component grant needed to publish protected CUA activity. Preview opening
@@ -1229,6 +1234,74 @@ is the authoritative merge record until the next ledger update.
   Better target discovery and managed evaluator guidance remain follow-ups.
   Native input, Accessibility, clipboard/files, other native OS backends and
   the full roadmap below remain deferred.
+
+### Tranche cycle 14 — Preview identity and responsive target selection
+
+- Branch: `codex/cua-14-preview-attribution`, based on cycle 13's observed
+  merge `96ac98106`. PR, commit and merge metadata will be recorded when known.
+- Implemented: manual preview displays the server-authorized lease's worker
+  and the actual native session ID, with an explicit not-started state before
+  session creation. Stop removes this attribution with the cleared image.
+  Manual target and agent-source selectors occupy a full row on small screens;
+  desktop controls retain the existing shared row. No routing or native API
+  changes, and no new agent or subagent was started for this pass.
+- Focused verification on macOS arm64/Node 24.14.0: app preview/controller,
+  cursor, coordinate and client tests pass 162 tests across five files.
+  Command: `pnpm --filter @cantrip/app exec vitest run
+src/components/computer-use src/lib/computer-use-client.test.ts
+src/lib/computer-use-preview-encryption.test.ts`. New rendering cases cover
+  the pre-session worker identity and clearing the session during Stop.
+  `pnpm --filter @cantrip/app... build` passes. `pnpm check` again stops at
+  unchanged server decomposition counts 2,156/2,149 versus 1,999; subsequent
+  chained checks did not run. This is not a whole-repository green claim.
+- Actual browser acceptance: the isolated account was imported through the
+  normal recovery-file UI without reading its contents; the temporary export
+  was removed afterward. The cycle 14 frontend at port 1420 reused cycle 13's
+  real server/worker and the stable signed native helper. No browser-side
+  native execution or fake capture was used. The previous native Tauri
+  acceptance remains cycle 13 evidence; this pass exercised the browser UI.
+- Live owned fixture `macos-window-45428`, generation 412, was fully covered
+  by its distinct occluder. The actual shared preview showed its red center
+  and green/yellow/cyan/magenta corners. Desktop: 320 × 240 native/displayed
+  image, 1,139-pixel dialog with equal scroll width, 726.6875-pixel selector,
+  worker `local-MaxBook-Pro.local` and native session
+  `87521f2e-94a4-4171-8ed2-a3b4ea7740dc`. Stop removed the image and identity.
+- At a 390 × 844 browser viewport, the dialog's client/scroll widths both
+  measured 345 pixels; both manual and agent-source selectors measured 313
+  pixels. The native 320 × 240 image displayed at 295 × 221.25, with the new
+  session `0eebcc0c-934c-4f7f-8b7b-2f025856b1db` visible. A white size-32
+  crosshair labeled `Mobile` appeared once at the image center after explicit
+  customization and logical movement. Stop succeeded, the fixture exited,
+  and the temporary viewport override was reset. Follow mode's empty source
+  state was verified without starting another agent.
+- Additional compatibility evidence from cycle 13: 178 app, 71 worker and 87
+  server tests passed (336 total), covering editor, terminal, networking,
+  authentication/encryption and injected Remote Desktop paths. Three server
+  Remote Desktop cases could not run because their fixture violates
+  `projects_managed_folder_identity_check`; the same setup failure was
+  reproduced in an exact archive of base `420c4f90e`. This is not native
+  Remote Desktop walkthrough evidence. Exact commands, logs and baseline
+  reproduction are retained in `/tmp/cua-13-compatibility-report.md`.
+- Normal worker startup comparison: baseline `cbfa5df6d4f9308947bd485dc8d980caed323829`
+  versus merged `96ac98106`, frozen offline builds, identical generated
+  version and actual Codex 0.153.1/CLI binaries; one warmup plus five alternating
+  measured starts per revision. Real startup-ready medians were 767.6 versus
+  746.0 ms; authenticated command-ready medians 780.3 versus 754.2 ms. All 12
+  successful starts launched zero CUA helpers and sent zero CUA requests.
+  Ranges overlap, so no causal speed improvement is claimed. These were new
+  connected workers awaiting encryption grants, using a schema-valid fixture
+  server; existing desktop initialization was not suppressed. Post-ready
+  CodeGraph installation consumed CPU/memory, so those samples are not idle
+  measurements. One initial missing-CLI failure is retained separately.
+  Harness, samples and limitations: `/tmp/cua-startup-benchmark.Xh1L16/REPORT.md`.
+- Remaining required work: explicit cursor preferences were observed to reset
+  after the runtime restart; persistence across sessions/restarts must be
+  implemented through existing settings. Human-pointer isolation is still
+  unproven: two before/after readings changed while human use was uncontrolled,
+  and earlier standalone probes failed inventory before reaching movement.
+  Remaining live lifecycle coverage, enclosing packaged-app/update identity
+  evidence, final manual procedure and requirement-by-requirement completion
+  audit remain open. Full-roadmap deferrals remain unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

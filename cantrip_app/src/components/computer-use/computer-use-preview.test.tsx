@@ -117,6 +117,36 @@ function fixture(patch: Partial<PreviewState> = {}) {
 }
 
 describe("ComputerUsePreviewPanel", () => {
+  it("identifies the authorized worker before a native session starts", () => {
+    const { props } = fixture({ session: null, observation: null });
+    const markup = renderToStaticMarkup(<ComputerUsePreviewPanel {...props} />);
+    expect(markup).toContain(">Worker</dt><dd>worker</dd>");
+    expect(markup).toContain(">Session</dt><dd>Not started</dd>");
+    expect(markup).not.toContain("00000000-0000-4000-8000-000000000001");
+  });
+
+  it("shows the native session identity and removes it when Stop clears the session", async () => {
+    const connected = fixture();
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<ComputerUsePreviewPanel {...connected.props} />);
+    });
+    expect(
+      renderer.root.findAllByType("dd").map((item) => item.children),
+    ).toEqual([["worker"], ["session"]]);
+    const stopped = fixture({
+      phase: "stopped",
+      stopping: true,
+      session: null,
+      observation: null,
+    });
+    await act(async () => {
+      renderer.update(<ComputerUsePreviewPanel {...stopped.props} />);
+    });
+    expect(renderer.root.findAllByType("dd")).toHaveLength(0);
+    await act(async () => renderer.unmount());
+  });
+
   it("shows the attached target outside the page and offers bounded navigation without switching it", async () => {
     const { props, controller, state } = fixture({
       targets: [],
