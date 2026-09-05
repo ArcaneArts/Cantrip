@@ -328,6 +328,24 @@ function stop(f: ReturnType<typeof fixture>, lease: CuaPreviewLease) {
 }
 
 describe("worker-owned preview authority", () => {
+  it.each(["chat", "task"] as const)(
+    "retains the trusted %s history domain across observers",
+    (contentDomain) => {
+      const f = fixture();
+      const lease = f.coordinator.open(authority, contentDomain);
+      expect(lease.contentDomain).toBe(contentDomain);
+      expect(
+        f.coordinator.open(structuredClone(authority), contentDomain),
+      ).toEqual(lease);
+      expect(() =>
+        f.coordinator.open(
+          authority,
+          contentDomain === "chat" ? "task" : "chat",
+        ),
+      ).toThrow();
+      expect(f.encryption.componentKey).not.toHaveBeenCalled();
+    },
+  );
   it("constructs, opens, shares an observer lease, and stops without starting a native helper", () => {
     const f = fixture();
     expect(f.coordinator.status()).toEqual({ previews: 0, closed: false });

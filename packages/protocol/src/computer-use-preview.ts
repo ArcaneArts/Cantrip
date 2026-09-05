@@ -23,6 +23,7 @@ export const cuaPreviewLeaseSchema = z.strictObject({
   leaseId: z.string().uuid(),
   workerId: cuaIdSchema,
   chatId: cuaIdSchema,
+  contentDomain: z.enum(["chat", "task"]),
   generation: z.number().int().min(1).max(2_147_483_647),
 });
 export const cuaPreviewStopSchema = z.strictObject({

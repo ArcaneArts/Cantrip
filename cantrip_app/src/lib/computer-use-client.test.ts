@@ -33,6 +33,7 @@ import type { ClientSessionIdentitySnapshot } from "./client-session";
 import type { ClientEncryptionSnapshot } from "./client-encryption";
 import {
   createComputerUseClient,
+  ComputerUseClientError,
   type ComputerUseClient,
   type ComputerUseClientDependencies,
 } from "./computer-use-client";
@@ -43,6 +44,7 @@ const firstLease = {
   chatId,
   workerId: "worker-a",
   generation: 7,
+  contentDomain: "chat" as "chat" | "task",
 };
 const secondLease = {
   ...firstLease,
@@ -285,7 +287,11 @@ function fixture() {
   const send = vi.fn<NonNullable<ComputerUseClientDependencies["request"]>>(
     async (...args) => handler(...args),
   );
+  const prepareWorkerEncryption = vi.fn<
+    NonNullable<ComputerUseClientDependencies["prepareWorkerEncryption"]>
+  >(async () => {});
   const client = createComputerUseClient(chatId, {
+    prepareWorkerEncryption,
     request: send,
     sessionIdentity: () => identity,
     identityMatches: (expected) =>
@@ -322,6 +328,7 @@ function fixture() {
   clients.push(client);
   return {
     client,
+    prepareWorkerEncryption,
     send,
     respond,
     originalIdentity,
@@ -862,4 +869,98 @@ describe("encrypted agent observation attribution", () => {
       f.client.operation(lease, snapshotAction),
     ).rejects.toMatchObject({ code: "invalid-response" });
   });
+});
+
+describe("computer-use scoped preparation lifecycle", () => {
+  it("prepares the leased domain only at first use and caches successful preparation", async () => {
+    const f = fixture();
+    f.setLease({ ...firstLease, contentDomain: "task" });
+    const lease = await f.client.open();
+    expect(f.prepareWorkerEncryption).not.toHaveBeenCalled();
+    await f.client.operation(lease, snapshotAction);
+    await f.client.operation(lease, snapshotAction);
+    expect(f.prepareWorkerEncryption).toHaveBeenCalledTimes(1);
+    expect(f.prepareWorkerEncryption.mock.calls[0]?.[0]).toMatchObject({
+      baseUrl: "https://server-a.test",
+      identity: f.originalIdentity,
+      lease: { ...firstLease, contentDomain: "task" },
+      keyRevision: 2,
+    });
+    // A history domain does not manufacture a task execution in the native session.
+    const response = await f.client.operation(lease, snapshotAction);
+    expect(response.content).toMatchObject({
+      status: "ok",
+      data: {
+        session: { binding: { taskId: null, threadId: null, turnId: null } },
+      },
+    });
+  });
+
+  it("rejects a caller-modified domain before preparing grants", async () => {
+    const f = fixture();
+    const lease = await f.client.open();
+    await expect(
+      f.client.operation({ ...lease, contentDomain: "task" }, snapshotAction),
+    ).rejects.toMatchObject({ code: "invalid-lease" });
+    expect(f.prepareWorkerEncryption).not.toHaveBeenCalled();
+  });
+
+  it("does not send or cache a failed preparation and permits an explicit retry", async () => {
+    const f = fixture();
+    const lease = await f.client.open();
+    f.prepareWorkerEncryption.mockRejectedValueOnce(
+      new Error("Refresh failed"),
+    );
+    await expect(f.client.operation(lease, snapshotAction)).rejects.toThrow(
+      "Refresh failed",
+    );
+    expect(f.send).toHaveBeenCalledTimes(1);
+    expect(f.issuedKeys).toHaveLength(0);
+    await f.client.operation(lease, snapshotAction);
+    expect(f.prepareWorkerEncryption).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps Stop available after failed preparation", async () => {
+    const f = fixture();
+    const lease = await f.client.open();
+    f.prepareWorkerEncryption.mockRejectedValue(new Error("Refresh failed"));
+    await expect(f.client.operation(lease, snapshotAction)).rejects.toThrow(
+      "Refresh failed",
+    );
+    await expect(f.client.stop(lease)).resolves.toBeUndefined();
+    expect(f.send.mock.calls.map(([url]) => url)).toEqual([
+      "https://server-a.test/api/chats/chat-a/computer-use/preview",
+      "https://server-a.test/api/chats/chat-a/computer-use/preview/stop",
+    ]);
+  });
+
+  it.each(["stop", "identity", "encryption", "dispose"] as const)(
+    "discards preparation that completes after %s without encrypting or sending an operation",
+    async (change) => {
+      const f = fixture();
+      const lease = await f.client.open();
+      const pending = deferred<void>();
+      f.prepareWorkerEncryption.mockImplementationOnce(() => pending.promise);
+      const operation = f.client.operation(lease, snapshotAction);
+      const rejected = expect(operation).rejects.toBeInstanceOf(
+        ComputerUseClientError,
+      );
+      if (change === "stop") await f.client.stop(lease);
+      if (change === "identity")
+        f.setIdentity({ ...f.originalIdentity, generation: 2 });
+      if (change === "encryption") f.setEncryption({ masterKeyRevision: 3 });
+      if (change === "dispose") f.client.dispose();
+      await rejected;
+      pending.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(f.issuedKeys).toHaveLength(0);
+      expect(
+        f.send.mock.calls.some(([url]) => url.endsWith("/operation")),
+      ).toBe(false);
+      expect(f.prepareWorkerEncryption.mock.calls[0]?.[0].signal.aborted).toBe(
+        true,
+      );
+    },
+  );
 });

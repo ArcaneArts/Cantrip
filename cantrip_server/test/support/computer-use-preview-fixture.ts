@@ -44,6 +44,11 @@ export function createComputerUsePreviewFixture(options: {
   onRevokeChat?: (chatId: string) => void;
   context?: Partial<ChatExecutionContext>;
   afterChunkPublished?: (event: ComputerUseChunkEvent) => Promise<void>;
+  /** Real scoped worker keys for grant-boundary regressions; synthetic only. */
+  scopedEncryption?: {
+    service: WorkerEncryptionService;
+    clientControlKey: Uint8Array;
+  };
 }) {
   const wire: string[] = [];
   const logs: string[] = [];
@@ -51,11 +56,14 @@ export function createComputerUsePreviewFixture(options: {
     logger: { stream: { write: (line: string) => logs.push(line) } },
   });
   const credentials = {
-    ownerId: "fixture-owner",
-    serverId: "fixture-server",
+    ownerId: options.scopedEncryption?.service.ownerId() ?? "fixture-owner",
+    serverId:
+      options.scopedEncryption?.service.serverIdentity() ?? "fixture-server",
     workerId: "fixture-worker",
     chatId: "fixture-chat",
-    componentKey: new Uint8Array(randomBytes(32)),
+    componentKey:
+      options.scopedEncryption?.clientControlKey.slice() ??
+      new Uint8Array(randomBytes(32)),
   };
   let launches = 0;
   const children: ChildProcess[] = [];
@@ -75,7 +83,7 @@ export function createComputerUsePreviewFixture(options: {
       });
     },
   });
-  const encryption = {
+  const encryption = options.scopedEncryption?.service ?? {
     ownerId: () => credentials.ownerId,
     serverIdentity: () => credentials.serverId,
     componentKey: () => ({

@@ -100,6 +100,9 @@ function client(f: Fixture) {
       JSON.stringify(expected) === JSON.stringify(identity),
     onIdentityChanged: () => () => {},
     serverUrl: () => "http://fixture.invalid",
+    // This fixture preauthorizes every component key; scoped preparation has
+    // separate real-bootstrap coverage in computer-use-preview-scoped-grants.
+    prepareWorkerEncryption: async () => {},
     encryption: {
       getSnapshot: () => ({
         clientId: "fixture-client",

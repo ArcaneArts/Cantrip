@@ -167,6 +167,7 @@ function setup() {
     leaseId,
     workerId: "worker-one",
     chatId: "chat-one",
+    contentDomain: "chat",
     generation: 7,
   };
   request.mockImplementation(async (_worker, command) => {
@@ -240,6 +241,22 @@ function setup() {
 }
 
 describe("explicit computer-use preview activation", () => {
+  it("returns the task history domain derived from the durable execution context", async () => {
+    const f = setup();
+    f.context.experience = "task";
+    f.lease.contentDomain = "task";
+    const response = await f.send();
+    expect(response.statusCode).toBe(200);
+    expect(response.json().contentDomain).toBe("task");
+    expect(f.request.mock.lastCall?.[1]).toMatchObject({
+      contentDomain: "task",
+    });
+  });
+  it("rejects a valid but wrong worker-reported history domain", async () => {
+    const f = setup();
+    f.lease.contentDomain = "task";
+    expect((await f.send()).statusCode).toBe(502);
+  });
   it("registers without worker calls and derives a preview independently from a running agent", async () => {
     const f = setup();
     expect(f.request).not.toHaveBeenCalled();

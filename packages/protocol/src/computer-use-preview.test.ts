@@ -33,6 +33,29 @@ const authority = {
 const leaseId = "4822bfb8-0f60-4de4-a8e4-335c4099d61f";
 
 describe("CUA preview authority contracts", () => {
+  it("requires an explicit history domain on the worker-owned lease", () => {
+    const lease = {
+      leaseId,
+      workerId: "worker",
+      chatId: "chat",
+      generation: 1,
+    };
+    for (const contentDomain of ["chat", "task"]) {
+      expect(
+        cuaPreviewLeaseSchema.parse({ ...lease, contentDomain }).contentDomain,
+      ).toBe(contentDomain);
+    }
+    for (const contentDomain of [
+      undefined,
+      null,
+      "provider-credential",
+      "other",
+    ]) {
+      expect(
+        cuaPreviewLeaseSchema.safeParse({ ...lease, contentDomain }).success,
+      ).toBe(false);
+    }
+  });
   it("distinguishes completed Stop from subsequent history publication failure", () => {
     expect(cuaPreviewStoppedSchema.parse({ closed: true })).toEqual({
       closed: true,
@@ -94,6 +117,7 @@ describe("CUA preview authority contracts", () => {
           leaseId,
           workerId: "worker",
           chatId: "chat",
+          contentDomain: "chat",
           generation,
         }).success,
       ).toBe(false);

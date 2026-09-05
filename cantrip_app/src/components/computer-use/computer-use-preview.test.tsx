@@ -59,6 +59,7 @@ function fixture(patch: Partial<PreviewState> = {}) {
     stopping: false,
     lease: {
       leaseId: "00000000-0000-4000-8000-000000000001",
+      contentDomain: "chat" as const,
       workerId: "worker",
       chatId: "chat",
       generation: 1,

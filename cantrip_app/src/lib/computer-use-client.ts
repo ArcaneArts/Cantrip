@@ -36,6 +36,7 @@ import {
   onClientSessionIdentityChanged,
   type ClientSessionIdentitySnapshot,
 } from "./client-session";
+import { prepareComputerUseWorkerEncryption } from "./computer-use-worker-encryption";
 import { getActiveServerUrl } from "./server-connections";
 
 export type ComputerUseClientErrorCode =
@@ -86,6 +87,7 @@ export interface ComputerUseClientDependencies {
     ClientEncryptionService,
     "getSnapshot" | "componentKey" | "subscribe"
   >;
+  prepareWorkerEncryption?: typeof prepareComputerUseWorkerEncryption;
   randomUUID?: () => string;
   encrypt?: typeof encryptEndpointContentPayload;
   decrypt?: typeof decryptEndpointContentPayload;
@@ -150,6 +152,7 @@ export function createComputerUseClient(
   let stopConfirmed = false;
   let retiredLeaseId: string | null = null;
   let ownedLease: CuaPreviewLease | null = null;
+  let preparedLeaseId: string | null = null;
 
   function sameEncryption(current: ClientEncryptionSnapshot): boolean {
     return (
@@ -212,7 +215,8 @@ export function createComputerUseClient(
       parsed.data.chatId !== chatId ||
       parsed.data.leaseId !== ownedLease.leaseId ||
       parsed.data.workerId !== ownedLease.workerId ||
-      parsed.data.generation !== ownedLease.generation
+      parsed.data.generation !== ownedLease.generation ||
+      parsed.data.contentDomain !== ownedLease.contentDomain
     ) {
       throw new ComputerUseClientError(
         "invalid-lease",
@@ -454,6 +458,27 @@ export function createComputerUseClient(
       };
       let bytes: Uint8Array | null = null;
       try {
+        if (preparedLeaseId !== owned.leaseId) {
+          await waitForSignal(
+            (
+              dependencies.prepareWorkerEncryption ??
+              prepareComputerUseWorkerEncryption
+            )({
+              baseUrl,
+              identity,
+              lease: owned,
+              service,
+              keyRevision: snapshot.masterKeyRevision!,
+              signal: pending.signal,
+              assertCurrent: () => assertEncryption(pending.signal),
+              request: send,
+            }),
+            pending.signal,
+            true,
+          );
+          assertEncryption(pending.signal);
+          preparedLeaseId = owned.leaseId;
+        }
         const protectedRequest = await protectComputerUseRequest({
           context,
           request: parsed.data,
