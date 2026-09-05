@@ -365,8 +365,8 @@ fn saturated_request_queue_still_reads_cancellation_and_replies_once_per_request
     let mut harness = Harness::new();
     harness.attach();
     let capture = harness.capture_and_wait_until_entered();
-    // One executing capture plus 31 queued jobs fills the 32 pending slots.
-    let queued: Vec<_> = (0..31)
+    // One executing capture plus 35 queued jobs fills the 36 pending slots.
+    let queued: Vec<_> = (0..35)
         .map(|_| harness.request(json!({"operation":"capabilities.get"})))
         .collect();
     let rejected = harness.request(json!({"operation":"capabilities.get"}));
@@ -378,7 +378,7 @@ fn saturated_request_queue_still_reads_cancellation_and_replies_once_per_request
         assert!(matches!(harness.response(id), Outcome::Ok { .. }));
     }
     harness.finish().unwrap();
-    assert_eq!(harness.seen_responses, (1..=34).collect());
+    assert_eq!(harness.seen_responses, (1..=38).collect());
     assert!(harness.waiting.is_empty());
 }
 
@@ -389,7 +389,7 @@ fn failed_output_pipe_cancels_native_capture_without_waiting_for_input_eof() {
     let _capture = harness.capture_and_wait_until_entered();
     harness.fail_output.store(true, Ordering::Release);
     // Capacity rejection causes a write while the service is still in capture.
-    for _ in 0..32 {
+    for _ in 0..36 {
         harness.request(json!({"operation":"capabilities.get"}));
     }
     // Keep input open until cancellation was observed, proving EOF did not cause it.

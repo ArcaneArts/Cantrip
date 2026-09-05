@@ -37,6 +37,120 @@ function raw(header: unknown, payloadLength = 0): Buffer {
 }
 
 describe("CUA process framing", () => {
+  it("round-trips fragmented host rendezvous frames without binary payloads", () => {
+    const headers: CuaFrame["header"][] = [
+      {
+        version: 1,
+        message: {
+          kind: "hostCall",
+          evaluationRequestId: 12,
+          callId: 1,
+          action: { operation: "snapshot" },
+        },
+      },
+      {
+        version: 1,
+        message: {
+          kind: "hostResult",
+          evaluationRequestId: 12,
+          callId: 1,
+          result: { status: "ok", data: { observationId: "opaque" } },
+        },
+      },
+      {
+        version: 1,
+        message: {
+          kind: "hostResult",
+          evaluationRequestId: 12,
+          callId: 2,
+          result: {
+            status: "error",
+            error: { code: "permission-denied", message: "Permission denied." },
+          },
+        },
+      },
+    ];
+    const bytes = Buffer.concat(
+      headers.map((header) => encodeCuaFrame(header)),
+    );
+    const received: CuaFrame[] = [];
+    const decoder = new CuaFrameDecoder((frame) => received.push(frame));
+    for (const byte of bytes) decoder.push(Buffer.from([byte]));
+    decoder.finish();
+    expect(received).toEqual(
+      headers.map((header) => ({ header, payload: Buffer.alloc(0) })),
+    );
+    for (const header of headers) {
+      expect(() => encodeCuaFrame(header, Buffer.from([1]))).toThrow(
+        CuaProcessError,
+      );
+      expect(() =>
+        new CuaFrameDecoder(() => {}).push(raw(header, CUA_MAX_PAYLOAD_BYTES)),
+      ).toThrow(CuaProcessError);
+    }
+  });
+
+  it("rejects malformed host correlations, outcomes and unknown fields", () => {
+    const call = {
+      kind: "hostCall",
+      evaluationRequestId: 1,
+      callId: 1,
+      action: {},
+    };
+    const reply = {
+      kind: "hostResult",
+      evaluationRequestId: 1,
+      callId: 1,
+      result: { status: "ok", data: null },
+    };
+    const invalid = [
+      ...[call, reply].flatMap((message) => [
+        { ...message, extra: true },
+        ...[0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "1", null].flatMap(
+          (id) => [
+            { ...message, evaluationRequestId: id },
+            { ...message, callId: id },
+          ],
+        ),
+      ]),
+      { ...reply, result: { status: "ok" } },
+      { ...reply, result: { status: "ok", data: null, extra: true } },
+      {
+        ...reply,
+        result: {
+          status: "error",
+          error: { code: "private-made-up", message: "private" },
+        },
+      },
+      {
+        ...reply,
+        result: {
+          status: "error",
+          error: { code: "cancelled", message: "private", extra: true },
+        },
+      },
+    ];
+    for (const message of invalid)
+      expect(() =>
+        new CuaFrameDecoder(() => {}).push(raw({ version: 1, message })),
+      ).toThrow(CuaProcessError);
+  });
+
+  it("rejects host result values omitted by JSON before writing any bytes", () => {
+    for (const data of [undefined, () => {}, Symbol("private")])
+      expect(() =>
+        encodeCuaFrame({
+          version: 1,
+          message: {
+            kind: "hostResult",
+            evaluationRequestId: 1,
+            callId: 1,
+            result: { status: "ok", data },
+          },
+        }),
+      ).toThrow(CuaProcessError);
+  });
+
   it("preserves fragmented/coalesced frames and raw image bytes", () => {
     const payload = Buffer.from([0, 255, 10, 13, 123, 128]);
     const bytes = Buffer.concat([

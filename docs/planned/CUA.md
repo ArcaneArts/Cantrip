@@ -604,7 +604,8 @@ is the authoritative merge record until the next ledger update.
 - Branch: `codex/cua-08a2-portable-runtime-fixtures`, based on merged cycle 8a
   (`42fa6e9b0`). [PR #1745](https://github.com/ArcaneArts/Cantrip/pull/1745),
   implementation commit `afb9e7c50f7e8f94735f72848ea9fcfed0cf49d8`.
-  Local validation complete; CI and squash auto-merge pending.
+  Merged at 2026-09-05T03:43:41Z as
+  `2767e948ab407b96df1d8643e8d18c689fd8dda8`.
 - Correct six pre-existing runtime test expectations to use the host's native
   resolved root and path separators, matching the unchanged runtime's Node
   path semantics. Preserve exact sandbox roots, policy flags, file previews and
@@ -612,9 +613,57 @@ is the authoritative merge record until the next ledger update.
 - Local validation: 102 focused runtime tests and the full 755-test CUA
   boundary matrix passed; two PostgreSQL cases remain dedicated-CI checks.
   Worker typecheck, changed-file formatting and diff checks passed.
-  Actual Windows/macOS/Linux CI and merge are pending. Managed MCP,
+  Actual Windows/macOS/Linux and PostgreSQL CI all passed on the final PR head
+  before squash auto-merge was requested. Primary was fast-forwarded and only
+  this cycle's clean worktree/branch were removed. Managed MCP,
   JavaScript, native unlocked-window QA, Trajectory and final hardening remain
   first-tranche work; all later-tranche deferrals remain unchanged.
+
+### Tranche cycle 8b — Bounded JavaScript and worker-authorized host calls
+
+- Branch: `codex/cua-08b-bounded-javascript`, based on merged cycle 8a2
+  (`2767e948a`). [PR #1746](https://github.com/ArcaneArts/Cantrip/pull/1746),
+  implementation commit `09a4cab1b657cf748eef47792e15cadbded1762e`.
+  Local implementation and validation complete; cross-platform CI/merge pending.
+- Scope: persistent, bounded Rust JavaScript contexts and a payload-free host
+  rendezvous through the existing worker-owned process. No managed MCP tool is
+  enabled in this pass. Native input, filesystem, network, clipboard and extra
+  platform capture remain excluded.
+- Worker contexts bind to the exact canonical server/account/worker/chat/task/
+  thread/turn and actual runtime lifetime signal. The worker retains validated
+  PNG bytes outside JavaScript, authorizes each supported host action, and
+  tracks lifetime revocation independently from preview/native-session/approval
+  existence. Reset disposes variables and attachment, not turn authority.
+- Implemented the frozen observation/cursor API with top-level await and lexical
+  persistence using pinned `rquickjs 0.12.2`. Four engines have bounded heap,
+  stack, source, result, host-call, job, active-execution and wall-time budgets.
+  Finalizers, shared-memory waits and ambient I/O are unavailable. Idle engines
+  block on commands; native capture remains on its existing executor. No script
+  or serializer may leave jobs/host calls for a later evaluation.
+- Reset acknowledgments retain capacity until cleanup actually completes;
+  transport reserves 20 cleanup slots alongside 16 ordinary correlations.
+  Late attachments close their orphaned native session. Failed/canceled or
+  over-budget snapshots are cleared from worker buffers. Per-call cancellation
+  disposes state without accidentally revoking the whole still-live turn.
+- Local validation: 815 CUA boundary tests passed (76 protocol, 24 crypto,
+  408 worker, 149 server, 158 client); two PostgreSQL cases await dedicated CI.
+  The worker count includes 36 JavaScript ownership/process/lifecycle cases and
+  43 framing/transport cases. All 79 Rust tests passed, including ten real-child
+  JavaScript tests; strict all-targets Clippy and Rust formatting passed.
+  Script tests: 43 passed, one explicit native-GUI skip. Worker typecheck/build,
+  release Rust build and exact-release-binary fake smoke (eight snapshots, all
+  cursor styles), changed-file formatting and diff checks passed.
+  Initial cross-platform CI stopped at a Rust 1.95 `collapsible_match` lint;
+  PostgreSQL passed. Follow-up `b9058e55993cbef5c47453df1fa3271536510daa`
+  uses the equivalent match guard. Local strict Clippy and all 79 Rust tests
+  also pass on the exact CI toolchain, 1.95.0. Cross-platform rerun remains
+  pending. Real native unlocked-window QA remains pending;
+  this pass does not request Screen Recording or change helper identity. The
+  subsequent managed-MCP pass must connect actual turn provenance, durable
+  approval waits, cancellation and protected image redaction before activation.
+- Remaining first-tranche work: complete and verify this runtime pass, managed
+  MCP, protected Trajectory, native/window/release QA and final hardening.
+  Later-tranche deferrals remain unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

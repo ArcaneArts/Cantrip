@@ -5,8 +5,9 @@ process/session/image/cursor core and build-chain integration use an explicit
 deterministic test backend. A lazy worker service owns the actual process and
 private protocol. Encrypted server routing, existing durable permission requests,
 and the experimental shared client preview are implemented. The native macOS
-backend uses ScreenCaptureKit; managed JavaScript and Trajectory remain subsequent
-cycles in [the CUA plan](../docs/planned/CUA.md). Ordinary Cantrip worker startup
+backend uses ScreenCaptureKit. A bounded worker-internal JavaScript runtime is
+implemented; managed MCP activation and Trajectory remain subsequent cycles in
+[the CUA plan](../docs/planned/CUA.md). Ordinary Cantrip worker startup
 does not launch the helper. Development preparation builds, installs, and smoke
 tests the helper without capturing a real desktop or requesting capture permission.
 
@@ -317,8 +318,8 @@ The CUA native CI matrix runs actual fake-backend tests on macOS, Windows, and
 Linux. Windows/Linux native capture remains unavailable. Fake CI intentionally
 does not request Screen Recording or claim permission/capture verification.
 
-Default execution advertises an unavailable native backend and returns a real
-`unsupported` result for capture. `--backend fake` explicitly selects two fixture
+On platforms without the macOS backend, default execution advertises unavailable
+native capture and returns a real `unsupported` result. `--backend fake` explicitly selects two fixture
 targets; it is never an automatic fallback. `--version` is a standalone CLI
 diagnostic, not the worker's capability handshake.
 
@@ -360,7 +361,12 @@ Header shape:
 `requestId` is a positive exact JavaScript integer, strictly increasing for new
 requests on a connection. A `cancel` message's `requestId` references an existing
 request; unknown or completed cancellations do nothing and do not poison a
-future request. The other message kinds are `response` and `event`.
+future request. The other message kinds are `response`, `event`, `hostCall` and
+`hostResult`. The last two are JavaScript-to-worker rendezvous messages carrying
+an `evaluationRequestId`, per-evaluation `callId`, and respectively `action` or
+`result`. Both are payload-free. They neither create execution authority nor
+consume ordinary native request IDs. Old helpers remain usable for existing
+native operations; JavaScript requires its actual advertised capability.
 
 A response has `result: { status: "ok", data: ... }` or
 `result: { status: "error", error: { code, message } }`. An event contains a
@@ -384,6 +390,8 @@ batch after its owner vanished.
 | `cursor.configure`     | `binding`, `targetId`, `targetGeneration`, `appearance`         |
 | `cursor.move`          | `binding`, `targetId`, `targetGeneration`, `position: { x, y }` |
 | `session.close`        | `binding`                                                       |
+| `javascript.evaluate`  | `binding`, `source`                                             |
+| `javascript.reset`     | `binding`                                                       |
 
 The binding contains `sessionId`, `workerId`, `chatId`, and optional `taskId`,
 `threadId`, `turnId`. Existing session bindings must match exactly; a failed
@@ -404,10 +412,83 @@ Later client/server integration must protect sensitive metadata and pixels
 using Cantrip's existing endpoint encryption; private stdio is not itself that
 network encryption layer.
 
+### Bounded worker-internal JavaScript
+
+The Rust process owns a dedicated QuickJS thread using pinned `rquickjs 0.12.2`
+with only standard runtime support, no module loader or ambient I/O. Native
+capture keeps its existing executor and macOS main-thread ownership. An awaited
+host operation returns to the worker for authorization, then uses the existing
+native service and binary transport. JavaScript never holds the native session
+queue while waiting for that call or its permission decision.
+
+The frozen API is intentionally limited:
+
+```js
+const inventory = await cua.targets();
+await cua.attach({
+  targetId: inventory.targets[0].id,
+  targetGeneration: inventory.targets[0].generation,
+});
+await cua.configureCursor({
+  version: 1,
+  style: "ring",
+  color: "#20BFA9FF",
+  size: 24,
+  label: "Agent",
+  trail: true,
+  visible: true,
+});
+await cua.moveCursor({ x: 20, y: 30 });
+await cua.snapshot();
+```
+
+`cua.getState()` returns the current session or null; `cua.cursor()` reads its
+logical cursor and `cua.detach()` releases its selected target. Variables declared
+with `let`/`const` persist within that one execution context, including top-level
+`await`. A successful evaluation returns `{ value }`; undefined becomes null.
+Snapshots are collected separately as validated worker-owned PNGs. JavaScript
+receives only image metadata and an evaluation-local image index; returning a
+forged image object does not create an image result.
+
+The initial bounds are four JavaScript contexts, one active evaluation per
+context, 8 MiB heap and 256 KiB stack per context, 32 KiB UTF-8 source, 32 KiB
+serialized output, 64 host calls per evaluation and one outstanding host call
+per context, plus 10,000 cumulative promise jobs. Active JavaScript execution has a cumulative two-second budget,
+separate from the initial 45-second wall deadline for host waits. The worker
+allows at most two returned snapshots and 16 MiB aggregate PNG bytes per call.
+These are explicit resource limits, not polling, readiness delays, or permission
+preflights. Approval-aware MCP deadlines are a subsequent integration task, not
+a claim that this initial deadline accommodates a full durable approval window.
+
+The worker binds contexts to the exact execution scope and real turn signal.
+It retains at most 16 live lifetime registrations independently from the four
+engines, so Stop after reset/error still revokes that original lifetime. Reset
+never starts a helper; it discards the engine and native attachment, while an
+uninterrupted authorized turn may explicitly evaluate again. Script failure or
+per-call cancellation also disposes that context without replaying it. Stop,
+permission revocation, turn interruption and disconnect revoke authority; reset
+cannot undo them. Late host replies cannot resurrect a disposed context. Failed
+evaluations clear their captured image buffers before releasing them.
+An engine being reset continues to consume capacity until its actual reset
+acknowledgment arrives. Idle engines block on their command channel; a host wait
+sleeps until a reply, cancellation or its real deadline, not a polling interval.
+
+No process, environment, filesystem, network, native loader, timers, worker
+threads, real clicks or keyboard API is exposed. Unawaited pending host actions
+cannot continue after a successful tool response. Ordinary startup, idle Stop,
+and reset do not initialize an engine or launch the helper.
+
+This is **not yet an enabled managed MCP**. The next pass must use the native
+runtime execution resolver, await existing durable policy decisions, deliver
+actual MCP image content, and strip nested image payloads from secondary raw
+Trajectory capture before making `cantrip_cua.js` discoverable.
+
 ## Bounds and cancellation
 
 - One executor owns mutable sessions; an independent reader handles cancellation.
-- At most 16 sessions, 256 inventory targets, and 32 pending requests.
+- At most 16 native sessions, 256 inventory targets, and 36 pending requests.
+  The worker admits 16 ordinary requests and reserves 20 slots for the 16 native
+  session closes and four JavaScript resets, including cancellation correlations.
 - At most four queued outgoing frames, each with the bounded payload limit.
 - The executor may wait up to two seconds for output capacity; the reader never
   blocks on that queue. Output overload closes the connection instead of growing

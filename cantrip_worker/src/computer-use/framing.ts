@@ -10,6 +10,13 @@ export const CUA_MAX_PAYLOAD_BYTES = 16 * 1024 * 1024;
 const EMPTY = Buffer.alloc(0);
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 
+export type CuaOutcome =
+  | { status: "ok"; data: unknown }
+  | {
+      status: "error";
+      error: { code: CuaNativeErrorCode; message: string };
+    };
+
 export type CuaMessage =
   | { kind: "request"; requestId: number; operation: unknown }
   | { kind: "cancel"; requestId: number }
@@ -20,14 +27,21 @@ export type CuaMessage =
       event: unknown;
     }
   | {
+      kind: "hostCall";
+      evaluationRequestId: number;
+      callId: number;
+      action: unknown;
+    }
+  | {
+      kind: "hostResult";
+      evaluationRequestId: number;
+      callId: number;
+      result: CuaOutcome;
+    }
+  | {
       kind: "response";
       requestId: number;
-      result:
-        | { status: "ok"; data: unknown }
-        | {
-            status: "error";
-            error: { code: CuaNativeErrorCode; message: string };
-          };
+      result: CuaOutcome;
     };
 
 export interface CuaFrame {
@@ -50,6 +64,17 @@ function fields(
 
 function sequence(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function outcome(value: unknown): value is CuaOutcome {
+  return (
+    (fields(value, ["status", "data"]) && value.status === "ok") ||
+    (fields(value, ["status", "error"]) &&
+      value.status === "error" &&
+      fields(value.error, ["code", "message"]) &&
+      CUA_NATIVE_ERROR_CODES.includes(value.error.code as CuaNativeErrorCode) &&
+      typeof value.error.message === "string")
+  );
 }
 
 function validateHeader(
@@ -93,25 +118,31 @@ function validateHeader(
       )
         throw invalid();
       break;
+    case "hostCall":
+      if (
+        !fields(message, ["kind", "evaluationRequestId", "callId", "action"]) ||
+        !sequence(message.evaluationRequestId) ||
+        !sequence(message.callId)
+      )
+        throw invalid();
+      break;
+    case "hostResult":
+      if (
+        !fields(message, ["kind", "evaluationRequestId", "callId", "result"]) ||
+        !sequence(message.evaluationRequestId) ||
+        !sequence(message.callId) ||
+        !outcome(message.result)
+      )
+        throw invalid();
+      break;
     case "response": {
       if (
         !fields(message, ["kind", "requestId", "result"]) ||
-        !sequence(message.requestId)
+        !sequence(message.requestId) ||
+        !outcome(message.result)
       )
         throw invalid();
-      const result = message.result;
-      if (fields(result, ["status", "data"]) && result.status === "ok") break;
-      if (
-        fields(result, ["status", "error"]) &&
-        result.status === "error" &&
-        fields(result.error, ["code", "message"]) &&
-        CUA_NATIVE_ERROR_CODES.includes(
-          result.error.code as CuaNativeErrorCode,
-        ) &&
-        typeof result.error.message === "string"
-      )
-        break;
-      throw invalid();
+      break;
     }
     default:
       throw invalid();
@@ -139,6 +170,9 @@ export function encodeCuaFrame(
     const json = Buffer.from(JSON.stringify(header));
     if (json.length === 0 || json.length > CUA_MAX_HEADER_BYTES)
       throw new Error();
+    // JSON can omit undefined/functions or invoke toJSON. Validate the actual
+    // bytes too, so an invalid host result never corrupts a live process stream.
+    validateHeader(JSON.parse(utf8.decode(json)), payload.length);
     const prefix = Buffer.alloc(8);
     prefix.writeUInt32BE(json.length, 0);
     prefix.writeUInt32BE(payload.length, 4);
