@@ -5,10 +5,14 @@ import { workerGitCommandSchemas } from "./worker-command-git.js";
 import { workerWorktreeCodeCommandSchemas } from "./worker-command-worktree-code.js";
 import { workerSurfaceCommandSchemas } from "./worker-command-surfaces.js";
 import { workerChatCommandSchemas } from "./worker-command-chat.js";
-import { workerComputerUseCommandSchema } from "./worker-command-computer-use.js";
+import {
+  workerComputerUseCommandSchema,
+  workerComputerUseApprovalResponseCommandSchema,
+} from "./worker-command-computer-use.js";
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
   workerComputerUseCommandSchema,
+  workerComputerUseApprovalResponseCommandSchema,
   ...workerCoreCommandSchemas,
   ...workerGithubProjectCommandSchemas,
   ...workerGitCommandSchemas,

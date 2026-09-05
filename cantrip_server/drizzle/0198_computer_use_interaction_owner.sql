@@ -1,0 +1,3 @@
+ALTER TABLE "agent_interaction_requests" ALTER COLUMN "thread_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "agent_interaction_requests" ADD COLUMN "interaction_owner" text DEFAULT 'codex' NOT NULL;--> statement-breakpoint
+ALTER TABLE "agent_interaction_requests" ADD CONSTRAINT "agent_interaction_requests_provenance_owner_check" CHECK (("agent_interaction_requests"."interaction_owner" = 'codex' AND "agent_interaction_requests"."thread_id" IS NOT NULL) OR ("agent_interaction_requests"."interaction_owner" = 'computer-use' AND "agent_interaction_requests"."chat_id" IS NOT NULL AND "agent_interaction_requests"."kind" = 'permissions'));

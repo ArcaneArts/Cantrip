@@ -364,12 +364,16 @@ function InteractionRequestCard({
     );
   }
   if (payload.kind === "permissions") {
+    const computerUse = request.provenance.owner === "computer-use";
     return (
       <InteractionCard
         icon={KeyRound}
-        title="Permission grant"
+        title={computerUse ? "Computer-use approval" : "Permission grant"}
         description={
-          payload.reason ?? "Codex requested additional permissions."
+          payload.reason ??
+          (computerUse
+            ? "Computer use requested access to this worker's desktop."
+            : "Codex requested additional permissions.")
         }
       >
         <pre className="max-h-36 overflow-auto rounded-md bg-muted/70 p-2 text-xs whitespace-pre-wrap">
@@ -389,7 +393,9 @@ function InteractionRequestCard({
               })
             }
           >
-            Grant for turn
+            {computerUse && request.provenance.turnId === null
+              ? "Grant once"
+              : "Grant for turn"}
           </Button>
           <Button
             type="button"
@@ -535,7 +541,11 @@ export function AgentInteractionPanel({
   return (
     <div
       className="mb-2 max-h-[50vh] space-y-2 overflow-y-auto pr-1"
-      aria-label="Pending Codex requests"
+      aria-label={
+        visible.some((request) => request.provenance.owner === "computer-use")
+          ? "Pending agent requests"
+          : "Pending Codex requests"
+      }
     >
       {visible.map((request) => (
         <InteractionRequestCard

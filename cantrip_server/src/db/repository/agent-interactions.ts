@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  agentInteractionRequestCreateSchema,
   agentInteractionRequestSchema,
+  encryptedAgentInteractionRequestCreateSchema,
   encryptedAgentInteractionRequestSchema,
 } from "@cantrip/protocol";
 import type {
+  AgentInteractionProvenance,
   AgentInteractionRequest,
   AgentInteractionRequestCreate,
   AgentInteractionRequestPayload,
@@ -51,6 +54,9 @@ function agentInteractionRequestBase(
       itemId: request.itemId,
       executionLaneId: request.executionLaneId,
       workerId: request.workerId,
+      ...(request.interactionOwner === "computer-use"
+        ? { owner: "computer-use" as const }
+        : {}),
     },
     status: request.status,
     resolvedByUserId: request.resolvedByUserId,
@@ -59,6 +65,12 @@ function agentInteractionRequestBase(
     createdAt: toISOString(request.createdAt),
     updatedAt: toISOString(request.updatedAt),
   } as Omit<AgentInteractionRequest, "payload" | "response">;
+}
+
+function canonicalProvenance(provenance: AgentInteractionProvenance) {
+  if (provenance.owner !== "codex") return provenance;
+  const { owner: _owner, ...historical } = provenance;
+  return historical;
 }
 
 function toAgentInteractionRequestWire(
@@ -264,6 +276,7 @@ export class AgentInteractionRepository {
   async recordAgentInteractionRequest(
     input: AgentInteractionRequestCreate,
   ): Promise<AgentInteractionRequest> {
+    input = agentInteractionRequestCreateSchema.parse(input);
     const ownerId = await this.resolveAgentInteractionOwner(input);
     if (input.provenance.chatId) {
       const chats = await this.database
@@ -291,6 +304,7 @@ export class AgentInteractionRepository {
       .values({
         id: randomUUID(),
         requestKey: input.requestKey,
+        interactionOwner: input.provenance.owner ?? "codex",
         ownerId,
         projectId: input.projectId,
         chatId: input.provenance.chatId,
@@ -324,7 +338,7 @@ export class AgentInteractionRepository {
       !inserted &&
       (normalized.projectId !== input.projectId ||
         JSON.stringify(normalized.provenance) !==
-          JSON.stringify(input.provenance) ||
+          JSON.stringify(canonicalProvenance(input.provenance)) ||
         JSON.stringify(normalized.payload) !== JSON.stringify(input.payload) ||
         normalized.expiresAt !== (expiresAt?.toISOString() ?? null))
     ) {
@@ -332,7 +346,11 @@ export class AgentInteractionRepository {
         "Interaction request key was reused with different request data.",
       );
     }
-    if (input.provenance.chatId && request.status === "pending") {
+    if (
+      request.interactionOwner === "codex" &&
+      input.provenance.chatId &&
+      request.status === "pending"
+    ) {
       await this.database
         .update(schema.chats)
         .set({ status: "waiting-for-approval", updatedAt: new Date() })
@@ -344,6 +362,7 @@ export class AgentInteractionRepository {
   async recordEncryptedAgentInteractionRequest(
     input: EncryptedAgentInteractionRequestCreate,
   ): Promise<EncryptedAgentInteractionRequest> {
+    input = encryptedAgentInteractionRequestCreateSchema.parse(input);
     const ownerId = await this.resolveAgentInteractionOwner(input);
     if (input.provenance.chatId) {
       const chats = await this.database
@@ -371,6 +390,7 @@ export class AgentInteractionRepository {
       .values({
         id: randomUUID(),
         requestKey: input.requestKey,
+        interactionOwner: input.provenance.owner ?? "codex",
         ownerId,
         projectId: input.projectId,
         chatId: input.provenance.chatId,
@@ -407,7 +427,7 @@ export class AgentInteractionRepository {
       !inserted &&
       (normalized.projectId !== input.projectId ||
         JSON.stringify(normalized.provenance) !==
-          JSON.stringify(input.provenance) ||
+          JSON.stringify(canonicalProvenance(input.provenance)) ||
         JSON.stringify(normalized.classification) !==
           JSON.stringify(input.classification) ||
         JSON.stringify(normalized.protectedPayload) !==
@@ -418,7 +438,11 @@ export class AgentInteractionRepository {
         "Interaction request key was reused with different request data.",
       );
     }
-    if (input.provenance.chatId && request.status === "pending") {
+    if (
+      request.interactionOwner === "codex" &&
+      input.provenance.chatId &&
+      request.status === "pending"
+    ) {
       await this.database
         .update(schema.chats)
         .set({ status: "waiting-for-approval", updatedAt: new Date() })
@@ -546,7 +570,7 @@ export class AgentInteractionRepository {
         "Interaction request was resolved concurrently.",
       );
     }
-    if (rows[0].chatId) {
+    if (rows[0].interactionOwner === "codex" && rows[0].chatId) {
       await this.restoreChatAfterInteractions(rows[0].chatId);
     }
     return toAgentInteractionRequest(rows[0]);
@@ -634,7 +658,7 @@ export class AgentInteractionRepository {
         "Interaction request was resolved concurrently.",
       );
     }
-    if (rows[0].chatId) {
+    if (rows[0].interactionOwner === "codex" && rows[0].chatId) {
       await this.restoreChatAfterInteractions(rows[0].chatId);
     }
     return toEncryptedAgentInteractionRequest(rows[0]);
@@ -678,7 +702,11 @@ export class AgentInteractionRepository {
       )
       .returning();
     const chatIds = new Set(
-      rows.flatMap((request) => (request.chatId ? [request.chatId] : [])),
+      rows.flatMap((request) =>
+        request.interactionOwner === "codex" && request.chatId
+          ? [request.chatId]
+          : [],
+      ),
     );
     for (const chatId of chatIds) {
       await this.restoreChatAfterInteractions(chatId);
@@ -723,7 +751,8 @@ export class AgentInteractionRepository {
       )
       .returning();
     if (!rows[0]) return null;
-    await this.restoreChatAfterInteractions(chatId);
+    if (rows[0].interactionOwner === "codex")
+      await this.restoreChatAfterInteractions(chatId);
     return toAgentInteractionRequestWire(rows[0]);
   }
 
@@ -734,6 +763,7 @@ export class AgentInteractionRepository {
       .where(
         and(
           eq(schema.agentInteractionRequests.chatId, chatId),
+          eq(schema.agentInteractionRequests.interactionOwner, "codex"),
           eq(schema.agentInteractionRequests.status, "pending"),
         ),
       )

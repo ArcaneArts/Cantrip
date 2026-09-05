@@ -173,7 +173,7 @@
     "workerCredentialRoutes": 13,
     "durableTables": 89,
     "agentOperations": 44,
-    "workerCommands": 274,
+    "workerCommands": 275,
     "liveResources": 43,
     "clientControlCommands": 4,
     "cliCommands": 35,
@@ -193,7 +193,7 @@
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
-    "workerCommands": "b62cada76d550fa7c971632f246737f81f64ddbb58c1869470ba06029f540972",
+    "workerCommands": "25026d83ec8976190e45ae6f52f672e84a6f72bbea9e7f20297bd1b0b1b54e54",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -790,7 +790,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 52,
+      "line": 61,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests",
@@ -803,7 +803,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 70,
+      "line": 79,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId",
@@ -816,7 +816,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/agent-interactions.ts",
-      "line": 84,
+      "line": 93,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/agent-requests/:requestId/respond",
@@ -7251,6 +7251,7 @@
     "codex.auth.login.start",
     "codex.auth.logout",
     "codex.auth.status",
+    "computer-use.approval.respond",
     "computer-use.operation",
     "customization.external.apply",
     "customization.external.preview",
@@ -7786,6 +7787,11 @@
       "command": "codex.auth.status",
       "classification": "intentionally-public-control-plane",
       "rationale": "reviewed worker lifecycle or capability contract"
+    },
+    {
+      "command": "computer-use.approval.respond",
+      "classification": "endpoint-protected",
+      "rationale": "CUA durable interaction response uses existing interaction-content ciphertext; public owner/chat/lane/request IDs bind routing, and only the originating worker validates and grants the exact requested permissions"
     },
     {
       "command": "computer-use.operation",

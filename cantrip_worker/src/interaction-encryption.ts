@@ -16,6 +16,7 @@ import {
 } from "@cantrip/protocol/communication-content";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
+import type { WorkerEndpointEncryptionService } from "./endpoint-content-encryption.js";
 
 export async function protectAgentInteractionRequest(input: {
   request: AgentInteractionRuntimeRequest;
@@ -51,7 +52,7 @@ export async function protectAgentInteractionRequest(input: {
 export async function openAgentInteractionResponse(input: {
   requestKey: string;
   response: InteractionResponseOpaqueContent;
-  service: WorkerEncryptionService;
+  service: WorkerEndpointEncryptionService;
 }): Promise<AgentInteractionResponse> {
   const response = interactionResponseOpaqueContentSchema.parse(input.response);
   const component = input.service.componentKey("interaction-content");

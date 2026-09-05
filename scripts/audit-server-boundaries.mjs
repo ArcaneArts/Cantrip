@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
   workerCommands:
-    "b62cada76d550fa7c971632f246737f81f64ddbb58c1869470ba06029f540972",
+    "25026d83ec8976190e45ae6f52f672e84a6f72bbea9e7f20297bd1b0b1b54e54",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3624,6 +3624,13 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "computer-use.approval.respond") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "CUA durable interaction response uses existing interaction-content ciphertext; public owner/chat/lane/request IDs bind routing, and only the originating worker validates and grants the exact requested permissions",
+    };
+  }
   if (command === "computer-use.operation") {
     return {
       classification: "endpoint-protected",

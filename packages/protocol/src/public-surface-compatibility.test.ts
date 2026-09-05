@@ -82,6 +82,7 @@ const cuaRuntimeExports = [
   "cuaSnapshotSchema",
   "cuaTargetReferenceSchema",
   "cuaTargetSchema",
+  "workerComputerUseApprovalResponseCommandSchema",
   "workerComputerUseCommandSchema",
 ];
 
@@ -92,7 +93,7 @@ describe("protocol public surface compatibility", () => {
       (name) => !cuaRuntimeExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(1_971);
+    expect(exportNames).toHaveLength(1_972);
     expect(
       exportNames.filter((name) => cuaRuntimeExports.includes(name)),
     ).toEqual(cuaRuntimeExports);
@@ -111,9 +112,10 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(274);
+    expect(commandTypes).toHaveLength(275);
     expect(commandTypes[0]).toBe("computer-use.operation");
-    expect(stableFingerprint(commandTypes.slice(1))).toBe(
+    expect(commandTypes[1]).toBe("computer-use.approval.respond");
+    expect(stableFingerprint(commandTypes.slice(2))).toBe(
       "9715f45e8704a82a:7004",
     );
     expect(eventTypes).toHaveLength(19);

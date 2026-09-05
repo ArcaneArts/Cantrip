@@ -4224,6 +4224,7 @@ export const agentInteractionRequests = pgTable(
   {
     id: text("id").primaryKey(),
     requestKey: text("request_key").notNull(),
+    interactionOwner: text("interaction_owner").notNull().default("codex"),
     ownerId: text("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -4240,7 +4241,7 @@ export const agentInteractionRequests = pgTable(
       () => chatExecutionLanes.id,
       { onDelete: "set null" },
     ),
-    threadId: text("thread_id").notNull(),
+    threadId: text("thread_id"),
     turnId: text("turn_id"),
     itemId: text("item_id"),
     kind: text("kind").notNull(),
@@ -4284,6 +4285,10 @@ export const agentInteractionRequests = pgTable(
     check(
       "agent_interaction_requests_context_check",
       sql`${table.projectId} IS NOT NULL OR ${table.chatId} IS NOT NULL`,
+    ),
+    check(
+      "agent_interaction_requests_provenance_owner_check",
+      sql`(${table.interactionOwner} = 'codex' AND ${table.threadId} IS NOT NULL) OR (${table.interactionOwner} = 'computer-use' AND ${table.chatId} IS NOT NULL AND ${table.kind} = 'permissions')`,
     ),
     foreignKey({
       columns: [table.projectId, table.ownerId],

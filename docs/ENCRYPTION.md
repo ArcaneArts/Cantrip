@@ -224,6 +224,16 @@ successfully returned image belongs to its endpoint consumer for clearing.
 This foundation does not register the route or expose native capture. Live
 activation requires the existing permission system and a trusted worker
 execution-lifetime owner; authentication alone is not its approval policy.
+The existing durable interaction path now has an explicit `computer-use`
+provenance owner, with protected `permissions` payloads and responses using
+`interaction-content`. The server sees routing/classification/expiry only;
+requested target details and granted permissions remain endpoint-encrypted.
+Native approvals can have genuinely null thread/turn IDs and do not change chat
+runtime status. Historical Codex records preserve their absent-owner wire
+format. Worker approval receipts accept only an exact protected-response retry
+and never replay an operation or renew a consumed one-use grant. Production
+approval-response routing is installed, but request publication and trusted
+execution-lifetime integration remain prerequisites for activating capture.
 See [CUA implementation progress](planned/CUA.md#implementation-progress).
 
 ### Client key custody

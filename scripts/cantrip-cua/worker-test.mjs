@@ -11,7 +11,12 @@ const binary = buildCantripCua(root);
 // Exercise production worker service and transport against this exact artifact.
 // No installed-helper inference, native capture, or Screen Recording prompt.
 for (const [project, ...tests] of [
-  ["packages/protocol", "src/computer-use.test.ts"],
+  [
+    "packages/protocol",
+    "src/computer-use.test.ts",
+    "src/agent-interaction-provenance.test.ts",
+    "src/public-surface-compatibility.test.ts",
+  ],
   ["packages/crypto", "test/computer-use.test.ts"],
   [
     "cantrip_worker",
@@ -22,8 +27,14 @@ for (const [project, ...tests] of [
     "cantrip_server",
     "test/computer-use-routes.test.ts",
     "test/computer-use-roundtrip.test.ts",
+    "test/computer-use-approval-routes.test.ts",
+    "test/computer-use-interaction-migration.test.ts",
   ],
-  ["cantrip_app", "src/lib/endpoint-content-encryption.test.ts"],
+  [
+    "cantrip_app",
+    "src/lib/endpoint-content-encryption.test.ts",
+    "src/components/chat/agent-interaction-panel.test.ts",
+  ],
 ]) {
   const result = spawnSync(
     process.execPath,

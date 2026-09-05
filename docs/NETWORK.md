@@ -39,6 +39,14 @@ deadline is not a promise of worker cancellation on HTTP disconnect.
 
 Production activation, effective-policy authorization and capability publication
 remain tracked in [the CUA ledger](planned/CUA.md#implementation-progress).
+The existing `/api/agent-requests/:requestId/respond` route recognizes native
+CUA provenance and forwards `computer-use.approval.respond` to that request's
+current owning worker/lane. Replies remain protected by `interaction-content`;
+the server cannot grant permissions by decoding them. This path requires no
+Codex thread, runtime lookup or online-status preflight. Worker acknowledgment
+precedes durable resolution, and bounded exact-response receipts support a
+retry after persistence failure without repeating native work. Capture
+activation and its trusted lifecycle owner are not yet installed.
 
 ## Product decisions
 
