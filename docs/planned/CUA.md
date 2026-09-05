@@ -1397,8 +1397,9 @@ src/lib/computer-use-preview-encryption.test.ts`. New rendering cases cover
 ### Tranche cycle 16 — Acceptance procedure and closing evidence audit
 
 - Branch: `codex/cua-16-acceptance-guide`, based on cycle 15's observed merge
-  `991040c7a`. Documentation-only closing pass; its own PR is the authoritative
-  merge record once published. All 24 preceding implementation PRs were checked
+  `991040c7a`. [PR #1760](https://github.com/ArcaneArts/Cantrip/pull/1760),
+  documentation commit `08163bf0`. This closing PR is its own authoritative
+  merge record. All 24 preceding implementation PRs were checked
   through GitHub and confirmed merged. No subagents were started.
 - Added a short [acceptance procedure](../COMPUTER_USE_ACCEPTANCE.md) with exact
   development commands, UI entry, approval/Stop behavior, saved cursor preferences,
