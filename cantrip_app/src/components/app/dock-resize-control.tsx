@@ -55,7 +55,7 @@ export function DockResizeControl({
       aria-valuenow={Math.round(fraction * 100)}
       aria-valuetext={`${label} ${mode === "closed" ? "closed" : mode === "full" ? "full view" : `${Math.round(fraction * 100)} percent`}`}
       className={cn(
-        "group relative z-30 bg-border outline-none focus-visible:bg-ring",
+        "group relative z-30 touch-none outline-none",
         direction === "vertical" ? "cursor-col-resize" : "cursor-row-resize",
       )}
       data-dock-resize-mode={mode}
@@ -73,10 +73,10 @@ export function DockResizeControl({
       <span
         aria-hidden="true"
         className={cn(
-          "absolute bg-primary/40 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100",
+          "absolute bg-border opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-active:opacity-100 motion-reduce:transition-none",
           direction === "vertical"
-            ? "inset-y-0 left-1/2 w-0.5 -translate-x-1/2"
-            : "inset-x-0 top-1/2 h-0.5 -translate-y-1/2",
+            ? "inset-y-0 left-1/2 w-px -translate-x-1/2"
+            : "inset-x-0 top-1/2 h-px -translate-y-1/2",
         )}
       />
     </div>

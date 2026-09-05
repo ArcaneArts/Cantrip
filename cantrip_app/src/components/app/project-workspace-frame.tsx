@@ -193,7 +193,7 @@ function SortableDockRailTab({
               aria-label={`${actionLabel} in ${region} dock`}
               aria-pressed={active}
               className={cn(
-                "grid size-10 shrink-0 place-items-center rounded-none border-border p-0 text-muted-foreground hover:bg-muted hover:text-foreground",
+                "grid size-10 shrink-0 place-items-center rounded-none border-transparent p-0 text-muted-foreground transition-colors duration-150 group-hover/dock-rail:border-border hover:bg-muted hover:text-foreground motion-reduce:transition-none",
                 region === "right" ? "border-b" : "border-r",
                 active && "bg-muted text-foreground",
               )}
@@ -327,7 +327,7 @@ export function DockRail({
       <aside
         aria-label={`${region === "right" ? "Right" : "Bottom"} dock rail`}
         className={cn(
-          "z-40 flex shrink-0 border-border",
+          "group/dock-rail z-40 flex shrink-0 border-transparent transition-colors duration-150 hover:border-border motion-reduce:transition-none",
           region === "right"
             ? "min-h-0 w-10 flex-col overflow-y-auto border-l [scrollbar-width:none]"
             : "h-10 min-w-0 flex-row overflow-x-auto border-t [scrollbar-width:none]",
@@ -361,7 +361,7 @@ export function DockRail({
                   <button
                     aria-label={`Add surface to ${region} dock`}
                     className={cn(
-                      "grid size-10 shrink-0 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+                      "grid size-10 shrink-0 place-items-center border-transparent text-muted-foreground transition-colors duration-150 group-hover/dock-rail:border-border hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none",
                       region === "right" ? "border-b" : "border-r",
                     )}
                     disabled={pending}
