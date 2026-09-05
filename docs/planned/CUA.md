@@ -622,7 +622,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 8b — Bounded JavaScript and worker-authorized host calls
 
 - Branch: `codex/cua-08b-bounded-javascript`, based on merged cycle 8a2
-  (`2767e948a`). Local implementation and validation complete; PR/CI/merge pending.
+  (`2767e948a`). [PR #1746](https://github.com/ArcaneArts/Cantrip/pull/1746),
+  implementation commit `09a4cab1b657cf748eef47792e15cadbded1762e`.
+  Local implementation and validation complete; cross-platform CI/merge pending.
 - Scope: persistent, bounded Rust JavaScript contexts and a payload-free host
   rendezvous through the existing worker-owned process. No managed MCP tool is
   enabled in this pass. Native input, filesystem, network, clipboard and extra
