@@ -10,7 +10,8 @@ export type CuaPermissionProfile = Pick<
 >;
 
 /** Cursor means logical CUA state only, never native pointer/keyboard input. */
-export type CuaPermissionClass = "inventory" | "capture" | "cursor";
+export type CuaPermissionClass =
+  "inventory" | "capture" | "cursor" | "controls" | "native-input";
 
 export interface CuaPermissionDecision {
   kind: "allow" | "approval-required";
@@ -38,16 +39,20 @@ const operationClasses = {
   "target.detach": ["cursor"],
   "cursor.configure": ["cursor"],
   "cursor.move": ["cursor"],
+  "controls.inspect": ["controls"],
+  "input.press": ["native-input"],
 } satisfies Record<ComputerUseOperation, readonly CuaPermissionClass[]>;
 
 /**
- * Project the existing Cantrip profile onto this observation-only tranche.
+ * Project the existing Cantrip profile onto computer use. Native input has a
+ * separate mutation grant: inventory, capture and logical cursor grants cannot
+ * authorize a press. Non-YOLO profiles require a durable explicit input approval.
  * Authenticated execution ownership and durable approval handling belong to
  * the caller. This function neither checks native capabilities nor prompts.
  *
  * Only the exact selected YOLO profile suppresses operation approval. Primary
  * worktree policy may force its effective filesystem profile to read-only;
- * that does not constrain these non-filesystem, non-native-input operations.
+ * that constrains filesystem writes, while native input requires its own class.
  * Conversely, an effective profile or engine approvalPolicy of "never" does
  * not establish that the user selected YOLO (e.g. structured read-only Codex).
  */

@@ -29,6 +29,33 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    fn native_input(&self) -> bool {
+        false
+    }
+    fn clear_controls(&mut self, _session: &str) {}
+    fn controls(
+        &mut self,
+        _session: &str,
+        _target: &Target,
+        _cancel: &Cancellation,
+    ) -> Result<crate::input::Controls> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Accessibility inspection is unsupported.",
+        ))
+    }
+    fn press(
+        &mut self,
+        _session: &str,
+        _target: &Target,
+        _reference: &str,
+        _cancel: &Cancellation,
+    ) -> Result<crate::input::InputReceipt> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Accessibility press is unsupported.",
+        ))
+    }
     fn name(&self) -> &'static str;
     fn available(&self) -> bool;
     fn targets(&mut self, cancellation: &Cancellation) -> Result<Vec<Target>>;

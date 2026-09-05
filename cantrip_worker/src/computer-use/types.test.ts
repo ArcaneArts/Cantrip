@@ -400,7 +400,7 @@ describe("CUA ownership and observation metadata", () => {
     expect(cuaCapabilitiesSchema.safeParse(capabilities).success).toBe(true);
     for (const fields of [
       { protocolVersion: 2 },
-      { nativeInput: true },
+      { nativeInput: "yes" },
       { cursorAppearanceVersion: 2 },
       { maxSessions: 17 },
       { maxImageBytes: 16 * 1024 * 1024 + 1 },

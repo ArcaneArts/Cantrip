@@ -47,6 +47,9 @@ export const CUA_NATIVE_ERROR_CODES = [
   "ownership-mismatch",
   "target-not-found",
   "stale-target",
+  "stale-element",
+  "input-unknown",
+  "input-failed",
   "capture-failed",
   "permission-denied",
 ] as const;
@@ -63,6 +66,10 @@ const nativeMessages: Record<CuaNativeErrorCode, string> = {
     "The computer-use session belongs to another execution context.",
   "target-not-found": "The selected computer-use target no longer exists.",
   "stale-target": "The selected computer-use target changed.",
+  "stale-element": "The control reference is stale; inspect controls again.",
+  "input-unknown":
+    "Input outcome is unknown. Do not retry or fall back; take a fresh snapshot to inspect the result.",
+  "input-failed": "The native input request failed before dispatch.",
   "capture-failed":
     "The computer-use process could not capture the selected target.",
   "permission-denied": "The operating system denied computer-use permission.",

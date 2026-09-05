@@ -5,6 +5,42 @@ and protected Trajectory implemented and verified with the release qualification
 recorded in cycle 16. Updater signing, notarization and installed-update permission
 verification remain unperformed. The full computer-use roadmap is unfinished.
 
+## Clicking-tranche progress
+
+Implementation proceeds solo through isolated worktrees and squash auto-merge.
+The user's later instruction removes the original pause between cycles. Native,
+GUI and integration acceptance is reserved for the user; silence is not a pass.
+
+### Clicking cycle 1 — Accessibility inspection and press
+
+- Branch: `codex/cua-clicking-accessibility`; PR and merge pending.
+- Implemented: managed `cua.controls()` and `cua.press(reference)`, bounded
+  Rust-owned references, current application/window matching, separate `controls`
+  observation and `native-input` mutation approval classes, protected Trajectory
+  receipts. Selected YOLO adds no app-level confirmation; macOS permission errors
+  come from the actual AX operation. Logical cursor behavior remains unchanged.
+- Bounds: 128 visited elements, depth 12, 32 pressable controls per inspection,
+  bounded labels and three-second traversal budget with 200 ms AX message limits.
+  No AX values or secure-field descendants are read. Inspection replaces old
+  references; press consumes them, including when the outcome is unknown.
+- Validation: Rust compile/Clippy, protocol build, worker/server/app typechecks,
+  31 focused worker permission/contract unit tests. Native and integration tests
+  were not run. User testing: pending.
+- Limitations: macOS application windows only. Requires a unique AX window with
+  matching current PID, geometry and available title; ambiguous matches fail.
+  Incomplete/virtualized AX trees may omit controls. Action dispatch does not
+  establish the intended visible result. Unknown actions must never be retried
+  or automatically replaced by coordinate clicks.
+- User test: in a development build containing this change, ask an agent to
+  attach a harmless application window, inspect controls, press a named button
+  and take a fresh snapshot. Expect a separate input approval outside YOLO and
+  a protected Press control event. Use Stop while approval is pending to cancel.
+- Next: coordinate single-left click and necessary activation/focus handling.
+
+The installed Cantrip 1.1.1781 worker inspected during this task lacked the CUA
+MCP module. The current source registers managed `cantrip_cua`; testing requires a
+build containing it. This tranche does not modify the installed app or releases.
+
 ## First-tranche implementation progress
 
 The active first tranche is observation and a customizable logical cursor:

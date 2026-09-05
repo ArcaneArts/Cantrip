@@ -553,8 +553,9 @@ export class CuaApprovalManager {
             startedAtMs: this.now(),
             environmentId: null,
             cwd: null,
-            reason:
-              "Allow Cantrip Computer Use on this agent's worker? No native clicks or keyboard input are included.",
+            reason: permissions.computerUse.classes.includes("native-input")
+              ? "Allow real computer input on the selected target on this agent's worker? An approved press can change application state."
+              : "Allow the requested computer-use observation or logical cursor operations on this agent's worker? Native input requires separate approval.",
             requestedPermissions: permissions,
           },
         },

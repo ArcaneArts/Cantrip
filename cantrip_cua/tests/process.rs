@@ -613,7 +613,7 @@ fn default_binary_never_silently_uses_fake_capture() {
     let mut child = Process::start(false);
     let (capabilities, _) = child.call(json!({"operation":"capabilities.get"}));
     assert_ne!(capabilities["backend"], "fake");
-    assert_eq!(capabilities["nativeInput"], false);
+    assert_eq!(capabilities["nativeInput"], capabilities["capture"]);
     #[cfg(target_os = "macos")]
     {
         let supported = cantrip_cua::macos::available();

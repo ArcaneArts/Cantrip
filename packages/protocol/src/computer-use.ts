@@ -80,7 +80,7 @@ export const cuaCapabilitiesSchema = z.strictObject({
   runtimeVersion: z.string().min(1).max(64),
   backend: z.string().min(1).max(64),
   capture: z.boolean(),
-  nativeInput: z.literal(false),
+  nativeInput: z.boolean(),
   javascript: z.boolean(),
   cursorAppearanceVersion: z.literal(1),
   operations: z.array(z.string().min(1).max(64)).max(32),
@@ -181,6 +181,36 @@ export const cuaAgentObservationSchema = z
     "Agent observation attribution and rendition must match the captured session.",
   );
 
+export const cuaControlsResultSchema = z.strictObject({
+  session: cuaSessionSchema,
+  inspection: z.strictObject({
+    controls: z
+      .array(
+        z.strictObject({
+          reference: cuaIdSchema,
+          role: z.string().max(64),
+          label: z.string().max(320).nullable(),
+          bounds: cuaTargetSchema.shape.bounds.nullable(),
+          actions: z.array(z.literal("press")).max(1),
+        }),
+      )
+      .max(32),
+    truncated: z.boolean(),
+  }),
+});
+export const cuaInputReceiptSchema = z.strictObject({
+  method: z.literal("accessibility"),
+  activation: z.boolean(),
+  outcome: z.literal("dispatched"),
+});
+export const cuaInputResultSchema = z.strictObject({
+  session: cuaSessionSchema,
+  input: cuaInputReceiptSchema,
+});
+export type CuaControlsResult = z.infer<typeof cuaControlsResultSchema>;
+export type CuaInputReceipt = z.infer<typeof cuaInputReceiptSchema>;
+export type CuaInputResult = z.infer<typeof cuaInputResultSchema>;
+
 export const CUA_REQUIRED_OPERATIONS = [
   "capabilities.get",
   "targets.list",
@@ -194,6 +224,8 @@ export const CUA_REQUIRED_OPERATIONS = [
 
 export const computerUseOperationSchema = z.enum([
   "capabilities.get",
+  "controls.inspect",
+  "input.press",
   "agent.sources.list",
   "agent.observation.get",
   "targets.list",
@@ -246,6 +278,17 @@ export const computerUseActionSchema = z.discriminatedUnion("operation", [
     ...sessionFields,
     ...targetFields,
   }),
+  z.strictObject({
+    operation: z.literal("controls.inspect"),
+    ...sessionFields,
+    ...targetFields,
+  }),
+  z.strictObject({
+    operation: z.literal("input.press"),
+    ...sessionFields,
+    ...targetFields,
+    reference: cuaIdSchema,
+  }),
   z.strictObject({ operation: z.literal("session.close"), ...sessionFields }),
 ]);
 
@@ -297,6 +340,8 @@ const resultDataSchemas = {
   "target.detach": cuaSessionResultSchema,
   "cursor.configure": cuaSessionResultSchema,
   "cursor.move": cuaSessionResultSchema,
+  "controls.inspect": cuaControlsResultSchema,
+  "input.press": cuaInputResultSchema,
   "observation.snapshot": cuaSnapshotSchema,
   "session.close": closedSchema,
 } as const;
@@ -310,6 +355,8 @@ export const computerUseResultContentSchema = z
       data: z.union([
         cuaCapabilitiesSchema,
         cuaInventorySchema,
+        cuaControlsResultSchema,
+        cuaInputResultSchema,
         cuaSessionResultSchema,
         cuaSnapshotSchema,
         cuaAgentSourcesSchema,

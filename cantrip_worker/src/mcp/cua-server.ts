@@ -11,7 +11,7 @@ import {
   type CuaMcpRequest,
 } from "./cua-contract.js";
 
-export const CUA_MCP_INSTRUCTIONS = `Observe monitors and individual windows on this agent's worker. This first tranche supports snapshots and a logical cursor only: it never moves the human pointer or injects clicks/keys. JavaScript state persists within this actual agent turn and js_reset clears it. Use await cua.targets() to list a bounded page of targets. When its result has nextCursor, call await cua.targets({after: page.nextCursor}) for the next page; windows can appear or disappear between pages. Use await cua.attach({targetId: target.id, targetGeneration: target.generation}) to attach an exact returned target, await cua.snapshot() to return a model-visible image, await cua.configureCursor({version:1,style:"ring",color:"#20BFA9FF",size:24,label:"Agent",trail:true,visible:true}), await cua.moveCursor({x,y}), await cua.cursor(), await cua.getState(), and await cua.detach(). Cursor styles are arrow, dot, ring or crosshair; size is 8–96 logical points; color is #RRGGBBAA. Coordinates are target-local logical points. A resized model image reports its own dimensions separately from native target metadata. No process, shell, filesystem, network, timers or native libraries are exposed. Scripts are limited to 32 KiB UTF-8, results to 32 KiB, two snapshots per call and bounded execution/host operations. Approval may suspend an operation; Stop cancels it.`;
+export const CUA_MCP_INSTRUCTIONS = `Observe monitors and individual windows on this agent's worker. On macOS, inspect pressable controls with await cua.controls() after attaching an application window, and prefer await cua.press(reference) for an advertised press action. Inspection returns bounded labels, roles, target-local bounds, actions and transient references. Inspect again after a press, reset, detach or target change. Press performs a real application action; logical moveCursor remains observation-only and never moves the human pointer. Keyboard input and coordinate clicking are not yet supported. Take a fresh snapshot after a press to assess the visible result. A dispatched action is not proof of the intended application result; never retry or fall back after an unknown outcome. JavaScript state persists within this actual agent turn and js_reset clears it. Use await cua.targets() to list a bounded page of targets. When its result has nextCursor, call await cua.targets({after: page.nextCursor}) for the next page; windows can appear or disappear between pages. Use await cua.attach({targetId: target.id, targetGeneration: target.generation}) to attach an exact returned target, await cua.snapshot() to return a model-visible image, await cua.configureCursor({version:1,style:"ring",color:"#20BFA9FF",size:24,label:"Agent",trail:true,visible:true}), await cua.moveCursor({x,y}), await cua.cursor(), await cua.getState(), and await cua.detach(). Cursor styles are arrow, dot, ring or crosshair; size is 8–96 logical points; color is #RRGGBBAA. Coordinates are target-local logical points. A resized model image reports its own dimensions separately from native target metadata. No process, shell, filesystem, network, timers or native libraries are exposed. Scripts are limited to 32 KiB UTF-8, results to 32 KiB, two snapshots per call and bounded execution/host operations. Approval may suspend an operation; Stop cancels it.`;
 
 export type CuaMcpGateway = (
   request: CuaMcpRequest,
@@ -71,13 +71,13 @@ export function createCuaMcpServer(gateway: CuaMcpGateway) {
     "js",
     {
       description:
-        "Run bounded persistent observation JavaScript using the cua API. Snapshots return image content. Logical cursor movement does not inject native input.",
+        "Use cua to inspect application windows, capture screenshots, discover pressable controls with cua.controls(), and perform a real Accessibility action with cua.press(reference). Native press requires input authorization; moveCursor stays logical-only.",
       inputSchema: z.strictObject({ script: cuaMcpScriptSchema }),
       annotations: {
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
-        openWorldHint: false,
+        openWorldHint: true,
       },
     },
     ({ script }, extra) => invoke("js", script, extra._meta, extra.signal),

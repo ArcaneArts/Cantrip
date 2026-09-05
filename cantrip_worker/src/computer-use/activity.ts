@@ -3,6 +3,7 @@ import type {
   AgentActivity,
   AgentScope,
   CuaImage,
+  CuaInputReceipt,
   CuaSession,
   CuaScope,
   CuaTargetReference,
@@ -27,6 +28,7 @@ export function computerUseActivity(input: {
   session?: CuaSession | null;
   target?: CuaTargetReference | null;
   image?: CuaImage | null;
+  input?: CuaInputReceipt | null;
   startedAtMs: number;
   completedAtMs?: number;
   agentScope?: AgentScope | null;
@@ -85,6 +87,21 @@ export function computerUseActivity(input: {
         ? {
             targetId: session.target.id,
             targetGeneration: session.target.generation,
+          }
+        : null),
+    input:
+      input.input ??
+      (input.operation === "input.press"
+        ? {
+            method: "accessibility",
+            activation: false,
+            outcome:
+              code === "input-unknown" ||
+              (error instanceof CuaProcessError && error.outcome === "unknown")
+                ? "unknown"
+                : outcome === "completed"
+                  ? "dispatched"
+                  : outcome,
           }
         : null),
     cursor: session ? structuredClone(session.cursor) : null,

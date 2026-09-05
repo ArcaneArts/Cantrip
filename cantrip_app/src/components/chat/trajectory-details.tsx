@@ -285,7 +285,7 @@ function previewText(event: TrajectoryEvent): string | null {
   if (!activity) return event.preview;
   switch (activity.type) {
     case "computerUse":
-      return `${computerUseActivitySummary(activity)}. Only observation metadata is retained in Trajectory; image pixels are not stored here.`;
+      return `${computerUseActivitySummary(activity)}. Protected operation metadata is retained in Trajectory; image pixels are not stored here.`;
     case "instructionContext":
       return activity.text;
     case "reasoning":

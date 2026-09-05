@@ -16,6 +16,7 @@ import {
   type CuaSession,
   type CuaSnapshot,
   type CuaTargetReference,
+  type CuaInputReceipt,
 } from "./types.js";
 
 export const CUA_JAVASCRIPT_MAX_CONTEXTS = 4;
@@ -35,6 +36,8 @@ export const cuaJavascriptActionSchema = z.discriminatedUnion("operation", [
     operation: z.literal("attach"),
     target: cuaTargetReferenceSchema,
   }),
+  z.strictObject({ operation: z.literal("controls") }),
+  z.strictObject({ operation: z.literal("press"), reference: cuaIdSchema }),
   z.strictObject({ operation: z.literal("snapshot") }),
   z.strictObject({ operation: z.literal("cursor") }),
   z.strictObject({
@@ -54,6 +57,7 @@ export interface CuaJavascriptOperationOutcome {
   completedAtMs: number;
   error: unknown;
   failed: boolean;
+  input?: CuaInputReceipt | null;
   cancelled: boolean;
 }
 
@@ -346,6 +350,7 @@ export class CuaJavascriptContexts {
             const before = options.onOperation ? state() : null;
             let error: unknown;
             let failed = false;
+            let inputReceipt: CuaInputReceipt | null = null;
             try {
               // Cancellation wins even if a durable-approval adapter resolves late.
               await waitBeforeCuaSend(
@@ -354,6 +359,8 @@ export class CuaJavascriptContexts {
               );
               this.live(context, signal);
               const result = await this.host(context, action, signal, images);
+              if (result && typeof result === "object" && "input" in result)
+                inputReceipt = result.input as CuaInputReceipt;
               this.live(context, signal);
               return result;
             } catch (caught) {
@@ -363,6 +370,7 @@ export class CuaJavascriptContexts {
             } finally {
               options.onOperation?.({
                 action,
+                input: inputReceipt,
                 session: state() ?? before,
                 target:
                   action.operation === "attach"
@@ -477,6 +485,16 @@ export class CuaJavascriptContexts {
           signal,
         ),
       };
+    if (action.operation === "controls")
+      return this.service.controls(scope, sessionId, target, signal);
+    if (action.operation === "press")
+      return this.service.press(
+        scope,
+        sessionId,
+        target,
+        action.reference,
+        signal,
+      );
     if (images.length >= CUA_JAVASCRIPT_MAX_IMAGES)
       throw new CuaNativeError("capacity");
     const snapshot = await this.service.snapshot(

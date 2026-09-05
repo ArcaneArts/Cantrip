@@ -6,6 +6,7 @@ import {
 import {
   CUA_CHUNK_BYTES,
   cuaImageSchema,
+  cuaInputReceiptSchema,
   type ComputerUseAction,
   type ComputerUseChunkEvent,
   type ComputerUseResultContent,
@@ -233,6 +234,23 @@ export async function handleComputerUseOperation(
           ),
         };
         break;
+      case "controls.inspect":
+        data = await service.controls(
+          scope,
+          action.sessionId,
+          target(action),
+          signal,
+        );
+        break;
+      case "input.press":
+        data = await service.press(
+          scope,
+          action.sessionId,
+          target(action),
+          action.reference,
+          signal,
+        );
+        break;
       case "observation.snapshot": {
         const snapshot = await service.snapshot(
           scope,
@@ -271,7 +289,12 @@ export async function handleComputerUseOperation(
       message: known
         ? error.message
         : "Computer-use operation could not be completed or authenticated.",
-      outcome: error instanceof CuaProcessError ? error.outcome : "rejected",
+      outcome:
+        error instanceof CuaProcessError
+          ? error.outcome
+          : error instanceof CuaNativeError && error.code === "input-unknown"
+            ? "unknown"
+            : "rejected",
     };
   }
   try {
@@ -328,6 +351,10 @@ export async function handleComputerUseOperation(
             scope: activityScope,
             session,
             image,
+            input:
+              data && "input" in data
+                ? cuaInputReceiptSchema.parse(data.input)
+                : null,
             target: attemptedTarget,
             startedAtMs,
             error: failure,

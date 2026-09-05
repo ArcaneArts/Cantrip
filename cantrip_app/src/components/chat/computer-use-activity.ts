@@ -62,6 +62,8 @@ const operationLabels: Record<string, string> = {
   "target.detach": "Detach target",
   "cursor.configure": "Configure cursor",
   "cursor.move": "Move cursor",
+  "controls.inspect": "Inspect controls",
+  "input.press": "Press control",
   "observation.snapshot": "Snapshot",
   "session.close": "Close session",
   "agent.sources.list": "List agent observations",
@@ -82,6 +84,9 @@ export function computerUseActivitySummary(
     activity.operation,
     activity.outcome,
     activity.errorCode,
+    activity.input
+      ? `${activity.input.method} · ${activity.input.outcome}${activity.input.activation ? " · activated target" : ""}`
+      : null,
     activity.target
       ? `Target ${activity.target.targetId} · generation ${activity.target.targetGeneration}`
       : null,
