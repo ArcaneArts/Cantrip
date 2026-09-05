@@ -102,7 +102,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
   applicationRoutes:
-    "5ec753c518253bdcf5d5b1f107039887ca8a4bc4358a23bfebeb5bad518c23de",
+    "ce16a76e2d04aa4bdd73d47e7e61948202beb238fd6a7a3e10108edbe430e8e3",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -3501,6 +3501,13 @@ function durableTableContentInventory(schemaText) {
 
 function applicationRouteContentClassification(route) {
   const key = `${route.method} ${route.path}`;
+  if (key === "POST /api/internal/computer-use/authority") {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "worker-authenticated exact owner/chat/worker/lane/placement authorization; returns current policy and authority generation only, never native targets, paths, cursor labels, or pixels; actual native turn resolution remains worker-owned",
+    };
+  }
   if (key === "POST /api/chats/:chatId/computer-use/operation") {
     return {
       classification: "endpoint-protected",

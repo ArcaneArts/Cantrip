@@ -36,6 +36,9 @@ export class CuaApprovalError extends Error {
       | "revoked"
       | "expired"
       | "capacity"
+      | "cancelled"
+      | "denied"
+      | "publication-failed"
       | "invalid-response"
       | "encryption-unavailable"
       | "ownership-mismatch",
@@ -46,6 +49,10 @@ export class CuaApprovalError extends Error {
         revoked: "This computer-use approval is no longer active.",
         expired: "This computer-use approval expired.",
         capacity: "Computer-use approval capacity was reached.",
+        cancelled: "This computer-use approval call was cancelled.",
+        denied: "Computer-use permission was denied.",
+        "publication-failed":
+          "The computer-use approval could not be published.",
         "invalid-response":
           "The response does not match the requested computer-use permissions.",
         "encryption-unavailable":
@@ -84,6 +91,22 @@ interface Entry {
   request: Promise<EncryptedAgentInteractionRequestCreate>;
   timer: ReturnType<typeof setTimeout>;
   abort: () => void;
+  decision: Promise<ApprovalDecision>;
+  decide: (decision: ApprovalDecision) => void;
+  waiter?: Waiter;
+}
+type ApprovalDecision = { remaining: number } | CuaApprovalError;
+interface AuthorizationInput {
+  context: CuaApprovalContext;
+  operation: ComputerUseOperation;
+  target?: CuaTargetReference | null;
+}
+interface Waiter {
+  context: CuaApprovalContext;
+  entry?: Entry;
+  cancelled: CuaApprovalError | null;
+  cancellation: Promise<CuaApprovalError>;
+  cancel: (error: CuaApprovalError) => void;
 }
 interface Grant {
   context: CuaApprovalContext;
@@ -106,9 +129,9 @@ export interface CuaApprovalManagerOptions {
   now?: () => number;
 }
 
-/** No native work or automatic replay. A pending decision contains the exact
- * protected durable request; the caller records it and returns approval-required.
- * After approval, a new authorized invocation consumes the appropriate grant. */
+/** No native work or automatic replay. Preview callers receive the exact
+ * protected request and consume its grant on retry. Agent callers can instead
+ * await that decision and resume the same suspended action exactly once. */
 export class CuaApprovalManager {
   private pending = new Map<string, Entry>();
   private byKey = new Map<string, Entry>();
@@ -118,6 +141,7 @@ export class CuaApprovalManager {
   private revokedLeases = new WeakSet<AbortSignal>();
   private nextLease = 0;
   private closed = false;
+  private waiters = new Set<Waiter>();
 
   constructor(private readonly options: CuaApprovalManagerOptions) {}
 
@@ -143,11 +167,141 @@ export class CuaApprovalManager {
       : null;
   }
 
-  async authorize(input: {
-    context: CuaApprovalContext;
-    operation: ComputerUseOperation;
-    target?: CuaTargetReference | null;
-  }): Promise<
+  authorize(input: AuthorizationInput) {
+    return this.authorizeRequest(input);
+  }
+
+  /** Resume one suspended host call, never replay its enclosing script. The
+   * actual execution lifetime and transient call cancellation stay distinct. */
+  async authorizeAndWait(
+    input: AuthorizationInput & {
+      signal?: AbortSignal;
+      publish: (
+        request: EncryptedAgentInteractionRequestCreate,
+      ) => Promise<void>;
+    },
+  ): Promise<void> {
+    this.ensureOpen();
+    const context = this.context(input.context);
+    // Stop uses existing authenticated ownership, never waiter capacity,
+    // publication, or a transient call/turn cancellation gate.
+    if (input.operation === "session.close") {
+      await this.authorizeRequest({ ...input, context });
+      return;
+    }
+    if (input.signal?.aborted) throw new CuaApprovalError("cancelled");
+    if (this.waiters.size >= MAX_PENDING)
+      throw new CuaApprovalError("capacity");
+    let cancel!: (error: CuaApprovalError) => void;
+    const cancellation = new Promise<CuaApprovalError>((resolve) => {
+      cancel = resolve;
+    });
+    const waiter: Waiter = {
+      context,
+      cancelled: null,
+      cancellation,
+      cancel: (error) => {
+        if (waiter.cancelled) return;
+        waiter.cancelled = error;
+        cancel(error);
+        if (waiter.entry)
+          this.remove(
+            waiter.entry,
+            error.code === "expired" ? "expired" : "interrupted",
+          );
+      },
+    };
+    this.waiters.add(waiter);
+    const checkCancellation = () => {
+      if (waiter.cancelled) throw waiter.cancelled;
+    };
+    const abortCall = () => waiter.cancel(new CuaApprovalError("cancelled"));
+    const abortContext = () => waiter.cancel(new CuaApprovalError("revoked"));
+    input.signal?.addEventListener("abort", abortCall, { once: true });
+    context.signal.addEventListener("abort", abortContext, { once: true });
+    const cancelled = cancellation.then((error) => {
+      throw error;
+    });
+    // Attach the rejection handler before any asynchronous preparation can fail.
+    void cancelled.catch(() => {});
+    const work: Promise<unknown>[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const authorization = this.authorizeRequest(
+        { ...input, context },
+        waiter,
+      );
+      work.push(authorization);
+      const result = await Promise.race([authorization, cancelled]);
+      checkCancellation();
+      if (result.status === "allowed") return;
+      const entry = waiter.entry!;
+      timer = setTimeout(
+        () => waiter.cancel(new CuaApprovalError("expired")),
+        Math.max(0, entry.expiresAt - this.now()),
+      );
+      timer.unref();
+      const publication = Promise.resolve().then(async () => {
+        checkCancellation();
+        try {
+          await input.publish(result.request);
+        } catch {
+          throw new CuaApprovalError("publication-failed");
+        }
+        // A cancelled call returns promptly, but its queued publication may
+        // complete later. Place a terminal event after that publication too.
+        if (waiter.cancelled && waiter.cancelled.code !== "denied") {
+          this.terminal(
+            entry,
+            waiter.cancelled.code === "expired" ? "expired" : "interrupted",
+          );
+          throw waiter.cancelled;
+        }
+      });
+      work.push(publication);
+      const [, decision] = await Promise.race([
+        Promise.all([
+          publication,
+          entry.decision.then((value) => {
+            if (value instanceof CuaApprovalError) throw value;
+            return value;
+          }),
+        ]),
+        cancelled,
+      ]);
+      checkCancellation();
+      if (this.revoked(context)) throw new CuaApprovalError("revoked");
+      if (entry.expiresAt <= this.now()) throw new CuaApprovalError("expired");
+      // The suspended call consumes the first use. Grant visibility begins
+      // only after durable publication succeeded, even if answer arrived first.
+      if (decision.remaining > 1) {
+        if (!this.grants.has(entry.key) && this.grants.size >= MAX_GRANTS)
+          throw new CuaApprovalError("capacity");
+        this.grants.set(entry.key, {
+          context,
+          remaining: decision.remaining - 1,
+        });
+      }
+    } catch (error) {
+      if (error instanceof CuaApprovalError) waiter.cancel(error);
+      else waiter.cancel(new CuaApprovalError("publication-failed"));
+      throw waiter.cancelled;
+    } finally {
+      clearTimeout(timer);
+      input.signal?.removeEventListener("abort", abortCall);
+      context.signal.removeEventListener("abort", abortContext);
+      waiter.entry = undefined;
+      if (!waiter.cancelled) this.waiters.delete(waiter);
+      // A publisher that ignores cancellation still occupies its bounded slot;
+      // repeated cancelled calls cannot accumulate unbounded orphan publishers.
+      void Promise.allSettled(work).then(() => this.waiters.delete(waiter));
+    }
+  }
+
+  private async authorizeRequest(
+    input: AuthorizationInput,
+    waiter?: Waiter,
+  ): Promise<
     | { status: "allowed" }
     | {
         status: "approval-required";
@@ -177,6 +331,13 @@ export class CuaApprovalManager {
       return { status: "allowed" };
     }
     this.grants.delete(key);
+    if (
+      [...this.waiters].some(
+        (other) =>
+          other !== waiter && !other.cancelled && other.entry?.key === key,
+      )
+    )
+      throw new CuaApprovalError("capacity");
     let entry = this.byKey.get(key);
     if (entry && entry.expiresAt <= this.now()) {
       this.remove(entry, "expired");
@@ -198,6 +359,10 @@ export class CuaApprovalManager {
       }, APPROVAL_LIFETIME_MS);
       timer.unref();
       const request = this.protect(context, requestKey, expiresAt, permissions);
+      let decide!: (decision: ApprovalDecision) => void;
+      const decision = new Promise<ApprovalDecision>((resolve) => {
+        decide = resolve;
+      });
       entry = {
         context,
         key,
@@ -207,10 +372,16 @@ export class CuaApprovalManager {
         request,
         timer,
         abort,
+        decision,
+        decide,
       };
       this.pending.set(requestKey, entry);
       this.byKey.set(key, entry);
       context.signal.addEventListener("abort", abort, { once: true });
+    }
+    if (waiter) {
+      waiter.entry = entry;
+      entry.waiter = waiter;
     }
     try {
       const request = await entry.request;
@@ -294,16 +465,16 @@ export class CuaApprovalManager {
       this.grants.size >= MAX_GRANTS
     )
       throw new CuaApprovalError("capacity");
-    if (!denied)
+    const remaining =
+      response.scope === "turn" && context.scope.turnId === null ? 1 : Infinity;
+    if (!denied && !entry.waiter)
       this.grants.set(entry.key, {
         context,
         // An idle preview has no native turn: the UI's turn choice is one use,
         // never a fabricated turn or an indefinite grant.
-        remaining:
-          response.scope === "turn" && context.scope.turnId === null
-            ? 1
-            : Infinity,
+        remaining,
       });
+    entry.decide(denied ? new CuaApprovalError("denied") : { remaining });
     this.remove(entry);
     this.completed.set(command.requestKey, { context, responseDigest });
     while (this.completed.size > MAX_COMPLETED)
@@ -415,18 +586,33 @@ export class CuaApprovalManager {
     clearTimeout(entry.timer);
     entry.context.signal.removeEventListener("abort", entry.abort);
     if (status) {
-      try {
+      const error = new CuaApprovalError(
+        status === "expired" ? "expired" : "revoked",
+      );
+      entry.decide(error);
+      entry.waiter?.cancel(error);
+      this.terminal(entry, status);
+    }
+  }
+  private terminal(entry: Entry, status: "expired" | "interrupted") {
+    try {
+      void Promise.resolve(
         this.options.onTerminal?.({
           requestKey: entry.requestKey,
           chatId: entry.context.scope.chatId,
           status,
-        });
-      } catch {
-        /* Observer failures cannot revive authority. */
-      }
+        }),
+      ).catch(() => {});
+    } catch {
+      /* Observer failures cannot revive authority. */
     }
   }
   private revoke(matches: (context: CuaApprovalContext) => boolean) {
+    for (const waiter of this.waiters)
+      if (matches(waiter.context)) {
+        this.revokedLeases.add(waiter.context.signal);
+        waiter.cancel(new CuaApprovalError("revoked"));
+      }
     for (const entry of this.pending.values())
       if (matches(entry.context)) {
         this.revokedLeases.add(entry.context.signal);

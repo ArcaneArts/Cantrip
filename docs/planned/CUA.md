@@ -624,7 +624,9 @@ is the authoritative merge record until the next ledger update.
 - Branch: `codex/cua-08b-bounded-javascript`, based on merged cycle 8a2
   (`2767e948a`). [PR #1746](https://github.com/ArcaneArts/Cantrip/pull/1746),
   implementation commit `09a4cab1b657cf748eef47792e15cadbded1762e`.
-  Local implementation and validation complete; cross-platform CI/merge pending.
+  Merged at `2026-09-05T04:21:45Z` as
+  `fb0111e2ab5eb024061105dcbe02f99cd9397cdc`. Primary fast-forwarded;
+  only the cycle-owned worktree and branch were removed.
 - Scope: persistent, bounded Rust JavaScript contexts and a payload-free host
   rendezvous through the existing worker-owned process. No managed MCP tool is
   enabled in this pass. Native input, filesystem, network, clipboard and extra
@@ -656,14 +658,60 @@ is the authoritative merge record until the next ledger update.
   Initial cross-platform CI stopped at a Rust 1.95 `collapsible_match` lint;
   PostgreSQL passed. Follow-up `b9058e55993cbef5c47453df1fa3271536510daa`
   uses the equivalent match guard. Local strict Clippy and all 79 Rust tests
-  also pass on the exact CI toolchain, 1.95.0. Cross-platform rerun remains
-  pending. Real native unlocked-window QA remains pending;
+  also pass on the exact CI toolchain, 1.95.0. Final-head CI run `33944184455`
+  passed macOS, Windows, Linux and PostgreSQL before auto-merge was requested.
+  Real native unlocked-window QA remains pending;
   this pass does not request Screen Recording or change helper identity. The
   subsequent managed-MCP pass must connect actual turn provenance, durable
   approval waits, cancellation and protected image redaction before activation.
-- Remaining first-tranche work: complete and verify this runtime pass, managed
+- Remaining first-tranche work: managed
   MCP, protected Trajectory, native/window/release QA and final hardening.
   Later-tranche deferrals remain unchanged.
+
+### Tranche cycle 8c1 — Current agent authority, approval waits, and image redaction
+
+- Branch: `codex/cua-08c1-agent-authority`, based on merged cycle 8b
+  (`fb0111e2a`). [PR #1747](https://github.com/ArcaneArts/Cantrip/pull/1747),
+  implementation commit `ecea7a7690de4d0f7a0f7c8dc8e1d9be618589ab`.
+  Local validation complete; portable CI and merge pending.
+- Scope: prerequisites for managed MCP activation. The server exposes a
+  worker-authenticated CUA authority route using the existing agent-tools
+  credential scope. Every request reads current durable placement and selected/
+  effective policy. It does not accept client policy claims, follow another lane,
+  infer a native turn from server UI status, cache permission, or probe native
+  readiness. The worker client snapshots its attachment before awaiting the
+  response and composes caller cancellation with a bounded request deadline.
+- Approval waits resume the original suspended action after its exact protected
+  request is published and approved. Denial, expiry, publication failure,
+  revocation and per-call cancellation settle it without replay. A raced approval
+  cannot leak a grant from a failed publication. Stop does not consume a waiter.
+  Existing preview approval/retry remains a separate, preserved path.
+- Raw Trajectory capture omits nested MCP image and typed-binary payloads while
+  leaving the actual model result unchanged. Ordinary text is not classified as
+  image data merely because it resembles base64. No second pixel audit store.
+- Activation: no agent-facing tool is enabled by this cycle. The next pass must
+  connect the actual root/child runtime turn, all-lifetime Stop/revocation,
+  dedicated durable event publication, MCP metadata/cancellation, model-sized
+  image output and CUA-only approval-compatible deadlines before activation.
+- Validation: 885 focused CUA boundary tests passed (76 protocol, 24 crypto,
+  457 worker, 170 server, 158 client); two PostgreSQL cases await dedicated CI.
+  The server cases include the real worker HTTP authority client. All 552
+  protocol tests and 79 Rust tests passed; Rust 1.95 strict all-targets Clippy
+  and formatting passed. Script tests: 43 passed, one explicit native-GUI skip.
+  Worker/server typecheck and builds, changed-file formatting, large-file and
+  diff checks passed. The reviewed server boundary inventory adds only the
+  credential-protected authority route and its metadata classification; its
+  regenerated audit passes. Review found and fixed publication/admission and
+  final-response cancellation races with deterministic regressions.
+- Platform/manual: portable CI/merge pending. Local native execution in this
+  pass uses the deterministic fake backend, not unlocked-window capture.
+  No Screen Recording prompt, native GUI action, helper identity change or
+  new native platform support is part of this pass. Existing unlocked-window,
+  packaged signing/permission continuity and final regression work remain open.
+- Remaining first-tranche work: managed MCP activation and end-to-end tests,
+  protected operation Trajectory, native/window/release QA and final hardening.
+  Native input, Accessibility, human event taps, clipboard/filesystem mutations,
+  other native operating systems and cross-worker control remain deferred.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of
