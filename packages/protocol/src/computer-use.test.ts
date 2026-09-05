@@ -293,7 +293,7 @@ describe("browser-compatible CUA geometry and cursor schemas", () => {
     ).toBe(false);
     expect(cuaCapabilitiesSchema.safeParse(capabilities).success).toBe(true);
     expect(
-      cuaCapabilitiesSchema.safeParse({ ...capabilities, nativeInput: true })
+      cuaCapabilitiesSchema.safeParse({ ...capabilities, nativeInput: "yes" })
         .success,
     ).toBe(false);
   });

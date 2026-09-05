@@ -4,6 +4,7 @@ import {
   cuaBindingSchema,
   cuaIdSchema,
   cuaImageSchema,
+  cuaInputReceiptSchema,
   cuaSessionSchema,
   cuaTargetReferenceSchema,
 } from "./computer-use.js";
@@ -157,6 +158,18 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
       binding: cuaBindingSchema.extend({ sessionId: cuaIdSchema.nullable() }),
       target: cuaTargetReferenceSchema.nullable(),
       cursor: cuaSessionSchema.shape.cursor.nullable(),
+      input: cuaInputReceiptSchema
+        .extend({
+          outcome: z.enum([
+            "dispatched",
+            "unknown",
+            "failed",
+            "declined",
+            "cancelled",
+          ]),
+        })
+        .nullable()
+        .optional(),
       observation: z
         .strictObject({
           revision: z.number().int().positive().safe(),

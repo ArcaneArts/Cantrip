@@ -1,5 +1,6 @@
 //! ScreenCaptureKit stays on native callback lifetimes. No ObjC object crosses
 //! the Rust channel; the executor receives owned metadata or bounded RGBA only.
+mod accessibility;
 mod geometry;
 mod pending;
 mod registry;
@@ -165,6 +166,7 @@ pub fn run() -> std::io::Result<()> {
 #[derive(Default)]
 pub struct MacOsBackend {
     calls: NativeCalls,
+    accessibility: accessibility::Accessibility,
     registry: Registry,
     truncated: bool,
 }
@@ -215,6 +217,30 @@ impl MacOsBackend {
 }
 
 impl CaptureBackend for MacOsBackend {
+    fn native_input(&self) -> bool {
+        true
+    }
+    fn clear_controls(&mut self, session: &str) {
+        self.accessibility.clear(session);
+    }
+    fn controls(
+        &mut self,
+        session: &str,
+        target: &Target,
+        cancel: &Cancellation,
+    ) -> Result<crate::input::Controls> {
+        self.accessibility.inspect(session, target, cancel)
+    }
+    fn press(
+        &mut self,
+        session: &str,
+        target: &Target,
+        reference: &str,
+        cancel: &Cancellation,
+    ) -> Result<crate::input::InputReceipt> {
+        self.accessibility.press(session, target, reference, cancel)
+    }
+
     fn name(&self) -> &'static str {
         "macos-screencapturekit"
     }

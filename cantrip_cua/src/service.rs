@@ -99,6 +99,19 @@ pub enum Operation {
         target_generation: u64,
         position: Point,
     },
+    #[serde(rename = "controls.inspect", rename_all = "camelCase")]
+    ControlsInspect {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+    },
+    #[serde(rename = "input.press", rename_all = "camelCase")]
+    InputPress {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+        reference: String,
+    },
     #[serde(rename = "session.close")]
     SessionClose { binding: SessionBinding },
     #[serde(rename = "javascript.evaluate", rename_all = "camelCase")]
@@ -236,13 +249,16 @@ impl<B: CaptureBackend> CuaService<B> {
                     "cursor.move",
                     "session.close",
                 ];
+                if self.backend.native_input() {
+                    operations.extend(["controls.inspect", "input.press"]);
+                }
                 if self.javascript {
                     operations.extend(["javascript.evaluate", "javascript.reset"]);
                 }
                 Ok(OperationResult::json(json!({
                     "protocolVersion": PROTOCOL_VERSION, "runtimeVersion": env!("CARGO_PKG_VERSION"),
                     "backend": self.backend.name(), "capture": self.backend.available(),
-                    "nativeInput": false, "javascript": self.javascript, "cursorAppearanceVersion": 1,
+                    "nativeInput": self.backend.native_input(), "javascript": self.javascript, "cursorAppearanceVersion": 1,
                     "operations": operations,
                     "maxSessions": MAX_SESSIONS, "maxImageBytes": MAX_PAYLOAD_BYTES,
                 })))
@@ -305,6 +321,7 @@ impl<B: CaptureBackend> CuaService<B> {
                 if state.target.as_ref().is_none_or(|previous| {
                     previous.id != target.id || previous.generation != target.generation
                 }) {
+                    self.backend.clear_controls(&binding.session_id);
                     let appearance = state.cursor.appearance.clone();
                     state.cursor = CursorState::default();
                     state.cursor.configure(appearance, now_ms)?;
@@ -316,6 +333,7 @@ impl<B: CaptureBackend> CuaService<B> {
             }
             Operation::TargetDetach { binding } => {
                 let mut state = self.session(&binding)?.clone();
+                self.backend.clear_controls(&binding.session_id);
                 state.target = None;
                 state.cursor.trail_points.clear();
                 cancel.check()?;
@@ -433,9 +451,51 @@ impl<B: CaptureBackend> CuaService<B> {
                     event: Some(("snapshotCompleted", binding.session_id)),
                 })
             }
+            Operation::ControlsInspect {
+                binding,
+                target_id,
+                target_generation,
+            } => {
+                let mut state = self.attached(&binding, &target_id, target_generation)?;
+                let target = self
+                    .backend
+                    .resolve_target(&target_id, target_generation, cancel)?;
+                let controls = self
+                    .backend
+                    .controls(&binding.session_id, &target, cancel)?;
+                cancel.check()?;
+                state.target = Some(target);
+                self.sessions
+                    .insert(binding.session_id.clone(), state.clone());
+                Ok(OperationResult::json(
+                    json!({"session": state, "inspection": controls}),
+                ))
+            }
+            Operation::InputPress {
+                binding,
+                target_id,
+                target_generation,
+                reference,
+            } => {
+                validate_id(&reference)?;
+                let mut state = self.attached(&binding, &target_id, target_generation)?;
+                let target = self
+                    .backend
+                    .resolve_target(&target_id, target_generation, cancel)?;
+                let input = self
+                    .backend
+                    .press(&binding.session_id, &target, &reference, cancel)?;
+                state.target = Some(target);
+                self.sessions
+                    .insert(binding.session_id.clone(), state.clone());
+                Ok(OperationResult::json(
+                    json!({"session": state, "input": input}),
+                ))
+            }
             Operation::SessionClose { binding } => {
                 self.session(&binding)?;
                 cancel.check()?;
+                self.backend.clear_controls(&binding.session_id);
                 self.sessions.remove(&binding.session_id);
                 Ok(OperationResult {
                     data: json!({ "closed": true }),

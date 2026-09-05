@@ -22,6 +22,9 @@ pub enum ErrorCode {
     TargetNotFound,
     StaleTarget,
     CaptureFailed,
+    StaleElement,
+    InputUnknown,
+    InputFailed,
     PermissionDenied,
 }
 

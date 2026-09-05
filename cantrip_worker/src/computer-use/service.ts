@@ -19,6 +19,10 @@ import {
   cuaIdSchema,
   cuaSessionResultSchema,
   cuaSnapshotSchema,
+  cuaControlsResultSchema,
+  cuaInputResultSchema,
+  type CuaControlsResult,
+  type CuaInputResult,
   type CuaBinding,
   type CuaCapabilities,
   type CuaCursorAppearance,
@@ -407,7 +411,7 @@ export class CantripCuaService {
     fields: object,
     signal: AbortSignal,
     snapshot = false,
-  ): Promise<CuaSession | CuaSnapshot> {
+  ): Promise<CuaSession | CuaSnapshot | CuaControlsResult | CuaInputResult> {
     const active = AbortSignal.any([signal, record.controller.signal]);
     const previous = record.queue;
     const work = (async () => {
@@ -429,7 +433,14 @@ export class CantripCuaService {
       const snapshotData = snapshot
         ? this.parse(record.runtime, cuaSnapshotSchema, response.data)
         : null;
+      const extra =
+        operation === "controls.inspect"
+          ? this.parse(record.runtime, cuaControlsResultSchema, response.data)
+          : operation === "input.press"
+            ? this.parse(record.runtime, cuaInputResultSchema, response.data)
+            : null;
       const data =
+        extra ??
         snapshotData ??
         this.parse(record.runtime, cuaSessionResultSchema, response.data);
       if (
@@ -479,7 +490,9 @@ export class CantripCuaService {
       record.state = data.session;
       return snapshotData
         ? { ...structuredClone(snapshotData), payload: response.payload }
-        : structuredClone(data.session);
+        : extra
+          ? structuredClone(extra)
+          : structuredClone(data.session);
     })();
     record.queue = previous
       .then(() => work)
@@ -566,6 +579,38 @@ export class CantripCuaService {
       },
       signal,
     ) as Promise<CuaSession>;
+  }
+  controls(
+    input: CuaScope,
+    sessionId: string,
+    target: CuaTargetReference,
+    signal?: AbortSignal,
+  ) {
+    return this.mutate(
+      input,
+      sessionId,
+      "controls.inspect",
+      cuaTargetReferenceSchema.parse(target),
+      signal,
+    ) as Promise<CuaControlsResult>;
+  }
+  press(
+    input: CuaScope,
+    sessionId: string,
+    target: CuaTargetReference,
+    reference: string,
+    signal?: AbortSignal,
+  ) {
+    return this.mutate(
+      input,
+      sessionId,
+      "input.press",
+      {
+        ...cuaTargetReferenceSchema.parse(target),
+        reference: cuaIdSchema.parse(reference),
+      },
+      signal,
+    ) as Promise<CuaInputResult>;
   }
   snapshot(
     input: CuaScope,

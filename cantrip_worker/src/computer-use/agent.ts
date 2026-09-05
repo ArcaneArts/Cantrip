@@ -91,6 +91,8 @@ const operations: Record<
   cursor: "session.state",
   configureCursor: "cursor.configure",
   moveCursor: "cursor.move",
+  controls: "controls.inspect",
+  press: "input.press",
   detach: "target.detach",
 };
 

@@ -28,6 +28,8 @@ const expectedClasses: Record<ComputerUseOperation, CuaPermissionClass[]> = {
   "target.detach": ["cursor"],
   "cursor.configure": ["cursor"],
   "cursor.move": ["cursor"],
+  "controls.inspect": ["controls"],
+  "input.press": ["native-input"],
   "observation.snapshot": ["capture"],
   "session.close": [],
 };
