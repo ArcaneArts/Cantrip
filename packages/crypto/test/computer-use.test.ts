@@ -755,3 +755,90 @@ describe("protected computer-use results", () => {
     opened.payload?.fill(0);
   });
 });
+
+describe("protected completed agent observations", () => {
+  it("transports the model rendition with exact source attribution and rejects another preview lease", async () => {
+    const fixture = imageFixture();
+    if (fixture.result.status !== "ok" || !("image" in fixture.result.data))
+      throw new Error("Invalid fixture");
+    const original = fixture.result.data;
+    const session = {
+      ...original.session,
+      binding: {
+        ...original.session.binding,
+        threadId: "child-thread",
+        turnId: "actual-turn",
+      },
+      target: {
+        ...original.session.target!,
+        pixelWidth: 2,
+        pixelHeight: 2,
+        scaleFactor: 2,
+      },
+      observationRevision: 1,
+    };
+    const source = {
+      sourceId: otherOperationId,
+      rootThreadId: "root-thread",
+      binding: session.binding,
+      target: session.target,
+      cursorRevision: session.cursor.revision,
+      observationRevision: 1,
+      observedAtMs: 100,
+    };
+    const result = computerUseResultContentSchema.parse({
+      status: "ok",
+      operation: "agent.observation.get",
+      chunkCount: 1,
+      data: {
+        source,
+        session,
+        image: original.image,
+        nativeImage: {
+          ...original.image,
+          width: 2,
+          height: 2,
+          byteCount: 999,
+          sha256: "ab".repeat(32),
+        },
+      },
+    });
+    const scoped = {
+      ...context,
+      operation: "agent.observation.get" as const,
+      previewLeaseId: otherOperationId,
+    };
+    const events: ComputerUseChunkEvent[] = [];
+    const response = await protectComputerUseResult({
+      context: scoped,
+      result,
+      payload: fixture.payload,
+      seal: crypto().seal,
+      emit: async (event) => {
+        events.push(event);
+      },
+    });
+    const opened = await openComputerUseResult({
+      context: scoped,
+      opaque: response,
+      chunks: events,
+      open: crypto().open,
+    });
+    expect(opened.result).toEqual(result);
+    expect(opened.payload).toEqual(fixture.payload);
+    expect(JSON.stringify({ response, events })).not.toContain("child-thread");
+    expect(JSON.stringify({ response, events })).not.toContain(
+      "private-title-fixture",
+    );
+    await expect(
+      openComputerUseResult({
+        context: { ...scoped, previewLeaseId: context.operationId },
+        opaque: response,
+        chunks: events,
+        open: crypto().open,
+      }),
+    ).rejects.toThrow();
+    opened.payload?.fill(0);
+    fixture.payload.fill(0);
+  });
+});

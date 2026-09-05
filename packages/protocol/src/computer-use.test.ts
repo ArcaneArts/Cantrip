@@ -12,6 +12,8 @@ import {
   computerUseResponseSchema,
   computerUseResultContentSchema,
   cuaBindingSchema,
+  cuaAgentObservationSchema,
+  cuaAgentSourcesSchema,
   cuaCapabilitiesSchema,
   cuaCursorAppearanceSchema,
   cuaIdSchema,
@@ -88,8 +90,32 @@ const capabilities = {
   maxSessions: 16,
   maxImageBytes: CUA_CHUNK_BYTES * CUA_MAX_CHUNKS,
 };
+
+const agentCaptured = {
+  ...session,
+  binding: { ...binding, threadId: "child", turnId: "turn" },
+  observationRevision: 1,
+};
+const agentSource = {
+  sourceId: operationId,
+  rootThreadId: "root",
+  binding: agentCaptured.binding,
+  target,
+  cursorRevision: agentCaptured.cursor.revision,
+  observationRevision: agentCaptured.observationRevision,
+  observedAtMs: 100,
+};
+const agentObservation = {
+  source: agentSource,
+  session: agentCaptured,
+  image,
+  nativeImage: { ...image, width: 1280, height: 720 },
+};
+
 const actions = [
   { operation: "capabilities.get" },
+  { operation: "agent.sources.list" },
+  { operation: "agent.observation.get", sourceId: operationId },
   { operation: "targets.list" },
   { operation: "session.open", ...targetRef },
   { operation: "session.state", sessionId: "session" },
@@ -435,20 +461,28 @@ describe("operation-bound decrypted CUA result metadata", () => {
     "validates data and chunk count for $operation",
     ({ operation }) => {
       const data =
-        operation === "capabilities.get"
-          ? capabilities
-          : operation === "targets.list"
-            ? { targets: [target] }
-            : operation === "session.close"
-              ? { closed: true }
-              : operation === "observation.snapshot"
-                ? { session, image }
-                : { session };
+        operation === "agent.sources.list"
+          ? { sources: [agentSource] }
+          : operation === "agent.observation.get"
+            ? agentObservation
+            : operation === "capabilities.get"
+              ? capabilities
+              : operation === "targets.list"
+                ? { targets: [target] }
+                : operation === "session.close"
+                  ? { closed: true }
+                  : operation === "observation.snapshot"
+                    ? { session, image }
+                    : { session };
       const result = {
         status: "ok",
         operation,
         data,
-        chunkCount: operation === "observation.snapshot" ? 2 : 0,
+        chunkCount:
+          operation === "observation.snapshot" ||
+          operation === "agent.observation.get"
+            ? 2
+            : 0,
       };
       expect(computerUseResultContentSchema.safeParse(result).success).toBe(
         true,
@@ -519,5 +553,77 @@ describe("operation-bound decrypted CUA result metadata", () => {
         computerUseResultContentSchema.safeParse({ ...error, ...fields })
           .success,
       ).toBe(false);
+  });
+});
+
+describe("completed agent observation contract", () => {
+  const captured = agentCaptured;
+  const source = agentSource;
+  const observation = agentObservation;
+
+  it("keeps actual child attribution and native geometry separate from the model rendition", () => {
+    expect(cuaAgentObservationSchema.parse(observation)).toEqual(observation);
+    const result = {
+      status: "ok",
+      operation: "agent.observation.get",
+      data: observation,
+      chunkCount: 2,
+    };
+    expect(computerUseResultContentSchema.parse(result)).toEqual(result);
+    expect(
+      computerUseResultContentSchema.safeParse({ ...result, chunkCount: 0 })
+        .success,
+    ).toBe(false);
+    expect(
+      computerUseResultContentSchema.safeParse({
+        ...result,
+        operation: "observation.snapshot",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects fabricated idle attribution, mismatched captured state, and oversized renditions", () => {
+    for (const changed of [
+      { source: { ...source, binding: { ...captured.binding, turnId: null } } },
+      {
+        source: {
+          ...source,
+          binding: { ...captured.binding, threadId: "other" },
+        },
+      },
+      { source: { ...source, target: { ...target, generation: 2 } } },
+      { source: { ...source, cursorRevision: 2 } },
+      { source: { ...source, observationRevision: 2 } },
+      { image: { ...image, width: 1281 } },
+      { image: { ...image, byteCount: 2.5 * 1024 * 1024 + 1 } },
+    ])
+      expect(
+        cuaAgentObservationSchema.safeParse({ ...observation, ...changed })
+          .success,
+      ).toBe(false);
+    expect(
+      computerUseActionSchema.safeParse({
+        operation: "agent.observation.get",
+        sourceId: operationId,
+        threadId: "caller-claim",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds source inventory and requires distinct opaque source identifiers", () => {
+    expect(cuaAgentSourcesSchema.parse({ sources: [source] }).sources).toEqual([
+      source,
+    ]);
+    expect(
+      cuaAgentSourcesSchema.safeParse({ sources: [source, source] }).success,
+    ).toBe(false);
+    const sources = Array.from({ length: 5 }, (_, i) => ({
+      ...source,
+      sourceId: `acfe5a5c-23b9-4dc2-a43b-04acf2d57d6${i}`,
+    }));
+    expect(cuaAgentSourcesSchema.safeParse({ sources }).success).toBe(false);
+    expect(
+      cuaAgentSourcesSchema.safeParse({ sources: sources.slice(0, 4) }).success,
+    ).toBe(true);
   });
 });

@@ -70,6 +70,9 @@ const cuaRuntimeExports = [
   "computerUseRequestSchema",
   "computerUseResponseSchema",
   "computerUseResultContentSchema",
+  "cuaAgentObservationSchema",
+  "cuaAgentSourceSchema",
+  "cuaAgentSourcesSchema",
   "cuaApprovalRequestEventSchema",
   "cuaApprovalTerminalSchema",
   "cuaBindingSchema",
@@ -104,7 +107,7 @@ describe("protocol public surface compatibility", () => {
       (name) => !cuaRuntimeExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(1_983);
+    expect(exportNames).toHaveLength(1_986);
     expect(
       exportNames.filter((name) => cuaRuntimeExports.includes(name)),
     ).toEqual(cuaRuntimeExports);

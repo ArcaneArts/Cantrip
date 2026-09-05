@@ -6,7 +6,11 @@ import {
   cuaAgentAuthoritySchema,
   type CuaAgentAuthority,
 } from "@cantrip/protocol/computer-use-agent";
-import type { CuaPreviewRevocation } from "@cantrip/protocol/computer-use-preview";
+import {
+  cuaPreviewAuthoritySchema,
+  type CuaPreviewAuthority,
+  type CuaPreviewRevocation,
+} from "@cantrip/protocol/computer-use-preview";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { CodexComputerUseExecution } from "../codex/execution-lifetime.js";
 import type { CuaMcpRequest } from "../mcp/cua-contract.js";
@@ -15,6 +19,7 @@ import {
   type CuaAgentApprovalPublisher,
 } from "./agent-approval-events.js";
 import { CuaApprovalManager } from "./approvals.js";
+import { CuaAgentObservations } from "./agent-observations.js";
 import { CuaAuthorizationError } from "./handler.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import type { CuaJavascriptAction } from "./javascript.js";
@@ -90,6 +95,7 @@ const operations: Record<
 export class CuaAgentCoordinator {
   private registrations = new Set<Registration>();
   private closed = false;
+  private readonly observations = new CuaAgentObservations();
   constructor(private readonly options: CuaAgentCoordinatorOptions) {}
 
   register(command: CuaAgentCommand): () => Promise<void> {
@@ -204,6 +210,7 @@ export class CuaAgentCoordinator {
         native.signal.addEventListener(
           "abort",
           () => {
+            this.observations.clear(retained);
             this.options.approvals.revokeContext(retained.signal);
             this.options.service.cancelScope(retained.scope);
             record.lifetimes.delete(native.signal);
@@ -226,6 +233,9 @@ export class CuaAgentCoordinator {
     // Snapshot broker claims before a renewal can change its selected lane.
     const claims = structuredClone(binding);
     const { record, lifetime } = this.resolve(claims, request);
+    // Clear before authority refresh or evaluation. Even a failed next call
+    // invalidates the prior image, and overlapping calls cannot restore it.
+    const token = this.observations.begin(lifetime);
     const work = this.invoke(
       record,
       lifetime,
@@ -233,7 +243,11 @@ export class CuaAgentCoordinator {
       request,
       requestId,
       signal,
-    );
+      token,
+    ).catch((error: unknown) => {
+      this.observations.clear(lifetime, token);
+      throw error;
+    });
     record.calls.add(work);
     void work.finally(() => record.calls.delete(work)).catch(() => {});
     return work;
@@ -272,6 +286,7 @@ export class CuaAgentCoordinator {
     request: CuaMcpRequest,
     requestId: string,
     signal: AbortSignal,
+    token: symbol,
   ): Promise<CallToolResult> {
     const active = AbortSignal.any([signal, lifetime.signal]);
     await this.refresh(record, binding, active);
@@ -347,7 +362,7 @@ export class CuaAgentCoordinator {
     );
     const images = await adaptCuaModelImages(result.images, active);
     active.throwIfAborted();
-    return {
+    const response: CallToolResult = {
       content: [
         {
           type: "text",
@@ -361,6 +376,40 @@ export class CuaAgentCoordinator {
         ...images.map((image) => image.content),
       ],
     };
+    const image = images.at(-1);
+    const sessionSignal = image
+      ? this.options.service.javascriptSessionSignal(
+          lifetime.scope,
+          lifetime.signal,
+        )
+      : null;
+    if (image && sessionSignal) {
+      const { executionLaneId: _lane, ...authority } = record.authority;
+      this.observations.publish(lifetime, token, {
+        authority,
+        rootThreadId: record.command.rootThreadId,
+        image,
+        signal: AbortSignal.any([active, sessionSignal]),
+        current: () =>
+          this.options.service.javascriptSession(
+            lifetime.scope,
+            lifetime.signal,
+          ),
+      });
+    }
+    return response;
+  }
+
+  listObservations(authority: CuaPreviewAuthority) {
+    const claims = cuaPreviewAuthoritySchema.parse(authority);
+    this.identity(claims);
+    return this.observations.list(claims);
+  }
+
+  readObservation(authority: CuaPreviewAuthority, sourceId: string) {
+    const claims = cuaPreviewAuthoritySchema.parse(authority);
+    this.identity(claims);
+    return this.observations.read(claims, sourceId);
   }
 
   async answer(command: WorkerComputerUseApprovalResponseCommand) {
@@ -389,6 +438,7 @@ export class CuaAgentCoordinator {
   private cancel(record: Registration) {
     record.controller.abort();
     for (const lifetime of record.lifetimes.values()) {
+      this.observations.clear(lifetime);
       this.options.approvals.revokeContext(lifetime.signal);
       this.options.service.cancelScope(lifetime.scope);
     }
@@ -409,6 +459,7 @@ export class CuaAgentCoordinator {
         r.cancelledThreads.add(threadId);
         for (const lifetime of r.lifetimes.values())
           if (lifetime.native.threadId === threadId) {
+            this.observations.clear(lifetime);
             lifetime.controller.abort();
             this.options.approvals.revokeContext(lifetime.signal);
             this.options.service.cancelScope(lifetime.scope);

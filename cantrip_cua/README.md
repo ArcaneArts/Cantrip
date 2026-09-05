@@ -226,8 +226,8 @@ actual results and outstanding checks.
 Open any project or standalone agent chat and choose **Computer use ·
 Experimental** above the transcript. Desktop, browser and responsive mobile
 clients use the same encrypted app → server → agent-worker route. Opening the
-panel does not launch the helper; **Connect to agent worker** performs its real
-capability request. The default backend uses ScreenCaptureKit on supported
+panel does not launch the helper; **Connect to agent worker** in **Manual preview**
+performs its real capability request. The default backend uses ScreenCaptureKit on supported
 macOS versions; fake pixels are used only by explicitly configured tests.
 
 Choose a monitor/window, request **Snapshot**, or click its displayed image to
@@ -238,7 +238,7 @@ optional bounded label, trail and visibility. **Apply cursor** updates the worke
 state and requests fresh pixels immediately. Images are snapshots, not video;
 they already contain the cursor, so the client never overlays a second cursor.
 
-Preview observers of one chat share a target and cursor. Closing the panel
+Manual preview observers of one chat share a target and cursor. Closing the panel
 disposes local requests, image buffers and object URLs without stopping another
 observer. **Detach target** changes the shared target; **Stop computer use**
 revokes the entire preview lease out of band, even during a pending request or
@@ -252,6 +252,22 @@ an action. A changed account/server cancels the observer; encryption lock clears
 its displayed pixels while preserving Stop. Protected operations are bounded to
 35 seconds, independently from the 30-second Stop deadline. No polling or replay
 loop is added.
+
+Choose **Follow agent** to see an agent's latest completed CUA observation.
+Connect, select a source, and use **Refresh observation** to read its exact model
+image through the encrypted worker route. The panel shows the real root/child
+thread, turn, session and target, with model rendition dimensions separate from
+native capture dimensions. This does not take a new screenshot or apply a second
+cursor overlay. Manual target and cursor actions stay in **Manual preview**.
+
+The worker retains at most four latest agent images, with at most four concurrent
+decoded readers. A new evaluation, reset, failure, cancellation or ended execution
+retires the source and cancels in-flight image delivery. Use **Refresh agent sources**
+and select the new completed source after the agent takes its next snapshot.
+This is a manually refreshed view, not a live stream. Closing an observer or
+switching modes preserves the agent; **Stop computer use** stops the chat's CUA
+lifetimes. Reading an already-authorized protected agent result adds no capture
+approval; the agent's original native operations still use the effective policy.
 
 Focused client and full protected fake-boundary checks:
 

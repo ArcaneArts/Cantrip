@@ -11,6 +11,8 @@ import {
   type ComputerUseSeal,
 } from "@cantrip/crypto";
 import {
+  cuaAgentSourcesSchema,
+  cuaAgentObservationSchema,
   computerUseActionSchema,
   computerUseHttpResultSchema,
   cuaIdSchema,
@@ -487,7 +489,56 @@ export function createComputerUseClient(
         }
         bytes = opened.payload;
         assertEncryption(pending.signal);
-        if (opened.result.status === "ok" && "session" in opened.result.data) {
+        if (
+          opened.result.status === "ok" &&
+          parsed.data.operation === "agent.sources.list"
+        ) {
+          const { sources } = cuaAgentSourcesSchema.parse(opened.result.data);
+          if (
+            sources.some(
+              ({ binding }) =>
+                binding.chatId !== chatId ||
+                binding.workerId !== owned.workerId ||
+                binding.threadId === null ||
+                binding.turnId === null,
+            )
+          ) {
+            throw new ComputerUseClientError(
+              "invalid-response",
+              "The worker returned sources for a different agent execution.",
+            );
+          }
+        } else if (
+          opened.result.status === "ok" &&
+          parsed.data.operation === "agent.observation.get"
+        ) {
+          const { source, session } = cuaAgentObservationSchema.parse(
+            opened.result.data,
+          );
+          const binding = session.binding;
+          if (
+            source.sourceId !== parsed.data.sourceId ||
+            binding.chatId !== chatId ||
+            binding.workerId !== owned.workerId ||
+            binding.threadId === null ||
+            binding.turnId === null ||
+            (Object.keys(binding) as (keyof typeof binding)[]).some(
+              (key) => binding[key] !== source.binding[key],
+            ) ||
+            session.target?.id !== source.target.id ||
+            session.target.generation !== source.target.generation ||
+            session.observationRevision !== source.observationRevision ||
+            session.cursor.revision !== source.cursorRevision
+          ) {
+            throw new ComputerUseClientError(
+              "invalid-response",
+              "The worker returned an observation for a different agent source or execution.",
+            );
+          }
+        } else if (
+          opened.result.status === "ok" &&
+          "session" in opened.result.data
+        ) {
           const { binding, target } = opened.result.data.session;
           if (
             binding.chatId !== chatId ||

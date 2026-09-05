@@ -22,6 +22,10 @@ const operationClasses = {
   // scope, but never a separate operation approval. Stop must remain available.
   "capabilities.get": [],
   "session.close": [],
+  // Read an already-authorized protected agent result in the same chat. These
+  // operations cannot capture, enumerate native targets, or mutate a session.
+  "agent.sources.list": [],
+  "agent.observation.get": [],
   // These operations expose window/monitor metadata, including the current
   // session target. Opening/attaching alone does not capture screen pixels.
   "targets.list": ["inventory"],

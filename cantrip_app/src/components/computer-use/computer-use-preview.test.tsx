@@ -50,6 +50,10 @@ function fixture(patch: Partial<PreviewState> = {}) {
     observationRevision: 1,
   };
   const state: PreviewState = {
+    mode: "manual",
+    sources: [],
+    sourceId: null,
+    agentSource: null,
     phase: "connected",
     busy: false,
     stopping: false,
@@ -84,6 +88,10 @@ function fixture(patch: Partial<PreviewState> = {}) {
     getSnapshot: () => state,
     subscribe: () => () => {},
     connect: vi.fn(),
+    setMode: vi.fn(),
+    selectSource: vi.fn(),
+    refreshSources: vi.fn(),
+    refreshObservation: vi.fn(),
     stop: vi.fn(),
     refreshTargets: vi.fn(),
     selectTarget: vi.fn(),
@@ -232,4 +240,81 @@ describe("ComputerUsePreviewPanel", () => {
     expect(controller.selectTarget).toHaveBeenCalledWith(target);
     await act(async () => renderer.unmount());
   });
+});
+
+it("offers Follow agent with real attribution, one baked image, explicit reads and no cursor controls", async () => {
+  const item = fixture({ mode: "agent" });
+  const source = {
+    sourceId: "00000000-0000-4000-8000-000000000002",
+    rootThreadId: "root-thread",
+    binding: {
+      ...item.state.session!.binding,
+      threadId: "child-thread",
+      turnId: "actual-turn",
+    },
+    target: item.target,
+    cursorRevision: 1,
+    observationRevision: 1,
+    observedAtMs: 1000,
+  };
+  item.state.sources = [source];
+  item.state.sourceId = source.sourceId;
+  item.state.agentSource = source;
+  item.state.observation!.nativeImage = {
+    ...item.state.observation!.metadata.image,
+    width: 1280,
+    height: 720,
+  };
+  const markup = renderToStaticMarkup(
+    <ComputerUsePreviewPanel {...item.props} />,
+  );
+  for (const text of [
+    "Manual preview",
+    "Follow agent",
+    "root-thread",
+    "child-thread",
+    "actual-turn",
+    "session",
+    "worker",
+    "Fake monitor",
+    "Last completed observation",
+    "Native 1280",
+    "Refresh observation",
+  ])
+    expect(markup).toContain(text);
+  expect(markup.match(/<img /gu) ?? []).toHaveLength(1);
+  expect(markup).not.toContain("Monitor or window");
+  expect(markup).not.toContain("Keyboard cursor movement");
+  expect(markup).not.toContain("Detach target");
+  let renderer!: ReactTestRenderer;
+  await act(async () => {
+    renderer = create(<ComputerUsePreviewPanel {...item.props} />);
+  });
+  const imageButton = renderer.root.findByProps({
+    "aria-label": "Latest completed agent observation",
+  });
+  expect(imageButton.props.disabled).toBe(true);
+  await act(async () => imageButton.props.onClick({}));
+  expect(item.controller.move).not.toHaveBeenCalled();
+  await act(async () =>
+    renderer.root
+      .findByProps({ "aria-label": "Agent observation source" })
+      .props.onChange({ currentTarget: { value: source.sourceId } }),
+  );
+  expect(item.controller.selectSource).toHaveBeenCalledWith(source.sourceId);
+  await act(async () =>
+    renderer.root
+      .findAllByType("button")
+      .find((button) => button.props.children === "Refresh observation")!
+      .props.onClick(),
+  );
+  expect(item.controller.refreshObservation).toHaveBeenCalledOnce();
+  await act(async () =>
+    renderer.root
+      .findByProps({ "aria-label": "Preview mode" })
+      .props.onChange({ currentTarget: { value: "manual" } }),
+  );
+  expect(item.controller.setMode).toHaveBeenCalledWith("manual");
+  expect(item.controller.stop).not.toHaveBeenCalled();
+  await act(async () => renderer.unmount());
 });

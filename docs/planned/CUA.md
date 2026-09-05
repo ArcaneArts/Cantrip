@@ -1,9 +1,8 @@
 # Cantrip Computer Use
 
 Status: First-tranche implementation in progress; experimental preview and native
-capture and managed MCP implemented. Native window acceptance, preview/MCP
-observation coordination, protected operation Trajectory, and final verification
-remain incomplete.
+capture, managed MCP and shared agent observations implemented. Protected
+operation Trajectory and final product/release verification remain incomplete.
 
 ## First-tranche implementation progress
 
@@ -804,8 +803,10 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-08d-native-acceptance`, based on merged cycle 8c2
   (`281a4a173`). [PR #1749](https://github.com/ArcaneArts/Cantrip/pull/1749),
-  implementation commit `997af3731`. Local focused/native verification below
-  is complete; portable CI and merge are pending.
+  implementation commit `997af3731`, ledger commit `0d1f3e786`. Squash-merged
+  at `2026-09-05T11:09:36Z` as `38da8c6e53e8039dd24c8bb972546ce6eae85d67`.
+  CI run `33962408503` passed macOS, Windows, Linux and PostgreSQL before
+  auto-merge. Primary was synchronized; the clean cycle worktree/branch removed.
 - Native acceptance exposed a real protocol precision defect: the default JSON
   parser changed certain fractional logical coordinates by one IEEE-754 ULP.
   Enable `serde_json`'s maintained `float_roundtrip` feature. A regression sends
@@ -857,6 +858,72 @@ is the authoritative merge record until the next ledger update.
   Trajectory, standalone release signing and packaged update/permission checks,
   actual `pnpm devtop` acceptance, performance measurements, and final regression
   and completion audit. Later-tranche deferrals remain unchanged.
+
+### Tranche cycle 8e — Observe completed agent images from the shared preview
+
+- Branch: `codex/cua-08e-agent-preview`, based on merged cycle 8d (`38da8c6e5`).
+  Local integration and verification are in progress; no PR or merge claimed yet.
+- Implemented: **Manual preview** / **Follow agent** in the existing shared
+  responsive panel. Follow agent lists actual root/child execution sources and
+  retrieves their latest completed observation through the same protected
+  app/server/worker route. It displays worker, thread, turn, session, target and
+  observation attribution. Manual target/cursor controls are unavailable in
+  this read-only view; the rendered model image already contains its cursor.
+- Worker ownership: the existing coordinator references only the latest
+  immutable model-image string from each active execution, at most four total.
+  The image is not recaptured, resized again or saved in a second store. Original
+  native metadata remains separate from model rendition dimensions/digest.
+  Source IDs are opaque per-completed-evaluation UUIDs, scoped to exact current
+  owner/server/worker/chat/project/placement/generation/profile and real native
+  thread/turn/session. Client source claims never authorize native operations.
+- Lifecycle: next evaluation, reset, error, native helper loss, request cancellation, Stop,
+  revocation, disconnect and actual turn/command completion retire sources.
+  Publication epochs reject late encoder completions. Source retirement aborts
+  a reader already encrypting its copied image, including between accepted
+  encrypted chunks and the final manifest. Four global decoded-reader slots
+  are reserved before base64 decoding and remain held until actual delivery
+  cleanup, even after cancellation. Temporary bytes are cleared on settlement.
+- Observation reads use current authenticated preview authority and existing
+  policy projection. They read already-authorized agent results without an
+  additional capture prompt or native operation. Original agent capture approvals
+  remain mandatory where selected policy requires them. Ordinary observer close
+  and mode changes preserve the agent; explicit Stop remains chat-wide and
+  independent from a pending approval or image read.
+- Verification: 1,057 focused CUA tests pass (103 protocol, 25 crypto,
+  559 worker, 194 server, 176 app). Three explicit skips are the two PostgreSQL
+  cases reserved for dedicated CI and the opt-in native fixture route. Ten
+  new compiled Rust -> actual MCP broker/stdio -> encrypted Fastify route ->
+  app-client tests verify exact image bytes/digest/revisions, decoded cursor
+  pixels at negative desktop origins, two observers, root/child isolation,
+  real reset/next-evaluation/completion/Stop and foreign-authority rejection.
+  Deterministic blocked-publication races prove source invalidation and reader
+  capacity through cleanup. Killing the test-owned Rust helper after an accepted
+  encrypted chunk aborts copied-image delivery and clears its bytes without
+  another list/read or implicit restart; the observer lease remains usable.
+  Worker/server/app builds and app typecheck pass.
+- Browser QA: the actual shared panel/controller with a synthetic endpoint and
+  Rust fake-backend images passed root/child attribution, source retirement,
+  mode switch, delayed-read cancellation, Stop, encryption change and observer
+  reopen checks. The cursor appears once in the image. Six layout checks passed
+  (1150 px and 358 px content widths, matching scroll widths). Structured logs
+  contain 33 pass events and no failures/warnings, including nine byte-cleanup
+  checks, two of them aborted late reads. This proves panel behavior, not a
+  physical mobile device or live-account/native route. Reproducible harness and
+  logs are retained outside the checkout at `/tmp/cua-08e-qa-evidence`.
+- Repository-wide `pnpm check` ran and stopped at existing decomposition
+  budgets: `chat-turn-runtime.ts` has 2156 lines and `task-routes.ts` 2149, each
+  above 1999. Both files are unchanged and have the same counts at the base
+  commit. Later steps of that chained command did not run; focused checks above
+  are separate evidence. Full protocol suite: 606 tests pass.
+- Platforms/manual: local macOS fake backend for these tests; native fixture
+  acceptance remains the separately verified cycle 8d evidence. Portable CI
+  remains pending; no native capture or privacy/signing changes
+  are part of this pass. Live `pnpm devtop`, packaged Tauri, mobile-device and
+  native MCP/observer product acceptance remain final verification work.
+- Remaining tranche work: protected per-operation Trajectory, standalone release
+  signing, installed/packaged update and permission evidence, startup/idle/latency
+  measurements, live product acceptance, and the final regression/completion
+  audit. The full roadmap and later-tranche deferrals below remain unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

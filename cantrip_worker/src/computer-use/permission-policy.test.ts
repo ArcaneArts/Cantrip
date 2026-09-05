@@ -19,6 +19,8 @@ const restricted: CuaPermissionProfile = {
 
 const expectedClasses: Record<ComputerUseOperation, CuaPermissionClass[]> = {
   "capabilities.get": [],
+  "agent.sources.list": [],
+  "agent.observation.get": [],
   "targets.list": ["inventory"],
   "session.open": ["inventory"],
   "session.state": ["inventory"],

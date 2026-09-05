@@ -123,6 +123,51 @@ export const cuaSnapshotSchema = cuaSessionResultSchema.extend({
   image: cuaImageSchema,
 });
 
+/** Transient, protected attribution for one completed agent observation. */
+export const cuaAgentSourceSchema = z.strictObject({
+  sourceId: z.string().uuid(),
+  rootThreadId: cuaIdSchema,
+  binding: cuaBindingSchema.extend({
+    threadId: cuaIdSchema,
+    turnId: cuaIdSchema,
+  }),
+  target: cuaTargetSchema,
+  cursorRevision: sequence,
+  observationRevision: sequence,
+  observedAtMs: counter,
+});
+export const cuaAgentSourcesSchema = z.strictObject({
+  sources: z
+    .array(cuaAgentSourceSchema)
+    .max(4)
+    .refine(
+      (sources) =>
+        new Set(sources.map((source) => source.sourceId)).size ===
+        sources.length,
+    ),
+});
+export const cuaAgentObservationSchema = z
+  .strictObject({
+    source: cuaAgentSourceSchema,
+    session: cuaSessionSchema,
+    // The exact model rendition is shared; original capture geometry is retained
+    // separately and the already-baked cursor is never drawn a second time.
+    image: cuaImageSchema.refine(
+      (image) => image.byteCount <= 2.5 * 1024 * 1024,
+    ),
+    nativeImage: cuaImageSchema,
+  })
+  .refine(
+    ({ source, session, image, nativeImage }) =>
+      JSON.stringify(source.binding) === JSON.stringify(session.binding) &&
+      JSON.stringify(source.target) === JSON.stringify(session.target) &&
+      source.cursorRevision === session.cursor.revision &&
+      source.observationRevision === session.observationRevision &&
+      image.width <= nativeImage.width &&
+      image.height <= nativeImage.height,
+    "Agent observation attribution and rendition must match the captured session.",
+  );
+
 export const CUA_REQUIRED_OPERATIONS = [
   "capabilities.get",
   "targets.list",
@@ -136,6 +181,8 @@ export const CUA_REQUIRED_OPERATIONS = [
 
 export const computerUseOperationSchema = z.enum([
   "capabilities.get",
+  "agent.sources.list",
+  "agent.observation.get",
   "targets.list",
   "session.open",
   "session.state",
@@ -152,6 +199,11 @@ const sessionFields = { sessionId: cuaIdSchema };
 /** Decrypted action only. Execution authority is supplied separately by the server. */
 export const computerUseActionSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("capabilities.get") }),
+  z.strictObject({ operation: z.literal("agent.sources.list") }),
+  z.strictObject({
+    operation: z.literal("agent.observation.get"),
+    sourceId: z.string().uuid(),
+  }),
   z.strictObject({ operation: z.literal("targets.list") }),
   z.strictObject({ operation: z.literal("session.open"), ...targetFields }),
   z.strictObject({ operation: z.literal("session.state"), ...sessionFields }),
@@ -220,6 +272,8 @@ export const computerUseHttpResultSchema = z.strictObject({
 const closedSchema = z.strictObject({ closed: z.literal(true) });
 const resultDataSchemas = {
   "capabilities.get": cuaCapabilitiesSchema,
+  "agent.sources.list": cuaAgentSourcesSchema,
+  "agent.observation.get": cuaAgentObservationSchema,
   "targets.list": cuaInventorySchema,
   "session.open": cuaSessionResultSchema,
   "session.state": cuaSessionResultSchema,
@@ -242,6 +296,8 @@ export const computerUseResultContentSchema = z
         cuaInventorySchema,
         cuaSessionResultSchema,
         cuaSnapshotSchema,
+        cuaAgentSourcesSchema,
+        cuaAgentObservationSchema,
         closedSchema,
       ]),
       chunkCount: z.number().int().min(0).max(CUA_MAX_CHUNKS),
@@ -266,7 +322,7 @@ export const computerUseResultContentSchema = z
       return;
     }
     const chunkCount =
-      result.operation === "observation.snapshot" && "image" in result.data
+      "image" in result.data
         ? Math.ceil(result.data.image.byteCount / CUA_CHUNK_BYTES)
         : 0;
     if (result.chunkCount !== chunkCount) {
@@ -290,6 +346,9 @@ export type CuaInventory = z.infer<typeof cuaInventorySchema>;
 export type CuaSessionResult = z.infer<typeof cuaSessionResultSchema>;
 export type CuaImage = z.infer<typeof cuaImageSchema>;
 export type CuaSnapshot = z.infer<typeof cuaSnapshotSchema>;
+export type CuaAgentSource = z.infer<typeof cuaAgentSourceSchema>;
+export type CuaAgentSources = z.infer<typeof cuaAgentSourcesSchema>;
+export type CuaAgentObservation = z.infer<typeof cuaAgentObservationSchema>;
 export type ComputerUseOperation = z.infer<typeof computerUseOperationSchema>;
 export type ComputerUseAction = z.infer<typeof computerUseActionSchema>;
 export type ComputerUseRequest = z.infer<typeof computerUseRequestSchema>;

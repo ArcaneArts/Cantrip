@@ -235,13 +235,27 @@ export class CuaJavascriptContexts {
     for (const context of this.contexts.values())
       if (context.sessionId === sessionId) this.dispose(context, revoke);
   }
-  session(scope: CuaScope, executionSignal: AbortSignal): CuaSession | null {
+  private sessionContext(
+    scope: CuaScope,
+    executionSignal: AbortSignal,
+  ): Context | null {
     const context = this.contexts.get(JSON.stringify(scope));
     if (!context) return null;
     if (context.executionSignal !== executionSignal)
       throw new CuaNativeError("ownership-mismatch");
     this.live(context);
-    return context.sessionId
+    return context;
+  }
+  sessionSignal(
+    scope: CuaScope,
+    executionSignal: AbortSignal,
+  ): AbortSignal | null {
+    const context = this.sessionContext(scope, executionSignal);
+    return context?.sessionId ? context.controller.signal : null;
+  }
+  session(scope: CuaScope, executionSignal: AbortSignal): CuaSession | null {
+    const context = this.sessionContext(scope, executionSignal);
+    return context?.sessionId
       ? this.service.state(scope, context.sessionId)
       : null;
   }

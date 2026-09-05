@@ -1,7 +1,12 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { spawn, type ChildProcess } from "node:child_process";
 import Fastify from "fastify";
-import type { EncryptedAgentInteractionRequest } from "@cantrip/protocol";
+import type {
+  ComputerUseChunkEvent,
+  EncryptedAgentInteractionRequest,
+} from "@cantrip/protocol";
 import { CuaApprovalManager } from "../../../cantrip_worker/src/computer-use/approvals.js";
+import type { CuaAgentCoordinator } from "../../../cantrip_worker/src/computer-use/agent.js";
 import { CuaPreviewCoordinator } from "../../../cantrip_worker/src/computer-use/preview.js";
 import { CantripCuaService } from "../../../cantrip_worker/src/computer-use/service.js";
 import { launchCuaTransport } from "../../../cantrip_worker/src/computer-use/transport.js";
@@ -28,6 +33,13 @@ export function createComputerUsePreviewFixture(options: {
   binary: string;
   permissionProfile?: string;
   backend?: "fake" | "native";
+  agentObservations?: Pick<
+    CuaAgentCoordinator,
+    "listObservations" | "readObservation"
+  >;
+  onRevokeChat?: (chatId: string) => void;
+  context?: Partial<ChatExecutionContext>;
+  afterChunkPublished?: (event: ComputerUseChunkEvent) => Promise<void>;
 }) {
   const wire: string[] = [];
   const logs: string[] = [];
@@ -42,13 +54,21 @@ export function createComputerUsePreviewFixture(options: {
     componentKey: new Uint8Array(randomBytes(32)),
   };
   let launches = 0;
+  const children: ChildProcess[] = [];
   const service = new CantripCuaService({
     workerId: credentials.workerId,
     binary: options.binary,
     args: options.backend === "native" ? [] : ["--backend", "fake"],
-    launch: (...args) => {
+    launch: (binary, transportOptions) => {
       launches += 1;
-      return launchCuaTransport(...args);
+      return launchCuaTransport(binary, {
+        ...transportOptions,
+        spawnProcess: ((...args: Parameters<typeof spawn>) => {
+          const child = spawn(...args);
+          children.push(child);
+          return child;
+        }) as typeof spawn,
+      });
     },
   });
   const encryption = {
@@ -68,6 +88,8 @@ export function createComputerUsePreviewFixture(options: {
     encryption,
     approvals,
     service,
+    agentObservations: options.agentObservations,
+    onRevokeChat: options.onRevokeChat,
   });
   const context = {
     chatId: credentials.chatId,
@@ -85,6 +107,7 @@ export function createComputerUsePreviewFixture(options: {
     threadId: "real-agent-thread",
     status: "running",
     modelId: null,
+    ...options.context,
   } as ChatExecutionContext;
   const records = new Map<string, EncryptedAgentInteractionRequest>();
   const resolutionKeys = new Map<string, string>();
@@ -128,6 +151,8 @@ export function createComputerUsePreviewFixture(options: {
         result = await coordinator.execute(command, async (event) => {
           wire.push(JSON.stringify(event));
           await operation?.onEvent?.(event);
+          if (event.type === "computer-use.snapshot.chunk")
+            await options.afterChunkPublished?.(event);
         });
         break;
       default:
@@ -250,8 +275,10 @@ export function createComputerUsePreviewFixture(options: {
   return {
     app,
     credentials,
+    encryption,
     context,
     service,
+    children,
     coordinator,
     approvals,
     wire,
