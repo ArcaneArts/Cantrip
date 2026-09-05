@@ -12,6 +12,9 @@ acceptance and protected operation Trajectory verification are tracked in
 does not launch the helper. Development preparation builds, installs, and smoke
 tests the helper without capturing a real desktop or requesting capture permission.
 
+For the short product walkthrough, sample MCP calls and native fixture commands,
+see [first-tranche acceptance](../docs/COMPUTER_USE_ACCEPTANCE.md).
+
 ## Build and verify
 
 ```sh
@@ -255,6 +258,12 @@ optional bounded label, trail and visibility. **Apply cursor** updates the worke
 state and requests fresh pixels immediately. Images are snapshots, not video;
 they already contain the cursor, so the client never overlays a second cursor.
 
+**Save applied appearance** stores the applied typed appearance as an encrypted
+account preference. A new manual session restores it after explicit target
+selection through the ordinary authorized cursor operation. Coordinates and
+native target/session IDs are not persisted. **Forget saved appearance** clears
+the preference without changing the current session's cursor.
+
 Manual preview observers of one chat share a target and cursor. Closing the panel
 disposes local requests, image buffers and object URLs without stopping another
 observer. **Detach target** changes the shared target; **Stop computer use**
@@ -421,7 +430,7 @@ diagnostic, not the worker's capability handshake.
 ## Wire contract: version 1
 
 The executable listens only on stdin and writes framed responses/events on
-stdout. The worker is the future authorization boundary. It alone may authorize
+stdout. The worker is the authorization boundary. It alone may authorize
 and bind real tasks to this private child process; the Rust core does not
 authenticate accounts or independently decide approval policy.
 
