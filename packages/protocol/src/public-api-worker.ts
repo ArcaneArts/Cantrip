@@ -636,6 +636,7 @@ export type {
 } from "./worker-transport.js";
 
 export {
+  computerUseActivityEventSchema,
   inferenceProgressPhaseSchema,
   inferenceProgressPrecisionSchema,
   inferenceProgressSourceSchema,
@@ -648,6 +649,7 @@ export {
 } from "./worker-events.js";
 
 export type {
+  ComputerUseActivityEvent,
   WorkerEvent,
   InferenceProgressPhase,
   InferenceProgressPrecision,

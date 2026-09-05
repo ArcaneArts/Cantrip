@@ -38,6 +38,7 @@ export type WorkerComputerUseApprovalResponseCommand = z.infer<
 export const workerComputerUsePreviewOpenCommandSchema = z.strictObject({
   type: z.literal("computer-use.preview.open"),
   authority: cuaPreviewAuthoritySchema,
+  contentDomain: z.enum(["chat", "task"]),
 });
 export const workerComputerUsePreviewStopCommandSchema = z.strictObject({
   type: z.literal("computer-use.preview.stop"),
@@ -45,6 +46,7 @@ export const workerComputerUsePreviewStopCommandSchema = z.strictObject({
   serverId: cuaIdSchema,
   chatId: cuaIdSchema,
   leaseId: z.string().uuid(),
+  operationId: z.string().uuid(),
 });
 export const workerComputerUsePreviewRevokeCommandSchema = z.strictObject({
   type: z.literal("computer-use.preview.revoke"),

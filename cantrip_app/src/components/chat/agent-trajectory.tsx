@@ -1,3 +1,4 @@
+import { isPreviewActivity } from "./computer-use-activity";
 import type { ChatMessage, InferenceProgressSnapshot } from "@cantrip/protocol";
 import {
   ArrowDown,
@@ -75,6 +76,19 @@ function trajectoryStatus(turn: {
   completed: boolean;
   events: readonly TrajectoryEvent[];
 }): string {
+  if (
+    turn.events.length &&
+    turn.events.every(
+      (event) => event.activity && isPreviewActivity(event.activity),
+    )
+  ) {
+    if (!turn.completed) return "Live";
+    const outcome = turn.events.at(-1)!.activity!;
+    if (outcome.type === "computerUse")
+      return outcome.outcome.replace(/^./u, (character) =>
+        character.toUpperCase(),
+      );
+  }
   const terminal = [...turn.events]
     .reverse()
     .find((event) => event.kind === "turnSummary");
@@ -101,7 +115,8 @@ function toggleSet<T>(current: ReadonlySet<T>, value: T): Set<T> {
 export function trajectorySubagentTarget(
   event: TrajectoryEvent,
 ): { agentKey: string; focusItemKey: string | null } | null {
-  return event.agentIsRoot
+  return event.agentIsRoot ||
+    (event.activity !== null && isPreviewActivity(event.activity))
     ? null
     : { agentKey: event.agentKey, focusItemKey: event.focusItemKey };
 }
@@ -523,12 +538,16 @@ function AgentTrajectoryVisible({
         <div>
           <p className="text-sm font-medium">
             {targetTurnKey
-              ? "Historical turn unavailable"
+              ? targetTurnKey.startsWith("preview:")
+                ? "Historical preview unavailable"
+                : "Historical turn unavailable"
               : "No turn available"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {targetTurnKey
-              ? "This turn is no longer present in the loaded chat history."
+              ? targetTurnKey.startsWith("preview:")
+                ? "This preview is no longer present in the loaded chat history."
+                : "This turn is no longer present in the loaded chat history."
               : "Start a turn to inspect its input, model, tool, and change activity."}
           </p>
           {targetTurnKey && onBackToCurrent ? (
@@ -561,7 +580,7 @@ function AgentTrajectoryVisible({
             </p>
             <p className="mt-0.5 text-[10px] text-muted-foreground">
               {targetTurnKey
-                ? `Historical turn ${turn.ordinal} · ${trajectoryStatus(turn)}`
+                ? `${turn.key.startsWith("preview:") ? "Historical preview" : `Historical turn ${turn.ordinal}`} · ${trajectoryStatus(turn)}`
                 : trajectoryStatus(turn)}{" "}
               · {formatElapsed(turn.elapsedMs)}
               {!turn.exactTimingComplete ? " · mixed timing precision" : ""}
@@ -585,7 +604,12 @@ function AgentTrajectoryVisible({
             {turn.events.length} events
           </span>
           <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
-            {turn.agents.length} agents
+            {turn.agents.length}{" "}
+            {turn.key.startsWith("preview:")
+              ? turn.agents.length === 1
+                ? "actor"
+                : "actors"
+              : "agents"}
           </span>
           <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
             {turn.laneCounts.tools} tools
@@ -657,7 +681,11 @@ function AgentTrajectoryVisible({
             aria-label="Search trajectory events"
             className="h-8 pl-7 text-xs"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search this turn"
+            placeholder={
+              turn.key.startsWith("preview:")
+                ? "Search this preview"
+                : "Search this turn"
+            }
             type="search"
             value={query}
           />
@@ -675,7 +703,7 @@ function AgentTrajectoryVisible({
           <div className="absolute right-0 z-20 mt-1 max-h-80 min-w-56 overflow-y-auto rounded-md border bg-popover p-2 text-popover-foreground shadow-lg">
             <div className="mb-1 flex items-center justify-between gap-1">
               <p className="px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Agents
+                {turn.key.startsWith("preview:") ? "Actors" : "Agents"}
               </p>
               <div className="flex items-center gap-1">
                 <Button
@@ -693,7 +721,10 @@ function AgentTrajectoryVisible({
                     setHiddenAgents(
                       new Set(
                         turn.agents
-                          .filter((agent) => !agent.root)
+                          .filter(
+                            (agent) =>
+                              !agent.root && !turn.key.startsWith("preview:"),
+                          )
                           .map((agent) => agent.key),
                       ),
                     )
@@ -702,7 +733,9 @@ function AgentTrajectoryVisible({
                   type="button"
                   variant="ghost"
                 >
-                  Root only
+                  {turn.key.startsWith("preview:")
+                    ? "Preview operator"
+                    : "Root only"}
                 </Button>
               </div>
             </div>

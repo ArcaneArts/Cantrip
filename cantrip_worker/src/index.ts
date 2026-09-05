@@ -259,6 +259,8 @@ import {
   RepositoryManagedOperationStore,
   type RepositoryManagedOperationScope,
 } from "./repository-managed-operation-store.js";
+import { publishCuaPreviewActivity } from "./computer-use/activity-publication.js";
+import { finalizeCuaAgentTurn } from "./computer-use/turn-finalization.js";
 import {
   openAgentInteractionResponse,
   protectAgentInteractionRequest,
@@ -783,6 +785,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     computerUseAgents.execute(...args),
   );
   const computerUsePreviews = new CuaPreviewCoordinator({
+    publishActivity: (activity, contentDomain, emit) =>
+      publishCuaPreviewActivity({
+        encryption: workerEncryption,
+        activity,
+        contentDomain,
+        emit,
+      }),
     agentObservations: computerUseAgents,
     onRevokeChat: (chatId) => computerUseAgents.cancelChat(chatId),
     workerId: config.workerId,
@@ -5130,7 +5139,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             );
           }
           try {
-            return await runtime.runTurn({
+            const turnOptions: Parameters<typeof runtime.runTurn>[0] = {
               automationPaused: pausedChats.has(command.chatId),
               attachments: openedAttachments.map((attachment) => ({
                 ...attachment,
@@ -5329,6 +5338,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     resolve: (input) =>
                       runtime.resolveComputerUseExecution(input),
                     publish: publishComputerUse,
+                    publishActivity: (activity) => {
+                      const sealer = encryptedTaskSealer ?? encryptedChatSealer;
+                      if (!sealer)
+                        throw new Error(
+                          "Protected computer-use activity publication is unavailable.",
+                        );
+                      emitProtectedAgentEvent(() =>
+                        sealer.activity(requireRootAgentActivity(activity)),
+                      );
+                    },
                   });
                 }
                 cliBroker.bindCodexThread(threadId, {
@@ -5336,31 +5355,34 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   executionLaneId: command.executionLaneId,
                 });
               },
-            });
+            };
+            return await finalizeCuaAgentTurn(
+              () => runtime.runTurn(turnOptions),
+              async () => {
+                await computerUseRegistration.release?.();
+              },
+              () => protectedEventQueue,
+            );
           } finally {
             try {
-              await computerUseRegistration.release?.();
+              await observation?.close();
+            } catch (error) {
+              workerLogger.event(
+                "warn",
+                "Inference progress observer did not close cleanly",
+                {
+                  event: "provider.inference-progress.close-failed",
+                  subsystem: "provider",
+                  operation: "close-inference-progress-observer",
+                  reasonCode: "observer-close-failed",
+                  status: "degraded",
+                  providerId: provider().id,
+                  providerKind: provider().kind,
+                  error: workerLogError(error),
+                },
+              );
             } finally {
-              try {
-                await observation?.close();
-              } catch (error) {
-                workerLogger.event(
-                  "warn",
-                  "Inference progress observer did not close cleanly",
-                  {
-                    event: "provider.inference-progress.close-failed",
-                    subsystem: "provider",
-                    operation: "close-inference-progress-observer",
-                    reasonCode: "observer-close-failed",
-                    status: "degraded",
-                    providerId: provider().id,
-                    providerKind: provider().kind,
-                    error: workerLogError(error),
-                  },
-                );
-              } finally {
-                clearInferenceProgress();
-              }
+              clearInferenceProgress();
             }
           }
         };
@@ -5473,9 +5495,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ? computerUseAgents.answer(command)
           : computerUsePreviews.answer(command);
       case "computer-use.preview.open":
-        return computerUsePreviews.open(command.authority);
+        return computerUsePreviews.open(
+          command.authority,
+          command.contentDomain,
+        );
       case "computer-use.preview.stop":
-        return computerUsePreviews.stop(command);
+        return computerUsePreviews.stop(command, async (event) => emit(event));
       case "computer-use.preview.revoke":
         computerUseAgents.revoke(command);
         return computerUsePreviews.revoke(command);

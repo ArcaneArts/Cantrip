@@ -1,11 +1,17 @@
+import { randomUUID } from "node:crypto";
 import {
   cuaPreviewAuthoritySchema,
   cuaPreviewLeaseSchema,
   cuaPreviewStopSchema,
+  cuaPreviewStoppedSchema,
   type CuaPreviewAuthority,
   type CuaPreviewRevocation,
 } from "@cantrip/protocol/computer-use-preview";
 import type { FastifyInstance } from "fastify";
+import {
+  createComputerUseActivityPublisher,
+  type ComputerUseActivityDependencies,
+} from "./computer-use-activity.js";
 
 import { effectivePermissionProfile } from "../../chats/execution-helpers.js";
 import type {
@@ -143,7 +149,7 @@ export function computerUsePreviewAuthority(input: {
   });
 }
 
-export interface ComputerUsePreviewRouteDependencies {
+export interface ComputerUsePreviewRouteDependencies extends ComputerUseActivityDependencies {
   applicationOwnerId: () => string;
   serverId: string;
   repository: Pick<ServerRepository, "getChatExecutionContext" | "getWorker">;
@@ -158,6 +164,9 @@ export function installComputerUsePreviewRoutes(
     serverId,
     repository,
     bridge,
+    upsertLiveEncryptedChatMessage,
+    upsertLiveTaskMessage,
+    runAsOwner,
   }: ComputerUsePreviewRouteDependencies,
 ): void {
   app.post<{ Params: { chatId: string } }>(
@@ -187,7 +196,11 @@ export function installComputerUsePreviewRoutes(
         const lease = cuaPreviewLeaseSchema.parse(
           await bridge.request(
             context.workerId,
-            { type: "computer-use.preview.open", authority },
+            {
+              type: "computer-use.preview.open",
+              authority,
+              contentDomain: context.experience === "task" ? "task" : "chat",
+            },
             { ownerId, timeoutMs: 30_000 },
           ),
         );
@@ -221,20 +234,46 @@ export function installComputerUsePreviewRoutes(
         const worker = await repository.getWorker(ownerId, input.data.workerId);
         if (!worker)
           return reply.code(404).send({ error: "Worker not found." });
-        const closed = closedResponse(
+        const operationId = randomUUID();
+        const publishActivity = createComputerUseActivityPublisher({
+          ownerId,
+          chatId: request.params.chatId,
+          operationId,
+          upsertLiveEncryptedChatMessage,
+          upsertLiveTaskMessage,
+          runAsOwner,
+        });
+        let auditFailed = false;
+        const closed = cuaPreviewStoppedSchema.parse(
           await bridge.request(
             worker.workerId,
             {
               type: "computer-use.preview.stop",
+              operationId,
               ownerId,
               serverId,
               chatId: request.params.chatId,
               leaseId: input.data.leaseId,
             },
-            { ownerId, timeoutMs: 30_000 },
+            {
+              ownerId,
+              timeoutMs: 30_000,
+              onEvent: async (event) => {
+                try {
+                  await publishActivity(event);
+                } catch {
+                  auditFailed = true;
+                }
+              },
+            },
           ),
         );
-        return reply.send(closed);
+        if (auditFailed || closed.activityPublicationFailed)
+          request.log.warn(
+            { event: "computer-use.activity.publication-failed" },
+            "Computer-use Stop completed without a durable activity.",
+          );
+        return reply.send({ closed: true });
       } catch (error) {
         return reply
           .code(error instanceof WorkerUnavailableError ? 503 : 409)

@@ -19,6 +19,8 @@ import {
   cuaPreviewLeaseSchema,
   type CuaPreviewLease,
 } from "@cantrip/protocol/computer-use-preview";
+import { publishCuaPreviewActivity } from "../../cantrip_worker/src/computer-use/activity-publication.js";
+import type { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.js";
 import { CuaApprovalManager } from "../../cantrip_worker/src/computer-use/approvals.js";
 import { CuaPreviewCoordinator } from "../../cantrip_worker/src/computer-use/preview.js";
 import { CantripCuaService } from "../../cantrip_worker/src/computer-use/service.js";
@@ -66,6 +68,13 @@ function setup() {
     encryption,
     approvals,
     service,
+    publishActivity: (activity, contentDomain, emit) =>
+      publishCuaPreviewActivity({
+        encryption: encryption as unknown as WorkerEncryptionService,
+        activity,
+        contentDomain,
+        emit,
+      }),
   });
   cleanups.push(async () => {
     coordinator.close();
@@ -75,6 +84,7 @@ function setup() {
   });
   const context = {
     chatId: "chat",
+    experience: "agent",
     workerId: "worker",
     projectId: "project",
     contextKind: "project",
@@ -111,7 +121,7 @@ function setup() {
     let result: unknown;
     switch (command.type) {
       case "computer-use.preview.open":
-        result = coordinator.open(command.authority);
+        result = coordinator.open(command.authority, command.contentDomain);
         break;
       case "computer-use.preview.stop":
         result = coordinator.stop(command);
@@ -136,6 +146,7 @@ function setup() {
     serverId: "server",
     repository,
     bridge,
+    upsertLiveEncryptedChatMessage: async () => ({ id: "saved" }),
   });
   installComputerUseRoutes(app, {
     applicationOwnerId: () => "owner",
@@ -143,6 +154,7 @@ function setup() {
     repository,
     bridge,
     requirePreviewLease: true,
+    upsertLiveEncryptedChatMessage: async () => ({ id: "saved" }),
     authorize: async ({ ownerId, context }) =>
       computerUsePreviewAuthority({ ownerId, serverId: "server", context }),
   });

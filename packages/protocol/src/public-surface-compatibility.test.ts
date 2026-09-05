@@ -64,6 +64,7 @@ const cuaRuntimeExports = [
   "CUA_REQUIRED_OPERATIONS",
   "MANAGED_CUA_MCP_NAME",
   "computerUseActionSchema",
+  "computerUseActivityEventSchema",
   "computerUseChunkEventSchema",
   "computerUseHttpResultSchema",
   "computerUseOperationSchema",
@@ -87,6 +88,7 @@ const cuaRuntimeExports = [
   "cuaPreviewLeaseSchema",
   "cuaPreviewRevocationSchema",
   "cuaPreviewStopSchema",
+  "cuaPreviewStoppedSchema",
   "cuaScopeSchema",
   "cuaSessionResultSchema",
   "cuaSessionSchema",
@@ -107,7 +109,7 @@ describe("protocol public surface compatibility", () => {
       (name) => !cuaRuntimeExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(1_986);
+    expect(exportNames).toHaveLength(1_988);
     expect(
       exportNames.filter((name) => cuaRuntimeExports.includes(name)),
     ).toEqual(cuaRuntimeExports);
@@ -137,13 +139,20 @@ describe("protocol public surface compatibility", () => {
     expect(stableFingerprint(commandTypes.slice(5))).toBe(
       "9715f45e8704a82a:7004",
     );
-    expect(eventTypes).toHaveLength(21);
+    expect(eventTypes).toHaveLength(22);
+    expect(
+      eventTypes.filter((type) => type === "computer-use.activity"),
+    ).toHaveLength(1);
     expect(eventTypes.slice(0, 3)).toEqual([
       "computer-use.approval.request",
       "computer-use.approval.terminal",
       "computer-use.snapshot.chunk",
     ]);
-    expect(stableFingerprint(eventTypes.slice(3))).toBe("1d616530daf5093c:466");
+    expect(
+      stableFingerprint(
+        eventTypes.slice(3).filter((type) => type !== "computer-use.activity"),
+      ),
+    ).toBe("1d616530daf5093c:466");
     expect(notificationTypes).toHaveLength(15);
     expect(notificationTypes[0]).toBe("computer-use.approval.terminal");
     expect(stableFingerprint(notificationTypes.slice(1))).toBe(

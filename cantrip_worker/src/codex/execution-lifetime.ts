@@ -1,3 +1,5 @@
+import type { AgentScope } from "@cantrip/protocol";
+
 /** A runtime-observed turn owns its cancellation signal. Repeated notifications
  * for the same terminal turn must never recreate computer-use authority. */
 export class CodexExecutionLifetime {
@@ -42,5 +44,7 @@ export interface CodexComputerUseExecution {
   rootThreadId: string;
   rootTurnId: string;
   parentThreadId: string | null;
+  /** Actual runtime ancestry; absent only for legacy internal test adapters. */
+  agentScope?: AgentScope | null;
   signal: AbortSignal;
 }

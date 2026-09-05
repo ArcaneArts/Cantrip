@@ -1,3 +1,7 @@
+import {
+  computerUseActivitySummary,
+  isPreviewActivity,
+} from "./computer-use-activity";
 import { ArrowLeft, Check, Copy } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 
@@ -40,6 +44,65 @@ function activitySummaryFields(
   const activity = event.activity;
   if (!activity) return [];
   switch (activity.type) {
+    case "computerUse":
+      return [
+        {
+          label: "Origin",
+          value:
+            activity.source === "user-preview"
+              ? "Preview operator"
+              : "Agent MCP",
+        },
+        { label: "Operation", value: activity.operation },
+        { label: "Operation ID", value: activity.operationId },
+        { label: "Outcome", value: activity.outcome },
+        { label: "Worker", value: activity.binding.workerId },
+        { label: "Chat", value: activity.binding.chatId },
+        ...(activity.binding.taskId
+          ? [{ label: "Task", value: activity.binding.taskId }]
+          : []),
+        ...(activity.binding.sessionId
+          ? [{ label: "Session", value: activity.binding.sessionId }]
+          : []),
+        ...(activity.requestId
+          ? [{ label: "Request", value: activity.requestId }]
+          : []),
+        ...(activity.errorCode
+          ? [{ label: "Error", value: activity.errorCode }]
+          : []),
+        ...(activity.target
+          ? [
+              {
+                label: "Target",
+                value: `${activity.target.targetId} · generation ${activity.target.targetGeneration}`,
+              },
+            ]
+          : []),
+        ...(activity.cursor
+          ? [
+              {
+                label: "Cursor",
+                value: `${activity.cursor.appearance.style} · ${activity.cursor.position.x}, ${activity.cursor.position.y} · revision ${activity.cursor.revision}`,
+              },
+            ]
+          : []),
+        ...(activity.observation
+          ? [
+              {
+                label: "Observation",
+                value: `#${activity.observation.revision}`,
+              },
+              {
+                label: "Image metadata",
+                value: `${activity.observation.image.width} × ${activity.observation.image.height} · ${activity.observation.image.byteCount} bytes · ${activity.observation.image.mediaType}`,
+              },
+              {
+                label: "Image digest",
+                value: activity.observation.image.sha256,
+              },
+            ]
+          : []),
+      ];
     case "instructionContext":
       return [
         { label: "Provenance", value: activity.provenance },
@@ -173,7 +236,14 @@ function Summary({ event }: { event: TrajectoryEvent }) {
   return (
     <dl className="px-3 py-2">
       <DetailField label="Event" value={event.label} />
-      <DetailField label="Agent" value={event.agentLabel} />
+      <DetailField
+        label={
+          event.activity && isPreviewActivity(event.activity)
+            ? "Actor"
+            : "Agent"
+        }
+        value={event.agentLabel}
+      />
       <DetailField label="Type" value={trajectoryKindLabel(event.kind)} />
       <DetailField label="Lane" value={trajectoryLaneLabel(event.lane)} />
       <DetailField label="Status" value={event.status} />
@@ -214,6 +284,8 @@ function previewText(event: TrajectoryEvent): string | null {
   const activity = event.activity;
   if (!activity) return event.preview;
   switch (activity.type) {
+    case "computerUse":
+      return `${computerUseActivitySummary(activity)}. Only observation metadata is retained in Trajectory; image pixels are not stored here.`;
     case "instructionContext":
       return activity.text;
     case "reasoning":

@@ -5,12 +5,14 @@ import {
 } from "@cantrip/crypto";
 import {
   CUA_CHUNK_BYTES,
+  cuaImageSchema,
   type ComputerUseAction,
   type ComputerUseChunkEvent,
   type ComputerUseResultContent,
   type CuaAgentObservation,
   type CuaAgentSources,
   type CuaScope,
+  type CuaSession,
   type WorkerComputerUseCommand,
 } from "@cantrip/protocol";
 import {
@@ -21,6 +23,7 @@ import {
 import { CuaNativeError, CuaProcessError } from "./errors.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import { CantripCuaService, CuaServiceError } from "./service.js";
+import { computerUseActivity, type CuaActivity } from "./activity.js";
 
 export class CuaAuthorizationError extends Error {
   constructor(
@@ -71,6 +74,8 @@ export interface ComputerUseHandlerDependencies {
     scope: CuaScope;
     signal?: AbortSignal;
   }): Promise<void>;
+  /** Protected metadata publication, after image ownership has been released. */
+  publishActivity?: (activity: CuaActivity) => Promise<void>;
 }
 
 /** Encrypted boundary for authorized CUA. Production preview routing supplies
@@ -106,6 +111,12 @@ export async function handleComputerUseOperation(
   let payload: Buffer | null = null;
   let releaseObservation: (() => void) | undefined;
   let result: ComputerUseResultContent;
+  const startedAtMs = Date.now();
+  let activityScope: CuaScope | null = null;
+  let activityAction: ComputerUseAction | null = null;
+  let beforeSession: CuaSession | null = null;
+  let failure: unknown;
+  let deliveryFailed = false;
   try {
     const execution = await dependencies.resolveExecution(command);
     const scope = { ...execution.scope };
@@ -121,12 +132,19 @@ export async function handleComputerUseOperation(
     ) {
       throw new CuaAuthorizationError("ownership-mismatch");
     }
+    activityScope = scope;
     const action = await openComputerUseRequest({
       context,
       opaque: command.request,
       open: (context, opaque) =>
         openWorkerEndpointBytes({ context, opaque, service: encryption }),
     });
+    activityAction = action;
+    if (dependencies.publishActivity && "sessionId" in action) {
+      try {
+        beforeSession = service.state(scope, action.sessionId);
+      } catch {}
+    }
     if (action.operation !== "session.close") {
       if (signal.aborted) throw new CuaProcessError("cancelled", "not-sent");
       await waitBeforeCuaSend(
@@ -238,6 +256,7 @@ export async function handleComputerUseOperation(
       chunkCount: payload ? Math.ceil(payload.length / CUA_CHUNK_BYTES) : 0,
     };
   } catch (error) {
+    failure = error;
     // Do not let native/validation messages escape into generic worker logging.
     // Only these fixed worker-owned errors may contribute a protected message.
     const known =
@@ -274,7 +293,9 @@ export async function handleComputerUseOperation(
     )
       throw new CuaProcessError("cancelled");
     return response;
-  } catch {
+  } catch (error) {
+    deliveryFailed = true;
+    failure ??= error;
     // Ciphertext delivery/encryption failures must not expose native context.
     throw new Error("Protected computer-use response could not be delivered.");
   } finally {
@@ -282,6 +303,43 @@ export async function handleComputerUseOperation(
       if (payload) clearSensitiveBytes(payload);
     } finally {
       releaseObservation?.();
+    }
+    if (dependencies.publishActivity && activityScope) {
+      const data = result.status === "ok" ? result.data : null;
+      const session = data && "session" in data ? data.session : beforeSession;
+      const image =
+        data && "image" in data ? cuaImageSchema.parse(data.image) : null;
+      const attemptedTarget =
+        activityAction && "targetId" in activityAction
+          ? target(activityAction)
+          : !session?.target && beforeSession?.target
+            ? {
+                targetId: beforeSession.target.id,
+                targetGeneration: beforeSession.target.generation,
+              }
+            : undefined;
+      try {
+        await dependencies.publishActivity(
+          computerUseActivity({
+            source: "user-preview",
+            operation: context.operation,
+            operationId: context.operationId,
+            requestId: null,
+            scope: activityScope,
+            session,
+            image,
+            target: attemptedTarget,
+            startedAtMs,
+            error: failure,
+            failed: result.status === "error" || deliveryFailed,
+            cancelled: signal?.aborted && context.operation !== "session.close",
+          }),
+        );
+      } catch {
+        throw new Error(
+          "Protected computer-use activity could not be published.",
+        );
+      }
     }
   }
 }

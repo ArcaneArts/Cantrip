@@ -7,7 +7,7 @@ private protocol. Encrypted server routing, existing durable permission requests
 and the experimental shared client preview are implemented. The native macOS
 backend uses ScreenCaptureKit. The managed `cantrip_cua` MCP connects bounded
 JavaScript to that same service through the authenticated worker broker. Native
-acceptance and the remaining protected operation Trajectory work are tracked in
+acceptance and protected operation Trajectory verification are tracked in
 [the CUA plan](../docs/planned/CUA.md). Ordinary Cantrip worker startup
 does not launch the helper. Development preparation builds, installs, and smoke
 tests the helper without capturing a real desktop or requesting capture permission.
@@ -276,11 +276,33 @@ pnpm --filter @cantrip/app exec vitest run src/components/computer-use src/lib/c
 pnpm cua:test:worker
 ```
 
+### Protected operation history
+
+Computer-use actions appear in the existing Trajectory experience. Agent MCP
+records retain the actual root/child execution scope. User preview records are
+grouped by their own session, or operation when no session exists, and identify
+the actor as **Preview operator**. They do not belong to the preceding agent turn.
+
+Details include the operation and outcome, elapsed time, worker/chat/task and
+session attribution, target ID/generation, cursor state, bounded native error
+code, and observation dimensions/digest where available. These records use the
+existing encrypted chat/task messages. They contain no screenshot copy, script
+source or native inventory. Model images still arrive through the MCP image
+channel; the preview reads the same completed image separately.
+
+Stop revokes the native session and pending work before publishing its history.
+If a chat was archived or its protected history is unavailable, Stop still
+releases resources; that final history write may be unavailable. Normal operation
+publication failures are reported as protected-activity delivery failures, not
+silently treated as a successful history write. See the progress ledger for the
+exact integration and manual verification performed.
+
 The server test fixture uses fresh synthetic keys and an in-memory repository;
 it does not access encryption profiles, Keychain or production accounts. Ordinary
 tests use fake capture; a deliberate native QA opt-in can exercise the same route
-with an explicitly selected installed helper. Shared client tests plus browser QA are not a claim that a
-packaged Tauri/iOS/Android build has been manually verified.
+with an explicitly selected installed helper. Shared client tests plus browser
+QA are not a claim that a packaged Tauri/iOS/Android build has been manually
+verified.
 
 ### Stable development helper
 
@@ -574,9 +596,9 @@ variables and attachment; it never restores authority after Stop. A subsequent
 turn starts with fresh state. Current placement and effective policy are read
 before every host action and again after approval. The model receives its PNG
 blocks unchanged by secondary raw Trajectory capture, which omits nested image
-and binary data. This does not establish completion of the broader protected
-operation Trajectory or native/packaged acceptance work; the progress ledger
-records those separately.
+and binary data. Per-operation metadata is recorded through the protected
+Trajectory path described above. Native/packaged product acceptance remains a
+separate verification requirement; the progress ledger records that evidence.
 
 ## Bounds and cancellation
 
