@@ -3,7 +3,9 @@
 Status: First-tranche observation, logical cursor, managed MCP, shared preview
 and protected Trajectory implemented and verified with the release qualifications
 recorded in cycle 16. Updater signing, notarization and installed-update permission
-verification remain unperformed. The full computer-use roadmap is unfinished.
+verification remain unperformed. Accessibility press and single-left coordinate
+clicking are implemented and merged; user integration acceptance is pending.
+The full computer-use roadmap is unfinished.
 
 ## Clicking-tranche progress
 
@@ -42,7 +44,8 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
 
 ### Clicking cycle 2 — Coordinate single-left click
 
-- Branch: `codex/cua-clicking-coordinate`; PR and merge pending.
+- Branch: `codex/cua-clicking-coordinate`; [PR #1762](https://github.com/ArcaneArts/Cantrip/pull/1762)
+  merged 2026-09-05 as `d1a323cff01b4e8bba705678c5648be859fb4ae3` (observed).
 - Implemented: `cua.click({x,y})` through the same managed tool, mutation approval,
   session queue and protected Trajectory path. Window clicks request AX activation
   and raise, resolve the resulting geometry and verify the live hit target.
@@ -54,7 +57,9 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
 - Lightweight validation: Rust Clippy; three Rust input/dispatch unit tests;
   three protocol export unit tests; 32 worker permission/contract unit tests;
   protocol build and worker/server/app typechecks. No native, GUI, integration,
-  packaged-app or release tests were run. User testing: pending.
+  packaged-app or release tests were run locally. Existing CI passed on macOS,
+  Windows and Linux, plus PostgreSQL authority checks, before the squash merge.
+  The cycle-1 export-baseline failure is resolved. User testing: pending.
 - User steps and limitations: [clicking guide](../COMPUTER_USE_CLICKING.md).
   Coordinate input can affect focus and the human system pointer; dispatch is
   not proof of an application action. macOS only, with explicit unsupported
@@ -69,11 +74,12 @@ build containing it. This tranche does not modify the installed app or releases.
 
 ## First-tranche implementation progress
 
-The active first tranche is observation and a customizable logical cursor:
+The completed first tranche covered observation and a customizable logical cursor:
 Rust process, worker service, encrypted server routing, client preview,
-macOS snapshots, managed MCP, permissions, and Trajectory. Native input,
-Accessibility actions, clipboard/file mutations, human event taps, Windows,
-Linux, and cross-worker control remain later-tranche work. The full plan below
+macOS snapshots, managed MCP, permissions, and Trajectory. Native input and
+Accessibility actions were deferred at that boundary; the clicking tranche above
+now implements bounded press and single-left click. Clipboard/file mutations,
+human event taps, Windows, Linux, and cross-worker control remain deferred. The full plan below
 describes the larger architecture; its operation list is not a requirement to
 implement later-tranche operations now.
 

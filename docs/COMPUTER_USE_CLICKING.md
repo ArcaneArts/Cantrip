@@ -1,7 +1,9 @@
 # Computer-use clicking
 
-Implemented in the macOS Rust helper and managed `cantrip_cua` tools. User
-integration acceptance is pending. Use an updated development build and worker;
+Implemented in the macOS Rust helper and managed `cantrip_cua` tools by merged
+[PR #1761](https://github.com/ArcaneArts/Cantrip/pull/1761) (Accessibility) and
+[PR #1762](https://github.com/ArcaneArts/Cantrip/pull/1762) (coordinate clicks).
+All four existing CI jobs passed on #1762. User integration acceptance is pending. Use an updated development build and worker;
 an older installed app may not include these tools. No installed app, saved QA
 profile, credentials or macOS permissions were changed by this implementation.
 
