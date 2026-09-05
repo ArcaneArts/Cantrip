@@ -44,6 +44,8 @@ export interface CuaJavascriptOptions {
   /** Actual runtime turn lifetime, not the transient MCP HTTP request signal. */
   executionSignal: AbortSignal;
   signal?: AbortSignal;
+  /** Trusted coordinator budget, including durable permission waits. */
+  wallTimeoutMs?: number;
   /** Trusted worker policy callback; run before EVERY observation or mutation. */
   authorize: (
     action: CuaJavascriptAction,
@@ -254,6 +256,13 @@ export class CuaJavascriptContexts {
       Buffer.byteLength(source) > CUA_JAVASCRIPT_MAX_SOURCE_BYTES
     )
       throw new CuaProcessError("invalid-request", "not-sent");
+    const wallTimeoutMs = options.wallTimeoutMs ?? 45_000;
+    if (
+      !Number.isSafeInteger(wallTimeoutMs) ||
+      wallTimeoutMs < 1 ||
+      wallTimeoutMs > 345_000
+    )
+      throw new CuaProcessError("invalid-request", "not-sent");
     if (options.signal?.aborted)
       throw new CuaProcessError("cancelled", "not-sent");
     const context = this.context(scope, options.executionSignal);
@@ -276,10 +285,15 @@ export class CuaJavascriptContexts {
         throw new CuaNativeError("unsupported");
       context.runtime = runtime;
       const response = await runtime.transport.request(
-        { operation: "javascript.evaluate", binding: context.binding, source },
+        {
+          operation: "javascript.evaluate",
+          binding: context.binding,
+          source,
+          wallTimeoutMs,
+        },
         {
           signal: active,
-          timeoutMs: 47_000,
+          timeoutMs: wallTimeoutMs + 2_000,
           onHostCall: async (input, callSignal) => {
             const signal = AbortSignal.any([active, callSignal]);
             this.live(context, signal);

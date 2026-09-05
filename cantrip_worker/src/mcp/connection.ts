@@ -13,6 +13,13 @@ import {
   CANTRIP_MCP_MAX_RESPONSE_BYTES,
   readBoundedJsonResponse,
 } from "./http.js";
+import {
+  CANTRIP_CUA_MCP_MAX_RESPONSE_BYTES,
+  CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS,
+  cuaMcpBrokerRequestSchema,
+  parseCuaMcpResult,
+  type CuaMcpRequest,
+} from "./cua-contract.js";
 import { CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS } from "./timeouts.js";
 
 function localBrokerUrl(endpoint: string): URL {
@@ -77,6 +84,10 @@ async function brokerRequest(
   document: CantripMcpConnectionDocument,
   pathname: string,
   init: RequestInit,
+  limits = {
+    maximumBytes: CANTRIP_MCP_MAX_RESPONSE_BYTES,
+    timeoutMs: CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS,
+  },
 ): Promise<unknown> {
   const endpoint = localBrokerUrl(document.endpoint);
   const response = await fetch(new URL(pathname, endpoint), {
@@ -85,12 +96,12 @@ async function brokerRequest(
       authorization: `Bearer ${document.credential}`,
       ...(init.body ? { "content-type": "application/json" } : {}),
     },
-    signal: AbortSignal.timeout(CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS),
+    signal: AbortSignal.any([
+      AbortSignal.timeout(limits.timeoutMs),
+      ...(init.signal ? [init.signal] : []),
+    ]),
   });
-  const payload = await readBoundedJsonResponse(
-    response,
-    CANTRIP_MCP_MAX_RESPONSE_BYTES,
-  );
+  const payload = await readBoundedJsonResponse(response, limits.maximumBytes);
   if (!response.ok) {
     const record =
       payload && typeof payload === "object"
@@ -139,4 +150,33 @@ export async function invokeCantripMcpBrokerOperation(
     ),
   });
   return cantripAgentOperationResultSchema.parse(payload);
+}
+
+/** CUA uses the same authenticated broker, with isolated image/deadline bounds. */
+export async function invokeCuaMcpBrokerOperation(
+  document: CantripMcpConnectionDocument,
+  request: CuaMcpRequest,
+  signal: AbortSignal,
+) {
+  signal.throwIfAborted();
+  const payload = await brokerRequest(
+    document,
+    "/v1/computer-use",
+    {
+      method: "POST",
+      body: JSON.stringify(
+        cuaMcpBrokerRequestSchema.parse({
+          bindingId: document.bindingId,
+          request,
+        }),
+      ),
+      signal,
+    },
+    {
+      maximumBytes: CANTRIP_CUA_MCP_MAX_RESPONSE_BYTES,
+      timeoutMs: CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS,
+    },
+  );
+  signal.throwIfAborted();
+  return parseCuaMcpResult(payload);
 }

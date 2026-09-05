@@ -167,6 +167,57 @@ describe("Codex runtime computer-use scope", () => {
     f.runtime.close();
   });
 
+  it("recognizes owned native children before their first turn without granting turn authority", () => {
+    const f = fixture();
+    expect(f.runtime.ownsComputerUseThread("root", "root")).toBe(true);
+    expect(f.runtime.ownsComputerUseThread("root", "unknown")).toBe(false);
+    f.notify("thread/started", {
+      thread: {
+        id: "pending-child",
+        parentThreadId: "root",
+        status: { type: "active", activeFlags: [] },
+        source: {
+          subAgent: { thread_spawn: { parent_thread_id: "root", depth: 1 } },
+        },
+      },
+    });
+    expect(f.runtime.ownsComputerUseThread("root", "pending-child")).toBe(true);
+    expect(f.resolve("pending-child", "unobserved-turn")).toBeNull();
+    f.child("nested", "pending-child");
+    expect(f.runtime.ownsComputerUseThread("root", "nested")).toBe(true);
+    expect(f.runtime.ownsComputerUseThread("pending-child", "nested")).toBe(
+      false,
+    );
+    f.runtime.close();
+    expect(f.runtime.ownsComputerUseThread("root", "pending-child")).toBe(
+      false,
+    );
+  });
+
+  it("keeps native ownership scoped to the actual root when multiple chats share a runtime", () => {
+    const f = fixture();
+    f.child();
+    const other = { ...f.active, chatId: "other-chat", threadId: "other-root" };
+    f.native.registerRootExecution(other);
+    f.native.bindTurnStartResponse("other-turn", other);
+    f.child("other-child", "other-root");
+    expect(f.runtime.ownsComputerUseThread("root", "child")).toBe(true);
+    expect(f.runtime.ownsComputerUseThread("root", "other-child")).toBe(false);
+    expect(f.runtime.ownsComputerUseThread("other-root", "child")).toBe(false);
+    expect(f.runtime.ownsComputerUseThread("other-root", "other-child")).toBe(
+      true,
+    );
+    expect(f.runtime.ownsComputerUseThread("unknown-root", "other-child")).toBe(
+      false,
+    );
+    f.native.releaseActiveTurn(other);
+    expect(f.runtime.ownsComputerUseThread("other-root", "other-child")).toBe(
+      false,
+    );
+    expect(f.runtime.ownsComputerUseThread("root", "child")).toBe(true);
+    f.runtime.close();
+  });
+
   it("rejects missing, wrong-chat, wrong-turn and operation scopes without rebinding", () => {
     const f = fixture();
     f.child();

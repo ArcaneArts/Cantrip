@@ -62,6 +62,7 @@ const cuaRuntimeExports = [
   "CUA_CONTROL_BYTES",
   "CUA_MAX_CHUNKS",
   "CUA_REQUIRED_OPERATIONS",
+  "MANAGED_CUA_MCP_NAME",
   "computerUseActionSchema",
   "computerUseChunkEventSchema",
   "computerUseHttpResultSchema",
@@ -103,7 +104,7 @@ describe("protocol public surface compatibility", () => {
       (name) => !cuaRuntimeExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(1_982);
+    expect(exportNames).toHaveLength(1_983);
     expect(
       exportNames.filter((name) => cuaRuntimeExports.includes(name)),
     ).toEqual(cuaRuntimeExports);

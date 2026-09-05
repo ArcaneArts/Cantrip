@@ -37,6 +37,7 @@ export const MCP_SECRET_MASK = "••••••••";
  */
 export const MANAGED_CODEGRAPH_MCP_NAME = "codegraph" as const;
 export const MANAGED_CANTRIP_MCP_NAME = "cantrip" as const;
+export const MANAGED_CUA_MCP_NAME = "cantrip_cua" as const;
 
 export function isManagedCodeGraphMcpName(name: string): boolean {
   return name.trim().toLowerCase() === MANAGED_CODEGRAPH_MCP_NAME;
@@ -47,7 +48,11 @@ export function isManagedCantripMcpName(name: string): boolean {
 }
 
 export function isManagedMcpName(name: string): boolean {
-  return isManagedCodeGraphMcpName(name) || isManagedCantripMcpName(name);
+  return (
+    isManagedCodeGraphMcpName(name) ||
+    isManagedCantripMcpName(name) ||
+    name.trim().toLowerCase() === MANAGED_CUA_MCP_NAME
+  );
 }
 
 export const mcpServerNameSchema = z

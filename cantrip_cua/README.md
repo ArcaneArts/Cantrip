@@ -5,8 +5,9 @@ process/session/image/cursor core and build-chain integration use an explicit
 deterministic test backend. A lazy worker service owns the actual process and
 private protocol. Encrypted server routing, existing durable permission requests,
 and the experimental shared client preview are implemented. The native macOS
-backend uses ScreenCaptureKit. A bounded worker-internal JavaScript runtime is
-implemented; managed MCP activation and Trajectory remain subsequent cycles in
+backend uses ScreenCaptureKit. The managed `cantrip_cua` MCP connects bounded
+JavaScript to that same service through the authenticated worker broker. Native
+acceptance and the remaining protected operation Trajectory work are tracked in
 [the CUA plan](../docs/planned/CUA.md). Ordinary Cantrip worker startup
 does not launch the helper. Development preparation builds, installs, and smoke
 tests the helper without capturing a real desktop or requesting capture permission.
@@ -180,9 +181,10 @@ The Codex runtime exposes a read-only resolver for genuine root/child native
 turn identities and cancellation signals. Only actual turn starts establish
 that lifetime; telemetry and caller-supplied identities cannot create one.
 Completion, interruption, replacement and shutdown end the signal before
-asynchronous cleanup. This is a prerequisite for managed MCP, not an enabled
-agent tool. The future MCP coordinator must register every execution lifetime,
-including YOLO use, and revoke it on Stop/policy changes even without a preview.
+asynchronous cleanup. The managed MCP coordinator registers the running command
+before a tool call and resolves each root/child turn from that runtime. Stop and
+trusted placement/policy revocation apply independently from preview ownership
+and pending approvals, including YOLO execution.
 
 One unexpected helper crash permits one new launch on a **fresh explicit
 request**. Old session IDs remain invalid. A second crash, a launch failure, or
@@ -195,8 +197,10 @@ targets, all cursor styles, binary observations, ownership, cancellation,
 disconnect, and crash restart. Generic worker unit runs skip these explicit
 artifact tests; the dedicated CUA command and portable CI run them without a
 native desktop. The same command now exercises the real app client codec,
-Fastify routes, worker permissions/coordinator and Rust fake backend. It is not
-yet MCP end-to-end or native capture QA.
+Fastify routes, worker permissions/coordinator and Rust fake backend, plus the
+managed MCP broker/stdio boundary. These deterministic tests do not establish
+native capture or installed-app acceptance; consult the progress ledger for
+actual results and outstanding checks.
 
 ### Experimental client preview
 
@@ -412,7 +416,41 @@ Later client/server integration must protect sensitive metadata and pixels
 using Cantrip's existing endpoint encryption; private stdio is not itself that
 network encryption layer.
 
-### Bounded worker-internal JavaScript
+### Managed MCP and bounded JavaScript
+
+Start Cantrip with `pnpm devtop`, open an encrypted project or standalone chat,
+and start an agent turn on its worker. Cantrip supplies the managed MCP server
+`cantrip_cua` to ordinary chat and direct-task agent execution. Do not add a
+user MCP entry or launch a separate sidecar. Other task-processing operations
+and unencrypted execution do not receive this managed capability.
+
+The tools are `js` (arguments: `{ "script": "..." }`) and `js_reset`
+(arguments: `{}`). First inspect the worker's actual inventory:
+
+```json
+{ "script": "await cua.targets()" }
+```
+
+Then pass an exact returned target's ID and generation to `cua.attach`, using
+the API below, and call `cua.snapshot()`. The result contains an actual MCP PNG
+image block, plus text describing the JavaScript value, native target/cursor
+metadata and model image dimensions. An inaccessible or unsupported native
+operation returns its actual failure; there is no monitor substitution or
+foreground activation to make a window snapshot succeed.
+
+The host reads native Codex `threadId` and
+`x-codex-turn-metadata.turn_id` from MCP request metadata. These values select an
+already-running root or child turn that the worker independently verifies;
+tool arguments cannot choose an account, worker, chat, thread or session.
+Missing/stale metadata and disabled or revoked broker bindings are rejected.
+The native helper is launched lazily only when an authorized operation needs it.
+
+When the selected effective policy requires approval, review the ordinary
+approval in the chat. Approval continues the original suspended host operation;
+denial, expiry, Stop and cancellation settle that call without replay. Selected
+YOLO adds no CUA confirmation. Stop is available independently of a pending
+approval or running evaluation. A tool cancellation, MCP host close, interrupted
+turn or worker disconnect propagates to pending worker/native work.
 
 The Rust process owns a dedicated QuickJS thread using pinned `rquickjs 0.12.2`
 with only standard runtime support, no module loader or ambient I/O. Native
@@ -450,15 +488,33 @@ Snapshots are collected separately as validated worker-owned PNGs. JavaScript
 receives only image metadata and an evaluation-local image index; returning a
 forged image object does not create an image result.
 
-The initial bounds are four JavaScript contexts, one active evaluation per
-context, 8 MiB heap and 256 KiB stack per context, 32 KiB UTF-8 source, 32 KiB
-serialized output, 64 host calls per evaluation and one outstanding host call
-per context, plus 10,000 cumulative promise jobs. Active JavaScript execution has a cumulative two-second budget,
-separate from the initial 45-second wall deadline for host waits. The worker
-allows at most two returned snapshots and 16 MiB aggregate PNG bytes per call.
-These are explicit resource limits, not polling, readiness delays, or permission
-preflights. Approval-aware MCP deadlines are a subsequent integration task, not
-a claim that this initial deadline accommodates a full durable approval window.
+The bounds are four JavaScript contexts, one active evaluation per context,
+8 MiB heap and 256 KiB stack per context, 32 KiB UTF-8 source, 32 KiB serialized
+JavaScript value, 64 host calls per evaluation and one outstanding host call per
+context, plus 10,000 cumulative promise jobs. Active JavaScript execution has a
+cumulative two-second budget. Managed calls have a 345-second wall deadline
+including host/approval waits; individual approvals expire after five minutes.
+The CUA broker deadline is 360 seconds and Codex's CUA tool deadline is 370
+seconds. The worker-internal default remains 45 seconds. These limits bound the
+whole call, so multiple approvals do not each extend its wall deadline.
+
+Native image allocations are bounded separately from the JavaScript heap: at
+most two snapshots and 16 MiB aggregate native PNG bytes per evaluation. The
+model adapter validates PNGs and preserves images of at most 2.5 MiB unchanged.
+Only larger images are resized once, preserving aspect ratio without cropping
+or enlargement, to at most 600,000 pixels and encoded as full-color PNG. Output
+must fit 2.5 MiB per image and 5 MiB total or the call fails. The broker and host
+validate image count, PNG content type and strict bounded base64; the host also
+checks the actual serialized JSON-RPC response including its ID and newline
+against 8 MiB. Other Cantrip MCP tools retain their 512 KiB response limit and
+55-second local deadline.
+
+Model rendition dimensions do not overwrite the original native snapshot
+metadata. Convert a model-image point into target-local logical coordinates as
+`x * native.session.target.bounds.width / model.width` and
+`y * native.session.target.bounds.height / model.height`; do not add the desktop
+origin. The cursor is already baked into snapshot pixels and must not be drawn
+again. Logical movement does not move the human pointer or inject native input.
 
 The worker binds contexts to the exact execution scope and real turn signal.
 It retains at most 16 live lifetime registrations independently from the four
@@ -478,15 +534,14 @@ threads, real clicks or keyboard API is exposed. Unawaited pending host actions
 cannot continue after a successful tool response. Ordinary startup, idle Stop,
 and reset do not initialize an engine or launch the helper.
 
-This is **not yet an enabled managed MCP**. The next pass must use the native
-runtime execution resolver, wire durable policy publication and waits, and
-deliver actual MCP image content before making `cantrip_cua.js` discoverable.
-The prerequisites now include a worker-authenticated server authority route
-and cancellable client, exact-request approval waits, and nested image/binary
-omission from secondary raw Trajectory capture. These do not themselves enable
-agent access. The coordinator must use current placement/policy for each host
-action, preserve actual turn ownership through approval, revalidate after a
-wait, and revoke all registered lifetimes on Stop even without a preview.
+State is isolated to the exact authorized native turn. `js_reset` clears its
+variables and attachment; it never restores authority after Stop. A subsequent
+turn starts with fresh state. Current placement and effective policy are read
+before every host action and again after approval. The model receives its PNG
+blocks unchanged by secondary raw Trajectory capture, which omits nested image
+and binary data. This does not establish completion of the broader protected
+operation Trajectory or native/packaged acceptance work; the progress ledger
+records those separately.
 
 ## Bounds and cancellation
 

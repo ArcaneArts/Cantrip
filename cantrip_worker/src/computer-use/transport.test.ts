@@ -82,6 +82,28 @@ function deferred<T>() {
 }
 
 describe("CUA child transport", () => {
+  it("admits an approval-compatible deadline only for JavaScript evaluation", async () => {
+    const transport = fixture();
+    for (const [operation, timeoutMs] of [
+      ["targets.list", 120_001],
+      ["javascript.reset", 120_001],
+      ["javascript.evaluate", 347_001],
+    ] as const) {
+      await expect(
+        transport.request({ operation }, { timeoutMs }),
+      ).rejects.toMatchObject({ code: "invalid-request", outcome: "not-sent" });
+    }
+    await expect(
+      transport.request({ operation: "echo" }, { timeoutMs: 120_000 }),
+    ).resolves.toMatchObject({ data: { id: 1 } });
+    await expect(
+      transport.request(
+        { operation: "javascript.evaluate" },
+        { timeoutMs: 347_000 },
+      ),
+    ).resolves.toMatchObject({ data: { id: 2 } });
+  });
+
   it("awaits a host callback without blocking native requests on the same process", async () => {
     const transport = fixture();
     const signals: AbortSignal[] = [];

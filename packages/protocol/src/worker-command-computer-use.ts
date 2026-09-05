@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { computerUseRequestSchema, cuaIdSchema } from "./computer-use.js";
+import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
 import { interactionResponseOpaqueContentSchema } from "./communication-content.js";
 import {
   cuaPreviewAuthoritySchema,
@@ -28,6 +29,7 @@ export const workerComputerUseApprovalResponseCommandSchema = z.strictObject({
   requestKey: z.string().uuid(),
   response: interactionResponseOpaqueContentSchema,
   previewAuthority: cuaPreviewAuthoritySchema.optional(),
+  agentAuthority: cuaAgentAuthoritySchema.optional(),
 });
 export type WorkerComputerUseApprovalResponseCommand = z.infer<
   typeof workerComputerUseApprovalResponseCommandSchema

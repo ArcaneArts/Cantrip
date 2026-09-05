@@ -162,6 +162,43 @@ describe("bounded CUA JavaScript host arguments", () => {
 });
 
 describe("worker JavaScript ownership before MCP activation", () => {
+  it.each([undefined, 1, 345_000])(
+    "propagates trusted wall timeout %s to Rust and the host transport",
+    async (wallTimeoutMs) => {
+      const { service, request } = fixture();
+      await service.evaluateJavascript(scope, "1", {
+        ...options(),
+        wallTimeoutMs,
+      });
+      const call = request.mock.calls.find(
+        ([input]) =>
+          (input as { operation: string }).operation === "javascript.evaluate",
+      )!;
+      const expected = wallTimeoutMs ?? 45_000;
+      expect(call[0]).toMatchObject({
+        operation: "javascript.evaluate",
+        wallTimeoutMs: expected,
+      });
+      expect(call[1]).toMatchObject({ timeoutMs: expected + 2_000 });
+    },
+  );
+
+  it.each([0, -1, 345_001, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid trusted wall timeout %s before launching or creating authority",
+    async (wallTimeoutMs) => {
+      const { service, launch } = fixture();
+      const opts = options();
+      await expect(
+        service.evaluateJavascript(scope, "1", { ...opts, wallTimeoutMs }),
+      ).rejects.toMatchObject({ code: "invalid-request", outcome: "not-sent" });
+      expect(launch).not.toHaveBeenCalled();
+      expect(service.javascriptSession(scope, opts.executionSignal)).toBeNull();
+      // Invalid input did not bind the original lifetime or consume a context.
+      await service.evaluateJavascript(scope, "1", options());
+      expect(launch).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("stays lazy, including reset, and rejects invalid source before launch", async () => {
     const { service, launch } = fixture();
     const opts = options();

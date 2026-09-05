@@ -38,6 +38,13 @@ import {
   legacyCantripMcpServerCompatibility,
   type CantripMcpServerCompatibility,
 } from "./client.js";
+import {
+  CANTRIP_CUA_MCP_MAX_RESPONSE_BYTES,
+  CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS,
+  cuaMcpBrokerRequestSchema,
+  parseCuaMcpResult,
+  type CuaMcpExecutor,
+} from "./cua-contract.js";
 import { CANTRIP_MCP_MAX_RESPONSE_BYTES } from "./http.js";
 import { executeCantripMcpOperation } from "./operations.js";
 
@@ -61,12 +68,15 @@ type BindingClaimsFor<Binding extends CantripMcpBinding> =
 type BindingClaims = BindingClaimsFor<CantripMcpBinding>;
 
 type BindingInput = BindingClaims & {
+  computerUse?: boolean;
   legacyCanonicalRoot?: string | null;
   serverCompatibility?: CantripMcpServerCompatibility;
 };
 
 interface StoredBinding {
   activeRequests: number;
+  computerUse: boolean;
+  computerUseRequests: Set<AbortController>;
   binding: CantripMcpBinding;
   connection: CantripMcpConnectionDocument;
   connectionPath: string;
@@ -107,9 +117,15 @@ function bindingIdentityMatchesInput(
   );
 }
 
-function sendJson(response: ServerResponse, status: number, payload: unknown) {
+function sendJson(
+  response: ServerResponse,
+  status: number,
+  payload: unknown,
+  maximumBytes = CANTRIP_MCP_MAX_RESPONSE_BYTES,
+) {
+  if (response.destroyed) return;
   let body = `${JSON.stringify(payload)}\n`;
-  if (Buffer.byteLength(body) > CANTRIP_MCP_MAX_RESPONSE_BYTES) {
+  if (Buffer.byteLength(body) > maximumBytes) {
     status = 413;
     body = `${JSON.stringify({
       code: "output-too-large",
@@ -169,6 +185,7 @@ export class CantripMcpBroker {
   } | null = null;
   #encryptionService: WorkerEncryptionService | null = null;
   #webService: WorkerWebService | null = null;
+  #executeComputerUse: CuaMcpExecutor | null = null;
   #endpoint: string | null = null;
   #server: Server | null = null;
   #sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -222,6 +239,10 @@ export class CantripMcpBroker {
     this.#webService = service;
   }
 
+  setComputerUseExecutor(execute: CuaMcpExecutor): void {
+    this.#executeComputerUse = execute;
+  }
+
   async serverCompatibility(): Promise<CantripMcpServerCompatibility> {
     const now = this.#now();
     if (this.#capabilityCache && this.#capabilityCache.expiresAt > now) {
@@ -262,6 +283,7 @@ export class CantripMcpBroker {
       throw new Error("Cantrip MCP broker is not running.");
     }
     const {
+      computerUse = false,
       legacyCanonicalRoot = null,
       serverCompatibility = {
         bindingProtocolVersion: 2,
@@ -288,6 +310,11 @@ export class CantripMcpBroker {
             issuedAt: stored.binding.issuedAt,
             expiresAt: stored.binding.expiresAt,
           });
+          if (!computerUse) {
+            for (const controller of stored.computerUseRequests)
+              controller.abort();
+          }
+          stored.computerUse = computerUse;
           stored.legacyCanonicalRoot = legacyCanonicalRoot;
           stored.serverCompatibility = serverCompatibility;
           stored.staleContextRejected = false;
@@ -342,6 +369,8 @@ export class CantripMcpBroker {
     writeConnectionDocument(connectionPath, connection);
     this.#bindings.set(binding.bindingId, {
       activeRequests: 0,
+      computerUse,
+      computerUseRequests: new Set(),
       binding,
       connection,
       connectionPath,
@@ -368,6 +397,7 @@ export class CantripMcpBroker {
     const stored = this.#bindings.get(bindingId);
     if (!stored) return false;
     this.#bindings.delete(bindingId);
+    for (const controller of stored.computerUseRequests) controller.abort();
     rmSync(path.dirname(stored.connectionPath), {
       force: true,
       recursive: true,
@@ -386,6 +416,76 @@ export class CantripMcpBroker {
       return null;
     }
     return stored;
+  }
+
+  private async executeComputerUse(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    request.once("aborted", cancel);
+    response.once("close", cancel);
+    let stored: StoredBinding | null = null;
+    try {
+      const parsed = cuaMcpBrokerRequestSchema.parse(
+        await readJsonBody(request),
+      );
+      stored = this.bindingFor(parsed.bindingId, request.headers.authorization);
+      if (!stored) {
+        sendJson(response, 401, { error: "Unauthorized" });
+        return;
+      }
+      if (!stored.computerUse || !this.#executeComputerUse) {
+        sendJson(response, 403, {
+          error: "Computer use is not enabled for this agent binding.",
+        });
+        return;
+      }
+      if (stored.staleRejection) {
+        sendJson(response, 409, {
+          code: "stale-binding",
+          error: stored.staleRejection,
+        });
+        return;
+      }
+      if (
+        stored.computerUseRequests.size >= CANTRIP_MCP_MAX_CONCURRENT_OPERATIONS
+      ) {
+        sendJson(response, 429, {
+          error: "Too many computer-use operations in flight.",
+        });
+        return;
+      }
+      stored.computerUseRequests.add(controller);
+      const signal = AbortSignal.any([
+        controller.signal,
+        AbortSignal.timeout(CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS),
+      ]);
+      signal.throwIfAborted();
+      const result = parseCuaMcpResult(
+        await this.#executeComputerUse(
+          stored.binding,
+          parsed.request,
+          randomUUID(),
+          signal,
+        ),
+      );
+      signal.throwIfAborted();
+      sendJson(response, 200, result, CANTRIP_CUA_MCP_MAX_RESPONSE_BYTES);
+    } catch (error) {
+      // Neither script text nor model-visible pixels enter worker diagnostics.
+      sendJson(response, 400, {
+        error:
+          error instanceof Error && error.name !== "ZodError"
+            ? error.message.slice(0, 2000)
+            : "Computer-use request validation failed.",
+      });
+    } finally {
+      request.off("aborted", cancel);
+      response.off("close", cancel);
+      stored?.computerUseRequests.delete(controller);
+    }
   }
 
   async start(): Promise<string> {
@@ -410,6 +510,13 @@ export class CantripMcpBroker {
           bindingId: stored.binding.bindingId,
           expiresAt: stored.binding.expiresAt,
         });
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/v1/computer-use"
+      ) {
+        void this.executeComputerUse(request, response);
         return;
       }
       if (request.method !== "POST" || requestUrl.pathname !== "/v1/execute") {

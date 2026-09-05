@@ -14,6 +14,7 @@ import {
   agentCommandOutputLimitBytes,
   agentFilePreviewLimitCharacters,
   CANTRIP_MCP_TOOL_NAMES,
+  MANAGED_CUA_MCP_NAME,
   agentInteractionAcceptedSchema,
   agentInteractionRuntimeRequestSchema,
   agentThreadSyncSchema,
@@ -2319,14 +2320,18 @@ export function codexMcpConfigOverride(
         .map((server) => {
           const isManagedCodeGraph = isManagedCodeGraphMcpName(server.name);
           const isManagedCantrip = isManagedCantripMcpName(server.name);
+          const isManagedCua = server.name === MANAGED_CUA_MCP_NAME;
           const managedCantripTools = managedCantripEnabledToolNames(server);
           const managedOverrides =
-            isManagedCodeGraph || isManagedCantrip
+            isManagedCodeGraph || isManagedCantrip || isManagedCua
               ? {
                   required: true,
-                  enabled_tools: isManagedCodeGraph
-                    ? ["codegraph_explore"]
-                    : managedCantripTools,
+                  ...(isManagedCua ? { tool_timeout_sec: 370 } : {}),
+                  enabled_tools: isManagedCua
+                    ? ["js", "js_reset"]
+                    : isManagedCodeGraph
+                      ? ["codegraph_explore"]
+                      : managedCantripTools,
                 }
               : {};
           return [
@@ -2359,6 +2364,12 @@ export function managedMcpToolRequirements(
 ) {
   return servers.flatMap((server) => {
     if (!server.enabled) return [];
+    if (server.name === MANAGED_CUA_MCP_NAME) {
+      return ["js", "js_reset"].map((tool) => ({
+        name: MANAGED_CUA_MCP_NAME,
+        tool,
+      }));
+    }
     if (isManagedCodeGraphMcpName(server.name)) {
       return [{ name: "codegraph", tool: "codegraph_explore" }];
     }
@@ -6127,6 +6138,13 @@ export class CodexAppServer implements CodexRuntime {
 
   private hasActiveThread(threadId: string): boolean {
     return this.#rootExecutionsByThread.has(threadId);
+  }
+
+  /** Native root/child ownership for lifecycle cancellation, even before CUA is used. */
+  ownsComputerUseThread(rootThreadId: string, threadId: string): boolean {
+    return (
+      this.#rootExecutionsByThread.get(threadId)?.rootThreadId === rootThreadId
+    );
   }
 
   /** Resolve an exact observed native turn without creating or rebinding one.

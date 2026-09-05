@@ -788,6 +788,7 @@ export async function buildApp({
 
   const { beginTurn } = createChatTurnRuntime({
     app,
+    serverId,
     applicationOwnerId,
     appendLiveChatMessage,
     appendLiveEncryptedChatMessage,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
 import {
   chatPlanOpaqueStateSchema,
   chatMessageOpaqueContentSchema,
@@ -99,6 +100,7 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.turn"),
+      computerUseAuthority: cuaAgentAuthoritySchema.optional(),
       executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
       contextKind: chatContextKindSchema.default("project"),
       chatId: z.string().min(1),

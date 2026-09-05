@@ -364,7 +364,13 @@ class ChildTransport implements CuaTransport {
     if (
       !Number.isSafeInteger(timeoutMs) ||
       timeoutMs < 1 ||
-      timeoutMs > 120_000
+      timeoutMs >
+        (operation &&
+        typeof operation === "object" &&
+        "operation" in operation &&
+        operation.operation === "javascript.evaluate"
+          ? 347_000
+          : 120_000)
     )
       return Promise.reject(new CuaProcessError("invalid-request", "not-sent"));
     // Settled cancellation still consumes a native correlation until its reply

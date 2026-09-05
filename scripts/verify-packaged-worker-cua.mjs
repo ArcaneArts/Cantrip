@@ -2,12 +2,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cantripCuaExecutableName } from "./cantrip-cua/build.mjs";
 import { smokeCantripCua } from "./cantrip-cua/smoke.mjs";
+import { smokeCuaModelImageEncoder } from "./cantrip-cua/model-image-smoke.mjs";
 
 export async function verifyPackagedWorkerCua(workerDirectory, options = {}) {
   const binary = path.join(workerDirectory, "bin", cantripCuaExecutableName());
   // Execute the final-layout binary, including after artifact extraction or
   // signing. No local Cargo build can hide a missing/broken packaged helper.
-  return smokeCantripCua(binary, { ...options, backend: "fake" });
+  const native = await smokeCantripCua(binary, { ...options, backend: "fake" });
+  const modelImageEncoder = await smokeCuaModelImageEncoder(workerDirectory);
+  return { ...native, modelImageEncoder };
 }
 
 if (
