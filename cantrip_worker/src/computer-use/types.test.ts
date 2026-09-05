@@ -263,6 +263,18 @@ describe("CUA identifiers and native geometry", () => {
       }).success,
     ).toBe(false);
   });
+  it("retains explicit truncation without inventing it for older helpers", () => {
+    const targets = [target()];
+    expect(cuaInventorySchema.parse({ targets })).toEqual({ targets });
+    for (const truncated of [true, false])
+      expect(cuaInventorySchema.parse({ targets, truncated })).toEqual({
+        targets,
+        truncated,
+      });
+    expect(
+      cuaInventorySchema.safeParse({ targets, truncated: "true" }).success,
+    ).toBe(false);
+  });
 });
 
 describe("CUA ownership and observation metadata", () => {
@@ -328,6 +340,25 @@ describe("CUA ownership and observation metadata", () => {
         },
       }).success,
     ).toBe(true);
+  });
+  it("keeps logical target geometry separate from a downscaled PNG", () => {
+    const value = snapshot();
+    value.session.target = {
+      ...value.session.target,
+      bounds: { x: -3840, y: -2160, width: 3840, height: 2160 },
+      pixelWidth: 7680,
+      pixelHeight: 4320,
+      scaleFactor: 2,
+    };
+    value.image.width = 1920;
+    value.image.height = 1080;
+    expect(cuaSnapshotSchema.parse(value)).toEqual(value);
+    // Capture may instead report the current output descriptor; neither form
+    // permits changing target-local points into image pixels.
+    value.session.target.pixelWidth = 1920;
+    value.session.target.pixelHeight = 1080;
+    value.session.target.scaleFactor = 0.5;
+    expect(cuaSnapshotSchema.parse(value)).toEqual(value);
   });
   it.each([
     { width: 0 },

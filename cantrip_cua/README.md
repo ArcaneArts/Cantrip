@@ -4,10 +4,10 @@ Worker-owned Rust computer-use library and executable. The portable
 process/session/image/cursor core and build-chain integration use an explicit
 deterministic test backend. A lazy worker service owns the actual process and
 private protocol. Encrypted server routing, existing durable permission requests,
-and the experimental shared client preview are implemented. Native capture,
-managed JavaScript, and Trajectory remain subsequent cycles in
-[the CUA plan](../docs/planned/CUA.md). Nothing launches this crate from ordinary
-Cantrip worker startup yet. Development preparation builds, installs, and smoke
+and the experimental shared client preview are implemented. The native macOS
+backend uses ScreenCaptureKit; managed JavaScript and Trajectory remain subsequent
+cycles in [the CUA plan](../docs/planned/CUA.md). Ordinary Cantrip worker startup
+does not launch the helper. Development preparation builds, installs, and smoke
 tests the helper without capturing a real desktop or requesting capture permission.
 
 ## Build and verify
@@ -48,8 +48,98 @@ node scripts/verify-packaged-worker-cua.mjs /absolute/path/to/worker
 ```
 
 No screenshot pixels or native target details are printed. Fake image metadata
-and digests are public deterministic test results. Native smoke is not yet
-implemented; the later macOS adapter cycle owns that validation.
+and digests are public deterministic test results. Ordinary build/test/package
+commands continue to use explicit fake capture; native capture is opt-in below.
+
+### Native macOS snapshots
+
+On macOS 14+, the default executable uses the actual
+[ScreenCaptureKit screenshot API](https://developer.apple.com/documentation/screencapturekit/scscreenshotmanager).
+Other platforms, or a macOS runtime without that API, report unavailable. The
+framework is weak-linked; this does not change the application's minimum OS.
+Checking capability does not enumerate windows or request Screen Recording.
+The CLI initializes CoreGraphics on its original main thread before servicing
+ScreenCaptureKit callbacks. This is native runtime setup, not a permission or
+display-availability gate; its returned display identifier is not used to
+approve, reject or redirect a capture.
+The first authorized inventory/capture call attempts the real native operation.
+Denial returns `permission-denied`; there is no permission preflight, alternate
+identity, automatic replay, fake fallback, or selected-window-to-monitor fallback.
+
+Window capture uses a desktop-independent `SCContentFilter`, including ordinary
+windows covered by others. The system pointer, audio and window shadows are
+excluded; only the logical CUA cursor is composed into PNG pixels. Application
+names, titles, identifiers and pixels remain protected by the existing encrypted
+route. No Accessibility or system-input permission is requested in this tranche.
+
+- Logical bounds retain native global origins and target-local dimensions.
+  Negative monitor origins do not alter local cursor coordinates.
+- Retina scale informs output resolution. Large captures are reduced to at most
+  4,000,000 pixels and 16,384 pixels on either axis, preserving aspect ratio to
+  integer-pixel rounding. This leaves room for PNG overhead within the 16 MiB
+  payload budget. `pixelWidth`/`pixelHeight` describe configured output pixels;
+  `scaleFactor` is output width / logical width. Rendering derives X/Y ratios
+  independently, so downscaling and rounding do not move the cursor.
+- Inventory reads native frames without constructing capture filters for
+  unrelated windows. Its raster is a bounded nominal 1x descriptor, not a claim
+  about physical Retina density; the selected snapshot refreshes actual filter
+  geometry, scale and output dimensions. Cancellation stops inventory traversal
+  between native entries.
+- Inventory is limited to 256 entries and a 60 KiB serialized target budget.
+  `truncated: true` identifies omitted/invalid native entries or a size limit
+  and is disclosed by the preview; selected-target capture does
+  not depend on remaining inside that public list. Native generation tracking
+  is bounded to 4,096 live identities.
+- Geometry, title and scale changes preserve a target generation. Observed
+  disappearance or owner change retires it; an explicit refresh/reselection
+  is required after a closed/stale target. macOS native IDs are not permanent
+  identities: same-owner ID reuse entirely between observations cannot always
+  be distinguished. No absolute unseen-replacement guarantee is claimed.
+- Focused/minimized metadata remains unknown rather than treating on-screen,
+  active, hidden and minimized as equivalent states. Locked/protected desktops,
+  minimized windows and other Spaces retain macOS's actual capture behavior;
+  this implementation does not bypass OS protections.
+- Native callbacks retain their own bounded lifetimes; cancellation prevents
+  late results from publishing. The native wait is bounded to 10 seconds with
+  at most 16 unresolved completions. Normal startup has no capture loop or
+  permission prompt; the helper uses a serviced original-main run loop only after
+  authorized launch.
+
+For a bounded native diagnostic run, `CANTRIP_CUA_NATIVE_DIAGNOSTICS=1` emits at
+most 256 structured stderr events per helper process: static operation phases,
+inventory counts, our validation reasons, and native error domain/code/key names.
+It does not print error descriptions, arbitrary native error values, target
+titles or pixels. Ordinary execution leaves this instrumentation off. A locked
+desktop can return no displays or a native capture error; the operation's actual
+result remains authoritative, without an extra lock-state gate.
+
+Build/install the deliberate stable helper first using the existing
+[development identity instructions](#stable-development-helper), then inspect
+its exact installed path with `pnpm cua:profile`. Use that path, not a transient
+Cargo output, for native permission verification:
+
+```sh
+pnpm cua:smoke:native --binary /absolute/stable/cantrip-cua --fixture
+pnpm cua:smoke:native --binary /absolute/stable/cantrip-cua --fixture --output /absolute/new-fixture.png
+```
+
+Fixture mode briefly opens its own patterned window and covering window. It
+checks foreground, partially/fully covered, moved, resized, closed and recreated
+windows; decoded corner colors verify orientation and channel order. It exercises
+all cursor styles without moving the human pointer. Fixture windows close on
+exit. Logs contain bounded scenario/dimension/timing results, not window titles
+or screenshot pixels. If macOS asks, grant or deny through the normal OS UI;
+denied capture is not retried automatically. Record prompts separately—equal
+signatures or successful capture alone do not prove permission continuity.
+
+Omitting `--fixture` deliberately selects the first real monitor; `--target ID`
+selects an exact current inventory target. No image file is saved unless
+`--output` is specified. Saved files are created exclusively with mode `0600`;
+existing files are never overwritten. Native smoke never builds, installs,
+signs, resets permission, or switches identity on the user's behalf.
+
+The actual observed platform/fixture results and outstanding manual checks are
+recorded in [the cycle-7 progress ledger](../docs/planned/CUA.md#tranche-cycle-7--macos-target-inventory-and-native-snapshots).
 
 ### Worker ownership and lifecycle
 
@@ -100,8 +190,8 @@ Open any project or standalone agent chat and choose **Computer use ·
 Experimental** above the transcript. Desktop, browser and responsive mobile
 clients use the same encrypted app → server → agent-worker route. Opening the
 panel does not launch the helper; **Connect to agent worker** performs its real
-capability request. The current default native backend is unavailable until the
-macOS capture cycle; fake pixels are used only by explicitly configured tests.
+capability request. The default backend uses ScreenCaptureKit on supported
+macOS versions; fake pixels are used only by explicitly configured tests.
 
 Choose a monitor/window, request **Snapshot**, or click its displayed image to
 move the logical cursor. The four direction buttons provide a keyboard-accessible
@@ -134,8 +224,9 @@ pnpm cua:test:worker
 ```
 
 The server test fixture uses fresh synthetic keys and an in-memory repository;
-it does not access installed profiles, Keychain, production accounts or real
-desktop pixels. Shared client tests plus browser QA are not a claim that a
+it does not access encryption profiles, Keychain or production accounts. Ordinary
+tests use fake capture; a deliberate native QA opt-in can exercise the same route
+with an explicitly selected installed helper. Shared client tests plus browser QA are not a claim that a
 packaged Tauri/iOS/Android build has been manually verified.
 
 ### Stable development helper
@@ -316,13 +407,14 @@ network encryption layer.
   stages. Rendering/encoding process a bounded four-million-pixel image; no
   claim is made that an arbitrary native call can be interrupted by Rust alone.
 - Image buffers use checked dimensions and an encoded-output bound. Native
-  target dimensions may be larger than the bounded returned snapshot.
+  logical target dimensions may be larger than the bounded returned snapshot;
+  macOS output pixel metadata describes the configured bounded capture.
 
 Malformed framing is terminal because guessing resynchronization could attach
 bytes to the wrong request. An invalid operation produces a bounded error while
 leaving a correctly framed connection usable. No retries, network listeners,
-input injection, native permission checks, or automatic task authorization are
-implemented here.
+input injection, speculative permission preflights, or automatic task
+authorization are implemented here.
 
 ## Cursor contract: appearance version 1
 

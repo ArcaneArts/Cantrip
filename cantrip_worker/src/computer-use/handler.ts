@@ -130,7 +130,7 @@ export async function handleComputerUseOperation(
         data = await service.capabilities(scope, signal);
         break;
       case "targets.list":
-        data = { targets: await service.targets(scope, signal) };
+        data = await service.inventory(scope, signal);
         break;
       case "session.open":
         data = {

@@ -207,7 +207,11 @@ impl<B: CaptureBackend> CuaService<B> {
             Operation::TargetsList {} => {
                 let targets = self.inventory(cancel)?;
                 cancel.check()?;
-                Ok(OperationResult::json(json!({ "targets": targets })))
+                let mut data = json!({ "targets": targets });
+                if self.backend.inventory_truncated() {
+                    data["truncated"] = json!(true);
+                }
+                Ok(OperationResult::json(data))
             }
             Operation::TargetAttach {
                 binding,

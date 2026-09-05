@@ -138,6 +138,32 @@ const chunk = (sequence = 0) => ({
 const response = () => ({ operationId, protectedContent: opaque() });
 
 describe("browser-compatible CUA geometry and cursor schemas", () => {
+  it.each([undefined, false, true])(
+    "preserves optional inventory truncation metadata: %s",
+    (truncated) => {
+      const data = {
+        targets: [target],
+        ...(truncated === undefined ? {} : { truncated }),
+      };
+      expect(cuaInventorySchema.parse(data)).toEqual(data);
+      expect(
+        computerUseResultContentSchema.parse({
+          status: "ok",
+          operation: "targets.list",
+          data,
+          chunkCount: 0,
+        }),
+      ).toMatchObject({ data });
+    },
+  );
+  it.each([null, "true", 1, {}, []])(
+    "rejects nonboolean inventory truncation metadata: %j",
+    (truncated) => {
+      expect(
+        cuaInventorySchema.safeParse({ targets: [], truncated }).success,
+      ).toBe(false);
+    },
+  );
   it("validates UTF-8 limits and Unicode labels without a Buffer global", () => {
     vi.stubGlobal("Buffer", undefined);
     try {

@@ -461,6 +461,7 @@ struct ControlledBackend(Arc<Mutex<BackendState>>);
 
 struct BackendState {
     target: Option<Target>,
+    inventory_truncated: bool,
     invalid_pixels: bool,
     cancel_inventory: bool,
     cancel_capture: bool,
@@ -474,6 +475,7 @@ impl ControlledBackend {
             .remove(1);
         Self(Arc::new(Mutex::new(BackendState {
             target: Some(target),
+            inventory_truncated: false,
             invalid_pixels: false,
             cancel_inventory: false,
             cancel_capture: false,
@@ -482,6 +484,9 @@ impl ControlledBackend {
 }
 
 impl CaptureBackend for ControlledBackend {
+    fn inventory_truncated(&self) -> bool {
+        self.0.lock().unwrap().inventory_truncated
+    }
     fn name(&self) -> &'static str {
         "controlled"
     }
@@ -531,6 +536,19 @@ fn cancellation_after_inventory_does_not_commit_a_new_session() {
         ErrorCode::Cancelled
     );
     assert_eq!(service.session_count(), 0);
+}
+
+#[test]
+fn bounded_inventory_discloses_truncation_without_changing_complete_inventory() {
+    let backend = ControlledBackend::new();
+    let control = backend.clone();
+    let mut service = CuaService::new(backend);
+    let complete = apply(&mut service, Operation::TargetsList {});
+    assert!(complete.data.get("truncated").is_none());
+    control.0.lock().unwrap().inventory_truncated = true;
+    let limited = apply(&mut service, Operation::TargetsList {});
+    assert_eq!(limited.data["truncated"], true);
+    assert_eq!(limited.data["targets"], complete.data["targets"]);
 }
 
 #[test]

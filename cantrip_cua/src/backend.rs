@@ -32,6 +32,9 @@ pub trait CaptureBackend: Send {
     fn name(&self) -> &'static str;
     fn available(&self) -> bool;
     fn targets(&mut self, cancellation: &Cancellation) -> Result<Vec<Target>>;
+    fn inventory_truncated(&self) -> bool {
+        false
+    }
     fn capture(&mut self, target: &Target, cancellation: &Cancellation) -> Result<Capture>;
 }
 

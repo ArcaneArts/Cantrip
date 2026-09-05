@@ -185,13 +185,33 @@ fn real_executable_handshake_cursor_png_and_shutdown() {
 fn default_binary_never_silently_uses_fake_capture() {
     let mut child = Process::start(false);
     let (capabilities, _) = child.call(json!({"operation":"capabilities.get"}));
-    assert_eq!(capabilities["backend"], "unavailable");
-    assert_eq!(capabilities["capture"], false);
-    let id = child.send(json!({"operation":"targets.list"}));
-    let (outcome, _) = child.response(id);
-    assert!(
-        matches!(outcome, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Unsupported)
-    );
+    assert_ne!(capabilities["backend"], "fake");
+    assert_eq!(capabilities["nativeInput"], false);
+    #[cfg(target_os = "macos")]
+    {
+        let supported = cantrip_cua::macos::available();
+        assert_eq!(capabilities["capture"], supported);
+        assert_eq!(
+            capabilities["backend"],
+            if supported {
+                "macos-screencapturekit"
+            } else {
+                "unavailable"
+            }
+        );
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        assert_eq!(capabilities["backend"], "unavailable");
+        assert_eq!(capabilities["capture"], false);
+        let id = child.send(json!({"operation":"targets.list"}));
+        let (outcome, _) = child.response(id);
+        assert!(
+            matches!(outcome, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Unsupported)
+        );
+    }
+    // On macOS this is deliberately handshake-only: ordinary CI/tests must
+    // never enumerate private windows or request Screen Recording permission.
     child.stop(true);
 }
 

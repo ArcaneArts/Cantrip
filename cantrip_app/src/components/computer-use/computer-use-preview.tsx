@@ -91,6 +91,12 @@ export function ComputerUsePreviewPanel({
                 Review approval in chat
               </Button>
             </>
+          ) : state.error.code === "target-not-found" ||
+            state.error.code === "stale-target" ? (
+            <p className="text-xs text-muted-foreground">
+              Refresh targets and select the current window or monitor. No other
+              target was captured as a fallback.
+            </p>
           ) : (
             <p className="text-xs text-muted-foreground">
               Retry the requested action explicitly. If the session ended or the
@@ -158,6 +164,12 @@ export function ComputerUsePreviewPanel({
           Detach target
         </Button>
       </div>
+      {state.targetsTruncated ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          Some native targets were omitted because their metadata is unavailable
+          or the inventory reached its size limit. Refresh targets to try again.
+        </p>
+      ) : null}
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="grid min-w-0 content-start gap-2">
           <div className="grid min-h-48 place-items-center overflow-hidden rounded-lg border bg-black/30 p-2">

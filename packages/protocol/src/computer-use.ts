@@ -92,6 +92,8 @@ export const cuaCapabilitiesSchema = z.strictObject({
     .max(CUA_CHUNK_BYTES * CUA_MAX_CHUNKS),
 });
 export const cuaInventorySchema = z.strictObject({
+  // Older/fake helpers omit this; a bounded native list must disclose omission.
+  truncated: z.boolean().optional(),
   targets: z
     .array(cuaTargetSchema)
     .max(256)
