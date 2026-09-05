@@ -29,7 +29,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CuaApprovalManager } from "./approvals.js";
 import { CuaPreviewCoordinator, type CuaPreviewEvent } from "./preview.js";
-import { CantripCuaService } from "./service.js";
+import { CantripCuaService, CuaServiceError } from "./service.js";
 import { launchCuaTransport } from "./transport.js";
 
 const key = new Uint8Array(32).fill(61);
@@ -566,6 +566,168 @@ describe("worker-owned preview authority", () => {
   });
 });
 
+describe("one native session per shared preview lease", () => {
+  const selected: CuaPreviewAuthority = {
+    ...authority,
+    profile: {
+      ...authority.profile,
+      selectedId: ":yolo",
+      effectiveId: ":yolo",
+    },
+  };
+  const openAction = { operation: "session.open", ...target } as const;
+
+  function shared() {
+    const f = fixture();
+    const native = stubCapture(f.service);
+    const attach = vi
+      .spyOn(f.service, "attach")
+      .mockImplementation(async (scope, id, next) => {
+        const value = session(scope);
+        value.binding.sessionId = id;
+        value.target!.id = next.targetId;
+        value.target!.generation = next.targetGeneration;
+        value.cursor.appearance.label = "Shared cursor";
+        return value;
+      });
+    return { ...f, native, attach, lease: f.coordinator.open(selected) };
+  }
+
+  it("reuses one native session across repeated observers and target changes", async () => {
+    const f = shared();
+    for (let observer = 0; observer < 20; observer += 1) {
+      const lease = f.coordinator.open(structuredClone(selected));
+      expect(lease).toEqual(f.lease);
+      const opened = await execute(f, openAction, lease, selected);
+      expect(opened.result).toMatchObject({
+        status: "ok",
+        data: { session: { binding: { sessionId: "fixture-session" } } },
+      });
+    }
+    const switched = await execute(
+      f,
+      { ...openAction, targetId: "fake-window" },
+      f.lease,
+      selected,
+    );
+    expect(switched.result).toMatchObject({
+      status: "ok",
+      data: {
+        session: {
+          binding: {
+            sessionId: "fixture-session",
+            workerId: "worker",
+            chatId: "chat",
+            taskId: null,
+            threadId: null,
+            turnId: null,
+          },
+          target: { id: "fake-window" },
+          cursor: { appearance: { label: "Shared cursor" } },
+        },
+      },
+    });
+    expect(f.native.open).toHaveBeenCalledTimes(1);
+    expect(f.attach).toHaveBeenCalledTimes(20);
+    expect(f.attach.mock.lastCall?.[0]).toMatchObject({
+      ownerId: "owner",
+      serverId: "server",
+      workerId: "worker",
+      chatId: "chat",
+      taskId: null,
+      threadId: null,
+      turnId: null,
+    });
+  });
+
+  it("serializes concurrent opens without allocating a second session", async () => {
+    const f = shared();
+    const entered = deferred();
+    const release = deferred();
+    const authorized = deferred();
+    let authorizations = 0;
+    f.authorize.mockImplementation(async () => {
+      if (++authorizations === 2) authorized.resolve();
+      return { status: "allowed" };
+    });
+    f.native.open.mockImplementation(async (scope) => {
+      entered.resolve();
+      await release.promise;
+      return session(scope);
+    });
+    const first = execute(f, openAction, f.lease, selected);
+    await entered.promise;
+    const second = execute(f, openAction, f.lease, selected);
+    await authorized.promise;
+    release.resolve();
+    const opened = await Promise.all([first, second]);
+    expect(opened.map((entry) => entry.result.status)).toEqual(["ok", "ok"]);
+    expect(f.native.open).toHaveBeenCalledTimes(1);
+    expect(f.attach).toHaveBeenCalledTimes(1);
+  });
+
+  it("Stop cancels an in-flight open and its queued observer without restoring the lease", async () => {
+    const f = shared();
+    const entered = deferred();
+    const release = deferred();
+    f.native.open.mockImplementation(async (scope) => {
+      entered.resolve();
+      await release.promise;
+      return session(scope);
+    });
+    const first = execute(f, openAction, f.lease, selected);
+    await entered.promise;
+    const secondPacket = await command(openAction, f.lease, selected);
+    const second = f.coordinator.execute(secondPacket, async () => {});
+    expect(stop(f, f.lease)).toEqual({ closed: true });
+    release.resolve();
+    expect((await first).result).toMatchObject({
+      status: "error",
+      code: "cancelled",
+    });
+    await second;
+    expect(f.coordinator.status().previews).toBe(0);
+    expect(f.attach).not.toHaveBeenCalled();
+    expect(f.native.open).toHaveBeenCalledTimes(1);
+    const next = f.coordinator.open(selected);
+    expect(next.leaseId).not.toBe(f.lease.leaseId);
+    expect((await execute(f, openAction, next, selected)).result.status).toBe(
+      "ok",
+    );
+    expect(f.native.open).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a lost cached session instead of silently replacing it", async () => {
+    const f = shared();
+    await execute(f, openAction, f.lease, selected);
+    f.attach.mockRejectedValue(new CuaServiceError("session-not-found"));
+    for (let attempt = 0; attempt < 2; attempt += 1)
+      expect(
+        (await execute(f, openAction, f.lease, selected)).result,
+      ).toMatchObject({ status: "error", code: "session-not-found" });
+    expect(f.native.open).toHaveBeenCalledTimes(1);
+    stop(f, f.lease);
+    const fresh = f.coordinator.open(selected);
+    expect((await execute(f, openAction, fresh, selected)).result.status).toBe(
+      "ok",
+    );
+    expect(f.native.open).toHaveBeenCalledTimes(2);
+  });
+
+  it("a rejected initial open does not cache an unusable native handle", async () => {
+    const f = shared();
+    f.native.open.mockRejectedValueOnce(new CuaServiceError("stale-target"));
+    expect(
+      (await execute(f, openAction, f.lease, selected)).result,
+    ).toMatchObject({ status: "error", code: "stale-target" });
+    expect(
+      (await execute(f, openAction, f.lease, selected)).result.status,
+    ).toBe("ok");
+    expect(f.native.open).toHaveBeenCalledTimes(2);
+    expect(f.attach).not.toHaveBeenCalled();
+  });
+});
+
 describe("preview approvals use the existing encrypted interaction path", () => {
   it("waits for durable approval publication before returning the operation result", async () => {
     const f = fixture();
@@ -883,6 +1045,16 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         turnId: null,
       });
       expect(f.launch).toHaveBeenCalledTimes(1);
+      for (let observer = 0; observer < 20; observer += 1) {
+        const observerLease = f.coordinator.open(structuredClone(authority));
+        expect(observerLease).toEqual(lease);
+        const reopened = await execute(f, openAction, observerLease);
+        expect(reopened.result).toMatchObject({
+          status: "ok",
+          data: { session: { binding: opened.result.data.session.binding } },
+        });
+      }
+      expect(f.service.status().sessions).toBe(1);
       const captureAction = {
         operation: "observation.snapshot",
         sessionId: opened.result.data.session.binding.sessionId,

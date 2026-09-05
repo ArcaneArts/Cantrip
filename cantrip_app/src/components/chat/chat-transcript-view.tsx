@@ -57,6 +57,7 @@ import {
 import { chatAttachmentContentUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { ChatTranscriptController } from "@/components/chat/use-chat-transcript-controller";
+import { ComputerUsePreviewLauncher } from "@/components/computer-use/computer-use-preview";
 
 export function ChatTranscriptView({
   controller,
@@ -272,6 +273,9 @@ export function ChatTranscriptView({
         message={turnPromptOverlay.message}
         visible={turnPromptOverlay.visible}
       />
+      <div className="flex shrink-0 justify-end px-3">
+        <ComputerUsePreviewLauncher key={chat.id} chatId={chat.id} />
+      </div>
       <div
         ref={transcriptViewportRef}
         className={cn(

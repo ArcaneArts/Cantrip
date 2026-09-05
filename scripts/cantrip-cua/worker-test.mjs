@@ -35,11 +35,16 @@ for (const [project, ...tests] of [
     "test/computer-use-authority-postgres.test.ts",
     "test/computer-use-preview-routes.test.ts",
     "test/computer-use-preview-roundtrip.test.ts",
+    "test/computer-use-client-preview.test.ts",
   ],
   [
     "cantrip_app",
     "src/lib/endpoint-content-encryption.test.ts",
     "src/components/chat/agent-interaction-panel.test.ts",
+    "src/lib/computer-use-client.test.ts",
+    "src/lib/api-client.test.ts",
+    "src/lib/client-session.test.ts",
+    "src/components/computer-use",
   ],
 ]) {
   const result = spawnSync(
