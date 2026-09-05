@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./computer-use-preferences": {
+      "types": "./src/computer-use-preferences.ts",
+      "import": "./dist/computer-use-preferences.js"
+    },
     "./computer-use-agent": {
       "types": "./src/computer-use-agent.ts",
       "import": "./dist/computer-use-agent.js"

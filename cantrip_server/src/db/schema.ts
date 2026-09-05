@@ -68,6 +68,7 @@ import type {
   WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type { EndpointContentOpaque } from "@cantrip/protocol/endpoint-content";
+import type { CuaCursorPreferenceRecord } from "@cantrip/protocol/computer-use-preferences";
 import type {
   RunConfigurationRuntimeFailure,
   RunConfigurationRuntimeOperation,
@@ -1029,6 +1030,11 @@ export const userSettings = pgTable(
     userId: text("user_id")
       .primaryKey()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Keep the non-null identity first: Drizzle uses the first selected column
+    // to distinguish a missing row when this table is left-joined.
+    protectedComputerUseCursor: jsonb(
+      "protected_computer_use_cursor",
+    ).$type<CuaCursorPreferenceRecord>(),
     theme: text("theme").notNull().default("system"),
     highContrast: boolean("high_contrast").notNull().default(false),
     proMode: boolean("pro_mode").notNull().default(false),

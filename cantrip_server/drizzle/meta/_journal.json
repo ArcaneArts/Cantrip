@@ -1401,6 +1401,13 @@
       "when": 1788568526166,
       "tag": "0199_computer_use_authority_generation",
       "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1788628840958,
+      "tag": "0200_computer_use_cursor_preference",
+      "breakpoints": true
     }
   ]
 }

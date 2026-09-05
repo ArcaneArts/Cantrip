@@ -3,6 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterAll, describe, expect, it, vi } from "vitest";
+import {
+  encryptEndpointContentPayload,
+  decryptEndpointContentPayload,
+} from "../../packages/crypto/src/index.js";
+import { cuaCursorPreferenceContext } from "@cantrip/protocol/computer-use-preferences";
 
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/auth/service.js";
@@ -77,6 +82,166 @@ afterAll(async () => {
 });
 
 describe("server account authentication", () => {
+  it("persists opaque cursor preferences only for the authenticated account and requires CSRF for changes", async () => {
+    const config = await createConfig("accounts");
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const registered = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        headers: { origin, "x-cantrip-bootstrap-token": bootstrapToken },
+        payload: {
+          displayName: "Cursor Owner",
+          email: "cursor@example.com",
+          password,
+        },
+      });
+      expect(registered.statusCode).toBe(201);
+      const cookie = sessionCookie(registered);
+      const ownerId = registered.json().currentUser.id as string;
+      const headers = {
+        cookie,
+        origin,
+        "x-cantrip-csrf": registered.json().csrfToken as string,
+      };
+      const content = {
+        version: 1,
+        style: "ring",
+        color: "#FFFFFFFF",
+        size: 32,
+        label: "Private saved label",
+        trail: true,
+        visible: true,
+      };
+      const key = new Uint8Array(32).fill(41);
+      const operationId = crypto.randomUUID();
+      const context = {
+        ...cuaCursorPreferenceContext(operationId),
+        serverId: "preference-fixture-server",
+      };
+      const protectedContent = await encryptEndpointContentPayload({
+        ownerId,
+        context,
+        keyRevision: 1,
+        componentKey: key,
+        plaintext: new TextEncoder().encode(JSON.stringify(content)),
+      });
+      const record = { operationId, protectedContent };
+      const payload = { protectedComputerUseCursor: record };
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: "/api/settings",
+            headers: { cookie, origin },
+            payload,
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: "/api/settings",
+            headers,
+            payload: { protectedComputerUseCursor: content },
+          })
+        ).statusCode,
+      ).toBe(400);
+      const saved = await app.inject({
+        method: "PATCH",
+        url: "/api/settings",
+        headers,
+        payload,
+      });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.body).not.toContain(content.label);
+      // A fresh authenticated request reads the persisted settings row.
+      const loaded = await app.inject({
+        method: "GET",
+        url: "/api/settings",
+        headers: { cookie, origin },
+      });
+      expect(loaded.statusCode).toBe(200);
+      const stored = loaded.json().preferences.protectedComputerUseCursor;
+      expect(stored).toEqual(record);
+      expect(
+        (await database.repository.getUserSettings(ownerId))
+          .protectedComputerUseCursor,
+      ).toEqual(record);
+      const bytes = await decryptEndpointContentPayload({
+        ownerId,
+        context,
+        keyRevision: 1,
+        componentKey: key,
+        opaque: stored.protectedContent,
+      });
+      try {
+        expect(JSON.parse(new TextDecoder().decode(bytes))).toEqual(content);
+      } finally {
+        bytes.fill(0);
+        key.fill(0);
+      }
+      const other = await database.repository.createAccount({
+        displayName: "Other",
+        email: "cursor-other@example.com",
+        normalizedEmail: "cursor-other@example.com",
+        passwordHash: await hashPassword(password),
+        role: "member",
+      });
+      const login = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        headers: { origin },
+        payload: { email: "cursor-other@example.com", password },
+      });
+      const otherSettings = await app.inject({
+        method: "GET",
+        url: "/api/settings",
+        headers: { cookie: sessionCookie(login), origin },
+      });
+      expect(otherSettings.statusCode).toBe(200);
+      expect(
+        otherSettings.json().preferences.protectedComputerUseCursor,
+      ).toBeNull();
+      expect(
+        (await database.repository.getUserSettings(other.id))
+          .protectedComputerUseCursor,
+      ).toBeNull();
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: "/api/settings",
+            headers,
+            payload: { theme: "dark" },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (await database.repository.getUserSettings(ownerId))
+          .protectedComputerUseCursor,
+      ).toEqual(record);
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: "/api/settings",
+            headers,
+            payload: { protectedComputerUseCursor: null },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (await database.repository.getUserSettings(ownerId))
+          .protectedComputerUseCursor,
+      ).toBeNull();
+    } finally {
+      await app.close();
+    }
+  }, 30_000);
+
   it("fails closed when session cookies or the pinned account disagree", async () => {
     const config = await createConfig("accounts");
     const database = await connectDatabase(config);

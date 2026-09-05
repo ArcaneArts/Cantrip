@@ -298,7 +298,9 @@ describe("transactional computer-use authority generations", () => {
   let repository: ChatRuntimeContextRepository;
   beforeAll(async () => {
     database = new PGlite();
-    await applyMigrations(database, 199);
+    // Repository queries use today's schema; only the migration-specific
+    // fixtures above intentionally stop at the historical boundary.
+    await applyMigrations(database, Number.POSITIVE_INFINITY);
     await seed(database);
     repository = new ChatRuntimeContextRepository(
       drizzle(database, { schema }) as unknown as RepositoryDatabase,

@@ -35,6 +35,7 @@ for (const [project, ...tests] of [
   ],
   [
     "cantrip_server",
+    "test/auth-api.test.ts",
     "test/computer-use-routes.test.ts",
     "test/computer-use-activity.test.ts",
     "test/computer-use-trajectory.test.ts",
@@ -56,6 +57,7 @@ for (const [project, ...tests] of [
   ],
   [
     "cantrip_app",
+    "src/lib/computer-use-cursor-preferences.test.ts",
     "src/lib/endpoint-content-encryption.test.ts",
     "src/components/chat/agent-interaction-panel.test.ts",
     "src/components/chat/computer-use-trajectory.test.tsx",
