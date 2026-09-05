@@ -583,6 +583,32 @@ fn real_executable_handshake_cursor_png_and_shutdown() {
 }
 
 #[test]
+fn framed_cursor_move_and_snapshot_preserve_fractional_coordinates_exactly() {
+    let mut child = Process::start(true);
+    child.call(json!({"operation":"target.attach", "binding":binding(), "targetId":"fake-window", "targetGeneration":1}));
+    // These IEEE-754 values changed by one ULP under the default JSON parser.
+    // Construct them without parsing JSON so the expected values are independent
+    // of the protocol decoder under test.
+    let position = json!({"x":95.39999999999999_f64,"y":39.699999999999996_f64});
+    let (moved, _) = child.call(json!({"operation":"cursor.move", "binding":binding(), "targetId":"fake-window", "targetGeneration":1, "position":position}));
+    let (snapshot, bytes) = child.call(json!({"operation":"observation.snapshot", "binding":binding(), "targetId":"fake-window", "targetGeneration":1}));
+    assert!(!bytes.is_empty());
+    for result in [&moved, &snapshot] {
+        for axis in ["x", "y"] {
+            assert_eq!(
+                result["session"]["cursor"]["position"][axis]
+                    .as_f64()
+                    .unwrap()
+                    .to_bits(),
+                position[axis].as_f64().unwrap().to_bits(),
+                "framed cursor {axis} must retain the exact supplied coordinate"
+            );
+        }
+    }
+    child.stop(true);
+}
+
+#[test]
 fn default_binary_never_silently_uses_fake_capture() {
     let mut child = Process::start(false);
     let (capabilities, _) = child.call(json!({"operation":"capabilities.get"}));

@@ -206,6 +206,16 @@ test("native fixture geometry is checked against independent coordinates, size a
   };
   verifyFixtureGeometry(resized, resized.bounds, moved, "resize");
   assert.throws(
+    () =>
+      verifyFixtureGeometry(
+        { ...resized, bounds: { ...resized.bounds, width: 383.5 } },
+        resized.bounds,
+        moved,
+        "resize",
+      ),
+    rejectsCode("fixture-geometry-mismatch"),
+  );
+  assert.throws(
     () => verifyFixtureGeometry(moved, moved.bounds, moved, "resize"),
     rejectsCode("fixture-resize-mismatch"),
   );
@@ -217,6 +227,7 @@ function mockNative({
   capabilityOverride,
   failSnapshot,
   closeError,
+  captureClosedWindow = false,
   mutateSnapshot,
   cleanupError,
 } = {}) {
@@ -281,7 +292,7 @@ function mockNative({
           session.cursor.position = operation.position;
           return result({ session });
         case "observation.snapshot": {
-          if (targetClosed)
+          if (targetClosed && !captureClosedWindow)
             throw closeError ?? new CuaOperationError("target-not-found");
           if (failSnapshot) throw failSnapshot;
           snapshots++;
@@ -505,6 +516,16 @@ test("closed-window transport failures and unrelated native errors cannot count 
   assert.equal(summary.snapshots.length, 6);
 });
 
+test("a successful capture after fixture close still fails strict target invalidation", async () => {
+  const mock = mockNative({ fixture: true, captureClosedWindow: true });
+  await assert.rejects(
+    smokeNativeCantripCua(binary, { fixture: true }, mock.dependencies),
+    rejectsCode("closed-window-was-captured"),
+  );
+  assert.ok(mock.responses.at(-1).payload.every((byte) => byte === 0));
+  assert.equal(mock.counters.fixtureDisposed, 1);
+});
+
 test("snapshot digest and metadata tampering fail before decode/output and clear returned bytes", async () => {
   for (const mutateSnapshot of [
     (data) => {
@@ -561,8 +582,17 @@ test(
   },
   async () => {
     const fixture = await launchNativeFixture();
+    const assertCommitted = (state) => {
+      assert.deepEqual(state.windowServerBounds, {
+        x: state.x,
+        y: state.y,
+        width: state.width,
+        height: state.height,
+      });
+    };
     let timer;
     try {
+      assertCommitted(fixture.initial);
       const started = performance.now();
       const response = await Promise.race([
         fixture.command("partial"),
@@ -579,15 +609,24 @@ test(
       assert.equal(response.state, "partial");
       assert.ok(performance.now() - started < 2_000);
       assert.equal(response.occluded, true);
-      await fixture.command("full");
+      assertCommitted(response);
+      assertCommitted(await fixture.command("full"));
       const moved = await fixture.command("move");
       assert.equal(moved.x, response.x + 28);
       assert.equal(moved.y, response.y - 24);
+      assertCommitted(moved);
       const resized = await fixture.command("resize");
       assert.equal(resized.width, 384);
       assert.equal(resized.height, 288);
-      await fixture.command("close");
-      await fixture.command("recreate");
+      assertCommitted(resized);
+      const closed = await fixture.command("close");
+      assert.equal(closed.windowId, null);
+      assert.equal(closed.windowServerBounds, null);
+      assert.equal(closed.retiredWindowId, resized.windowId);
+      assert.equal(closed.retiredWindowPresent, false);
+      const recreated = await fixture.command("recreate");
+      assert.notEqual(recreated.windowId, closed.retiredWindowId);
+      assertCommitted(recreated);
     } finally {
       clearTimeout(timer);
       assert.deepEqual(await fixture.dispose(), { code: 0, signal: null });
