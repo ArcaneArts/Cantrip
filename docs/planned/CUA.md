@@ -721,8 +721,10 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 8c2 — Managed MCP activation and model images
 
 - Branch: `codex/cua-08c2-managed-mcp`, based on merged cycle 8c1
-  (`08dd5919c`). This is the recovered interrupted worktree. PR/commit and final
-  validation are pending; no merge is claimed by this entry.
+  (`08dd5919c`). This is the recovered interrupted worktree.
+  [PR #1748](https://github.com/ArcaneArts/Cantrip/pull/1748), implementation
+  commit `8087c9c2`. Local verification below is complete; portable CI and merge
+  remain pending. No merge is claimed by this entry.
 - Implemented: dedicated worker-managed `cantrip_cua` tools `js` and `js_reset`
   through the existing authenticated broker and sole `CantripCuaService` owner.
   Actual Codex thread/turn metadata selects an observed root/child lifetime;
@@ -762,7 +764,8 @@ is the authoritative merge record until the next ledger update.
   policy and both project/standalone acquired generations. All 572 protocol,
   85 Rust, and 44 CUA script tests pass; one explicit GUI script test skips in
   the ordinary runner. Strict Rust 1.95 Clippy/format, worker/server builds and
-  typechecks, route-boundary audit and large-file check pass. Real Sharp tests
+  typechecks, release build and exact-release fake smoke (eight snapshots, four
+  cursor styles), route-boundary audit and large-file check pass. Real Sharp tests
   cover aggregate input/output bounds and cancelled-job capacity; packaged
   verification resolves Sharp from the final worker dependency layout.
 - Broad worker run: 1,443 passed, 36 skipped, three goal-streaming failures.
