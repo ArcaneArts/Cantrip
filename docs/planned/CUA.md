@@ -332,7 +332,8 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 5c — Trusted preview lifetime and production routing
 
 - Branch: `codex/cua-05c-preview-authority`, based on merged cycle 5b
-  (`5e18d1c10`). PR not yet opened; no merge claimed.
+  (`5e18d1c10`). PR: [#1741](https://github.com/ArcaneArts/Cantrip/pull/1741).
+  Initial implementation commit: `81f2b8a42`; merge not yet observed.
 - Implemented: production preview/open/Stop routes and encrypted operation
   dispatch through the same agent worker, one inert worker-owned preview lease
   per chat, and actual selected/effective permission policy. Native helper
