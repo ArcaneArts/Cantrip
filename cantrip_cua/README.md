@@ -479,9 +479,14 @@ cannot continue after a successful tool response. Ordinary startup, idle Stop,
 and reset do not initialize an engine or launch the helper.
 
 This is **not yet an enabled managed MCP**. The next pass must use the native
-runtime execution resolver, await existing durable policy decisions, deliver
-actual MCP image content, and strip nested image payloads from secondary raw
-Trajectory capture before making `cantrip_cua.js` discoverable.
+runtime execution resolver, wire durable policy publication and waits, and
+deliver actual MCP image content before making `cantrip_cua.js` discoverable.
+The prerequisites now include a worker-authenticated server authority route
+and cancellable client, exact-request approval waits, and nested image/binary
+omission from secondary raw Trajectory capture. These do not themselves enable
+agent access. The coordinator must use current placement/policy for each host
+action, preserve actual turn ownership through approval, revalidate after a
+wait, and revoke all registered lifetimes on Stop even without a preview.
 
 ## Bounds and cancellation
 

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./computer-use-agent": {
+      "types": "./src/computer-use-agent.ts",
+      "import": "./dist/computer-use-agent.js"
+    },
     "./computer-use-preview": {
       "types": "./src/computer-use-preview.ts",
       "import": "./dist/computer-use-preview.js"

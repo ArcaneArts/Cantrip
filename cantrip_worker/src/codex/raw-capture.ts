@@ -45,6 +45,27 @@ function redactValue(
     return value;
   }
   if (typeof value !== "object") return String(value);
+  const bytes = binaryBytes(value);
+  if (bytes) return omittedBinaryDocument(bytes);
+  const record = value as Record<string, unknown>;
+  // MCP images may be nested in result.content or structuredContent. Keep
+  // only bounded metadata, not a second copy of the model's image payload.
+  // The explicit content type matters: ordinary base64-looking text is text.
+  if (record.type === "image") {
+    return {
+      type: "image",
+      mimeType:
+        typeof record.mimeType === "string" &&
+        /^image\/[a-z0-9.+-]{1,100}$/iu.test(record.mimeType)
+          ? record.mimeType
+          : null,
+      encodedBytes:
+        typeof record.data === "string"
+          ? Buffer.byteLength(record.data, "utf8")
+          : null,
+      omittedReason: "Image content is not embedded in trajectory capture.",
+    };
+  }
   if (seen.has(value)) return "[OMITTED: circular reference]";
   seen.add(value);
   if (Array.isArray(value)) {
@@ -83,6 +104,17 @@ function binaryBytes(value: unknown): Uint8Array | null {
   return null;
 }
 
+function omittedBinaryDocument(bytes: Uint8Array) {
+  return {
+    mediaType: "application/octet-stream",
+    text: null,
+    originalBytes: bytes.byteLength,
+    truncated: false,
+    digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    omittedReason: "Binary content is not embedded in trajectory capture.",
+  };
+}
+
 function truncateUtf8(text: string, limit: number) {
   const bytes = new TextEncoder().encode(text);
   if (bytes.byteLength <= limit) {
@@ -98,14 +130,7 @@ function truncateUtf8(text: string, limit: number) {
 function captureDocument(value: unknown, direction: "request" | "response") {
   const bytes = binaryBytes(value);
   if (bytes) {
-    const document = {
-      mediaType: "application/octet-stream",
-      text: null,
-      originalBytes: bytes.byteLength,
-      truncated: false,
-      digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
-      omittedReason: "Binary content is not embedded in trajectory capture.",
-    };
+    const document = omittedBinaryDocument(bytes);
     return direction === "request"
       ? agentActivityRawRequestDocumentSchema.parse(document)
       : agentActivityRawResponseDocumentSchema.parse(document);

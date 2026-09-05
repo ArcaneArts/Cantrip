@@ -63,6 +63,7 @@ import { createApplicationServer } from "./http/server.js";
 import { installTransportSecurity } from "./http/transport-security.js";
 import { installAgentInteractionRoutes } from "./routes/agent-interactions.js";
 import { installComputerUseRoutes } from "./routes/computer-use.js";
+import { installComputerUseAgentRoutes } from "./routes/computer-use-agent.js";
 import {
   computerUsePreviewAuthority,
   createComputerUseApprovalPublications,
@@ -1300,6 +1301,12 @@ export async function buildApp({
     serverInstanceId,
   });
 
+  installComputerUseAgentRoutes(app, {
+    config,
+    serverId,
+    repository,
+    runAsOwner,
+  });
   installInternalAgentToolRoutes(app, {
     appendAudit,
     cliCommandIsMutation,

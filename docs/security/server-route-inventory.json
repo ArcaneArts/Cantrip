@@ -46,6 +46,7 @@
       "cantrip_server/src/app/routes/code-tab-attachments.ts",
       "cantrip_server/src/app/routes/code-tab-management.ts",
       "cantrip_server/src/app/routes/code-tab-worker-controls.ts",
+      "cantrip_server/src/app/routes/computer-use-agent.ts",
       "cantrip_server/src/app/routes/computer-use-preview.ts",
       "cantrip_server/src/app/routes/computer-use.ts",
       "cantrip_server/src/app/routes/core-infrastructure-registry.ts",
@@ -165,13 +166,13 @@
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
-    "worker-control": 13,
-    "http": 481,
+    "worker-control": 14,
+    "http": 482,
     "legacyLocalOwnerRoutes": 0,
     "requestPrincipalRoutes": 416,
-    "total": 488,
+    "total": 489,
     "websocket": 7,
-    "workerCredentialRoutes": 13,
+    "workerCredentialRoutes": 14,
     "durableTables": 89,
     "agentOperations": 44,
     "workerCommands": 278,
@@ -190,7 +191,7 @@
   },
   "contractSetDigests": {
     "agentOperations": "e972d6a405822c32d9deac209bf80d3c648c125aeb53fcf2ffce8af4bba18136",
-    "applicationRoutes": "5ec753c518253bdcf5d5b1f107039887ca8a4bc4358a23bfebeb5bad518c23de",
+    "applicationRoutes": "ce16a76e2d04aa4bdd73d47e7e61948202beb238fd6a7a3e10108edbe430e8e3",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "a42c3383061dec85ceca8d416ab0cf4822ee618c2f3d5d140554584c00f505e8",
@@ -2541,6 +2542,19 @@
       "contentBoundary": {
         "classification": "intentionally-public-control-plane",
         "rationale": "reviewed routing/authorization contract (POST /api/internal/cli)"
+      }
+    },
+    {
+      "boundary": "worker-control",
+      "file": "cantrip_server/src/app/routes/computer-use-agent.ts",
+      "line": 71,
+      "method": "POST",
+      "ownerEvidence": "worker-credential",
+      "path": "/api/internal/computer-use/authority",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "intentionally-public-control-plane",
+        "rationale": "worker-authenticated exact owner/chat/worker/lane/placement authorization; returns current policy and authority generation only, never native targets, paths, cursor labels, or pixels; actual native turn resolution remains worker-owned"
       }
     },
     {

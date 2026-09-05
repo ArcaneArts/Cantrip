@@ -16,6 +16,339 @@ const key = new Uint8Array(32).fill(31);
 const managers: CuaApprovalManager[] = [];
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.close();
+  vi.useRealTimers();
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((accept, fail) => {
+    resolve = accept;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("exact-request computer-use approval waiting", () => {
+  function agentFixture() {
+    const f = fixture();
+    f.context.scope.threadId = "native-thread";
+    f.context.scope.turnId = "native-turn";
+    f.context.executionLaneId = "lane";
+    const published = deferred<EncryptedAgentInteractionRequestCreate>();
+    const publish = vi.fn(
+      async (request: EncryptedAgentInteractionRequestCreate) => {
+        published.resolve(request);
+      },
+    );
+    const wait = (
+      overrides: Partial<
+        Parameters<CuaApprovalManager["authorizeAndWait"]>[0]
+      > = {},
+    ) =>
+      f.manager.authorizeAndWait({
+        context: f.context,
+        operation: "observation.snapshot",
+        target: { targetId: "window", targetGeneration: 1 },
+        publish,
+        ...overrides,
+      });
+    return { ...f, published, publish, wait };
+  }
+
+  it("resumes the same suspended action once and preserves the exact grant on response replay", async () => {
+    const f = agentFixture();
+    const action = vi.fn();
+    const waiting = f.wait().then(action);
+    const request = await f.published.promise;
+    expect(action).not.toHaveBeenCalled();
+    const response = await answer(request, { scope: "turn" });
+    await expect(f.manager.answer(response)).resolves.toEqual({
+      accepted: true,
+    });
+    await waiting;
+    await f.manager.answer(response);
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(f.publish).toHaveBeenCalledTimes(1);
+    await expect(f.wait()).resolves.toBeUndefined();
+    expect(f.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not expose a grant or resume before publication acknowledges an early answer", async () => {
+    const f = agentFixture();
+    const publication = deferred<void>();
+    f.publish.mockImplementation(async (request) => {
+      f.published.resolve(request);
+      await publication.promise;
+    });
+    const action = vi.fn();
+    const waiting = f.wait().then(action);
+    const request = await f.published.promise;
+    await f.manager.answer(await answer(request));
+    expect(action).not.toHaveBeenCalled();
+    expect(f.manager.status().grants).toBe(0);
+    await expect(f.wait()).rejects.toMatchObject({ code: "capacity" });
+    publication.resolve();
+    await waiting;
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(f.manager.status().grants).toBe(1);
+  });
+
+  it("publication failure after an early answer never grants or replays the action", async () => {
+    const f = agentFixture();
+    const publication = deferred<void>();
+    f.publish.mockImplementation(async (request) => {
+      f.published.resolve(request);
+      await publication.promise;
+    });
+    const action = vi.fn();
+    const waiting = f.wait().then(action);
+    const failure = expect(waiting).rejects.toMatchObject({
+      code: "publication-failed",
+    });
+    const request = await f.published.promise;
+    await f.manager.answer(await answer(request));
+    publication.reject(new Error("private publication diagnostic"));
+    await failure;
+    expect(action).not.toHaveBeenCalled();
+    expect(f.manager.status()).toMatchObject({ pending: 0, grants: 0 });
+    expect((await f.authorize()).status).toBe("approval-required");
+  });
+
+  it("rejects denial precisely without automatic reauthorization", async () => {
+    const f = agentFixture();
+    const waiting = f.wait();
+    const denied = expect(waiting).rejects.toMatchObject({ code: "denied" });
+    const request = await f.published.promise;
+    const response = await answer(request, { permissions: {} });
+    await f.manager.answer(response);
+    await denied;
+    await f.manager.answer(response);
+    expect(f.publish).toHaveBeenCalledTimes(1);
+    expect(f.manager.status()).toMatchObject({ pending: 0, grants: 0 });
+  });
+
+  it.each(["call", "context", "revoke"])(
+    "cancels a waiting %s even while publication is unresolved",
+    async (kind) => {
+      const f = agentFixture();
+      const call = new AbortController();
+      const publication = deferred<void>();
+      f.publish.mockImplementation(async (request) => {
+        f.published.resolve(request);
+        await publication.promise;
+      });
+      const waiting = f.wait({ signal: call.signal });
+      const cancelled = expect(waiting).rejects.toMatchObject({
+        code: kind === "call" ? "cancelled" : "revoked",
+      });
+      const request = await f.published.promise;
+      if (kind === "call") call.abort();
+      else if (kind === "context") f.controller.abort();
+      else f.manager.revokeContext(f.context.signal);
+      await cancelled;
+      expect(f.onTerminal).toHaveBeenCalledWith({
+        requestKey: request.requestKey,
+        chatId: "chat",
+        status: "interrupted",
+      });
+      const terminals = f.onTerminal.mock.calls.length;
+      const terminalAfterPublication = deferred<void>();
+      f.onTerminal.mockImplementation(() => terminalAfterPublication.resolve());
+      publication.resolve();
+      await terminalAfterPublication.promise;
+      expect(f.onTerminal.mock.calls.length).toBeGreaterThan(terminals);
+      await expect(
+        f.manager.answer(await answer(request)),
+      ).rejects.toMatchObject({ code: "revoked" });
+      if (kind === "call") {
+        expect(f.context.signal.aborted).toBe(false);
+        expect((await f.authorize()).status).toBe("approval-required");
+      } else {
+        await expect(f.authorize()).rejects.toMatchObject({ code: "revoked" });
+      }
+    },
+  );
+
+  it("call cancellation after answer but before publication does not leak its staged grant", async () => {
+    const f = agentFixture();
+    const call = new AbortController();
+    const publication = deferred<void>();
+    f.publish.mockImplementation(async (request) => {
+      f.published.resolve(request);
+      await publication.promise;
+    });
+    const waiting = f.wait({ signal: call.signal });
+    const cancelled = expect(waiting).rejects.toMatchObject({
+      code: "cancelled",
+    });
+    await f.manager.answer(await answer(await f.published.promise));
+    call.abort();
+    await cancelled;
+    publication.resolve();
+    expect(f.manager.status().grants).toBe(0);
+    expect((await f.authorize()).status).toBe("approval-required");
+  });
+
+  it("expires the suspended call even when its publisher does not complete", async () => {
+    vi.useFakeTimers();
+    const f = agentFixture();
+    const publication = deferred<void>();
+    f.publish.mockImplementation(async (request) => {
+      f.published.resolve(request);
+      await publication.promise;
+    });
+    const waiting = f.wait();
+    const expired = expect(waiting).rejects.toMatchObject({ code: "expired" });
+    const request = await f.published.promise;
+    f.advance(5 * 60_000);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    await expired;
+    expect(f.manager.status().pending).toBe(0);
+    expect(f.onTerminal).toHaveBeenCalledWith({
+      requestKey: request.requestKey,
+      chatId: "chat",
+      status: "expired",
+    });
+    publication.resolve();
+  });
+
+  it("does no publication for YOLO, existing grants, or an already-cancelled call", async () => {
+    const f = agentFixture();
+    const call = new AbortController();
+    call.abort();
+    await expect(f.wait({ signal: call.signal })).rejects.toMatchObject({
+      code: "cancelled",
+    });
+    await expect(
+      f.wait({ operation: "session.close", signal: call.signal }),
+    ).resolves.toBeUndefined();
+    f.context.profile.selectedId = ":yolo";
+    await expect(f.wait()).resolves.toBeUndefined();
+    expect(f.publish).not.toHaveBeenCalled();
+    expect(f.encryption.componentKey).not.toHaveBeenCalled();
+  });
+
+  it("cancels during encrypted request preparation without publishing or revoking the execution", async () => {
+    const f = agentFixture();
+    const call = new AbortController();
+    const waiting = f.wait({ signal: call.signal });
+    const cancelled = expect(waiting).rejects.toMatchObject({
+      code: "cancelled",
+    });
+    call.abort();
+    await cancelled;
+    expect(f.publish).not.toHaveBeenCalled();
+    expect(f.manager.status().pending).toBe(0);
+    expect(f.context.signal.aborted).toBe(false);
+    expect((await f.authorize()).status).toBe("approval-required");
+  });
+
+  it("keeps an existing pending preview request usable after a duplicate waiter is rejected", async () => {
+    const f = agentFixture();
+    const original = await f.request();
+    const waiting = f.wait();
+    const request = await f.published.promise;
+    expect(request.requestKey).toBe(original.requestKey);
+    await expect(f.wait()).rejects.toMatchObject({ code: "capacity" });
+    expect(f.manager.status().pending).toBe(1);
+    await f.manager.answer(await answer(request));
+    await waiting;
+    expect(f.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("consumes a one-use grant for the suspended call without changing preview retry semantics", async () => {
+    const f = agentFixture();
+    f.context.scope.threadId = null;
+    f.context.scope.turnId = null;
+    f.context.executionLaneId = null;
+    const waiting = f.wait();
+    await f.manager.answer(
+      await answer(await f.published.promise, { scope: "turn" }),
+    );
+    await waiting;
+    expect(f.manager.status().grants).toBe(0);
+    expect((await f.authorize()).status).toBe("approval-required");
+  });
+
+  it("keeps cancelled but unresolved publishers bounded until their actual completion", async () => {
+    const f = agentFixture();
+    const publication = deferred<void>();
+    const published = deferred<void>();
+    let count = 0;
+    const waits: Promise<void>[] = [];
+    const call = new AbortController();
+    for (let index = 0; index < 32; index++) {
+      const waiting = f.wait({
+        signal: call.signal,
+        target: { targetId: `window-${index}`, targetGeneration: 1 },
+        publish: async () => {
+          if (++count === 32) published.resolve();
+          await publication.promise;
+        },
+      });
+      void waiting.catch(() => {});
+      waits.push(waiting);
+    }
+    await published.promise;
+    call.abort();
+    await Promise.allSettled(waits);
+    await expect(f.wait()).rejects.toMatchObject({ code: "capacity" });
+    await expect(
+      f.wait({ operation: "session.close", signal: call.signal }),
+    ).resolves.toBeUndefined();
+    const terminals = deferred<void>();
+    let afterPublication = 0;
+    f.onTerminal.mockImplementation(() => {
+      if (++afterPublication === 32) terminals.resolve();
+    });
+    publication.resolve();
+    await terminals.promise;
+    // Authorize encryption yields while the resolved publisher slots retire.
+    expect((await f.authorize()).status).toBe("approval-required");
+    const nextCall = new AbortController();
+    const waiting = f.wait({ signal: nextCall.signal });
+    const cancelled = expect(waiting).rejects.toMatchObject({
+      code: "cancelled",
+    });
+    await f.published.promise;
+    nextCall.abort();
+    await cancelled;
+  });
+
+  it("bounds waiting publications and preserves the first request when a duplicate waits", async () => {
+    const f = agentFixture();
+    const waits: Promise<void>[] = [];
+    const publications = new Map<
+      string,
+      EncryptedAgentInteractionRequestCreate
+    >();
+    const abort = new AbortController();
+    const ready = deferred<void>();
+    for (let index = 0; index < 32; index++) {
+      const waiting = f.wait({
+        signal: abort.signal,
+        target: { targetId: `window-${index}`, targetGeneration: 1 },
+        publish: async (request) => {
+          publications.set(request.requestKey, request);
+          if (publications.size === 32) ready.resolve();
+        },
+      });
+      void waiting.catch(() => {});
+      waits.push(waiting);
+    }
+    await ready.promise;
+    await expect(f.wait()).rejects.toMatchObject({ code: "capacity" });
+    expect(f.manager.status().pending).toBe(32);
+    abort.abort();
+    expect(
+      (await Promise.allSettled(waits)).every(
+        (result) => result.status === "rejected",
+      ),
+    ).toBe(true);
+    expect(f.manager.status().pending).toBe(0);
+    expect(f.context.signal.aborted).toBe(false);
+  });
 });
 
 function fixture() {

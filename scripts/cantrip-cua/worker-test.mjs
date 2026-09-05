@@ -23,6 +23,8 @@ for (const [project, ...tests] of [
     "cantrip_worker",
     "src/computer-use",
     "test/computer-use-execution-lifetime.test.ts",
+    "test/cua-raw-capture.test.ts",
+    "test/raw-capture.test.ts",
     "test/app-server.test.ts",
     "test/subagent-ownership.test.ts",
     "src/endpoint-content-encryption.test.ts",
@@ -30,6 +32,7 @@ for (const [project, ...tests] of [
   [
     "cantrip_server",
     "test/computer-use-routes.test.ts",
+    "test/computer-use-agent-authority.test.ts",
     "test/computer-use-roundtrip.test.ts",
     "test/computer-use-approval-routes.test.ts",
     "test/computer-use-interaction-migration.test.ts",
