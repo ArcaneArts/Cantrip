@@ -4,6 +4,7 @@ import type {
   AgentScope,
   CuaImage,
   CuaInputReceipt,
+  CuaPoint,
   CuaSession,
   CuaScope,
   CuaTargetReference,
@@ -29,6 +30,7 @@ export function computerUseActivity(input: {
   target?: CuaTargetReference | null;
   image?: CuaImage | null;
   input?: CuaInputReceipt | null;
+  position?: CuaPoint | null;
   startedAtMs: number;
   completedAtMs?: number;
   agentScope?: AgentScope | null;
@@ -91,10 +93,14 @@ export function computerUseActivity(input: {
         : null),
     input:
       input.input ??
-      (input.operation === "input.press"
+      (input.operation === "input.press" || input.operation === "input.click"
         ? {
-            method: "accessibility",
-            activation: false,
+            method:
+              input.operation === "input.click"
+                ? "coordinate"
+                : "accessibility",
+            activation: input.operation === "input.click" ? null : false,
+            ...(input.position ? { position: input.position } : {}),
             outcome:
               code === "input-unknown" ||
               (error instanceof CuaProcessError && error.outcome === "unknown")

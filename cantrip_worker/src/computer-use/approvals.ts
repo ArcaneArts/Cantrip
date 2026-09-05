@@ -554,7 +554,7 @@ export class CuaApprovalManager {
             environmentId: null,
             cwd: null,
             reason: permissions.computerUse.classes.includes("native-input")
-              ? "Allow real computer input on the selected target on this agent's worker? An approved press can change application state."
+              ? "Allow real computer input on the selected target on this agent's worker? An approved action can change application state, focus and the system pointer."
               : "Allow the requested computer-use observation or logical cursor operations on this agent's worker? Native input requires separate approval.",
             requestedPermissions: permissions,
           },

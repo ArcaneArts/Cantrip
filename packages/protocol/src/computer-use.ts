@@ -199,9 +199,11 @@ export const cuaControlsResultSchema = z.strictObject({
   }),
 });
 export const cuaInputReceiptSchema = z.strictObject({
-  method: z.literal("accessibility"),
+  method: z.enum(["accessibility", "coordinate"]),
   activation: z.boolean(),
   outcome: z.literal("dispatched"),
+  position: cuaPointSchema.optional(),
+  globalPosition: cuaPointSchema.optional(),
 });
 export const cuaInputResultSchema = z.strictObject({
   session: cuaSessionSchema,
@@ -226,6 +228,7 @@ export const computerUseOperationSchema = z.enum([
   "capabilities.get",
   "controls.inspect",
   "input.press",
+  "input.click",
   "agent.sources.list",
   "agent.observation.get",
   "targets.list",
@@ -289,6 +292,12 @@ export const computerUseActionSchema = z.discriminatedUnion("operation", [
     ...targetFields,
     reference: cuaIdSchema,
   }),
+  z.strictObject({
+    operation: z.literal("input.click"),
+    ...sessionFields,
+    ...targetFields,
+    position: cuaPointSchema,
+  }),
   z.strictObject({ operation: z.literal("session.close"), ...sessionFields }),
 ]);
 
@@ -342,6 +351,7 @@ const resultDataSchemas = {
   "cursor.move": cuaSessionResultSchema,
   "controls.inspect": cuaControlsResultSchema,
   "input.press": cuaInputResultSchema,
+  "input.click": cuaInputResultSchema,
   "observation.snapshot": cuaSnapshotSchema,
   "session.close": closedSchema,
 } as const;

@@ -28,6 +28,9 @@ struct Range {
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     fn AXUIElementCreateApplication(pid: i32) -> Ref;
+    fn AXUIElementCreateSystemWide() -> Ref;
+    fn AXUIElementCopyElementAtPosition(element: Ref, x: f32, y: f32, result: *mut Ref) -> i32;
+    fn AXUIElementSetAttributeValue(element: Ref, attribute: Ref, value: Ref) -> i32;
     fn AXUIElementGetTypeID() -> usize;
     fn AXUIElementCopyAttributeValue(element: Ref, attribute: Ref, value: *mut Ref) -> i32;
     fn AXUIElementGetAttributeValueCount(element: Ref, attribute: Ref, count: *mut isize) -> i32;
@@ -46,6 +49,7 @@ unsafe extern "C" {
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
+    static kCFBooleanTrue: Ref;
     fn CFRelease(value: Ref);
     fn CFRetain(value: Ref) -> Ref;
     fn CFGetTypeID(value: Ref) -> usize;
@@ -447,6 +451,58 @@ impl Accessibility {
             method: "accessibility",
             activation: false,
             outcome: "dispatched",
+            position: None,
+            global_position: None,
         })
+    }
+}
+
+/// Actual activation plus target hit-testing, not a cached permission/readiness
+/// gate. Check the live window again after activation may have moved it.
+pub(super) fn activate_for_click(
+    target: &Target,
+    point: crate::target::Point,
+    cancel: &Cancellation,
+) -> Result<Bounds> {
+    let window = Accessibility::window(target, cancel)?;
+    let pid = target
+        .process_id
+        .and_then(|pid| i32::try_from(pid).ok())
+        .ok_or_else(stale)?;
+    let app = Owned::take(unsafe { AXUIElementCreateApplication(pid) })?;
+    read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.2) })?;
+    let frontmost = Owned::string("AXFrontmost");
+    cancel.check()?;
+    read_result(unsafe { AXUIElementSetAttributeValue(app.0, frontmost.0, kCFBooleanTrue) })?;
+    cancel.check()?;
+    let raise = Owned::string("AXRaise");
+    read_result(unsafe { AXUIElementPerformAction(window.0, raise.0) })?;
+    let system = Owned::take(unsafe { AXUIElementCreateSystemWide() })?;
+    read_result(unsafe { AXUIElementSetMessagingTimeout(system.0, 0.2) })?;
+    let deadline = Instant::now() + Duration::from_millis(600);
+    loop {
+        cancel.check()?;
+        let bounds = window.rect()?;
+        let global = bounds.to_global(point)?;
+        let mut value = ptr::null();
+        read_result(unsafe {
+            AXUIElementCopyElementAtPosition(system.0, global.x as f32, global.y as f32, &mut value)
+        })?;
+        let hit = Owned::take(value)?;
+        let owns_point =
+            hit.same(&window) || hit.attr("AXWindow").is_ok_and(|owner| owner.same(&window));
+        let is_frontmost = app
+            .attr("AXFrontmost")
+            .is_ok_and(|value| unsafe { CFEqual(value.0, kCFBooleanTrue) != 0 });
+        if owns_point && is_frontmost {
+            return Ok(bounds);
+        }
+        if Instant::now() >= deadline {
+            return Err(CuaError::new(
+                ErrorCode::InputFailed,
+                "Activated target does not own the click position; no click was posted.",
+            ));
+        }
+        cancel.wait_cancelled(Duration::from_millis(20));
     }
 }

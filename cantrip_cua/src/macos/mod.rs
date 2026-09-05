@@ -1,6 +1,7 @@
 //! ScreenCaptureKit stays on native callback lifetimes. No ObjC object crosses
 //! the Rust channel; the executor receives owned metadata or bounded RGBA only.
 mod accessibility;
+mod click;
 mod geometry;
 mod pending;
 mod registry;
@@ -217,6 +218,16 @@ impl MacOsBackend {
 }
 
 impl CaptureBackend for MacOsBackend {
+    fn click(
+        &mut self,
+        session: &str,
+        target: &Target,
+        position: crate::target::Point,
+        cancel: &Cancellation,
+    ) -> Result<(Target, crate::input::InputReceipt)> {
+        self.accessibility.clear(session);
+        click::click(target, position, cancel)
+    }
     fn native_input(&self) -> bool {
         true
     }

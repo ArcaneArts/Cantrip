@@ -78,9 +78,12 @@ const cuaRuntimeExports = [
   "cuaApprovalTerminalSchema",
   "cuaBindingSchema",
   "cuaCapabilitiesSchema",
+  "cuaControlsResultSchema",
   "cuaCursorAppearanceSchema",
   "cuaIdSchema",
   "cuaImageSchema",
+  "cuaInputReceiptSchema",
+  "cuaInputResultSchema",
   "cuaInventorySchema",
   "cuaPointSchema",
   "cuaPreviewAuthoritySchema",
@@ -109,7 +112,7 @@ describe("protocol public surface compatibility", () => {
       (name) => !cuaRuntimeExports.includes(name),
     );
 
-    expect(exportNames).toHaveLength(1_988);
+    expect(exportNames).toHaveLength(1_991);
     expect(
       exportNames.filter((name) => cuaRuntimeExports.includes(name)),
     ).toEqual(cuaRuntimeExports);

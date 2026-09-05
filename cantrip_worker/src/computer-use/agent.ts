@@ -93,6 +93,7 @@ const operations: Record<
   moveCursor: "cursor.move",
   controls: "controls.inspect",
   press: "input.press",
+  click: "input.click",
   detach: "target.detach",
 };
 
@@ -367,6 +368,10 @@ export class CuaAgentCoordinator {
               record.command.publishActivity!(
                 computerUseActivity({
                   ...outcome,
+                  position:
+                    outcome.action.operation === "click"
+                      ? outcome.action.point
+                      : null,
                   source: "agent-mcp",
                   operation: operations[outcome.action.operation],
                   operationId: crypto.randomUUID(),

@@ -112,6 +112,13 @@ pub enum Operation {
         target_generation: u64,
         reference: String,
     },
+    #[serde(rename = "input.click", rename_all = "camelCase")]
+    InputClick {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+        position: Point,
+    },
     #[serde(rename = "session.close")]
     SessionClose { binding: SessionBinding },
     #[serde(rename = "javascript.evaluate", rename_all = "camelCase")]
@@ -250,7 +257,7 @@ impl<B: CaptureBackend> CuaService<B> {
                     "session.close",
                 ];
                 if self.backend.native_input() {
-                    operations.extend(["controls.inspect", "input.press"]);
+                    operations.extend(["controls.inspect", "input.press", "input.click"]);
                 }
                 if self.javascript {
                     operations.extend(["javascript.evaluate", "javascript.reset"]);
@@ -490,6 +497,26 @@ impl<B: CaptureBackend> CuaService<B> {
                     .insert(binding.session_id.clone(), state.clone());
                 Ok(OperationResult::json(
                     json!({"session": state, "input": input}),
+                ))
+            }
+            Operation::InputClick {
+                binding,
+                target_id,
+                target_generation,
+                position,
+            } => {
+                let mut state = self.attached(&binding, &target_id, target_generation)?;
+                let target = self
+                    .backend
+                    .resolve_target(&target_id, target_generation, cancel)?;
+                let (current, input) =
+                    self.backend
+                        .click(&binding.session_id, &target, position, cancel)?;
+                state.target = Some(current);
+                self.sessions
+                    .insert(binding.session_id.clone(), state.clone());
+                Ok(OperationResult::json(
+                    json!({"session":state, "input":input}),
                 ))
             }
             Operation::SessionClose { binding } => {
