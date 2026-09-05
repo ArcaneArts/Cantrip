@@ -1154,7 +1154,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 13 — First-use protected preview grants and live acceptance
 
 - Branch: `codex/cua-13-product-acceptance`, started from cycle 12's observed
-  merge (`420c4f90e`). PR and commit metadata will be recorded when known.
+  merge (`420c4f90e`). [PR #1757](https://github.com/ArcaneArts/Cantrip/pull/1757),
+  implementation commit `8a36720834757df4eee05575d6b292ca759176df`.
+  PR is open; final CI and observed merge remain pending.
 - Live first use exposed a real missing prerequisite: an idle chat with no
   prior agent turn had endpoint control authorization but lacked the history
   component grant needed to publish protected CUA activity. Preview opening
