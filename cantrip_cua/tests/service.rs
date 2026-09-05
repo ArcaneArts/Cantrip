@@ -121,7 +121,7 @@ fn move_cursor_target<B: CaptureBackend>(
 fn fake_monitor_and_window_return_decodable_png_with_matching_digest_and_metadata() {
     let mut service = CuaService::new(FakeBackend);
     let owner = binding();
-    let inventory = apply(&mut service, Operation::TargetsList {});
+    let inventory = apply(&mut service, Operation::TargetsList { after: None });
     let targets: Vec<Target> = serde_json::from_value(inventory.data["targets"].clone()).unwrap();
     assert_eq!(targets.len(), 2);
     assert!(
@@ -182,7 +182,7 @@ fn unavailable_native_backend_reports_unsupported_without_creating_fake_targets(
     assert_eq!(capabilities["nativeInput"], false);
     assert_eq!(capabilities["javascript"], false);
     assert_eq!(
-        error_code(&mut service, Operation::TargetsList {}),
+        error_code(&mut service, Operation::TargetsList { after: None }),
         ErrorCode::Unsupported
     );
     assert_eq!(
@@ -543,10 +543,10 @@ fn bounded_inventory_discloses_truncation_without_changing_complete_inventory() 
     let backend = ControlledBackend::new();
     let control = backend.clone();
     let mut service = CuaService::new(backend);
-    let complete = apply(&mut service, Operation::TargetsList {});
+    let complete = apply(&mut service, Operation::TargetsList { after: None });
     assert!(complete.data.get("truncated").is_none());
     control.0.lock().unwrap().inventory_truncated = true;
-    let limited = apply(&mut service, Operation::TargetsList {});
+    let limited = apply(&mut service, Operation::TargetsList { after: None });
     assert_eq!(limited.data["truncated"], true);
     assert_eq!(limited.data["targets"], complete.data["targets"]);
 }
@@ -640,5 +640,79 @@ fn resize_drops_out_of_bounds_trail_but_preserves_a_still_valid_cursor_position(
         assert!(observed.cursor.trail_points.is_empty());
         assert_eq!(observed.cursor.appearance, appearance);
         assert_eq!(observed.target.unwrap().generation, 1);
+    }
+}
+
+#[test]
+fn attach_resolves_a_discovered_target_beyond_the_first_public_page() {
+    struct ManyTargets(Vec<Target>);
+    impl CaptureBackend for ManyTargets {
+        fn name(&self) -> &'static str {
+            "many-targets"
+        }
+        fn available(&self) -> bool {
+            true
+        }
+        fn targets(&mut self, cancel: &Cancellation) -> Result<Vec<Target>> {
+            cancel.check()?;
+            Ok(self.0.clone())
+        }
+        fn capture(&mut self, _: &Target, _: &Cancellation) -> Result<Capture> {
+            panic!("attachment must not capture")
+        }
+    }
+    let base = FakeBackend
+        .targets(&Cancellation::default())
+        .unwrap()
+        .remove(0);
+    let targets: Vec<_> = (0..600)
+        .rev()
+        .map(|index| {
+            let mut target = base.clone();
+            target.id = format!("target-{index}");
+            target
+        })
+        .collect();
+    let mut service = CuaService::new(ManyTargets(targets));
+    let first = apply(&mut service, Operation::TargetsList { after: None });
+    let after = first.data["nextCursor"].as_str().unwrap();
+    let second = apply(
+        &mut service,
+        Operation::TargetsList {
+            after: Some(after.into()),
+        },
+    );
+    let chosen: Target = serde_json::from_value(
+        second.data["targets"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()
+            .clone(),
+    )
+    .unwrap();
+    let attached = apply(
+        &mut service,
+        attach(&binding(), &chosen.id, chosen.generation),
+    );
+    assert_eq!(attached.data["session"]["target"]["id"], chosen.id);
+    assert_eq!(
+        error_code(
+            &mut service,
+            attach(&binding(), &chosen.id, chosen.generation + 1)
+        ),
+        ErrorCode::StaleTarget
+    );
+    for after in [
+        json!(null),
+        json!(""),
+        json!("x".repeat(257)),
+        json!("bad\nline"),
+        json!(5),
+    ] {
+        assert!(
+            serde_json::from_value::<Operation>(json!({"operation":"targets.list", "after":after}))
+                .is_err()
+        );
     }
 }

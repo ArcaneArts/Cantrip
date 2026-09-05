@@ -184,7 +184,7 @@ export async function handleComputerUseOperation(
         data = await service.capabilities(scope, signal);
         break;
       case "targets.list":
-        data = await service.inventory(scope, signal);
+        data = await service.inventory(scope, signal, action.after);
         break;
       case "session.open":
         data = {

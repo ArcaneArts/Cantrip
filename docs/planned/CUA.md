@@ -987,9 +987,12 @@ is the authoritative merge record until the next ledger update.
 
 - Branch: `codex/cua-10-worker-release-signing`, based on merged cycle 9
   (`42c4f9c0c`). Implementation commit: `f797d21c`.
-- PR: [#1752](https://github.com/ArcaneArts/Cantrip/pull/1752), open. CI and
-  merge observation are pending; local packaged-artifact signing verification
-  is complete, and no merge is claimed yet.
+- PR: [#1752](https://github.com/ArcaneArts/Cantrip/pull/1752), final head
+  `d36e3c6b38d77feb87c731ffdf61a16dc2d22c78`, squash-auto-merged at
+  `2026-09-05T13:06:58Z` as `0f00cdfc87f80df6d2baffc43ee7accfcd69ada0`.
+  CI run `33967804926` passed macOS, Windows, Linux and PostgreSQL before
+  auto-merge was enabled. Primary synchronized cleanly; only the cycle-owned
+  worktree and branch were removed.
 - Implemented: the standalone Darwin worker job imports the shared Developer
   ID certificate, signs its final CUA executable before verification/archival,
   and checks its actual signature, stable identifier, Developer ID authority
@@ -1030,6 +1033,76 @@ is the authoritative merge record until the next ledger update.
   installed update permission behavior are not established by helper signing.
 - Native/product acceptance, installed/packaged update permission continuity,
   performance measurements and final regression/completion audit remain required.
+
+### Tranche cycle 11 — Bounded native inventory pagination and acceptance
+
+- Branch: `codex/cua-11-native-acceptance`, based on merged cycle 10
+  (`0f00cdfc8`). Implementation commit: `bfceee05c531022fd74e863542c992d1b0cf761d`.
+- PR: [#1753](https://github.com/ArcaneArts/Cantrip/pull/1753), open;
+  portable CI and merge observation are pending.
+- Native finding: a fresh actual probe returned 224 targets from 473 native
+  windows plus three displays, rejected 24 invalid capture rectangles, and
+  omitted the owned fixture through initial, covered, closed and recreated
+  states. The old inventory budget was applied before sorting, and attachment
+  searched the same first page. Refreshing did not provide a discovery path.
+- Implemented: native inventory selects a bounded lexical page before applying
+  its byte budget. `targets.list` and managed `cua.targets({after})` expose the
+  next cursor through existing protected payloads. Each target array is at most
+  31 KiB, reserving room inside the unchanged 32 KiB JavaScript result limit;
+  existing native/MCP transport ceilings remain unchanged. At most 257 candidate
+  metadata records are retained while walking native arrays. Exact attachment
+  refreshes a previously discovered ID/generation independently of the public
+  page; page omissions and temporary invalid geometry do not retire an unchanged
+  owner. Actual disappearance/replacement still invalidates the incarnation.
+- Preview: First/Previous/Next and current-page refresh retain only one inventory
+  page and 32 prior cursors. Browsing another page preserves the attached target,
+  cursor and observation. Stop/teardown reject late page responses. The server
+  remains an opaque authenticated relay; each MCP page retains effective-policy
+  authorization and the existing execution lifetime.
+- Fixture: discovery follows at most 64 pages/4,096 returned targets and reports
+  only counts and fixture-owned matching metadata. It checks retired-target
+  absence across pages and preserves actual capture failures without retries.
+  An explicit fixture lifetime up to five minutes supports interactive product
+  QA; the smoke default remains 20 seconds, with EOF/abort/watchdog cleanup.
+- Verification: 93 Rust tests, Rust formatting and Clippy pass. Tests cover
+  reverse native ordering, count/escaped-byte bounds, maximal native metadata
+  through the actual JavaScript output limit, later-page attachment and native
+  generation preservation/replacement. `pnpm cua:test:worker` passes 1,201 tests
+  against the compiled executable: 132 protocol, 25 crypto, 569 worker, 214 server,
+  261 app. Three explicit skips remain (two dedicated PostgreSQL tests and the
+  separately executed native route). Full protocol passes 664 tests. Worker,
+  server and app builds and app typecheck pass. CUA script tests pass 52 with
+  two explicit GUI skips; the two opt-in fixture lifecycle tests were exercised
+  separately on macOS. The initial standalone app build
+  lacked the Glitch package output, then passed after normal dev preparation
+  built that actual dependency. `pnpm check` still stops at the unchanged server
+  decomposition budgets recorded in cycle 9; no later chained check is claimed.
+- Native macOS arm64: normal `pnpm devtop -- --profile cua-cycle-three-qa`
+  rebuilt and installed the same stable Apple Development helper identity and
+  launched the server, worker, Vite and Tauri executable. The installed helper
+  found the owned fixture on page four and passed all six decoded-pixel capture
+  scenarios: foreground, partial/full occlusion, movement, resize and recreation,
+  with old-target rejection and session shutdown. Snapshot samples were 158–397 ms
+  in this run; these are smoke samples, not a comparative performance baseline.
+  The actual client codec -> Fastify -> worker -> installed native helper route
+  also passed its foreground/occlusion/cursor/encryption/Stop fixture test.
+- Live product status: the browser opened the real local application, but its
+  local encryption authorization repeatedly requested recovery acknowledgment
+  and remounted before a project/chat could be opened. Read-only inspection
+  identified an existing session transition bug: spreading the prior authenticated
+  context after the destination recovery kind overwrites that kind and prevents
+  the normal recovery setup screen. A separate pass will fix and verify that
+  transition. No signed-in model or
+  live preview success is claimed. Investigation is separate from the passing
+  native/protected-route fixtures. Tauri executable launch is established; its
+  visible Computer Use walkthrough remains unverified. No permission reset,
+  identity switch, provider credential access or unrelated window capture was
+  used to turn that incomplete acceptance into a pass.
+- Remaining tranche work: resolve/complete live product and real managed-agent
+  acceptance, enclosing packaged-app/update permission evidence, comparative
+  startup/idle/latency measurements, relevant broad regressions and final audit.
+  Deferred native input, Accessibility, clipboard/files, other OS backends and
+  the remaining roadmap are unchanged.
 
 This document proposes a first-party computer-use subsystem named
 `cantrip_cua`. It is a future implementation plan, not a description of

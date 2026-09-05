@@ -15,7 +15,7 @@ use std::{
 };
 
 pub const MAX_SESSIONS: usize = 16;
-pub const MAX_TARGETS: usize = 256;
+pub use crate::inventory::MAX_TARGETS;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -63,7 +63,14 @@ pub enum Operation {
     #[serde(rename = "capabilities.get")]
     CapabilitiesGet {},
     #[serde(rename = "targets.list")]
-    TargetsList {},
+    TargetsList {
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "crate::inventory::deserialize_cursor"
+        )]
+        after: Option<String>,
+    },
     #[serde(rename = "target.attach", rename_all = "camelCase")]
     TargetAttach {
         binding: SessionBinding,
@@ -149,8 +156,16 @@ impl<B: CaptureBackend> CuaService<B> {
         self.sessions.len()
     }
 
-    fn inventory(&mut self, cancellation: &Cancellation) -> Result<Vec<Target>> {
-        let targets = self.backend.targets(cancellation)?;
+    fn inventory(
+        &mut self,
+        after: Option<&str>,
+        cancellation: &Cancellation,
+    ) -> Result<crate::inventory::TargetPage> {
+        if let Some(after) = after {
+            validate_id(after)?;
+        }
+        let page = self.backend.target_page(after, cancellation)?;
+        let targets = &page.targets;
         if targets.len() > MAX_TARGETS {
             return Err(CuaError::new(
                 ErrorCode::Capacity,
@@ -158,13 +173,13 @@ impl<B: CaptureBackend> CuaService<B> {
             ));
         }
         let mut ids = std::collections::HashSet::new();
-        for target in &targets {
+        for target in targets {
             target.validate()?;
             if !ids.insert(&target.id) {
                 return Err(CuaError::invalid("Duplicate native target identity."));
             }
         }
-        Ok(targets)
+        Ok(page)
     }
 
     fn session(&self, binding: &SessionBinding) -> Result<&SessionState> {
@@ -238,12 +253,15 @@ impl<B: CaptureBackend> CuaService<B> {
                     "JavaScript requires the framed runtime owner.",
                 ))
             }
-            Operation::TargetsList {} => {
-                let targets = self.inventory(cancel)?;
+            Operation::TargetsList { after } => {
+                let page = self.inventory(after.as_deref(), cancel)?;
                 cancel.check()?;
-                let mut data = json!({ "targets": targets });
-                if self.backend.inventory_truncated() {
+                let mut data = json!({ "targets": page.targets });
+                if page.truncated {
                     data["truncated"] = json!(true);
+                }
+                if let Some(cursor) = page.next_cursor {
+                    data["nextCursor"] = json!(cursor);
                 }
                 Ok(OperationResult::json(data))
             }
@@ -261,13 +279,11 @@ impl<B: CaptureBackend> CuaService<B> {
                         "CUA session limit reached.",
                     ));
                 }
+                validate_id(&target_id)?;
                 let target = self
-                    .inventory(cancel)?
-                    .into_iter()
-                    .find(|t| t.id == target_id)
-                    .ok_or_else(|| {
-                        CuaError::new(ErrorCode::TargetNotFound, "CUA target no longer exists.")
-                    })?;
+                    .backend
+                    .resolve_target(&target_id, target_generation, cancel)?;
+                target.validate()?;
                 if target.generation != target_generation {
                     return Err(CuaError::new(
                         ErrorCode::StaleTarget,

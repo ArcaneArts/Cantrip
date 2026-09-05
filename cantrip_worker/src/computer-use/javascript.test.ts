@@ -290,6 +290,28 @@ describe("worker JavaScript ownership before MCP activation", () => {
       ),
     ).toHaveLength(1);
   });
+  it("authorizes and forwards the bounded inventory cursor to the same native service", async () => {
+    const { service, request } = fixture(async (opts) =>
+      opts.onHostCall!(
+        { operation: "targets", after: "macos-window-123" },
+        new AbortController().signal,
+      ),
+    );
+    const opts = options();
+    await service.evaluateJavascript(scope, "test", opts);
+    expect(opts.authorize).toHaveBeenCalledWith(
+      { operation: "targets", after: "macos-window-123" },
+      expect.any(AbortSignal),
+    );
+    expect(
+      request.mock.calls.some(
+        ([operation]) =>
+          (operation as { operation: string; after?: string }).operation ===
+            "targets.list" &&
+          (operation as { after?: string }).after === "macos-window-123",
+      ),
+    ).toBe(true);
+  });
   it("rejects supplied execution authority before calling policy or native code", async () => {
     const { service, request } = fixture(async (opts) =>
       opts.onHostCall!(

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { computerUseActionSchema } from "@cantrip/protocol/computer-use";
+import {
+  computerUseActionSchema,
+  type ComputerUseAction,
+} from "@cantrip/protocol/computer-use";
 
 // These adapters are tested against real AEAD with fixed in-memory component
 // keys. Never initialize the default native key provider or a real profile.
@@ -139,7 +142,7 @@ describe("client endpoint raw bytes", () => {
     const { options } = fixture();
     const schema = computerUseActionSchema;
     const content = { operation: "targets.list" } as const;
-    const opaque = await protectEndpointContent({
+    const opaque = await protectEndpointContent<ComputerUseAction>({
       context,
       content,
       schema,

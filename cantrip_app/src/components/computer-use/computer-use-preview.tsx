@@ -252,6 +252,16 @@ export function ComputerUsePreviewPanel({
               <option value="" disabled>
                 Select a target
               </option>
+              {target &&
+              !state.targets.some(
+                (item) =>
+                  item.id === target.id &&
+                  item.generation === target.generation,
+              ) ? (
+                <option value={`${target.id}:${target.generation}`}>
+                  Attached: {target.title ?? target.id} (outside this page)
+                </option>
+              ) : null}
               {state.targets.map((item) => (
                 <option
                   key={`${item.id}:${item.generation}`}
@@ -293,10 +303,48 @@ export function ComputerUsePreviewPanel({
           </Button>
         </div>
       )}
+      {!following && active ? (
+        <nav
+          aria-label="Target pages"
+          className="flex min-w-0 flex-wrap items-center gap-2"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={disabled || state.targetPage.after === null}
+            onClick={() => void controller.firstTargets()}
+          >
+            First page
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={disabled || !state.targetPage.previous.length}
+            onClick={() => void controller.previousTargets()}
+          >
+            Previous page
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={disabled || !state.targetPage.nextCursor}
+            onClick={() => void controller.nextTargets()}
+          >
+            Next page
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {state.targets.length} targets on this page
+          </span>
+        </nav>
+      ) : null}
       {!following && state.targetsTruncated ? (
         <p role="status" className="text-xs text-muted-foreground">
-          Some native targets were omitted because their metadata is unavailable
-          or the inventory reached its size limit. Refresh targets to try again.
+          {state.targetPage.nextCursor
+            ? "More native targets are available. Use Next page to continue."
+            : "Some native targets were omitted because their metadata is unavailable or the inventory reached its size limit."}
         </p>
       ) : null}
       <div

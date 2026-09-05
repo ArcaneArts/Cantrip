@@ -686,3 +686,91 @@ fn duplicate_request_ids_close_the_ambiguous_connection() {
     child.send(json!({"operation":"capabilities.get"}));
     child.stop(false);
 }
+
+#[test]
+fn javascript_target_page_options_cross_actual_framed_host_bridge_and_remain_persistent() {
+    let mut child = Process::start(true);
+    let evaluation = child.send(evaluate(
+        binding(),
+        "const page = await cua.targets({after:'fake-monitor'}); page.targets[0].id",
+    ));
+    assert_eq!(
+        host_call(&mut child, evaluation, 1),
+        json!({"operation":"targets","after":"fake-monitor"})
+    );
+    let (inventory, _) = child.call(json!({"operation":"targets.list","after":"fake-monitor"}));
+    assert_eq!(inventory["targets"].as_array().unwrap().len(), 1);
+    assert!(inventory.get("nextCursor").is_none());
+    host_result(&mut child, evaluation, 1, inventory);
+    assert_eq!(
+        child.response(evaluation).0,
+        Outcome::Ok {
+            data: json!({"value":"fake-window"})
+        }
+    );
+    assert_eq!(
+        child.call(evaluate(binding(), "page.targets[0].id")).0,
+        json!({"value":"fake-window"})
+    );
+    for options in [
+        "null",
+        "[]",
+        "{after:null}",
+        "{after:3}",
+        "{binding:{}}",
+        "{after:'bad\\nline'}",
+    ] {
+        let id = child.send(evaluate(
+            binding(),
+            &format!("await cua.targets({options})"),
+        ));
+        assert!(matches!(child.response(id).0, Outcome::Error { .. }));
+    }
+    child.stop(true);
+}
+
+#[test]
+fn full_worst_escaped_inventory_page_returns_through_unchanged_javascript_output_limit() {
+    use cantrip_cua::{
+        backend::{CaptureBackend, FakeBackend},
+        cancellation::Cancellation,
+    };
+    let mut target = FakeBackend
+        .targets(&Cancellation::default())
+        .unwrap()
+        .remove(0);
+    target.id = "macos-window-4294967295".into();
+    target.title = Some("\u{0001}".repeat(4096));
+    target.application = Some("\u{0001}".repeat(1024));
+    let mut last = target.clone();
+    last.id = "z".into();
+    let page = cantrip_cua::inventory::page(vec![last, target], None, false).unwrap();
+    let inventory =
+        json!({"targets":page.targets,"truncated":page.truncated,"nextCursor":page.next_cursor});
+    assert_eq!(inventory["targets"].as_array().unwrap().len(), 1);
+    assert!(
+        serde_json::to_vec(&json!({"value":inventory}))
+            .unwrap()
+            .len()
+            <= 32 * 1024
+    );
+    let mut child = Process::start(true);
+    let evaluation = child.send(evaluate(binding(), "await cua.targets()"));
+    assert_eq!(
+        host_call(&mut child, evaluation, 1),
+        json!({"operation":"targets"})
+    );
+    host_result(&mut child, evaluation, 1, inventory.clone());
+    let Outcome::Ok { data } = child.response(evaluation).0 else {
+        panic!("Full page must fit the existing JavaScript result bound.");
+    };
+    assert_eq!(data["value"]["nextCursor"], inventory["nextCursor"]);
+    assert_eq!(data["value"]["truncated"], inventory["truncated"]);
+    // JS has one Number type, so integer-valued native floats serialize as integers.
+    let actual: Vec<cantrip_cua::target::Target> =
+        serde_json::from_value(data["value"]["targets"].clone()).unwrap();
+    let expected: Vec<cantrip_cua::target::Target> =
+        serde_json::from_value(inventory["targets"].clone()).unwrap();
+    assert_eq!(actual, expected);
+    child.stop(true);
+}

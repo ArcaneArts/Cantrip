@@ -35,6 +35,35 @@ pub trait CaptureBackend: Send {
     fn inventory_truncated(&self) -> bool {
         false
     }
+    fn target_page(
+        &mut self,
+        after: Option<&str>,
+        cancellation: &Cancellation,
+    ) -> Result<crate::inventory::TargetPage> {
+        let targets = self.targets(cancellation)?;
+        crate::inventory::page(targets, after, self.inventory_truncated())
+    }
+    fn resolve_target(
+        &mut self,
+        id: &str,
+        generation: u64,
+        cancellation: &Cancellation,
+    ) -> Result<Target> {
+        let target = self
+            .targets(cancellation)?
+            .into_iter()
+            .find(|target| target.id == id)
+            .ok_or_else(|| {
+                CuaError::new(ErrorCode::TargetNotFound, "CUA target no longer exists.")
+            })?;
+        if target.generation != generation {
+            return Err(CuaError::new(
+                ErrorCode::StaleTarget,
+                "CUA target was replaced.",
+            ));
+        }
+        Ok(target)
+    }
     fn capture(&mut self, target: &Target, cancellation: &Cancellation) -> Result<Capture>;
 }
 

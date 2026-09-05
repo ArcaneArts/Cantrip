@@ -185,6 +185,54 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         expect(launch).toHaveBeenCalledTimes(1);
       },
     );
+    it("pages through the compiled backend and attaches a target outside the current page", async () => {
+      const { service, operations } = create();
+      const first = await service.inventory(scope);
+      const after = first.targets[0]!.id;
+      const second = await service.inventory(scope, undefined, after);
+      expect(second.targets).toEqual(
+        first.targets.filter((target) => target.id > after),
+      );
+      expect(second.targets).toHaveLength(1);
+      expect(operations).toContainEqual({ operation: "targets.list", after });
+      await service.inventory(scope, undefined, second.targets[0]!.id);
+      const target = second.targets[0]!;
+      expect(
+        (
+          await service.open(scope, {
+            targetId: target.id,
+            targetGeneration: target.generation,
+          })
+        ).target,
+      ).toEqual(target);
+    });
+    it("rejects a helper page that does not advance beyond the requested cursor", async () => {
+      const { service } = create({
+        transform: (operation, response) => {
+          if ((operation as { after?: string }).after)
+            (response.data as { targets: unknown[] }).targets = [
+              {
+                id: "a",
+                generation: 1,
+                kind: "window",
+                title: null,
+                application: null,
+                processId: null,
+                bounds: { x: 0, y: 0, width: 1, height: 1 },
+                pixelWidth: 1,
+                pixelHeight: 1,
+                scaleFactor: 1,
+                focused: null,
+                minimized: null,
+              },
+            ];
+          return response;
+        },
+      });
+      await expect(
+        service.inventory(scope, undefined, "z"),
+      ).rejects.toBeInstanceOf(CuaProcessError);
+    });
     it("accepts actual PNG bytes with a downscaled, then resized logical target without changing its generation", async () => {
       let logicalWidth = 800;
       const { service, launch } = create({

@@ -8,7 +8,8 @@ use crate::{
     backend::{Capture, CaptureBackend, Raster, UnavailableBackend},
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
-    target::{Bounds, MAX_SEQUENCE, Target, TargetKind},
+    inventory::{MAX_TARGETS, TargetPage, prefix_len},
+    target::{Bounds, Target, TargetKind},
 };
 use block2::RcBlock;
 use dispatch2::DispatchQueue;
@@ -32,16 +33,13 @@ use objc2_screen_capture_kit::{
 use pending::{NativeCalls, Pending};
 use registry::{Candidate, Identity, Inventory, Registry};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     ptr::NonNull,
     sync::{
         Arc, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
 };
-
-const MAX_INVENTORY_BYTES: usize = 60 * 1024;
-const MAX_TARGETS: usize = 256;
 
 fn diagnostic_entry() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
@@ -171,17 +169,17 @@ pub struct MacOsBackend {
     truncated: bool,
 }
 
-impl CaptureBackend for MacOsBackend {
-    fn name(&self) -> &'static str {
-        "macos-screencapturekit"
-    }
-    fn available(&self) -> bool {
-        available()
-    }
-    fn inventory_truncated(&self) -> bool {
-        self.truncated
-    }
-    fn targets(&mut self, cancellation: &Cancellation) -> Result<Vec<Target>> {
+enum Selection {
+    Page(Option<String>),
+    Exact(String),
+}
+
+impl MacOsBackend {
+    fn read_page(
+        &mut self,
+        selection: Selection,
+        cancellation: &Cancellation,
+    ) -> Result<TargetPage> {
         if !available() {
             return unsupported();
         }
@@ -196,7 +194,7 @@ impl CaptureBackend for MacOsBackend {
                 autoreleasepool(|_| {
                     // SAFETY: SCK owns both nullable callback pointers until
                     // this callback returns. Only owned Rust values escape.
-                    let result = unsafe { content_result(content, error).and_then(|content| read_inventory(content, &tracked, || request.cancelled())) };
+                    let result = unsafe { content_result(content, error).and_then(|content| read_inventory(content, &tracked, &selection, || request.cancelled())) };
                     request.deliver(result);
                 });
             });
@@ -205,10 +203,59 @@ impl CaptureBackend for MacOsBackend {
             diagnostic_phase("inventory-requested");
             unsafe { SCShareableContent::getShareableContentExcludingDesktopWindows_onScreenWindowsOnly_completionHandler(false, false, &completion); }
         });
-        let inventory = pending.wait(&receiver)?;
+        let (inventory, next_cursor) = pending.wait(&receiver)?;
         let (targets, truncated) = self.registry.update(inventory)?;
         self.truncated = truncated;
-        Ok(targets)
+        Ok(TargetPage {
+            targets,
+            truncated,
+            next_cursor,
+        })
+    }
+}
+
+impl CaptureBackend for MacOsBackend {
+    fn name(&self) -> &'static str {
+        "macos-screencapturekit"
+    }
+    fn available(&self) -> bool {
+        available()
+    }
+    fn inventory_truncated(&self) -> bool {
+        self.truncated
+    }
+    fn targets(&mut self, cancellation: &Cancellation) -> Result<Vec<Target>> {
+        Ok(self.target_page(None, cancellation)?.targets)
+    }
+    fn target_page(
+        &mut self,
+        after: Option<&str>,
+        cancellation: &Cancellation,
+    ) -> Result<TargetPage> {
+        if let Some(after) = after {
+            crate::target::validate_id(after)?;
+        }
+        self.read_page(Selection::Page(after.map(str::to_owned)), cancellation)
+    }
+    fn resolve_target(
+        &mut self,
+        id: &str,
+        generation: u64,
+        cancellation: &Cancellation,
+    ) -> Result<Target> {
+        // Only an actually discovered incarnation may be attached. Refresh the
+        // exact native identity independently of the public inventory page.
+        self.registry.identity_for(id, generation)?;
+        let page = self.read_page(Selection::Exact(id.to_owned()), cancellation)?;
+        let target = page
+            .targets
+            .into_iter()
+            .find(|target| target.id == id)
+            .ok_or_else(|| {
+                CuaError::new(ErrorCode::TargetNotFound, "CUA target no longer exists.")
+            })?;
+        self.registry.identity_for(id, generation)?;
+        Ok(target)
     }
     fn capture(&mut self, target: &Target, cancellation: &Cancellation) -> Result<Capture> {
         if !available() {
@@ -325,14 +372,16 @@ fn native_error(error: &NSError) -> CuaError {
 unsafe fn read_inventory(
     content: &SCShareableContent,
     tracked: &HashSet<String>,
+    selection: &Selection,
     cancelled: impl Fn() -> bool,
-) -> Result<Inventory> {
+) -> Result<(Inventory, Option<String>)> {
     let mut output = Inventory {
         candidates: vec![],
         present: HashMap::new(),
         truncated: false,
     };
-    let mut used = 2usize;
+    let mut candidates = BTreeMap::new();
+    let mut more = false;
     // Walk the native NSArray without making an unbounded second handle vector.
     let displays = unsafe { content.displays() };
     diagnostic_inventory_count("display", displays.count());
@@ -345,10 +394,22 @@ unsafe fn read_inventory(
         }
         let display = displays.objectAtIndex(index);
         match unsafe { display_candidate(&display, None) } {
-            Ok(candidate) => add_candidate(&mut output, &mut used, tracked, candidate)?,
+            Ok(candidate) => add_candidate(
+                &mut output,
+                &mut candidates,
+                &mut more,
+                tracked,
+                selection,
+                candidate,
+            )?,
             Err(error) => {
                 diagnostic_candidate_rejection("display", &error);
                 output.truncated = true;
+                let native_id = unsafe { display.displayID() };
+                let id = format!("macos-display-{native_id}");
+                if tracked.contains(&id) {
+                    output.present.insert(id, display_identity(native_id));
+                }
             }
         }
     }
@@ -363,49 +424,90 @@ unsafe fn read_inventory(
         }
         let window = windows.objectAtIndex(index);
         match unsafe { window_candidate(&window, None) } {
-            Ok(candidate) => add_candidate(&mut output, &mut used, tracked, candidate)?,
+            Ok(candidate) => add_candidate(
+                &mut output,
+                &mut candidates,
+                &mut more,
+                tracked,
+                selection,
+                candidate,
+            )?,
             Err(error) => {
                 diagnostic_candidate_rejection("window", &error);
                 output.truncated = true;
+                let id = format!("macos-window-{}", unsafe { window.windowID() });
+                if tracked.contains(&id) {
+                    output
+                        .present
+                        .insert(id, unsafe { window_identity(&window) });
+                }
             }
         }
     }
-    output
-        .candidates
-        .sort_by(|a, b| a.target.id.cmp(&b.target.id));
-    Ok(output)
+    finish_inventory(output, candidates, more)
 }
 
-fn add_candidate(
-    output: &mut Inventory,
-    used: &mut usize,
-    tracked: &HashSet<String>,
-    candidate: Candidate,
-) -> Result<()> {
-    // Reserve the largest sequence while budgeting real escaped JSON. Only
-    // returned candidates + at most 4096 existing registrations are copied.
-    let mut budget = candidate.target.clone();
-    budget.generation = MAX_SEQUENCE;
-    let bytes = serde_json::to_vec(&budget)
-        .map_err(|_| {
-            CuaError::new(
-                ErrorCode::CaptureFailed,
-                "Invalid native inventory metadata.",
-            )
-        })?
-        .len()
-        + 1;
-    let include = output.candidates.len() < MAX_TARGETS && *used + bytes <= MAX_INVENTORY_BYTES;
-    if include || tracked.contains(&candidate.target.id) {
+fn finish_inventory(
+    mut output: Inventory,
+    candidates: BTreeMap<String, Candidate>,
+    mut more: bool,
+) -> Result<(Inventory, Option<String>)> {
+    let count = prefix_len(
+        candidates
+            .values()
+            .map(|candidate: &Candidate| &candidate.target),
+    )?;
+    more |= count < candidates.len();
+    output.candidates = candidates.into_values().take(count).collect();
+    for candidate in &output.candidates {
         output
             .present
             .insert(candidate.target.id.clone(), candidate.identity.clone());
     }
-    if include {
-        *used += bytes;
-        output.candidates.push(candidate);
+    let next_cursor = more.then(|| output.candidates.last().unwrap().target.id.clone());
+    output.truncated |= more;
+    Ok((output, next_cursor))
+}
+
+fn add_candidate(
+    output: &mut Inventory,
+    candidates: &mut BTreeMap<String, Candidate>,
+    more: &mut bool,
+    tracked: &HashSet<String>,
+    selection: &Selection,
+    candidate: Candidate,
+) -> Result<()> {
+    candidate.target.validate()?;
+    let id = &candidate.target.id;
+    if tracked.contains(id) {
+        output
+            .present
+            .insert(id.clone(), candidate.identity.clone());
+    }
+    let include = match selection {
+        Selection::Page(after) => after.as_ref().is_none_or(|after| id > after),
+        Selection::Exact(selected) => id == selected,
+    };
+    if !include {
+        return Ok(());
+    }
+    if candidates.contains_key(id) {
+        return Err(CuaError::invalid("Duplicate native target identity."));
+    }
+    // Native order is not lexical. Keep only the smallest page plus one
+    // lookahead; no unbounded metadata or retained ObjC handle vector.
+    if candidates.len() < MAX_TARGETS + 1
+        || candidates
+            .last_key_value()
+            .is_some_and(|(last, _)| id < last)
+    {
+        candidates.insert(id.clone(), candidate);
+        if candidates.len() > MAX_TARGETS + 1 {
+            candidates.pop_last();
+            *more = true;
+        }
     } else {
-        output.truncated = true;
+        *more = true;
     }
     Ok(())
 }
@@ -516,6 +618,30 @@ unsafe fn window_filter(window: &SCWindow) -> Result<objc2::rc::Retained<SCConte
     })
 }
 
+unsafe fn window_identity(window: &SCWindow) -> Identity {
+    let app = unsafe { window.owningApplication() };
+    Identity {
+        process_id: app
+            .as_ref()
+            .and_then(|app| u32::try_from(unsafe { app.processID() }).ok()),
+        application_id: app
+            .as_ref()
+            .map(|app| geometry::bounded_text(unsafe { app.bundleIdentifier() }.to_string(), 1024)),
+    }
+}
+
+fn display_identity(id: u32) -> Identity {
+    // Optional additional incarnation evidence, never capture eligibility.
+    let uuid = unsafe { CGDisplayCreateUUIDFromDisplayID(id) }
+        .map(|uuid| unsafe { CFRetained::from_raw(uuid) })
+        .and_then(|uuid| CFUUID::new_string(None, Some(&uuid)))
+        .map(|uuid| uuid.to_string());
+    Identity {
+        process_id: None,
+        application_id: uuid,
+    }
+}
+
 unsafe fn window_candidate(
     window: &SCWindow,
     filter: Option<&SCContentFilter>,
@@ -532,12 +658,8 @@ unsafe fn window_candidate(
         )?
     };
     let app = unsafe { window.owningApplication() };
-    let process_id = app
-        .as_ref()
-        .and_then(|app| u32::try_from(unsafe { app.processID() }).ok());
-    let application_id = app
-        .as_ref()
-        .map(|app| geometry::bounded_text(unsafe { app.bundleIdentifier() }.to_string(), 1024));
+    let identity = unsafe { window_identity(window) };
+    let process_id = identity.process_id;
     let target = Target {
         id: format!("macos-window-{}", unsafe { window.windowID() }),
         generation: 1,
@@ -555,13 +677,7 @@ unsafe fn window_candidate(
         minimized: None,
     };
     target.validate()?;
-    Ok(Candidate {
-        target,
-        identity: Identity {
-            process_id,
-            application_id,
-        },
-    })
+    Ok(Candidate { target, identity })
 }
 
 unsafe fn display_candidate(
@@ -580,10 +696,7 @@ unsafe fn display_candidate(
         )?
     };
     let id = unsafe { display.displayID() };
-    let display_uuid = unsafe { CGDisplayCreateUUIDFromDisplayID(id) }
-        .map(|uuid| unsafe { CFRetained::from_raw(uuid) })
-        .and_then(|uuid| CFUUID::new_string(None, Some(&uuid)))
-        .map(|uuid| uuid.to_string());
+    let identity = display_identity(id);
     let target = Target {
         id: format!("macos-display-{id}"),
         generation: 1,
@@ -599,16 +712,7 @@ unsafe fn display_candidate(
         minimized: None,
     };
     target.validate()?;
-    Ok(Candidate {
-        target,
-        identity: Identity {
-            process_id: None,
-            // Optional additional incarnation evidence, never an eligibility
-            // check or installation identity. A native SCDisplay is still a
-            // valid capture source when ColorSync cannot supply a UUID.
-            application_id: display_uuid,
-        },
-    })
+    Ok(Candidate { target, identity })
 }
 
 unsafe fn begin_capture(source: SelectedSource, pending: Arc<Pending<NativeCapture>>) {
@@ -729,4 +833,148 @@ fn read_pixels(
         target: target.clone(),
         rgba,
     })
+}
+
+#[cfg(test)]
+mod paging_tests {
+    use super::*;
+    use crate::backend::FakeBackend;
+    fn source() -> Vec<Target> {
+        let base = FakeBackend
+            .targets(&Cancellation::default())
+            .unwrap()
+            .remove(0);
+        (0..600)
+            .rev()
+            .map(|index| {
+                let mut target = base.clone();
+                target.id = format!("window-{index}");
+                target
+            })
+            .collect()
+    }
+    fn collect(
+        registry: &mut Registry,
+        source: &[Target],
+        selection: Selection,
+        owner: u32,
+    ) -> TargetPage {
+        let tracked = registry.tracked();
+        let mut output = Inventory {
+            candidates: vec![],
+            present: HashMap::new(),
+            truncated: false,
+        };
+        let mut candidates = BTreeMap::new();
+        let mut more = false;
+        for target in source {
+            add_candidate(
+                &mut output,
+                &mut candidates,
+                &mut more,
+                &tracked,
+                &selection,
+                Candidate {
+                    target: target.clone(),
+                    identity: Identity {
+                        process_id: Some(owner),
+                        application_id: Some("fixture".into()),
+                    },
+                },
+            )
+            .unwrap();
+            assert!(candidates.len() <= MAX_TARGETS + 1);
+            assert!(output.present.len() <= 4096);
+        }
+        let (inventory, next_cursor) = finish_inventory(output, candidates, more).unwrap();
+        let (targets, truncated) = registry.update(inventory).unwrap();
+        TargetPage {
+            targets,
+            truncated,
+            next_cursor,
+        }
+    }
+    #[test]
+    fn native_selection_is_sorted_before_budgeting_and_exact_refresh_preserves_discovered_generation()
+     {
+        let source = source();
+        let mut registry = Registry::default();
+        let first = collect(&mut registry, &source, Selection::Page(None), 1);
+        let expected = crate::inventory::page(source.clone(), None, false).unwrap();
+        assert_eq!(
+            first.targets.iter().map(|t| &t.id).collect::<Vec<_>>(),
+            expected.targets.iter().map(|t| &t.id).collect::<Vec<_>>()
+        );
+        let second = collect(
+            &mut registry,
+            &source,
+            Selection::Page(first.next_cursor.clone()),
+            1,
+        );
+        let discovered = second.targets.last().unwrap().clone();
+        assert!(
+            !first
+                .targets
+                .iter()
+                .any(|target| target.id == discovered.id)
+        );
+        collect(&mut registry, &source, Selection::Page(None), 1);
+        assert!(
+            registry
+                .identity_for(&discovered.id, discovered.generation)
+                .is_ok()
+        );
+        let exact = collect(
+            &mut registry,
+            &source,
+            Selection::Exact(discovered.id.clone()),
+            1,
+        );
+        assert_eq!(exact.targets.len(), 1);
+        assert_eq!(exact.targets[0].generation, discovered.generation);
+        assert!(exact.next_cursor.is_none());
+        assert!(
+            registry
+                .identity_for(&discovered.id, discovered.generation + 1)
+                .is_err()
+        );
+        collect(
+            &mut registry,
+            &source,
+            Selection::Exact(discovered.id.clone()),
+            2,
+        );
+        assert!(
+            registry
+                .identity_for(&discovered.id, discovered.generation)
+                .is_err()
+        );
+        let renewed = collect(
+            &mut registry,
+            &source,
+            Selection::Exact(discovered.id.clone()),
+            2,
+        )
+        .targets
+        .remove(0);
+        let missing: Vec<_> = source
+            .into_iter()
+            .filter(|target| target.id != discovered.id)
+            .collect();
+        assert!(
+            collect(
+                &mut registry,
+                &missing,
+                Selection::Exact(discovered.id.clone()),
+                2
+            )
+            .targets
+            .is_empty()
+        );
+        assert!(
+            registry
+                .identity_for(&renewed.id, renewed.generation)
+                .is_err()
+        );
+    }
 }

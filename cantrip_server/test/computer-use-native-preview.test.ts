@@ -155,17 +155,43 @@ describe.skipIf(!binary)(
         backend: "macos-screencapturekit",
         nativeInput: false,
       });
-      const inventory = cuaInventorySchema.parse(
+      let inventory = cuaInventorySchema.parse(
         data(await viewer.operation(lease, { operation: "targets.list" })),
       );
       // Capture only the known owned fixture PID and exact target window handle.
       // Never select another user window or substitute a monitor.
-      const target = inventory.targets.find(
+      let target = inventory.targets.find(
         (candidate) =>
           candidate.id === `macos-window-${native.initial.windowId}` &&
           candidate.processId === native.initial.processId &&
           candidate.kind === "window",
       );
+      let pages = 1;
+      let returned = inventory.targets.length;
+      while (!target && inventory.nextCursor !== undefined) {
+        if (pages >= 64 || returned >= 4096)
+          throw new Error(
+            "Owned fixture discovery exceeded its bounded inventory walk.",
+          );
+        const after = inventory.nextCursor;
+        inventory = cuaInventorySchema.parse(
+          data(
+            await viewer.operation(lease, { operation: "targets.list", after }),
+          ),
+        );
+        expect(
+          inventory.targets.every((candidate) => candidate.id > after),
+        ).toBe(true);
+        pages += 1;
+        returned += inventory.targets.length;
+        expect(returned).toBeLessThanOrEqual(4096);
+        target = inventory.targets.find(
+          (candidate) =>
+            candidate.id === `macos-window-${native.initial.windowId}` &&
+            candidate.processId === native.initial.processId &&
+            candidate.kind === "window",
+        );
+      }
       if (!target)
         throw new Error("Owned native fixture window was not enumerated.");
       const selected = {

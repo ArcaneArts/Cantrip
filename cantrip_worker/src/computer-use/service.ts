@@ -16,6 +16,7 @@ import {
   cuaPointSchema,
   cuaCapabilitiesSchema,
   cuaInventorySchema,
+  cuaIdSchema,
   cuaSessionResultSchema,
   cuaSnapshotSchema,
   type CuaBinding,
@@ -318,19 +319,29 @@ export class CantripCuaService {
   async targets(input: CuaScope, signal?: AbortSignal) {
     return (await this.inventory(input, signal)).targets;
   }
-  async inventory(input: CuaScope, signal?: AbortSignal) {
+  async inventory(input: CuaScope, signal?: AbortSignal, after?: string) {
+    if (after !== undefined) cuaIdSchema.parse(after);
     return this.track(this.scope(input), signal, async (active) => {
       const runtime = await waitBeforeCuaSend(this.ensureRuntime(), active);
       this.assertActive(active);
       const response = await runtime.transport.request(
-        { operation: "targets.list" },
+        {
+          operation: "targets.list",
+          ...(after === undefined ? {} : { after }),
+        },
         { signal: active },
       );
       this.assertActive(active);
       if (this.runtime !== runtime)
         throw new CuaProcessError("process-exited", "unknown");
       if (response.payload.length) return this.protocolFailure(runtime);
-      return this.parse(runtime, cuaInventorySchema, response.data);
+      const inventory = this.parse(runtime, cuaInventorySchema, response.data);
+      if (
+        after !== undefined &&
+        inventory.targets.some((target) => target.id <= after)
+      )
+        return this.protocolFailure(runtime);
+      return inventory;
     });
   }
   async open(
