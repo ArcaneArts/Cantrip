@@ -409,7 +409,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 6 — Encrypted client preview and shared cursor
 
 - Branch: `codex/cua-06-client-preview`, based on merged cycle 5c
-  (`3a5628d23`). PR and merge not yet created/observed.
+  (`3a5628d23`). PR [#1742](https://github.com/ArcaneArts/Cantrip/pull/1742),
+  implementation commit `c6824fec969d8a1c6c6edab3ec7da95bb2e8e0a7`.
+  CI and squash auto-merge are pending; merge has not yet been observed.
 - Implemented: reachable experimental preview above both project and standalone
   chat transcripts; actual worker capability request, monitor/window inventory,
   attach/detach, snapshots and customizable logical cursor. Click coordinates
