@@ -671,7 +671,9 @@ is the authoritative merge record until the next ledger update.
 ### Tranche cycle 8c1 — Current agent authority, approval waits, and image redaction
 
 - Branch: `codex/cua-08c1-agent-authority`, based on merged cycle 8b
-  (`fb0111e2a`). PR/commit and final validation pending.
+  (`fb0111e2a`). [PR #1747](https://github.com/ArcaneArts/Cantrip/pull/1747),
+  implementation commit `ecea7a7690de4d0f7a0f7c8dc8e1d9be618589ab`.
+  Local validation complete; portable CI and merge pending.
 - Scope: prerequisites for managed MCP activation. The server exposes a
   worker-authenticated CUA authority route using the existing agent-tools
   credential scope. Every request reads current durable placement and selected/
