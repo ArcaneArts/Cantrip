@@ -164,6 +164,7 @@ struct Bridge {
     evaluation_id: Option<u64>,
     calls: u64,
     pending: Option<HostPending>,
+    rejections: Vec<(Persistent<rquickjs::Value<'static>>, CuaError)>,
     fault: Rc<Cell<Option<ErrorCode>>>,
 }
 #[derive(Clone, Copy, Default)]
@@ -226,6 +227,7 @@ impl Session {
             evaluation_id: None,
             calls: 0,
             pending: None,
+            rejections: Vec::new(),
             fault: Rc::new(Cell::new(None)),
         }));
         let weak = Rc::downgrade(&bridge);
@@ -334,6 +336,7 @@ impl Session {
             let mut bridge = self.bridge.borrow_mut();
             bridge.evaluation_id = Some(id);
             bridge.calls = 0;
+            bridge.rejections.clear();
             bridge.fault.set(None);
             bridge.fault.clone()
         };
@@ -412,15 +415,32 @@ impl Session {
     }
     fn finish_value(&self, active: &Evaluation) -> Result<Value> {
         Self::enter(&active.clock);
+        let mut host_error = None;
         let value = self
             .context
             .with(|ctx| -> rquickjs::Result<Option<String>> {
                 let promise = active.promise.clone().restore(&ctx)?;
                 // QuickJS's JS_EVAL_FLAG_ASYNC resolves its completion envelope
                 // { value: <last expression> }, not the expression directly.
-                let completion = promise
+                let completion = match promise
                     .result::<rquickjs::Object>()
-                    .ok_or(rquickjs::Error::WouldBlock)??;
+                    .ok_or(rquickjs::Error::WouldBlock)?
+                {
+                    Ok(completion) => completion,
+                    Err(error) => {
+                        if error.is_exception() {
+                            let exception = ctx.catch();
+                            // Identity, never script-controlled code/message fields.
+                            for (value, rejection) in &self.bridge.borrow().rejections {
+                                if value.clone().restore(&ctx)? == exception {
+                                    host_error = Some(rejection.clone());
+                                    break;
+                                }
+                            }
+                        }
+                        return Err(error);
+                    }
+                };
                 let value: rquickjs::Value = completion.get("value")?;
                 if value.is_undefined() {
                     return Ok(None);
@@ -443,7 +463,7 @@ impl Session {
                 "JavaScript left unfinished background work.",
             ));
         }
-        let value = value.map_err(|_| script_error())?;
+        let value = value.map_err(|_| host_error.unwrap_or_else(script_error))?;
         let Some(value) = value else {
             return Ok(Value::Null);
         };
@@ -537,15 +557,22 @@ impl Session {
         };
         Self::enter(&active.clock);
         let settled = self.context.with(|ctx| -> rquickjs::Result<()> {
-            let (function, data) = match result {
-                Outcome::Ok { data } => (pending.resolve.restore(&ctx)?, data),
+            let (function, data, error) = match result {
+                Outcome::Ok { data } => (pending.resolve.restore(&ctx)?, data, None),
                 Outcome::Error { error } => (
                     pending.reject.restore(&ctx)?,
                     json!({"code":error.code,"message":"CUA host operation failed."}),
+                    Some(error),
                 ),
             };
             let bytes = serde_json::to_vec(&data).map_err(|_| rquickjs::Error::Unknown)?;
             let value: rquickjs::Value = ctx.json_parse(bytes)?;
+            if let Some(error) = error {
+                self.bridge
+                    .borrow_mut()
+                    .rejections
+                    .push((Persistent::save(&ctx, value.clone()), error));
+            }
             function.call((value,))
         });
         Self::leave(&active.clock);
@@ -561,6 +588,7 @@ impl Session {
         let id = self.active.take().map(|active| active.id);
         let mut bridge = self.bridge.borrow_mut();
         bridge.pending.take();
+        bridge.rejections.clear();
         bridge.evaluation_id = None;
         self.runtime.set_interrupt_handler(None);
         id
@@ -877,6 +905,97 @@ mod tests {
             assert_eq!(session.step().unwrap().unwrap(), json!(2));
             session.clear_active();
         }
+    }
+
+    #[test]
+    fn uncaught_host_rejections_preserve_only_the_original_error_identity() {
+        for code in [
+            ErrorCode::Unsupported,
+            ErrorCode::InputUnknown,
+            ErrorCode::TargetNotFound,
+        ] {
+            for (source, expected) in [
+                ("await cua.click({x:55,y:797}); await cua.snapshot()", code),
+                (
+                    "try { await cua.click(); } catch (e) { e.code = 'permission-denied'; throw e; }",
+                    code,
+                ),
+                (
+                    "try { await cua.click(); } catch (e) { throw {code:e.code}; }",
+                    ErrorCode::InvalidRequest,
+                ),
+                (
+                    "try { await cua.click(); } catch {} throw new Error('private detail')",
+                    ErrorCode::InvalidRequest,
+                ),
+            ] {
+                let binding = serde_json::from_value(
+                    json!({"sessionId":"host-error-fixture","workerId":"worker","chatId":"chat"}),
+                )
+                .unwrap();
+                let (frames, receiver) = crossbeam_channel::bounded(4);
+                let mut session = Session::new(binding, frames).unwrap();
+                session
+                    .start(
+                        1,
+                        source.into(),
+                        default_wall_timeout_ms(),
+                        Cancellation::default(),
+                    )
+                    .unwrap();
+                assert!(session.step().is_none());
+                receiver.try_recv().unwrap();
+                session
+                    .reply(
+                        1,
+                        1,
+                        Outcome::Error {
+                            error: CuaError::new(code, "Host failure"),
+                        },
+                    )
+                    .unwrap();
+                assert_eq!(
+                    session.step().unwrap().unwrap_err().code,
+                    expected,
+                    "{source}"
+                );
+                assert!(
+                    receiver.is_empty(),
+                    "Failed click must not run its following snapshot"
+                );
+                session.clear_active();
+                assert!(session.bridge.borrow().rejections.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn a_script_can_handle_a_host_error_and_return_normally() {
+        let binding = serde_json::from_value(
+            json!({"sessionId":"caught-error-fixture","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let (frames, _receiver) = crossbeam_channel::bounded(4);
+        let mut session = Session::new(binding, frames).unwrap();
+        session
+            .start(
+                1,
+                "try { await cua.click(); } catch {} 42".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap();
+        assert!(session.step().is_none());
+        session
+            .reply(
+                1,
+                1,
+                Outcome::Error {
+                    error: CuaError::new(ErrorCode::Unsupported, "Host failure"),
+                },
+            )
+            .unwrap();
+        assert_eq!(session.step().unwrap().unwrap(), json!(42));
     }
 
     #[test]

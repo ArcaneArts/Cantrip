@@ -155,6 +155,24 @@ to the user and implementation does not pause between useful cycles.
   method without asking you to name processClick. Covered-window pointer/focus
   preservation remains pending your observation.
 
+### Cycle 6 — Click receipt validation and host failure recovery
+
+- Branch: `codex/cua-receipt-validation`.
+- The latest user test reached click and then failed its follow-up snapshot. Its
+  rollout contains only generic rejection text, so the exact original native
+  failure cannot be recovered from that evidence.
+- Inspection found worker validation still required global-coordinate receipts
+  for every click. It now accepts the requested AX, process or global method,
+  including clicks at the current logical cursor; mismatched receipts still fail.
+- QuickJS now preserves an uncaught host rejection's original code by object
+  identity. Script-controlled error fields cannot forge that classification;
+  handled errors and unrelated script exceptions retain their own behavior.
+- MCP guidance explains that a failed script releases its attachment. Observation
+  recovery requires fresh target discovery/attachment, without replaying input.
+- Validation: 11 focused Rust JavaScript unit tests, three pure worker receipt
+  tests, worker typecheck, Clippy, formatting and diff checks. No local native,
+  GUI or integration testing. Covered-window acceptance remains with the user.
+
 ## Clicking-tranche progress
 
 Implementation proceeds solo through isolated worktrees and squash auto-merge.
