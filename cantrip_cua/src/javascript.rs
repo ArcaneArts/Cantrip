@@ -478,7 +478,14 @@ impl Session {
                             "JavaScript left unfinished background work.",
                         )));
                     }
-                    return Some(self.finish_value(active));
+                    return Some(self.finish_value(active).map_err(|error| {
+                        if error.code == ErrorCode::InvalidRequest && self.bridge.borrow().calls == 0 {
+                            CuaError::new(ErrorCode::ScriptEvaluation,
+                                "JavaScript evaluation failed before any computer-use host action was dispatched. Persistent let/const bindings cannot be redeclared; use a block or fresh variable names.")
+                        } else {
+                            error
+                        }
+                    }));
                 }
                 Err(_) => return Some(Err(script_error())),
             }
@@ -823,6 +830,88 @@ mod tests {
     }
 
     #[test]
+    fn reused_top_level_binding_rejects_before_click_host_dispatch() {
+        let binding: SessionBinding = serde_json::from_value(
+            json!({"sessionId":"binding-fixture","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let (frames, receiver) = crossbeam_channel::bounded(4);
+        let mut session = Session::new(binding, frames).unwrap();
+        session
+            .start(
+                1,
+                "let shot = 1; shot".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap();
+        assert_eq!(session.step().unwrap().unwrap(), json!(1));
+        session.clear_active();
+        session
+            .start(
+                2,
+                "let receipt = await cua.click({x:55,y:929}); let shot = 2; ({receipt,shot})"
+                    .into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            session.step().unwrap().unwrap_err().code,
+            ErrorCode::ScriptEvaluation
+        );
+        assert!(
+            receiver.is_empty(),
+            "No native click may be dispatched on declaration failure"
+        );
+        session.clear_active();
+        for id in 3..5 {
+            session
+                .start(
+                    id,
+                    "{ let shot = 2; shot }".into(),
+                    default_wall_timeout_ms(),
+                    Cancellation::default(),
+                )
+                .unwrap();
+            assert_eq!(session.step().unwrap().unwrap(), json!(2));
+            session.clear_active();
+        }
+    }
+
+    #[test]
+    fn failure_after_a_host_call_never_claims_no_dispatch() {
+        let binding: SessionBinding = serde_json::from_value(
+            json!({"sessionId":"post-host-fixture","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let (frames, receiver) = crossbeam_channel::bounded(4);
+        let mut session = Session::new(binding, frames).unwrap();
+        session
+            .start(
+                1,
+                "await cua.targets(); throw new Error('private runtime detail')".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap();
+        assert!(session.step().is_none());
+        assert!(!receiver.is_empty());
+        session
+            .reply(
+                1,
+                1,
+                Outcome::Ok {
+                    data: json!({"targets":[]}),
+                },
+            )
+            .unwrap();
+        let error = session.step().unwrap().unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidRequest);
+        assert!(!error.message.contains("private runtime detail"));
+    }
+
+    #[test]
     fn runtime_errors_are_not_reported_as_parser_failures() {
         let mut session = deadline_session();
         session
@@ -834,7 +923,7 @@ mod tests {
             )
             .unwrap();
         let error = session.step().unwrap().unwrap_err();
-        assert_eq!(error.code, ErrorCode::InvalidRequest);
+        assert_eq!(error.code, ErrorCode::ScriptEvaluation);
         assert!(!error.message.contains("private runtime detail"));
     }
 

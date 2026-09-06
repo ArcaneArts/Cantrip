@@ -40,6 +40,7 @@ export class CuaProcessError extends Error {
 export const CUA_NATIVE_ERROR_CODES = [
   "invalid-request",
   "script-syntax",
+  "script-evaluation",
   "protocol-version",
   "capacity",
   "cancelled",
@@ -60,6 +61,8 @@ const nativeMessages: Record<CuaNativeErrorCode, string> = {
   "invalid-request": "The computer-use process rejected the request.",
   "script-syntax":
     "Invalid JavaScript syntax. Use top-level await and a final expression, such as await cua.targets(); do not use a top-level return. Correct the script before trying again.",
+  "script-evaluation":
+    "JavaScript evaluation failed before any computer-use host action was dispatched. Persistent top-level let/const bindings cannot be redeclared. Use a block { ... } for temporary variables or choose fresh names, then correct the script. This is not a native click rejection.",
   "protocol-version": "The computer-use protocol version is unsupported.",
   capacity: "The computer-use operation exceeded a runtime limit.",
   cancelled: "The computer-use operation was cancelled by the runtime.",
