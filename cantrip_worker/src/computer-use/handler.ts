@@ -251,6 +251,7 @@ export async function handleComputerUseOperation(
           action.sessionId,
           target(action),
           signal,
+          action.position,
         );
         break;
       case "input.press":

@@ -32,6 +32,23 @@ Reference-based `cua.press(reference)` also positions the marker at the control
 center when its geometry is available; otherwise no location is marked. A new
 reference press clears the previous marker before attempting the action.
 
+To identify what will receive the action, call `await cua.controls({x,y})`
+with the intended window-local point. It uses the same bounded, point-specific
+window traversal as `click`, without moving the cursor or sending input. This
+can find controls omitted from the shorter `cua.controls()` list. Inspect the
+returned labels, roles and bounds, then use `cua.press(reference)` for the
+intended control. A truncated result is partial; it is not proof that no other
+control exists. Each inspection replaces previous transient references.
+
+Accessibility receipts include `control`: the selected reference, inspected
+label/role and bounds revalidated before dispatch. Protected Trajectory shows
+that AXPress recipient. Requested coordinates alone are not proof that the
+intended sidebar item received the action. This metadata identifies dispatch;
+a fresh observation is still needed to establish the application result.
+
+The custom cursor and its feedback appear in CUA snapshots and the monitoring
+preview. They are not a floating desktop overlay or a second macOS pointer.
+
 Global mouse input now requires explicit `cua.globalClick({x,y})` (or
 `globalInput: true` on the low-level `input.click` request). This retains the old
 activation and shared-pointer behavior. Do not use it for requests to preserve
@@ -166,12 +183,12 @@ y = py * session.target.bounds.height / model.height
 Do not add the desktop origin or multiply by display scale. Rust resolves the
 current target geometry and applies its global origin. A coordinate receipt
 returns both logical `position` and `globalPosition`, the method, activation and
-`outcome: "dispatched"`. Native clicks can move the human system pointer.
+`outcome: "dispatched"`. Global clicks can move the human system pointer.
 `moveCursor` still changes only the logical agent cursor.
 
 The teal “Agent” ring is a visual marker rendered into CUA snapshots and shown
 in the CUA preview. It is not a second macOS input pointer or a floating cursor
-over other applications. Coordinate clicks use the shared system pointer; the
+over other applications. Explicit global coordinate clicks use the shared system pointer; the
 user observed their pointer move during the successful test. Accessibility
 `press` invokes the advertised control action directly instead of posting a
 mouse click. It depends on the application exposing a usable control.

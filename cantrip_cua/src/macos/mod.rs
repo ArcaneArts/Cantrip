@@ -265,6 +265,16 @@ impl CaptureBackend for MacOsBackend {
     ) -> Result<crate::input::Controls> {
         self.accessibility.inspect(session, target, cancel)
     }
+    fn controls_at(
+        &mut self,
+        session: &str,
+        target: &Target,
+        point: crate::target::Point,
+        cancel: &Cancellation,
+    ) -> Result<crate::input::Controls> {
+        self.accessibility
+            .inspect_at(session, target, point, cancel)
+    }
     fn press(
         &mut self,
         session: &str,

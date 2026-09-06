@@ -21,7 +21,7 @@ pub(crate) fn error_outcome(code: crate::error::ErrorCode) -> &'static str {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Control {
     pub reference: String,
@@ -41,6 +41,8 @@ pub struct Controls {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InputReceipt {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub control: Option<Control>,
     pub method: &'static str,
     pub activation: bool,
     // AX confirms action dispatch, never the user's intended application result.
@@ -284,6 +286,19 @@ mod targeted_tests {
         fn capture(&mut self, _target: &Target, _cancel: &Cancellation) -> Result<Capture> {
             panic!("unit test must not capture")
         }
+        fn controls_at(
+            &mut self,
+            _session: &str,
+            _target: &Target,
+            point: Point,
+            _cancel: &Cancellation,
+        ) -> Result<Controls> {
+            self.calls.lock().unwrap().push(("inspect", point));
+            Ok(Controls {
+                controls: vec![],
+                truncated: false,
+            })
+        }
         fn click(
             &mut self,
             _session: &str,
@@ -298,6 +313,7 @@ mod targeted_tests {
             Ok((
                 target.clone(),
                 InputReceipt {
+                    control: None,
                     method: "accessibility",
                     activation: false,
                     outcome: "dispatched",
@@ -319,6 +335,7 @@ mod targeted_tests {
             Ok((
                 target.clone(),
                 InputReceipt {
+                    control: None,
                     method: "process-coordinate",
                     activation: false,
                     outcome: "unknown",
@@ -340,6 +357,7 @@ mod targeted_tests {
             Ok((
                 target.clone(),
                 InputReceipt {
+                    control: None,
                     method: "coordinate",
                     activation: true,
                     outcome: "dispatched",
@@ -350,6 +368,33 @@ mod targeted_tests {
                 },
             ))
         }
+    }
+    #[test]
+    fn point_inspection_routes_without_input_or_cursor_movement() {
+        let calls = Arc::new(Mutex::new(vec![]));
+        let mut service = CuaService::new(RoutingBackend {
+            calls: calls.clone(),
+            fail: Arc::new(Mutex::new(None)),
+        });
+        let cancel = Cancellation::default();
+        let mut request = json!({"operation":"target.attach","binding":{"sessionId":"s","workerId":"w","chatId":"c"},"targetId":"fake-window","targetGeneration":1});
+        let before = service
+            .execute(serde_json::from_value(request.clone()).unwrap(), &cancel, 1)
+            .unwrap();
+        request["operation"] = json!("controls.inspect");
+        request["position"] = json!({"x":54,"y":95});
+        let after = service
+            .execute(serde_json::from_value(request).unwrap(), &cancel, 2)
+            .unwrap();
+        assert_eq!(
+            after.data["session"]["cursor"],
+            before.data["session"]["cursor"]
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![("inspect", Point { x: 54.0, y: 95.0 })]
+        );
+        assert_eq!(after.data["inspection"]["truncated"], false);
     }
     #[test]
     fn default_click_uses_cursor_and_never_falls_back_to_global_input() {

@@ -36,7 +36,10 @@ export const cuaJavascriptActionSchema = z.discriminatedUnion("operation", [
     operation: z.literal("attach"),
     target: cuaTargetReferenceSchema,
   }),
-  z.strictObject({ operation: z.literal("controls") }),
+  z.strictObject({
+    operation: z.literal("controls"),
+    point: cuaPointSchema.optional(),
+  }),
   z.strictObject({
     operation: z.literal("click"),
     point: cuaPointSchema.optional(),
@@ -512,7 +515,13 @@ export class CuaJavascriptContexts {
         action.operation === "processClick" ? "process" : undefined,
       );
     if (action.operation === "controls")
-      return this.service.controls(scope, sessionId, target, signal);
+      return this.service.controls(
+        scope,
+        sessionId,
+        target,
+        signal,
+        action.point,
+      );
     if (action.operation === "press")
       return this.service.press(
         scope,

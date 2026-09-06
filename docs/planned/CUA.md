@@ -17,6 +17,28 @@ Acceptance requires the user's report of that complete outcome. Work is solo,
 with sequential worktree PRs and squash auto-merge; interactive testing belongs
 to the user and implementation does not pause between useful cycles.
 
+### Latest cycle — Inspect and identify the AXPress recipient
+
+- Branch: `codex/cua-resolved-controls`.
+- User evidence: AXPress reported dispatched at the intended sidebar position,
+  but the next saved image still showed CUA selected instead of Jeff. The saved
+  image contains the custom cursor and dispatch label over Jeff; no physical
+  desktop overlay was implemented. No new capture or native test was run.
+- Added read-only `cua.controls({x,y})` to expose the point-specific hierarchy
+  to the agent for explicit reference selection, plus selected control metadata
+  in Accessibility receipts and protected Trajectory. Existing ownership,
+  permissions, reference invalidation and no-global-fallback behavior remain.
+- The earlier receipt did not identify the actual AX element. This increment
+  makes that distinction observable without inventing a role-based selection
+  heuristic. Native dispatch is still not proof of the intended application
+  change; the user's covered-window acceptance remains unresolved.
+- Validation: eight focused Rust unit tests, 49 worker unit tests (five existing
+  skips), 13 app projection tests, Rust Clippy, protocol build and worker/server/app
+  typechecks. No native or integration acceptance was run locally.
+- User test: ask the agent to inspect controls at the intended item, select the
+  matching reference, press once and capture the result. Review the AXPress
+  recipient in Trajectory and the cursor in the CUA image/monitoring preview.
+
 ### Cycle 1 — Targeted Accessibility cursor actions
 
 - Branch: `codex/cua-cursor-targeted-actions`; [PR #1767](https://github.com/ArcaneArts/Cantrip/pull/1767)

@@ -630,12 +630,18 @@ export class CantripCuaService {
     sessionId: string,
     target: CuaTargetReference,
     signal?: AbortSignal,
+    position?: CuaPoint,
   ) {
     return this.mutate(
       input,
       sessionId,
       "controls.inspect",
-      cuaTargetReferenceSchema.parse(target),
+      {
+        ...cuaTargetReferenceSchema.parse(target),
+        ...(position === undefined
+          ? {}
+          : { position: cuaPointSchema.parse(position) }),
+      },
       signal,
     ) as Promise<CuaControlsResult>;
   }

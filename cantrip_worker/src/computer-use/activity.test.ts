@@ -63,6 +63,30 @@ describe("protected computer-use activity metadata", () => {
       expect(JSON.stringify(activity)).not.toContain("private native detail");
     },
   );
+  it("keeps the AXPress recipient protected and out of secondary raw metadata", () => {
+    const control = {
+      reference: "control-17",
+      role: "AXButton",
+      label: "Private sidebar label",
+      bounds: { x: 40, y: 940, width: 100, height: 28 },
+      actions: ["press" as const],
+    };
+    const activity = computerUseActivity({
+      ...input(),
+      operation: "input.press",
+      input: {
+        method: "accessibility",
+        activation: false,
+        outcome: "dispatched",
+        control,
+      },
+    });
+    expect(agentActivitySchema.parse(activity)).toMatchObject({
+      input: { control },
+    });
+    expect(JSON.stringify(activity.raw)).not.toContain(control.label);
+    expect(JSON.stringify(activity.raw)).not.toContain(control.reference);
+  });
   it("keeps process delivery uncertainty and intended coordinates in the receipt", () => {
     const activity = computerUseActivity({
       ...input(),

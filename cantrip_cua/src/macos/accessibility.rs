@@ -239,7 +239,7 @@ fn same_rect(a: Bounds, b: Bounds) -> bool {
 struct Entry {
     target: Target,
     window: Owned,
-    elements: HashMap<String, Owned>,
+    elements: HashMap<String, (Owned, Control)>,
 }
 #[derive(Default)]
 pub(super) struct Accessibility {
@@ -315,6 +315,16 @@ impl Accessibility {
         cancel: &Cancellation,
     ) -> Result<Controls> {
         self.inspect_inner(session, target, cancel, None)
+    }
+    pub(super) fn inspect_at(
+        &mut self,
+        session: &str,
+        target: &Target,
+        point: crate::target::Point,
+        cancel: &Cancellation,
+    ) -> Result<Controls> {
+        target.bounds.to_global(point)?;
+        self.inspect_inner(session, target, cancel, Some(point))
     }
     fn inspect_inner(
         &mut self,
@@ -407,14 +417,15 @@ impl Accessibility {
                 )
             })?;
             let reference = format!("control-{}", self.sequence);
-            controls.push(Control {
+            let control = Control {
                 reference: reference.clone(),
                 role,
                 label,
                 bounds,
                 actions: vec!["press"],
-            });
-            elements.insert(reference, element);
+            };
+            elements.insert(reference, (element, control.clone()));
+            controls.push(control);
         }
         cancel.check()?;
         self.sessions.insert(
@@ -472,7 +483,7 @@ impl Accessibility {
         if entry.target.id != target.id || entry.target.generation != target.generation {
             return Err(stale());
         }
-        let element = entry.elements.get(reference).ok_or_else(stale)?;
+        let (element, control) = entry.elements.get(reference).ok_or_else(stale)?;
         let current = Self::window(target, cancel)?;
         if !entry.window.same(&current) || !element.attr("AXWindow")?.same(&current) {
             return Err(stale());
@@ -494,6 +505,12 @@ impl Accessibility {
                 return Err(stale());
             }
         }
+        let mut control = control.clone();
+        control.bounds = bounds.as_ref().ok().map(|bounds| Bounds {
+            x: bounds.x - target.bounds.x,
+            y: bounds.y - target.bounds.y,
+            ..*bounds
+        });
         let position = expected_point.or_else(|| {
             bounds.ok().and_then(|bounds| {
                 let point = crate::target::Point {
@@ -517,6 +534,7 @@ impl Accessibility {
             ));
         }
         Ok(InputReceipt {
+            control: Some(control),
             method: "accessibility",
             activation: false,
             outcome: "dispatched",

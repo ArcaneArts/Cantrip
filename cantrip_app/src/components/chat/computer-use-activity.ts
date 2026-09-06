@@ -88,6 +88,9 @@ export function computerUseActivitySummary(
     activity.input
       ? `${activity.input.method} · ${activity.input.outcome}${activity.input.activation ? " · activated target" : ""}`
       : null,
+    activity.input?.control
+      ? `AXPress target: ${activity.input.control.role}${activity.input.control.label ? ` “${activity.input.control.label}”` : ""} (${activity.input.control.reference})`
+      : null,
     activity.input?.windowDelivery
       ? `Window delivery ${activity.input.windowDelivery}`
       : null,

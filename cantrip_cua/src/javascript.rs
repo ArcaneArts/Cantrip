@@ -70,7 +70,9 @@ enum HostAction {
     GlobalClick {
         point: Point,
     },
-    Controls {},
+    Controls {
+        point: Option<Point>,
+    },
     Press {
         reference: String,
     },
@@ -102,6 +104,7 @@ fn validate_action(source: &str) -> Result<Value> {
         HostAction::ConfigureCursor { appearance } => appearance.validate()?,
         HostAction::MoveCursor { point }
         | HostAction::GlobalClick { point }
+        | HostAction::Controls { point: Some(point) }
         | HostAction::Click { point: Some(point) }
         | HostAction::ProcessClick { point: Some(point) }
             if !point.x.is_finite() || !point.y.is_finite() || point.x < 0.0 || point.y < 0.0 =>
@@ -143,7 +146,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
     click: point => call({operation:'click', point}),
     processClick: point => call({operation:'processClick', point}),
     globalClick: point => call({operation:'globalClick', point}),
-    controls: () => call({operation:'controls'}),
+    controls: point => call({operation:'controls', point}),
     press: reference => call({operation:'press', reference}),
     snapshot: () => call({operation:'snapshot'}),
     cursor: () => call({operation:'cursor'}),
@@ -826,6 +829,16 @@ pub(crate) fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn point_inspection_validates_coordinates_without_authority_fields() {
+        assert_eq!(
+            validate_action(r#"{"operation":"controls","point":{"x":54,"y":955}}"#).unwrap()["point"],
+            json!({"x":54,"y":955})
+        );
+        assert!(validate_action(r#"{"operation":"controls"}"#).is_ok());
+        assert!(validate_action(r#"{"operation":"controls","point":{"x":-1,"y":0}}"#).is_err());
+        assert!(validate_action(r#"{"operation":"controls","sessionId":"other"}"#).is_err());
+    }
     #[test]
     fn top_level_return_reports_syntax_without_dispatching_host_work() {
         let binding: SessionBinding = serde_json::from_value(

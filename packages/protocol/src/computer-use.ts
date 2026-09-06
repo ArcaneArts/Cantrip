@@ -194,24 +194,22 @@ export const cuaAgentObservationSchema = z
     "Agent observation attribution and rendition must match the captured session.",
   );
 
+const cuaControlSchema = z.strictObject({
+  reference: cuaIdSchema,
+  role: z.string().max(64),
+  label: z.string().max(320).nullable(),
+  bounds: cuaTargetSchema.shape.bounds.nullable(),
+  actions: z.array(z.literal("press")).max(1),
+});
 export const cuaControlsResultSchema = z.strictObject({
   session: cuaSessionSchema,
   inspection: z.strictObject({
-    controls: z
-      .array(
-        z.strictObject({
-          reference: cuaIdSchema,
-          role: z.string().max(64),
-          label: z.string().max(320).nullable(),
-          bounds: cuaTargetSchema.shape.bounds.nullable(),
-          actions: z.array(z.literal("press")).max(1),
-        }),
-      )
-      .max(32),
+    controls: z.array(cuaControlSchema).max(32),
     truncated: z.boolean(),
   }),
 });
 export const cuaInputReceiptSchema = z.strictObject({
+  control: cuaControlSchema.optional(),
   method: z.enum(["accessibility", "coordinate", "process-coordinate"]),
   activation: z.boolean(),
   outcome: z.enum(["dispatched", "unknown"]),
@@ -310,6 +308,7 @@ export const computerUseActionSchema = z.discriminatedUnion("operation", [
     operation: z.literal("controls.inspect"),
     ...sessionFields,
     ...targetFields,
+    position: cuaPointSchema.optional(),
   }),
   z.strictObject({
     operation: z.literal("input.press"),

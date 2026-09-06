@@ -84,6 +84,7 @@ pub(super) fn click(
     Ok((
         current,
         InputReceipt {
+            control: None,
             method: "coordinate",
             activation,
             outcome: "dispatched",
@@ -123,6 +124,7 @@ pub(super) fn process_click(
     Ok((
         target.clone(),
         InputReceipt {
+            control: None,
             method: "process-coordinate",
             activation: false,
             // The void API provides no acknowledgement of window delivery.
