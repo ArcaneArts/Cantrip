@@ -1,4 +1,5 @@
-//! Public AX API only. All owned CF references remain on the native executor.
+//! AX calls, including the app-provided enhanced UI opt-in. All owned CF
+//! references remain on the native executor.
 //! Match a unique application window by its current screen rectangle. Ambiguous
 //! rectangles are rejected; we never choose another window from the same app.
 use crate::{
@@ -51,6 +52,7 @@ unsafe extern "C" {
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
     static kCFBooleanTrue: Ref;
+    static kCFBooleanFalse: Ref;
     fn CFRelease(value: Ref);
     fn CFRetain(value: Ref) -> Ref;
     fn CFGetTypeID(value: Ref) -> usize;
@@ -118,6 +120,27 @@ impl Owned {
         let mut value = ptr::null();
         read_result(unsafe { AXUIElementCopyAttributeValue(self.0, key.0, &mut value) })?;
         Self::take(value)
+    }
+    fn request_enhanced_ui(&self) {
+        // Chromium can expose pressable objects before enabling the renderer's
+        // complete Accessibility action path. Request that app-provided mode
+        // when it explicitly reports false. Do not toggle an already-enabled
+        // mode: Chromium debounces repeated requests, and another AT client may
+        // share it. This is process-local state, not the system VoiceOver setting.
+        let Ok(current) = self.attr("AXEnhancedUserInterface") else {
+            return;
+        };
+        if unsafe { CFEqual(current.0, kCFBooleanFalse) } == 0 {
+            return;
+        }
+        let attribute = Self::string("AXEnhancedUserInterface");
+        // Some Chromium versions apply the request, then return unsupported
+        // from their superclass. Neither that return nor successful dispatch
+        // proves readiness. Continue the real window/control operation without
+        // a readiness gate, fixed sleep, action replay, or input fallback.
+        let _ = unsafe { AXUIElementSetAttributeValue(self.0, attribute.0, kCFBooleanTrue) };
+        // Do not reset the shared mode on session cleanup: that could disable
+        // another session or assistive client. The application owns its lifetime.
     }
     fn text(&self, limit: usize) -> Option<String> {
         if !self.is(unsafe { CFStringGetTypeID() }) {
@@ -264,6 +287,8 @@ impl Accessibility {
             .ok_or_else(stale)?;
         let app = Owned::take(unsafe { AXUIElementCreateApplication(pid) })?;
         read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.2) })?;
+        app.request_enhanced_ui();
+        cancel.check()?;
         let (mut windows, truncated) = app.children("AXWindows", 128)?;
         if truncated {
             return Err(CuaError::new(
