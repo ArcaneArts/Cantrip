@@ -83,6 +83,7 @@ export const cuaSessionSchema = z.strictObject({
           "background-key",
           "background-drag",
           "background-scroll",
+          "background-timeline",
         ]),
         outcome: z.enum([
           "dispatched",
@@ -217,8 +218,64 @@ export const cuaControlsResultSchema = z.strictObject({
     truncated: z.boolean(),
   }),
 });
+const cuaTimelineFrameSchema = z.strictObject({
+  atMs: z.number().int().min(0).max(10000),
+  keyDown: z.array(z.string().max(16)).max(16).default([]),
+  keyUp: z.array(z.string().max(16)).max(16).default([]),
+  pointerDown: cuaPointSchema.optional(),
+  pointerUp: z.boolean().default(false),
+});
+const cuaTimelineSchema = z
+  .array(cuaTimelineFrameSchema)
+  .min(1)
+  .max(256)
+  .refine((frames) => {
+    const held = new Set<string>();
+    let pointer = false;
+    let at = 0;
+    const keys = new Set([
+      "Enter",
+      "Tab",
+      "Escape",
+      "Backspace",
+      "Delete",
+      "ArrowLeft",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowDown",
+      "Home",
+      "End",
+      "PageUp",
+      "PageDown",
+      "Space",
+      ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    ]);
+    for (const frame of frames) {
+      if (frame.atMs < at) return false;
+      at = frame.atMs;
+      for (const key of frame.keyUp) {
+        if (!held.delete(key)) return false;
+      }
+      for (const key of frame.keyDown) {
+        if (!keys.has(key) || held.has(key)) return false;
+        held.add(key);
+      }
+      if (held.size > 16) return false;
+      if (frame.pointerUp) {
+        if (!pointer) return false;
+        pointer = false;
+      }
+      if (frame.pointerDown) {
+        if (pointer) return false;
+        pointer = true;
+      }
+    }
+    return held.size === 0 && !pointer;
+  }, "Timeline downs and ups must balance, with ordered times and at most 16 held keys.");
+
 /** One bounded native macro; no raw key-down/up is exposed to agents. */
 export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("timeline"), frames: cuaTimelineSchema }),
   z.strictObject({
     kind: z.literal("text"),
     text: z
@@ -286,6 +343,7 @@ export const cuaInputReceiptSchema = z.strictObject({
     "background-key",
     "background-drag",
     "background-scroll",
+    "background-timeline",
   ]),
   activation: z.boolean(),
   outcome: z.enum(["dispatched", "unknown"]),

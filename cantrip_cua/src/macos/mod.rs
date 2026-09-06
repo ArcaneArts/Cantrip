@@ -286,7 +286,7 @@ impl CaptureBackend for MacOsBackend {
         effects::observe(|| {
             gesture::perform(&current, command, position, cancel, &mut |point| {
                 progress(point);
-                overlay::move_cursor(session, &current, point);
+                overlay::move_cursor(session, &current, point, command.method());
             })
         })
     }

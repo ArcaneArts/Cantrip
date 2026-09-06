@@ -630,6 +630,13 @@ impl<B: CaptureBackend> CuaService<B> {
                 let target = self
                     .backend
                     .resolve_target(&target_id, target_generation, cancel)?;
+                if let crate::gesture::InputCommand::Timeline { frames } = &command {
+                    for frame in frames {
+                        if let Some(point) = frame.pointer_down {
+                            target.bounds.to_global(point)?;
+                        }
+                    }
+                }
                 let position = match &command {
                     crate::gesture::InputCommand::Drag { start, end, .. } => {
                         target.bounds.to_global(*end)?;

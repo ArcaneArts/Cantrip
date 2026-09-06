@@ -258,6 +258,7 @@ pub(super) fn move_cursor(
     session: &str,
     target: &crate::target::Target,
     point: crate::target::Point,
+    method: &'static str,
 ) {
     let session = session.to_owned();
     let target = target.clone();
@@ -272,7 +273,7 @@ pub(super) fn move_cursor(
                 }) {
                     let now = state.cursor.updated_at_ms.saturating_add(1);
                     let _ = state.cursor.move_to(point, &target.bounds, now);
-                    state.cursor.mark_action("background-drag", "unknown", now);
+                    state.cursor.mark_action(method, "unknown", now);
                 }
             });
             refresh();

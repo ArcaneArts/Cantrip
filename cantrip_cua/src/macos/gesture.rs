@@ -39,6 +39,11 @@ unsafe extern "C" {
     fn CFRelease(value: Ref);
 }
 struct Event(Ref);
+struct PreparedPair {
+    down: Event,
+    up: Event,
+    pointer: Option<(Point, Event)>,
+}
 impl Drop for Event {
     fn drop(&mut self) {
         unsafe { CFRelease(self.0) }
@@ -109,6 +114,81 @@ pub(super) fn perform(
     };
     let mut final_position = position;
     match command {
+        InputCommand::Timeline { frames } => {
+            use crate::timeline::{Frame, Transition};
+            use std::collections::HashMap;
+            let mut pairs: Vec<PreparedPair> = vec![];
+            let mut keys = HashMap::new();
+            let mut pointer = None;
+            let mut schedule = Vec::with_capacity(frames.len());
+            for frame in frames {
+                cancel.check()?;
+                let mut events = Vec::new();
+                for key in &frame.key_up {
+                    events.push(Transition::Up(keys.remove(key).expect("validated key up")));
+                }
+                if frame.pointer_up {
+                    events.push(Transition::Up(
+                        pointer.take().expect("validated pointer up"),
+                    ));
+                }
+                for key in &frame.key_down {
+                    let code = key_code(key).expect("validated key");
+                    let down =
+                        Event::owned(unsafe { CGEventCreateKeyboardEvent(source.0, code, true) })?;
+                    let up =
+                        Event::owned(unsafe { CGEventCreateKeyboardEvent(source.0, code, false) })?;
+                    prepare(&down, position, false);
+                    prepare(&up, position, false);
+                    let i = pairs.len();
+                    pairs.push(PreparedPair {
+                        down,
+                        up,
+                        pointer: None,
+                    });
+                    keys.insert(key.clone(), i);
+                    events.push(Transition::Down(i));
+                }
+                if let Some(point) = frame.pointer_down {
+                    let global = target.bounds.to_global(point)?;
+                    let tracking = Event::mouse(source.0, 5, global)?;
+                    let down = Event::mouse(source.0, 1, global)?;
+                    let up = Event::mouse(source.0, 2, global)?;
+                    prepare(&tracking, point, true);
+                    prepare(&down, point, true);
+                    prepare(&up, point, true);
+                    let i = pairs.len();
+                    pairs.push(PreparedPair {
+                        down,
+                        up,
+                        pointer: Some((point, tracking)),
+                    });
+                    pointer = Some(i);
+                    events.push(Transition::Down(i));
+                }
+                schedule.push(Frame {
+                    at: Duration::from_millis(frame.at_ms),
+                    events,
+                });
+            }
+            crate::timeline::run(&schedule, pairs.len(), cancel, |transition| {
+                let (i, is_down) = match transition {
+                    Transition::Down(i) => (i, true),
+                    Transition::Up(i) => (i, false),
+                };
+                let PreparedPair { down, up, pointer } = &pairs[i];
+                if let Some((point, tracking)) = pointer {
+                    if is_down {
+                        post(tracking);
+                    }
+                    post(if is_down { down } else { up });
+                    final_position = *point;
+                    progress(*point);
+                } else {
+                    post(if is_down { down } else { up });
+                }
+            })?;
+        }
         InputCommand::Text { .. } | InputCommand::Key { .. } => {
             let units: Vec<(u16, Vec<u16>, u64)> = match command {
                 InputCommand::Text { text } => text_units(text)

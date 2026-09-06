@@ -18,6 +18,26 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Native chords and pointer-driven piano controls
+
+- Branch: `codex/cua-key-chords`. User confirmed keyboard notes work; pointer
+  note did not play. The recorded piano click used public `processClick` and
+  returned unknown. The recorded chord inserted 150 ms waits; a later user
+  report measured about 20–25 ms between independent presses without waits.
+- Added `keyChord(keys, holdMs)` and `inputTimeline(frames)` for explicit balanced
+  key-down/up sets, overlapping held keys, and absolute native playback times.
+  Same-frame downs are posted back-to-back without worker/authority round trips.
+  Stop releases all dispatched downs, including interruption within a chord.
+- Added `pointerPress(point, holdMs)` and timeline pointer-down/up for real mouse
+  holds. Guidance selects this window-directed path for pointer-driven piano
+  controls instead of public process posting; no global fallback is added.
+- Managed tool results preserve dispatch summaries even when a final snapshot
+  discards the receipt. An unknown result or visible cursor does not establish
+  a played note. Native piano pointer acceptance remains for the user to retest.
+- Validation: 47 focused TypeScript checks, four Rust unit checks, protocol/worker
+  builds, Rust Clippy and formatting. No native app launch or CI. Full covered-window
+  acceptance is still pending. See the [guide](../COMPUTER_USE_CLICKING.md).
+
 ### Typing, keys, drag, scroll and timed scripts
 
 - Branch: `codex/cua-keyboard-input`. User expanded scope to text/Enter, scrolling,

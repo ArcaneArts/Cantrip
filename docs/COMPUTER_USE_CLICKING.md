@@ -72,6 +72,61 @@ a fresh snapshot; do not claim success from the receipt or replay an uncertain
 action. Protected activity records method/outcome and sampled focus effects,
 without typed text in its metadata or cursor label.
 
+### Chords and explicit down/up timelines
+
+For overlapping notes, use `keyChord`, not separate `keyPress` calls:
+
+```js
+await cua.keyChord(["C", "B", "M"], 500);
+```
+
+This posts all three key downs back-to-back in one native frame, holds them
+simultaneously for 500 ms, then releases them. There is no inserted wait or worker
+round trip between notes. The OS still receives individual events in order;
+this is overlapping held state, not literally simultaneous hardware interrupts.
+The default chord hold is 500 ms. Key names are the same as `keyPress`.
+
+Explicit `keyDown` and `keyUp` arrays are available inside `inputTimeline`:
+
+```js
+await cua.inputTimeline([
+  { atMs: 0, keyDown: ["C", "B"] },
+  { atMs: 250, keyDown: ["M"] },
+  { atMs: 500, keyUp: ["C", "B", "M"] },
+]);
+```
+
+Times are absolute offsets from native playback start. Equal-time frames have
+no deliberate gap. Within a frame, ups precede downs, allowing a held key to
+release and retrigger at the same timestamp. Use a single frame for a chord.
+Unlike repeated `keyPress` calls, the whole timeline crosses the worker and
+native boundary once. It counts as one JavaScript host call. Scheduling remains
+best effort, not sample-accurate audio.
+
+A timeline permits 1–256 ordered frames over at most 10 seconds, with up to 16
+keys held at once. Downs and ups must balance. Stop/error releases only the keys
+or button whose downs were actually dispatched, including cancellation partway
+through a chord. Held state never escapes the native operation.
+
+For a website piano key driven by pointer events, use:
+
+```js
+await cua.pointerPress({ x: 50, y: 100 }, 150);
+```
+
+This uses the window-directed mouse down/hold/up path rather than Accessibility
+press or public process-only posting. The default hold is 150 ms. A timeline can
+also contain `pointerDown: {x,y}` and `pointerUp: true`, alongside keyboard keys,
+with one left mouse button held at a time. Each pointer-up uses its matching
+pointer-down position. The custom cursor follows that position. There is no
+global input fallback or request to activate the target.
+
+These methods return `background-timeline`, unknown/unverified. A completed
+native post does not prove the application played a note. The managed tool
+returns an `inputAttempts` summary even when the final script expression is a
+snapshot, plus a reminder that actual effect or sound needs observed evidence
+or user confirmation. Seeing the cursor alone is not evidence of a click.
+
 ### Timed sequences in one tool call
 
 For a user-requested sequence whose positions stay valid, several sequential
@@ -421,11 +476,11 @@ matched. `control-inspection-incomplete` means traversal reached a limit; it doe
 not prove the intended control is absent. All three occur before AX dispatch.
 
 For an already-authorized click, the agent should reacquire the same application
-window after the failed script, snapshot it, and select `cua.processClick({x,y})`
+window after the failed script, snapshot it, and select `cua.backgroundClick({x,y})`
 once at the intended window-local point as a separate targeted attempt. Do not
 substitute a monitor: it has neither the attached window's control hierarchy nor
 its process identity. This does not authorize switching methods after unknown
-input, denied permission, Stop or revocation. Process delivery remains unknown;
+input, denied permission, Stop or revocation. Window-directed delivery remains unknown;
 inspect the fresh result and sampled effects without automatically replaying it.
 
 ### Window control-search limits

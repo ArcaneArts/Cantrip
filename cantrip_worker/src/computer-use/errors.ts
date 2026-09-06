@@ -61,7 +61,7 @@ export const CUA_NATIVE_ERROR_CODES = [
 export type CuaNativeErrorCode = (typeof CUA_NATIVE_ERROR_CODES)[number];
 
 const targetedRecovery =
-  " For this already-authorized click, reacquire the same application window, snapshot it, and use await cua.processClick({x,y}) once at the intended window-local point as a separate targeted attempt if no earlier input has an unknown outcome. Do not retry against a monitor: monitors do not provide window controls or process routing. No global fallback was attempted. Process delivery is unverified; inspect a fresh snapshot and sampled effects without replaying uncertain input.";
+  " For this already-authorized click, reacquire the same application window, snapshot it, and use await cua.backgroundClick({x,y}) once at the intended window-local point as a separate targeted attempt if no earlier input has an unknown outcome. Do not retry against a monitor: monitors do not provide window controls or process routing. No global fallback was attempted. Window-directed delivery is unverified; inspect a fresh snapshot and sampled effects without replaying uncertain input.";
 
 export function isCuaUnsupportedCode(code: string | null): boolean {
   return (

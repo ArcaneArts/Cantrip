@@ -93,7 +93,7 @@ describe("native press contract", () => {
   ] as const)("provides window-preserving recovery for %s", (code) => {
     const error = new CuaNativeError(code);
     expect(error.message).toContain("No Accessibility action was dispatched");
-    expect(error.message).toContain("cua.processClick({x,y})");
+    expect(error.message).toContain("cua.backgroundClick({x,y})");
     expect(error.message).toContain("same application window");
     expect(error.message).toContain("Do not retry against a monitor");
   });
