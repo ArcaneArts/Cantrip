@@ -5,7 +5,10 @@ import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { type ContentHeaderActionsProps } from "@/components/workspace/content-header-actions";
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
-import { AppToast } from "@/components/ui/app-toast";
+import {
+  APP_TOAST_VIEWPORT_CLASS_NAME,
+  AppToast,
+} from "@/components/ui/app-toast";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { projectSurfaceTabKey } from "@/lib/project-surface";
 import { GlobalContentHost } from "@/components/app/global-content-host";
@@ -405,7 +408,7 @@ export function ApplicationShellRender({
       />
       <div
         aria-label="Notifications"
-        className="pointer-events-none fixed right-3 top-3 z-[100] flex max-h-[calc(100vh-1.5rem)] flex-col items-end gap-2 overflow-hidden"
+        className={APP_TOAST_VIEWPORT_CLASS_NAME}
         data-slot="app-toast-viewport"
       >
         {appToast ? (

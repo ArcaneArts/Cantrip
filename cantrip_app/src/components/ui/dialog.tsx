@@ -9,11 +9,11 @@ export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
 export const DIALOG_POSITIONER_CLASS_NAME =
-  "pointer-events-none fixed inset-0 z-50 grid place-items-center p-4";
+  "pointer-events-none fixed inset-0 z-50 grid h-svh place-items-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]";
 export const DIALOG_OVERLAY_CLASS_NAME =
   "fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0";
 export const DIALOG_CONTENT_CLASS_NAME =
-  "cantrip-dialog-content pointer-events-auto relative grid max-h-[calc(100vh-2rem)] w-full max-w-lg gap-5 overflow-y-auto rounded-xl border bg-popover p-6 text-popover-foreground shadow-xl";
+  "cantrip-dialog-content pointer-events-auto relative grid max-h-full w-full max-w-lg gap-5 overflow-y-auto rounded-xl border bg-popover p-6 text-popover-foreground shadow-xl";
 
 export function DialogContent({
   children,

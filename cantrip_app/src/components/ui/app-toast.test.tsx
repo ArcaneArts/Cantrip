@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   APP_TOAST_AUTO_DISMISS_MS,
+  APP_TOAST_VIEWPORT_CLASS_NAME,
   AppToast,
   scheduleAppToastDismiss,
 } from "./app-toast";
@@ -27,6 +28,13 @@ describe("AppToast", () => {
     expect(markup).not.toContain("bg-destructive");
     expect(markup).toContain('aria-label="Dismiss notification"');
     expect(markup).toContain("Send a message before compacting this chat.");
+  });
+
+  it("keeps the notification viewport inside every mobile safe area", () => {
+    expect(APP_TOAST_VIEWPORT_CLASS_NAME).toContain("safe-area-inset-top");
+    expect(APP_TOAST_VIEWPORT_CLASS_NAME).toContain("safe-area-inset-right");
+    expect(APP_TOAST_VIEWPORT_CLASS_NAME).toContain("safe-area-inset-bottom");
+    expect(APP_TOAST_VIEWPORT_CLASS_NAME).toContain("safe-area-inset-left");
   });
 
   it("automatically dismisses after a short default window", () => {

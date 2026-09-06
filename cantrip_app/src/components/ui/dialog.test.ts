@@ -19,10 +19,16 @@ describe("dialog rendering", () => {
     expect(DIALOG_CONTENT_CLASS_NAME).toContain("pointer-events-auto");
   });
 
+  it("bounds scrollable dialogs inside mobile safe areas", () => {
+    expect(DIALOG_POSITIONER_CLASS_NAME).toContain("h-svh");
+    expect(DIALOG_POSITIONER_CLASS_NAME).toContain("safe-area-inset-top");
+    expect(DIALOG_POSITIONER_CLASS_NAME).toContain("safe-area-inset-bottom");
+    expect(DIALOG_CONTENT_CLASS_NAME).toContain("max-h-full");
+    expect(DIALOG_CONTENT_CLASS_NAME).toContain("overflow-y-auto");
+  });
+
   it("unmounts the pointer-active overlay immediately when closed", () => {
-    expect(DIALOG_OVERLAY_CLASS_NAME).toContain(
-      "data-[state=open]:animate-in",
-    );
+    expect(DIALOG_OVERLAY_CLASS_NAME).toContain("data-[state=open]:animate-in");
     expect(DIALOG_OVERLAY_CLASS_NAME).not.toContain("data-[state=closed]");
   });
 });

@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 export const APP_TOAST_AUTO_DISMISS_MS = 6_000;
+export const APP_TOAST_VIEWPORT_CLASS_NAME =
+  "pointer-events-none fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] z-[100] flex flex-col items-end gap-2 overflow-hidden";
 
 export type AppToastTone = "error" | "info" | "warning";
 
@@ -52,7 +54,7 @@ export function AppToast({
       data-slot="app-toast"
       data-tone={tone}
       className={cn(
-        "pointer-events-auto flex w-[min(24rem,calc(100vw-1.5rem))] items-start gap-2.5 rounded-lg border bg-neutral-950/95 px-3 py-2.5 text-left text-xs text-neutral-100 shadow-2xl backdrop-blur-xl",
+        "pointer-events-auto flex w-full max-w-96 items-start gap-2.5 rounded-lg border bg-neutral-950/95 px-3 py-2.5 text-left text-xs text-neutral-100 shadow-2xl backdrop-blur-xl",
         tone === "error"
           ? "border-destructive/70"
           : tone === "warning"
