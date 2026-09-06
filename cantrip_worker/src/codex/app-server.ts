@@ -1,3 +1,7 @@
+import {
+  CUA_DISCOVERY_GUIDANCE,
+  CUA_START_GUIDANCE,
+} from "../mcp/cua-guidance.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   execFile,
@@ -1904,17 +1908,23 @@ export async function workspaceHasGitMetadata(cwd: string): Promise<boolean> {
 export function cantripChatThreadParams(
   hasGitMetadata = true,
   executionProfile: RunAgentTurnOptions["executionProfile"] = "ide",
+  mcpServers: NonNullable<RunAgentTurnOptions["mcpServers"]> = [],
 ) {
+  const cuaInstructions = mcpServers.some(
+    (server) => server.enabled && server.name === MANAGED_CUA_MCP_NAME,
+  )
+    ? `${CUA_DISCOVERY_GUIDANCE} ${CUA_START_GUIDANCE}\n\n`
+    : "";
   if (executionProfile === "standalone-chat") {
     return {
-      developerInstructions: STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS,
+      developerInstructions: `${cuaInstructions}${STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS}`,
       ...CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
     } as const;
   }
   return {
     developerInstructions: hasGitMetadata
-      ? CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS
-      : `${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}\n\n${NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS}`,
+      ? `${cuaInstructions}${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}`
+      : `${cuaInstructions}${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}\n\n${NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS}`,
     ...CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
   } as const;
 }
@@ -2031,6 +2041,9 @@ function assembledInstructionContextActivity(input: {
   const developerInstructions = cantripChatThreadParams(
     input.hasGitMetadata,
     input.options.executionProfile,
+    input.options.resultMode?.kind === "structured"
+      ? []
+      : input.options.mcpServers,
   ).developerInstructions;
   const contextEntries = Object.entries(input.turnPolicy.additionalContext);
   const selectedSkillSources = input.options.skillNames
@@ -2415,6 +2428,7 @@ export function measureCodexProfileFootprint(
   const threadParameters = cantripChatThreadParams(
     hasGitMetadata,
     executionProfile,
+    mcpServers,
   );
   const mcpConfiguration = codexMcpConfigOverride(mcpServers);
   const managedToolRequirements = managedMcpToolRequirements(mcpServers);
@@ -6012,6 +6026,7 @@ export class CodexAppServer implements CodexRuntime {
           ...cantripChatThreadParams(
             hasGitMetadata,
             options.executionProfile ?? "ide",
+            structuredReadOnly ? [] : options.mcpServers,
           ),
           config: threadConfig,
         })) as ThreadResponse;
@@ -6063,6 +6078,7 @@ export class CodexAppServer implements CodexRuntime {
         ...cantripChatThreadParams(
           hasGitMetadata,
           options.executionProfile ?? "ide",
+          structuredReadOnly ? [] : options.mcpServers,
         ),
         config: threadConfig,
       })) as ThreadResponse;

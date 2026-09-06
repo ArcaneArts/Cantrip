@@ -18,6 +18,24 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Agent discovery through the normal Cantrip surface
+
+- Branch: `codex/cua-agent-discovery`.
+- User feedback showed the agent using AppleScript, the general target registry
+  and CLI help instead of CUA. Its recorded broad tool search was truncated;
+  subsequent searches filtered only `mcp__cantrip__`, excluding `cantrip_cua`.
+- New and resumed agent threads with a registered CUA server now receive the
+  exact server/tool name, first `cua.targets()` call, attach/snapshot/action flow,
+  and automatic window-sharing behavior in developer instructions. The effective
+  instruction record and profile-size measurement use the same configuration.
+- General Cantrip MCP instructions and `target_list` explain that native windows
+  belong to the separate CUA inventory. An empty remote-target list is not a CUA
+  availability result. The dedicated transport and turn authorization remain.
+- Validation: 96 focused worker tests, including actual MCP initialization/tool
+  metadata and enabled/disabled IDE/standalone instruction selection; worker build.
+  Native clicking acceptance remains pending. Next user check: ask the agent to
+  use computer use normally and confirm it starts with `cantrip_cua/js`.
+
 ### Sharing a covered window to keep its contents current
 
 - Branch: `codex/cua-covered-window-sharing`; [PR #1791](https://github.com/ArcaneArts/Cantrip/pull/1791)
