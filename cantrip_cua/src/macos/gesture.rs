@@ -60,6 +60,11 @@ impl Event {
             Ok(Self(value))
         }
     }
+    fn set_modifiers(&self, modifiers: &[crate::gesture::Modifier]) {
+        // Event-local flags only: never press/release a hardware modifier or
+        // change the flags of interleaved keyboard events in the timeline.
+        unsafe { CGEventSetFlags(self.0, modifier_flags(modifiers)) };
+    }
     fn mouse(source: Ref, kind: u32, point: Point) -> Result<Self> {
         Self::owned(unsafe {
             CGEventCreateMouseEvent(
@@ -157,6 +162,9 @@ pub(super) fn perform(
                     prepare(&tracking, point, true);
                     prepare(&down, point, true);
                     prepare(&up, point, true);
+                    for event in [&tracking, &down, &up] {
+                        event.set_modifiers(&frame.pointer_modifiers);
+                    }
                     let i = pairs.len();
                     pairs.push(PreparedPair {
                         down,
@@ -331,4 +339,30 @@ fn drag_unknown() -> CuaError {
         ErrorCode::InputUnknown,
         "Drag stopped after tracking began; button-up cleanup was sent if down was posted. Do not replay automatically.",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGEventGetFlags(event: Ref) -> u64;
+    }
+    #[test]
+    fn pointer_modifier_flags_do_not_leak_into_keyboard_events() {
+        // Construct and inspect event buffers only. Nothing is posted, no app
+        // is launched, and no capture, focus or shared input state is touched.
+        let source = Event::owned(unsafe { CGEventSourceCreate(-1) }).unwrap();
+        let key = Event::owned(unsafe { CGEventCreateKeyboardEvent(source.0, 8, true) }).unwrap();
+        let original_key_flags = unsafe { CGEventGetFlags(key.0) };
+        let point = Point { x: 10.0, y: 20.0 };
+        for kind in [5, 1, 2] {
+            let event = Event::mouse(source.0, kind, point).unwrap();
+            event.set_modifiers(&[crate::gesture::Modifier::Meta]);
+            assert_eq!(unsafe { CGEventGetFlags(event.0) }, 1 << 20);
+            event.set_modifiers(&[]);
+            assert_eq!(unsafe { CGEventGetFlags(event.0) }, 0);
+        }
+        assert_eq!(unsafe { CGEventGetFlags(key.0) }, original_key_flags);
+    }
 }

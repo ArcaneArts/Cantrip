@@ -22,6 +22,9 @@ pub struct InputFrame {
     pub pointer_down: Option<Point>,
     #[serde(default)]
     pub pointer_up: bool,
+    /// Modifiers belong to this pointer-down and its matching up, not keyboard keys.
+    #[serde(default)]
+    pub pointer_modifiers: Vec<crate::gesture::Modifier>,
 }
 pub fn validate(frames: &[InputFrame]) -> Result<()> {
     let invalid = || {
@@ -40,6 +43,13 @@ pub fn validate(frames: &[InputFrame]) -> Result<()> {
             || frame.at_ms > 10000
             || frame.key_down.len() > 16
             || frame.key_up.len() > 16
+            || frame.pointer_modifiers.len() > 4
+            || (!frame.pointer_modifiers.is_empty() && frame.pointer_down.is_none())
+            || frame
+                .pointer_modifiers
+                .iter()
+                .enumerate()
+                .any(|(i, m)| frame.pointer_modifiers[..i].contains(m))
         {
             return Err(invalid());
         }
@@ -223,6 +233,29 @@ mod tests {
         );
         assert_eq!(result.unwrap_err().code, ErrorCode::InputUnknown);
         assert_eq!(*events.borrow(), [Transition::Down(0), Transition::Up(0)]);
+    }
+    #[test]
+    fn pointer_modifiers_require_a_down_and_are_unique() {
+        let parse = |v| serde_json::from_value::<Vec<InputFrame>>(v).unwrap();
+        let frames = parse(serde_json::json!([
+            {"atMs":0,"pointerDown":{"x":10,"y":20},"pointerModifiers":["Meta"],"keyDown":["C"]},
+            {"atMs":150,"pointerUp":true,"keyUp":["C"]}
+        ]));
+        assert!(validate(&frames).is_ok());
+        assert!(frames[1].pointer_modifiers.is_empty());
+        for value in [
+            serde_json::json!([{"atMs":0,"pointerModifiers":["Meta"]}]),
+            serde_json::json!([{"atMs":0,"pointerDown":{"x":10,"y":20},"pointerModifiers":["Meta","Meta"]},{"atMs":1,"pointerUp":true}]),
+            serde_json::json!([{"atMs":0,"pointerDown":{"x":10,"y":20}},{"atMs":1,"pointerUp":true,"pointerModifiers":["Meta"]}]),
+        ] {
+            assert!(validate(&parse(value)).is_err());
+        }
+        assert!(
+            serde_json::from_value::<Vec<InputFrame>>(serde_json::json!([
+                {"atMs":0,"pointerDown":{"x":10,"y":20},"pointerModifiers":["Bogus"]}
+            ]))
+            .is_err()
+        );
     }
     #[test]
     fn validates_balanced_overlapping_notes() {

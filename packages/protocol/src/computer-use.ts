@@ -224,6 +224,11 @@ const cuaTimelineFrameSchema = z.strictObject({
   keyUp: z.array(z.string().max(16)).max(16).default([]),
   pointerDown: cuaPointSchema.optional(),
   pointerUp: z.boolean().default(false),
+  pointerModifiers: z
+    .array(z.enum(["Shift", "Control", "Alt", "Meta"]))
+    .max(4)
+    .refine((items) => new Set(items).size === items.length)
+    .default([]),
 });
 const cuaTimelineSchema = z
   .array(cuaTimelineFrameSchema)
@@ -252,6 +257,7 @@ const cuaTimelineSchema = z
     ]);
     for (const frame of frames) {
       if (frame.atMs < at) return false;
+      if (frame.pointerModifiers.length && !frame.pointerDown) return false;
       at = frame.atMs;
       for (const key of frame.keyUp) {
         if (!held.delete(key)) return false;
