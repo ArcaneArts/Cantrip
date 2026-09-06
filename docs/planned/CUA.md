@@ -15,6 +15,9 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
 
 ### User feedback — Script syntax and revoked turn authority
 
+- Branch: `codex/cua-script-recovery`; [PR #1764](https://github.com/ArcaneArts/Cantrip/pull/1764)
+  merged 2026-09-06 UTC as `19b2a697b64defaf309bbcb6d4343e41abf1bd93`
+  (observed). Primary was synchronized and the cycle worktree removed.
 - The agent discovered the managed tools but sent `return await cua.targets();`.
   QuickJS rejected the top-level return before dispatch. A subsequent permission
   profile change revoked this turn's authority before the agent tried reset.
@@ -22,9 +25,13 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
   expression results in tool instructions, adds a sanitized `script-syntax`
   native error, and explains that reset cannot restore revoked turn authority.
 - Validation: seven Rust JavaScript unit tests, twelve worker authority unit
-  tests, worker typecheck, formatting and diff checks. Native and integration
+  tests, worker typecheck, formatting and diff checks. All four existing CI jobs
+  passed: macOS, Windows, Linux and PostgreSQL authority. Native and integration
   acceptance remains with the user. Send a new agent message after changing a
   permission profile and use `{"script":"await cua.targets()"}` for discovery.
+- Next: user confirmation of window discovery, a real press or coordinate click,
+  and a fresh snapshot of the result. No post-fix acceptance result has been
+  reported; additional implementation is driven by that feedback.
 
 ### Clicking cycle 1 — Accessibility inspection and press
 
