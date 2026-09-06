@@ -18,6 +18,28 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Typing, keys, drag, scroll and timed scripts
+
+- Branch: `codex/cua-keyboard-input`. User expanded scope to text/Enter, scrolling,
+  a 200 ms drag macro, and timed sequences; these supersede the original keyboard
+  and drag deferrals. User will perform app acceptance; do not launch apps or CI.
+- Added `cua.typeText`, `keyPress`, `scroll`, `clickDrag` and cancellable `wait`.
+  Input follows exact session/target ownership and existing native-input grants
+  through the managed MCP, worker and Rust helper. Tool discovery includes the
+  APIs and examples. Planned stable-layout sequences fit one JavaScript call.
+- Experimental macOS window-directed events use the existing private delivery
+  path with no activation/global fallback. Drag interpolates at about 60 Hz,
+  updates the custom desktop cursor, and releases at its last dispatched point
+  on Stop. Text/key pairs always release; partially dispatched text is unknown.
+- Receipts preserve unknown/unverified delivery and sampled effects. No typed
+  text is copied into action metadata or cursor labels. Unicode and background
+  keyboard/wheel/drag compatibility remain for user acceptance; no native UI
+  checks were performed. See the updated [input guide](../COMPUTER_USE_CLICKING.md).
+- Validation: 158 focused TypeScript unit checks and five focused Rust checks
+  (Unicode, drag timing, Stop/release and actual JavaScript bootstrap bindings),
+  protocol/worker builds, Rust Clippy and formatting. Integration cases stayed
+  skipped; no CI started. Full covered-window acceptance remains pending.
+
 ### Agent discovery through the normal Cantrip surface
 
 - Branch: `codex/cua-agent-discovery`.

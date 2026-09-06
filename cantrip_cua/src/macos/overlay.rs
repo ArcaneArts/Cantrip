@@ -253,6 +253,32 @@ pub(super) fn present(sessions: Vec<SessionState>) {
         })
     });
 }
+/// Update only the exact active attachment, without replacing other sessions.
+pub(super) fn move_cursor(
+    session: &str,
+    target: &crate::target::Target,
+    point: crate::target::Point,
+) {
+    let session = session.to_owned();
+    let target = target.clone();
+    DispatchQueue::main().exec_async(move || {
+        autoreleasepool(|_| {
+            PRESENTATION.with_borrow_mut(|p| {
+                if let Some(state) = p.sessions.iter_mut().find(|s| {
+                    s.binding.session_id == session
+                        && s.target
+                            .as_ref()
+                            .is_some_and(|t| t.id == target.id && t.generation == target.generation)
+                }) {
+                    let now = state.cursor.updated_at_ms.saturating_add(1);
+                    let _ = state.cursor.move_to(point, &target.bounds, now);
+                    state.cursor.mark_action("background-drag", "unknown", now);
+                }
+            });
+            refresh();
+        })
+    });
+}
 fn schedule() {
     let _ = DispatchQueue::main().after(
         DispatchTime::try_from(Duration::from_millis(100)).unwrap(),

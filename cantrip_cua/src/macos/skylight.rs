@@ -88,6 +88,35 @@ impl Delivery {
             }
         }
     }
+    /// Destination fields shared by keyboard, wheel and mouse events. Do not
+    /// write mouse-specific pressure/button fields onto keyboard or wheel data.
+    pub unsafe fn prepare_routed(
+        &self,
+        event: Event,
+        pid: i32,
+        window: u32,
+        point: Point,
+        group: i64,
+    ) {
+        unsafe {
+            (self.location)(
+                event,
+                NativePoint {
+                    x: point.x,
+                    y: point.y,
+                },
+            );
+            for (field, value) in [
+                (40, i64::from(pid)),
+                (51, i64::from(window)),
+                (58, group),
+                (91, i64::from(window)),
+                (92, i64::from(window)),
+            ] {
+                (self.field)(event, field, value);
+            }
+        }
+    }
     pub unsafe fn post(&self, pid: i32, event: Event) {
         unsafe { (self.post)(pid, event) };
     }
@@ -118,4 +147,10 @@ mod tests {
             assert!(click.contains(&(field, 123)));
         }
     }
+}
+
+pub(super) fn next_group() -> i64 {
+    use std::sync::atomic::{AtomicI64, Ordering};
+    static GROUP: AtomicI64 = AtomicI64::new(1);
+    GROUP.fetch_add(1, Ordering::Relaxed)
 }

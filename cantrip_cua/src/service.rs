@@ -126,6 +126,13 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         delivery: Option<crate::input::ClickDelivery>,
     },
+    #[serde(rename = "input.perform", rename_all = "camelCase")]
+    InputPerform {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+        command: crate::gesture::InputCommand,
+    },
     #[serde(rename = "session.close")]
     SessionClose { binding: SessionBinding },
     #[serde(rename = "javascript.evaluate", rename_all = "camelCase")]
@@ -276,7 +283,12 @@ impl<B: CaptureBackend> CuaService<B> {
                     "session.close",
                 ];
                 if self.backend.native_input() {
-                    operations.extend(["controls.inspect", "input.press", "input.click"]);
+                    operations.extend([
+                        "controls.inspect",
+                        "input.press",
+                        "input.click",
+                        "input.perform",
+                    ]);
                 }
                 if self.javascript {
                     operations.extend(["javascript.evaluate", "javascript.reset"]);
@@ -606,6 +618,72 @@ impl<B: CaptureBackend> CuaService<B> {
                 Ok(OperationResult::json(
                     json!({"session":state, "input":input}),
                 ))
+            }
+            Operation::InputPerform {
+                binding,
+                target_id,
+                target_generation,
+                command,
+            } => {
+                command.validate()?;
+                let mut state = self.attached(&binding, &target_id, target_generation)?;
+                let target = self
+                    .backend
+                    .resolve_target(&target_id, target_generation, cancel)?;
+                let position = match &command {
+                    crate::gesture::InputCommand::Drag { start, end, .. } => {
+                        target.bounds.to_global(*end)?;
+                        *start
+                    }
+                    crate::gesture::InputCommand::Scroll { point, .. } => {
+                        point.unwrap_or(state.cursor.position)
+                    }
+                    _ => state.cursor.position,
+                };
+                state.cursor.move_to(position, &target.bounds, now_ms)?;
+                state.target = Some(target.clone());
+                self.sessions
+                    .insert(binding.session_id.clone(), state.clone());
+                self.backend
+                    .present_cursors(self.sessions.values().cloned().collect());
+                let started = std::time::Instant::now();
+                let result = self.backend.perform(
+                    &binding.session_id,
+                    &target,
+                    &command,
+                    position,
+                    cancel,
+                    &mut |point| {
+                        let _ = state.cursor.move_to(
+                            point,
+                            &target.bounds,
+                            now_ms + started.elapsed().as_millis() as u64,
+                        );
+                    },
+                );
+                let completed = now_ms + started.elapsed().as_millis() as u64;
+                match result {
+                    Ok((current, input)) => {
+                        state
+                            .cursor
+                            .mark_action(input.method, input.outcome, completed);
+                        state.target = Some(current);
+                        self.sessions
+                            .insert(binding.session_id.clone(), state.clone());
+                        Ok(OperationResult::json(
+                            json!({"session":state,"input":input}),
+                        ))
+                    }
+                    Err(error) => {
+                        state.cursor.mark_action(
+                            command.method(),
+                            crate::input::error_outcome(error.code),
+                            completed,
+                        );
+                        self.sessions.insert(binding.session_id.clone(), state);
+                        Err(error)
+                    }
+                }
             }
             Operation::SessionClose { binding } => {
                 self.session(&binding)?;

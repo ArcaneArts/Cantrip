@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { waitBeforeCuaSend } from "./cancellation.js";
@@ -6,6 +7,7 @@ import type { CantripCuaService } from "./service.js";
 import type { CuaTransport } from "./transport.js";
 import {
   cuaCursorAppearanceSchema,
+  cuaInputCommandSchema,
   cuaIdSchema,
   cuaPointSchema,
   cuaTargetReferenceSchema,
@@ -27,6 +29,14 @@ export const CUA_JAVASCRIPT_MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 
 /** Script arguments contain no session, account, worker, or execution authority. */
 export const cuaJavascriptActionSchema = z.discriminatedUnion("operation", [
+  z.strictObject({
+    operation: z.literal("perform"),
+    command: cuaInputCommandSchema,
+  }),
+  z.strictObject({
+    operation: z.literal("wait"),
+    ms: z.number().int().min(0).max(10000),
+  }),
   z.strictObject({ operation: z.literal("state") }),
   z.strictObject({
     operation: z.literal("targets"),
@@ -451,6 +461,11 @@ export class CuaJavascriptContexts {
     const state = () =>
       context.sessionId ? this.service.state(scope, context.sessionId) : null;
     if (action.operation === "state") return { session: state() };
+    if (action.operation === "wait") {
+      await delay(action.ms, undefined, { signal });
+      this.live(context, signal);
+      return { waitedMs: action.ms };
+    }
     if (action.operation === "attach") {
       const session = context.sessionId
         ? await this.service.attach(
@@ -522,6 +537,14 @@ export class CuaJavascriptContexts {
           : action.operation === "processClick"
             ? "process"
             : undefined,
+      );
+    if (action.operation === "perform")
+      return this.service.perform(
+        scope,
+        sessionId,
+        target,
+        action.command,
+        signal,
       );
     if (action.operation === "controls")
       return this.service.controls(

@@ -79,6 +79,10 @@ export const cuaSessionSchema = z.strictObject({
           "coordinate",
           "process-coordinate",
           "background-coordinate",
+          "background-text",
+          "background-key",
+          "background-drag",
+          "background-scroll",
         ]),
         outcome: z.enum([
           "dispatched",
@@ -213,6 +217,64 @@ export const cuaControlsResultSchema = z.strictObject({
     truncated: z.boolean(),
   }),
 });
+/** One bounded native macro; no raw key-down/up is exposed to agents. */
+export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("text"),
+    text: z
+      .string()
+      .min(1)
+      .max(8192)
+      .refine(
+        (value) =>
+          new TextEncoder().encode(value).length <= 8192 &&
+          !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value) &&
+          ![...value].some((char) => {
+            const code = char.codePointAt(0)!;
+            return code >= 0xd800 && code <= 0xdfff;
+          }),
+      ),
+  }),
+  z.strictObject({
+    kind: z.literal("key"),
+    key: z.enum([
+      "Enter",
+      "Tab",
+      "Escape",
+      "Backspace",
+      "Delete",
+      "ArrowLeft",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowDown",
+      "Home",
+      "End",
+      "PageUp",
+      "PageDown",
+      "Space",
+      ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split(""),
+    ]),
+    modifiers: z
+      .array(z.enum(["Shift", "Control", "Alt", "Meta"]))
+      .max(4)
+      .refine((value) => new Set(value).size === value.length)
+      .default([]),
+  }),
+  z.strictObject({
+    kind: z.literal("drag"),
+    start: cuaPointSchema,
+    end: cuaPointSchema,
+    durationMs: z.number().int().min(50).max(2000).default(200),
+  }),
+  z.strictObject({
+    kind: z.literal("scroll"),
+    deltaX: z.number().int().min(-10000).max(10000).default(0),
+    deltaY: z.number().int().min(-10000).max(10000),
+    point: cuaPointSchema.optional(),
+  }),
+]);
+export type CuaInputCommand = z.infer<typeof cuaInputCommandSchema>;
+
 export const cuaInputReceiptSchema = z.strictObject({
   control: cuaControlSchema.optional(),
   method: z.enum([
@@ -220,6 +282,10 @@ export const cuaInputReceiptSchema = z.strictObject({
     "coordinate",
     "process-coordinate",
     "background-coordinate",
+    "background-text",
+    "background-key",
+    "background-drag",
+    "background-scroll",
   ]),
   activation: z.boolean(),
   outcome: z.enum(["dispatched", "unknown"]),
@@ -262,6 +328,7 @@ export const computerUseOperationSchema = z.enum([
   "controls.inspect",
   "input.press",
   "input.click",
+  "input.perform",
   "agent.sources.list",
   "agent.observation.get",
   "targets.list",
@@ -334,6 +401,12 @@ export const computerUseActionSchema = z.discriminatedUnion("operation", [
     globalInput: z.boolean().optional(),
     delivery: z.enum(["process", "background"]).optional(),
   }),
+  z.strictObject({
+    operation: z.literal("input.perform"),
+    ...sessionFields,
+    ...targetFields,
+    command: cuaInputCommandSchema,
+  }),
   z.strictObject({ operation: z.literal("session.close"), ...sessionFields }),
 ]);
 
@@ -388,6 +461,7 @@ const resultDataSchemas = {
   "controls.inspect": cuaControlsResultSchema,
   "input.press": cuaInputResultSchema,
   "input.click": cuaInputResultSchema,
+  "input.perform": cuaInputResultSchema,
   "observation.snapshot": cuaSnapshotSchema,
   "session.close": closedSchema,
 } as const;

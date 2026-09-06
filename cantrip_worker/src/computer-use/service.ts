@@ -22,6 +22,8 @@ import {
   cuaSnapshotSchema,
   cuaControlsResultSchema,
   cuaInputResultSchema,
+  cuaInputCommandSchema,
+  type CuaInputCommand,
   type CuaControlsResult,
   type CuaInputResult,
   type CuaBinding,
@@ -437,22 +439,35 @@ export class CantripCuaService {
       const extra =
         operation === "controls.inspect"
           ? this.parse(record.runtime, cuaControlsResultSchema, response.data)
-          : operation === "input.press" || operation === "input.click"
+          : operation === "input.press" ||
+              operation === "input.click" ||
+              operation === "input.perform"
             ? this.parse(record.runtime, cuaInputResultSchema, response.data)
             : null;
       if (extra && "input" in extra) {
         const method =
-          operation === "input.press"
-            ? "accessibility"
-            : "delivery" in fields && fields.delivery === "background"
-              ? "background-coordinate"
-              : "delivery" in fields && fields.delivery === "process"
-                ? "process-coordinate"
-                : "globalInput" in fields && fields.globalInput === true
-                  ? "coordinate"
-                  : "accessibility";
-        const position =
-          operation === "input.click"
+          operation === "input.perform" && "command" in fields
+            ? (`background-${(fields.command as CuaInputCommand).kind}` as const)
+            : operation === "input.press"
+              ? "accessibility"
+              : "delivery" in fields && fields.delivery === "background"
+                ? "background-coordinate"
+                : "delivery" in fields && fields.delivery === "process"
+                  ? "process-coordinate"
+                  : "globalInput" in fields && fields.globalInput === true
+                    ? "coordinate"
+                    : "accessibility";
+        const command =
+          operation === "input.perform" && "command" in fields
+            ? (fields.command as CuaInputCommand)
+            : undefined;
+        const position = command
+          ? command.kind === "drag"
+            ? command.end
+            : command.kind === "scroll"
+              ? (command.point ?? record.state?.cursor.position)
+              : record.state?.cursor.position
+          : operation === "input.click"
             ? "position" in fields
               ? (fields.position as CuaPoint)
               : record.state?.cursor.position
@@ -600,6 +615,24 @@ export class CantripCuaService {
       },
       signal,
     ) as Promise<CuaSession>;
+  }
+  perform(
+    input: CuaScope,
+    sessionId: string,
+    target: CuaTargetReference,
+    command: CuaInputCommand,
+    signal?: AbortSignal,
+  ) {
+    return this.mutate(
+      input,
+      sessionId,
+      "input.perform",
+      {
+        ...cuaTargetReferenceSchema.parse(target),
+        command: cuaInputCommandSchema.parse(command),
+      },
+      signal,
+    ) as Promise<CuaInputResult>;
   }
   click(
     input: CuaScope,
