@@ -44,6 +44,18 @@ pub trait CaptureBackend: Send {
             "Accessibility inspection is unsupported.",
         ))
     }
+    fn controls_at(
+        &mut self,
+        _session: &str,
+        _target: &Target,
+        _point: crate::target::Point,
+        _cancel: &Cancellation,
+    ) -> Result<crate::input::Controls> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Targeted control inspection is unsupported.",
+        ))
+    }
     fn press(
         &mut self,
         _session: &str,

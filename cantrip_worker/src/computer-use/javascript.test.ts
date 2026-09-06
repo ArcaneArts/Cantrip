@@ -79,7 +79,7 @@ function fixture(
 }
 
 describe("bounded CUA JavaScript host arguments", () => {
-  it.each(["state", "targets", "snapshot", "cursor", "detach"])(
+  it.each(["state", "targets", "snapshot", "cursor", "detach", "controls"])(
     "accepts %s without authority fields",
     (operation) => {
       expect(cuaJavascriptActionSchema.parse({ operation })).toEqual({
@@ -95,6 +95,29 @@ describe("bounded CUA JavaScript host arguments", () => {
       ).toBe(false);
     },
   );
+  it("accepts bounded point inspection without input or authority fields", () => {
+    expect(
+      cuaJavascriptActionSchema.parse({
+        operation: "controls",
+        point: { x: 54, y: 955 },
+      }),
+    ).toEqual({ operation: "controls", point: { x: 54, y: 955 } });
+    for (const point of [
+      { x: Infinity, y: 0 },
+      { x: 0, y: NaN },
+    ])
+      expect(
+        cuaJavascriptActionSchema.safeParse({ operation: "controls", point })
+          .success,
+      ).toBe(false);
+    expect(
+      cuaJavascriptActionSchema.safeParse({
+        operation: "controls",
+        point: { x: 1, y: 1 },
+        sessionId: "other",
+      }).success,
+    ).toBe(false);
+  });
   it("validates target, position and appearance with the native shared contract", () => {
     const target = { targetId: "window", targetGeneration: 1 };
     expect(

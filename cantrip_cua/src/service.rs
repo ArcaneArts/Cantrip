@@ -104,6 +104,8 @@ pub enum Operation {
         binding: SessionBinding,
         target_id: String,
         target_generation: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        position: Option<Point>,
     },
     #[serde(rename = "input.press", rename_all = "camelCase")]
     InputPress {
@@ -467,14 +469,21 @@ impl<B: CaptureBackend> CuaService<B> {
                 binding,
                 target_id,
                 target_generation,
+                position,
             } => {
                 let mut state = self.attached(&binding, &target_id, target_generation)?;
                 let target = self
                     .backend
                     .resolve_target(&target_id, target_generation, cancel)?;
-                let controls = self
-                    .backend
-                    .controls(&binding.session_id, &target, cancel)?;
+                let controls = match position {
+                    Some(point) => {
+                        self.backend
+                            .controls_at(&binding.session_id, &target, point, cancel)?
+                    }
+                    None => self
+                        .backend
+                        .controls(&binding.session_id, &target, cancel)?,
+                };
                 cancel.check()?;
                 state.target = Some(target);
                 self.sessions

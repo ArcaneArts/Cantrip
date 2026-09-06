@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { activityLabel } from "./activity";
 import {
+  computerUseActivitySummary,
   previewActivityGroupKey,
   splitPreviewMessages,
   type ComputerUseActivity,
@@ -547,4 +548,25 @@ describe("computer use Trajectory origin and metadata", () => {
     expect(raw).toContain("observation.snapshot");
     expect(raw).not.toContain("data:image");
   });
+});
+
+it("names the selected AXPress recipient in the protected activity summary", () => {
+  const value = activity({
+    operation: "input.press",
+    input: {
+      method: "accessibility",
+      activation: false,
+      outcome: "dispatched",
+      control: {
+        reference: "control-17",
+        role: "AXButton",
+        label: "Jeff",
+        bounds: null,
+        actions: ["press"],
+      },
+    },
+  });
+  expect(computerUseActivitySummary(value)).toContain(
+    "AXPress target: AXButton “Jeff” (control-17)",
+  );
 });
