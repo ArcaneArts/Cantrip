@@ -168,12 +168,22 @@ impl CursorState {
         Ok(())
     }
 
-    pub fn mark_action(&mut self, method: &str, now: u64) {
+    pub fn mark_action(&mut self, method: &str, outcome: &str, now: u64) {
         self.action = Some(CursorAction {
             method: method.into(),
-            outcome: "dispatched".into(),
+            outcome: outcome.into(),
             at_ms: now,
         });
+        // Presentation bookkeeping must not fail after input was attempted.
+        self.updated_at_ms = self.updated_at_ms.max(now);
+        self.revision = self.revision.saturating_add(1).min(MAX_SEQUENCE);
+    }
+
+    pub fn clear_action(&mut self, now: u64) {
+        if self.action.take().is_some() {
+            self.updated_at_ms = self.updated_at_ms.max(now);
+            self.revision = self.revision.saturating_add(1).min(MAX_SEQUENCE);
+        }
     }
 
     fn next_revision(&self, now: u64) -> Result<u64> {
@@ -231,14 +241,26 @@ impl CursorState {
             }
         }
         canvas.shape(self.position, self.appearance.style, size, color);
-        if self.action.is_some() {
+        if let Some(action) = &self.action {
             canvas.shape(
                 self.position,
                 CursorStyle::Ring,
                 (size * 1.5).min(144.0),
                 color,
             );
-            canvas.shape(self.position, CursorStyle::Dot, 4.0, color);
+            if action.outcome == "dispatched" {
+                canvas.shape(self.position, CursorStyle::Dot, 4.0, color);
+            }
+            canvas.label(
+                Point {
+                    x: self.position.x,
+                    y: self.position.y + size + 8.0,
+                },
+                0.0,
+                &format!("[{}]", action.outcome),
+                color,
+                bounds,
+            );
         }
         if let Some(label) = &self.appearance.label {
             canvas.label(self.position, size, label, color, bounds);

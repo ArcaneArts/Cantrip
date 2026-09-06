@@ -103,9 +103,11 @@ export function computerUseActivity(input: {
               code === "input-unknown" ||
               (error instanceof CuaProcessError && error.outcome === "unknown")
                 ? "unknown"
-                : outcome === "completed"
-                  ? "dispatched"
-                  : outcome,
+                : code === "unsupported"
+                  ? "unsupported"
+                  : outcome === "completed"
+                    ? "dispatched"
+                    : outcome,
           }
         : null),
     cursor: session ? structuredClone(session.cursor) : null,

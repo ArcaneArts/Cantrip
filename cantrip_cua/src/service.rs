@@ -492,6 +492,11 @@ impl<B: CaptureBackend> CuaService<B> {
                 let target = self
                     .backend
                     .resolve_target(&target_id, target_generation, cancel)?;
+                // A reference may have no usable geometry. Clear the previous
+                // marker rather than associate this attempt with its location.
+                state.cursor.clear_action(now_ms);
+                self.sessions
+                    .insert(binding.session_id.clone(), state.clone());
                 let input = self
                     .backend
                     .press(&binding.session_id, &target, &reference, cancel)?;
@@ -503,7 +508,9 @@ impl<B: CaptureBackend> CuaService<B> {
                         .move_to(position, &target.bounds, now_ms)
                         .is_ok()
                 {
-                    state.cursor.mark_action(input.method, now_ms);
+                    state
+                        .cursor
+                        .mark_action(input.method, input.outcome, now_ms);
                 }
                 state.target = Some(target);
                 self.sessions
@@ -525,16 +532,35 @@ impl<B: CaptureBackend> CuaService<B> {
                     .resolve_target(&target_id, target_generation, cancel)?;
                 let position = position.unwrap_or(state.cursor.position);
                 state.cursor.move_to(position, &target.bounds, now_ms)?;
+                state.target = Some(target.clone());
                 self.sessions
                     .insert(binding.session_id.clone(), state.clone());
-                let (current, input) = if global_input {
+                let attempt = if global_input {
                     self.backend
-                        .global_click(&binding.session_id, &target, position, cancel)?
+                        .global_click(&binding.session_id, &target, position, cancel)
                 } else {
                     self.backend
-                        .click(&binding.session_id, &target, position, cancel)?
+                        .click(&binding.session_id, &target, position, cancel)
                 };
-                state.cursor.mark_action(input.method, now_ms);
+                let (current, input) = match attempt {
+                    Ok(receipt) => receipt,
+                    Err(error) => {
+                        state.cursor.mark_action(
+                            if global_input {
+                                "coordinate"
+                            } else {
+                                "accessibility"
+                            },
+                            crate::input::error_outcome(error.code),
+                            now_ms,
+                        );
+                        self.sessions.insert(binding.session_id.clone(), state);
+                        return Err(error);
+                    }
+                };
+                state
+                    .cursor
+                    .mark_action(input.method, input.outcome, now_ms);
                 state.target = Some(current);
                 self.sessions
                     .insert(binding.session_id.clone(), state.clone());

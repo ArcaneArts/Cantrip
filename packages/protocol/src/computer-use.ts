@@ -75,7 +75,13 @@ export const cuaSessionSchema = z.strictObject({
     action: z
       .strictObject({
         method: z.enum(["accessibility", "coordinate"]),
-        outcome: z.literal("dispatched"),
+        outcome: z.enum([
+          "dispatched",
+          "failed",
+          "cancelled",
+          "unsupported",
+          "unknown",
+        ]),
         atMs: counter,
       })
       .optional(),
