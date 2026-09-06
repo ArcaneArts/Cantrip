@@ -133,3 +133,52 @@ describe("native chord timeline", () => {
     expect(parse(frames).success).toBe(false),
   );
 });
+
+describe("explicit pointer modifiers", () => {
+  it("carries Command on the mouse down while leaving the matching release implicit", () => {
+    const command = cuaInputCommandSchema.parse({
+      kind: "timeline",
+      frames: [
+        {
+          atMs: 0,
+          pointerDown: { x: 10, y: 20 },
+          pointerModifiers: ["Meta"],
+          keyDown: ["C"],
+        },
+        { atMs: 150, pointerUp: true, keyUp: ["C"] },
+      ],
+    });
+    expect(command).toMatchObject({
+      frames: [{ pointerModifiers: ["Meta"] }, { pointerModifiers: [] }],
+    });
+  });
+  it.each(
+    [
+      [{ atMs: 0, pointerModifiers: ["Meta"] }],
+      [
+        {
+          atMs: 0,
+          pointerDown: { x: 10, y: 20 },
+          pointerModifiers: ["Meta", "Meta"],
+        },
+        { atMs: 150, pointerUp: true },
+      ],
+      [
+        {
+          atMs: 0,
+          pointerDown: { x: 10, y: 20 },
+          pointerModifiers: ["Command"],
+        },
+        { atMs: 150, pointerUp: true },
+      ],
+      [
+        { atMs: 0, pointerDown: { x: 10, y: 20 } },
+        { atMs: 150, pointerUp: true, pointerModifiers: ["Meta"] },
+      ],
+    ].map((frames) => ({ frames })),
+  )("rejects ambiguous or unsupported modifier state %j", ({ frames }) => {
+    expect(
+      cuaInputCommandSchema.safeParse({ kind: "timeline", frames }).success,
+    ).toBe(false);
+  });
+});

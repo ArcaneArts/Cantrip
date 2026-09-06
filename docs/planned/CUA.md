@@ -18,6 +18,23 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Explicit modified mouse input for inactive-window diagnosis
+
+- Branch: `codex/cua-mouse-modifiers`. User confirmed mouse notes work with Brave
+  focused and fail when unfocused but visible; keyboard notes work unfocused.
+  Recorded pointer coordinates and 1:1 image scaling match the piano key.
+- Added explicit `pointerPress(point, holdMs, modifiers)` and timeline
+  `pointerModifiers` on pointer-down frames. Meta supplies Command on macOS;
+  the same flags remain on matching mouse-up and Stop cleanup. Keyboard flags,
+  ordinary clicks, system pointer and activation behavior are unchanged.
+- The candidate Command-click route is opt-in because modifiers change action
+  semantics. No automatic retry, focus/restore or primer click is introduced.
+  This enables a targeted user test; it is not a claim that ordinary inactive
+  clicks or general covered-window input have been fixed.
+- Validation: 39 TypeScript checks, three Rust unit checks (including event-buffer
+  flag isolation), protocol/worker builds, Rust Clippy and formatting. No app
+  launches, live input, capture tests or CI. User acceptance remains open.
+
 ### Native chords and pointer-driven piano controls
 
 - Branch: `codex/cua-key-chords`. User confirmed keyboard notes work; pointer

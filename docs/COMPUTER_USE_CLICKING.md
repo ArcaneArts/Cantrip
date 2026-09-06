@@ -72,6 +72,39 @@ a fresh snapshot; do not claim success from the receipt or replay an uncertain
 action. Protected activity records method/outcome and sampled focus effects,
 without typed text in its metadata or cursor label.
 
+### Unfocused-window mouse clicks
+
+User testing on 2026-09-06 found that the same piano mouse press worked with
+Brave focused and visible, but failed with Brave unfocused and still visible.
+Keyboard notes worked unfocused. This isolates an inactive-window mouse issue;
+it does not establish a permission, coordinate-scale or covered-capture failure.
+Plain background mouse delivery remains unresolved for this target.
+
+For an **explicitly requested Command-click diagnostic**, use:
+
+```js
+await cua.pointerPress({ x, y }, 150, ["Meta"]);
+await cua.snapshot();
+```
+
+`pointerPress(point, holdMs = 150, modifiers = [])` supports Shift, Control,
+Alt and Meta (Command on macOS), each at most once. These flags apply to the
+mouse tracking/down/up pair, including release on Stop; no modifier key is
+pressed in the human input stream. Keyboard events in the same timeline retain
+their own flags. For `inputTimeline`, put `pointerModifiers: ["Meta"]` on the
+`pointerDown` frame; its matching `pointerUp` automatically inherits the flags.
+Nonempty modifiers on a frame without `pointerDown` are rejected.
+
+Command-click is a distinct action: an application may open a link in a new tab
+or alter selection. It is never silently added to ordinary clicks, never chosen
+as an automatic retry, and never changes application activation or the posting
+route. Published [background-click research](https://github.com/Lakr233/bgclick-rev-skill/blob/main/bgclick-rev-skill.md)
+identifies this flag as an inactive-window delivery technique, but Cantrip has
+not verified the modified path against the user's piano. Repeat the focused /
+unfocused comparison with a freshly authorized single modified press. Observe
+sound, visible key response, foreground focus and the physical pointer. A native
+`unknown` receipt still does not prove acceptance.
+
 ### Chords and explicit down/up timelines
 
 For overlapping notes, use `keyChord`, not separate `keyPress` calls:
