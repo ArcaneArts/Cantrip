@@ -1,6 +1,6 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
-import { Agent } from "undici";
+import { Agent, fetch as cuaFetch } from "undici";
 
 import {
   cantripAgentOperationResultSchema,
@@ -98,18 +98,15 @@ export async function readCantripMcpConnection(
 async function brokerRequest(
   document: CantripMcpConnectionDocument,
   pathname: string,
-  init: RequestInit,
+  init: Pick<RequestInit, "method" | "signal"> & { body?: string },
   limits = {
     maximumBytes: CANTRIP_MCP_MAX_RESPONSE_BYTES,
     timeoutMs: CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS,
   },
 ): Promise<unknown> {
   const endpoint = localBrokerUrl(document.endpoint);
-  const response = await fetch(new URL(pathname, endpoint), {
+  const options = {
     ...init,
-    ...(pathname === "/v1/computer-use"
-      ? { dispatcher: cuaBrokerDispatcher }
-      : {}),
     headers: {
       authorization: `Bearer ${document.credential}`,
       ...(init.body ? { "content-type": "application/json" } : {}),
@@ -118,7 +115,14 @@ async function brokerRequest(
       AbortSignal.timeout(limits.timeoutMs),
       ...(init.signal ? [init.signal] : []),
     ]),
-  });
+  };
+  const url = new URL(pathname, endpoint);
+  // Keep fetch and its dispatcher on the same Undici version. Node's bundled
+  // fetch uses an older callback contract and cannot consume this dispatcher.
+  const response =
+    pathname === "/v1/computer-use"
+      ? await cuaFetch(url, { ...options, dispatcher: cuaBrokerDispatcher })
+      : await fetch(url, options);
   const payload = await readBoundedJsonResponse(response, limits.maximumBytes);
   if (!response.ok) {
     const record =

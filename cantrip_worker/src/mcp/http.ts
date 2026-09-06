@@ -1,7 +1,7 @@
 export const CANTRIP_MCP_MAX_RESPONSE_BYTES = 512 * 1_024;
 
 export async function readBoundedJsonResponse(
-  response: Response,
+  response: Response | import("undici").Response,
   maximumBytes: number,
 ): Promise<unknown> {
   const declaredLength = Number(response.headers.get("content-length"));
