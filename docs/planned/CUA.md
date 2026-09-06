@@ -13,6 +13,19 @@ Implementation proceeds solo through isolated worktrees and squash auto-merge.
 The user's later instruction removes the original pause between cycles. Native,
 GUI and integration acceptance is reserved for the user; silence is not a pass.
 
+### User feedback — Script syntax and revoked turn authority
+
+- The agent discovered the managed tools but sent `return await cua.targets();`.
+  QuickJS rejected the top-level return before dispatch. A subsequent permission
+  profile change revoked this turn's authority before the agent tried reset.
+- The `codex/cua-script-recovery` change documents top-level await and final
+  expression results in tool instructions, adds a sanitized `script-syntax`
+  native error, and explains that reset cannot restore revoked turn authority.
+- Validation: seven Rust JavaScript unit tests, twelve worker authority unit
+  tests, worker typecheck, formatting and diff checks. Native and integration
+  acceptance remains with the user. Send a new agent message after changing a
+  permission profile and use `{"script":"await cua.targets()"}` for discovery.
+
 ### Clicking cycle 1 — Accessibility inspection and press
 
 - Branch: `codex/cua-clicking-accessibility`; [PR #1761](https://github.com/ArcaneArts/Cantrip/pull/1761)

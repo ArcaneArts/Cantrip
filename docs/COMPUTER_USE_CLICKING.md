@@ -26,6 +26,23 @@ profile, credentials or macOS permissions were changed by this implementation.
 
 Integration testing is yours; these steps have not been performed by the agent.
 
+## Script errors and permission changes
+
+The managed tool accepts top-level JavaScript. For discovery, send
+`{"script":"await cua.targets()"}` to `cantrip_cua/js`. The last expression is
+returned; do not prepend `return` or use `console.log`. A `script-syntax` error
+means the script did not parse, before any host action ran. Correct the script.
+
+Stop and permission-profile changes revoke computer-use authority for the active
+turn. Send another agent message to start a new turn after changing the profile.
+`js_reset` clears JavaScript state and attachment; it cannot restore revoked
+authority. A syntax failure alone does not revoke authority.
+
+The first user report after tool exposure combined a top-level-return parse
+failure with a subsequent permission-profile revocation before reset. It did not
+establish a helper crash. Native inspect → click → inspect acceptance is still
+pending user testing.
+
 ## Coordinates and results
 
 All API positions are target-local logical points. For a pixel `(px, py)` in a
