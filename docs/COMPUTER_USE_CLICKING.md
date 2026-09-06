@@ -123,11 +123,13 @@ detach cleanup. After the user granted the development helper Accessibility acce
 background clicks incremented an AppKit counter beneath a separate foreground
 application, with unchanged sampled pointer, foreground and window order. Native
 event logging confirmed the intended window and local coordinates. This does not
-establish general application support: fresh Chromium test windows received no
-page button events from either Accessibility press or targeted coordinate input.
-Accessibility opt-in, retained references, a live AX observer and an alternative
-single process-post path did not resolve those no-ops. Covered-window user
-acceptance remains unresolved; an AX dispatch receipt is still not proof of a click. Window
+establish general application support. Subsequent Chromium tests received real
+page input after enhanced Accessibility activation, including controlled covered
+tests with unchanged pointer, foreground and ordering. Targeted coordinate input
+remains unresolved for Chromium. Its covered page raster can also remain stale
+after a successful Accessibility action; a ScreenCaptureKit stream alone did not
+resolve that rendering suppression. Covered-window user acceptance remains
+unresolved; an AX dispatch receipt is still not proof of a click. Window
 capture uses individual ScreenCaptureKit screenshots, so a persistent macOS
 screen-sharing badge is not an acceptance condition for this capture path.
 
@@ -270,6 +272,16 @@ roles, labels, local bounds and transient references. It never requests AX value
 handles stay in Rust; reinspection, target changes, detach, reset, Stop and input
 retire the references. Press consumes the inspection even if it fails or its
 outcome is uncertain. Inspect again when references become stale.
+
+Before window inspection, Cantrip requests the application's enhanced
+Accessibility mode when its live `AXEnhancedUserInterface` attribute reports
+false. This app-provided attribute is not universally supported. Unsupported
+opt-in results do not prevent ordinary inspection, and an already-enabled mode
+is not toggled again. Activation can be asynchronous; neither the opt-in nor
+discovery of a pressable control proves that an action changed the app.
+Cantrip does not disable this shared process mode when a session ends, since
+another session or assistive client may use it. It does not change system
+VoiceOver settings, activate the app, or restart it with browser flags.
 
 Window matching uses the current owning process and a unique Accessibility
 window matching geometry and available title. Ambiguous matches or windows

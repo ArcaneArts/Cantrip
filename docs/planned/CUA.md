@@ -18,6 +18,27 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Enhanced Accessibility activation for application actions
+
+- Branch: `codex/cua-enhanced-accessibility`.
+- Window inspection now requests the app-provided `AXEnhancedUserInterface`
+  mode when the live attribute explicitly reports false. Already-enabled or
+  unsupported attributes are left alone. A rejected opt-in does not block
+  ordinary inspection, and there is no fixed readiness delay or input replay.
+- This shared process mode is not reset when a CUA session ends, so closing one
+  session cannot disable another assistive client. It does not enable system
+  VoiceOver, activate a window, or change browser launch flags.
+- Validation: 55 Rust library tests, build, formatting and Clippy. A fresh
+  normal-mode Chromium fixture received trusted page input and incremented its
+  counter using the updated helper without an external accessibility toggle.
+  Pointer movement during that run prevents a preservation claim for that run.
+- Earlier controlled runs with the same activation established covered Chromium
+  AX input with unchanged pointer, foreground and window order. However, covered
+  raster capture remained stale, including with a native ScreenCaptureKit stream.
+  Disabling occlusion throttling only in a disposable browser made its covered
+  capture update. Existing-app rendering remains the next unresolved step; no
+  such browser flag or stream has been added to the product.
+
 ### Accessibility windows omitted from the window list
 
 - Branch: `codex/cua-accessibility-window-references`.
@@ -33,8 +54,8 @@ between useful cycles.
 - A disposable Chromium instance with complete Accessibility enabled produced
   a real counter increment through its main-window reference. Concurrent
   desktop changes invalidate any claim of pointer/focus/order preservation in
-  that run. Ordinary Chromium input and full covered-window acceptance remain
-  unresolved; no browser flags or input-delivery workarounds were added.
+  that run. The subsequent activation cycle above advances Chromium input;
+  full covered-window acceptance remains unresolved.
 
 ### Desktop cursor on large windows
 
