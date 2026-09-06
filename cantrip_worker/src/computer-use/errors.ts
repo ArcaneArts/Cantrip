@@ -45,6 +45,9 @@ export const CUA_NATIVE_ERROR_CODES = [
   "capacity",
   "cancelled",
   "unsupported",
+  "control-not-found",
+  "control-ambiguous",
+  "control-inspection-incomplete",
   "session-not-found",
   "ownership-mismatch",
   "target-not-found",
@@ -57,6 +60,18 @@ export const CUA_NATIVE_ERROR_CODES = [
 ] as const;
 export type CuaNativeErrorCode = (typeof CUA_NATIVE_ERROR_CODES)[number];
 
+const targetedRecovery =
+  " For this already-authorized click, reacquire the same application window, snapshot it, and use await cua.processClick({x,y}) once at the intended window-local point as a separate targeted attempt if no earlier input has an unknown outcome. Do not retry against a monitor: monitors do not provide window controls or process routing. No global fallback was attempted. Process delivery is unverified; inspect a fresh snapshot and sampled effects without replaying uncertain input.";
+
+export function isCuaUnsupportedCode(code: string | null): boolean {
+  return (
+    code === "unsupported" ||
+    code === "control-not-found" ||
+    code === "control-ambiguous" ||
+    code === "control-inspection-incomplete"
+  );
+}
+
 const nativeMessages: Record<CuaNativeErrorCode, string> = {
   "invalid-request": "The computer-use process rejected the request.",
   "script-syntax":
@@ -67,7 +82,16 @@ const nativeMessages: Record<CuaNativeErrorCode, string> = {
   capacity: "The computer-use operation exceeded a runtime limit.",
   cancelled: "The computer-use operation was cancelled by the runtime.",
   unsupported:
-    "The target or action is unsupported. Cursor clicks require a unique pressable control; process clicks require an application window. No global input fallback was attempted.",
+    "The target or action is unsupported. Targeted click and processClick require an application window, not a monitor. An unsupported error does not establish that the app has no Accessibility controls. After a confirmed no-dispatch rejection, choose the available targeted method under existing native-input authorization; never change methods after uncertain input or denial. No global input fallback was attempted.",
+  "control-not-found":
+    "Window inspection found no pressable control at this cursor position. No Accessibility action was dispatched." +
+    targetedRecovery,
+  "control-ambiguous":
+    "Window inspection found equally specific pressable controls at this cursor position. No Accessibility action was dispatched." +
+    targetedRecovery,
+  "control-inspection-incomplete":
+    "Window inspection reached its bounded traversal limit. This does not prove the desired control is absent. No Accessibility action was dispatched." +
+    targetedRecovery,
   "session-not-found": "The computer-use session no longer exists.",
   "ownership-mismatch":
     "The computer-use session belongs to another execution context.",

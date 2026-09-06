@@ -173,6 +173,29 @@ to the user and implementation does not pause between useful cycles.
   tests, worker typecheck, Clippy, formatting and diff checks. No local native,
   GUI or integration testing. Covered-window acceptance remains with the user.
 
+### Cycle 7 — Actionable window-control rejection
+
+- Branch: `codex/cua-targeted-click-recovery`.
+- User evidence now confirms `unsupported` from window `click`, followed by an
+  ineffective monitor-target retry. No processClick was attempted. The generic
+  code did not establish whether control inspection was incomplete, ambiguous,
+  or found no matching control; it cannot prove the app exposes no usable AX row.
+- Native control selection now reports those three cases separately. Safe error
+  text and MCP instructions direct the model to reacquire the same application
+  window and select the separate process-targeted attempt for an authorized click
+  after confirmed no dispatch. Monitor substitution is explicitly ruled out.
+- Specific rejection codes survive JavaScript and protected Trajectory while the
+  cursor/action outcome remains unsupported. No native automatic fallback,
+  permission change, input replay or claimed process-delivery guarantee is added.
+- User test: repeat the original harmless click request in the updated worker.
+  If AX selection rejects it, expect an explicit processClick against the same
+  window and a fresh snapshot, without another method-name confirmation. Report
+  the actual window change and whether pointer/focus/window ordering stayed put.
+- Validation: 13 focused Rust unit tests, 21 worker contract/activity tests,
+  worker typecheck, Rust Clippy, formatting and diff checks. No local native,
+  interactive or integration testing.
+- Covered-window acceptance remains unresolved and belongs to the user.
+
 ## Clicking-tranche progress
 
 Implementation proceeds solo through isolated worktrees and squash auto-merge.

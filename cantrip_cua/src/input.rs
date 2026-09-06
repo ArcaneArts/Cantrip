@@ -12,7 +12,10 @@ pub(crate) fn error_outcome(code: crate::error::ErrorCode) -> &'static str {
     use crate::error::ErrorCode;
     match code {
         ErrorCode::InputUnknown => "unknown",
-        ErrorCode::Unsupported => "unsupported",
+        ErrorCode::Unsupported
+        | ErrorCode::ControlNotFound
+        | ErrorCode::ControlAmbiguous
+        | ErrorCode::ControlInspectionIncomplete => "unsupported",
         ErrorCode::Cancelled => "cancelled",
         _ => "failed",
     }
@@ -171,15 +174,12 @@ pub(crate) fn control_at(
     point: crate::target::Point,
 ) -> crate::error::Result<&str> {
     use crate::error::{CuaError, ErrorCode};
-    let unsupported = || {
-        CuaError::new(
-            ErrorCode::Unsupported,
-            "No unique pressable control at the agent cursor. Inspect controls or choose another position; no global click was posted.",
-        )
-    };
     // An omitted node could be the intended child/control at this position.
     if controls.truncated {
-        return Err(unsupported());
+        return Err(CuaError::new(
+            ErrorCode::ControlInspectionIncomplete,
+            "The bounded window inspection was incomplete; no Accessibility action was dispatched.",
+        ));
     }
     let mut matches = controls
         .controls
@@ -198,7 +198,14 @@ pub(crate) fn control_at(
     match matches.as_slice() {
         [(reference, _)] => Ok(reference),
         [(reference, area), (_, next), ..] if area < next => Ok(reference),
-        _ => Err(unsupported()),
+        [] => Err(CuaError::new(
+            ErrorCode::ControlNotFound,
+            "The inspected window hierarchy contains no pressable control at this point; no Accessibility action was dispatched.",
+        )),
+        _ => Err(CuaError::new(
+            ErrorCode::ControlAmbiguous,
+            "The inspected window hierarchy contains equally specific pressable controls at this point; no Accessibility action was dispatched.",
+        )),
     }
 }
 
@@ -237,12 +244,27 @@ mod targeted_tests {
             control_at(&inspection, Point { x: 25.0, y: 15.0 }).unwrap(),
             "button"
         );
-        assert!(control_at(&inspection, Point { x: 5.0, y: 15.0 }).is_err());
+        assert_eq!(
+            control_at(&inspection, Point { x: 5.0, y: 15.0 })
+                .unwrap_err()
+                .code,
+            ErrorCode::ControlNotFound
+        );
         inspection.truncated = true;
-        assert!(control_at(&inspection, Point { x: 25.0, y: 15.0 }).is_err());
+        assert_eq!(
+            control_at(&inspection, Point { x: 25.0, y: 15.0 })
+                .unwrap_err()
+                .code,
+            ErrorCode::ControlInspectionIncomplete
+        );
         inspection.truncated = false;
         inspection.controls.push(control("overlap", 30.0));
-        assert!(control_at(&inspection, Point { x: 25.0, y: 15.0 }).is_err());
+        assert_eq!(
+            control_at(&inspection, Point { x: 25.0, y: 15.0 })
+                .unwrap_err()
+                .code,
+            ErrorCode::ControlAmbiguous
+        );
     }
 
     struct RoutingBackend {
