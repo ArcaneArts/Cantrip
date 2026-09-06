@@ -464,9 +464,12 @@ export class CantripCuaService {
       if (extra && "input" in extra) {
         const method =
           operation === "input.perform" && "command" in fields
-            ? (fields.command as CuaInputCommand).kind === "focus"
-              ? "focus"
-              : (`background-${(fields.command as Exclude<CuaInputCommand, { kind: "focus" }>).kind}` as const)
+            ? ["focus", "window-input"].includes(
+                (fields.command as CuaInputCommand).kind,
+              )
+              ? ((fields.command as CuaInputCommand).kind as
+                  "focus" | "window-input")
+              : (`background-${(fields.command as Exclude<CuaInputCommand, { kind: "focus" | "window-input" }>).kind}` as const)
             : operation === "input.press"
               ? "accessibility"
               : "delivery" in fields && fields.delivery === "background"
@@ -501,7 +504,9 @@ export class CantripCuaService {
           !matchesInputReceipt(
             extra.input,
             method,
-            method === "focus" ? undefined : position,
+            method === "focus" || method === "window-input"
+              ? undefined
+              : position,
           )
         )
           return this.protocolFailure(record.runtime);

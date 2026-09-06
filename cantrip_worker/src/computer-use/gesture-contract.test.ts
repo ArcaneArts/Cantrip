@@ -244,3 +244,38 @@ describe("focus and full performance contracts", () => {
     );
   });
 });
+
+describe("target-only AppKit preparation", () => {
+  it("exposes a parameterless authorized input command, with honest activation metadata", () => {
+    expect(
+      cuaJavascriptActionSchema.parse({
+        operation: "perform",
+        command: { kind: "window-input" },
+      }),
+    ).toEqual({ operation: "perform", command: { kind: "window-input" } });
+    expect(
+      cuaJavascriptActionSchema.safeParse({
+        operation: "perform",
+        command: { kind: "window-input", pid: 1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      matchesInputReceipt(
+        { method: "window-input", activation: true, outcome: "dispatched" },
+        "window-input",
+      ),
+    ).toBe(true);
+    expect(
+      matchesInputReceipt(
+        { method: "window-input", activation: false, outcome: "dispatched" },
+        "window-input",
+      ),
+    ).toBe(false);
+    expect(
+      matchesInputReceipt(
+        { method: "focus", activation: true, outcome: "dispatched" },
+        "window-input",
+      ),
+    ).toBe(false);
+  });
+});

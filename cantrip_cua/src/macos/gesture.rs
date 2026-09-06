@@ -105,6 +105,22 @@ pub(super) fn perform(
         ));
     }
     let (pid, window) = super::click::process_destination(target)?;
+    if matches!(command, InputCommand::WindowInput {}) {
+        super::window_input::prepare(pid, window, cancel)?;
+        return Ok((
+            target.clone(),
+            InputReceipt {
+                control: None,
+                method: "window-input",
+                activation: true,
+                outcome: "dispatched",
+                position: None,
+                global_position: None,
+                effects: None,
+                window_delivery: None,
+            },
+        ));
+    }
     let delivery = super::skylight::Delivery::load()?;
     let global = target.bounds.to_global(position)?;
     if let InputCommand::Drag { end, .. } = command {
@@ -136,7 +152,9 @@ pub(super) fn perform(
     };
     let mut final_position = position;
     match command {
-        InputCommand::Focus {} => unreachable!("focus handled without allocating mouse input"),
+        InputCommand::Focus {} | InputCommand::WindowInput {} => {
+            unreachable!("focus handled without allocating mouse input")
+        }
         InputCommand::Timeline { frames } => {
             use crate::timeline::{Frame, Transition};
             use std::collections::HashMap;

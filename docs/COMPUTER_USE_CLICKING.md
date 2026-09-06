@@ -100,8 +100,9 @@ or alter selection. It is never silently added to ordinary clicks, never chosen
 as an automatic retry, and never changes application activation or the posting
 route. Published [background-click research](https://github.com/Lakr233/bgclick-rev-skill/blob/main/bgclick-rev-skill.md)
 identifies this flag as an inactive-window delivery technique, but Cantrip has
-not verified the modified path against the user's piano. Repeat the focused /
-unfocused comparison with a freshly authorized single modified press. Observe
+now received user confirmation that a Command-modified G4 press sounded with
+Brave unfocused, while sampled pointer/foreground/window order stayed unchanged.
+Ordinary inactive mouse input remains unverified. Observe
 sound, visible key response, foreground focus and the physical pointer. A native
 `unknown` receipt still does not prove acceptance.
 
@@ -528,7 +529,7 @@ that a particular application implements a usable press action.
 
 ## Full performances, live help, and explicit focus
 
-`await cua.help()` returns the running native API version (3), method signatures,
+`await cua.help()` returns the running native API version (4), method signatures,
 and actual limits. On an older helper, `Object.keys(cua)` inventories its methods.
 An installed update requires restarting the worker/dev session; `js_reset` only
 resets JavaScript and does not replace a running helper binary.
@@ -567,3 +568,45 @@ It sends no mouse event and does not restore previous focus. Receipts distinguis
 `focus` with `activation: true`; dispatch is not visual proof of focus. Errors
 after any focus attempt remain uncertain. This method is never an implicit retry
 or a substitute for background input.
+
+## Experimental target-only AppKit preparation (API 4)
+
+User QA established that Command-modified pointer input triggers piano notes in
+unfocused Brave. Ordinary mouse input still fails. Earlier trace evidence showed
+mouse events reaching the exact NSWindow but not Chromium's page input handler;
+Chromium's default `acceptsFirstMouse` rejects inactive-window click-through.
+
+`await cua.prepareWindowInput()` sends one 248-byte `SLPSPostEventRecordTo`
+activation notification (type 0x0d, state 1) addressed to the attached window's
+process serial number and native window ID. It changes target AppKit input state;
+it sends no mouse/keyboard event, no Command flag, no WindowServer front-process
+request and no window raise. It does not send a defocus notification to the human
+foreground process and does not restore or cache app state. Target reactions are
+not guaranteed: its internal active state and appearance can change, and actual
+foreground preservation requires user QA.
+
+The explicit `window-input` receipt reports `activation: true` to disclose the
+AppKit activation request. `dispatched` acknowledges API dispatch only. Existing
+before/after effects report foreground app/window, ordering and system pointer.
+Errors after posting report uncertain state, never a safe-to-retry failure.
+The ordinary mouse methods and Command-click route are unchanged.
+
+Test after restarting the development worker:
+
+1. Keep Brave visible but another application focused.
+2. Attach the exact piano window and call `await cua.prepareWindowInput()` once.
+3. Inspect the receipt/effects. If foreground or window order changed, stop and
+   report it. If it fails, send no click.
+4. Take a fresh snapshot, locate a white key, then call
+   `await cua.pointerPress({x, y}, 1000)` once with no modifiers.
+5. Report both receipts and whether the note sounded, pointer/focus changed,
+   or the target began displaying active-window controls. Do not retry.
+
+This is an explicit experimental route, not an implicit focus workaround. The
+candidate differs from the full activation recipes by deliberately leaving the
+foreground process alone. Its effectiveness remains for user validation.
+
+Implementation references (source, not instructions):
+[Chromium inactive mouse handling](https://github.com/chromium/chromium/blob/main/content/app_shim_remote_cocoa/render_widget_host_view_cocoa.mm),
+[CUA driver's AppKit event records](https://github.com/trycua/cua/blob/main/libs/cua-driver/rust/crates/platform-macos/src/input/skylight.rs),
+and [yabai window events](https://github.com/koekeishiya/yabai/blob/master/src/window_manager.c).

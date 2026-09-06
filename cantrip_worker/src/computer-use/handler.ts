@@ -378,8 +378,9 @@ export async function handleComputerUseOperation(
                 : null,
             inputMethod:
               activityAction?.operation === "input.perform"
-                ? activityAction.command.kind === "focus"
-                  ? "focus"
+                ? activityAction.command.kind === "focus" ||
+                  activityAction.command.kind === "window-input"
+                  ? activityAction.command.kind
                   : `background-${activityAction.command.kind}`
                 : activityAction?.operation === "input.click" &&
                     activityAction.globalInput
