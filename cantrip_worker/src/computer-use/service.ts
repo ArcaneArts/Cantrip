@@ -3,6 +3,7 @@ import { z } from "zod";
 import { resolveCuaBinary } from "./binary.js";
 import { waitBeforeCuaSend } from "./cancellation.js";
 import { CuaProcessError } from "./errors.js";
+import { matchesInputReceipt } from "./input-receipt.js";
 import {
   CuaJavascriptContexts,
   type CuaJavascriptOptions,
@@ -440,17 +441,21 @@ export class CantripCuaService {
             ? this.parse(record.runtime, cuaInputResultSchema, response.data)
             : null;
       if (extra && "input" in extra) {
-        const receipt = extra.input;
-        if (
-          receipt.method !==
-            (operation === "input.click" ? "coordinate" : "accessibility") ||
-          (operation === "input.click" &&
-            (!receipt.position ||
-              !receipt.globalPosition ||
-              !("position" in fields) ||
-              JSON.stringify(receipt.position) !==
-                JSON.stringify(fields.position)))
-        )
+        const method =
+          operation === "input.press"
+            ? "accessibility"
+            : "delivery" in fields && fields.delivery === "process"
+              ? "process-coordinate"
+              : "globalInput" in fields && fields.globalInput === true
+                ? "coordinate"
+                : "accessibility";
+        const position =
+          operation === "input.click"
+            ? "position" in fields
+              ? (fields.position as CuaPoint)
+              : record.state?.cursor.position
+            : undefined;
+        if (!matchesInputReceipt(extra.input, method, position))
           return this.protocolFailure(record.runtime);
       }
       const data =

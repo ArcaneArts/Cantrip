@@ -205,3 +205,14 @@ promised. Human activity can still race native focus and dispatch.
 Only Accessibility press and single left-button coordinate clicks are supported.
 Double/right clicks, drag, scroll, keyboard/text entry, application launching,
 other OS backends and cross-worker control remain outside this tranche.
+
+### Failed click recovery
+
+Uncaught JavaScript host failures retain their specific error code, including
+unsupported input and unknown dispatch. A failed script releases its attachment;
+list targets and attach the intended window again before taking a new snapshot.
+This restores observation only: do not replay or switch methods after unknown input.
+Worker receipt validation accepts accessibility receipts for custom-cursor clicks,
+coordinate receipts for explicit global clicks, and unknown/unverified receipts
+for process clicks. A successful receipt still requires user verification of the
+application result and pointer/focus behavior.
