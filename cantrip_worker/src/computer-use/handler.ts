@@ -36,7 +36,7 @@ export class CuaAuthorizationError extends Error {
         "approval-required":
           "Computer use requires approval through the active permission profile.",
         "execution-unavailable":
-          "The agent execution context is no longer available on this worker.",
+          "Computer-use authority is unavailable for this agent turn. After Stop or a permission-profile change, start a new agent turn; js_reset cannot restore revoked authority.",
         "ownership-mismatch":
           "Computer use belongs to another execution context.",
       }[code],

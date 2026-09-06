@@ -6,6 +6,7 @@ import { CuaAgentCoordinator, type CuaAgentCommand } from "./agent.js";
 import { CuaAgentApprovalEvents } from "./agent-approval-events.js";
 import type { CuaApprovalManager } from "./approvals.js";
 import type { CantripCuaService } from "./service.js";
+import { CuaNativeError } from "./errors.js";
 
 const claims = {
   ownerId: "owner",
@@ -112,6 +113,22 @@ function fixture(usesDefault = true) {
   };
 }
 describe("CUA agent runtime authority", () => {
+  it("allows reset after a syntax failure while authority remains live", async () => {
+    const f = fixture();
+    f.service.evaluateJavascript.mockRejectedValueOnce(
+      new CuaNativeError("script-syntax"),
+    );
+    await expect(f.call()).rejects.toThrow("do not use a top-level return");
+    await f.call("root", "js_reset");
+    expect(f.service.resetJavascript).toHaveBeenCalledOnce();
+    await f.call();
+    f.coordinator.cancelChat("chat");
+    await expect(f.call("root", "js_reset")).rejects.toThrow(
+      "js_reset cannot restore revoked authority",
+    );
+    expect(f.service.resetJavascript).toHaveBeenCalledOnce();
+    await f.unregister();
+  });
   it("uses exact native child identity and rejects an unobserved thread", async () => {
     const f = fixture();
     await f.call("child");

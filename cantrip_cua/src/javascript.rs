@@ -349,10 +349,27 @@ impl Session {
         let promise = self.context.with(|ctx| {
             ctx.eval_promise(source)
                 .map(|promise| Persistent::save(&ctx, promise))
+                .map_err(|error| {
+                    // Classify parser failures without exposing source, stack or
+                    // exception messages across the native protocol boundary.
+                    let syntax = error.is_exception()
+                        && ctx.catch().as_object().is_some_and(|exception| {
+                            exception.get::<_, String>("name").ok().as_deref()
+                                == Some("SyntaxError")
+                        });
+                    if syntax {
+                        CuaError::new(
+                            ErrorCode::ScriptSyntax,
+                            "Invalid JavaScript syntax. Use top-level await and a final expression, such as await cua.targets(); do not use a top-level return.",
+                        )
+                    } else {
+                        script_error()
+                    }
+                })
         });
         Self::leave(&clock);
         self.check_budget(&cancellation, started, wall_limit, &clock)?;
-        let promise = promise.map_err(|_| script_error())?;
+        let promise = promise?;
         self.active = Some(Evaluation {
             id,
             cancellation,
@@ -763,6 +780,53 @@ pub(crate) fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn top_level_return_reports_syntax_without_dispatching_host_work() {
+        let binding: SessionBinding = serde_json::from_value(
+            json!({"sessionId":"syntax-fixture","workerId":"worker","chatId":"chat"}),
+        )
+        .unwrap();
+        let (frames, receiver) = crossbeam_channel::bounded(4);
+        let mut session = Session::new(binding, frames).unwrap();
+        let error = session
+            .start(
+                1,
+                "return await cua.targets();".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::ScriptSyntax);
+        assert!(error.message.contains("do not use a top-level return"));
+        assert!(receiver.is_empty());
+        assert!(session.active.is_none());
+        session
+            .start(
+                2,
+                "await Promise.resolve(42)".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap();
+        assert_eq!(session.step().unwrap().unwrap(), json!(42));
+    }
+
+    #[test]
+    fn runtime_errors_are_not_reported_as_parser_failures() {
+        let mut session = deadline_session();
+        session
+            .start(
+                1,
+                "throw new Error('private runtime detail')".into(),
+                default_wall_timeout_ms(),
+                Cancellation::default(),
+            )
+            .unwrap();
+        let error = session.step().unwrap().unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidRequest);
+        assert!(!error.message.contains("private runtime detail"));
+    }
+
     #[test]
     fn external_host_wait_uses_wall_deadline_without_an_active_cpu_clock() {
         let binding: SessionBinding = serde_json::from_value(

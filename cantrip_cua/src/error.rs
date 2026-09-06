@@ -13,6 +13,7 @@ pub struct CuaError {
 #[serde(rename_all = "kebab-case")]
 pub enum ErrorCode {
     InvalidRequest,
+    ScriptSyntax,
     ProtocolVersion,
     Capacity,
     Cancelled,
