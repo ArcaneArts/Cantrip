@@ -100,7 +100,9 @@ to the user and implementation does not pause between useful cycles.
 
 ### Cycle 4 — Explicit process-targeted coordinate attempt
 
-- Branch: `codex/cua-process-click`.
+- Branch: `codex/cua-process-click`; [PR #1777](https://github.com/ArcaneArts/Cantrip/pull/1777)
+  merged as `9a6b74626fe5d5277c3e0168da183486ca2b975d` (observed).
+  All four CI jobs passed; Primary synchronized and cycle worktree removed.
 - `cua.processClick(point?)` routes one coordinate pair through public
   `CGEventPostToPid`, using the attached window's freshly resolved PID, window ID
   and target-local geometry. It is explicit, authorized as native input, and
@@ -127,6 +129,31 @@ to the user and implementation does not pause between useful cycles.
   acceptance. Do not create extra cycles or run native tests in lieu of feedback.
 - Covered-window acceptance remains pending. The earlier global foreground click
   and automated checks are not evidence for this required user outcome.
+
+### Cycle 5 — Script rejection and click-method confirmation correction
+
+- Branch: `codex/cua-click-method-guidance`.
+- User feedback on 2026-09-06 showed an agent declining to use processClick
+  without another confirmation. That restriction came from the MCP instructions;
+  a user-authorized click now permits method selection under existing native-input
+  authorization. Global input remains separately explicit. Denial, Stop, revocation
+  and unknown dispatch never justify retry or method switching.
+- The corresponding rollout shows `let shot` in the capture call and another
+  top-level `let shot` in the later click script. A pure QuickJS unit reproduced
+  the rejection before any host dispatch. The reported failure is therefore not
+  evidence of an Accessibility click failure. Control inspection did return three
+  controls and a truncated list, but the attempted click never reached native input.
+- A new sanitized script-evaluation error distinguishes evaluation failures before
+  any host call. Guidance explains persistent bindings and block-scoped temporary
+  variables. Post-host failures cannot claim no dispatch; no scripts are retried
+  automatically and private exception text is not exposed.
+- Validation: nine focused Rust JavaScript unit tests, Rust compilation/Clippy,
+  worker typecheck, formatting and diff checks. No native/interactive or
+  integration tests were run locally.
+- User test: repeat the original click request in an updated dev worker. The agent
+  should use valid persistent-session scripts and select an authorized targeted
+  method without asking you to name processClick. Covered-window pointer/focus
+  preservation remains pending your observation.
 
 ## Clicking-tranche progress
 

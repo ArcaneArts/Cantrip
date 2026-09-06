@@ -14,6 +14,7 @@ pub struct CuaError {
 pub enum ErrorCode {
     InvalidRequest,
     ScriptSyntax,
+    ScriptEvaluation,
     ProtocolVersion,
     Capacity,
     Cancelled,

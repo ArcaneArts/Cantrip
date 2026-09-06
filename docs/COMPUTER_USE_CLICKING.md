@@ -61,7 +61,12 @@ the earlier foreground/global-click acceptance below does not satisfy it.
 it to that target-local position first. It requires an attached macOS application
 window and uses the existing native-input authorization and session queue. It is
 separate from Accessibility `click` and global `globalClick`; neither method
-falls back to it. Ask for this method explicitly when testing it.
+falls back to it inside the native helper. The agent may choose it for your
+already-authorized click without asking you to name this API or confirm again.
+Existing native-input permissions still apply. After a confirmed unsupported
+action with no dispatch, it may choose another targeted method as a separate
+operation; denial, Stop, revocation or uncertain dispatch never authorize that
+switch. Global shared-pointer input still requires your explicit request.
 
 Rust resolves the selected window's current identity and geometry, derives the
 owning PID and native window ID, then posts one left-button down/up pair through
@@ -119,6 +124,24 @@ The managed tool accepts top-level JavaScript. For discovery, send
 `{"script":"await cua.targets()"}` to `cantrip_cua/js`. The last expression is
 returned; do not prepend `return` or use `console.log`. A `script-syntax` error
 means the script did not parse, before any host action ran. Correct the script.
+
+The JavaScript session preserves top-level variables across calls. Reusing
+`let shot` or `const shot` in another call can reject the entire evaluation
+before its first host operation. Use a block for temporary bindings, for example:
+
+```javascript
+{
+  const shot = await cua.snapshot();
+  shot;
+}
+```
+
+`script-evaluation` means evaluation failed before any computer-use host action
+was dispatched. Correct the script; this is not evidence that native clicking
+was rejected. The message suggests declaration collisions without exposing
+private exception text. Failures after a host call retain their existing error
+classification and do not claim no dispatch. Inspect the activity/receipt before
+considering another action; never retry an uncertain input automatically.
 
 Stop and permission-profile changes revoke computer-use authority for the active
 turn. Send another agent message to start a new turn after changing the profile.
