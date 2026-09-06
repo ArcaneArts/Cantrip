@@ -264,15 +264,39 @@ impl Accessibility {
             .ok_or_else(stale)?;
         let app = Owned::take(unsafe { AXUIElementCreateApplication(pid) })?;
         read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.2) })?;
-        let (windows, truncated) = app.children("AXWindows", 128)?;
+        let (mut windows, truncated) = app.children("AXWindows", 128)?;
         if truncated {
             return Err(CuaError::new(
                 ErrorCode::Capacity,
                 "Application window inspection limit reached.",
             ));
         }
-        let mut matched = None;
         let deadline = Instant::now() + Duration::from_secs(3);
+        // Some applications omit a live window from AXWindows while still
+        // exposing it through these application-owned references. They are
+        // candidates only: the same exact target matching below still applies.
+        // Reading these attributes does not activate or focus anything.
+        for attribute in ["AXMainWindow", "AXFocusedWindow"] {
+            cancel.check()?;
+            let Ok(window) = app.attr(attribute) else {
+                continue;
+            };
+            if !window.is(unsafe { AXUIElementGetTypeID() }) {
+                continue;
+            }
+            read_result(unsafe { AXUIElementSetMessagingTimeout(window.0, 0.2) })?;
+            if window
+                .attr("AXRole")
+                .ok()
+                .and_then(|role| role.text(64))
+                .as_deref()
+                == Some("AXWindow")
+                && !windows.iter().any(|existing| existing.same(&window))
+            {
+                windows.push(window);
+            }
+        }
+        let mut matched = None;
         for window in windows {
             cancel.check()?;
             if Instant::now() > deadline {

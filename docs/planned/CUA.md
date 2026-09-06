@@ -18,6 +18,24 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Accessibility windows omitted from the window list
+
+- Branch: `codex/cua-accessibility-window-references`.
+- Native evidence showed an empty `AXWindows` list while `AXMainWindow` still
+  exposed the exact captured window and its controls. Discovery now also reads
+  the application's main/focused window references, deduplicates identical
+  references, and applies the existing title/bounds matching and ambiguity
+  rejection. It does not activate or raise a window.
+- Validation: 55 Rust library tests, build, formatting and Clippy; a native
+  fixture reproduced the old `stale-element` result, then resolved the omitted
+  window with the updated helper. A different window remained rejected, and
+  two distinct matching windows remained ambiguous.
+- A disposable Chromium instance with complete Accessibility enabled produced
+  a real counter increment through its main-window reference. Concurrent
+  desktop changes invalidate any claim of pointer/focus/order preservation in
+  that run. Ordinary Chromium input and full covered-window acceptance remain
+  unresolved; no browser flags or input-delivery workarounds were added.
+
 ### Desktop cursor on large windows
 
 - Branch: `codex/cua-large-window-cursor`.
