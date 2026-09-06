@@ -126,12 +126,33 @@ event logging confirmed the intended window and local coordinates. This does not
 establish general application support. Subsequent Chromium tests received real
 page input after enhanced Accessibility activation, including controlled covered
 tests with unchanged pointer, foreground and ordering. Targeted coordinate input
-remains unresolved for Chromium. Its covered page raster can also remain stale
-after a successful Accessibility action; a ScreenCaptureKit stream alone did not
-resolve that rendering suppression. Covered-window user acceptance remains
-unresolved; an AX dispatch receipt is still not proof of a click. Window
-capture uses individual ScreenCaptureKit screenshots, so a persistent macOS
-screen-sharing badge is not an acceptance condition for this capture path.
+remains unresolved for Chromium. A desktop-independent ScreenCaptureKit stream
+could leave the covered page raster stale after a successful Accessibility action.
+Using a display stream filtered to **only the selected window** kept that page
+rendering in repeated native Chromium fixture tests. The integrated helper's
+covered capture showed the changed counter and macOS sharing badge, with unchanged
+sampled pointer, foreground application and existing window order. This is fixture
+evidence, not general application acceptance; an AX dispatch receipt is still not
+proof of a click.
+
+The first window snapshot now starts that window-only display stream, retaining it
+across subsequent observations. Full-resolution images and custom-cursor pixels
+still use the existing independent-window screenshot path. The stream drains
+frames without encoding or retaining them: at most 640 pixels on the longest side,
+10 frames/second and three queued buffers, with audio and the system cursor off.
+It never shares the other windows on the display. The desktop agent cursor remains
+a separate overlay; the macOS sharing badge is system presentation, not an input
+cursor or evidence that input succeeded.
+
+Sessions attached to the same window incarnation share one stream. Closing or
+detaching the last session, changing the selected window, a stopped native stream,
+or 60 seconds without a snapshot releases it (idle/interruption cleanup runs every
+10 seconds). Stop/revocation closes the worker-owned native session. A late startup
+completion is stopped if its lease was already removed. Moving/resizing a target
+or moving it to another display rebuilds the stream on the next observation.
+Windows without a display intersection still attempt their independent screenshot;
+covered rendering for off-screen, minimized, or other-Space windows remains
+unverified. Starting/stopping sharing never activates the target or posts input.
 
 ## Explicit process-targeted coordinate attempt
 
