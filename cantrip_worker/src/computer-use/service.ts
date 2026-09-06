@@ -444,11 +444,13 @@ export class CantripCuaService {
         const method =
           operation === "input.press"
             ? "accessibility"
-            : "delivery" in fields && fields.delivery === "process"
-              ? "process-coordinate"
-              : "globalInput" in fields && fields.globalInput === true
-                ? "coordinate"
-                : "accessibility";
+            : "delivery" in fields && fields.delivery === "background"
+              ? "background-coordinate"
+              : "delivery" in fields && fields.delivery === "process"
+                ? "process-coordinate"
+                : "globalInput" in fields && fields.globalInput === true
+                  ? "coordinate"
+                  : "accessibility";
         const position =
           operation === "input.click"
             ? "position" in fields
@@ -606,7 +608,7 @@ export class CantripCuaService {
     position: CuaPoint | undefined,
     signal?: AbortSignal,
     globalInput = false,
-    delivery?: "process",
+    delivery?: "process" | "background",
   ) {
     return this.mutate(
       input,

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "kebab-case")]
 pub enum ClickDelivery {
     Process,
+    Background,
 }
 
 pub(crate) fn error_outcome(code: crate::error::ErrorCode) -> &'static str {
@@ -346,6 +347,28 @@ mod targeted_tests {
                 },
             ))
         }
+        fn background_click(
+            &mut self,
+            _session: &str,
+            target: &Target,
+            point: Point,
+            _cancel: &Cancellation,
+        ) -> Result<(Target, InputReceipt)> {
+            self.calls.lock().unwrap().push(("background", point));
+            Ok((
+                target.clone(),
+                InputReceipt {
+                    control: None,
+                    method: "background-coordinate",
+                    activation: false,
+                    outcome: "unknown",
+                    position: Some(point),
+                    global_position: None,
+                    effects: None,
+                    window_delivery: Some("unverified"),
+                },
+            ))
+        }
         fn global_click(
             &mut self,
             _session: &str,
@@ -477,6 +500,27 @@ mod targeted_tests {
         process["globalInput"] = json!(true);
         assert!(run(&mut service, process).is_err());
         assert_eq!(calls.lock().unwrap().len(), 7);
+        let mut background = request("input.click");
+        background["delivery"] = json!("background");
+        let result = run(&mut service, background.clone()).unwrap();
+        assert_eq!(result.data["input"]["method"], "background-coordinate");
+        assert_eq!(result.data["input"]["windowDelivery"], "unverified");
+        assert_eq!(
+            result.data["session"]["cursor"]["action"]["method"],
+            "background-coordinate"
+        );
+        assert_eq!(
+            result.data["session"]["cursor"]["action"]["outcome"],
+            "unknown"
+        );
+        assert_eq!(calls.lock().unwrap().len(), 8);
+        assert_eq!(
+            calls.lock().unwrap()[7],
+            ("background", Point { x: 12.0, y: 15.0 })
+        );
+        background["globalInput"] = json!(true);
+        assert!(run(&mut service, background).is_err());
+        assert_eq!(calls.lock().unwrap().len(), 8);
         let mut reference = request("input.press");
         reference["reference"] = json!("unknown-control");
         assert!(run(&mut service, reference).is_err());

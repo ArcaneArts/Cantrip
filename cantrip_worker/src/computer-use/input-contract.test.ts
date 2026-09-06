@@ -24,24 +24,27 @@ describe("native press contract", () => {
       }).success,
     ).toBe(true);
   });
-  it("process clicks cannot carry an alternate process, target or fallback", () => {
-    expect(
-      cuaJavascriptActionSchema.parse({ operation: "processClick" }),
-    ).toEqual({ operation: "processClick" });
-    for (const extra of [
-      { processId: 123 },
-      { targetId: "other" },
-      { globalInput: true },
-      { fallback: true },
-    ]) {
-      expect(
-        cuaJavascriptActionSchema.safeParse({
-          operation: "processClick",
-          ...extra,
-        }).success,
-      ).toBe(false);
-    }
-  });
+  it.each(["processClick", "backgroundClick"])(
+    "%s cannot carry an alternate process, target or fallback",
+    (operation) => {
+      expect(cuaJavascriptActionSchema.parse({ operation })).toEqual({
+        operation,
+      });
+      for (const extra of [
+        { processId: 123 },
+        { targetId: "other" },
+        { globalInput: true },
+        { fallback: true },
+      ]) {
+        expect(
+          cuaJavascriptActionSchema.safeParse({
+            operation,
+            ...extra,
+          }).success,
+        ).toBe(false);
+      }
+    },
+  );
   it("cannot reuse observation or logical cursor grants for native input", () => {
     const profile = {
       selectedId: ":read-only",

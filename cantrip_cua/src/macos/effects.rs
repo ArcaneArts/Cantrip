@@ -75,7 +75,12 @@ fn window_order() -> Option<Vec<u32>> {
             }
             u32::try_from(id).ok()
         })
-        .collect()
+        .collect::<Option<Vec<_>>>()
+        .map(|ids| {
+            ids.into_iter()
+                .filter(|id| !super::overlay::owns(*id))
+                .collect()
+        })
 }
 fn now_ms() -> u64 {
     SystemTime::now()

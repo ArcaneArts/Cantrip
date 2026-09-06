@@ -74,7 +74,12 @@ export const cuaSessionSchema = z.strictObject({
     revision: sequence,
     action: z
       .strictObject({
-        method: z.enum(["accessibility", "coordinate", "process-coordinate"]),
+        method: z.enum([
+          "accessibility",
+          "coordinate",
+          "process-coordinate",
+          "background-coordinate",
+        ]),
         outcome: z.enum([
           "dispatched",
           "failed",
@@ -210,7 +215,12 @@ export const cuaControlsResultSchema = z.strictObject({
 });
 export const cuaInputReceiptSchema = z.strictObject({
   control: cuaControlSchema.optional(),
-  method: z.enum(["accessibility", "coordinate", "process-coordinate"]),
+  method: z.enum([
+    "accessibility",
+    "coordinate",
+    "process-coordinate",
+    "background-coordinate",
+  ]),
   activation: z.boolean(),
   outcome: z.enum(["dispatched", "unknown"]),
   windowDelivery: z.literal("unverified").optional(),
@@ -322,7 +332,7 @@ export const computerUseActionSchema = z.discriminatedUnion("operation", [
     ...targetFields,
     position: cuaPointSchema.optional(),
     globalInput: z.boolean().optional(),
-    delivery: z.literal("process").optional(),
+    delivery: z.enum(["process", "background"]).optional(),
   }),
   z.strictObject({ operation: z.literal("session.close"), ...sessionFields }),
 ]);

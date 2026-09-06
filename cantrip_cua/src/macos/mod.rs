@@ -4,8 +4,10 @@ mod accessibility;
 mod click;
 mod effects;
 mod geometry;
+mod overlay;
 mod pending;
 mod registry;
+mod skylight;
 
 use crate::{
     backend::{Capture, CaptureBackend, Raster, UnavailableBackend},
@@ -117,7 +119,7 @@ pub fn available() -> bool {
 }
 
 /// Binary entry point: the original main run loop remains serviced while one Rust
-/// executor handles IPC. No windows, application activation or input.
+/// executor handles IPC. Desktop cursor panels are created lazily without activation.
 pub fn run() -> std::io::Result<()> {
     if !available() {
         return crate::runtime::run(UnavailableBackend, std::io::stdin(), std::io::stdout());
@@ -131,7 +133,8 @@ pub fn run() -> std::io::Result<()> {
     let main_loop = CFRunLoop::current()
         .ok_or_else(|| std::io::Error::other("Native main run loop is unavailable."))?;
     // Preserve the original main thread and native event sources while idle,
-    // with one unsignalled keepalive rather than timers or a busy loop.
+    // with one unsignalled keepalive. Attached desktop cursors schedule their own
+    // bounded presentation refreshes on this loop.
     let mut context = CFRunLoopSourceContext {
         version: 0,
         info: std::ptr::null_mut(),
@@ -219,6 +222,21 @@ impl MacOsBackend {
 }
 
 impl CaptureBackend for MacOsBackend {
+    fn present_cursors(&mut self, sessions: Vec<crate::service::SessionState>) {
+        overlay::present(sessions);
+    }
+    fn background_click(
+        &mut self,
+        session: &str,
+        target: &Target,
+        point: crate::target::Point,
+        cancel: &Cancellation,
+    ) -> Result<(Target, crate::input::InputReceipt)> {
+        self.accessibility.clear(session);
+        let current = self.resolve_target(&target.id, target.generation, cancel)?;
+        effects::observe(|| click::background_click(&current, point, cancel))
+    }
+
     fn click(
         &mut self,
         session: &str,
@@ -498,6 +516,11 @@ unsafe fn read_inventory(
             ));
         }
         let window = windows.objectAtIndex(index);
+        if unsafe { window.owningApplication() }
+            .is_some_and(|app| unsafe { app.processID() } == std::process::id() as i32)
+        {
+            continue;
+        }
         match unsafe { window_candidate(&window, None) } {
             Ok(candidate) => add_candidate(
                 &mut output,
@@ -632,11 +655,21 @@ unsafe fn selected_filter(
                         "The selected native display no longer exists.",
                     )
                 })?;
+            // Desktop presentation is composited separately from the model cursor.
+            // Exclude our own panels so monitor capture does not double-draw them.
+            let windows = unsafe { content.windows() };
+            let excluded: Vec<_> = (0..windows.count())
+                .map(|i| windows.objectAtIndex(i))
+                .filter(|window| {
+                    unsafe { window.owningApplication() }
+                        .is_some_and(|app| unsafe { app.processID() } == std::process::id() as i32)
+                })
+                .collect();
             let filter = unsafe {
                 SCContentFilter::initWithDisplay_excludingWindows(
                     SCContentFilter::alloc(),
                     &display,
-                    &NSArray::new(),
+                    &NSArray::from_retained_slice(&excluded),
                 )
             };
             (

@@ -14,6 +14,7 @@ struct NativePoint {
 }
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
+    fn CGEventSourceCreate(state: i32) -> Event;
     fn CGEventCreateMouseEvent(
         source: Event,
         kind: u32,
@@ -37,9 +38,12 @@ impl Drop for MouseEvent {
 }
 impl MouseEvent {
     fn create(kind: u32, position: Point) -> Result<Self> {
+        Self::with_source(kind, position, ptr::null())
+    }
+    fn with_source(kind: u32, position: Point, source: Event) -> Result<Self> {
         let event = unsafe {
             CGEventCreateMouseEvent(
-                ptr::null(),
+                source,
                 kind,
                 NativePoint {
                     x: position.x,
@@ -128,6 +132,79 @@ pub(super) fn process_click(
             method: "process-coordinate",
             activation: false,
             // The void API provides no acknowledgement of window delivery.
+            outcome: "unknown",
+            position: Some(position),
+            global_position: Some(global),
+            effects: None,
+            window_delivery: Some("unverified"),
+        },
+    ))
+}
+
+/// One explicit experimental mouse gesture. No public/global second posting.
+pub(super) fn background_click(
+    target: &Target,
+    position: Point,
+    cancel: &Cancellation,
+) -> Result<(Target, InputReceipt)> {
+    use std::{
+        sync::atomic::{AtomicI64, Ordering},
+        time::Duration,
+    };
+    let (pid, window) = process_destination(target)?;
+    let global = target.bounds.to_global(position)?;
+    let delivery = super::skylight::Delivery::load()?;
+    let source = unsafe { CGEventSourceCreate(1) }; // kCGEventSourceStateHIDSystemState
+    if source.is_null() {
+        return Err(CuaError::new(
+            ErrorCode::InputFailed,
+            "Could not create background event source; no input was posted.",
+        ));
+    }
+    let source = MouseEvent(source); // CF-owned source; same release semantics.
+    let movement = MouseEvent::with_source(5, global, source.0)?;
+    let down = MouseEvent::with_source(1, global, source.0)?;
+    let up = MouseEvent::with_source(2, global, source.0)?;
+    static GROUP: AtomicI64 = AtomicI64::new(1);
+    let group = GROUP.fetch_add(1, Ordering::Relaxed);
+    for (event, state) in [(&movement, 0), (&down, 1), (&up, 1)] {
+        unsafe {
+            delivery.prepare(event.0, pid, window, position, group, state);
+        }
+    }
+    cancel.check()?;
+    unsafe {
+        delivery.post(pid, movement.0);
+    }
+    // Give the target's event loop a tracking update before the button pair.
+    std::thread::sleep(Duration::from_millis(12));
+    if cancel.is_cancelled() {
+        return Err(CuaError::new(
+            ErrorCode::InputUnknown,
+            "Stopped after a background tracking event; no button pair was sent. Do not replay the gesture automatically.",
+        ));
+    }
+    crate::input::dispatch_single_click(
+        cancel,
+        || {
+            unsafe {
+                delivery.post(pid, down.0);
+            }
+            std::thread::sleep(Duration::from_millis(28));
+        },
+        || unsafe {
+            delivery.post(pid, up.0);
+        },
+    ).map_err(|_| CuaError::new(
+        ErrorCode::InputUnknown,
+        "Stopped after background tracking began; mouse-up cleanup was preserved if down was posted. Do not replay the gesture automatically.",
+    ))?;
+    Ok((
+        target.clone(),
+        InputReceipt {
+            control: None,
+            method: "background-coordinate",
+            activation: false,
             outcome: "unknown",
             position: Some(position),
             global_position: Some(global),
