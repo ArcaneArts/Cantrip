@@ -30,6 +30,7 @@ export function computerUseActivity(input: {
   target?: CuaTargetReference | null;
   image?: CuaImage | null;
   input?: CuaInputReceipt | null;
+  inputMethod?: CuaInputReceipt["method"];
   position?: CuaPoint | null;
   startedAtMs: number;
   completedAtMs?: number;
@@ -95,11 +96,8 @@ export function computerUseActivity(input: {
       input.input ??
       (input.operation === "input.press" || input.operation === "input.click"
         ? {
-            method:
-              input.operation === "input.click"
-                ? "coordinate"
-                : "accessibility",
-            activation: input.operation === "input.click" ? null : false,
+            method: input.inputMethod ?? "accessibility",
+            activation: input.inputMethod === "coordinate" ? null : false,
             ...(input.position ? { position: input.position } : {}),
             outcome:
               code === "input-unknown" ||

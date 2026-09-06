@@ -241,6 +241,7 @@ export async function handleComputerUseOperation(
           target(action),
           action.position,
           signal,
+          action.globalInput ?? false,
         );
         break;
       case "controls.inspect":
@@ -362,8 +363,13 @@ export async function handleComputerUseOperation(
             image,
             position:
               activityAction?.operation === "input.click"
-                ? activityAction.position
+                ? (activityAction.position ?? session?.cursor.position ?? null)
                 : null,
+            inputMethod:
+              activityAction?.operation === "input.click" &&
+              activityAction.globalInput
+                ? "coordinate"
+                : "accessibility",
             input:
               data && "input" in data
                 ? cuaInputReceiptSchema.parse(data.input)

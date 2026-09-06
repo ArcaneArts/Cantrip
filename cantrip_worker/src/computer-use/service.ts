@@ -598,8 +598,9 @@ export class CantripCuaService {
     input: CuaScope,
     sessionId: string,
     target: CuaTargetReference,
-    position: CuaPoint,
+    position: CuaPoint | undefined,
     signal?: AbortSignal,
+    globalInput = false,
   ) {
     return this.mutate(
       input,
@@ -607,7 +608,12 @@ export class CantripCuaService {
       "input.click",
       {
         ...cuaTargetReferenceSchema.parse(target),
-        position: cuaPointSchema.parse(position),
+        ...(position === undefined
+          ? {}
+          : { position: cuaPointSchema.parse(position) }),
+        // Always send the selector: older helpers reject it instead of silently
+        // executing their legacy global click for a targeted request.
+        globalInput,
       },
       signal,
     ) as Promise<CuaInputResult>;

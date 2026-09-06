@@ -148,7 +148,7 @@ describe("bounded CUA JavaScript host arguments", () => {
       ).toBe(false);
     }
     for (const operation of [
-      "click",
+      "globalClick",
       "type",
       "exec",
       "fetch",

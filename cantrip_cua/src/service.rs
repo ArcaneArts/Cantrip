@@ -117,7 +117,10 @@ pub enum Operation {
         binding: SessionBinding,
         target_id: String,
         target_generation: u64,
-        position: Point,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        position: Option<Point>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        global_input: bool,
     },
     #[serde(rename = "session.close")]
     SessionClose { binding: SessionBinding },
@@ -492,6 +495,16 @@ impl<B: CaptureBackend> CuaService<B> {
                 let input = self
                     .backend
                     .press(&binding.session_id, &target, &reference, cancel)?;
+                // A presentation limit must not turn an already-dispatched
+                // action into a retryable failure.
+                if let Some(position) = input.position
+                    && state
+                        .cursor
+                        .move_to(position, &target.bounds, now_ms)
+                        .is_ok()
+                {
+                    state.cursor.mark_action(input.method, now_ms);
+                }
                 state.target = Some(target);
                 self.sessions
                     .insert(binding.session_id.clone(), state.clone());
@@ -504,14 +517,24 @@ impl<B: CaptureBackend> CuaService<B> {
                 target_id,
                 target_generation,
                 position,
+                global_input,
             } => {
                 let mut state = self.attached(&binding, &target_id, target_generation)?;
                 let target = self
                     .backend
                     .resolve_target(&target_id, target_generation, cancel)?;
-                let (current, input) =
+                let position = position.unwrap_or(state.cursor.position);
+                state.cursor.move_to(position, &target.bounds, now_ms)?;
+                self.sessions
+                    .insert(binding.session_id.clone(), state.clone());
+                let (current, input) = if global_input {
                     self.backend
-                        .click(&binding.session_id, &target, position, cancel)?;
+                        .global_click(&binding.session_id, &target, position, cancel)?
+                } else {
+                    self.backend
+                        .click(&binding.session_id, &target, position, cancel)?
+                };
+                state.cursor.mark_action(input.method, now_ms);
                 state.target = Some(current);
                 self.sessions
                     .insert(binding.session_id.clone(), state.clone());

@@ -307,8 +307,20 @@ impl Accessibility {
         target: &Target,
         cancel: &Cancellation,
     ) -> Result<Controls> {
+        self.inspect_inner(session, target, cancel, None)
+    }
+    fn inspect_inner(
+        &mut self,
+        session: &str,
+        target: &Target,
+        cancel: &Cancellation,
+        point: Option<crate::target::Point>,
+    ) -> Result<Controls> {
         self.clear(session);
         let window = Self::window(target, cancel)?;
+        let node_limit = if point.is_some() { 512 } else { 128 };
+        let child_limit = if point.is_some() { 128 } else { 32 };
+        let depth_limit = if point.is_some() { 24 } else { 12 };
         let mut pending = VecDeque::from([(Owned::take(unsafe { CFRetain(window.0) })?, 0)]);
         let mut controls = vec![];
         let mut elements = HashMap::new();
@@ -317,7 +329,7 @@ impl Accessibility {
         let deadline = Instant::now() + Duration::from_secs(3);
         while let Some((element, depth)) = pending.pop_front() {
             cancel.check()?;
-            if visited >= 128 || controls.len() >= 32 || Instant::now() > deadline {
+            if visited >= node_limit || controls.len() >= 32 || Instant::now() > deadline {
                 truncated = true;
                 break;
             }
@@ -342,13 +354,32 @@ impl Accessibility {
             if secure {
                 continue;
             }
-            if depth < 12 {
-                if let Ok((children, more)) =
-                    element.children("AXChildren", (128 - visited).min(32))
+            // Resolve within the selected window, pruning known off-point
+            // branches instead of using z-order-dependent desktop hit testing.
+            if let Some(point) = point
+                && let Ok(bounds) = element.rect()
+            {
+                let local = crate::target::Point {
+                    x: point.x + target.bounds.x - bounds.x,
+                    y: point.y + target.bounds.y - bounds.y,
+                };
+                if !bounds.contains_local(local) {
+                    continue;
+                }
+            }
+            if depth < depth_limit {
+                let children =
+                    element.children("AXChildren", (node_limit - visited).min(child_limit));
+                if let Err(error) = &children
+                    && point.is_some()
+                    && error.code != ErrorCode::Unsupported
                 {
+                    return Err(error.clone());
+                }
+                if let Ok((children, more)) = children {
                     truncated |= more;
                     for child in children {
-                        if pending.len() < 128 {
+                        if pending.len() < node_limit {
                             pending.push_back((child, depth + 1));
                         } else {
                             truncated = true;
@@ -410,12 +441,41 @@ impl Accessibility {
             truncated,
         })
     }
+    pub(super) fn press_at(
+        &mut self,
+        session: &str,
+        target: &Target,
+        position: crate::target::Point,
+        cancel: &Cancellation,
+    ) -> Result<(Target, InputReceipt)> {
+        target.bounds.to_global(position)?;
+        let inspection = self.inspect_inner(session, target, cancel, Some(position))?;
+        let reference = match crate::input::control_at(&inspection, position) {
+            Ok(reference) => reference.to_owned(),
+            Err(error) => {
+                self.clear(session);
+                return Err(error);
+            }
+        };
+        let receipt = self.press_inner(session, target, &reference, cancel, Some(position))?;
+        Ok((target.clone(), receipt))
+    }
     pub(super) fn press(
         &mut self,
         session: &str,
         target: &Target,
         reference: &str,
         cancel: &Cancellation,
+    ) -> Result<InputReceipt> {
+        self.press_inner(session, target, reference, cancel, None)
+    }
+    fn press_inner(
+        &mut self,
+        session: &str,
+        target: &Target,
+        reference: &str,
+        cancel: &Cancellation,
+        expected_point: Option<crate::target::Point>,
     ) -> Result<InputReceipt> {
         // Consume the inspection before sending an action. Even an uncertain
         // outcome cannot reuse a reference to retry the same press.
@@ -434,6 +494,26 @@ impl Accessibility {
                 "This control does not advertise press.",
             ));
         }
+        let bounds = element.rect();
+        if let Some(point) = expected_point {
+            let bounds = bounds.as_ref().map_err(Clone::clone)?;
+            let local = crate::target::Point {
+                x: point.x + target.bounds.x - bounds.x,
+                y: point.y + target.bounds.y - bounds.y,
+            };
+            if !bounds.contains_local(local) {
+                return Err(stale());
+            }
+        }
+        let position = expected_point.or_else(|| {
+            bounds.ok().and_then(|bounds| {
+                let point = crate::target::Point {
+                    x: bounds.x + bounds.width / 2.0 - target.bounds.x,
+                    y: bounds.y + bounds.height / 2.0 - target.bounds.y,
+                };
+                target.bounds.contains_local(point).then_some(point)
+            })
+        });
         cancel.check()?;
         let action = Owned::string("AXPress");
         let code = unsafe { AXUIElementPerformAction(element.0, action.0) };
@@ -451,8 +531,8 @@ impl Accessibility {
             method: "accessibility",
             activation: false,
             outcome: "dispatched",
-            position: None,
-            global_position: None,
+            position,
+            global_position: position.and_then(|p| target.bounds.to_global(p).ok()),
         })
     }
 }

@@ -10,6 +10,33 @@ Use an updated development build and worker;
 an older installed app may not include these tools. No installed app, saved QA
 profile, credentials or macOS permissions were changed by this implementation.
 
+## Custom-cursor actions (current development behavior)
+
+Ordinary `cua.click()` acts at the custom cursor through the attached window's
+Accessibility controls. `cua.click({x,y})` first updates that logical position.
+The helper searches the selected window hierarchy, not the desktop under the
+physical pointer. It does not request activation, window raising or system
+pointer movement. There is no automatic global-input fallback.
+
+Use `await cua.moveCursor({x,y}); await cua.click(); await cua.snapshot()` after
+attaching a window in the current agent turn. Successful dispatch adds an outer
+ring and center dot to the existing cursor appearance until the next movement.
+Reference-based `cua.press(reference)` also positions the marker at the control
+center when its geometry is available.
+
+Global mouse input now requires explicit `cua.globalClick({x,y})` (or
+`globalInput: true` on the low-level `input.click` request). This retains the old
+activation and shared-pointer behavior. Do not use it for requests to preserve
+the human pointer or act in a covered window without changing focus.
+
+Targeted clicks require a uniquely resolved pressable control. Missing,
+ambiguous or incomplete control information returns an error. Applications may
+cause their own focus changes when responding to an action; `activation: false`
+means Cantrip did not request activation, not that focus was measured unchanged.
+Focus-effect observation and process-targeted coordinate delivery remain work
+for the pointer-preserving goal. Covered-window user acceptance is pending;
+the earlier foreground/global-click acceptance below does not satisfy it.
+
 ## Try it
 
 1. Ask a Cantrip agent: “Find and attach [a harmless application window], inspect
@@ -18,9 +45,9 @@ profile, credentials or macOS permissions were changed by this implementation.
    `cua.press(reference)` and `cua.snapshot()` through managed JavaScript.
 2. Try an explicit coordinate action: “Capture this window, single-left-click
    [a harmless position], then capture and describe the result.” This uses
-   `cua.click({x,y})`. Window clicks activate and raise the attached window and
-   verify that it owns the position before posting input. Monitor clicks act
-   within that selected monitor.
+   `cua.click({x,y})` to resolve a pressable control in the selected window.
+   Only for expressly requested shared-pointer input use `cua.globalClick({x,y})`;
+   global window clicks activate and raise the target before posting input.
 3. Outside selected YOLO, expect separate native-input approval through the
    existing permission interaction. An observation or logical-cursor grant does
    not authorize input. Check the protected Trajectory for method, target,
@@ -83,9 +110,10 @@ dispatch cancels both mouse events; after mouse-down, mouse-up cleanup still run
 
 ## Supported bounds
 
-Accessibility inspection returns up to 32 pressable controls from at most 128
-visited elements, with bounded roles, labels, local bounds and transient
-references. It never requests AX values or descends into secure fields. Native
+Accessibility discovery returns up to 32 pressable controls from at most 128
+visited elements. Cursor-targeted search prunes known off-point branches and is
+bounded to 512 visited elements, 128 children per node and depth 24, with bounded
+roles, labels, local bounds and transient references. It never requests AX values or descends into secure fields. Native
 handles stay in Rust; reinspection, target changes, detach, reset, Stop and input
 retire the references. Press consumes the inspection even if it fails or its
 outcome is uncertain. Inspect again when references become stale.
@@ -93,7 +121,7 @@ outcome is uncertain. Inspect again when references become stale.
 Window matching uses the current owning process and a unique Accessibility
 window matching geometry and available title. Ambiguous matches or windows
 without usable Accessibility metadata fail explicitly. Virtualized or incomplete
-AX trees may omit controls. Coordinate input requires usable AX window geometry
+AX trees may omit controls. Explicit global coordinate input requires usable AX window geometry
 and hit testing for application windows; covered background clicking is not
 promised. Human activity can still race native focus and dispatch.
 

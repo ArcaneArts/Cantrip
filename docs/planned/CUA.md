@@ -6,7 +6,47 @@ recorded in cycle 16. Updater signing, notarization and installed-update permiss
 verification remain unperformed. Accessibility press and single-left coordinate
 clicking are implemented and merged. The user confirmed inspect → click → inspect
 in a Codex window on 2026-09-05, satisfying this bounded clicking goal.
-The full computer-use roadmap is unfinished.
+The full computer-use roadmap is unfinished. The subsequent custom-cursor and
+covered-window goal is active; the earlier global-click test is not its acceptance.
+
+## Custom-cursor and covered-window progress
+
+Goal: act in a covered application window through the custom cursor while
+preserving the human pointer, foreground application and window ordering.
+Acceptance requires the user's report of that complete outcome. Work is solo,
+with sequential worktree PRs and squash auto-merge; interactive testing belongs
+to the user and implementation does not pause between useful cycles.
+
+### Cycle 1 — Targeted Accessibility cursor actions
+
+- Branch: `codex/cua-cursor-targeted-actions`.
+- `cua.click()` uses the current custom cursor; an explicit point updates it.
+  Rust resolves a pressable control from the attached window's hierarchy and
+  invokes AXPress without requesting activation, raising or pointer movement.
+  Bounded position-specific traversal avoids reliance on desktop z-order hit
+  testing or the short general control-discovery list. Incomplete/ambiguous
+  selection fails without global fallback, including after an unknown result.
+- Global input is separate: `cua.globalClick(point)` / `globalInput: true`.
+  Workers always send the selector, so an older helper rejects the new wire
+  request rather than silently running its legacy global click implementation.
+- Successful input updates the logical cursor action location and adds a visual
+  dispatch marker to snapshots/preview, preserving saved cursor appearance.
+  Protected activity records distinguish the actual or attempted method.
+- Evidence from the previous user test: controls were requested before attaching
+  a target in the new turn. After attachment, inspection returned three controls
+  and `truncated: true`. Tool instructions now emphasize per-turn attachment;
+  targeted search has its own bounded traversal for the action position.
+- Validation: Rust compilation; five focused input/dispatch/selection unit tests;
+  49 worker unit tests passed and five existing tests skipped; Rust Clippy;
+  worker/server/app typechecks; formatting and diff checks. No native/GUI or
+  integration acceptance was run by the coding agent.
+- User test: cover a harmless application window, ask the agent to attach it,
+  capture it, move its custom cursor over a button, call `cua.click()` and capture
+  the result. Observe your system pointer and foreground window. No globalClick.
+- Remaining: actual focus-effect reporting, targeted coordinate delivery where
+  supported, and the user's covered-window/pointer-preservation acceptance.
+  AXPress may produce app-defined focus effects; `activation: false` currently
+  records that Cantrip did not request activation, not a measured absence of it.
 
 ## Clicking-tranche progress
 

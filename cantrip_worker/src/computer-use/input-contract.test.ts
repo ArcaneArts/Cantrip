@@ -4,6 +4,26 @@ import { cuaJavascriptActionSchema } from "./javascript.js";
 import { CuaNativeError } from "./errors.js";
 
 describe("native press contract", () => {
+  it("keeps ordinary cursor clicks separate from explicit global input", () => {
+    expect(cuaJavascriptActionSchema.parse({ operation: "click" })).toEqual({
+      operation: "click",
+    });
+    expect(
+      cuaJavascriptActionSchema.safeParse({
+        operation: "click",
+        globalInput: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      cuaJavascriptActionSchema.safeParse({ operation: "globalClick" }).success,
+    ).toBe(false);
+    expect(
+      cuaJavascriptActionSchema.safeParse({
+        operation: "globalClick",
+        point: { x: 12, y: 15 },
+      }).success,
+    ).toBe(true);
+  });
   it("cannot reuse observation or logical cursor grants for native input", () => {
     const profile = {
       selectedId: ":read-only",
