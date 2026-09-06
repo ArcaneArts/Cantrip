@@ -18,6 +18,31 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Sharing a covered window to keep its contents current
+
+- Branch: `codex/cua-covered-window-sharing`; [PR #1791](https://github.com/ArcaneArts/Cantrip/pull/1791)
+  squash-merged, Primary synchronized, development helper installed.
+- A ScreenCaptureKit display stream filtered to only the selected window now
+  keeps covered Chromium rendering. Independent-window screenshots still provide
+  full-resolution images and cursor feedback. The macOS sharing badge appeared
+  in native fixture captures; it is not evidence that input succeeded.
+- One bounded stream is shared by sessions attached to the same window. Last
+  detach/close, idle expiry and native interruption release it. Cleanup also
+  stops a late startup after cancellation. No target activation, pointer movement
+  or new input fallback was added.
+- Validation: 57 Rust library tests, build, formatting, Clippy and all four CI
+  jobs passed. Integrated covered Chromium fixtures at 600×500 and 1000×700 each
+  received one trusted click and visibly captured Count 1, with unchanged sampled
+  pointer, foreground app and window order. Native session sharing, last-owner
+  cleanup, reattach and startup cancellation passed.
+- Optional user check: cover the target app with another window, ask the agent
+  to select a different chat and inspect the result, then confirm the actual
+  change while your pointer and foreground remain undisturbed. The desktop cursor
+  remains behind covering windows; observations show its target-local position.
+- Full user acceptance remains pending. Coordinate delivery in Chromium and
+  minimized, off-screen or other-Space rendering remain unresolved. See the
+  [clicking guide](../COMPUTER_USE_CLICKING.md) for supported methods and limits.
+
 ### Enhanced Accessibility activation for application actions
 
 - Branch: `codex/cua-enhanced-accessibility`.
@@ -36,8 +61,8 @@ between useful cycles.
   AX input with unchanged pointer, foreground and window order. However, covered
   raster capture remained stale, including with a native ScreenCaptureKit stream.
   Disabling occlusion throttling only in a disposable browser made its covered
-  capture update. Existing-app rendering remains the next unresolved step; no
-  such browser flag or stream has been added to the product.
+  capture update. The window-only sharing cycle above subsequently addressed
+  covered rendering without adding that browser flag to the product.
 
 ### Accessibility windows omitted from the window list
 
