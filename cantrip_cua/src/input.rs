@@ -1,6 +1,12 @@
 //! Bounded input metadata. Native handles never leave the backend.
 use crate::target::Bounds;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClickDelivery {
+    Process,
+}
 
 pub(crate) fn error_outcome(code: crate::error::ErrorCode) -> &'static str {
     use crate::error::ErrorCode;
@@ -42,6 +48,8 @@ pub struct InputReceipt {
     pub global_position: Option<crate::target::Point>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effects: Option<InputEffects>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_delivery: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -88,6 +96,7 @@ mod tests {
             }
             if operation == "input.click" {
                 value["position"] = json!({"x":12.25,"y":5.0});
+                value["delivery"] = json!("process");
             }
             let parsed: Operation = serde_json::from_value(value.clone()).unwrap();
             assert_eq!(serde_json::to_value(parsed).unwrap(), value);
@@ -273,6 +282,28 @@ mod targeted_tests {
                     position: Some(point),
                     global_position: None,
                     effects: None,
+                    window_delivery: None,
+                },
+            ))
+        }
+        fn process_click(
+            &mut self,
+            _session: &str,
+            target: &Target,
+            point: Point,
+            _cancel: &Cancellation,
+        ) -> Result<(Target, InputReceipt)> {
+            self.calls.lock().unwrap().push(("process", point));
+            Ok((
+                target.clone(),
+                InputReceipt {
+                    method: "process-coordinate",
+                    activation: false,
+                    outcome: "unknown",
+                    position: Some(point),
+                    global_position: None,
+                    effects: None,
+                    window_delivery: Some("unverified"),
                 },
             ))
         }
@@ -293,6 +324,7 @@ mod targeted_tests {
                     position: Some(point),
                     global_position: None,
                     effects: None,
+                    window_delivery: None,
                 },
             ))
         }
@@ -361,6 +393,23 @@ mod targeted_tests {
         global["globalInput"] = json!(true);
         run(&mut service, global).unwrap();
         assert_eq!(calls.lock().unwrap()[5].0, "global");
+        let mut process = request("input.click");
+        process["delivery"] = json!("process");
+        let result = run(&mut service, process.clone()).unwrap();
+        assert_eq!(result.data["input"]["method"], "process-coordinate");
+        assert_eq!(result.data["input"]["windowDelivery"], "unverified");
+        assert_eq!(
+            result.data["session"]["cursor"]["action"]["outcome"],
+            "unknown"
+        );
+        assert_eq!(calls.lock().unwrap().len(), 7); // Exactly one attempt; no fallback.
+        assert_eq!(
+            calls.lock().unwrap()[6],
+            ("process", Point { x: 12.0, y: 15.0 })
+        );
+        process["globalInput"] = json!(true);
+        assert!(run(&mut service, process).is_err());
+        assert_eq!(calls.lock().unwrap().len(), 7);
         let mut reference = request("input.press");
         reference["reference"] = json!("unknown-control");
         assert!(run(&mut service, reference).is_err());

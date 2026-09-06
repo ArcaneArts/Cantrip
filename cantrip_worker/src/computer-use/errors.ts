@@ -63,7 +63,8 @@ const nativeMessages: Record<CuaNativeErrorCode, string> = {
   "protocol-version": "The computer-use protocol version is unsupported.",
   capacity: "The computer-use operation exceeded a runtime limit.",
   cancelled: "The computer-use operation was cancelled by the runtime.",
-  unsupported: "The computer-use operation is unavailable on this runtime.",
+  unsupported:
+    "The target or action is unsupported. Cursor clicks require a unique pressable control; process clicks require an application window. No global input fallback was attempted.",
   "session-not-found": "The computer-use session no longer exists.",
   "ownership-mismatch":
     "The computer-use session belongs to another execution context.",

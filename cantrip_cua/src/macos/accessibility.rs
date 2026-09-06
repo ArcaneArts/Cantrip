@@ -534,6 +534,7 @@ impl Accessibility {
             position,
             global_position: position.and_then(|p| target.bounds.to_global(p).ok()),
             effects: None,
+            window_delivery: None,
         })
     }
 }

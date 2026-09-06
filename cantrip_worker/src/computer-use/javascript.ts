@@ -42,6 +42,10 @@ export const cuaJavascriptActionSchema = z.discriminatedUnion("operation", [
     point: cuaPointSchema.optional(),
   }),
   z.strictObject({
+    operation: z.literal("processClick"),
+    point: cuaPointSchema.optional(),
+  }),
+  z.strictObject({
     operation: z.literal("globalClick"),
     point: cuaPointSchema,
   }),
@@ -493,7 +497,11 @@ export class CuaJavascriptContexts {
           signal,
         ),
       };
-    if (action.operation === "click" || action.operation === "globalClick")
+    if (
+      action.operation === "click" ||
+      action.operation === "globalClick" ||
+      action.operation === "processClick"
+    )
       return this.service.click(
         scope,
         sessionId,
@@ -501,6 +509,7 @@ export class CuaJavascriptContexts {
         action.point,
         signal,
         action.operation === "globalClick",
+        action.operation === "processClick" ? "process" : undefined,
       );
     if (action.operation === "controls")
       return this.service.controls(scope, sessionId, target, signal);

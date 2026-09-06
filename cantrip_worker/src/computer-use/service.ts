@@ -601,6 +601,7 @@ export class CantripCuaService {
     position: CuaPoint | undefined,
     signal?: AbortSignal,
     globalInput = false,
+    delivery?: "process",
   ) {
     return this.mutate(
       input,
@@ -614,6 +615,7 @@ export class CantripCuaService {
         // Always send the selector: older helpers reject it instead of silently
         // executing their legacy global click for a targeted request.
         globalInput,
+        ...(delivery === undefined ? {} : { delivery }),
       },
       signal,
     ) as Promise<CuaInputResult>;

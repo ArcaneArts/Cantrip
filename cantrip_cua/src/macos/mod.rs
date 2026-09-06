@@ -231,6 +231,16 @@ impl CaptureBackend for MacOsBackend {
                 .press_at(session, target, position, cancel)
         })
     }
+    fn process_click(
+        &mut self,
+        session: &str,
+        target: &Target,
+        position: crate::target::Point,
+        cancel: &Cancellation,
+    ) -> Result<(Target, crate::input::InputReceipt)> {
+        self.accessibility.clear(session);
+        effects::observe(|| click::process_click(target, position, cancel))
+    }
     fn global_click(
         &mut self,
         session: &str,
