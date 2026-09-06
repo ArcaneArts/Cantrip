@@ -19,8 +19,9 @@ const goal = {
 describe("Task implementation dashboard presentation", () => {
   it("uses the full Task surface width without centered gutters", () => {
     expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).toContain("w-full");
+    expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).toContain("min-w-0");
+    expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).toContain("max-w-full");
     expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).not.toContain("mx-auto");
-    expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).not.toContain("max-w-");
   });
 
   it("labels managed folder placement without Git terminology", () => {
