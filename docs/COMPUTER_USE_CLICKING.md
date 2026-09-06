@@ -3,7 +3,10 @@
 Implemented in the macOS Rust helper and managed `cantrip_cua` tools by merged
 [PR #1761](https://github.com/ArcaneArts/Cantrip/pull/1761) (Accessibility) and
 [PR #1762](https://github.com/ArcaneArts/Cantrip/pull/1762) (coordinate clicks).
-All four existing CI jobs passed on #1762. User integration acceptance is pending. Use an updated development build and worker;
+All four existing CI jobs passed on #1762. On 2026-09-05, the user confirmed that
+an agent inspected a Codex window, clicked a different chat and read the result.
+This satisfies the bounded inspect → click → inspect acceptance condition.
+Use an updated development build and worker;
 an older installed app may not include these tools. No installed app, saved QA
 profile, credentials or macOS permissions were changed by this implementation.
 
@@ -24,7 +27,10 @@ profile, credentials or macOS permissions were changed by this implementation.
    position, activation and outcome. Press Stop during pending approval or queued
    input: work should cancel. Stop cannot undo a completed action.
 
-Integration testing is yours; these steps have not been performed by the agent.
+Integration testing is performed by the user. The report confirms the visible
+clicking result; it does not independently verify Accessibility press, every
+permission profile or Stop timing. No interactive testing was run by the coding
+agent.
 
 ## Script errors and permission changes
 
@@ -40,8 +46,8 @@ authority. A syntax failure alone does not revoke authority.
 
 The first user report after tool exposure combined a top-level-return parse
 failure with a subsequent permission-profile revocation before reset. It did not
-establish a helper crash. Native inspect → click → inspect acceptance is still
-pending user testing.
+establish a helper crash. The later user report confirms successful window
+inspection, clicking and inspection of the result.
 
 ## Coordinates and results
 
@@ -58,6 +64,13 @@ current target geometry and applies its global origin. A coordinate receipt
 returns both logical `position` and `globalPosition`, the method, activation and
 `outcome: "dispatched"`. Native clicks can move the human system pointer.
 `moveCursor` still changes only the logical agent cursor.
+
+The teal “Agent” ring is a visual marker rendered into CUA snapshots and shown
+in the CUA preview. It is not a second macOS input pointer or a floating cursor
+over other applications. Coordinate clicks use the shared system pointer; the
+user observed their pointer move during the successful test. Accessibility
+`press` invokes the advertised control action directly instead of posting a
+mouse click. It depends on the application exposing a usable control.
 
 A dispatch receipt does not prove the intended application change. Quartz event
 posting has no success return value; macOS may suppress input. Inspect the fresh

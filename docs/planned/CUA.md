@@ -4,7 +4,8 @@ Status: First-tranche observation, logical cursor, managed MCP, shared preview
 and protected Trajectory implemented and verified with the release qualifications
 recorded in cycle 16. Updater signing, notarization and installed-update permission
 verification remain unperformed. Accessibility press and single-left coordinate
-clicking are implemented and merged; user integration acceptance is pending.
+clicking are implemented and merged. The user confirmed inspect → click → inspect
+in a Codex window on 2026-09-05, satisfying this bounded clicking goal.
 The full computer-use roadmap is unfinished.
 
 ## Clicking-tranche progress
@@ -12,6 +13,28 @@ The full computer-use roadmap is unfinished.
 Implementation proceeds solo through isolated worktrees and squash auto-merge.
 The user's later instruction removes the original pause between cycles. Native,
 GUI and integration acceptance is reserved for the user; silence is not a pass.
+
+### User acceptance — Inspect, click and inspect
+
+- On 2026-09-05 the user reported that the Cantrip agent could see a Codex
+  application window, click a different chat and find its information. The
+  supplied conversation screenshots show target attachment and snapshots, and
+  the agent reports a fresh post-click image with the requested chat selected.
+- The user observed their system pointer move and click, without a separate
+  agent mouse. This matches coordinate input: the logical teal cursor is drawn
+  into CUA snapshots/preview; native coordinate clicks use the shared macOS
+  pointer. An independent input pointer was not part of this tranche.
+- This is user acceptance of the bounded inspect → click → inspect outcome,
+  not a claim that every native branch was exercised. Accessibility inspection
+  initially failed in the supplied sequence; successful Accessibility press,
+  all policy combinations and Stop timing were not independently user-verified.
+  The implementation and focused-check evidence for those paths remain recorded
+  below. No native or interactive acceptance was run by the coding agent.
+- Delivered implementation: [PR #1761](https://github.com/ArcaneArts/Cantrip/pull/1761),
+  [PR #1762](https://github.com/ArcaneArts/Cantrip/pull/1762), and recovery correction
+  [PR #1764](https://github.com/ArcaneArts/Cantrip/pull/1764), all observed merged.
+  The full observation/deferred roadmap and unsupported capabilities remain as
+  documented. No further implementation cycle is required for this bounded goal.
 
 ### User feedback — Script syntax and revoked turn authority
 
@@ -27,11 +50,10 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
 - Validation: seven Rust JavaScript unit tests, twelve worker authority unit
   tests, worker typecheck, formatting and diff checks. All four existing CI jobs
   passed: macOS, Windows, Linux and PostgreSQL authority. Native and integration
-  acceptance remains with the user. Send a new agent message after changing a
-  permission profile and use `{"script":"await cua.targets()"}` for discovery.
-- Next: user confirmation of window discovery, a real press or coordinate click,
-  and a fresh snapshot of the result. No post-fix acceptance result has been
-  reported; additional implementation is driven by that feedback.
+  acceptance was subsequently reported above. Send a new agent message after
+  changing a permission profile and use `{"script":"await cua.targets()"}` for discovery.
+- Subsequent result: the user confirmed window inspection, clicking and reading
+  the changed state, as recorded above.
 
 ### Clicking cycle 1 — Accessibility inspection and press
 
@@ -50,7 +72,8 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
   31 focused worker permission/contract unit tests and one Rust wire unit test.
   CI subsequently caught the three new public schemas missing from the explicit
   export baseline; cycle 2 corrects that baseline. Native and integration tests
-  were not run. User testing: pending.
+  were not run by the coding agent. Accessibility-press-specific user testing
+  remains unreported; the user accepted the overall clicking outcome above.
 - Limitations: macOS application windows only. Requires a unique AX window with
   matching current PID, geometry and available title; ambiguous matches fail.
   Incomplete/virtualized AX trees may omit controls. Action dispatch does not
@@ -79,14 +102,15 @@ GUI and integration acceptance is reserved for the user; silence is not a pass.
   protocol build and worker/server/app typechecks. No native, GUI, integration,
   packaged-app or release tests were run locally. Existing CI passed on macOS,
   Windows and Linux, plus PostgreSQL authority checks, before the squash merge.
-  The cycle-1 export-baseline failure is resolved. User testing: pending.
+  The cycle-1 export-baseline failure is resolved. User acceptance is recorded
+  above.
 - User steps and limitations: [clicking guide](../COMPUTER_USE_CLICKING.md).
   Coordinate input can affect focus and the human system pointer; dispatch is
   not proof of an application action. macOS only, with explicit unsupported
   errors for unsuitable AX windows. No double/right clicks, keyboard or drag.
-- Remaining: user confirmation that an agent can inspect, click and inspect the
-  result. Implementation cycles proceed without feedback pauses; user acceptance
-  stays pending until actually reported.
+- Result: the user confirmed that an agent can inspect, click and inspect the
+  result. Shared system-pointer movement was observed and is an explicit
+  coordinate-click limitation, not an independent agent pointer.
 
 The installed Cantrip 1.1.1781 worker inspected during this task lacked the CUA
 MCP module. The current source registers managed `cantrip_cua`; testing requires a
