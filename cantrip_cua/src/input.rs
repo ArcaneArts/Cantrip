@@ -2,6 +2,16 @@
 use crate::target::Bounds;
 use serde::Serialize;
 
+pub(crate) fn error_outcome(code: crate::error::ErrorCode) -> &'static str {
+    use crate::error::ErrorCode;
+    match code {
+        ErrorCode::InputUnknown => "unknown",
+        ErrorCode::Unsupported => "unsupported",
+        ErrorCode::Cancelled => "cancelled",
+        _ => "failed",
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Control {
@@ -194,10 +204,7 @@ mod targeted_tests {
         target::{Point, Target},
     };
     use serde_json::json;
-    use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    };
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn control_selection_uses_local_bounds_and_rejects_partial_or_ambiguous_results() {
@@ -231,7 +238,7 @@ mod targeted_tests {
 
     struct RoutingBackend {
         calls: Arc<Mutex<Vec<(&'static str, Point)>>>,
-        fail: Arc<AtomicBool>,
+        fail: Arc<Mutex<Option<ErrorCode>>>,
     }
     impl CaptureBackend for RoutingBackend {
         fn name(&self) -> &'static str {
@@ -254,8 +261,8 @@ mod targeted_tests {
             _cancel: &Cancellation,
         ) -> Result<(Target, InputReceipt)> {
             self.calls.lock().unwrap().push(("targeted", point));
-            if self.fail.load(Ordering::SeqCst) {
-                return Err(CuaError::new(ErrorCode::InputUnknown, "unknown"));
+            if let Some(code) = *self.fail.lock().unwrap() {
+                return Err(CuaError::new(code, "input did not confirm dispatch"));
             }
             Ok((
                 target.clone(),
@@ -293,7 +300,7 @@ mod targeted_tests {
     #[test]
     fn default_click_uses_cursor_and_never_falls_back_to_global_input() {
         let calls = Arc::new(Mutex::new(vec![]));
-        let fail = Arc::new(AtomicBool::new(false));
+        let fail = Arc::new(Mutex::new(None));
         let mut service = CuaService::new(RoutingBackend {
             calls: calls.clone(),
             fail: fail.clone(),
@@ -320,19 +327,48 @@ mod targeted_tests {
             calls.lock().unwrap()[0],
             ("targeted", Point { x: 12.0, y: 15.0 })
         );
-        fail.store(true, Ordering::SeqCst);
-        assert_eq!(
-            run(&mut service, request("input.click"))
-                .err()
-                .unwrap()
-                .code,
-            ErrorCode::InputUnknown
-        );
-        assert_eq!(calls.lock().unwrap().len(), 2);
+        for (code, expected) in [
+            (ErrorCode::InputUnknown, "unknown"),
+            (ErrorCode::InputFailed, "failed"),
+            (ErrorCode::Unsupported, "unsupported"),
+            (ErrorCode::Cancelled, "cancelled"),
+        ] {
+            *fail.lock().unwrap() = Some(code);
+            assert_eq!(
+                run(&mut service, request("input.click"))
+                    .err()
+                    .unwrap()
+                    .code,
+                code
+            );
+            // Configuration reads the current native session without another
+            // input or capture. Outcome survives the failed request.
+            let mut state = request("cursor.configure");
+            state["appearance"] =
+                serde_json::to_value(crate::cursor::CursorAppearance::default()).unwrap();
+            let state = run(&mut service, state).unwrap();
+            assert_eq!(
+                state.data["session"]["cursor"]["action"]["outcome"],
+                expected
+            );
+            assert_eq!(
+                state.data["session"]["cursor"]["position"],
+                json!({"x":12.0,"y":15.0})
+            );
+        }
+        assert_eq!(calls.lock().unwrap().len(), 5);
         let mut global = request("input.click");
         global["globalInput"] = json!(true);
         run(&mut service, global).unwrap();
-        assert_eq!(calls.lock().unwrap()[2].0, "global");
+        assert_eq!(calls.lock().unwrap()[5].0, "global");
+        let mut reference = request("input.press");
+        reference["reference"] = json!("unknown-control");
+        assert!(run(&mut service, reference).is_err());
+        let mut state = request("cursor.configure");
+        state["appearance"] =
+            serde_json::to_value(crate::cursor::CursorAppearance::default()).unwrap();
+        let state = run(&mut service, state).unwrap();
+        assert!(state.data["session"]["cursor"]["action"].is_null());
     }
 }
 

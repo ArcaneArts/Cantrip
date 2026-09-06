@@ -20,9 +20,17 @@ pointer movement. There is no automatic global-input fallback.
 
 Use `await cua.moveCursor({x,y}); await cua.click(); await cua.snapshot()` after
 attaching a window in the current agent turn. Successful dispatch adds an outer
-ring and center dot to the existing cursor appearance until the next movement.
+ring, center dot and `[dispatched]` label to the existing cursor appearance until
+the next movement. Native click attempts that return errors retain a labelled
+ring (`[failed]`, `[unsupported]`, `[cancelled]` or `[unknown]`) without the
+dispatch dot in the next observation. Unknown means do not retry automatically.
+The original tool error still propagates; the marker does not convert failure
+into success. Requests rejected before reaching the helper or a lost helper may
+have no new marker. Consult the protected activity/tool error and never treat
+an older marker as evidence for the current request.
 Reference-based `cua.press(reference)` also positions the marker at the control
-center when its geometry is available.
+center when its geometry is available; otherwise no location is marked. A new
+reference press clears the previous marker before attempting the action.
 
 Global mouse input now requires explicit `cua.globalClick({x,y})` (or
 `globalInput: true` on the low-level `input.click` request). This retains the old

@@ -167,6 +167,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
             "failed",
             "declined",
             "cancelled",
+            "unsupported",
           ]),
         })
         .nullable()

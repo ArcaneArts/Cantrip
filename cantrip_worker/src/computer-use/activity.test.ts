@@ -3,6 +3,7 @@ import { agentActivitySchema, type CuaScope } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 import { computerUseActivity } from "./activity.js";
 import { CuaApprovalError } from "./approvals.js";
+import { CuaNativeError } from "./errors.js";
 
 const scope: CuaScope = {
   ownerId: "owner",
@@ -24,6 +25,39 @@ const input = () => ({
 });
 
 describe("protected computer-use activity metadata", () => {
+  it.each([
+    "unsupported",
+    "input-unknown",
+    "input-failed",
+    "cancelled",
+  ] as const)(
+    "preserves native input outcome %s without recording private error text",
+    (code) => {
+      const error = new CuaNativeError(code);
+      error.message = "private native detail";
+      const activity = computerUseActivity({
+        ...input(),
+        operation: "input.click",
+        position: { x: 12, y: 15 },
+        inputMethod: "accessibility",
+        failed: true,
+        error,
+      });
+      expect(agentActivitySchema.parse(activity)).toMatchObject({
+        input: {
+          method: "accessibility",
+          position: { x: 12, y: 15 },
+          outcome:
+            code === "input-unknown"
+              ? "unknown"
+              : code === "input-failed"
+                ? "failed"
+                : code,
+        },
+      });
+      expect(JSON.stringify(activity)).not.toContain("private native detail");
+    },
+  );
   it("records terminal timing and permits only bounded metadata in raw capture", () => {
     const activity = agentActivitySchema.parse(computerUseActivity(input()));
     expect(activity).toMatchObject({

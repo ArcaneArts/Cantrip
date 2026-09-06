@@ -53,7 +53,9 @@ to the user and implementation does not pause between useful cycles.
 
 ### Cycle 2 — Observed input effects
 
-- Branch: `codex/cua-input-effects`.
+- Branch: `codex/cua-input-effects`; [PR #1768](https://github.com/ArcaneArts/Cantrip/pull/1768)
+  merged 2026-09-06 UTC as `70efe99c0a6df6316319ea5bb1530b0bd3b05c89`
+  (observed). All four CI jobs passed; Primary synchronized and cycle worktree removed.
 - Native action receipts now carry before/after change summaries for the human
   pointer, foreground application/window and front-to-back on-screen window
   ordering. Missing samples yield unknown and never gate the input attempt.
@@ -72,6 +74,27 @@ to the user and implementation does not pause between useful cycles.
   receipt/Trajectory's sampled changes alongside the visible pointer and focus.
 - Remaining: targeted coordinate delivery where supported and actual user
   confirmation of covered-window action with pointer and foreground preserved.
+
+### Cycle 3 — Cursor action outcomes
+
+- Branch: `codex/cua-action-outcomes`.
+- Native cursor-click failures preserve their attempted location and outcome in
+  session state for the next observation. Labels distinguish dispatched, failed,
+  unsupported, cancelled and unknown; only dispatch gets the center dot. Original
+  errors still propagate, and no retry or global fallback was introduced.
+- Reference actions clear the preceding marker; only resolved receipt geometry
+  receives a new marker. Requests rejected before helper execution or a lost
+  helper cannot supply a new native marker. Activity/tool errors remain authoritative.
+- Protected input activity distinguishes unsupported from generic failure.
+- Validation: Rust compilation/Clippy, two focused routing/selection unit tests,
+  nine worker activity unit tests, worker/server/app typechecks, formatting and
+  diff checks. No native, interactive or integration testing ran locally.
+- User test: after a successful harmless targeted action, attempt a position with
+  no pressable control, then request a fresh snapshot. Check that the new marker
+  says unsupported rather than retaining the old dispatch marker. Do not retry
+  an unknown action automatically.
+- Remaining: documented process-targeted coordinate delivery where feasible,
+  plus the user's covered-window/pointer-preservation acceptance.
 
 ## Clicking-tranche progress
 
