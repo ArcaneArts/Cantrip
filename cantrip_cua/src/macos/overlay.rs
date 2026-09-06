@@ -168,21 +168,21 @@ impl Panel {
             let _: () = msg_send![&*self.window, orderOut: Option::<&AnyObject>::None];
         }
     }
-    fn update(&mut self, state: &SessionState, native: &Window) -> Option<()> {
+    fn update(&mut self, state: &SessionState, native: &Window, region: &Bounds) -> Option<()> {
         // Renderer preserves the same appearance/trail/action feedback as model images.
         let key = format!(
-            "{}:{}:{}:{}",
-            native.id, state.cursor.revision, native.bounds.width, native.bounds.height
+            "{}:{}:{}:{}:{:?}",
+            native.id, state.cursor.revision, native.bounds.width, native.bounds.height, region
         );
         if key != self.rendered {
-            let bytes = cursor_png(state, &native.bounds)?;
+            let bytes = cursor_png(state, &native.bounds, region)?;
             let data = NSData::with_bytes(&bytes);
             unsafe {
                 let class = AnyClass::get(c"NSImage")?;
                 let allocated: Allocated<AnyObject> = msg_send![class, alloc];
                 let image: Option<Retained<AnyObject>> = msg_send![allocated, initWithData: &*data];
                 let image = image?;
-                let _: () = msg_send![&*image, setSize: CGSize::new(native.bounds.width, native.bounds.height)];
+                let _: () = msg_send![&*image, setSize: CGSize::new(region.width, region.height)];
                 let _: () = msg_send![&*self.image_view, setImage: &*image];
             }
             self.rendered = key;
@@ -191,10 +191,10 @@ impl Panel {
             let top = CGDisplayBounds(CGMainDisplayID()).size.height;
             let frame = CGRect::new(
                 CGPoint::new(
-                    native.bounds.x,
-                    top - native.bounds.y - native.bounds.height,
+                    native.bounds.x + region.x,
+                    top - native.bounds.y - region.y - region.height,
                 ),
-                CGSize::new(native.bounds.width, native.bounds.height),
+                CGSize::new(region.width, region.height),
             );
             let _: () = msg_send![&*self.window, setFrame: frame, display: true];
             let _: () =
@@ -208,15 +208,18 @@ impl Panel {
         Some(())
     }
 }
-fn cursor_png(state: &SessionState, bounds: &Bounds) -> Option<Vec<u8>> {
-    let width = bounds.width.ceil() as u32;
-    let height = bounds.height.ceil() as u32;
+fn cursor_png(state: &SessionState, bounds: &Bounds, region: &Bounds) -> Option<Vec<u8>> {
+    let width = region.width.ceil() as u32;
+    let height = region.height.ceil() as u32;
     let pixels = (width as usize).checked_mul(height as usize)?;
     if pixels == 0 || pixels > crate::target::MAX_IMAGE_PIXELS {
         return None;
     }
     let mut rgba = vec![0; pixels * 4];
-    state.cursor.render(&mut rgba, width, height, bounds).ok()?;
+    state
+        .cursor
+        .render_region(&mut rgba, width, height, bounds, region)
+        .ok()?;
     let mut bytes = vec![];
     {
         let mut encoder = png::Encoder::new(&mut bytes, width, height);
@@ -231,7 +234,7 @@ fn cursor_png(state: &SessionState, bounds: &Bounds) -> Option<Vec<u8>> {
 #[derive(Default)]
 struct Presentation {
     sessions: Vec<SessionState>,
-    panels: HashMap<String, Panel>,
+    panels: HashMap<String, Vec<Panel>>,
     ticking: bool,
 }
 thread_local! { static PRESENTATION: RefCell<Presentation> = RefCell::default(); }
@@ -293,23 +296,33 @@ fn refresh() {
                 || native.is_none()
                 || !native.unwrap().bounds.contains_local(state.cursor.position)
             {
-                if let Some(panel) = p.panels.get(&state.binding.session_id) {
-                    panel.hide();
+                if let Some(panels) = p.panels.get(&state.binding.session_id) {
+                    for panel in panels {
+                        panel.hide();
+                    }
                 }
                 continue;
             }
-            let panel = p.panels.entry(state.binding.session_id.clone());
-            let panel = match panel {
-                std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
-                std::collections::hash_map::Entry::Vacant(e) => {
-                    let Some(panel) = Panel::new() else {
-                        continue;
-                    };
-                    e.insert(panel)
+            let native = native.unwrap();
+            let panels = p
+                .panels
+                .entry(state.binding.session_id.clone())
+                .or_default();
+            let Ok(regions) = state.cursor.desktop_tiles(&native.bounds) else {
+                for panel in panels {
+                    panel.hide();
                 }
+                continue;
             };
-            if panel.update(state, native.unwrap()).is_none() {
-                panel.hide();
+            panels.truncate(regions.len());
+            while panels.len() < regions.len() {
+                let Some(panel) = Panel::new() else { break };
+                panels.push(panel);
+            }
+            for (panel, region) in panels.iter_mut().zip(&regions) {
+                if panel.update(state, native, region).is_none() {
+                    panel.hide();
+                }
             }
         }
     });

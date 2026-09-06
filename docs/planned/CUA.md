@@ -18,6 +18,27 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Desktop cursor on large windows
+
+- Branch: `codex/cua-large-window-cursor`.
+- Replaced the full-window desktop raster with sparse 256×256 logical-pixel
+  tiles touched by the shared cursor renderer. Large target windows retain their
+  desktop cursor, labels, action feedback and distant trail points without an
+  allocation proportional to the window area. Tiles do not overlap or change
+  label placement, and remain nonactivating, click-through and behind covers.
+- Validation: pixel-for-pixel tiled/full-render equivalence across all four
+  styles, translucent colors, Unicode labels, tile boundaries, trails and action
+  feedback; bounded large-window and fractional-edge rendering; existing cursor
+  tests (13 passed), Rust library tests (55 passed), build and Clippy. Native
+  lifecycle checks passed for ordinary and 3000×1800 windows: 487 cursor-colored
+  pixels when visible/restored, zero when hidden, covered or detached.
+- Input investigation remains separate: AppKit native event logging confirms
+  correct recipient/window-local coordinates and counter change beneath another
+  process. Chromium native Accessibility tracing reaches selector handling but
+  the page receives no button event. No ineffective opt-in, observer, reference-
+  retention or event-metadata workaround was added to the product. The goal still
+  requires a real covered-window result and user confirmation.
+
 ### Experimental background input and desktop cursor
 
 - Branch: `codex/cua-background-pointer`. The user explicitly authorized private
@@ -31,13 +52,13 @@ between useful cycles.
   the existing renderer. It follows its target and sits behind covering windows;
   detach/close remove it. Own panels are excluded from inventory, CUA monitor
   capture and application-window-order measurements.
-- Native investigation: the reported AX receipt identifies Jeff (`AXButton`),
-  but the observed chat does not change. Standalone test helpers currently receive
-  Accessibility permission-denied from control inspection. Background input also
-  left fixture counters unchanged; permission and routing causes remain unresolved. Desktop screenshots verify the overlay appears over the
-  uncovered fixture and stays behind its covering window. Native lifecycle checks
-  also passed hide/show, uncover and detach (487 cursor-colored pixels when visible,
-  zero while hidden, covered or detached).
+- Native investigation: initial helper permission-denied was resolved by the
+  user enabling `cantrip-cua`. AppKit counter clicks then succeeded under a
+  separate foreground process while sampled pointer, foreground and ordering
+  stayed unchanged. Chromium web controls still produced no visible change;
+  targeted coordinate and Accessibility routes remain unverified for that case.
+  Desktop lifecycle checks passed hide/show, uncover and detach (487 cursor-colored
+  pixels when visible, zero while hidden, covered or detached).
 - Acceptance remains pending: visible target change under cover while the human
   pointer, foreground app and application-window order remain unchanged.
 

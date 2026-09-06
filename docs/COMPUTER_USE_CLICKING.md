@@ -51,8 +51,10 @@ preview. On macOS, the same renderer now supplies a click-through desktop panel 
 the attached window. It follows target movement and ordering, stays behind
 covering windows, and never becomes the key window. It is not a second hardware
 pointer. Detach/session cleanup removes it; `visible:false` hides it. Desktop
-presentation uses a bounded raster (up to 4,194,304 logical pixels); larger windows
-currently retain the cursor in CUA observations only.
+presentation uses sparse 256×256 logical-pixel tiles around the cursor, labels
+and trail points. Large windows do not require a full-window raster and no longer
+lose their desktop cursor when their area exceeds the snapshot pixel budget.
+Tiles share the observation renderer and remain clipped to the target window.
 
 Global mouse input now requires explicit `cua.globalClick({x,y})` (or
 `globalInput: true` on the low-level `input.click` request). This retains the old
@@ -111,10 +113,15 @@ panels from target inventory, CUA monitor captures and sampled application-windo
 ordering so presentation does not masquerade as a target or focus effect.
 
 Native fixture checks verified desktop cursor visibility, occlusion, hide/show and
-detach cleanup. Input acceptance remains unresolved: background clicks did not increment the
-fixture counter, while control inspection from the same Codex-launched helper
-returned Accessibility permission-denied. Permission and event-routing causes
-have not yet been separated; successful SkyLight delivery is not established. Window
+detach cleanup. After the user granted the development helper Accessibility access,
+background clicks incremented an AppKit counter beneath a separate foreground
+application, with unchanged sampled pointer, foreground and window order. Native
+event logging confirmed the intended window and local coordinates. This does not
+establish general application support: fresh Chromium test windows received no
+page button events from either Accessibility press or targeted coordinate input.
+Accessibility opt-in, retained references, a live AX observer and an alternative
+single process-post path did not resolve those no-ops. Covered-window user
+acceptance remains unresolved; an AX dispatch receipt is still not proof of a click. Window
 capture uses individual ScreenCaptureKit screenshots, so a persistent macOS
 screen-sharing badge is not an acceptance condition for this capture path.
 

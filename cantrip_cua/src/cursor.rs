@@ -8,6 +8,9 @@ use crate::error::{CuaError, Result};
 use crate::target::{Bounds, MAX_IMAGE_PIXELS, MAX_SEQUENCE, Point};
 use font8x8::UnicodeFonts;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+
+pub const DESKTOP_TILE_SIZE: u32 = 256;
 
 pub const CURSOR_APPEARANCE_VERSION: u8 = 1;
 pub const MAX_TRAIL_POINTS: usize = 24;
@@ -204,9 +207,81 @@ impl CursorState {
         pixel_height: u32,
         bounds: &Bounds,
     ) -> Result<()> {
+        self.render_region(
+            rgba,
+            pixel_width,
+            pixel_height,
+            bounds,
+            &Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: bounds.width,
+                height: bounds.height,
+            },
+        )
+    }
+
+    /// Render a target-local viewport without changing cursor or label geometry.
+    pub fn render_region(
+        &self,
+        rgba: &mut [u8],
+        pixel_width: u32,
+        pixel_height: u32,
+        bounds: &Bounds,
+        region: &Bounds,
+    ) -> Result<()> {
+        region.validate()?;
+        if region.x < 0.0
+            || region.y < 0.0
+            || region.x + region.width > bounds.width
+            || region.y + region.height > bounds.height
+        {
+            return Err(CuaError::invalid(
+                "Cursor viewport is outside target bounds.",
+            ));
+        }
+        let mut canvas = Canvas::new(rgba, pixel_width, pixel_height, region)?;
+        canvas.origin = Point {
+            x: region.x,
+            y: region.y,
+        };
+        self.draw(&mut canvas, bounds)
+    }
+
+    /// Sparse, non-overlapping desktop tiles touched by the same drawing commands.
+    /// Empty space between trail points never requires a window-sized raster.
+    pub fn desktop_tiles(&self, bounds: &Bounds) -> Result<Vec<Bounds>> {
+        bounds.validate()?;
+        let mut canvas = Canvas {
+            rgba: &mut [],
+            width: bounds.width.ceil() as u32,
+            height: bounds.height.ceil() as u32,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            origin: Point::default(),
+            tiles: Some(BTreeSet::new()),
+        };
+        self.draw(&mut canvas, bounds)?;
+        Ok(canvas
+            .tiles
+            .unwrap()
+            .into_iter()
+            .map(|(x, y)| {
+                let x = f64::from(x * DESKTOP_TILE_SIZE);
+                let y = f64::from(y * DESKTOP_TILE_SIZE);
+                Bounds {
+                    x,
+                    y,
+                    width: (bounds.width - x).min(f64::from(DESKTOP_TILE_SIZE)),
+                    height: (bounds.height - y).min(f64::from(DESKTOP_TILE_SIZE)),
+                }
+            })
+            .collect())
+    }
+
+    fn draw(&self, canvas: &mut Canvas<'_>, bounds: &Bounds) -> Result<()> {
         self.appearance.validate()?;
         bounds.validate()?;
-        let mut canvas = Canvas::new(rgba, pixel_width, pixel_height, bounds)?;
         if !bounds.contains_local(self.position)
             || self.trail_points.len() > MAX_TRAIL_POINTS
             || self
@@ -275,6 +350,8 @@ struct Canvas<'a> {
     height: u32,
     scale_x: f64,
     scale_y: f64,
+    origin: Point,
+    tiles: Option<BTreeSet<(u32, u32)>>,
 }
 
 impl<'a> Canvas<'a> {
@@ -299,6 +376,8 @@ impl<'a> Canvas<'a> {
             height,
             scale_x,
             scale_y,
+            origin: Point::default(),
+            tiles: None,
         })
     }
 
@@ -310,22 +389,32 @@ impl<'a> Canvas<'a> {
         bottom: f64,
         mut color_at: impl FnMut(f64, f64) -> Option<[u8; 4]>,
     ) {
-        let left = (left * self.scale_x)
+        let left = ((left - self.origin.x) * self.scale_x)
             .floor()
             .clamp(0.0, f64::from(self.width)) as u32;
-        let right = (right * self.scale_x)
+        let right = ((right - self.origin.x) * self.scale_x)
             .ceil()
             .clamp(0.0, f64::from(self.width)) as u32;
-        let top = (top * self.scale_y)
+        let top = ((top - self.origin.y) * self.scale_y)
             .floor()
             .clamp(0.0, f64::from(self.height)) as u32;
-        let bottom = (bottom * self.scale_y)
+        let bottom = ((bottom - self.origin.y) * self.scale_y)
             .ceil()
             .clamp(0.0, f64::from(self.height)) as u32;
+        if let Some(tiles) = &mut self.tiles {
+            if left < right && top < bottom {
+                for y in top / DESKTOP_TILE_SIZE..=(bottom - 1) / DESKTOP_TILE_SIZE {
+                    for x in left / DESKTOP_TILE_SIZE..=(right - 1) / DESKTOP_TILE_SIZE {
+                        tiles.insert((x, y));
+                    }
+                }
+            }
+            return;
+        }
         for y in top..bottom {
-            let logical_y = (f64::from(y) + 0.5) / self.scale_y;
+            let logical_y = (f64::from(y) + 0.5) / self.scale_y + self.origin.y;
             for x in left..right {
-                let logical_x = (f64::from(x) + 0.5) / self.scale_x;
+                let logical_x = (f64::from(x) + 0.5) / self.scale_x + self.origin.x;
                 if let Some(color) = color_at(logical_x, logical_y) {
                     let index = (y as usize * self.width as usize + x as usize) * 4;
                     blend(&mut self.rgba[index..index + 4], color);
