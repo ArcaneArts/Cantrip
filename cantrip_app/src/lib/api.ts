@@ -610,6 +610,7 @@ import {
 } from "@/lib/chat-message-history";
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
+import { remoteDesktopRequestError } from "@/lib/remote-desktop-request-error";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
 import {
   INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE,
@@ -6247,10 +6248,16 @@ export async function getRemoteDesktopFleet(projectId: string) {
 }
 
 export async function getRemoteDesktop(desktopId: string) {
+  let response: unknown;
+  try {
+    response = await request(
+      `/api/remote-desktops/${encodeURIComponent(desktopId)}`,
+    );
+  } catch (error) {
+    throw remoteDesktopRequestError("load", error);
+  }
   const desktop = await surfaceTitleEncryption.openRemoteDesktop(
-    remoteDesktopWireSummarySchema.parse(
-      await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`),
-    ),
+    remoteDesktopWireSummarySchema.parse(response),
   );
   remoteDesktopStateRevisions.set(desktop.id, desktop.stateRevision);
   return desktop;
@@ -6282,19 +6289,23 @@ export async function createRemoteDesktop(
       initialTarget,
       1,
     );
+  let response: unknown;
+  try {
+    response = await post(
+      `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
+      {
+        id,
+        stateProtection,
+        titleProtection,
+        ...(paneId ? { paneId } : {}),
+        ...(target ? { target } : {}),
+      },
+    );
+  } catch (error) {
+    throw remoteDesktopRequestError("create", error);
+  }
   const desktop = await surfaceTitleEncryption.openRemoteDesktop(
-    remoteDesktopWireSummarySchema.parse(
-      await post(
-        `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
-        {
-          id,
-          stateProtection,
-          titleProtection,
-          ...(paneId ? { paneId } : {}),
-          ...(target ? { target } : {}),
-        },
-      ),
-    ),
+    remoteDesktopWireSummarySchema.parse(response),
   );
   remoteDesktopStateRevisions.set(desktop.id, desktop.stateRevision);
   return desktop;
