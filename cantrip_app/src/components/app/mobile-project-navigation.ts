@@ -6,8 +6,13 @@ export function mobileProjectSurfaces(
   surfaces: readonly ProjectSurface[],
   activeTabKey: string | null,
 ): ProjectSurface[] {
+  const navigableSurfaces = surfaces.filter(
+    (surface) =>
+      surface.kind !== "builtin" ||
+      surface.entity.definitionId !== "project.overview",
+  );
   const explorerByWorktree = new Map<string, ProjectSurface>();
-  for (const surface of surfaces) {
+  for (const surface of navigableSurfaces) {
     if (surface.kind !== "explorer") continue;
     const current = explorerByWorktree.get(surface.entity.worktreeId);
     const surfacePriority =
@@ -23,7 +28,7 @@ export function mobileProjectSurfaces(
       explorerByWorktree.set(surface.entity.worktreeId, surface);
     }
   }
-  const deduplicated = surfaces.filter(
+  const deduplicated = navigableSurfaces.filter(
     (surface) =>
       surface.kind !== "explorer" ||
       explorerByWorktree.get(surface.entity.worktreeId)?.tabKey ===

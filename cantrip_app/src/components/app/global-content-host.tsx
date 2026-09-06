@@ -223,6 +223,7 @@ export function GlobalContentHost({
     setChatRelocationOpen,
     setGitHistoryHeader,
     setMobileSettingsSectionOpen,
+    setMobileSurfacePickerOpen,
     setProjectOverviewWorktreeId,
     setRunConfigurationEditorId,
     setSettingsPolicyId,
@@ -1188,17 +1189,13 @@ export function GlobalContentHost({
       !showProjectSettings ? (
         <MobileBottomNavigation
           activeTabKey={selectedTabKey}
-          creatingKinds={creatingSurfaceKinds}
-          onCreate={(kind, target) =>
-            createProjectSurface(selectedProject.id, kind, undefined, target)
-          }
           onClose={closeSurfaceView}
+          onOpenPicker={() => setMobileSurfacePickerOpen(true)}
           onOverview={returnToCompactProjectOverview}
           onSelect={selectTopTab}
           overviewSelected={
             selectedBuiltInSurface?.entity.definitionId === "project.overview"
           }
-          placement={selectedPlacementContext}
           surfaces={mobileNavigationSurfaces}
         />
       ) : null}

@@ -1,4 +1,5 @@
 import { AppCommandBar } from "@/components/app/app-command-bar";
+import { MobileSurfacePicker } from "@/components/mobile/mobile-surface-picker";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { ChatRelocationDialog } from "@/components/chat/chat-relocation-dialog";
 import { WindowsLongPathDialog } from "@/components/projects/windows-long-path-dialog";
@@ -24,18 +25,25 @@ export function ShellOverlays({
     bootstrap,
     chatRelocationOpen,
     chatRelocations,
+    closeSurfaceView,
     commandBarOpen,
+    compactShell,
+    createProjectSurface,
+    creatingSurfaceKinds,
     createWorktreeMutation,
     dismissedLongPathFailure,
     executeAppAction,
     folderProjectDialogMode,
     folderProjectDialogOpen,
     isPopout,
+    mobileSurfacePickerOpen,
     onlineWorker,
     openCreatedProject,
     openProjectExplorerFile,
     prepareExplorerRebind,
     projectWorkspaces,
+    projectOverviewSelected,
+    projectSurfaces,
     projects,
     queryClient,
     retryLongPathSetupMutation,
@@ -48,15 +56,19 @@ export function ShellOverlays({
     selectedPlacementContext,
     selectedProject,
     selectedProjectId,
+    selectedTabKey,
+    selectTopTab,
     setChatRelocationOpen,
     setCommandBarOpen,
     setDismissedLongPathFailure,
     setFolderProjectDialogMode,
     setFolderProjectDialogOpen,
+    setMobileSurfacePickerOpen,
     setShowCustomizations,
     setWorktreeCreateTarget,
     settings,
     showCustomizations,
+    returnToCompactProjectOverview,
     workers,
     worktreeCreateTarget,
     worktreeStatuses,
@@ -74,6 +86,25 @@ export function ShellOverlays({
         workers={workers.data ?? []}
         workspaces={projectWorkspaces.data ?? []}
       />
+
+      {selectedProject ? (
+        <MobileSurfacePicker
+          activeTabKey={selectedTabKey}
+          capabilities={selectedProject.capabilities}
+          creatingKinds={creatingSurfaceKinds}
+          onCloseSurface={closeSurfaceView}
+          onCreate={(kind, target) =>
+            createProjectSurface(selectedProject.id, kind, undefined, target)
+          }
+          onOpenChange={setMobileSurfacePickerOpen}
+          onOverview={returnToCompactProjectOverview}
+          onSelect={selectTopTab}
+          open={compactShell && appMode === "ide" && mobileSurfacePickerOpen}
+          overviewSelected={projectOverviewSelected}
+          projectName={selectedProject.name}
+          surfaces={projectSurfaces}
+        />
+      ) : null}
 
       <WorktreeCreateDialog
         open={appMode === "ide" && Boolean(worktreeCreateTarget)}

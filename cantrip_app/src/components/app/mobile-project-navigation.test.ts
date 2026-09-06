@@ -57,6 +57,23 @@ describe("mobileProjectSurfaces", () => {
     }) as ProjectSurface;
   const chat = { kind: "chat", tabKey: "chat:one" } as ProjectSurface;
 
+  it("does not duplicate the dedicated Overview destination", () => {
+    const overview = {
+      entity: { definitionId: "project.overview" },
+      kind: "builtin",
+      tabKey: "builtin:overview",
+    } as ProjectSurface;
+    const tasks = {
+      entity: { definitionId: "project.tasks" },
+      kind: "builtin",
+      tabKey: "builtin:tasks",
+    } as ProjectSurface;
+
+    expect(
+      mobileProjectSurfaces([overview, tasks, chat], overview.tabKey),
+    ).toEqual([tasks, chat]);
+  });
+
   it("represents each worktree with one Explorer instead of file tabs", () => {
     const root = explorer("explorer:root", null);
     const firstFile = explorer("explorer:first-file", "src/first.ts");

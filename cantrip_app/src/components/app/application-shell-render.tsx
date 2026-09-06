@@ -203,6 +203,11 @@ export function ApplicationShellRender({
         : { destination: null, sectionOpen: false },
     );
   }, [mobileSettingsDestination]);
+  const [mobileSurfacePickerOpen, setMobileSurfacePickerOpen] = useState(false);
+  useEffect(() => {
+    if (compactShell && appMode === "ide" && selectedProject) return;
+    setMobileSurfacePickerOpen(false);
+  }, [appMode, compactShell, selectedProject]);
   const contentHeaderActions = {
     git:
       gitHistoryProject &&
@@ -382,8 +387,10 @@ export function ApplicationShellRender({
     contentHeaderActions,
     explorerSurfaceVisible,
     mobileSettingsSectionOpen,
+    mobileSurfacePickerOpen,
     renderProjectRunConfigurationControl,
     setMobileSettingsSectionOpen,
+    setMobileSurfacePickerOpen,
     sidebarExpanded,
     sidebarToggleVisible,
     terminalSurfaceVisible,

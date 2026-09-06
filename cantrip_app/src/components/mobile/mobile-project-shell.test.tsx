@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
-import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
 import type { ProjectSurface } from "@/lib/project-surface";
 
 import { MobileBottomNavigation } from "./mobile-bottom-navigation";
@@ -112,9 +111,8 @@ describe("mobile project navigation", () => {
     const markup = renderToStaticMarkup(
       <MobileBottomNavigation
         activeTabKey="terminal:one"
-        creatingKinds={new Set()}
-        onCreate={vi.fn()}
         onClose={vi.fn()}
+        onOpenPicker={vi.fn()}
         onOverview={vi.fn()}
         onSelect={vi.fn()}
         overviewSelected={false}
@@ -125,9 +123,9 @@ describe("mobile project navigation", () => {
     expect(markup).toContain("Chat One");
     expect(markup).toContain("Terminal One");
     expect(markup).toContain('aria-label="Open Terminal One"');
-    expect(markup).toContain('aria-label="Actions for Terminal One"');
+    expect(markup).not.toContain('aria-label="Actions for Terminal One"');
     expect(markup).toContain('aria-current="page"');
-    expect(markup).toContain('aria-label="Create project surface"');
+    expect(markup).toContain('aria-label="Choose project tab"');
     expect(markup).not.toContain("Project tabs");
     expect(markup).not.toContain("tab group");
     expect(markup).not.toContain(">Tabs<");
@@ -138,9 +136,8 @@ describe("mobile project navigation", () => {
     const markup = renderToStaticMarkup(
       <MobileBottomNavigation
         activeTabKey="terminal:one"
-        creatingKinds={new Set()}
-        onCreate={vi.fn()}
         onClose={vi.fn()}
+        onOpenPicker={vi.fn()}
         onOverview={vi.fn()}
         onSelect={vi.fn()}
         overviewSelected={false}
@@ -158,9 +155,8 @@ describe("mobile project navigation", () => {
     const markup = renderToStaticMarkup(
       <MobileBottomNavigation
         activeTabKey={null}
-        creatingKinds={new Set()}
-        onCreate={vi.fn()}
         onClose={vi.fn()}
+        onOpenPicker={vi.fn()}
         onOverview={vi.fn()}
         onSelect={vi.fn()}
         overviewSelected
@@ -178,6 +174,7 @@ describe("mobile project navigation", () => {
 
   it("keeps tap selection and routes mobile actions through surface close", async () => {
     const onClose = vi.fn();
+    const onOpenPicker = vi.fn();
     const onSelect = vi.fn();
     let renderer!: TestRenderer.ReactTestRenderer;
 
@@ -185,9 +182,8 @@ describe("mobile project navigation", () => {
       renderer = TestRenderer.create(
         <MobileBottomNavigation
           activeTabKey="terminal:one"
-          creatingKinds={new Set()}
           onClose={onClose}
-          onCreate={vi.fn()}
+          onOpenPicker={onOpenPicker}
           onOverview={vi.fn()}
           onSelect={onSelect}
           overviewSelected={false}
@@ -210,10 +206,10 @@ describe("mobile project navigation", () => {
     contextCloseItems[1]!.props.onClick();
     expect(onClose).toHaveBeenCalledWith(surfaces[1]);
 
-    const actionMenus = renderer.root.findAllByType(SurfaceActionsMenu);
-    onClose.mockClear();
-    actionMenus[1]!.props.onClose();
-    expect(onClose).toHaveBeenCalledWith(surfaces[1]);
+    renderer.root
+      .findByProps({ "aria-label": "Choose project tab" })
+      .props.onClick();
+    expect(onOpenPicker).toHaveBeenCalledOnce();
 
     await act(async () => renderer.unmount());
   });
