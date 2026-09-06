@@ -40,6 +40,12 @@ returned labels, roles and bounds, then use `cua.press(reference)` for the
 intended control. A truncated result is partial; it is not proof that no other
 control exists. Each inspection replaces previous transient references.
 
+Window discovery also considers the attached application's `AXMainWindow` and
+`AXFocusedWindow` references when its `AXWindows` list omits the target. Reading
+these references does not focus the application. Each candidate must still
+match the attached window's title and bounds; repeated references to the same
+window are deduplicated and distinct matching windows remain an error.
+
 Accessibility receipts include `control`: the selected reference, inspected
 label/role and bounds revalidated before dispatch. Protected Trajectory shows
 that AXPress recipient. Requested coordinates alone are not proof that the
