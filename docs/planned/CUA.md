@@ -77,7 +77,9 @@ to the user and implementation does not pause between useful cycles.
 
 ### Cycle 3 — Cursor action outcomes
 
-- Branch: `codex/cua-action-outcomes`.
+- Branch: `codex/cua-action-outcomes`; [PR #1769](https://github.com/ArcaneArts/Cantrip/pull/1769)
+  merged 2026-09-06 UTC as `cd87732501347034b0b64cf0d0d0c648be1a326f`
+  (observed). All four CI jobs passed; Primary synchronized and cycle worktree removed.
 - Native cursor-click failures preserve their attempted location and outcome in
   session state for the next observation. Labels distinguish dispatched, failed,
   unsupported, cancelled and unknown; only dispatch gets the center dot. Original
@@ -95,6 +97,36 @@ to the user and implementation does not pause between useful cycles.
   an unknown action automatically.
 - Remaining: documented process-targeted coordinate delivery where feasible,
   plus the user's covered-window/pointer-preservation acceptance.
+
+### Cycle 4 — Explicit process-targeted coordinate attempt
+
+- Branch: `codex/cua-process-click`.
+- `cua.processClick(point?)` routes one coordinate pair through public
+  `CGEventPostToPid`, using the attached window's freshly resolved PID, window ID
+  and target-local geometry. It is explicit, authorized as native input, and
+  never an automatic fallback from Accessibility or to global input.
+- No activation, raise, global post, cursor restoration/hiding or input
+  suppression. Existing ownership, ordering, Stop and mouse-up cleanup remain.
+- Public window fields carry intended-window identity, not a delivery guarantee.
+  The native receipt reports process-coordinate, unknown, windowDelivery unverified
+  plus sampled effects. The custom marker and protected Trajectory retain the
+  intended location and target; fresh capture must assess the application result.
+- Public SDK/header and Apple documentation establish process event-stream
+  posting but no promise of covered-window delivery or pointer independence.
+  App-defined effects and other-window delivery remain possible. See the user
+  guide for sources and limitations. No private fields/APIs were introduced.
+- User test: explicitly request processClick once on a harmless control in a
+  covered window, then a fresh snapshot. Observe whether the intended window
+  changed and whether your pointer, foreground app and window order stayed put.
+  Do not automatically repeat an unknown action.
+- Validation: Rust compilation/Clippy; eight focused pure Rust tests covering
+  routing, identity, Stop cleanup and host arguments; fifteen worker contract/
+  activity unit tests; worker/server/app typechecks; formatting and diff checks.
+  No native, interactive or integration tests were run locally.
+- Implementation handoff: the next required evidence is the user's covered-window
+  acceptance. Do not create extra cycles or run native tests in lieu of feedback.
+- Covered-window acceptance remains pending. The earlier global foreground click
+  and automated checks are not evidence for this required user outcome.
 
 ## Clicking-tranche progress
 

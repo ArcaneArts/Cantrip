@@ -242,6 +242,7 @@ export async function handleComputerUseOperation(
           action.position,
           signal,
           action.globalInput ?? false,
+          action.delivery,
         );
         break;
       case "controls.inspect":
@@ -369,7 +370,10 @@ export async function handleComputerUseOperation(
               activityAction?.operation === "input.click" &&
               activityAction.globalInput
                 ? "coordinate"
-                : "accessibility",
+                : activityAction?.operation === "input.click" &&
+                    activityAction.delivery === "process"
+                  ? "process-coordinate"
+                  : "accessibility",
             input:
               data && "input" in data
                 ? cuaInputReceiptSchema.parse(data.input)

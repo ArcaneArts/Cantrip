@@ -51,9 +51,45 @@ activity, or exclude later asynchronous application changes. Failed operations
 without a receipt have no effects measurement; do not infer unchanged state.
 The protected Trajectory summary displays the sampled changes.
 
-Process-targeted coordinate delivery remains work for the pointer-preserving
-goal. Covered-window user acceptance is pending;
+An explicit process-targeted coordinate attempt is now available as described
+below. Covered-window user acceptance is pending;
 the earlier foreground/global-click acceptance below does not satisfy it.
+
+## Explicit process-targeted coordinate attempt
+
+`await cua.processClick()` uses the current custom cursor; passing `{x,y}` moves
+it to that target-local position first. It requires an attached macOS application
+window and uses the existing native-input authorization and session queue. It is
+separate from Accessibility `click` and global `globalClick`; neither method
+falls back to it. Ask for this method explicitly when testing it.
+
+Rust resolves the selected window's current identity and geometry, derives the
+owning PID and native window ID, then posts one left-button down/up pair through
+public `CGEventPostToPid`. Public window event fields 91/92 carry the intended
+window ID. No activation, window raise, global event post, pointer restoration,
+hiding or input suppression is requested. Mouse-up cleanup remains in place if
+Stop arrives after mouse-down. Native control references are invalidated.
+
+The API has no per-window delivery acknowledgement. Its return is recorded as
+`method: "process-coordinate"`, `outcome: "unknown"`, and
+`windowDelivery: "unverified"`. Session and Trajectory retain the intended target,
+generation and coordinates. The cursor marks that **intended** action position;
+it cannot establish the actual receiving window. Process routing or window fields
+are not proof of delivery to that window: another window of the application may
+receive the event, or the application may ignore it. Application-defined pointer,
+focus and window-order effects remain unverified. Best-effort before/after effects
+samples are included under the limitations described above.
+
+Do not retry automatically or switch methods after this uncertain dispatch.
+Request a fresh snapshot and assess the visible result. Covered-window support
+and pointer/focus preservation require the user's observation; no native or GUI
+acceptance was run by the coding agent.
+
+Public API evidence: Apple's [process posting API](<https://developer.apple.com/documentation/coregraphics/cgevent/posttopid(_:)>)
+and public [window field](https://developer.apple.com/documentation/coregraphics/cgeventfield/mouseeventwindowundermousepointer)
+are declared in the macOS SDK's `CGEvent.h` / `CGEventTypes.h`. The SDK describes
+process event-stream delivery; it does not promise delivery to a specified
+covered window or pointer independence. No private event fields or APIs are used.
 
 ## Try it
 

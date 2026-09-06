@@ -58,6 +58,27 @@ describe("protected computer-use activity metadata", () => {
       expect(JSON.stringify(activity)).not.toContain("private native detail");
     },
   );
+  it("keeps process delivery uncertainty and intended coordinates in the receipt", () => {
+    const activity = computerUseActivity({
+      ...input(),
+      operation: "input.click",
+      input: {
+        method: "process-coordinate",
+        activation: false,
+        outcome: "unknown",
+        windowDelivery: "unverified",
+        position: { x: 12, y: 15 },
+      },
+    });
+    expect(agentActivitySchema.parse(activity)).toMatchObject({
+      input: {
+        method: "process-coordinate",
+        outcome: "unknown",
+        windowDelivery: "unverified",
+        position: { x: 12, y: 15 },
+      },
+    });
+  });
   it("records terminal timing and permits only bounded metadata in raw capture", () => {
     const activity = agentActivitySchema.parse(computerUseActivity(input()));
     expect(activity).toMatchObject({

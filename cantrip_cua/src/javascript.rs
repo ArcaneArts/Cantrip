@@ -64,6 +64,9 @@ enum HostAction {
     Click {
         point: Option<Point>,
     },
+    ProcessClick {
+        point: Option<Point>,
+    },
     GlobalClick {
         point: Point,
     },
@@ -100,6 +103,7 @@ fn validate_action(source: &str) -> Result<Value> {
         HostAction::MoveCursor { point }
         | HostAction::GlobalClick { point }
         | HostAction::Click { point: Some(point) }
+        | HostAction::ProcessClick { point: Some(point) }
             if !point.x.is_finite() || !point.y.is_finite() || point.x < 0.0 || point.y < 0.0 =>
         {
             return Err(script_error());
@@ -137,6 +141,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
     },
     attach: target => call({operation:'attach', target}),
     click: point => call({operation:'click', point}),
+    processClick: point => call({operation:'processClick', point}),
     globalClick: point => call({operation:'globalClick', point}),
     controls: () => call({operation:'controls'}),
     press: reference => call({operation:'press', reference}),
@@ -978,6 +983,9 @@ mod tests {
         assert!(validate_action(r#"{"operation":"moveCursor","point":{"x":1.5,"y":0}}"#).is_ok());
         assert!(validate_action(r#"{"operation":"moveCursor","point":{"x":-1,"y":0}}"#).is_err());
         assert!(validate_action(r#"{"operation":"click"}"#).is_ok());
+        assert!(validate_action(r#"{"operation":"processClick"}"#).is_ok());
+        assert!(validate_action(r#"{"operation":"processClick","point":{"x":-1,"y":0}}"#).is_err());
+        assert!(validate_action(r#"{"operation":"processClick","processId":123}"#).is_err());
         assert!(validate_action(&" ".repeat(MAX_SOURCE + 1)).is_err());
     }
 }

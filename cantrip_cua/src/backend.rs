@@ -68,6 +68,18 @@ pub trait CaptureBackend: Send {
             "Targeted cursor action is unsupported.",
         ))
     }
+    fn process_click(
+        &mut self,
+        _session: &str,
+        _target: &Target,
+        _position: crate::target::Point,
+        _cancel: &Cancellation,
+    ) -> Result<(Target, crate::input::InputReceipt)> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Process-targeted coordinate input is unsupported.",
+        ))
+    }
     fn global_click(
         &mut self,
         _session: &str,

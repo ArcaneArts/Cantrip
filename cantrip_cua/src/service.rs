@@ -121,6 +121,8 @@ pub enum Operation {
         position: Option<Point>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         global_input: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        delivery: Option<crate::input::ClickDelivery>,
     },
     #[serde(rename = "session.close")]
     SessionClose { binding: SessionBinding },
@@ -525,7 +527,13 @@ impl<B: CaptureBackend> CuaService<B> {
                 target_generation,
                 position,
                 global_input,
+                delivery,
             } => {
+                if global_input && delivery.is_some() {
+                    return Err(CuaError::invalid(
+                        "Global input and process delivery are mutually exclusive.",
+                    ));
+                }
                 let mut state = self.attached(&binding, &target_id, target_generation)?;
                 let target = self
                     .backend
@@ -535,7 +543,10 @@ impl<B: CaptureBackend> CuaService<B> {
                 state.target = Some(target.clone());
                 self.sessions
                     .insert(binding.session_id.clone(), state.clone());
-                let attempt = if global_input {
+                let attempt = if delivery.is_some() {
+                    self.backend
+                        .process_click(&binding.session_id, &target, position, cancel)
+                } else if global_input {
                     self.backend
                         .global_click(&binding.session_id, &target, position, cancel)
                 } else {
@@ -546,7 +557,9 @@ impl<B: CaptureBackend> CuaService<B> {
                     Ok(receipt) => receipt,
                     Err(error) => {
                         state.cursor.mark_action(
-                            if global_input {
+                            if delivery.is_some() {
+                                "process-coordinate"
+                            } else if global_input {
                                 "coordinate"
                             } else {
                                 "accessibility"
