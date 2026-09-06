@@ -136,7 +136,7 @@ Unlike repeated `keyPress` calls, the whole timeline crosses the worker and
 native boundary once. It counts as one JavaScript host call. Scheduling remains
 best effort, not sample-accurate audio.
 
-A timeline permits 1–256 ordered frames over at most 10 seconds, with up to 16
+A timeline permits 1–131,072 ordered frames over at most two hours, with up to 16
 keys held at once. Downs and ups must balance. Stop/error releases only the keys
 or button whose downs were actually dispatched, including cancellation partway
 through a chord. Held state never escapes the native operation.
@@ -177,7 +177,7 @@ await cua.snapshot();
 
 `wait(ms)` accepts 0–10000 ms and cancels on Stop. It begins after the previous
 action completes; it is not a real-time music scheduler. Scripts retain the
-existing time budget, 64 host-call limit (including waits), and two-image limit.
+existing time budget, 16,384 host-call limit (including waits), and two-image limit.
 Input is sequential; concurrent calls are rejected. A drag is one native macro;
 a whole script is not an exclusive multi-agent window lock. Never catch an input
 error to continue the sequence. Distinct preplanned actions on a stable interface
@@ -525,3 +525,45 @@ complete when reading its children confirms none. General control discovery
 keeps its smaller limits. Actual omitted nodes still produce an incomplete
 inspection and no AX action. This expands bounded lookup; it does not establish
 that a particular application implements a usable press action.
+
+## Full performances, live help, and explicit focus
+
+`await cua.help()` returns the running native API version (3), method signatures,
+and actual limits. On an older helper, `Object.keys(cua)` inventories its methods.
+An installed update requires restarting the worker/dev session; `js_reset` only
+resets JavaScript and does not replace a running helper binary.
+
+Generate a whole preplanned score in one `inputTimeline` call: up to 131,072 frames
+and two hours. A managed script allows 2 MiB of UTF-8 source, 16,384 host calls,
+and 125 minutes total wall time including approvals. Generated host actions allow
+15 MiB; native/control envelopes allow 16 MiB. The JS heap is 128 MiB and active
+JS computation has a 10-second budget, excluding native playback waits. Output
+remains 32 KiB with two model images. Do not return the entire generated score.
+MCP, HTTP headers/body, and native input deadlines accommodate long playback.
+These bounds do not require repeated model turns or tiny music chunks. Stop still
+cancels playback and releases held input. Real-time piano QA remains user-owned.
+
+For an explicitly authorized Command-click background route:
+
+```js
+await cua.commandClick({ x: 50, y: 100 }, 150);
+```
+
+This sends Meta on the window-directed mouse pair, never as a held keyboard key.
+It does not activate the window or move the system pointer. Command can change
+link and selection semantics; plain unfocused clicking is still app-dependent.
+The wrapper makes the existing modified pointer path discoverable; it is not a
+new claim that the target app accepted the click.
+
+When the user permits bringing the attached window forward:
+
+```js
+await cua.requestFocus();
+await cua.snapshot(); // Reacquire coordinates before choosing the next click.
+```
+
+Focus requests activation, marks that window main, and raises it via Accessibility.
+It sends no mouse event and does not restore previous focus. Receipts distinguish
+`focus` with `activation: true`; dispatch is not visual proof of focus. Errors
+after any focus attempt remain uncertain. This method is never an implicit retry
+or a substitute for background input.

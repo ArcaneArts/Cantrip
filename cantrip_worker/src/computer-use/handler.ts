@@ -378,7 +378,9 @@ export async function handleComputerUseOperation(
                 : null,
             inputMethod:
               activityAction?.operation === "input.perform"
-                ? `background-${activityAction.command.kind}`
+                ? activityAction.command.kind === "focus"
+                  ? "focus"
+                  : `background-${activityAction.command.kind}`
                 : activityAction?.operation === "input.click" &&
                     activityAction.globalInput
                   ? "coordinate"

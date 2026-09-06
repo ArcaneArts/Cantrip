@@ -5,7 +5,7 @@ import {
 } from "./errors.js";
 
 export const CUA_PROTOCOL_VERSION = 1;
-export const CUA_MAX_HEADER_BYTES = 65_536;
+export const CUA_MAX_HEADER_BYTES = 16 * 1024 * 1024;
 export const CUA_MAX_PAYLOAD_BYTES = 16 * 1024 * 1024;
 const EMPTY = Buffer.alloc(0);
 const utf8 = new TextDecoder("utf-8", { fatal: true });

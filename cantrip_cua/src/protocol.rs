@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::{error::CuaError, target::MAX_SEQUENCE};
 
 pub const PROTOCOL_VERSION: u32 = 1;
-pub const MAX_HEADER_BYTES: usize = 65_536;
+pub const MAX_HEADER_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_PAYLOAD_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq)]

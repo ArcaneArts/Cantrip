@@ -1,3 +1,4 @@
+import { CUA_MAX_SCRIPT_BYTES } from "@cantrip/protocol";
 import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -22,7 +23,7 @@ import {
 } from "./types.js";
 
 export const CUA_JAVASCRIPT_MAX_CONTEXTS = 4;
-export const CUA_JAVASCRIPT_MAX_SOURCE_BYTES = 32 * 1024;
+export const CUA_JAVASCRIPT_MAX_SOURCE_BYTES = CUA_MAX_SCRIPT_BYTES;
 export const CUA_JAVASCRIPT_MAX_OUTPUT_BYTES = 32 * 1024;
 export const CUA_JAVASCRIPT_MAX_IMAGES = 2;
 export const CUA_JAVASCRIPT_MAX_IMAGE_BYTES = 16 * 1024 * 1024;
@@ -326,7 +327,7 @@ export class CuaJavascriptContexts {
     if (
       !Number.isSafeInteger(wallTimeoutMs) ||
       wallTimeoutMs < 1 ||
-      wallTimeoutMs > 345_000
+      wallTimeoutMs > 7_500_000
     )
       throw new CuaProcessError("invalid-request", "not-sent");
     if (options.signal?.aborted)

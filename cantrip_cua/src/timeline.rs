@@ -29,10 +29,10 @@ pub struct InputFrame {
 pub fn validate(frames: &[InputFrame]) -> Result<()> {
     let invalid = || {
         CuaError::invalid(
-            "Invalid input timeline: use 1-256 ordered frames within 10000 ms, supported keys, and balanced down/up events (maximum 16 held keys and one pointer).",
+            "Invalid input timeline: use 1-131072 ordered frames within 7200000 ms, supported keys, and balanced down/up events (maximum 16 held keys and one pointer).",
         )
     };
-    if frames.is_empty() || frames.len() > 256 {
+    if frames.is_empty() || frames.len() > 131072 {
         return Err(invalid());
     }
     let mut held = BTreeSet::new();
@@ -40,7 +40,7 @@ pub fn validate(frames: &[InputFrame]) -> Result<()> {
     let mut at = 0;
     for frame in frames {
         if frame.at_ms < at
-            || frame.at_ms > 10000
+            || frame.at_ms > 7_200_000
             || frame.key_down.len() > 16
             || frame.key_up.len() > 16
             || frame.pointer_modifiers.len() > 4
@@ -265,7 +265,7 @@ mod tests {
             serde_json::json!([{"atMs":0,"keyDown":["C"]}]),
             serde_json::json!([{"atMs":0,"keyUp":["C"]}]),
             serde_json::json!([{"atMs":0,"keyDown":["C","C"]}]),
-            serde_json::json!([{"atMs":10001}]),
+            serde_json::json!([{"atMs":7200001}]),
         ] {
             assert!(validate(&parse(value)).is_err());
         }

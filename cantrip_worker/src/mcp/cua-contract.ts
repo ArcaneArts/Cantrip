@@ -1,4 +1,7 @@
-import type { CantripMcpBinding } from "@cantrip/protocol";
+import {
+  CUA_MAX_SCRIPT_BYTES,
+  type CantripMcpBinding,
+} from "@cantrip/protocol";
 import {
   CallToolResultSchema,
   type CallToolResult,
@@ -11,15 +14,15 @@ import {
 } from "../computer-use/model-image-contract.js";
 
 export const CANTRIP_CUA_MCP_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
-export const CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS = 360_000;
+export const CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS = 7_560_000;
 export const CANTRIP_CUA_MCP_TOOL_NAMES = ["js", "js_reset"] as const;
 export const cuaMcpScriptSchema = z
   .string()
   .min(1)
-  .max(32 * 1024)
+  .max(CUA_MAX_SCRIPT_BYTES)
   .refine(
-    (script) => Buffer.byteLength(script, "utf8") <= 32 * 1024,
-    "CUA scripts cannot exceed 32 KiB of UTF-8.",
+    (script) => Buffer.byteLength(script, "utf8") <= CUA_MAX_SCRIPT_BYTES,
+    "CUA scripts cannot exceed 2 MiB of UTF-8.",
   );
 const identity = {
   threadId: z.string().trim().min(1).max(256),

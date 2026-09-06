@@ -1,3 +1,5 @@
+import { encodeCuaFrame } from "./framing.js";
+import { cuaMcpScriptSchema } from "../mcp/cua-contract.js";
 import { describe, expect, it } from "vitest";
 import { cuaInputCommandSchema } from "./types.js";
 import { cuaJavascriptActionSchema } from "./javascript.js";
@@ -123,7 +125,7 @@ describe("native chord timeline", () => {
       [{ atMs: 0, keyUp: ["C"] }],
       [{ atMs: 0, keyDown: ["C", "C"] }],
       [{ atMs: 100 }, { atMs: 0 }],
-      [{ atMs: 10001 }],
+      [{ atMs: 7200001 }],
       [{ atMs: 0, pointerDown: { x: 1, y: 1 } }],
       [{ atMs: 0, pointerUp: true }],
       [{ atMs: 0, keyDown: ["Bogus"] }],
@@ -180,5 +182,65 @@ describe("explicit pointer modifiers", () => {
     expect(
       cuaInputCommandSchema.safeParse({ kind: "timeline", frames }).success,
     ).toBe(false);
+  });
+});
+
+describe("focus and full performance contracts", () => {
+  it("accepts explicit focus and requires an activation receipt", () => {
+    expect(
+      cuaJavascriptActionSchema.parse({
+        operation: "perform",
+        command: { kind: "focus" },
+      }),
+    ).toEqual({ operation: "perform", command: { kind: "focus" } });
+    expect(
+      matchesInputReceipt(
+        { method: "focus", activation: true, outcome: "dispatched" },
+        "focus",
+      ),
+    ).toBe(true);
+    expect(
+      matchesInputReceipt(
+        { method: "focus", activation: false, outcome: "dispatched" },
+        "focus",
+      ),
+    ).toBe(false);
+  });
+  it("accepts a two-hour score with 131072 frames in the actual wire envelope", () => {
+    const frames = Array.from({ length: 131072 }, (_, i) =>
+      i % 2 === 0
+        ? { atMs: i * 50, keyDown: ["C"] }
+        : { atMs: i * 50, keyUp: ["C"] },
+    );
+    frames.at(-1)!.atMs = 7200000;
+    const action = cuaJavascriptActionSchema.parse({
+      operation: "perform",
+      command: { kind: "timeline", frames },
+    });
+    const encoded = encodeCuaFrame({
+      version: 1,
+      message: { kind: "request", requestId: 1, operation: action },
+    });
+    expect(encoded.byteLength).toBeGreaterThan(1024 * 1024);
+    expect(
+      cuaInputCommandSchema.safeParse({
+        kind: "timeline",
+        frames: [...frames, { atMs: 7200000 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      cuaInputCommandSchema.safeParse({
+        kind: "timeline",
+        frames: [{ atMs: 7200001 }],
+      }).success,
+    ).toBe(false);
+  });
+  it("accepts larger UTF-8 scripts through the MCP schema", () => {
+    expect(
+      cuaMcpScriptSchema.safeParse("x".repeat(2 * 1024 * 1024)).success,
+    ).toBe(true);
+    expect(cuaMcpScriptSchema.safeParse("😀".repeat(524289)).success).toBe(
+      false,
+    );
   });
 });
