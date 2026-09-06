@@ -88,6 +88,7 @@ export const cuaSessionSchema = z.strictObject({
           "background-scroll",
           "background-timeline",
           "focus",
+          "window-input",
         ]),
         outcome: z.enum([
           "dispatched",
@@ -286,6 +287,7 @@ const cuaTimelineSchema = z
 /** One bounded native macro; no raw key-down/up is exposed to agents. */
 export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("focus") }),
+  z.strictObject({ kind: z.literal("window-input") }),
   z.strictObject({ kind: z.literal("timeline"), frames: cuaTimelineSchema }),
   z.strictObject({
     kind: z.literal("text"),
@@ -356,6 +358,7 @@ export const cuaInputReceiptSchema = z.strictObject({
     "background-scroll",
     "background-timeline",
     "focus",
+    "window-input",
   ]),
   activation: z.boolean(),
   outcome: z.enum(["dispatched", "unknown"]),

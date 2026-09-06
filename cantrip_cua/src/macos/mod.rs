@@ -10,6 +10,7 @@ mod pending;
 mod registry;
 mod sharing;
 mod skylight;
+mod window_input;
 
 use crate::{
     backend::{Capture, CaptureBackend, Raster, UnavailableBackend},

@@ -18,6 +18,18 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### Target-only AppKit input preparation
+
+API 4 adds explicit `prepareWindowInput()`: one activation notification to the
+attached window's process, followed by an independently requested ordinary
+pointer press. No Command modifier, front-process/raise call, foreground-app
+defocus, primer click or replay. Receipt method `window-input`, activation true
+(AppKit state change, not a claimed global focus switch), plus sampled effects.
+Candidate for user testing; ordinary inactive clicks are not claimed fixed.
+Validation: 39 TypeScript checks, three Rust unit checks, protocol/worker builds,
+Rust Clippy, formatting and diff checks passed. No app launch, live input,
+integration QA or CI jobs.
+
 ### CUA HTTP client compatibility correction
 
 The long-performance timeout change paired Node's bundled fetch with the newer

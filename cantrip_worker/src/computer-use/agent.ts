@@ -389,8 +389,9 @@ export class CuaAgentCoordinator {
                   : null,
               inputMethod:
                 outcome.action.operation === "perform"
-                  ? outcome.action.command.kind === "focus"
-                    ? "focus"
+                  ? outcome.action.command.kind === "focus" ||
+                    outcome.action.command.kind === "window-input"
+                    ? outcome.action.command.kind
                     : `background-${outcome.action.command.kind}`
                   : outcome.action.operation === "globalClick"
                     ? "coordinate"
