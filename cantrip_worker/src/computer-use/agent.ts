@@ -361,6 +361,7 @@ export class CuaAgentCoordinator {
         ],
       };
     }
+    const inputAttempts: { method: string; outcome: string }[] = [];
     const result = await this.options.service.evaluateJavascript(
       lifetime.scope,
       request.script,
@@ -368,44 +369,47 @@ export class CuaAgentCoordinator {
         executionSignal: lifetime.signal,
         signal: active,
         wallTimeoutMs: 345_000,
-        onOperation: record.command.publishActivity
-          ? (outcome) => {
-              record.command.publishActivity!(
-                computerUseActivity({
-                  ...outcome,
-                  position:
-                    outcome.action.operation === "click" ||
-                    outcome.action.operation === "globalClick" ||
-                    outcome.action.operation === "processClick" ||
-                    outcome.action.operation === "backgroundClick"
-                      ? (outcome.action.point ??
-                        outcome.session?.cursor.position ??
-                        null)
-                      : null,
-                  inputMethod:
-                    outcome.action.operation === "perform"
-                      ? `background-${outcome.action.command.kind}`
-                      : outcome.action.operation === "globalClick"
-                        ? "coordinate"
-                        : outcome.action.operation === "backgroundClick"
-                          ? "background-coordinate"
-                          : outcome.action.operation === "processClick"
-                            ? "process-coordinate"
-                            : "accessibility",
-                  source: "agent-mcp",
-                  operation:
-                    outcome.action.operation === "wait"
-                      ? "js.wait"
-                      : operations[outcome.action.operation],
-                  operationId: crypto.randomUUID(),
-                  requestId,
-                  scope: lifetime.scope,
-                  agentScope: lifetime.native.agentScope,
-                  itemId: request.itemId,
-                }),
-              );
-            }
-          : undefined,
+        onOperation: (outcome) => {
+          if (outcome.input)
+            inputAttempts.push({
+              method: outcome.input.method,
+              outcome: outcome.input.outcome,
+            });
+          record.command.publishActivity?.(
+            computerUseActivity({
+              ...outcome,
+              position:
+                outcome.action.operation === "click" ||
+                outcome.action.operation === "globalClick" ||
+                outcome.action.operation === "processClick" ||
+                outcome.action.operation === "backgroundClick"
+                  ? (outcome.action.point ??
+                    outcome.session?.cursor.position ??
+                    null)
+                  : null,
+              inputMethod:
+                outcome.action.operation === "perform"
+                  ? `background-${outcome.action.command.kind}`
+                  : outcome.action.operation === "globalClick"
+                    ? "coordinate"
+                    : outcome.action.operation === "backgroundClick"
+                      ? "background-coordinate"
+                      : outcome.action.operation === "processClick"
+                        ? "process-coordinate"
+                        : "accessibility",
+              source: "agent-mcp",
+              operation:
+                outcome.action.operation === "wait"
+                  ? "js.wait"
+                  : operations[outcome.action.operation],
+              operationId: crypto.randomUUID(),
+              requestId,
+              scope: lifetime.scope,
+              agentScope: lifetime.native.agentScope,
+              itemId: request.itemId,
+            }),
+          );
+        },
         authorize: async (action, callSignal) => {
           const authority = await this.refresh(record, binding, callSignal);
           if (action.operation === "wait") return; // lifetime/authority was refreshed above; no new observation or input.
@@ -463,6 +467,13 @@ export class CuaAgentCoordinator {
           type: "text",
           text: JSON.stringify({
             value: result.value,
+            ...(inputAttempts.length
+              ? {
+                  inputAttempts,
+                  inputVerification:
+                    "These are dispatch receipts, not proof that the application reacted or produced sound. Unknown remains unverified even when the final expression is a snapshot. Do not claim the note played or the click worked without observed evidence or user confirmation; do not replay uncertain input.",
+                }
+              : {}),
             images: images.map(({ native, model }) => ({ native, model })),
             coordinates:
               "Target-local logical points. For model image pixels use x * logicalWidth / model.width and y * logicalHeight / model.height. Cursor movement never moves the system pointer.",

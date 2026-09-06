@@ -462,11 +462,17 @@ export class CantripCuaService {
             ? (fields.command as CuaInputCommand)
             : undefined;
         const position = command
-          ? command.kind === "drag"
-            ? command.end
-            : command.kind === "scroll"
-              ? (command.point ?? record.state?.cursor.position)
-              : record.state?.cursor.position
+          ? command.kind === "timeline"
+            ? command.frames.reduce(
+                (point: CuaPoint | undefined, frame) =>
+                  frame.pointerDown ?? point,
+                record.state?.cursor.position,
+              )
+            : command.kind === "drag"
+              ? command.end
+              : command.kind === "scroll"
+                ? (command.point ?? record.state?.cursor.position)
+                : record.state?.cursor.position
           : operation === "input.click"
             ? "position" in fields
               ? (fields.position as CuaPoint)

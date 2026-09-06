@@ -6,6 +6,7 @@ import { CuaAgentCoordinator, type CuaAgentCommand } from "./agent.js";
 import { CuaAgentApprovalEvents } from "./agent-approval-events.js";
 import type { CuaApprovalManager } from "./approvals.js";
 import type { CantripCuaService } from "./service.js";
+import type { CuaJavascriptOptions } from "./javascript.js";
 import { CuaNativeError } from "./errors.js";
 
 const claims = {
@@ -41,10 +42,16 @@ function fixture(usesDefault = true) {
   const root = new AbortController();
   const child = new AbortController();
   const service = {
-    evaluateJavascript: vi.fn(async (_scope: unknown) => ({
-      value: 1,
-      images: [],
-    })),
+    evaluateJavascript: vi.fn(
+      async (
+        _scope: unknown,
+        _script?: string,
+        _options?: CuaJavascriptOptions,
+      ) => ({
+        value: 1,
+        images: [],
+      }),
+    ),
     resetJavascript: vi.fn(async () => {}),
     cancelScope: vi.fn(),
   };
@@ -113,6 +120,41 @@ function fixture(usesDefault = true) {
   };
 }
 describe("CUA agent runtime authority", () => {
+  it("preserves unknown input receipts when a script discards them and no activity publisher exists", async () => {
+    const f = fixture();
+    f.service.evaluateJavascript.mockImplementationOnce(
+      async (_scope, _script, options) => {
+        options!.onOperation!({
+          action: { operation: "processClick" },
+          session: null,
+          target: null,
+          image: null,
+          startedAtMs: 1,
+          completedAtMs: 2,
+          error: null,
+          failed: false,
+          cancelled: false,
+          input: {
+            method: "process-coordinate",
+            activation: false,
+            outcome: "unknown",
+            windowDelivery: "unverified",
+          },
+        });
+        return { value: 1, images: [] };
+      },
+    );
+    const result = await f.call();
+    const content = result.content[0]!;
+    expect(content.type).toBe("text");
+    const value = JSON.parse((content as { text: string }).text);
+    expect(value.inputAttempts).toEqual([
+      { method: "process-coordinate", outcome: "unknown" },
+    ]);
+    expect(value.inputVerification).toContain("not proof");
+    expect(value.inputVerification).toContain("sound");
+    await f.unregister();
+  });
   it("allows reset after a syntax failure while authority remains live", async () => {
     const f = fixture();
     f.service.evaluateJavascript.mockRejectedValueOnce(

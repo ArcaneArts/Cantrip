@@ -10,6 +10,7 @@ pub mod protocol;
 pub mod runtime;
 pub mod service;
 pub mod target;
+pub mod timeline;
 
 #[cfg(target_os = "macos")]
 pub mod macos;

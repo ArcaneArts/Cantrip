@@ -147,6 +147,9 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
 ((host, stringify) => {
   const call = action => host(stringify(action));
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
+    keyChord: (keys, holdMs = 500) => call({operation:'perform', command:{kind:'timeline',frames:[{atMs:0,keyDown:keys},{atMs:holdMs,keyUp:keys}]}}),
+    inputTimeline: frames => call({operation:'perform',command:{kind:'timeline',frames}}),
+    pointerPress: (point, holdMs = 150) => call({operation:'perform',command:{kind:'timeline',frames:[{atMs:0,pointerDown:point},{atMs:holdMs,pointerUp:true}]}}),
     typeText: text => call({operation:'perform', command:{kind:'text',text}}),
     keyPress: (key, modifiers = []) => call({operation:'perform', command:{kind:'key',key,modifiers}}),
     clickDrag: (start, end, durationMs = 200) => call({operation:'perform', command:{kind:'drag',start,end,durationMs}}),
@@ -850,6 +853,18 @@ mod tests {
     #[test]
     fn macro_bootstrap_sends_bounded_host_commands() {
         for (script, expected) in [
+            (
+                r#"await cua.keyChord(["C","B","M"],500)"#,
+                json!({"operation":"perform","command":{"kind":"timeline","frames":[{"atMs":0,"keyDown":["C","B","M"]},{"atMs":500,"keyUp":["C","B","M"]}]}}),
+            ),
+            (
+                r#"await cua.pointerPress({x:10,y:20},200)"#,
+                json!({"operation":"perform","command":{"kind":"timeline","frames":[{"atMs":0,"pointerDown":{"x":10,"y":20}},{"atMs":200,"pointerUp":true}]}}),
+            ),
+            (
+                r#"await cua.inputTimeline([{atMs:0,keyDown:["C"]},{atMs:50,keyUp:["C"]}])"#,
+                json!({"operation":"perform","command":{"kind":"timeline","frames":[{"atMs":0,"keyDown":["C"]},{"atMs":50,"keyUp":["C"]}]}}),
+            ),
             (
                 r#"await cua.typeText("hi🦀")"#,
                 json!({"operation":"perform","command":{"kind":"text","text":"hi🦀"}}),

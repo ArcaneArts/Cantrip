@@ -98,3 +98,38 @@ describe("bounded native macros", () => {
     expect(matchesInputReceipt(receipt, method, { x: 3, y: 4 })).toBe(false);
   });
 });
+
+describe("native chord timeline", () => {
+  const parse = (frames: unknown) =>
+    cuaInputCommandSchema.safeParse({ kind: "timeline", frames });
+  it("supports chords, overlap and re-articulation in one frame", () => {
+    expect(
+      parse([
+        { atMs: 0, keyDown: ["C", "B"] },
+        { atMs: 100, keyUp: ["C"], keyDown: ["C", "M"] },
+        { atMs: 500, keyUp: ["C", "B", "M"] },
+      ]).success,
+    ).toBe(true);
+    expect(
+      parse([
+        { atMs: 0, pointerDown: { x: 10, y: 20 } },
+        { atMs: 150, pointerUp: true },
+      ]).success,
+    ).toBe(true);
+  });
+  it.each(
+    [
+      [{ atMs: 0, keyDown: ["C"] }],
+      [{ atMs: 0, keyUp: ["C"] }],
+      [{ atMs: 0, keyDown: ["C", "C"] }],
+      [{ atMs: 100 }, { atMs: 0 }],
+      [{ atMs: 10001 }],
+      [{ atMs: 0, pointerDown: { x: 1, y: 1 } }],
+      [{ atMs: 0, pointerUp: true }],
+      [{ atMs: 0, keyDown: ["Bogus"] }],
+      [{ atMs: 0, globalInput: true }],
+    ].map((frames) => ({ frames })),
+  )("rejects invalid held-state or timing %j", ({ frames }) =>
+    expect(parse(frames).success).toBe(false),
+  );
+});
