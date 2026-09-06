@@ -211,6 +211,17 @@ export const cuaInputReceiptSchema = z.strictObject({
   outcome: z.literal("dispatched"),
   position: cuaPointSchema.optional(),
   globalPosition: cuaPointSchema.optional(),
+  effects: z
+    .strictObject({
+      sampling: z.literal("before-after-dispatch"),
+      beforeAtMs: counter,
+      afterAtMs: counter,
+      pointer: z.enum(["unchanged", "changed", "unknown"]),
+      foregroundApplication: z.enum(["unchanged", "changed", "unknown"]),
+      foregroundWindow: z.enum(["unchanged", "changed", "unknown"]),
+      windowOrder: z.enum(["unchanged", "changed", "unknown"]),
+    })
+    .optional(),
 });
 export const cuaInputResultSchema = z.strictObject({
   session: cuaSessionSchema,

@@ -533,6 +533,7 @@ impl Accessibility {
             outcome: "dispatched",
             position,
             global_position: position.and_then(|p| target.bounds.to_global(p).ok()),
+            effects: None,
         })
     }
 }
@@ -584,5 +585,48 @@ pub(super) fn activate_for_click(
             ));
         }
         cancel.wait_cancelled(Duration::from_millis(20));
+    }
+}
+
+/// Read-only focus samples. AX errors are unavailable evidence, not input gates.
+pub(super) struct FocusSample {
+    app: Option<Owned>,
+    window: Option<Owned>,
+}
+impl FocusSample {
+    pub(super) fn capture() -> Self {
+        let app = (|| -> Result<Owned> {
+            let system = Owned::take(unsafe { AXUIElementCreateSystemWide() })?;
+            read_result(unsafe { AXUIElementSetMessagingTimeout(system.0, 0.05) })?;
+            system.attr("AXFocusedApplication")
+        })()
+        .ok();
+        let window = app.as_ref().and_then(|app| {
+            read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.05) }).ok()?;
+            app.attr("AXFocusedWindow").ok()
+        });
+        Self { app, window }
+    }
+    pub(super) fn compare(
+        &self,
+        after: &Self,
+    ) -> (crate::input::ObservedChange, crate::input::ObservedChange) {
+        let compare = |left: &Option<Owned>, right: &Option<Owned>| {
+            use crate::input::ObservedChange::*;
+            match (left, right) {
+                (Some(a), Some(b)) => {
+                    if a.same(b) {
+                        Unchanged
+                    } else {
+                        Changed
+                    }
+                }
+                _ => Unknown,
+            }
+        };
+        (
+            compare(&self.app, &after.app),
+            compare(&self.window, &after.window),
+        )
     }
 }

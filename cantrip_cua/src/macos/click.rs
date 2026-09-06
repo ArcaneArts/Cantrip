@@ -88,6 +88,7 @@ pub(super) fn click(
             outcome: "dispatched",
             position: Some(position),
             global_position: Some(global),
+            effects: None,
         },
     ))
 }
