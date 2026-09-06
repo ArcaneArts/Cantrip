@@ -18,6 +18,16 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### CUA HTTP client compatibility correction
+
+The long-performance timeout change paired Node's bundled fetch with the newer
+packaged Undici dispatcher. Their callback contracts differ, preventing even
+`cua.help()` from returning. CUA now uses fetch and dispatcher from the same
+Undici package; generic MCP retains its existing fetch path. Three socket-free
+MockAgent checks pass and the worker builds. The help regression test times out
+on the previous implementation and passes with the fix. No app launch, live
+input, integration QA or CI jobs. Existing MCP processes need a dev/worker restart.
+
 ### September 6: focus and full-performance iteration
 
 Added live `cua.help()` (API 3), explicit `commandClick` and `requestFocus` methods,
