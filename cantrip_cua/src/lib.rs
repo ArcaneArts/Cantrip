@@ -12,3 +12,6 @@ pub mod target;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
+
+#[cfg(any(target_os = "macos", test))]
+mod window_traversal;

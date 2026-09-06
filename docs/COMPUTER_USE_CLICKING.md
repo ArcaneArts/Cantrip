@@ -231,3 +231,13 @@ substitute a monitor: it has neither the attached window's control hierarchy nor
 its process identity. This does not authorize switching methods after unknown
 input, denied permission, Stop or revocation. Process delivery remains unknown;
 inspect the fresh result and sampled effects without automatically replaying it.
+
+### Window control-search limits
+
+Targeted Accessibility lookup can traverse up to 512 distinct elements within
+the existing deadline. It no longer stops solely at 24 nested wrappers or 128
+siblings. Repeated elements are visited once, and a leaf at a depth boundary is
+complete when reading its children confirms none. General control discovery
+keeps its smaller limits. Actual omitted nodes still produce an incomplete
+inspection and no AX action. This expands bounded lookup; it does not establish
+that a particular application implements a usable press action.
