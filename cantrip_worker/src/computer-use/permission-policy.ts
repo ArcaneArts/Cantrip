@@ -42,6 +42,7 @@ const operationClasses = {
   "controls.inspect": ["controls"],
   "input.press": ["native-input"],
   "input.click": ["native-input"],
+  "input.perform": ["native-input"],
 } satisfies Record<ComputerUseOperation, readonly CuaPermissionClass[]>;
 
 /**

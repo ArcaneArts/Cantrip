@@ -4,6 +4,7 @@ mod accessibility;
 mod click;
 mod effects;
 mod geometry;
+mod gesture;
 mod overlay;
 mod pending;
 mod registry;
@@ -270,6 +271,24 @@ impl CaptureBackend for MacOsBackend {
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
         effects::observe(|| click::click(target, position, cancel))
+    }
+    fn perform(
+        &mut self,
+        session: &str,
+        target: &Target,
+        command: &crate::gesture::InputCommand,
+        position: crate::target::Point,
+        cancel: &Cancellation,
+        progress: &mut dyn FnMut(crate::target::Point),
+    ) -> Result<(Target, crate::input::InputReceipt)> {
+        self.accessibility.clear(session);
+        let current = self.resolve_target(&target.id, target.generation, cancel)?;
+        effects::observe(|| {
+            gesture::perform(&current, command, position, cancel, &mut |point| {
+                progress(point);
+                overlay::move_cursor(session, &current, point);
+            })
+        })
     }
     fn native_input(&self) -> bool {
         true

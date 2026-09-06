@@ -53,6 +53,12 @@ struct TargetReference {
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "camelCase", deny_unknown_fields)]
 enum HostAction {
+    Perform {
+        command: crate::gesture::InputCommand,
+    },
+    Wait {
+        ms: u64,
+    },
     State {},
     Targets {
         #[serde(default, deserialize_with = "crate::inventory::deserialize_cursor")]
@@ -96,6 +102,8 @@ fn validate_action(source: &str) -> Result<Value> {
     }
     let action: HostAction = serde_json::from_str(source).map_err(|_| script_error())?;
     match action {
+        HostAction::Perform { command } => command.validate()?,
+        HostAction::Wait { ms } if ms > 10000 => return Err(script_error()),
         HostAction::Targets { after: Some(after) } => validate_id(&after)?,
         HostAction::Attach { target } => {
             validate_id(&target.target_id)?;
@@ -139,6 +147,11 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
 ((host, stringify) => {
   const call = action => host(stringify(action));
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
+    typeText: text => call({operation:'perform', command:{kind:'text',text}}),
+    keyPress: (key, modifiers = []) => call({operation:'perform', command:{kind:'key',key,modifiers}}),
+    clickDrag: (start, end, durationMs = 200) => call({operation:'perform', command:{kind:'drag',start,end,durationMs}}),
+    scroll: (deltaY, deltaX = 0, point) => call({operation:'perform', command:{kind:'scroll',deltaX,deltaY,point}}),
+    wait: ms => call({operation:'wait',ms}),
     getState: () => call({operation:'state'}),
     targets: (options = {}) => {
       if (options === null || typeof options !== 'object' || Array.isArray(options) ||
@@ -834,6 +847,52 @@ pub(crate) fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn macro_bootstrap_sends_bounded_host_commands() {
+        for (script, expected) in [
+            (
+                r#"await cua.typeText("hi🦀")"#,
+                json!({"operation":"perform","command":{"kind":"text","text":"hi🦀"}}),
+            ),
+            (
+                r#"await cua.keyPress("Enter")"#,
+                json!({"operation":"perform","command":{"kind":"key","key":"Enter","modifiers":[]}}),
+            ),
+            (
+                r#"await cua.clickDrag({x:1,y:2},{x:3,y:4})"#,
+                json!({"operation":"perform","command":{"kind":"drag","start":{"x":1,"y":2},"end":{"x":3,"y":4},"durationMs":200}}),
+            ),
+            (
+                r#"await cua.scroll(300)"#,
+                json!({"operation":"perform","command":{"kind":"scroll","deltaY":300,"deltaX":0}}),
+            ),
+            (
+                r#"await cua.wait(150)"#,
+                json!({"operation":"wait","ms":150}),
+            ),
+        ] {
+            let binding = serde_json::from_value(
+                json!({"sessionId":"macro","workerId":"worker","chatId":"chat"}),
+            )
+            .unwrap();
+            let (frames, receiver) = crossbeam_channel::bounded(4);
+            let mut session = Session::new(binding, frames).unwrap();
+            session
+                .start(
+                    1,
+                    script.into(),
+                    default_wall_timeout_ms(),
+                    Cancellation::default(),
+                )
+                .unwrap();
+            assert!(session.step().is_none());
+            let frame = receiver.try_recv().unwrap();
+            let Message::HostCall { action, .. } = frame.header.message else {
+                panic!("expected host action")
+            };
+            assert_eq!(action, expected);
+        }
+    }
     #[test]
     fn point_inspection_validates_coordinates_without_authority_fields() {
         assert_eq!(

@@ -43,6 +43,20 @@ pub trait CaptureBackend: Send {
             "Experimental background input is unavailable; no input was posted.",
         ))
     }
+    fn perform(
+        &mut self,
+        _session: &str,
+        _target: &Target,
+        _command: &crate::gesture::InputCommand,
+        _position: crate::target::Point,
+        _cancel: &Cancellation,
+        _progress: &mut dyn FnMut(crate::target::Point),
+    ) -> Result<(Target, crate::input::InputReceipt)> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Window-targeted input macros are unavailable; no input was posted.",
+        ))
+    }
     fn native_input(&self) -> bool {
         false
     }

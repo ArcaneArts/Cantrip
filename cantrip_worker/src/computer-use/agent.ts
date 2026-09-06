@@ -85,6 +85,7 @@ const operations: Record<
   ComputerUseOperation
 > = {
   state: "session.state",
+  wait: "session.state",
   targets: "targets.list",
   attach: "target.attach",
   snapshot: "observation.snapshot",
@@ -94,6 +95,7 @@ const operations: Record<
   controls: "controls.inspect",
   press: "input.press",
   click: "input.click",
+  perform: "input.perform",
   globalClick: "input.click",
   processClick: "input.click",
   backgroundClick: "input.click",
@@ -381,15 +383,20 @@ export class CuaAgentCoordinator {
                         null)
                       : null,
                   inputMethod:
-                    outcome.action.operation === "globalClick"
-                      ? "coordinate"
-                      : outcome.action.operation === "backgroundClick"
-                        ? "background-coordinate"
-                        : outcome.action.operation === "processClick"
-                          ? "process-coordinate"
-                          : "accessibility",
+                    outcome.action.operation === "perform"
+                      ? `background-${outcome.action.command.kind}`
+                      : outcome.action.operation === "globalClick"
+                        ? "coordinate"
+                        : outcome.action.operation === "backgroundClick"
+                          ? "background-coordinate"
+                          : outcome.action.operation === "processClick"
+                            ? "process-coordinate"
+                            : "accessibility",
                   source: "agent-mcp",
-                  operation: operations[outcome.action.operation],
+                  operation:
+                    outcome.action.operation === "wait"
+                      ? "js.wait"
+                      : operations[outcome.action.operation],
                   operationId: crypto.randomUUID(),
                   requestId,
                   scope: lifetime.scope,
@@ -401,6 +408,7 @@ export class CuaAgentCoordinator {
           : undefined,
         authorize: async (action, callSignal) => {
           const authority = await this.refresh(record, binding, callSignal);
+          if (action.operation === "wait") return; // lifetime/authority was refreshed above; no new observation or input.
           const state = this.options.service.javascriptSession(
             lifetime.scope,
             lifetime.signal,

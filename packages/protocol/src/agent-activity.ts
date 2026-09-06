@@ -150,6 +150,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
       operation: z.enum([
         ...computerUseOperationSchema.options,
         "js.evaluate",
+        "js.wait",
         "js.reset",
         "preview.stop",
       ]),

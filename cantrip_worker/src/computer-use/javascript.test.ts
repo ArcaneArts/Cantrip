@@ -287,6 +287,42 @@ describe("worker JavaScript ownership before MCP activation", () => {
       ),
     ).toHaveLength(2);
   });
+  it("cancels a macro delay before any following action", async () => {
+    const controller = new AbortController();
+    const after = vi.fn();
+    const { service } = fixture(async (opts) => {
+      const waiting = opts.onHostCall!(
+        { operation: "wait", ms: 10000 },
+        controller.signal,
+      );
+      controller.abort();
+      await waiting;
+      after();
+    });
+    await expect(
+      service.evaluateJavascript(scope, "timed sequence", options()),
+    ).rejects.toBeDefined();
+    expect(after).not.toHaveBeenCalled();
+  });
+  it("runs a bounded delay in the host without sending native input", async () => {
+    const { service, request } = fixture(async (opts) =>
+      opts.onHostCall!(
+        { operation: "wait", ms: 1 },
+        new AbortController().signal,
+      ),
+    );
+    const result = await service.evaluateJavascript(
+      scope,
+      "timed sequence",
+      options(),
+    );
+    expect(result.value).toEqual({ waitedMs: 1 });
+    expect(
+      request.mock.calls.some(([op]) =>
+        String((op as { operation: string }).operation).startsWith("input."),
+      ),
+    ).toBe(false);
+  });
   it("authorizes each parsed host call before the real operation", async () => {
     const { service, request } = fixture(async (opts) => {
       await opts.onHostCall!(

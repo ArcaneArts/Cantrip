@@ -30,6 +30,73 @@ agent's thread instructions and general Cantrip MCP guidance identify this
 distinction. A missing callable `cantrip_cua` tool is a registration problem;
 AppleScript or shell automation is not the Cantrip CUA fallback.
 
+## Text, keys, scrolling and drag
+
+The current development helper adds these awaited methods on an attached
+application window. They use experimental macOS window-directed native events;
+they never choose global input, request activation or move/restore the human
+pointer. App compatibility and actual background delivery require user testing.
+
+```js
+await cua.typeText("Hello 🦀");
+await cua.keyPress("Enter");
+await cua.keyPress("A", ["Meta"]); // Command+A, physical ANSI shortcut key
+await cua.scroll(300, 0, { x: 200, y: 200 }); // down 300 pixels at this position
+await cua.clickDrag({ x: 50, y: 100 }, { x: 250, y: 100 }); // default 200 ms
+await cua.snapshot();
+```
+
+Choose and verify the intended text field first. Text attempts to reach the
+application's existing keyboard responder; it does not independently select a
+field or guarantee delivery to the intended window. Unicode event strings may
+be ignored by some application frameworks. `typeText` accepts up to 8192 UTF-8
+bytes; newline and tab produce Enter and Tab, with CRLF treated as one newline.
+No clipboard is read or changed. `keyPress` accepts Enter, Tab, Escape,
+Backspace, Delete, ArrowLeft/Right/Up/Down, Home, End, PageUp, PageDown, Space,
+A–Z and 0–9, with optional Shift, Control, Alt and Meta (Command) modifiers.
+Letters/digits describe physical ANSI shortcut keys; use `typeText` for text.
+
+`scroll(deltaY, deltaX = 0, point?)` uses pixel deltas, positive down/right,
+maximum ±10000 per axis, at the supplied position or current custom cursor.
+`clickDrag(start, end, durationMs = 200)` sends one left-button hold, a linear
+path at approximately 60 motion events per second, and one release. Duration
+is 50–2000 ms. Desktop cursor updates follow dispatched points and retain the
+current appearance; covering windows still cover this cursor. Rendering and
+event scheduling are best effort. Stop releases at the last dispatched point,
+without jumping to the requested endpoint. Keys also always release after down.
+
+All four methods return `background-text`, `background-key`, `background-scroll`
+or `background-drag`, with `outcome: "unknown"` and `windowDelivery: "unverified"`.
+These mean the native API does not acknowledge application acceptance. Inspect
+a fresh snapshot; do not claim success from the receipt or replay an uncertain
+action. Protected activity records method/outcome and sampled focus effects,
+without typed text in its metadata or cursor label.
+
+### Timed sequences in one tool call
+
+For a user-requested sequence whose positions stay valid, several sequential
+`await` calls can share one `cantrip_cua/js` script. For example, after inspecting
+a stable piano keyboard and selecting the intended positions:
+
+```js
+await cua.backgroundClick({ x: 50, y: 100 });
+await cua.wait(150);
+await cua.backgroundClick({ x: 90, y: 100 });
+await cua.wait(150);
+await cua.backgroundClick({ x: 130, y: 100 });
+await cua.snapshot();
+```
+
+`wait(ms)` accepts 0–10000 ms and cancels on Stop. It begins after the previous
+action completes; it is not a real-time music scheduler. Scripts retain the
+existing time budget, 64 host-call limit (including waits), and two-image limit.
+Input is sequential; concurrent calls are rejected. A drag is one native macro;
+a whole script is not an exclusive multi-agent window lock. Never catch an input
+error to continue the sequence. Distinct preplanned actions on a stable interface
+can proceed without intervening screenshots; an action dependent on a changed
+layout or focus needs a new observation. This never permits automatic retries
+of uncertain input.
+
 ## Custom-cursor actions (current development behavior)
 
 Ordinary `cua.click()` acts at the custom cursor through the attached window's
@@ -331,8 +398,8 @@ AX trees may omit controls. Explicit global coordinate input requires usable AX 
 and hit testing for application windows; covered background clicking is not
 promised. Human activity can still race native focus and dispatch.
 
-Only Accessibility press and single left-button coordinate clicks are supported.
-Double/right clicks, drag, scroll, keyboard/text entry, application launching,
+Accessibility press, single left-button coordinate clicks and the experimental
+input macros above are implemented. Double/right clicks, application launching,
 other OS backends and cross-worker control remain outside this tranche.
 
 ### Failed click recovery

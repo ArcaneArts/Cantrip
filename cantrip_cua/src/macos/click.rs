@@ -147,10 +147,7 @@ pub(super) fn background_click(
     position: Point,
     cancel: &Cancellation,
 ) -> Result<(Target, InputReceipt)> {
-    use std::{
-        sync::atomic::{AtomicI64, Ordering},
-        time::Duration,
-    };
+    use std::time::Duration;
     let (pid, window) = process_destination(target)?;
     let global = target.bounds.to_global(position)?;
     let delivery = super::skylight::Delivery::load()?;
@@ -165,8 +162,7 @@ pub(super) fn background_click(
     let movement = MouseEvent::with_source(5, global, source.0)?;
     let down = MouseEvent::with_source(1, global, source.0)?;
     let up = MouseEvent::with_source(2, global, source.0)?;
-    static GROUP: AtomicI64 = AtomicI64::new(1);
-    let group = GROUP.fetch_add(1, Ordering::Relaxed);
+    let group = super::skylight::next_group();
     for (event, state) in [(&movement, 0), (&down, 1), (&up, 1)] {
         unsafe {
             delivery.prepare(event.0, pid, window, position, group, state);
@@ -214,7 +210,7 @@ pub(super) fn background_click(
     ))
 }
 
-fn process_destination(target: &Target) -> Result<(i32, u32)> {
+pub(super) fn process_destination(target: &Target) -> Result<(i32, u32)> {
     let unsupported = || {
         CuaError::new(
             ErrorCode::Unsupported,

@@ -234,6 +234,15 @@ export async function handleComputerUseOperation(
           ),
         };
         break;
+      case "input.perform":
+        data = await service.perform(
+          scope,
+          action.sessionId,
+          target(action),
+          action.command,
+          signal,
+        );
+        break;
       case "input.click":
         data = await service.click(
           scope,
@@ -368,16 +377,18 @@ export async function handleComputerUseOperation(
                 ? (activityAction.position ?? session?.cursor.position ?? null)
                 : null,
             inputMethod:
-              activityAction?.operation === "input.click" &&
-              activityAction.globalInput
-                ? "coordinate"
+              activityAction?.operation === "input.perform"
+                ? `background-${activityAction.command.kind}`
                 : activityAction?.operation === "input.click" &&
-                    activityAction.delivery === "background"
-                  ? "background-coordinate"
+                    activityAction.globalInput
+                  ? "coordinate"
                   : activityAction?.operation === "input.click" &&
-                      activityAction.delivery === "process"
-                    ? "process-coordinate"
-                    : "accessibility",
+                      activityAction.delivery === "background"
+                    ? "background-coordinate"
+                    : activityAction?.operation === "input.click" &&
+                        activityAction.delivery === "process"
+                      ? "process-coordinate"
+                      : "accessibility",
             input:
               data && "input" in data
                 ? cuaInputReceiptSchema.parse(data.input)

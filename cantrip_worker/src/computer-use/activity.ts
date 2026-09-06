@@ -98,7 +98,9 @@ export function computerUseActivity(input: {
         : null),
     input:
       input.input ??
-      (input.operation === "input.press" || input.operation === "input.click"
+      (input.operation === "input.press" ||
+      input.operation === "input.click" ||
+      input.operation === "input.perform"
         ? {
             method: input.inputMethod ?? "accessibility",
             activation: input.inputMethod === "coordinate" ? null : false,

@@ -31,6 +31,7 @@ const expectedClasses: Record<ComputerUseOperation, CuaPermissionClass[]> = {
   "controls.inspect": ["controls"],
   "input.press": ["native-input"],
   "input.click": ["native-input"],
+  "input.perform": ["native-input"],
   "observation.snapshot": ["capture"],
   "session.close": [],
 };
