@@ -2,6 +2,7 @@
 //! the Rust channel; the executor receives owned metadata or bounded RGBA only.
 mod accessibility;
 mod click;
+mod effects;
 mod geometry;
 mod pending;
 mod registry;
@@ -225,8 +226,10 @@ impl CaptureBackend for MacOsBackend {
         position: crate::target::Point,
         cancel: &Cancellation,
     ) -> Result<(Target, crate::input::InputReceipt)> {
-        self.accessibility
-            .press_at(session, target, position, cancel)
+        effects::observe(|| {
+            self.accessibility
+                .press_at(session, target, position, cancel)
+        })
     }
     fn global_click(
         &mut self,
@@ -236,7 +239,7 @@ impl CaptureBackend for MacOsBackend {
         cancel: &Cancellation,
     ) -> Result<(Target, crate::input::InputReceipt)> {
         self.accessibility.clear(session);
-        click::click(target, position, cancel)
+        effects::observe(|| click::click(target, position, cancel))
     }
     fn native_input(&self) -> bool {
         true
@@ -259,7 +262,12 @@ impl CaptureBackend for MacOsBackend {
         reference: &str,
         cancel: &Cancellation,
     ) -> Result<crate::input::InputReceipt> {
-        self.accessibility.press(session, target, reference, cancel)
+        effects::observe(|| {
+            self.accessibility
+                .press(session, target, reference, cancel)
+                .map(|receipt| (target.clone(), receipt))
+        })
+        .map(|(_, receipt)| receipt)
     }
 
     fn name(&self) -> &'static str {

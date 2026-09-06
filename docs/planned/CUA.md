@@ -19,7 +19,10 @@ to the user and implementation does not pause between useful cycles.
 
 ### Cycle 1 — Targeted Accessibility cursor actions
 
-- Branch: `codex/cua-cursor-targeted-actions`.
+- Branch: `codex/cua-cursor-targeted-actions`; [PR #1767](https://github.com/ArcaneArts/Cantrip/pull/1767)
+  merged 2026-09-06 UTC as `3e73529b34190fd810b93009b0b322835f9ab506`
+  (observed). All four existing CI jobs passed; Primary synchronized and the
+  cycle-owned worktree removed.
 - `cua.click()` uses the current custom cursor; an explicit point updates it.
   Rust resolves a pressable control from the attached window's hierarchy and
   invokes AXPress without requesting activation, raising or pointer movement.
@@ -47,6 +50,28 @@ to the user and implementation does not pause between useful cycles.
   supported, and the user's covered-window/pointer-preservation acceptance.
   AXPress may produce app-defined focus effects; `activation: false` currently
   records that Cantrip did not request activation, not a measured absence of it.
+
+### Cycle 2 — Observed input effects
+
+- Branch: `codex/cua-input-effects`.
+- Native action receipts now carry before/after change summaries for the human
+  pointer, foreground application/window and front-to-back on-screen window
+  ordering. Missing samples yield unknown and never gate the input attempt.
+- Only enums and sample timestamps cross the native boundary; focus handles,
+  desktop coordinates and inventory identities used for comparison stay local.
+  Existing protected payloads/Trajectory carry the receipt, and the activity UI
+  displays the sampled changes. No event tap, continuous monitoring, pointer
+  restoration or suppression was added.
+- Evidence is immediate and non-atomic. Equal samples do not exclude transient
+  or delayed effects, and a changed sample cannot establish causation. Failed
+  operations without a receipt do not imply unchanged focus or pointer state.
+- Validation: Rust compilation, Clippy and one focused missing/equal/changed-
+  sample unit test; worker/server/app typechecks; formatting and diff checks.
+  No native/interactive acceptance performed by the coding agent.
+- User test: repeat a covered-window custom-cursor action and inspect the
+  receipt/Trajectory's sampled changes alongside the visible pointer and focus.
+- Remaining: targeted coordinate delivery where supported and actual user
+  confirmation of covered-window action with pointer and foreground preserved.
 
 ## Clicking-tranche progress
 

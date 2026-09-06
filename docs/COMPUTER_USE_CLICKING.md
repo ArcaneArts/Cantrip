@@ -33,8 +33,18 @@ Targeted clicks require a uniquely resolved pressable control. Missing,
 ambiguous or incomplete control information returns an error. Applications may
 cause their own focus changes when responding to an action; `activation: false`
 means Cantrip did not request activation, not that focus was measured unchanged.
-Focus-effect observation and process-targeted coordinate delivery remain work
-for the pointer-preserving goal. Covered-window user acceptance is pending;
+Native receipts now include `effects`: pointer, foreground application,
+foreground window and window-order changes sampled before and immediately after
+input dispatch. Each is `changed`, `unchanged` or `unknown`, with sample start
+timestamps and `sampling: "before-after-dispatch"`. These are best-effort,
+non-atomic observations: unavailable evidence is unknown and does not block the
+input operation. Samples cannot establish causality, rule out intervening human
+activity, or exclude later asynchronous application changes. Failed operations
+without a receipt have no effects measurement; do not infer unchanged state.
+The protected Trajectory summary displays the sampled changes.
+
+Process-targeted coordinate delivery remains work for the pointer-preserving
+goal. Covered-window user acceptance is pending;
 the earlier foreground/global-click acceptance below does not satisfy it.
 
 ## Try it

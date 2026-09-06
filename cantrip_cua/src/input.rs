@@ -30,6 +30,39 @@ pub struct InputReceipt {
     pub position: Option<crate::target::Point>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub global_position: Option<crate::target::Point>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effects: Option<InputEffects>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ObservedChange {
+    Unchanged,
+    Changed,
+    Unknown,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputEffects {
+    pub sampling: &'static str,
+    pub before_at_ms: u64,
+    pub after_at_ms: u64,
+    pub pointer: ObservedChange,
+    pub foreground_application: ObservedChange,
+    pub foreground_window: ObservedChange,
+    pub window_order: ObservedChange,
+}
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn observed_change<T: PartialEq>(
+    before: Option<&T>,
+    after: Option<&T>,
+) -> ObservedChange {
+    match (before, after) {
+        (Some(before), Some(after)) if before == after => ObservedChange::Unchanged,
+        (Some(_), Some(_)) => ObservedChange::Changed,
+        _ => ObservedChange::Unknown,
+    }
 }
 
 #[cfg(test)]
@@ -232,6 +265,7 @@ mod targeted_tests {
                     outcome: "dispatched",
                     position: Some(point),
                     global_position: None,
+                    effects: None,
                 },
             ))
         }
@@ -251,6 +285,7 @@ mod targeted_tests {
                     outcome: "dispatched",
                     position: Some(point),
                     global_position: None,
+                    effects: None,
                 },
             ))
         }
@@ -298,5 +333,18 @@ mod targeted_tests {
         global["globalInput"] = json!(true);
         run(&mut service, global).unwrap();
         assert_eq!(calls.lock().unwrap()[2].0, "global");
+    }
+}
+
+#[cfg(test)]
+mod effects_tests {
+    use super::{ObservedChange::*, observed_change};
+    #[test]
+    fn absent_samples_never_claim_unchanged() {
+        assert_eq!(observed_change::<u32>(None, None), Unknown);
+        assert_eq!(observed_change(None, Some(&3)), Unknown);
+        assert_eq!(observed_change(Some(&3), None), Unknown);
+        assert_eq!(observed_change(Some(&3), Some(&3)), Unchanged);
+        assert_eq!(observed_change(Some(&3), Some(&4)), Changed);
     }
 }

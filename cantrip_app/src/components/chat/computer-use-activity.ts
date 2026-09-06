@@ -88,6 +88,9 @@ export function computerUseActivitySummary(
     activity.input
       ? `${activity.input.method} · ${activity.input.outcome}${activity.input.activation ? " · activated target" : ""}`
       : null,
+    activity.input?.effects
+      ? `Sampled changes: pointer ${activity.input.effects.pointer}, foreground app ${activity.input.effects.foregroundApplication}, foreground window ${activity.input.effects.foregroundWindow}, window order ${activity.input.effects.windowOrder}`
+      : null,
     activity.target
       ? `Target ${activity.target.targetId} · generation ${activity.target.targetGeneration}`
       : null,
