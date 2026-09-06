@@ -94,6 +94,7 @@ const operations: Record<
   controls: "controls.inspect",
   press: "input.press",
   click: "input.click",
+  globalClick: "input.click",
   detach: "target.detach",
 };
 
@@ -369,9 +370,16 @@ export class CuaAgentCoordinator {
                 computerUseActivity({
                   ...outcome,
                   position:
-                    outcome.action.operation === "click"
-                      ? outcome.action.point
+                    outcome.action.operation === "click" ||
+                    outcome.action.operation === "globalClick"
+                      ? (outcome.action.point ??
+                        outcome.session?.cursor.position ??
+                        null)
                       : null,
+                  inputMethod:
+                    outcome.action.operation === "globalClick"
+                      ? "coordinate"
+                      : "accessibility",
                   source: "agent-mcp",
                   operation: operations[outcome.action.operation],
                   operationId: crypto.randomUUID(),

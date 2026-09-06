@@ -107,6 +107,15 @@ pub struct CursorState {
     pub trail_points: Vec<Point>,
     pub updated_at_ms: u64,
     pub revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<CursorAction>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CursorAction {
+    pub method: String,
+    pub outcome: String,
+    pub at_ms: u64,
 }
 
 impl Default for CursorState {
@@ -117,6 +126,7 @@ impl Default for CursorState {
             trail_points: Vec::new(),
             updated_at_ms: 0,
             revision: 1,
+            action: None,
         }
     }
 }
@@ -151,10 +161,19 @@ impl CursorState {
             }
             self.trail_points.push(self.position);
         }
+        self.action = None;
         self.position = position;
         self.updated_at_ms = self.updated_at_ms.max(now);
         self.revision = revision;
         Ok(())
+    }
+
+    pub fn mark_action(&mut self, method: &str, now: u64) {
+        self.action = Some(CursorAction {
+            method: method.into(),
+            outcome: "dispatched".into(),
+            at_ms: now,
+        });
     }
 
     fn next_revision(&self, now: u64) -> Result<u64> {
@@ -212,6 +231,15 @@ impl CursorState {
             }
         }
         canvas.shape(self.position, self.appearance.style, size, color);
+        if self.action.is_some() {
+            canvas.shape(
+                self.position,
+                CursorStyle::Ring,
+                (size * 1.5).min(144.0),
+                color,
+            );
+            canvas.shape(self.position, CursorStyle::Dot, 4.0, color);
+        }
         if let Some(label) = &self.appearance.label {
             canvas.label(self.position, size, label, color, bounds);
         }

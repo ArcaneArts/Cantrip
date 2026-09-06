@@ -72,6 +72,13 @@ export const cuaSessionSchema = z.strictObject({
     trailPoints: z.array(cuaPointSchema).max(24),
     updatedAtMs: counter,
     revision: sequence,
+    action: z
+      .strictObject({
+        method: z.enum(["accessibility", "coordinate"]),
+        outcome: z.literal("dispatched"),
+        atMs: counter,
+      })
+      .optional(),
   }),
   observationRevision: counter,
 });
@@ -296,7 +303,8 @@ export const computerUseActionSchema = z.discriminatedUnion("operation", [
     operation: z.literal("input.click"),
     ...sessionFields,
     ...targetFields,
-    position: cuaPointSchema,
+    position: cuaPointSchema.optional(),
+    globalInput: z.boolean().optional(),
   }),
   z.strictObject({ operation: z.literal("session.close"), ...sessionFields }),
 ]);
