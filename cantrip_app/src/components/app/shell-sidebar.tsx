@@ -140,6 +140,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     selectedProjectId,
     selectedStandaloneChatId,
     setDesktopSidebarDrawerOpen,
+    setMobileSurfacePickerOpen,
     setSettingsSection,
     setShowArchivedStandaloneChats,
     setShowImporter,
@@ -370,6 +371,14 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                       setShowProjectSettings(false);
                     }}
                     onOpenProjectSettings={openProjectSettings}
+                    onOpenTabPicker={
+                      desktopSidebarDrawer
+                        ? () => {
+                            setDesktopSidebarDrawerOpen(false);
+                            setMobileSurfacePickerOpen(true);
+                          }
+                        : undefined
+                    }
                     onRemoveProject={(projectId, deleteLocalFiles) =>
                       removeProjectMutation
                         .mutateAsync({ projectId, deleteLocalFiles })

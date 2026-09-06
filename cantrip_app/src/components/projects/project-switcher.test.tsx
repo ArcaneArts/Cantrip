@@ -90,4 +90,26 @@ describe("project switcher", () => {
     expect(markup).not.toContain('aria-label="Add tab');
     expect(markup).not.toContain("Select a project before adding a tab");
   });
+
+  it("routes the compact add action to the shared tab picker", () => {
+    const markup = renderToStaticMarkup(
+      <ProjectSwitcher
+        activeWorkspaceId="default"
+        projects={projects}
+        selectedProjectId="project-1"
+        workspaces={workspaces}
+        onAddProject={vi.fn()}
+        onCreateTab={vi.fn()}
+        onManageWorkspaces={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onOpenTabPicker={vi.fn()}
+        onRemoveProject={vi.fn()}
+        onSelectProject={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Choose tab for Cantrip"');
+    expect(markup).not.toContain('aria-label="Add tab to Cantrip"');
+  });
 });

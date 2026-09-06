@@ -60,6 +60,7 @@ export function ProjectSwitcher({
   onCreateTab,
   onManageWorkspaces,
   onOpenProjectSettings,
+  onOpenTabPicker,
   onRemoveProject,
   onRevealProject,
   onSelectProject,
@@ -76,6 +77,7 @@ export function ProjectSwitcher({
   onCreateTab(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onManageWorkspaces(): void;
   onOpenProjectSettings(projectId: string): void;
+  onOpenTabPicker?(): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
   onRevealProject?: (
     project: ProjectSummary,
@@ -295,7 +297,18 @@ export function ProjectSwitcher({
             </Command>
           </PopoverContent>
         </Popover>
-        {selectedProject ? (
+        {selectedProject && onOpenTabPicker ? (
+          <Button
+            aria-label={`Choose tab for ${selectedProject.name}`}
+            className="size-7 shrink-0"
+            onClick={onOpenTabPicker}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Plus className="size-4" />
+          </Button>
+        ) : selectedProject ? (
           <ProjectSurfaceCreateMenu
             align="end"
             creatingKinds={creatingTabKinds}
