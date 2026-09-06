@@ -28,7 +28,7 @@ rquickjs = { version = "=0.12.2", default-features = false, features = ["std"] }
 objc2 = "0.6.4"
 block2 = "0.6.2"
 dispatch2 = "0.3.1"
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSDictionary", "NSError", "NSString", "NSObject"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSData", "NSArray", "NSDictionary", "NSError", "NSString", "NSObject"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFData", "CFString", "CFUUID", "CFRunLoop", "CFCGTypes", "objc2"] }
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGImage", "CGDataProvider", "CGColorSpace", "CGDirectDisplay", "CGWindow", "objc2"] }
 objc2-screen-capture-kit = { version = "0.3.2", default-features = false, features = ["std", "SCError", "SCScreenshotManager", "SCShareableContent", "SCStream", "block2", "libc", "objc2-core-foundation", "objc2-core-graphics"] }

@@ -64,6 +64,9 @@ enum HostAction {
     Click {
         point: Option<Point>,
     },
+    BackgroundClick {
+        point: Option<Point>,
+    },
     ProcessClick {
         point: Option<Point>,
     },
@@ -106,6 +109,7 @@ fn validate_action(source: &str) -> Result<Value> {
         | HostAction::GlobalClick { point }
         | HostAction::Controls { point: Some(point) }
         | HostAction::Click { point: Some(point) }
+        | HostAction::BackgroundClick { point: Some(point) }
         | HostAction::ProcessClick { point: Some(point) }
             if !point.x.is_finite() || !point.y.is_finite() || point.x < 0.0 || point.y < 0.0 =>
         {
@@ -144,6 +148,7 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
     },
     attach: target => call({operation:'attach', target}),
     click: point => call({operation:'click', point}),
+    backgroundClick: point => call({operation:'backgroundClick', point}),
     processClick: point => call({operation:'processClick', point}),
     globalClick: point => call({operation:'globalClick', point}),
     controls: point => call({operation:'controls', point}),
@@ -1207,6 +1212,11 @@ mod tests {
         assert!(validate_action(r#"{"operation":"moveCursor","point":{"x":1.5,"y":0}}"#).is_ok());
         assert!(validate_action(r#"{"operation":"moveCursor","point":{"x":-1,"y":0}}"#).is_err());
         assert!(validate_action(r#"{"operation":"click"}"#).is_ok());
+        assert!(validate_action(r#"{"operation":"backgroundClick"}"#).is_ok());
+        assert!(
+            validate_action(r#"{"operation":"backgroundClick","point":{"x":-1,"y":0}}"#).is_err()
+        );
+        assert!(validate_action(r#"{"operation":"backgroundClick","processId":123}"#).is_err());
         assert!(validate_action(r#"{"operation":"processClick"}"#).is_ok());
         assert!(validate_action(r#"{"operation":"processClick","point":{"x":-1,"y":0}}"#).is_err());
         assert!(validate_action(r#"{"operation":"processClick","processId":123}"#).is_err());

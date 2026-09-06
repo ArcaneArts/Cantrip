@@ -8,7 +8,7 @@ an agent inspected a Codex window, clicked a different chat and read the result.
 This satisfies the bounded inspect → click → inspect acceptance condition.
 Use an updated development build and worker;
 an older installed app may not include these tools. No installed app, saved QA
-profile, credentials or macOS permissions were changed by this implementation.
+profile, credentials or macOS permissions were changed by those initial click implementations.
 
 ## Custom-cursor actions (current development behavior)
 
@@ -47,7 +47,12 @@ intended sidebar item received the action. This metadata identifies dispatch;
 a fresh observation is still needed to establish the application result.
 
 The custom cursor and its feedback appear in CUA snapshots and the monitoring
-preview. They are not a floating desktop overlay or a second macOS pointer.
+preview. On macOS, the same renderer now supplies a click-through desktop panel over
+the attached window. It follows target movement and ordering, stays behind
+covering windows, and never becomes the key window. It is not a second hardware
+pointer. Detach/session cleanup removes it; `visible:false` hides it. Desktop
+presentation uses a bounded raster (up to 4,194,304 logical pixels); larger windows
+currently retain the cursor in CUA observations only.
 
 Global mouse input now requires explicit `cua.globalClick({x,y})` (or
 `globalInput: true` on the low-level `input.click` request). This retains the old
@@ -71,6 +76,47 @@ The protected Trajectory summary displays the sampled changes.
 An explicit process-targeted coordinate attempt is now available as described
 below. Covered-window user acceptance is pending;
 the earlier foreground/global-click acceptance below does not satisfy it.
+
+## Experimental background coordinate input
+
+`await cua.backgroundClick({x,y})` (or no argument for the current logical cursor)
+uses private macOS SkyLight delivery with an explicit window-local event point.
+The user authorized this experimental approach after Accessibility successfully
+identified the Jeff button but AXPress caused no visible application change.
+
+The method prepares all native events and required SPI functions before posting,
+then sends one window-addressed tracking event and one left-button down/up pair.
+It does not activate or raise the target, warp/restore/hide the system pointer,
+post through the global HID API, or send a duplicate public-process click.
+Unavailable functions return unsupported before any event; there is no fallback.
+The existing input authorization, worker/session ownership and queue apply.
+Stop before posting cancels the gesture; a posted down always has up cleanup.
+
+Receipts use `method:"background-coordinate"`, `outcome:"unknown"` and
+`windowDelivery:"unverified"`, with sampled effects. SPI availability or a void
+posting return cannot prove delivery, pointer isolation, or application success.
+Observe once and report what changed; never automatically replay uncertain input.
+A new user-requested click can explicitly select this method after an earlier
+AX action had no visible effect. Monitor targets remain unsupported for input.
+
+Implementation reference: [Cua's mouse delivery source](https://github.com/trycua/cua/blob/7c58a4d5b078b81f657d8e7e906712f8e3a96148/libs/cua-driver/rust/crates/platform-macos/src/input/mouse.rs).
+Cantrip uses a single delivery path and does not adopt that driver's dual posting,
+foreground assistance, primer clicks, or pointer restoration. Private API behavior
+may change between macOS releases; support remains experimental.
+
+The desktop panel is presentation only, never the input destination. Its pixels
+use the existing appearance, trails and action labels. An unknown label still
+means the intended application result must be checked. Cantrip excludes its own
+panels from target inventory, CUA monitor captures and sampled application-window
+ordering so presentation does not masquerade as a target or focus effect.
+
+Native fixture checks verified desktop cursor visibility, occlusion, hide/show and
+detach cleanup. Input acceptance remains unresolved: background clicks did not increment the
+fixture counter, while control inspection from the same Codex-launched helper
+returned Accessibility permission-denied. Permission and event-routing causes
+have not yet been separated; successful SkyLight delivery is not established. Window
+capture uses individual ScreenCaptureKit screenshots, so a persistent macOS
+screen-sharing badge is not an acceptance condition for this capture path.
 
 ## Explicit process-targeted coordinate attempt
 
@@ -187,8 +233,8 @@ returns both logical `position` and `globalPosition`, the method, activation and
 `moveCursor` still changes only the logical agent cursor.
 
 The teal “Agent” ring is a visual marker rendered into CUA snapshots and shown
-in the CUA preview. It is not a second macOS input pointer or a floating cursor
-over other applications. Explicit global coordinate clicks use the shared system pointer; the
+in the CUA preview and the desktop panel for the attached window. It is not a
+second macOS input pointer. Explicit global coordinate clicks use the shared system pointer; the
 user observed their pointer move during the successful test. Accessibility
 `press` invokes the advertised control action directly instead of posting a
 mouse click. It depends on the application exposing a usable control.

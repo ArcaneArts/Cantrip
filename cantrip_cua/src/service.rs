@@ -250,6 +250,18 @@ impl<B: CaptureBackend> CuaService<B> {
         cancel: &Cancellation,
         now_ms: u64,
     ) -> Result<OperationResult> {
+        let result = self.execute_inner(operation, cancel, now_ms);
+        self.backend
+            .present_cursors(self.sessions.values().cloned().collect());
+        result
+    }
+
+    fn execute_inner(
+        &mut self,
+        operation: Operation,
+        cancel: &Cancellation,
+        now_ms: u64,
+    ) -> Result<OperationResult> {
         cancel.check()?;
         match operation {
             Operation::CapabilitiesGet {} => {
@@ -552,7 +564,10 @@ impl<B: CaptureBackend> CuaService<B> {
                 state.target = Some(target.clone());
                 self.sessions
                     .insert(binding.session_id.clone(), state.clone());
-                let attempt = if delivery.is_some() {
+                let attempt = if matches!(delivery, Some(crate::input::ClickDelivery::Background)) {
+                    self.backend
+                        .background_click(&binding.session_id, &target, position, cancel)
+                } else if delivery.is_some() {
                     self.backend
                         .process_click(&binding.session_id, &target, position, cancel)
                 } else if global_input {
@@ -566,7 +581,9 @@ impl<B: CaptureBackend> CuaService<B> {
                     Ok(receipt) => receipt,
                     Err(error) => {
                         state.cursor.mark_action(
-                            if delivery.is_some() {
+                            if matches!(delivery, Some(crate::input::ClickDelivery::Background)) {
+                                "background-coordinate"
+                            } else if delivery.is_some() {
                                 "process-coordinate"
                             } else if global_input {
                                 "coordinate"

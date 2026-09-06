@@ -14,8 +14,32 @@ covered-window goal is active; the earlier global-click test is not its acceptan
 Goal: act in a covered application window through the custom cursor while
 preserving the human pointer, foreground application and window ordering.
 Acceptance requires the user's report of that complete outcome. Work is solo,
-with sequential worktree PRs and squash auto-merge; interactive testing belongs
-to the user and implementation does not pause between useful cycles.
+with sequential worktree PRs and squash auto-merge. The user subsequently
+authorized agent-driven interactive testing; implementation does not pause
+between useful cycles.
+
+### Experimental background input and desktop cursor
+
+- Branch: `codex/cua-background-pointer`. The user explicitly authorized private
+  macOS input APIs and a desktop-visible cursor, then authorized agent-driven
+  native and interactive testing for this implementation.
+- Added `backgroundClick` through existing managed MCP/permission/worker/Rust
+  routing. It prepares window-local SkyLight mouse events and sends one tracking
+  event plus one left-button pair, with no activation, global input, duplicate
+  posting or automatic fallback. Delivery remains truthfully unverified.
+- Added a main-thread, click-through, nonactivating desktop cursor panel using
+  the existing renderer. It follows its target and sits behind covering windows;
+  detach/close remove it. Own panels are excluded from inventory, CUA monitor
+  capture and application-window-order measurements.
+- Native investigation: the reported AX receipt identifies Jeff (`AXButton`),
+  but the observed chat does not change. Standalone test helpers currently receive
+  Accessibility permission-denied from control inspection. Background input also
+  left fixture counters unchanged; permission and routing causes remain unresolved. Desktop screenshots verify the overlay appears over the
+  uncovered fixture and stays behind its covering window. Native lifecycle checks
+  also passed hide/show, uncover and detach (487 cursor-colored pixels when visible,
+  zero while hidden, covered or detached).
+- Acceptance remains pending: visible target change under cover while the human
+  pointer, foreground app and application-window order remain unchanged.
 
 ### Latest cycle — Inspect and identify the AXPress recipient
 

@@ -70,3 +70,24 @@ describe("input receipt delivery validation", () => {
     ).toBe(false);
   });
 });
+
+it("requires unverified unknown receipts for experimental background delivery", () => {
+  const receipt = {
+    method: "background-coordinate" as const,
+    activation: false,
+    outcome: "unknown" as const,
+    windowDelivery: "unverified" as const,
+    position: { x: 12, y: 15 },
+    globalPosition: { x: 112, y: 215 },
+  };
+  expect(
+    matchesInputReceipt(receipt, "background-coordinate", { x: 12, y: 15 }),
+  ).toBe(true);
+  expect(
+    matchesInputReceipt(
+      { ...receipt, outcome: "dispatched" },
+      "background-coordinate",
+    ),
+  ).toBe(false);
+  expect(matchesInputReceipt(receipt, "process-coordinate")).toBe(false);
+});

@@ -29,6 +29,20 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    /// Presentation is best effort and must never change an input result.
+    fn present_cursors(&mut self, _sessions: Vec<crate::service::SessionState>) {}
+    fn background_click(
+        &mut self,
+        _session: &str,
+        _target: &Target,
+        _point: crate::target::Point,
+        _cancel: &Cancellation,
+    ) -> Result<(Target, crate::input::InputReceipt)> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Experimental background input is unavailable; no input was posted.",
+        ))
+    }
     fn native_input(&self) -> bool {
         false
     }

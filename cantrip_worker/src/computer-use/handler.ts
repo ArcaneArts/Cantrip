@@ -372,9 +372,12 @@ export async function handleComputerUseOperation(
               activityAction.globalInput
                 ? "coordinate"
                 : activityAction?.operation === "input.click" &&
-                    activityAction.delivery === "process"
-                  ? "process-coordinate"
-                  : "accessibility",
+                    activityAction.delivery === "background"
+                  ? "background-coordinate"
+                  : activityAction?.operation === "input.click" &&
+                      activityAction.delivery === "process"
+                    ? "process-coordinate"
+                    : "accessibility",
             input:
               data && "input" in data
                 ? cuaInputReceiptSchema.parse(data.input)

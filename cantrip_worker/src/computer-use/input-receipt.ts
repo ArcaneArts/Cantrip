@@ -7,7 +7,7 @@ export function matchesInputReceipt(
   position?: CuaPoint,
 ): boolean {
   if (receipt.method !== method) return false;
-  if (method === "process-coordinate") {
+  if (method === "process-coordinate" || method === "background-coordinate") {
     if (
       receipt.outcome !== "unknown" ||
       receipt.windowDelivery !== "unverified"
