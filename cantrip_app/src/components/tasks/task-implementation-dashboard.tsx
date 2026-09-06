@@ -88,7 +88,7 @@ export function taskImplementationShowsLiveActivity(
 }
 
 export const TASK_IMPLEMENTATION_CONTENT_CLASS_NAME =
-  "flex w-full flex-col px-4 py-5 sm:px-8";
+  "flex w-full min-w-0 max-w-full flex-col px-4 py-5 sm:px-8";
 
 function PullRequestRow({
   pullRequest,
@@ -249,7 +249,7 @@ export function TaskImplementationDashboard({
   const directFolder = placement?.kind === "folder";
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto">
       <div className={TASK_IMPLEMENTATION_CONTENT_CLASS_NAME}>
         <header className="flex flex-wrap items-center gap-3 border-b pb-4">
           {onClose ? <TaskListBackButton onBack={onClose} /> : null}
@@ -363,16 +363,16 @@ export function TaskImplementationDashboard({
             directFolder ? "sm:grid-cols-2" : "sm:grid-cols-3",
           )}
         >
-          <div className="flex items-center gap-2 py-1 text-sm">
-            <Server className="size-3.5 text-muted-foreground" />
-            <span className="truncate">
+          <div className="flex min-w-0 items-center gap-2 py-1 text-sm">
+            <Server className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 truncate">
               {workerName ?? placement?.workerId ?? "Worker"}
             </span>
           </div>
           {placement?.kind === "folder" ? (
-            <div className="flex items-center gap-2 py-1 text-sm">
-              <Folder className="size-3.5 text-muted-foreground" />
-              <span className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2 py-1 text-sm">
+              <Folder className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
                 <span className="block truncate">{placement.displayPath}</span>
                 <span className="block text-xs text-muted-foreground">
                   {taskImplementationPlacementLabel(placement)} · direct writes
@@ -382,20 +382,20 @@ export function TaskImplementationDashboard({
             </div>
           ) : placement?.kind === "git" ? (
             <>
-              <div className="flex items-center gap-2 py-1 text-sm">
-                <GitBranch className="size-3.5 text-muted-foreground" />
-                <span className="truncate">
+              <div className="flex min-w-0 items-center gap-2 py-1 text-sm">
+                <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 truncate">
                   {placement?.worktreeName ?? "Worktree"}
                   {placement?.branch ? ` · ${placement.branch}` : " · detached"}
                 </span>
               </div>
-              <div className="flex items-center gap-2 py-1 text-sm">
+              <div className="flex min-w-0 items-center gap-2 py-1 text-sm">
                 {placement?.dirty ? (
                   <CirclePause className="size-3.5 text-amber-500" />
                 ) : (
                   <Check className="size-3.5 text-emerald-500" />
                 )}
-                <span>
+                <span className="min-w-0 break-words">
                   {placement?.dirty
                     ? `${placement.dirtyFileCount} local change${placement.dirtyFileCount === 1 ? "" : "s"}`
                     : "Worktree clean"}
@@ -440,7 +440,9 @@ export function TaskImplementationDashboard({
           <section className="border-b py-4 text-sm">
             <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              <p className="whitespace-pre-wrap">{task.lastError.message}</p>
+              <p className="min-w-0 whitespace-pre-wrap break-words">
+                {task.lastError.message}
+              </p>
             </div>
           </section>
         ) : null}
@@ -463,7 +465,7 @@ export function TaskImplementationDashboard({
                   className="flex items-start gap-2 py-2 text-xs text-amber-700 dark:text-amber-300"
                 >
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                  <span>{warning.message}</span>
+                  <span className="min-w-0 break-words">{warning.message}</span>
                 </div>
               ))}
             </div>
@@ -559,7 +561,7 @@ export function TaskImplementationDashboard({
                   {copied ? "Copied" : "Copy"}
                 </Button>
               </div>
-              <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+              <pre className="max-h-80 max-w-full overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
                 {task.goalPrompt}
               </pre>
             </details>

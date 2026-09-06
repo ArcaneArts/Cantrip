@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  TASK_DRAFT_FOOTER_CLASS_NAME,
+  TASK_DRAFT_OPTIONS_CLASS_NAME,
   taskAutosaveLabel,
   taskDraftSignature,
   taskSurfaceMode,
@@ -38,6 +40,13 @@ const baseTask = {
 };
 
 describe("Task draft presentation", () => {
+  it("keeps mobile primary actions compact and moves options below them", () => {
+    expect(TASK_DRAFT_FOOTER_CLASS_NAME).toContain("px-3");
+    expect(TASK_DRAFT_FOOTER_CLASS_NAME).toContain("sm:px-6");
+    expect(TASK_DRAFT_OPTIONS_CLASS_NAME).toContain("order-last");
+    expect(TASK_DRAFT_OPTIONS_CLASS_NAME).toContain("sm:contents");
+  });
+
   it("routes durable Task states to the correct surface", () => {
     expect(taskSurfaceMode(baseTask)).toBe("draft");
     expect(taskSurfaceMode({ ...baseTask, state: "planning" })).toBe(

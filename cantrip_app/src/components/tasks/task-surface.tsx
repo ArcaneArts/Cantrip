@@ -18,6 +18,7 @@ import {
   Paperclip,
   Play,
   RefreshCw,
+  SlidersHorizontal,
   Trash2,
   WifiOff,
   X,
@@ -92,6 +93,11 @@ const TaskMarkdownEditor = lazy(() =>
 );
 
 const TASK_AUTOSAVE_DELAY_MS = 700;
+
+export const TASK_DRAFT_FOOTER_CLASS_NAME =
+  "shrink-0 border-t bg-background/95 px-3 py-2 backdrop-blur sm:px-6 sm:py-3";
+export const TASK_DRAFT_OPTIONS_CLASS_NAME =
+  "order-last grid w-full grid-cols-2 gap-3 rounded-lg border bg-muted/20 p-3 sm:contents";
 
 interface PendingTaskAttachment {
   contentUrl: string;
@@ -210,6 +216,7 @@ export function TaskSurface({
     PendingTaskAttachment[]
   >([]);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  const [mobileOptionsOpen, setMobileOptionsOpen] = useState(false);
   const [viewingAttachment, setViewingAttachment] =
     useState<ChatAttachmentSummary | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
@@ -734,7 +741,7 @@ export function TaskSurface({
 
   return (
     <div
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+      className="relative flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden"
       onDragEnter={(event) => {
         if (dataTransferHasFiles(event.dataTransfer)) setDraggingFiles(true);
       }}
@@ -888,7 +895,7 @@ export function TaskSurface({
         </Suspense>
       </div>
 
-      <div className="shrink-0 border-t bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
+      <div className={TASK_DRAFT_FOOTER_CLASS_NAME}>
         {attachmentList.length > 0 || pendingAttachments.length > 0 ? (
           <div className="mb-3 flex max-h-40 gap-2 overflow-x-auto pb-1">
             {attachmentList.map((attachment) => (
@@ -968,114 +975,151 @@ export function TaskSurface({
             }}
           />
           <Button
+            aria-label="Attach files"
             disabled={!draftEditable}
             size="sm"
             variant="ghost"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Paperclip className="size-4" /> Attach
+            <Paperclip className="size-4" />
+            <span className="hidden sm:inline">Attach</span>
           </Button>
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Worker
-            <select
-              aria-label="Task Worker"
-              className="h-8 max-w-48 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
-              disabled={!draftEditable || taskWorkers.isLoading}
-              value={requestedTaskWorkerId ?? ""}
-              onChange={(event) =>
-                setRequestedTaskWorkerId(event.target.value || null)
-              }
-            >
-              <option value="">Auto</option>
-              {requestedTaskWorkerId && !selectedTaskWorker ? (
-                <option value={requestedTaskWorkerId}>
-                  Unavailable Task Worker
-                </option>
-              ) : null}
-              {configuredTaskWorkers.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                  {planGoalEnabled && !candidate.allowsPlanGoal
-                    ? " (Direct only)"
-                    : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Priority
-            <input
-              aria-label="Task priority"
-              className="h-8 w-20 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
-              disabled={!draftEditable}
-              max={TASK_PRIORITY_MAX}
-              min={TASK_PRIORITY_MIN}
-              step={1}
-              type="number"
-              value={priority}
-              onChange={(event) => {
-                const value = event.currentTarget.valueAsNumber;
-                if (Number.isInteger(value)) {
-                  setPriority(
-                    Math.max(
-                      TASK_PRIORITY_MIN,
-                      Math.min(TASK_PRIORITY_MAX, value),
-                    ),
-                  );
-                }
-              }}
-            />
-          </label>
-          <span className="ml-1 text-[11px] text-muted-foreground">
-            Implementation access
-          </span>
-          <PermissionProfileControl
-            onChange={(id) => selectPermission.mutate(id)}
-            pending={selectPermission.isPending}
-            state={permissionProfiles.data}
-          />
-          <span className="min-w-0 flex-1" />
           <button
-            aria-checked={planGoalEnabled}
-            className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            role="switch"
+            aria-controls="mobile-task-options"
+            aria-expanded={mobileOptionsOpen}
+            className="flex h-8 items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
             type="button"
-            disabled={!draftEditable}
-            onClick={() => setPlanGoalEnabled((current) => !current)}
+            onClick={() => setMobileOptionsOpen((current) => !current)}
           >
-            <span
-              className={cn(
-                "relative h-5 w-9 rounded-full bg-muted-foreground/25 transition-colors",
-                planGoalEnabled && "bg-violet-500",
-              )}
+            <SlidersHorizontal className="size-4" /> Options
+          </button>
+          <div
+            className={cn(
+              TASK_DRAFT_OPTIONS_CLASS_NAME,
+              !mobileOptionsOpen && "hidden sm:contents",
+            )}
+            id="mobile-task-options"
+          >
+            <label className="flex min-w-0 flex-col items-stretch gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center">
+              Worker
+              <select
+                aria-label="Task Worker"
+                className="h-9 min-w-0 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring sm:h-8 sm:max-w-48"
+                disabled={!draftEditable || taskWorkers.isLoading}
+                value={requestedTaskWorkerId ?? ""}
+                onChange={(event) =>
+                  setRequestedTaskWorkerId(event.target.value || null)
+                }
+              >
+                <option value="">Auto</option>
+                {requestedTaskWorkerId && !selectedTaskWorker ? (
+                  <option value={requestedTaskWorkerId}>
+                    Unavailable Task Worker
+                  </option>
+                ) : null}
+                {configuredTaskWorkers.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                    {planGoalEnabled && !candidate.allowsPlanGoal
+                      ? " (Direct only)"
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex min-w-0 flex-col items-stretch gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center">
+              Priority
+              <input
+                aria-label="Task priority"
+                className="h-9 min-w-0 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring sm:h-8 sm:w-20"
+                disabled={!draftEditable}
+                max={TASK_PRIORITY_MAX}
+                min={TASK_PRIORITY_MIN}
+                step={1}
+                type="number"
+                value={priority}
+                onChange={(event) => {
+                  const value = event.currentTarget.valueAsNumber;
+                  if (Number.isInteger(value)) {
+                    setPriority(
+                      Math.max(
+                        TASK_PRIORITY_MIN,
+                        Math.min(TASK_PRIORITY_MAX, value),
+                      ),
+                    );
+                  }
+                }}
+              />
+            </label>
+            <span className="self-center text-[11px] text-muted-foreground sm:ml-1">
+              Implementation access
+            </span>
+            <span className="flex items-center justify-end sm:contents">
+              <PermissionProfileControl
+                onChange={(id) => selectPermission.mutate(id)}
+                pending={selectPermission.isPending}
+                state={permissionProfiles.data}
+              />
+            </span>
+            <span className="hidden sm:block sm:min-w-0 sm:flex-1" />
+            <button
+              aria-checked={planGoalEnabled}
+              className="col-span-2 flex items-center justify-between gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:col-span-1 sm:justify-start"
+              role="switch"
+              type="button"
+              disabled={!draftEditable}
+              onClick={() => setPlanGoalEnabled((current) => !current)}
             >
               <span
                 className={cn(
-                  "absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform",
-                  planGoalEnabled && "translate-x-4",
+                  "relative h-5 w-9 rounded-full bg-muted-foreground/25 transition-colors",
+                  planGoalEnabled && "bg-violet-500",
                 )}
-              />
-            </span>
-            Plan + Goal
-          </button>
+              >
+                <span
+                  className={cn(
+                    "absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform",
+                    planGoalEnabled && "translate-x-4",
+                  )}
+                />
+              </span>
+              Plan + Goal
+            </button>
+          </div>
           <Button disabled={!canStart} onClick={() => starting.mutate()}>
             {starting.isPending ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <Play className="size-4" />
             )}
-            {dispatchQueued
-              ? "Queued"
-              : mode === "failed"
-                ? planGoalEnabled
-                  ? "Retry planning"
-                  : "Retry Task"
-                : planGoalEnabled
-                  ? "Add Plan + Goal Task"
-                  : "Add Task"}
+            <span className="sm:hidden">
+              {dispatchQueued
+                ? "Queued"
+                : mode === "failed"
+                  ? "Retry"
+                  : planGoalEnabled
+                    ? "Add Goal"
+                    : "Add Task"}
+            </span>
+            <span className="hidden sm:inline">
+              {dispatchQueued
+                ? "Queued"
+                : mode === "failed"
+                  ? planGoalEnabled
+                    ? "Retry planning"
+                    : "Retry Task"
+                  : planGoalEnabled
+                    ? "Add Plan + Goal Task"
+                    : "Add Task"}
+            </span>
           </Button>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p
+          className={cn(
+            "mt-2 text-[11px] text-muted-foreground",
+            !mobileOptionsOpen && "hidden sm:block",
+          )}
+        >
           {planGoalEnabled
             ? "The Task queues for one read-only planning cycle. Implementation access is reserved for its Goal."
             : "The saved prompt queues as a normal agent turn and starts when an eligible Task Worker has capacity."}
