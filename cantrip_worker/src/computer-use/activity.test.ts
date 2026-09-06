@@ -27,6 +27,9 @@ const input = () => ({
 describe("protected computer-use activity metadata", () => {
   it.each([
     "unsupported",
+    "control-not-found",
+    "control-ambiguous",
+    "control-inspection-incomplete",
     "input-unknown",
     "input-failed",
     "cancelled",
@@ -52,7 +55,9 @@ describe("protected computer-use activity metadata", () => {
               ? "unknown"
               : code === "input-failed"
                 ? "failed"
-                : code,
+                : code.startsWith("control-")
+                  ? "unsupported"
+                  : code,
         },
       });
       expect(JSON.stringify(activity)).not.toContain("private native detail");

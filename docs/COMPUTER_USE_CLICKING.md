@@ -216,3 +216,18 @@ Worker receipt validation accepts accessibility receipts for custom-cursor click
 coordinate receipts for explicit global clicks, and unknown/unverified receipts
 for process clicks. A successful receipt still requires user verification of the
 application result and pointer/focus behavior.
+
+### A window click is unsupported
+
+`control-not-found` means the completed bounded inspection found no pressable
+control at that position. `control-ambiguous` means equally specific candidates
+matched. `control-inspection-incomplete` means traversal reached a limit; it does
+not prove the intended control is absent. All three occur before AX dispatch.
+
+For an already-authorized click, the agent should reacquire the same application
+window after the failed script, snapshot it, and select `cua.processClick({x,y})`
+once at the intended window-local point as a separate targeted attempt. Do not
+substitute a monitor: it has neither the attached window's control hierarchy nor
+its process identity. This does not authorize switching methods after unknown
+input, denied permission, Stop or revocation. Process delivery remains unknown;
+inspect the fresh result and sampled effects without automatically replaying it.

@@ -911,6 +911,9 @@ mod tests {
     fn uncaught_host_rejections_preserve_only_the_original_error_identity() {
         for code in [
             ErrorCode::Unsupported,
+            ErrorCode::ControlNotFound,
+            ErrorCode::ControlAmbiguous,
+            ErrorCode::ControlInspectionIncomplete,
             ErrorCode::InputUnknown,
             ErrorCode::TargetNotFound,
         ] {

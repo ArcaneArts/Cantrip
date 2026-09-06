@@ -12,7 +12,11 @@ import type {
 import { createAgentActivityRawEnvelope } from "../codex/raw-capture.js";
 import { CuaApprovalError } from "./approvals.js";
 import { CuaAuthorizationError } from "./handler.js";
-import { CuaNativeError, CuaProcessError } from "./errors.js";
+import {
+  CuaNativeError,
+  CuaProcessError,
+  isCuaUnsupportedCode,
+} from "./errors.js";
 import { CuaServiceError } from "./service.js";
 
 export type CuaActivity = Extract<AgentActivity, { type: "computerUse" }>;
@@ -103,7 +107,7 @@ export function computerUseActivity(input: {
               code === "input-unknown" ||
               (error instanceof CuaProcessError && error.outcome === "unknown")
                 ? "unknown"
-                : code === "unsupported"
+                : isCuaUnsupportedCode(code)
                   ? "unsupported"
                   : outcome === "completed"
                     ? "dispatched"
