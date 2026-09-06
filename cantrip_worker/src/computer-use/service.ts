@@ -431,7 +431,24 @@ export class CantripCuaService {
       }
       const response = await record.runtime.transport.request(
         { operation, binding: record.binding, ...fields },
-        { signal: active },
+        {
+          signal: active,
+          ...(operation === "input.perform" &&
+          "command" in fields &&
+          (fields.command as CuaInputCommand).kind === "timeline"
+            ? {
+                timeoutMs: Math.max(
+                  15_000,
+                  (
+                    fields.command as Extract<
+                      CuaInputCommand,
+                      { kind: "timeline" }
+                    >
+                  ).frames.at(-1)!.atMs + 5_000,
+                ),
+              }
+            : {}),
+        },
       );
       const snapshotData = snapshot
         ? this.parse(record.runtime, cuaSnapshotSchema, response.data)
@@ -447,7 +464,9 @@ export class CantripCuaService {
       if (extra && "input" in extra) {
         const method =
           operation === "input.perform" && "command" in fields
-            ? (`background-${(fields.command as CuaInputCommand).kind}` as const)
+            ? (fields.command as CuaInputCommand).kind === "focus"
+              ? "focus"
+              : (`background-${(fields.command as Exclude<CuaInputCommand, { kind: "focus" }>).kind}` as const)
             : operation === "input.press"
               ? "accessibility"
               : "delivery" in fields && fields.delivery === "background"
@@ -478,7 +497,13 @@ export class CantripCuaService {
               ? (fields.position as CuaPoint)
               : record.state?.cursor.position
             : undefined;
-        if (!matchesInputReceipt(extra.input, method, position))
+        if (
+          !matchesInputReceipt(
+            extra.input,
+            method,
+            method === "focus" ? undefined : position,
+          )
+        )
           return this.protocolFailure(record.runtime);
       }
       const data =

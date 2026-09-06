@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum InputCommand {
+    Focus {},
     Timeline {
         frames: Vec<crate::timeline::InputFrame>,
     },
@@ -49,6 +50,7 @@ fn default_duration() -> u64 {
 impl InputCommand {
     pub fn method(&self) -> &'static str {
         match self {
+            Self::Focus {} => "focus",
             Self::Timeline { .. } => "background-timeline",
             Self::Text { .. } => "background-text",
             Self::Key { .. } => "background-key",
@@ -59,6 +61,7 @@ impl InputCommand {
     pub fn validate(&self) -> Result<()> {
         let point = |p: Point| p.x.is_finite() && p.y.is_finite() && p.x >= 0.0 && p.y >= 0.0;
         let valid = match self {
+            Self::Focus {} => true,
             Self::Timeline { frames } => return crate::timeline::validate(frames),
             Self::Text { text } => {
                 !text.is_empty()

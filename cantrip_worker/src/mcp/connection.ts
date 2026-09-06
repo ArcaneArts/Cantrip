@@ -1,5 +1,6 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
+import { Agent } from "undici";
 
 import {
   cantripAgentOperationResultSchema,
@@ -21,6 +22,20 @@ import {
   type CuaMcpRequest,
 } from "./cua-contract.js";
 import { CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS } from "./timeouts.js";
+
+// Native fetch has an independent headers/body deadline. Override it for CUA
+// only, so an entire performance can finish before the broker sends its reply.
+const cuaBrokerDispatcher = new Agent().compose(
+  (dispatch) => (options, handler) =>
+    dispatch(
+      {
+        ...options,
+        headersTimeout: CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS,
+        bodyTimeout: CANTRIP_CUA_MCP_OPERATION_TIMEOUT_MS,
+      },
+      handler,
+    ),
+);
 
 function localBrokerUrl(endpoint: string): URL {
   const url = new URL(endpoint);
@@ -92,6 +107,9 @@ async function brokerRequest(
   const endpoint = localBrokerUrl(document.endpoint);
   const response = await fetch(new URL(pathname, endpoint), {
     ...init,
+    ...(pathname === "/v1/computer-use"
+      ? { dispatcher: cuaBrokerDispatcher }
+      : {}),
     headers: {
       authorization: `Bearer ${document.credential}`,
       ...(init.body ? { "content-type": "application/json" } : {}),

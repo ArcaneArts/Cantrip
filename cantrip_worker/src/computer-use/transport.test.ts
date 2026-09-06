@@ -87,7 +87,7 @@ describe("CUA child transport", () => {
     for (const [operation, timeoutMs] of [
       ["targets.list", 120_001],
       ["javascript.reset", 120_001],
-      ["javascript.evaluate", 347_001],
+      ["javascript.evaluate", 7_502_001],
     ] as const) {
       await expect(
         transport.request({ operation }, { timeoutMs }),
@@ -99,7 +99,7 @@ describe("CUA child transport", () => {
     await expect(
       transport.request(
         { operation: "javascript.evaluate" },
-        { timeoutMs: 347_000 },
+        { timeoutMs: 7_502_000 },
       ),
     ).resolves.toMatchObject({ data: { id: 2 } });
   });
@@ -126,7 +126,7 @@ describe("CUA child transport", () => {
     ).resolves.toMatchObject({ data: { id: 5 } });
   });
 
-  it("allows all 64 sequential host calls without consuming request IDs or slots", async () => {
+  it("allows 65 sequential host calls beyond the former cap without consuming request IDs or slots", async () => {
     const transport = fixture();
     const onHostCall = vi.fn(async () => null);
     const controllers = Array.from({ length: 15 }, () => new AbortController());
@@ -136,9 +136,9 @@ describe("CUA child transport", () => {
         .catch((error) => error),
     );
     await expect(
-      transport.request({ operation: "host", calls: 64 }, { onHostCall }),
-    ).resolves.toMatchObject({ data: { callId: 64 } });
-    expect(onHostCall).toHaveBeenCalledTimes(64);
+      transport.request({ operation: "host", calls: 65 }, { onHostCall }),
+    ).resolves.toMatchObject({ data: { callId: 65 } });
+    expect(onHostCall).toHaveBeenCalledTimes(65);
     controllers.forEach((controller) => controller.abort());
     await Promise.all(waiting);
     await expect(
@@ -164,13 +164,13 @@ describe("CUA child transport", () => {
         transport.request(
           {
             operation: operation === "host-budget" ? "host" : operation,
-            calls: 65,
+            calls: 16385,
           },
           { onHostCall },
         ),
       ).rejects.toMatchObject({ code: "protocol-error" });
       expect(onHostCall.mock.calls.length).toBeLessThanOrEqual(
-        operation === "host-budget" ? 64 : 1,
+        operation === "host-budget" ? 16384 : 1,
       );
       expect(transport.closed).toBe(true);
     },
@@ -223,7 +223,7 @@ describe("CUA child transport", () => {
     });
     const circular: { self?: unknown } = {};
     circular.self = circular;
-    for (const value of [circular, "a".repeat(65_536), () => {}]) {
+    for (const value of [circular, "a".repeat(16 * 1024 * 1024), () => {}]) {
       const rejected = await transport.request(
         { operation: "host" },
         { onHostCall: async () => value },

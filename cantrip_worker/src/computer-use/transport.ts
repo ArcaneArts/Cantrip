@@ -58,7 +58,7 @@ const MAX_ORDINARY_OUTSTANDING = 16;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const CANCELLATION_GRACE_MS = 2_000;
 const SHUTDOWN_GRACE_MS = 2_000;
-const MAX_HOST_CALLS = 64;
+const MAX_HOST_CALLS = 16384;
 
 function hostFailure(error: unknown): CuaOutcome {
   let code: CuaNativeErrorCode = "invalid-request";
@@ -369,8 +369,13 @@ class ChildTransport implements CuaTransport {
         typeof operation === "object" &&
         "operation" in operation &&
         operation.operation === "javascript.evaluate"
-          ? 347_000
-          : 120_000)
+          ? 7_502_000
+          : operation &&
+              typeof operation === "object" &&
+              "operation" in operation &&
+              operation.operation === "input.perform"
+            ? 7_205_000
+            : 120_000)
     )
       return Promise.reject(new CuaProcessError("invalid-request", "not-sent"));
     // Settled cancellation still consumes a native correlation until its reply

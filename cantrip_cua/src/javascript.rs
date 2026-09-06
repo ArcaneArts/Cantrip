@@ -29,19 +29,19 @@ use std::{
 };
 
 const MAX_CONTEXTS: usize = 4;
-const MAX_SOURCE: usize = 32 * 1024;
+const MAX_SOURCE: usize = 2 * 1024 * 1024;
 const MAX_OUTPUT: usize = 32 * 1024;
-const MAX_HOST_CALLS: u64 = 64;
-const MAX_HEAP: usize = 8 * 1024 * 1024;
-const ACTIVE_LIMIT: Duration = Duration::from_secs(2);
+const MAX_HOST_CALLS: u64 = 16384;
+const MAX_HEAP: usize = 128 * 1024 * 1024;
+const ACTIVE_LIMIT: Duration = Duration::from_secs(10);
 #[cfg(test)]
 const WALL_LIMIT: Duration = Duration::from_secs(45);
-const MAX_WALL_TIMEOUT_MS: u64 = 345_000;
+const MAX_WALL_TIMEOUT_MS: u64 = 7_500_000;
 pub(crate) fn default_wall_timeout_ms() -> u64 {
     45_000
 }
 const JOB_BATCH: usize = 16;
-const MAX_JOBS: u32 = 10_000;
+const MAX_JOBS: u32 = 200_000;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -97,7 +97,7 @@ enum HostAction {
 }
 
 fn validate_action(source: &str) -> Result<Value> {
-    if source.len() > MAX_SOURCE {
+    if source.len() > 15 * 1024 * 1024 {
         return Err(capacity());
     }
     let action: HostAction = serde_json::from_str(source).map_err(|_| script_error())?;
@@ -147,6 +147,9 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
 ((host, stringify) => {
   const call = action => host(stringify(action));
   Object.defineProperty(globalThis, 'cua', { value: Object.freeze({
+    help: () => ({apiVersion:3, methods:{requestFocus:"requestFocus() activates and raises the attached window; sends no click",commandClick:"commandClick(point, holdMs=150) sends a real Command-modified mouse press without requesting focus",pointerPress:"pointerPress(point, holdMs=150, modifiers=[]) where modifiers are Shift,Control,Alt,Meta; modifiers are NOT held timeline keys",inputTimeline:"inputTimeline(frames): atMs, keyDown, keyUp, pointerDown, pointerUp, pointerModifiers on pointerDown",keyChord:"keyChord(keys,holdMs=500)"}, limits:{scriptBytes:2097152,hostCalls:16384,timelineFrames:131072,timelineMs:7200000,hostActionBytes:15728640,outputBytes:32768,maxHeldKeys:16,maxSnapshots:2,maxWallMs:7500000}, notes:"Use one native timeline for a preplanned stable interface to avoid model round trips between music chunks. No automatic focus or retries after uncertain input. Command is visible to the target and may change link/selection behavior. An installed helper update requires a worker restart to replace an already running helper."}),
+    requestFocus: () => call({operation:'perform',command:{kind:'focus'}}),
+    commandClick: (point, holdMs = 150) => call({operation:'perform',command:{kind:'timeline',frames:[{atMs:0,pointerDown:point,pointerModifiers:['Meta']},{atMs:holdMs,pointerUp:true}]}}),
     keyChord: (keys, holdMs = 500) => call({operation:'perform', command:{kind:'timeline',frames:[{atMs:0,keyDown:keys},{atMs:holdMs,keyUp:keys}]}}),
     inputTimeline: frames => call({operation:'perform',command:{kind:'timeline',frames}}),
     pointerPress: (point, holdMs = 150, modifiers = []) => call({operation:'perform',command:{kind:'timeline',frames:[{atMs:0,pointerDown:point,pointerModifiers:modifiers},{atMs:holdMs,pointerUp:true}]}}),
@@ -854,6 +857,14 @@ mod tests {
     fn macro_bootstrap_sends_bounded_host_commands() {
         for (script, expected) in [
             (
+                r#"await cua.requestFocus()"#,
+                json!({"operation":"perform","command":{"kind":"focus"}}),
+            ),
+            (
+                r#"await cua.commandClick({x:12,y:34},200)"#,
+                json!({"operation":"perform","command":{"kind":"timeline","frames":[{"atMs":0,"pointerDown":{"x":12,"y":34},"pointerModifiers":["Meta"]},{"atMs":200,"pointerUp":true}]}}),
+            ),
+            (
                 r#"await cua.keyChord(["C","B","M"],500)"#,
                 json!({"operation":"perform","command":{"kind":"timeline","frames":[{"atMs":0,"keyDown":["C","B","M"]},{"atMs":500,"keyUp":["C","B","M"]}]}}),
             ),
@@ -911,6 +922,42 @@ mod tests {
             };
             assert_eq!(action, expected);
         }
+    }
+    #[test]
+    fn live_help_and_large_generated_score_match_runtime_limits() {
+        let binding =
+            serde_json::from_value(json!({"sessionId":"help","workerId":"worker","chatId":"chat"}))
+                .unwrap();
+        let (frames, receiver) = crossbeam_channel::bounded(4);
+        let mut session = Session::new(binding, frames).unwrap();
+        session
+            .start(
+                1,
+                "await cua.help()".into(),
+                MAX_WALL_TIMEOUT_MS,
+                Cancellation::default(),
+            )
+            .unwrap();
+        let help = session.step().unwrap().unwrap();
+        assert_eq!(help["limits"]["scriptBytes"], MAX_SOURCE);
+        assert_eq!(help["limits"]["hostCalls"], MAX_HOST_CALLS);
+        assert_eq!(help["limits"]["maxWallMs"], MAX_WALL_TIMEOUT_MS);
+        assert!(receiver.is_empty());
+        session.clear_active();
+        // Generate a long score in JS, validate and serialize the actual host
+        // action, but never authorize or dispatch native input.
+        session.start(2, "await cua.inputTimeline(Array.from({length:131072}, (_,i)=>i%2===0?{atMs:i*50,keyDown:['C']}:{atMs:i*50,keyUp:['C']}))".into(), MAX_WALL_TIMEOUT_MS, Cancellation::default()).unwrap();
+        assert!(session.step().is_none());
+        let frame = receiver.try_recv().unwrap();
+        let Message::HostCall { action, .. } = &frame.header.message else {
+            panic!("expected timeline");
+        };
+        assert_eq!(
+            action["command"]["frames"].as_array().unwrap().len(),
+            131072
+        );
+        let mut bytes = Vec::new();
+        crate::protocol::write_frame(&mut bytes, &frame).unwrap();
     }
     #[test]
     fn point_inspection_validates_coordinates_without_authority_fields() {

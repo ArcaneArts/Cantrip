@@ -595,6 +595,33 @@ impl Accessibility {
     }
 }
 
+/// Explicit focus request. This intentionally activates/raises one application
+/// window; it never posts a mouse event or restores the previous foreground.
+pub(super) fn request_focus(target: &Target, cancel: &Cancellation) -> Result<Bounds> {
+    let window = Accessibility::window(target, cancel)?;
+    let pid = target
+        .process_id
+        .and_then(|pid| i32::try_from(pid).ok())
+        .ok_or_else(stale)?;
+    let app = Owned::take(unsafe { AXUIElementCreateApplication(pid) })?;
+    read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.2) })?;
+    let frontmost = Owned::string("AXFrontmost");
+    let main = Owned::string("AXMain");
+    let raise = Owned::string("AXRaise");
+    cancel.check()?;
+    // Once an activation request has been sent, even an error may have changed
+    // focus. Do not report a retryable no-dispatch outcome after this boundary.
+    (|| {
+        read_result(unsafe { AXUIElementSetAttributeValue(app.0, frontmost.0, kCFBooleanTrue) })?;
+        cancel.check()?;
+        read_result(unsafe { AXUIElementSetAttributeValue(window.0, main.0, kCFBooleanTrue) })?;
+        cancel.check()?;
+        read_result(unsafe { AXUIElementPerformAction(window.0, raise.0) })?;
+        window.rect()
+    })().map_err(|_: CuaError| CuaError::new(ErrorCode::InputUnknown,
+        "Focus was requested but completion is unverified. No mouse input was sent; observe before another action."))
+}
+
 /// Actual activation plus target hit-testing, not a cached permission/readiness
 /// gate. Check the live window again after activation may have moved it.
 pub(super) fn activate_for_click(

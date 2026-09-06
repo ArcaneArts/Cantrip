@@ -18,6 +18,19 @@ with sequential worktree PRs and squash auto-merge. The user subsequently
 authorized agent-driven interactive testing; implementation does not pause
 between useful cycles.
 
+### September 6: focus and full-performance iteration
+
+Added live `cua.help()` (API 3), explicit `commandClick` and `requestFocus` methods,
+and long-score limits: 131,072 frames / two hours per timeline, 2 MiB script,
+16,384 host calls, 125-minute managed wall deadline. Extended native framing,
+CUA broker body size and HTTP/native/MCP deadlines together. Background Command
+clicks preserve their real modifier semantics; ordinary inactive-app mouse input
+is not claimed fixed. Focus changes occur only through the explicit method.
+Validation: 83 TypeScript checks and six Rust unit checks passed, including a
+131,072-frame score generated in JavaScript and serialized without native input.
+Protocol/worker builds, Rust Clippy, formatting and diff checks passed. No live
+integration QA or CI jobs; user retains piano testing.
+
 ### Explicit modified mouse input for inactive-window diagnosis
 
 - Branch: `codex/cua-mouse-modifiers`. User confirmed mouse notes work with Brave

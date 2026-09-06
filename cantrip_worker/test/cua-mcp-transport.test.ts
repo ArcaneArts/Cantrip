@@ -154,7 +154,7 @@ describe("managed CUA MCP transport", () => {
       cuaMcpRequestSchema.safeParse({
         ...identity,
         operation: "js",
-        script: "😃".repeat(10_000),
+        script: "😃".repeat(524_289),
       }).success,
     ).toBe(false);
   }, 20_000);

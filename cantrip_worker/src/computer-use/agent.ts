@@ -368,7 +368,7 @@ export class CuaAgentCoordinator {
       {
         executionSignal: lifetime.signal,
         signal: active,
-        wallTimeoutMs: 345_000,
+        wallTimeoutMs: 7_500_000,
         onOperation: (outcome) => {
           if (outcome.input)
             inputAttempts.push({
@@ -389,7 +389,9 @@ export class CuaAgentCoordinator {
                   : null,
               inputMethod:
                 outcome.action.operation === "perform"
-                  ? `background-${outcome.action.command.kind}`
+                  ? outcome.action.command.kind === "focus"
+                    ? "focus"
+                    : `background-${outcome.action.command.kind}`
                   : outcome.action.operation === "globalClick"
                     ? "coordinate"
                     : outcome.action.operation === "backgroundClick"

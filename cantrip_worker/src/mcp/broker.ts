@@ -139,8 +139,10 @@ function sendJson(
   response.end(body);
 }
 
-async function readJsonBody(request: IncomingMessage): Promise<unknown> {
-  const maximum = 256 * 1_024;
+async function readJsonBody(
+  request: IncomingMessage,
+  maximum = 256 * 1_024,
+): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -429,7 +431,8 @@ export class CantripMcpBroker {
     let stored: StoredBinding | null = null;
     try {
       const parsed = cuaMcpBrokerRequestSchema.parse(
-        await readJsonBody(request),
+        // Allow JSON escaping of a 2 MiB script; generic MCP keeps its own limit.
+        await readJsonBody(request, 16 * 1024 * 1024),
       );
       stored = this.bindingFor(parsed.bindingId, request.headers.authorization);
       if (!stored) {

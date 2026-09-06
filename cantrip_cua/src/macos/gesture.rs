@@ -87,6 +87,23 @@ pub(super) fn perform(
     progress: &mut dyn FnMut(Point),
 ) -> Result<(Target, InputReceipt)> {
     command.validate()?;
+    if matches!(command, InputCommand::Focus {}) {
+        let mut current = target.clone();
+        current.bounds = super::accessibility::request_focus(target, cancel)?;
+        return Ok((
+            current.clone(),
+            InputReceipt {
+                control: None,
+                method: "focus",
+                activation: true,
+                outcome: "dispatched",
+                position: None,
+                global_position: None,
+                effects: None,
+                window_delivery: None,
+            },
+        ));
+    }
     let (pid, window) = super::click::process_destination(target)?;
     let delivery = super::skylight::Delivery::load()?;
     let global = target.bounds.to_global(position)?;
@@ -119,6 +136,7 @@ pub(super) fn perform(
     };
     let mut final_position = position;
     match command {
+        InputCommand::Focus {} => unreachable!("focus handled without allocating mouse input"),
         InputCommand::Timeline { frames } => {
             use crate::timeline::{Frame, Transition};
             use std::collections::HashMap;

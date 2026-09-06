@@ -185,7 +185,7 @@ describe("bounded CUA JavaScript host arguments", () => {
 });
 
 describe("worker JavaScript ownership before MCP activation", () => {
-  it.each([undefined, 1, 345_000])(
+  it.each([undefined, 1, 7_500_000])(
     "propagates trusted wall timeout %s to Rust and the host transport",
     async (wallTimeoutMs) => {
       const { service, request } = fixture();
@@ -206,7 +206,7 @@ describe("worker JavaScript ownership before MCP activation", () => {
     },
   );
 
-  it.each([0, -1, 345_001, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+  it.each([0, -1, 7_500_001, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
     "rejects invalid trusted wall timeout %s before launching or creating authority",
     async (wallTimeoutMs) => {
       const { service, launch } = fixture();

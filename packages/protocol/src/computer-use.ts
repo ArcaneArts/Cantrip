@@ -4,7 +4,10 @@ import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 
 export const CUA_CHUNK_BYTES = 256 * 1024;
 export const CUA_MAX_CHUNKS = 64;
-export const CUA_CONTROL_BYTES = 64 * 1024;
+export const CUA_CONTROL_BYTES = 16 * 1024 * 1024;
+export const CUA_MAX_SCRIPT_BYTES = 2 * 1024 * 1024;
+export const CUA_MAX_TIMELINE_FRAMES = 131072;
+export const CUA_MAX_TIMELINE_MS = 7_200_000;
 
 // Shared with native boundary validation. No Node globals are required by the
 // browser/client schema: these limits count UTF-8 bytes, not UTF-16 code units.
@@ -84,6 +87,7 @@ export const cuaSessionSchema = z.strictObject({
           "background-drag",
           "background-scroll",
           "background-timeline",
+          "focus",
         ]),
         outcome: z.enum([
           "dispatched",
@@ -219,7 +223,7 @@ export const cuaControlsResultSchema = z.strictObject({
   }),
 });
 const cuaTimelineFrameSchema = z.strictObject({
-  atMs: z.number().int().min(0).max(10000),
+  atMs: z.number().int().min(0).max(CUA_MAX_TIMELINE_MS),
   keyDown: z.array(z.string().max(16)).max(16).default([]),
   keyUp: z.array(z.string().max(16)).max(16).default([]),
   pointerDown: cuaPointSchema.optional(),
@@ -233,7 +237,7 @@ const cuaTimelineFrameSchema = z.strictObject({
 const cuaTimelineSchema = z
   .array(cuaTimelineFrameSchema)
   .min(1)
-  .max(256)
+  .max(CUA_MAX_TIMELINE_FRAMES)
   .refine((frames) => {
     const held = new Set<string>();
     let pointer = false;
@@ -281,6 +285,7 @@ const cuaTimelineSchema = z
 
 /** One bounded native macro; no raw key-down/up is exposed to agents. */
 export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("focus") }),
   z.strictObject({ kind: z.literal("timeline"), frames: cuaTimelineSchema }),
   z.strictObject({
     kind: z.literal("text"),
@@ -350,6 +355,7 @@ export const cuaInputReceiptSchema = z.strictObject({
     "background-drag",
     "background-scroll",
     "background-timeline",
+    "focus",
   ]),
   activation: z.boolean(),
   outcome: z.enum(["dispatched", "unknown"]),
