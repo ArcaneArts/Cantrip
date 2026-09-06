@@ -97,6 +97,13 @@ describe("managed CUA MCP transport", () => {
       "js",
       "js_reset",
     ]);
+    expect(client.getInstructions()).toContain(
+      '"script":"await cua.targets()"',
+    );
+    const js = (await client.listTools()).tools.find(
+      (tool) => tool.name === "js",
+    );
+    expect(js?.description).toContain("namespace is separate from `cantrip`");
     const result = await client.callTool({
       name: "js",
       arguments: { script: "await cua.snapshot()" },

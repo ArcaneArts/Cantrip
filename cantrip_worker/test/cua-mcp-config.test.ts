@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { isManagedMcpName } from "@cantrip/protocol";
 import {
   codexMcpConfigOverride,
+  cantripChatThreadParams,
   managedMcpToolRequirements,
 } from "../src/codex/app-server.js";
 import {
@@ -17,6 +18,27 @@ import { CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS } from "../src/mcp/timeouts.js";
 
 const invocation = { command: "node", arguments: ["cua-stdio.js"] };
 describe("managed CUA MCP configuration", () => {
+  it.each(["ide", "standalone-chat"] as const)(
+    "advertises the actual CUA entry point in %s thread instructions",
+    (profile) => {
+      const cua = managedCuaMcpServer(invocation, "connection.json");
+      const instructions = cantripChatThreadParams(true, profile, [
+        cua,
+      ]).developerInstructions;
+      expect(instructions).toContain('"script":"await cua.targets()"');
+      expect(instructions).toContain("namespace is separate from `cantrip`");
+      expect(instructions).toContain("An empty `cantrip.target_list`");
+      expect(instructions).toContain("Window sharing starts automatically");
+      expect(
+        cantripChatThreadParams(true, profile, [{ ...cua, enabled: false }])
+          .developerInstructions,
+      ).not.toContain("await cua.targets()");
+      expect(
+        cantripChatThreadParams(true, profile, [{ ...cua, name: "unrelated" }])
+          .developerInstructions,
+      ).not.toContain("await cua.targets()");
+    },
+  );
   it("uses the dedicated worker host in source and packaged runtimes", () => {
     expect(
       cuaMcpHostInvocation({

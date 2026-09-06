@@ -10,6 +10,26 @@ Use an updated development build and worker;
 an older installed app may not include these tools. No installed app, saved QA
 profile, credentials or macOS permissions were changed by those initial click implementations.
 
+## Finding the tools
+
+Cantrip automatically manages a dedicated `cantrip_cua` MCP server for authorized
+agent turns. Its `js` and `js_reset` tools use the computer-use transport for
+images and turn-scoped authorization. They have a different namespace from the
+general `cantrip` project tools and are not a CLI subcommand.
+
+Start with `cantrip_cua/js` and `{"script":"await cua.targets()"}`. Discover that
+exact server name if tools are deferred; do not dump every tool's full description
+or restrict discovery to the `cantrip` namespace. The returned native inventory
+provides the IDs and generations needed to attach an application window and take
+a snapshot. Window sharing starts automatically during capture.
+
+The ordinary `cantrip.target_list` registry and its `remote-desktop`/`remote-surface`
+entries are separate. Empty lists there do not establish that native CUA is
+unavailable, and creating a remote target does not fix a missing CUA tool. The
+agent's thread instructions and general Cantrip MCP guidance identify this
+distinction. A missing callable `cantrip_cua` tool is a registration problem;
+AppleScript or shell automation is not the Cantrip CUA fallback.
+
 ## Custom-cursor actions (current development behavior)
 
 Ordinary `cua.click()` acts at the custom cursor through the attached window's

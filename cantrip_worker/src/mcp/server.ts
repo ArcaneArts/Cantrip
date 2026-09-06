@@ -337,7 +337,7 @@ export function createCantripMcpServer(
     {
       title: "List authorized Cantrip targets",
       description:
-        "List a bounded page of exact execution targets authorized for the bound project. Use returned target objects with target-specific tools.",
+        'List a bounded page of exact execution targets authorized for the bound project. Use returned target objects with target-specific tools. Native desktop windows are listed by cantrip_cua/js with {"script":"await cua.targets()"}, not this registry. An empty remote-desktop/remote-surface list does not mean native computer use is unavailable.',
       inputSchema: cantripMcpTargetListInputSchema,
       outputSchema: cantripMcpTargetListResultSchema,
       annotations: readAnnotations,
