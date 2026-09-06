@@ -7,6 +7,7 @@ mod geometry;
 mod overlay;
 mod pending;
 mod registry;
+mod sharing;
 mod skylight;
 
 use crate::{
@@ -223,6 +224,7 @@ impl MacOsBackend {
 
 impl CaptureBackend for MacOsBackend {
     fn present_cursors(&mut self, sessions: Vec<crate::service::SessionState>) {
+        sharing::retain_sessions(&sessions);
         overlay::present(sessions);
     }
     fn background_click(
@@ -365,11 +367,13 @@ impl CaptureBackend for MacOsBackend {
                 diagnostic_phase("capture-inventory-completion");
                 if request.cancelled() { return; }
                 autoreleasepool(|_| unsafe {
-                    let source = content_result(content, error).and_then(|content| selected_filter(content, &selected, &identity));
+                    let source = content_result(content, error).and_then(|content| {
+                        selected_filter(content, &selected, &identity).map(|source| (content, source))
+                    });
                     match source {
-                        Ok(source) => {
+                        Ok((content, source)) => {
                             diagnostic_phase("selected-filter-ready");
-                            begin_capture(source, request.clone());
+                            sharing::capture(content, source, request.clone());
                         },
                         Err(error) => request.deliver(Err(error)),
                     }
