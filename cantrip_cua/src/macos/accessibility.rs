@@ -6,9 +6,10 @@ use crate::{
     error::{CuaError, ErrorCode, Result},
     input::{Control, Controls, InputReceipt},
     target::{Bounds, Target, TargetKind},
+    window_traversal::WindowTraversal,
 };
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     ffi::c_void,
     ptr,
     time::{Duration, Instant},
@@ -72,6 +73,12 @@ struct Owned(Ref);
 // SAFETY: AX/CF references have no main-thread affinity. Only the single native
 // executor accesses these references; there is no Sync implementation.
 unsafe impl Send for Owned {}
+impl Clone for Owned {
+    fn clone(&self) -> Self {
+        // SAFETY: Owned always holds a non-null, retained CF object.
+        Self(unsafe { CFRetain(self.0) })
+    }
+}
 impl Drop for Owned {
     fn drop(&mut self) {
         unsafe { CFRelease(self.0) }
@@ -318,22 +325,16 @@ impl Accessibility {
     ) -> Result<Controls> {
         self.clear(session);
         let window = Self::window(target, cancel)?;
-        let node_limit = if point.is_some() { 512 } else { 128 };
-        let child_limit = if point.is_some() { 128 } else { 32 };
-        let depth_limit = if point.is_some() { 24 } else { 12 };
-        let mut pending = VecDeque::from([(Owned::take(unsafe { CFRetain(window.0) })?, 0)]);
+        let mut traversal = WindowTraversal::new(window.clone(), point.is_some());
         let mut controls = vec![];
         let mut elements = HashMap::new();
-        let mut visited = 0;
-        let mut truncated = false;
         let deadline = Instant::now() + Duration::from_secs(3);
-        while let Some((element, depth)) = pending.pop_front() {
+        while let Some((element, depth)) = traversal.next() {
             cancel.check()?;
-            if visited >= node_limit || controls.len() >= 32 || Instant::now() > deadline {
-                truncated = true;
+            if controls.len() >= 32 || Instant::now() > deadline {
+                traversal.truncated = true;
                 break;
             }
-            visited += 1;
             if !element.is(unsafe { AXUIElementGetTypeID() }) {
                 continue;
             }
@@ -367,27 +368,15 @@ impl Accessibility {
                     continue;
                 }
             }
-            if depth < depth_limit {
-                let children =
-                    element.children("AXChildren", (node_limit - visited).min(child_limit));
-                if let Err(error) = &children
-                    && point.is_some()
-                    && error.code != ErrorCode::Unsupported
-                {
-                    return Err(error.clone());
-                }
-                if let Ok((children, more)) = children {
-                    truncated |= more;
-                    for child in children {
-                        if pending.len() < node_limit {
-                            pending.push_back((child, depth + 1));
-                        } else {
-                            truncated = true;
-                        }
-                    }
-                }
-            } else {
-                truncated = true;
+            let children = element.children("AXChildren", traversal.child_limit(depth));
+            if let Err(error) = &children
+                && point.is_some()
+                && error.code != ErrorCode::Unsupported
+            {
+                return Err(error.clone());
+            }
+            if let Ok((children, more)) = children {
+                traversal.extend(depth, children, more, Owned::same);
             }
             if !element.pressable().unwrap_or(false) {
                 continue;
@@ -438,7 +427,7 @@ impl Accessibility {
         );
         Ok(Controls {
             controls,
-            truncated,
+            truncated: traversal.truncated,
         })
     }
     pub(super) fn press_at(

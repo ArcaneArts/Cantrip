@@ -196,6 +196,27 @@ to the user and implementation does not pause between useful cycles.
   interactive or integration testing.
 - Covered-window acceptance remains unresolved and belongs to the user.
 
+### Cycle 8 — Use the bounded window search budget
+
+- Branch: `codex/cua-window-traversal`.
+- User evidence and rollout confirm AX control-inspection-incomplete in about
+  160 ms, followed by processClick on the same window. The user-provided result
+  still showed CUA rather than Jeff. Process delivery did not establish the
+  intended change; no additional input was issued during this investigation.
+- Targeted AX traversal now uses the existing 512-node total budget without the
+  smaller 24-level/128-child cuts. General discovery retains its smaller limits.
+  Repeated native element identities are visited once. Boundary leaves are
+  checked for actual children rather than automatically labelled incomplete.
+- The queue and retained identities remain bounded, the existing deadline and
+  Stop checks remain, and missing/ambiguous/incomplete selection still fails.
+  Window ownership, geometry revalidation, secure-input omission and no global
+  fallback remain in the native action path.
+- Validation: four pure traversal unit tests, Rust compilation/Clippy, formatting
+  and diff checks. No native, interactive or integration tests ran locally.
+- Next user test: a newly authorized click on the intended covered window with
+  the updated worker. This is not an automatic replay of the prior unknown input.
+  Actual AX success and pointer/focus preservation remain unverified.
+
 ## Clicking-tranche progress
 
 Implementation proceeds solo through isolated worktrees and squash auto-merge.
