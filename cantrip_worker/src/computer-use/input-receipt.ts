@@ -7,7 +7,10 @@ export function matchesInputReceipt(
   position?: CuaPoint,
 ): boolean {
   if (receipt.method !== method) return false;
-  if ((method === "focus" || method === "window-input") && !receipt.activation)
+  if (
+    ["focus", "window-input", "background-prepared-press"].includes(method) &&
+    !receipt.activation
+  )
     return false;
   if (method === "process-coordinate" || method.startsWith("background-")) {
     if (

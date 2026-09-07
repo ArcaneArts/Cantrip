@@ -490,11 +490,13 @@ export class CantripCuaService {
                   frame.pointerDown ?? point,
                 record.state?.cursor.position,
               )
-            : command.kind === "drag"
-              ? command.end
-              : command.kind === "scroll"
-                ? (command.point ?? record.state?.cursor.position)
-                : record.state?.cursor.position
+            : command.kind === "prepared-press"
+              ? command.point
+              : command.kind === "drag"
+                ? command.end
+                : command.kind === "scroll"
+                  ? (command.point ?? record.state?.cursor.position)
+                  : record.state?.cursor.position
           : operation === "input.click"
             ? "position" in fields
               ? (fields.position as CuaPoint)

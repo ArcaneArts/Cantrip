@@ -107,7 +107,8 @@ export function computerUseActivity(input: {
               input.inputMethod === "coordinate"
                 ? null
                 : input.inputMethod === "focus" ||
-                  input.inputMethod === "window-input",
+                  input.inputMethod === "window-input" ||
+                  input.inputMethod === "background-prepared-press",
             ...(input.position ? { position: input.position } : {}),
             outcome:
               code === "input-unknown" ||
