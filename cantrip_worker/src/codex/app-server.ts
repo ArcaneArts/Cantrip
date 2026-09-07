@@ -3927,12 +3927,6 @@ export function completedCodexThreadTurnFromRead(
   return turn ? normalizeCodexThreadTurn(turn, cwd, response.thread.id) : null;
 }
 
-export function collaborationModeFingerprint(
-  collaborationMode: NativeCollaborationMode,
-): string {
-  return JSON.stringify(collaborationMode);
-}
-
 export class CodexAppServer implements CodexRuntime {
   readonly #activeTurns = new Map<string, ActiveTurn>();
   readonly #activeTurnsByThread = new Map<string, ActiveTurn>();
@@ -3941,7 +3935,6 @@ export class CodexAppServer implements CodexRuntime {
   readonly #orphanAgentThreads = new Map<string, ChildThreadMetadata>();
   readonly #knownAgentThreads = new Map<string, ChildThreadMetadata>();
   readonly #collaborationModes = new Map<string, PlanMode>();
-  readonly #collaborationModeFingerprints = new Map<string, string>();
   readonly #diagnosticSecrets = new Set<string>();
   #runtimeIsZai = false;
   readonly #externalImportStatuses = new Map<
@@ -5860,7 +5853,6 @@ export class CodexAppServer implements CodexRuntime {
     this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#collaborationModes.clear();
-    this.#collaborationModeFingerprints.clear();
     this.#externalImportStatuses.clear();
     this.#externalTurnBaselines.clear();
     this.#externalThreadChanges.clear();
@@ -7032,7 +7024,6 @@ export class CodexAppServer implements CodexRuntime {
     this.#readyMcpConfigFingerprintsByThread.delete(threadId);
     this.#permissionProfilesByThread.delete(threadId);
     this.#collaborationModes.delete(threadId);
-    this.#collaborationModeFingerprints.delete(threadId);
     this.#goals.delete(threadId);
   }
 
@@ -7079,11 +7070,10 @@ export class CodexAppServer implements CodexRuntime {
     return {
       mode,
       settings: {
-        model: model.name,
+        model: preset.model ?? model.name,
         reasoning_effort:
-          mode === "plan"
-            ? (preset.reasoning_effort ?? "medium")
-            : model.reasoningEffort,
+          preset.reasoning_effort ??
+          (mode === "plan" ? "medium" : model.reasoningEffort),
         developer_instructions: null,
       },
     };
@@ -7095,14 +7085,12 @@ export class CodexAppServer implements CodexRuntime {
     model: RunAgentTurnOptions["model"],
   ): Promise<NativeCollaborationMode> {
     const collaborationMode = await this.collaborationMode(mode, model);
-    const fingerprint = collaborationModeFingerprint(collaborationMode);
-    if (this.#collaborationModeFingerprints.get(threadId) !== fingerprint) {
+    if (this.#collaborationModes.get(threadId) !== mode) {
       await this.request("thread/settings/update", {
         threadId,
         collaborationMode,
       });
       this.#collaborationModes.set(threadId, mode);
-      this.#collaborationModeFingerprints.set(threadId, fingerprint);
     }
     return collaborationMode;
   }
@@ -7312,7 +7300,6 @@ export class CodexAppServer implements CodexRuntime {
       this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#collaborationModes.clear();
-      this.#collaborationModeFingerprints.clear();
       this.#externalImportStatuses.clear();
       this.#externalTurnBaselines.clear();
       this.#externalThreadChanges.clear();
@@ -7640,11 +7627,9 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "thread/settings/updated") {
       const params = message.params as ThreadSettingsUpdatedParams;
-      const collaborationMode = params.threadSettings.collaborationMode;
-      this.#collaborationModes.set(params.threadId, collaborationMode.mode);
-      this.#collaborationModeFingerprints.set(
+      this.#collaborationModes.set(
         params.threadId,
-        collaborationModeFingerprint(collaborationMode),
+        params.threadSettings.collaborationMode.mode,
       );
       this.observeExternalThreadChange(params.threadId, "plan");
       return;
@@ -9353,6 +9338,5 @@ export class CodexAppServer implements CodexRuntime {
     this.#orphanAgentThreads.clear();
     this.#knownAgentThreads.clear();
     this.#collaborationModes.clear();
-    this.#collaborationModeFingerprints.clear();
   }
 }

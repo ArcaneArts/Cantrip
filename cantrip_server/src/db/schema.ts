@@ -1089,9 +1089,6 @@ export const userSettings = pgTable(
       .notNull()
       .default(true),
     randomAgentNames: boolean("random_agent_names").notNull().default(false),
-    startNewAgentChatsInCodexCli: boolean("start_new_agent_chats_in_codex_cli")
-      .notNull()
-      .default(false),
     desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
     desktopStreamQuality: text("desktop_stream_quality")
       .notNull()

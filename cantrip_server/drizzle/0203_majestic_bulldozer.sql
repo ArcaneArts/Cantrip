@@ -1,1 +1,0 @@
-ALTER TABLE "user_settings" ADD COLUMN "start_new_agent_chats_in_codex_cli" boolean DEFAULT false NOT NULL;

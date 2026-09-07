@@ -61,13 +61,11 @@ type OpenCreatedTab = (
 ) => void;
 
 export function useProjectChatCreationOperation({
-  initializeChatConsole,
   openCreatedTab,
   queryClient,
   randomAgentNames,
   resources,
 }: {
-  initializeChatConsole: (chatId: string, open: boolean) => void;
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
   randomAgentNames: boolean;
@@ -91,7 +89,6 @@ export function useProjectChatCreationOperation({
       target,
       initialDraft,
       githubAgentContext,
-      open,
       startInitialDraft,
     }: {
       githubAgentContext?: GithubAgentWorkflowContext;
@@ -124,7 +121,6 @@ export function useProjectChatCreationOperation({
         target,
         githubAgentContext,
       ).then(async (chat) => {
-        if (open !== false) initializeChatConsole(chat.id, true);
         if (initialDraft) {
           await saveChatComposerDraft(chat.id, initialDraft);
           queryClient.setQueryData(
@@ -448,17 +444,14 @@ export function useTerminalCreationOperation({
 
 export function useChatConsoleOperation({
   queryClient,
-  setChatConsoleInitialized,
   setChatConsoleOpen,
 }: {
   queryClient: QueryClient;
-  setChatConsoleInitialized: (chatId: string, initialized: boolean) => void;
   setChatConsoleOpen: (chatId: string, open: boolean) => void;
 }) {
   return useMutation({
-    mutationFn: ({ chatId }: { chatId: string; open: boolean }) =>
-      createChatConsole(chatId),
-    onError: (error, { chatId }) => {
+    mutationFn: (chatId: string) => createChatConsole(chatId),
+    onError: (error, chatId) => {
       clientLogger.error("Codex console failed to open", {
         chatId,
         ...operationalErrorMetadata(error),
@@ -469,7 +462,7 @@ export function useChatConsoleOperation({
         subsystem: "codex-console",
       });
     },
-    onSuccess: (terminal, { chatId, open }) => {
+    onSuccess: (terminal, chatId) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],
         (current = []) => [
@@ -477,8 +470,7 @@ export function useChatConsoleOperation({
           terminal,
         ],
       );
-      setChatConsoleInitialized(chatId, true);
-      if (open) setChatConsoleOpen(chatId, true);
+      setChatConsoleOpen(chatId, true);
     },
   });
 }

@@ -331,16 +331,6 @@ export function App() {
       updateChatConsoleOpenChats(current, chatId, open),
     );
   }, []);
-  const [chatConsoleInitializedChats, setChatConsoleInitializedChats] =
-    useState<ReadonlySet<string>>(() => new Set());
-  const setChatConsoleInitialized = useCallback(
-    (chatId: string, initialized: boolean) => {
-      setChatConsoleInitializedChats((current) =>
-        updateChatConsoleOpenChats(current, chatId, initialized),
-      );
-    },
-    [],
-  );
   const [agentInspectOpenChats, setAgentInspectOpenChats] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -405,10 +395,12 @@ export function App() {
     preview: sidebarFilePreview,
   });
   const [showProjectOverview, setShowProjectOverview] = useState(false);
-  useEffect(
-    () => setShowProjectOverview(false),
-    [selectedProjectId, selectedTabKey, showSettings, showProjectSettings],
-  );
+  useEffect(() => setShowProjectOverview(false), [
+    selectedProjectId,
+    selectedTabKey,
+    showSettings,
+    showProjectSettings,
+  ]);
   const projectOverviewSelected =
     (showProjectOverview || !sidebarFilePreviewFocused) &&
     !showImporter &&
@@ -652,19 +644,7 @@ export function App() {
       tabLayout.data?.panes,
     ],
   );
-  const openChatConsole = useChatConsoleOperation({
-    queryClient,
-    setChatConsoleInitialized,
-    setChatConsoleOpen,
-  });
   const newChat = useProjectChatCreationOperation({
-    initializeChatConsole: (chatId, open) =>
-      openChatConsole.mutate({
-        chatId,
-        open:
-          open &&
-          (settings.data?.preferences.startNewAgentChatsInCodexCli ?? false),
-      }),
     openCreatedTab,
     queryClient,
     randomAgentNames: settings.data?.preferences.randomAgentNames ?? false,
@@ -737,6 +717,10 @@ export function App() {
         ? "desktop"
         : "browser",
     onAction: executeAppAction,
+  });
+  const openChatConsole = useChatConsoleOperation({
+    queryClient,
+    setChatConsoleOpen,
   });
   const { newExplorer, newGraphExplorer } = useExplorerCreationOperations({
     openCreatedTab,
@@ -853,7 +837,6 @@ export function App() {
   const deleteChatMutation = useChatDeleteOperation({
     queryClient,
     selectedProjectId,
-    setChatConsoleInitialized,
     setChatConsoleOpen,
     setProjectTaskChatIds,
     setTaskChatViewIds,
@@ -1224,22 +1207,13 @@ export function App() {
     for (const terminal of terminals.data ?? []) {
       if (
         terminal.linkedChatId &&
-        chatConsoleInitializedChats.has(terminal.linkedChatId)
+        chatConsoleOpenChats.has(terminal.linkedChatId)
       ) {
         owned.set(terminal.id, terminal);
       }
     }
     return [...owned.values()];
-  }, [chatConsoleInitializedChats, projectSurfaces, terminals.data]);
-  const prewarmedTerminals = useMemo(
-    () =>
-      (terminals.data ?? []).filter(
-        (terminal) =>
-          terminal.linkedChatId &&
-          chatConsoleInitializedChats.has(terminal.linkedChatId),
-      ),
-    [chatConsoleInitializedChats, terminals.data],
-  );
+  }, [chatConsoleOpenChats, projectSurfaces, terminals.data]);
   const selectedRunRuntime: RunConfigurationRuntime | null = selectedTerminal
     ? runtimeForRunTerminal(
         selectedTerminal,
@@ -1669,10 +1643,9 @@ export function App() {
       (terminal) => terminal.linkedChatId === chat.id,
     );
     if (existing) {
-      setChatConsoleInitialized(chat.id, true);
       setChatConsoleOpen(chat.id, true);
     } else {
-      openChatConsole.mutate({ chatId: chat.id, open: true });
+      openChatConsole.mutate(chat.id);
     }
   };
   useShellAppearanceEffects({
@@ -2045,7 +2018,7 @@ export function App() {
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
-    pinSidebarFilePath, popOutActiveView, popOutProjectOverviewView, popoutError, popoutPending, prewarmedTerminals,
+    pinSidebarFilePath, popOutActiveView, popOutProjectOverviewView, popoutError, popoutPending,
     prepareExplorerRebind, projectOverviewGitProject, projectOverviewGitSection, projectOverviewPopoutTarget, projectOverviewSelected,
     projectInventorySurfaces, projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSurfaceIndex, projectSurfaces,
     projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
@@ -2064,7 +2037,7 @@ export function App() {
     selectedRunLaunchAvailable, selectedRunLaunchProblem, selectedRunRuntime, selectedRunStopAvailable, selectedRunStopProblem,
     selectedProjectToolUnavailable, selectedRunTargetLabel, selectedStandaloneChat, selectedStandaloneChatId, selectedStandaloneTerminal, selectedSurface,
     selectedPane, selectedTabKey, selectedTerminal, selectedWorker,
-    setActiveProjectTaskView, setAgentInspectOpen, setAppToast, setChatConsoleInitialized, setChatConsoleOpen, setChatRelocationOpen,
+    setActiveProjectTaskView, setAgentInspectOpen, setAppToast, setChatConsoleOpen, setChatRelocationOpen,
     setCodeHeader, setCommandBarOpen, setDesktopSidebarDrawerOpen, setDismissedLongPathFailure, setExplorerHeader,
     setFolderProjectDialogMode, setFolderProjectDialogOpen, setGitHistoryHeader, setPendingSurfaceSelection,
     setPendingTerminalInputs, setProjectOverviewSection, setProjectOverviewWorktreeId, setRunConfigurationEditorId, setSettingsPolicyId,

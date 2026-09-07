@@ -53,7 +53,6 @@ export function PersistentSurfaceLayer({
     openTerminalLinkExternally,
     ownedTerminals,
     pendingTerminalInputs,
-    prewarmedTerminals,
     pinSidebarFilePath,
     selectedPaneSurfaces,
     projects,
@@ -69,7 +68,6 @@ export function PersistentSurfaceLayer({
     selectedPane,
     selectedTabKey,
     selectedTerminal,
-    setChatConsoleInitialized,
     setChatConsoleOpen,
     setCodeHeader,
     setExplorerHeader,
@@ -281,10 +279,7 @@ export function PersistentSurfaceLayer({
           onCommandPaletteOpenChange={(terminalId, open) =>
             setTerminalCommandPaletteTerminalId(open ? terminalId : null)
           }
-          onLinkedConsoleExit={(chatId) => {
-            setChatConsoleOpen(chatId, false);
-            setChatConsoleInitialized(chatId, false);
-          }}
+          onLinkedConsoleExit={(chatId) => setChatConsoleOpen(chatId, false)}
           onOpenExternalLink={openTerminalLinkExternally}
           onOpenLink={openTerminalLink}
           onPendingInputSent={(inputId) =>
@@ -298,7 +293,6 @@ export function PersistentSurfaceLayer({
           }
           ownedTerminals={ownedTerminals}
           pendingInputs={pendingTerminalInputs}
-          prewarmedTerminals={prewarmedTerminals}
           selectedTerminal={
             selectedTerminal?.kind === "run-configuration"
               ? null

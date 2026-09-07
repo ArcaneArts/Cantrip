@@ -365,44 +365,6 @@ describe("account settings", () => {
     );
   });
 
-  it("keeps the Codex CLI default view off until it is enabled", () => {
-    const defaultMarkup = renderSettings("general");
-    const enabledMarkup = renderSettings(
-      "general",
-      settingsBundleSchema.parse({
-        preferences: {
-          theme: "system",
-          highContrast: false,
-          proMode: false,
-          proModeOpacity: 80,
-          sidebarWidth: 288,
-          desktopFrameRate: 30,
-          desktopStreamQuality: "adaptive",
-          defaultModelId: null,
-          startNewAgentChatsInCodexCli: true,
-        },
-        providers: [],
-        models: [],
-      }),
-    );
-
-    expect(defaultMarkup).toContain("New agent chat view");
-    expect(defaultMarkup).not.toMatch(
-      /aria-label="Start new agent chats in Codex CLI"[^>]*checked=""/u,
-    );
-    expect(enabledMarkup).toMatch(
-      /aria-label="Start new agent chats in Codex CLI"[^>]*checked=""/u,
-    );
-    expect(
-      settingsSearchResults("codex cli", settingsNavigationSections),
-    ).toEqual([
-      expect.objectContaining({
-        id: "agent-chat-view",
-        sectionId: "general",
-      }),
-    ]);
-  });
-
   it("exposes prospective Agent, Hybrid, and IDE workspace profiles", () => {
     const markup = renderSettings("general");
 

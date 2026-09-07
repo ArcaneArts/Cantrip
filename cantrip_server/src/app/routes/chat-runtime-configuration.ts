@@ -24,7 +24,6 @@ import type {
 } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import { configurationReasoningStateForRuntimes } from "../../models/reasoning.js";
-import type { ResolvedModelRoutePair } from "../../models/subagent-routing.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { CONFIGURABLE_PERMISSION_PROFILES } from "../shared/constants.js";
 
@@ -44,10 +43,8 @@ export interface ChatRuntimeConfigurationRouteDependencies {
     ServerRepository,
     | "getChatExecutionContext"
     | "getModelReasoningDefault"
-    | "listEffectiveMcpServers"
     | "setChatModelConfiguration"
     | "setChatPermissionProfile"
-    | "updateChatRuntime"
   >;
   resolveModelId: (
     context: ChatExecutionContext,
@@ -56,7 +53,7 @@ export interface ChatRuntimeConfigurationRouteDependencies {
   routePairsForConfiguration: (
     context: ChatExecutionContext,
     configuration: ModelConfiguration,
-  ) => Promise<ResolvedModelRoutePair[]>;
+  ) => Promise<unknown>;
   runtimeForContext: (
     context: ChatExecutionContext,
   ) => Promise<ModelRuntime | null>;
@@ -137,42 +134,6 @@ export function installChatRuntimeConfigurationRoutes(
     }
   };
 
-  const synchronizeWarmedThread = async (
-    context: ChatExecutionContext,
-    runtime: ModelRuntime,
-  ): Promise<void> => {
-    if (!context.threadId || !bridge.isConnected(context.workerId)) return;
-    const result = (await bridge.request(context.workerId, {
-      type: "chat.thread.ensure",
-      cwd: context.cwd,
-      threadId: context.threadId,
-      planMode: context.planMode,
-      model: runtime.model,
-      provider: runtime.provider,
-      permissionProfileId: effectivePermissionProfile(context).effectiveId,
-      mcpServers: context.projectId
-        ? await repository.listEffectiveMcpServers(
-            applicationOwnerId(),
-            context.projectId,
-            context.workerId,
-          )
-        : [],
-    })) as { threadId?: unknown };
-    if (typeof result.threadId !== "string" || !result.threadId) {
-      throw new Error("Codex did not return the warmed thread.");
-    }
-    await repository.updateChatRuntime(
-      context.chatId,
-      context.workerId,
-      context.worktreeId,
-      result.threadId,
-      runtime.routeId,
-      "ready",
-      runtime.provider.accountId,
-      context.scratchRootId,
-    );
-  };
-
   app.patch<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/model",
     async (request, reply) => {
@@ -208,25 +169,11 @@ export function installChatRuntimeConfigurationRoutes(
         modelId: input.data.modelId,
         reasoningEffort: reasoning.reasoningEffort,
       });
-      let routePairs: ResolvedModelRoutePair[];
       try {
-        routePairs = await routePairsForConfiguration(context, configuration);
+        await routePairsForConfiguration(context, configuration);
       } catch (error) {
         const response = sendModelConfigurationResolutionFailure(reply, error);
         return response ?? reply.code(409).send({ error: errorMessage(error) });
-      }
-      try {
-        await synchronizeWarmedThread(
-          {
-            ...context,
-            modelConfiguration: configuration,
-            modelId: configuration.modelId,
-            reasoningEffort: configuration.reasoningEffort,
-          },
-          routePairs[0]!.root.runtime,
-        );
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
       }
       const result = await repository.setChatModelConfiguration(
         applicationOwnerId(),
@@ -329,25 +276,11 @@ export function installChatRuntimeConfigurationRoutes(
         modelId: current.modelId,
         reasoningEffort: input.data.reasoningEffort,
       });
-      let routePairs: ResolvedModelRoutePair[];
       try {
-        routePairs = await routePairsForConfiguration(context, configuration);
+        await routePairsForConfiguration(context, configuration);
       } catch (error) {
         const response = sendModelConfigurationResolutionFailure(reply, error);
         return response ?? reply.code(409).send({ error: errorMessage(error) });
-      }
-      try {
-        await synchronizeWarmedThread(
-          {
-            ...context,
-            modelConfiguration: configuration,
-            modelId: configuration.modelId,
-            reasoningEffort: configuration.reasoningEffort,
-          },
-          routePairs[0]!.root.runtime,
-        );
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
       }
       const updated = await repository.setChatModelConfiguration(
         applicationOwnerId(),
@@ -415,18 +348,6 @@ export function installChatRuntimeConfigurationRoutes(
         return reply
           .code(409)
           .send({ error: "That permission profile is not allowed here." });
-      }
-      try {
-        const runtime = await runtimeForContext(context);
-        if (!runtime) {
-          throw new Error("No provider route is currently available.");
-        }
-        await synchronizeWarmedThread(
-          { ...context, permissionProfileId: input.data.id },
-          runtime,
-        );
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
       }
       const updated = await repository.setChatPermissionProfile(
         applicationOwnerId(),

@@ -48,7 +48,6 @@ import {
   ScrollText,
   SlidersHorizontal,
   Sparkles,
-  SquareTerminal,
   Trash2,
 } from "lucide-react";
 import {
@@ -214,12 +213,6 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           id: "chat-permissions",
           label: "Standalone Chat permissions",
           description: "Permission defaults for standalone conversations.",
-        },
-        {
-          id: "agent-chat-view",
-          label: "New agent chat view",
-          description: "Start new agent chats in Chat or the Codex CLI.",
-          keywords: ["terminal console default toggle"],
         },
         {
           id: "updates",
@@ -1665,12 +1658,6 @@ export function SettingsPage({
       generalSearch,
       "agent chat names random generated title new agent",
     );
-  const agentChatViewMatches =
-    !generalSearch ||
-    matchesSearch(
-      generalSearch,
-      "new agent chat view codex cli terminal start default toggle",
-    );
   const computerUseMatches =
     !generalSearch ||
     matchesSearch(
@@ -1747,7 +1734,6 @@ export function SettingsPage({
             ? desktopStreamingMatches
             : workspaceLayoutProfileMatches ||
               permissionDefaultsMatch ||
-              agentChatViewMatches ||
               agentNamingMatches ||
               chatDisplayMatches ||
               encryptionRecoveryMatches ||
@@ -2127,44 +2113,6 @@ export function SettingsPage({
                           }
                         />
                         Use random names
-                      </label>
-                    </div>
-                  </section>
-                ) : null}
-
-                {section === "general" && agentChatViewMatches ? (
-                  <section>
-                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <SquareTerminal className="size-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <h2 className="text-sm font-semibold">
-                            New agent chat view
-                          </h2>
-                          <p className="text-xs text-muted-foreground">
-                            Choose which view opens after Codex starts for a new
-                            agent chat.
-                          </p>
-                        </div>
-                      </div>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
-                        <input
-                          type="checkbox"
-                          aria-label="Start new agent chats in Codex CLI"
-                          className="size-3.5 accent-primary"
-                          checked={
-                            settings.data?.preferences
-                              .startNewAgentChatsInCodexCli ?? false
-                          }
-                          disabled={preferences.isPending}
-                          onChange={(event) =>
-                            preferences.mutate({
-                              startNewAgentChatsInCodexCli:
-                                event.target.checked,
-                            })
-                          }
-                        />
-                        Start in Codex CLI
                       </label>
                     </div>
                   </section>

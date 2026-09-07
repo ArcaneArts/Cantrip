@@ -176,7 +176,6 @@ export function useChatRenameAndForkOperations({
 export function useChatDeleteOperation({
   queryClient,
   selectedProjectId,
-  setChatConsoleInitialized,
   setChatConsoleOpen,
   setProjectTaskChatIds,
   setTaskChatViewIds,
@@ -184,7 +183,6 @@ export function useChatDeleteOperation({
 }: {
   queryClient: QueryClient;
   selectedProjectId: string | null;
-  setChatConsoleInitialized: (chatId: string, initialized: boolean) => void;
   setChatConsoleOpen: (chatId: string, open: boolean) => void;
   setProjectTaskChatIds: Dispatch<SetStateAction<ReadonlyMap<string, string>>>;
   setTaskChatViewIds: Dispatch<SetStateAction<ReadonlySet<string>>>;
@@ -196,7 +194,6 @@ export function useChatDeleteOperation({
     mutationFn: deleteChat,
     onSuccess: async (_value, deletedId, projectId) => {
       setChatConsoleOpen(deletedId, false);
-      setChatConsoleInitialized(deletedId, false);
       setTaskChatViewIds((current) => {
         if (!current.has(deletedId)) return current;
         const next = new Set(current);
