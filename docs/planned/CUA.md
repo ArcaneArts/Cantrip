@@ -35,6 +35,17 @@ acceptance still requires observation. The broader roadmap below remains open.
 The following entries retain cycle-time evidence; historical pending-test notes
 are superseded by this acceptance record only for the cases confirmed above.
 
+### Follow-up: account opt-in and settings
+
+Computer use now defaults off for both existing and new accounts. Settings →
+General owns the enable switch and macOS Accessibility/Screen Recording shortcuts;
+the chat-header preview button is removed. Disabled turns receive only the brief
+not-enabled notice, without CUA tools or discovery/setup instructions. Generic
+Cantrip tools no longer duplicate CUA guidance. All authority reads use the saved
+setting, and changes advance affected chat generations and notify workers to
+revoke active sessions/approvals, including explicit YOLO. No app was launched or
+native permissions changed during implementation.
+
 ### Follow-up: timeline efficiency and clear tool guidance (API 11)
 
 User QA reported Scarbo playback cancelling after about 28 seconds. The recorded

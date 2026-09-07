@@ -515,6 +515,7 @@ describe("transactional computer-use authority generations", () => {
     expect(
       await repository.getChatExecutionContext("owner-a", projectChat),
     ).toMatchObject({
+      computerUseEnabled: false,
       computerUseAuthorityGeneration: 1,
       workerId: "worker-a",
       worktreeId: "worktree-a",
@@ -522,6 +523,7 @@ describe("transactional computer-use authority generations", () => {
     expect(
       await repository.getChatExecutionContext("owner-a", standaloneChat),
     ).toMatchObject({
+      computerUseEnabled: false,
       computerUseAuthorityGeneration: 1,
       workerId: "worker-a",
       scratchRootId: root,

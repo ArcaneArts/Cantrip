@@ -76,6 +76,7 @@ function setup() {
   const authorize = vi.fn(async () => {});
   const authorizeServer = vi.fn(async () => {});
   const context = {
+    computerUseEnabled: true,
     chatId: scope.chatId,
     workerId: scope.workerId,
     executionLaneId: "lane",

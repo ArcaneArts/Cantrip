@@ -90,6 +90,7 @@ function setup() {
     contextKind: "project",
     worktreeId: "primary-worktree",
     scratchRootId: null,
+    computerUseEnabled: true,
     computerUseAuthorityGeneration: 1,
     isPrimary: true,
     worktreePolicy: "required-for-writes",

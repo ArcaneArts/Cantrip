@@ -1914,7 +1914,7 @@ export function cantripChatThreadParams(
     (server) => server.enabled && server.name === MANAGED_CUA_MCP_NAME,
   )
     ? `${CUA_DISCOVERY_GUIDANCE} ${CUA_START_GUIDANCE}\n\n`
-    : "";
+    : "Computer use is not enabled.\n\n";
   if (executionProfile === "standalone-chat") {
     return {
       developerInstructions: `${cuaInstructions}${STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS}`,

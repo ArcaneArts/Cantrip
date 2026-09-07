@@ -61,6 +61,7 @@ function result(): ComputerUseResponse {
 
 function context(): ChatExecutionContext {
   return {
+    computerUseEnabled: true,
     automationPaused: false,
     chatId: "chat-one",
     contextKind: "project",

@@ -127,6 +127,8 @@ export function computerUsePreviewAuthority(input: {
   context: ChatExecutionContext;
 }): CuaPreviewAuthority {
   const { context } = input;
+  if (context.computerUseEnabled !== true)
+    throw new Error("Computer use is not enabled.");
   const profile = effectivePermissionProfile(context);
   return cuaPreviewAuthoritySchema.parse({
     ownerId: input.ownerId,
@@ -188,6 +190,10 @@ export function installComputerUsePreviewRoutes(
           request.params.chatId,
         );
         if (!context) return reply.code(404).send({ error: "Chat not found." });
+        if (context.computerUseEnabled !== true)
+          return reply
+            .code(403)
+            .send({ error: "Computer use is not enabled." });
         const authority = computerUsePreviewAuthority({
           ownerId,
           serverId,

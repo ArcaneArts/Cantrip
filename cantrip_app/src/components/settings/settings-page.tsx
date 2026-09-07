@@ -136,6 +136,7 @@ import { CodeSettings } from "./code-settings";
 import { AccountUsageSettings } from "./account-usage-settings";
 import { EncryptionRecoverySettings } from "./encryption-recovery-settings";
 import { TaskSettings } from "./task-settings";
+import { ComputerUseSettings } from "./computer-use-settings";
 import {
   availableCatalogModelIds,
   catalogDisplayStatus,
@@ -191,6 +192,12 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       description: "Permissions and behavior",
       icon: SlidersHorizontal,
       searchItems: [
+        {
+          id: "computer-use",
+          label: "Computer use",
+          description: "Enable computer use and open macOS permissions.",
+          keywords: ["accessibility privacy screen recording"],
+        },
         {
           id: "workspace-layout-profile",
           label: "Project workspace profile",
@@ -1625,6 +1632,12 @@ export function SettingsPage({
       generalSearch,
       "agent chat names random generated title new agent",
     );
+  const computerUseMatches =
+    !generalSearch ||
+    matchesSearch(
+      generalSearch,
+      "computer use accessibility privacy screen recording",
+    );
   const chatDisplayMatches =
     !generalSearch ||
     matchesSearch(
@@ -1689,7 +1702,8 @@ export function SettingsPage({
       ? providersMatch || modelsMatch
       : section === "appearance"
         ? appearanceMatches
-        : workspaceLayoutProfileMatches ||
+        : computerUseMatches ||
+          workspaceLayoutProfileMatches ||
           permissionDefaultsMatch ||
           agentNamingMatches ||
           chatDisplayMatches ||
@@ -1891,6 +1905,17 @@ export function SettingsPage({
                   </section>
                 ) : null}
 
+                {section === "general" && computerUseMatches ? (
+                  <ComputerUseSettings
+                    enabled={
+                      settings.data?.preferences.computerUseEnabled ?? false
+                    }
+                    pending={preferences.isPending}
+                    onChange={(computerUseEnabled) =>
+                      preferences.mutate({ computerUseEnabled })
+                    }
+                  />
+                ) : null}
                 {section === "general" && chatDisplayMatches ? (
                   <section>
                     <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">

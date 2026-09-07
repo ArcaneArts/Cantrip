@@ -968,14 +968,17 @@ export function createChatTurnRuntime({
               execution.workerId,
               {
                 type: "chat.turn",
-                computerUseAuthority: {
-                  ...computerUsePreviewAuthority({
-                    context: execution,
-                    ownerId,
-                    serverId,
-                  }),
-                  executionLaneId,
-                },
+                computerUseAuthority:
+                  execution.computerUseEnabled === true
+                    ? {
+                        ...computerUsePreviewAuthority({
+                          context: execution,
+                          ownerId,
+                          serverId,
+                        }),
+                        executionLaneId,
+                      }
+                    : undefined,
                 executionProfile:
                   execution.contextKind === "standalone"
                     ? "standalone-chat"

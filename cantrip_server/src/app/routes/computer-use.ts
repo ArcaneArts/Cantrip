@@ -106,6 +106,11 @@ export function installComputerUseRoutes(
       if (!context) {
         return reply.code(404).send({ error: "Chat not found." });
       }
+      if (
+        context.computerUseEnabled !== true &&
+        input.data.operation !== "session.close"
+      )
+        return reply.code(403).send({ error: "Computer use is not enabled." });
       // Stopping remains available after approval is revoked. The worker must
       // authenticate the sealed action, require this exact operation, and
       // validate its session scope before closing anything.
