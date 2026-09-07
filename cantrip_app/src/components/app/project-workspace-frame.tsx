@@ -1,4 +1,6 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import { TabColor, TabColorMenuItem } from "@/components/workspace/tab-color";
+import { surfaceColorKey } from "@/lib/tab-colors";
 import { useDroppable } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
@@ -186,78 +188,84 @@ function SortableDockRailTab({
       {...(disabled ? {} : sortable.attributes)}
       {...(disabled ? {} : sortable.listeners)}
     >
-      <ContextMenu.Root>
-        <ContextMenu.Trigger asChild>
-          <div className="size-10 shrink-0">
-            <TooltipButton
-              aria-label={`${actionLabel} in ${region} dock`}
-              aria-pressed={active}
-              className={cn(
-                "grid size-10 shrink-0 place-items-center rounded-none border-transparent p-0 text-muted-foreground transition-colors duration-150 group-hover/dock-rail:border-border hover:bg-muted hover:text-foreground motion-reduce:transition-none",
-                region === "right" ? "border-b" : "border-r",
-                active && "bg-muted text-foreground",
-              )}
-              disabled={disabled}
-              onClick={onSelect}
-              size="icon"
-              tooltip={actionLabel}
-              tooltipSide={tooltipSide}
-              variant="ghost"
-            >
-              {surface.kind === "builtin" ? (
-                <ProjectBuiltInSurfaceIcon
-                  className="size-4"
-                  definitionId={surface.entity.definitionId}
-                />
-              ) : (
-                <ProjectSurfaceIcon className="size-4" kind={surface.kind} />
-              )}
-            </TooltipButton>
-          </div>
-        </ContextMenu.Trigger>
-        <ContextMenu.Portal>
-          <StyledContextMenuContent className="min-w-40">
-            {onMoveToRegion
-              ? (["center", "right", "bottom"] as const)
-                  .filter(
-                    (targetRegion) =>
-                      targetRegion !== region &&
-                      surface.definition.supportedPlacements.includes(
-                        targetRegion,
-                      ),
-                  )
-                  .map((targetRegion) => (
-                    <StyledContextMenuItem
-                      key={targetRegion}
-                      onSelect={() => onMoveToRegion(targetRegion)}
-                    >
-                      Move to{" "}
-                      {targetRegion === "center"
-                        ? "Center"
-                        : targetRegion === "right"
-                          ? "Right"
-                          : "Bottom"}
-                    </StyledContextMenuItem>
-                  ))
-              : null}
-            <StyledContextMenuItem onSelect={onClose}>
-              <X className="size-4" /> Close View
-            </StyledContextMenuItem>
-            {canDelete ? (
-              <ContextMenu.Separator className="my-1 h-px bg-border" />
-            ) : null}
-            {canDelete ? (
-              <StyledContextMenuItem
-                className="text-destructive focus:bg-destructive/10"
-                onSelect={onDelete}
+      <TabColor colorKey={surfaceColorKey(surface)} active={active}>
+        <ContextMenu.Root>
+          <ContextMenu.Trigger asChild>
+            <div className="size-10 shrink-0">
+              <TooltipButton
+                aria-label={`${actionLabel} in ${region} dock`}
+                aria-pressed={active}
+                className={cn(
+                  "tab-color-content grid size-10 shrink-0 place-items-center rounded-none border-transparent p-0 text-muted-foreground transition-colors duration-150 group-hover/dock-rail:border-border hover:bg-muted hover:text-foreground motion-reduce:transition-none",
+                  region === "right" ? "border-b" : "border-r",
+                  active && "bg-muted text-foreground",
+                )}
+                disabled={disabled}
+                onClick={onSelect}
+                size="icon"
+                tooltip={actionLabel}
+                tooltipSide={tooltipSide}
+                variant="ghost"
               >
-                <Trash2 className="size-4" />
-                {surfaceDeleteLabel(surface)}
+                {surface.kind === "builtin" ? (
+                  <ProjectBuiltInSurfaceIcon
+                    className="size-4"
+                    definitionId={surface.entity.definitionId}
+                  />
+                ) : (
+                  <ProjectSurfaceIcon className="size-4" kind={surface.kind} />
+                )}
+              </TooltipButton>
+            </div>
+          </ContextMenu.Trigger>
+          <ContextMenu.Portal>
+            <StyledContextMenuContent className="min-w-40">
+              <TabColorMenuItem
+                colorKey={surfaceColorKey(surface)}
+                title={surface.title}
+              />
+              {onMoveToRegion
+                ? (["center", "right", "bottom"] as const)
+                    .filter(
+                      (targetRegion) =>
+                        targetRegion !== region &&
+                        surface.definition.supportedPlacements.includes(
+                          targetRegion,
+                        ),
+                    )
+                    .map((targetRegion) => (
+                      <StyledContextMenuItem
+                        key={targetRegion}
+                        onSelect={() => onMoveToRegion(targetRegion)}
+                      >
+                        Move to{" "}
+                        {targetRegion === "center"
+                          ? "Center"
+                          : targetRegion === "right"
+                            ? "Right"
+                            : "Bottom"}
+                      </StyledContextMenuItem>
+                    ))
+                : null}
+              <StyledContextMenuItem onSelect={onClose}>
+                <X className="size-4" /> Close View
               </StyledContextMenuItem>
-            ) : null}
-          </StyledContextMenuContent>
-        </ContextMenu.Portal>
-      </ContextMenu.Root>
+              {canDelete ? (
+                <ContextMenu.Separator className="my-1 h-px bg-border" />
+              ) : null}
+              {canDelete ? (
+                <StyledContextMenuItem
+                  className="text-destructive focus:bg-destructive/10"
+                  onSelect={onDelete}
+                >
+                  <Trash2 className="size-4" />
+                  {surfaceDeleteLabel(surface)}
+                </StyledContextMenuItem>
+              ) : null}
+            </StyledContextMenuContent>
+          </ContextMenu.Portal>
+        </ContextMenu.Root>
+      </TabColor>
     </div>
   );
 }

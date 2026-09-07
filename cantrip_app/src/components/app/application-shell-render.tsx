@@ -1,4 +1,5 @@
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
+import { TabColorDialogHost } from "@/components/workspace/tab-color";
 import { useCallback, useEffect, useState } from "react";
 import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
@@ -457,6 +458,7 @@ export function ApplicationShellRender({
       <ShellSidebar bindings={renderBindings} />
       <ShellContent bindings={renderBindings} />
       <ShellOverlays bindings={renderBindings} />
+      <TabColorDialogHost />
     </WorkspaceDndProvider>
   );
 }

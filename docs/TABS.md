@@ -2,6 +2,21 @@
 
 Status: implemented through Milestone 7.
 
+## Tab colors
+
+Every project surface tab and file preview offers **Color…** in its context
+menu, including the right and bottom rails. The dialog provides theme-driven
+Neutral, five preset hues, and a custom hue slider. Save applies the choice;
+Cancel leaves it unchanged. Colors affect only the icon, text, and existing
+underline, never tab backgrounds. Light/dark mode and selected/hover/inactive
+states determine saturation and lightness.
+
+Colors are per-device visual preferences stored in local storage, scoped to
+project and stable tab identity. File previews and pinned file tabs share a
+project/path identity. Moving a tab between panes retains its color; same-origin
+windows receive storage updates. Neutral removes the saved override. These
+preferences do not change server-owned tab layouts or synchronize across devices.
+
 ## Overview navigation (supersedes the Overview tab design below)
 
 Overview is a project page, not a surface tab. Open it from the project

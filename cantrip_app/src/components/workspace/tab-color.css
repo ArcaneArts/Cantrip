@@ -1,0 +1,47 @@
+.tab-color {
+  --tab-saturation: 42%;
+  --tab-lightness: 32%;
+  --tab-ink: color-mix(in oklab, var(--primary) 65%, var(--muted-foreground));
+}
+.dark .tab-color {
+  --tab-lightness: 68%;
+}
+.tab-color[data-tab-color="hue"] {
+  --tab-ink: hsl(var(--tab-hue) var(--tab-saturation) var(--tab-lightness));
+}
+.tab-color[data-color-active="true"] {
+  --tab-saturation: 72%;
+}
+.dark .tab-color[data-color-active="true"] {
+  --tab-lightness: 76%;
+}
+.tab-color:hover,
+.tab-color:has(.tab-color-content:focus-visible) {
+  --tab-saturation: 82%;
+  --tab-lightness: 29%;
+}
+.dark .tab-color:hover,
+.dark .tab-color:has(.tab-color-content:focus-visible) {
+  --tab-lightness: 80%;
+}
+.tab-color[data-tab-color="neutral"][data-color-active="true"],
+.tab-color[data-tab-color="neutral"]:hover,
+.tab-color[data-tab-color="neutral"]:has(.tab-color-content:focus-visible) {
+  --tab-ink: var(--primary);
+}
+.tab-color .tab-color-content {
+  color: var(--tab-ink);
+  transition: color 150ms ease;
+}
+.tab-color .tab-color-underline {
+  background-color: var(--tab-ink);
+  transition:
+    background-color 150ms ease,
+    opacity 150ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-color .tab-color-content,
+  .tab-color .tab-color-underline {
+    transition: none;
+  }
+}

@@ -1,4 +1,6 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
+import { TabColor, TabColorMenuItem } from "./tab-color";
+import { surfaceColorKey, tabColorKey } from "@/lib/tab-colors";
 import { useDroppable } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
@@ -218,138 +220,149 @@ export function ProjectPaneTabStrip({
                     memberPosition={memberPosition}
                     surface={surface}
                   >
-                    <ContextMenu.Root>
-                      <ContextMenu.Trigger asChild>
-                        <div
-                          data-project-tab-key={surface.tabKey}
-                          onAuxClick={(event) =>
-                            closeTabOnMiddleClick(event, () =>
-                              closeImmediately(surface),
-                            )
-                          }
-                          onMouseDown={preventMiddleMouseDefault}
-                          className={cn(
-                            "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                            active && "bg-muted text-foreground",
-                          )}
-                        >
-                          {editing ? (
-                            <InlineRenameLabel
-                              ariaLabel={`Rename ${surface.title}`}
-                              className="mx-1 h-7 w-36 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
-                              value={renameValue}
-                              onCancel={() => setEditingTabKey(null)}
-                              onChange={setRenameValue}
-                              onSubmit={() => finishRename(surface)}
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={active}
-                              className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
-                              onClick={() => onSelect(surface.tabKey)}
-                              onDoubleClick={(event) => {
-                                event.preventDefault();
-                                if (canRename) beginRename(surface);
-                              }}
-                            >
-                              <SurfaceTabIcon surface={surface} />
-                              <span className="truncate">{surface.title}</span>
-                            </button>
-                          )}
-                          {!editing ? (
-                            <SurfaceActionsMenu
-                              deleteLabel={surfaceDeleteLabel(surface)}
-                              title={surface.title}
-                              onClose={() => closeImmediately(surface)}
-                              onDelete={
-                                canDelete
-                                  ? () => setDeleteTarget(surface)
-                                  : undefined
-                              }
-                              onRename={
-                                canRename
-                                  ? () => beginRename(surface)
-                                  : undefined
-                              }
-                              trigger={
-                                <button
-                                  type="button"
-                                  className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-0 hover:bg-background/70 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-                                  aria-label={`Actions for ${surface.title}`}
-                                >
-                                  <MoreHorizontal className="size-3.5" />
-                                </button>
-                              }
-                            />
-                          ) : null}
-                          <span
-                            aria-hidden="true"
+                    <TabColor
+                      colorKey={surfaceColorKey(surface)}
+                      active={active}
+                    >
+                      <ContextMenu.Root>
+                        <ContextMenu.Trigger asChild>
+                          <div
+                            data-project-tab-key={surface.tabKey}
+                            onAuxClick={(event) =>
+                              closeTabOnMiddleClick(event, () =>
+                                closeImmediately(surface),
+                              )
+                            }
+                            onMouseDown={preventMiddleMouseDefault}
                             className={cn(
-                              "absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
-                              active ? "opacity-100" : "opacity-0",
+                              "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                              active && "bg-muted text-foreground",
                             )}
-                          />
-                        </div>
-                      </ContextMenu.Trigger>
-                      <ContextMenu.Portal>
-                        <StyledContextMenuContent className="min-w-40">
-                          {canRename ? (
-                            <StyledContextMenuItem
-                              onSelect={() => beginRename(surface)}
-                            >
-                              <Pencil className="size-4" /> Rename
-                            </StyledContextMenuItem>
-                          ) : null}
-                          {canRename ? (
-                            <ContextMenu.Separator className="my-1 h-px bg-border" />
-                          ) : null}
-                          {onMoveToRegion
-                            ? (["center", "right", "bottom"] as const)
-                                .filter(
-                                  (region) =>
-                                    region !== paneRegion &&
-                                    surface.definition.supportedPlacements.includes(
-                                      region,
-                                    ),
-                                )
-                                .map((region) => (
-                                  <StyledContextMenuItem
-                                    key={region}
-                                    onSelect={() =>
-                                      onMoveToRegion(surface, region)
-                                    }
-                                  >
-                                    Move to{" "}
-                                    {region === "center"
-                                      ? "Center"
-                                      : region === "right"
-                                        ? "Right"
-                                        : "Bottom"}
-                                  </StyledContextMenuItem>
-                                ))
-                            : null}
-                          <StyledContextMenuItem
-                            onSelect={() => closeImmediately(surface)}
                           >
-                            <X className="size-4" /> Close View
-                          </StyledContextMenuItem>
-                          {canDelete ? (
-                            <ContextMenu.Separator className="my-1 h-px bg-border" />
-                          ) : null}
-                          {canDelete ? (
+                            {editing ? (
+                              <InlineRenameLabel
+                                ariaLabel={`Rename ${surface.title}`}
+                                className="mx-1 h-7 w-36 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2"
+                                value={renameValue}
+                                onCancel={() => setEditingTabKey(null)}
+                                onChange={setRenameValue}
+                                onSubmit={() => finishRename(surface)}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={active}
+                                className="tab-color-content flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
+                                onClick={() => onSelect(surface.tabKey)}
+                                onDoubleClick={(event) => {
+                                  event.preventDefault();
+                                  if (canRename) beginRename(surface);
+                                }}
+                              >
+                                <SurfaceTabIcon surface={surface} />
+                                <span className="truncate">
+                                  {surface.title}
+                                </span>
+                              </button>
+                            )}
+                            {!editing ? (
+                              <SurfaceActionsMenu
+                                deleteLabel={surfaceDeleteLabel(surface)}
+                                title={surface.title}
+                                onClose={() => closeImmediately(surface)}
+                                onDelete={
+                                  canDelete
+                                    ? () => setDeleteTarget(surface)
+                                    : undefined
+                                }
+                                onRename={
+                                  canRename
+                                    ? () => beginRename(surface)
+                                    : undefined
+                                }
+                                trigger={
+                                  <button
+                                    type="button"
+                                    className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-0 hover:bg-background/70 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                                    aria-label={`Actions for ${surface.title}`}
+                                  >
+                                    <MoreHorizontal className="size-3.5" />
+                                  </button>
+                                }
+                              />
+                            ) : null}
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "tab-color-underline absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
+                                active ? "opacity-100" : "opacity-0",
+                              )}
+                            />
+                          </div>
+                        </ContextMenu.Trigger>
+                        <ContextMenu.Portal>
+                          <StyledContextMenuContent className="min-w-40">
+                            <TabColorMenuItem
+                              colorKey={surfaceColorKey(surface)}
+                              title={surface.title}
+                            />
+                            {canRename ? (
+                              <StyledContextMenuItem
+                                onSelect={() => beginRename(surface)}
+                              >
+                                <Pencil className="size-4" /> Rename
+                              </StyledContextMenuItem>
+                            ) : null}
+                            {canRename ? (
+                              <ContextMenu.Separator className="my-1 h-px bg-border" />
+                            ) : null}
+                            {onMoveToRegion
+                              ? (["center", "right", "bottom"] as const)
+                                  .filter(
+                                    (region) =>
+                                      region !== paneRegion &&
+                                      surface.definition.supportedPlacements.includes(
+                                        region,
+                                      ),
+                                  )
+                                  .map((region) => (
+                                    <StyledContextMenuItem
+                                      key={region}
+                                      onSelect={() =>
+                                        onMoveToRegion(surface, region)
+                                      }
+                                    >
+                                      Move to{" "}
+                                      {region === "center"
+                                        ? "Center"
+                                        : region === "right"
+                                          ? "Right"
+                                          : "Bottom"}
+                                    </StyledContextMenuItem>
+                                  ))
+                              : null}
                             <StyledContextMenuItem
-                              className="text-destructive focus:bg-destructive/10"
-                              onSelect={() => setDeleteTarget(surface)}
+                              onSelect={() => closeImmediately(surface)}
                             >
-                              <Trash2 className="size-4" />
-                              {surfaceDeleteLabel(surface)}
+                              <X className="size-4" /> Close View
                             </StyledContextMenuItem>
-                          ) : null}
-                        </StyledContextMenuContent>
-                      </ContextMenu.Portal>
-                    </ContextMenu.Root>
+                            {canDelete ? (
+                              <ContextMenu.Separator className="my-1 h-px bg-border" />
+                            ) : null}
+                            {canDelete ? (
+                              <StyledContextMenuItem
+                                className="text-destructive focus:bg-destructive/10"
+                                onSelect={() => setDeleteTarget(surface)}
+                              >
+                                <Trash2 className="size-4" />
+                                {surfaceDeleteLabel(surface)}
+                              </StyledContextMenuItem>
+                            ) : null}
+                          </StyledContextMenuContent>
+                        </ContextMenu.Portal>
+                      </ContextMenu.Root>
+                    </TabColor>
                   </SortableProjectTabFrame>
                 </Fragment>
               );
@@ -367,52 +380,83 @@ export function ProjectPaneTabStrip({
           </SortableContext>
 
           {previewFile ? (
-            <div
-              onAuxClick={(event) =>
-                closeTabOnMiddleClick(event, previewFile.onClose)
-              }
-              onMouseDown={preventMiddleMouseDefault}
-              className={cn(
-                "group relative flex min-w-0 max-w-56 shrink-0 self-start items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                previewFile.active && "bg-muted text-foreground",
+            <TabColor
+              colorKey={tabColorKey(
+                previewFile.projectId,
+                "",
+                previewFile.path,
               )}
-              data-preview-file-path={previewFile.path}
-              title={`${previewFile.path}\nDouble-click to keep open`}
+              active={previewFile.active}
             >
-              <button
-                aria-selected={previewFile.active}
-                className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left italic"
-                onClick={previewFile.onSelect}
-                onDoubleClick={(event) => {
-                  event.preventDefault();
-                  previewFile.onPin();
-                }}
-                role="tab"
-                type="button"
-              >
-                <FileCode2 className="size-3.5 shrink-0" />
-                <span className="truncate">{previewFile.title}</span>
-              </button>
-              <button
-                aria-label={`Close preview ${previewFile.title}`}
-                className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-60 hover:bg-background/70 hover:opacity-100 focus:opacity-100"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  previewFile.onClose();
-                }}
-                title="Close preview"
-                type="button"
-              >
-                <X className="size-3.5" />
-              </button>
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
-                  previewFile.active ? "opacity-100" : "opacity-0",
-                )}
-              />
-            </div>
+              <ContextMenu.Root>
+                <ContextMenu.Trigger asChild>
+                  <div
+                    onAuxClick={(event) =>
+                      closeTabOnMiddleClick(event, previewFile.onClose)
+                    }
+                    onMouseDown={preventMiddleMouseDefault}
+                    className={cn(
+                      "group relative flex min-w-0 max-w-56 shrink-0 self-start items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                      previewFile.active && "bg-muted text-foreground",
+                    )}
+                    data-preview-file-path={previewFile.path}
+                    title={`${previewFile.path}\nDouble-click to keep open`}
+                  >
+                    <button
+                      aria-selected={previewFile.active}
+                      className="tab-color-content flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left italic"
+                      onClick={previewFile.onSelect}
+                      onDoubleClick={(event) => {
+                        event.preventDefault();
+                        previewFile.onPin();
+                      }}
+                      role="tab"
+                      type="button"
+                    >
+                      <FileCode2 className="size-3.5 shrink-0" />
+                      <span className="truncate">{previewFile.title}</span>
+                    </button>
+                    <button
+                      aria-label={`Close preview ${previewFile.title}`}
+                      className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-60 hover:bg-background/70 hover:opacity-100 focus:opacity-100"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        previewFile.onClose();
+                      }}
+                      title="Close preview"
+                      type="button"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "tab-color-underline absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
+                        previewFile.active ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                  </div>
+                </ContextMenu.Trigger>
+                <ContextMenu.Portal>
+                  <StyledContextMenuContent>
+                    <TabColorMenuItem
+                      colorKey={tabColorKey(
+                        previewFile.projectId,
+                        "",
+                        previewFile.path,
+                      )}
+                      title={previewFile.title}
+                    />
+                    <StyledContextMenuItem onSelect={previewFile.onPin}>
+                      Keep Open
+                    </StyledContextMenuItem>
+                    <StyledContextMenuItem onSelect={previewFile.onClose}>
+                      Close View
+                    </StyledContextMenuItem>
+                  </StyledContextMenuContent>
+                </ContextMenu.Portal>
+              </ContextMenu.Root>
+            </TabColor>
           ) : null}
 
           <ProjectSurfaceCreateMenu
