@@ -288,9 +288,9 @@ impl CaptureBackend for MacOsBackend {
         self.accessibility.clear(session);
         let current = self.resolve_target(&target.id, target.generation, cancel)?;
         effects::observe(|| {
-            gesture::perform(&current, command, position, cancel, &mut |point| {
+            gesture::perform(&current, command, position, cancel, &mut |point, action| {
                 progress(point);
-                overlay::move_cursor(session, &current, point, command.method());
+                overlay::move_cursor(session, &current, point, action.then_some(command.method()));
             })
         })
     }

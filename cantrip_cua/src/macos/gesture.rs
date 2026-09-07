@@ -86,7 +86,7 @@ pub(super) fn perform(
     command: &InputCommand,
     position: Point,
     cancel: &Cancellation,
-    progress: &mut dyn FnMut(Point),
+    progress: &mut dyn FnMut(Point, bool),
 ) -> Result<(Target, InputReceipt)> {
     command.validate()?;
     if matches!(command, InputCommand::Focus {}) {
@@ -175,7 +175,7 @@ pub(super) fn perform(
                     },
                     || {
                         final_position = point;
-                        progress(point);
+                        progress(point, true);
                         wait_until(Instant::now() + Duration::from_millis(*hold_ms), cancel)
                     },
                     || post(&up),
@@ -244,6 +244,12 @@ pub(super) fn perform(
                     events,
                 });
             }
+            let pointer_points: Vec<_> = pairs
+                .iter()
+                .map(|p| p.pointer.as_ref().map(|(point, _)| *point))
+                .collect();
+            let (schedule, travel_points) =
+                crate::timeline::with_pointer_travel(schedule, &pointer_points, position);
             crate::timeline::run(
                 &schedule,
                 pairs.len(),
@@ -252,6 +258,11 @@ pub(super) fn perform(
                     let (i, is_down) = match transition {
                         Transition::Down(i) => (i, true),
                         Transition::Up(i) => (i, false),
+                        Transition::Move(i) => {
+                            final_position = travel_points[i];
+                            progress(final_position, false);
+                            return;
+                        }
                     };
                     let PreparedPair {
                         down, up, pointer, ..
@@ -262,7 +273,7 @@ pub(super) fn perform(
                         }
                         post(if is_down { down } else { up });
                         final_position = *point;
-                        progress(*point);
+                        progress(*point, true);
                     } else {
                         post(if is_down { down } else { up });
                     }
@@ -359,14 +370,14 @@ pub(super) fn perform(
                         post(&down);
                     },
                     || {
-                        progress(*start);
+                        progress(*start, true);
                         let started = Instant::now();
                         for (i, (at, point, event)) in moves.iter().enumerate() {
                             wait_until(started + *at, cancel)?;
                             post(event);
                             last.set(i + 1);
                             final_position = *point;
-                            progress(*point);
+                            progress(*point, true);
                         }
                         Ok(())
                     },

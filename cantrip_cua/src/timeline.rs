@@ -89,10 +89,57 @@ pub fn validate(frames: &[InputFrame]) -> Result<()> {
 pub enum Transition {
     Down(usize),
     Up(usize),
+    /// Custom-cursor presentation only; never a native input event.
+    Move(usize),
 }
 pub struct Frame {
     pub at: Duration,
     pub events: Vec<Transition>,
+}
+/// Add visual travel only in button-up gaps. Original input times/order are
+/// unchanged; presentation frames never count as dispatched input or held keys.
+pub fn with_pointer_travel(
+    frames: Vec<Frame>,
+    pointer_points: &[Option<Point>],
+    start: Point,
+) -> (Vec<Frame>, Vec<Point>) {
+    let mut schedule = Vec::with_capacity(frames.len());
+    let mut points = Vec::new();
+    let mut cursor = start;
+    let mut released_at = Duration::ZERO;
+    for frame in frames {
+        for &event in &frame.events {
+            match event {
+                Transition::Up(i) if pointer_points[i].is_some() => released_at = frame.at,
+                Transition::Down(i) => {
+                    if let Some(end) = pointer_points[i] {
+                        for (at, point) in crate::cursor_motion::before_deadline(
+                            cursor,
+                            end,
+                            released_at,
+                            frame.at,
+                        ) {
+                            let index = points.len();
+                            points.push(point);
+                            schedule.push(Frame {
+                                at,
+                                events: vec![Transition::Move(index)],
+                            });
+                        }
+                        cursor = end;
+                    }
+                }
+                _ => {}
+            }
+        }
+        schedule.push(frame);
+    }
+    if !points.is_empty() {
+        // Stable ordering puts the final travel frame before its mouse-down,
+        // retaining earlier same-time releases and original keyboard ordering.
+        schedule.sort_by_key(|f| f.at);
+    }
+    (schedule, points)
 }
 /// Every Down owns a prepared matching Up. Use the same executor with fake
 /// events in unit tests; production posts native events through the callback.
@@ -142,10 +189,16 @@ pub fn dispatch(
                 break;
             }
             match event {
-                Transition::Down(i) => held.keys[i] = true,
-                Transition::Up(i) => held.keys[i] = false,
+                Transition::Down(i) => {
+                    held.keys[i] = true;
+                    began = true;
+                }
+                Transition::Up(i) => {
+                    held.keys[i] = false;
+                    began = true;
+                }
+                Transition::Move(_) => {}
             }
-            began = true;
             (held.post)(event);
         }
         if result.is_err() {
@@ -177,6 +230,121 @@ pub fn run(
 mod tests {
     use super::*;
     use std::cell::RefCell;
+    #[test]
+    fn piano_travel_fits_release_gaps_without_retiming_input_or_dragging() {
+        let p = Point {
+            x: 1244.0,
+            y: 530.0,
+        };
+        let q = Point {
+            x: 1221.0,
+            y: 420.0,
+        };
+        let frames = vec![
+            Frame {
+                at: Duration::ZERO,
+                events: vec![Transition::Down(0)],
+            },
+            Frame {
+                at: Duration::from_millis(105),
+                events: vec![Transition::Up(0)],
+            },
+            Frame {
+                at: Duration::from_millis(150),
+                events: vec![Transition::Down(2)],
+            },
+            Frame {
+                at: Duration::from_millis(220),
+                events: vec![Transition::Down(1)],
+            },
+            Frame {
+                at: Duration::from_millis(325),
+                events: vec![Transition::Up(1), Transition::Up(2)],
+            },
+        ];
+        let expected: Vec<_> = frames
+            .iter()
+            .flat_map(|f| f.events.iter().map(move |e| (f.at, *e)))
+            .collect();
+        let (schedule, points) =
+            with_pointer_travel(frames, &[Some(p), Some(q), None], Point { x: 0.0, y: 0.0 });
+        assert!(!points.is_empty());
+        assert_eq!(points.last(), Some(&q));
+        let inputs: Vec<_> = schedule
+            .iter()
+            .flat_map(|f| {
+                f.events
+                    .iter()
+                    .filter(|e| !matches!(e, Transition::Move(_)))
+                    .map(move |e| (f.at, *e))
+            })
+            .collect();
+        assert_eq!(inputs, expected);
+        let mut last = Duration::ZERO;
+        for frame in &schedule {
+            assert!(frame.at >= last);
+            last = frame.at;
+            for e in &frame.events {
+                if matches!(e, Transition::Move(_)) {
+                    assert!(frame.at > Duration::from_millis(105));
+                    assert!(frame.at <= Duration::from_millis(220));
+                }
+            }
+        }
+        let flat: Vec<_> = schedule
+            .iter()
+            .flat_map(|f| f.events.iter().copied())
+            .collect();
+        let down = flat.iter().position(|e| *e == Transition::Down(1)).unwrap();
+        assert!(matches!(flat[down - 1], Transition::Move(_)));
+    }
+    #[test]
+    fn no_gap_or_keyboard_only_timeline_adds_no_travel() {
+        let point = Point { x: 100.0, y: 200.0 };
+        let frames = vec![Frame {
+            at: Duration::ZERO,
+            events: vec![
+                Transition::Down(0),
+                Transition::Up(0),
+                Transition::Down(1),
+                Transition::Up(1),
+            ],
+        }];
+        let (_, points) = with_pointer_travel(
+            frames,
+            &[Some(point), Some(Point { x: 300.0, y: 200.0 })],
+            point,
+        );
+        assert!(points.is_empty());
+        let frames = vec![Frame {
+            at: Duration::from_millis(100),
+            events: vec![Transition::Down(0)],
+        }];
+        let (frames, points) = with_pointer_travel(frames, &[None], point);
+        assert!(points.is_empty());
+        assert_eq!(frames.len(), 1);
+    }
+    #[test]
+    fn cancelled_visual_travel_is_not_reported_as_input_and_has_no_release() {
+        let cancel = Cancellation::default();
+        let events = RefCell::new(vec![]);
+        let result = dispatch(
+            &[Frame {
+                at: Duration::ZERO,
+                events: vec![Transition::Move(0), Transition::Down(0)],
+            }],
+            1,
+            &cancel,
+            |e| {
+                events.borrow_mut().push(e);
+                cancel.cancel();
+            },
+            |_| Ok(()),
+            |_| Ok(()),
+        );
+        assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
+        assert_eq!(*events.borrow(), vec![Transition::Move(0)]);
+    }
     #[test]
     fn chord_downs_precede_all_ups_and_one_wait_per_frame() {
         let frames = [

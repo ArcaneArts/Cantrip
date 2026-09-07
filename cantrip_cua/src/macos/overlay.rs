@@ -274,11 +274,11 @@ pub(super) fn move_cursor(
     session: &str,
     target: &crate::target::Target,
     point: crate::target::Point,
-    method: &'static str,
+    method: Option<&'static str>,
 ) {
     let session = session.to_owned();
     let target = target.clone();
-    DispatchQueue::main().exec_async(move || {
+    let update = move || {
         autoreleasepool(|_| {
             PRESENTATION.with_borrow_mut(|p| {
                 if let Some(state) = p.sessions.iter_mut().find(|s| {
@@ -289,12 +289,21 @@ pub(super) fn move_cursor(
                 }) {
                     let now = state.cursor.updated_at_ms.saturating_add(1);
                     let _ = state.cursor.move_to(point, &target.bounds, now);
-                    state.cursor.mark_action(method, "unknown", now);
+                    if let Some(method) = method {
+                        state.cursor.mark_action(method, "unknown", now);
+                    }
                 }
             });
             refresh();
         })
-    });
+    };
+    if method.is_some() {
+        DispatchQueue::main().exec_async(update);
+    } else {
+        // Visual travel must arrive before the next native down, not catch up
+        // behind it. Held drag points keep their existing asynchronous path.
+        DispatchQueue::main().exec_sync(update);
+    }
 }
 fn schedule() {
     let _ = DispatchQueue::main().after(

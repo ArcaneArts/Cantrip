@@ -17,6 +17,21 @@ Acceptance requires the user's report of that complete outcome. Work is solo,
 with sequential worktree PRs and squash auto-merge. The latest testing instruction leaves live acceptance to the user; implementation
 continues between useful cycles and stops when only that acceptance remains.
 
+### Current refinement: timeline cursor travel
+
+Recorded user QA showed Für Elise used one `inputTimeline` with 105 ms mouse
+holds and 220/330 ms note spacing. Notes sounded, but the cursor jumped because
+API 8 animated only ordinary prepared presses. API 9 now inserts visual travel
+inside existing button-up gaps, reaching the next point before its scheduled
+down. Original key/mouse event times and ordering remain unchanged; movement
+posts no native input, does not occur during mouse holds, and displays no click
+marker. Zero-gap presses snap. Ordinary click and drag behavior remain intact.
+Travel uses 60–90 ms and at least four smooth steps when the gap permits,
+avoiding two large jumps between nearby keys. Visual acceptance remains for
+the user. Thirteen focused Rust unit tests, dependency/worker builds, Clippy,
+formatting and diff checks passed. No live input, app launch, integration tests
+or CI jobs were run.
+
 ### Current refinement: fast pre-click cursor travel
 
 The user confirmed API 7 C4→G4 drag (one second) showed smooth cursor motion

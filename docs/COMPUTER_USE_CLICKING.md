@@ -111,7 +111,7 @@ sound, visible key response, foreground focus and the physical pointer. A native
 
 Ordinary `cua.click(point)` and unmodified `cua.pointerPress(point, holdMs)`
 now move the custom cursor rapidly to the requested point before posting input.
-Travel uses a short ease-out path at about 60 frames/second, nominally 30–90 ms
+Travel uses smooth interpolation at about 60 frames/second, nominally 60–90 ms
 according to distance. The final presentation update completes before the native
 click starts; rendering load can extend elapsed time. The movement posts no OS
 mouse events, preserves cursor appearance/trails, and stays behind covering
@@ -120,10 +120,16 @@ not add animation delay.
 
 Stop during travel cancels before mouse-down and leaves the cursor at the last
 presented point. Drag remains tied to its actual dispatched motion events.
-Explicit `inputTimeline` schedules and modified mouse presses retain their
-existing timing; no automatic travel delay is inserted into musical scores.
+API 9 also animates cursor travel in `inputTimeline`, inside the existing gap
+from button-up to the next pointer-down. It arrives before that scheduled down,
+posts no native mouse movement during travel, and adds no delay to the score.
+Travel is compressed when the gap is short; zero-gap presses snap. No travel
+occurs while the button is held, and keyboard-only frames keep their timing.
+Modified timeline clicks retain their modifiers and use the same visual travel.
 The user confirmed API 7's C4→G4 drag animated smoothly and produced piano sound.
-API 8 travel itself remains for user visual acceptance.
+The subsequent Für Elise test used `inputTimeline`, which bypassed API 8 travel;
+the user confirmed notes sounded but saw cursor jumps. API 9 addresses that path.
+Visual acceptance of the timeline animation remains for the user.
 
 ### Automatic preparation for mouse macros (API 7)
 
