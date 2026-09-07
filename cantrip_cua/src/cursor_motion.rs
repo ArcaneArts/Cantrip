@@ -7,13 +7,14 @@ pub fn travel(start: Point, end: Point) -> Vec<(Duration, Point)> {
     if distance < 1.0 {
         return vec![(Duration::ZERO, end)];
     }
-    // Roughly 4 logical pixels/ms, capped so even a cross-window jump is fast.
-    let ms = (distance / 4.0).clamp(30.0, 90.0);
+    // At least four smooth steps when timing allows, rather than two large
+    // jumps for nearby piano keys. Cross-window travel still caps at 90 ms.
+    let ms = (distance / 4.0).clamp(60.0, 90.0);
     let steps = (ms / (1000.0 / 60.0)).ceil() as u32;
     (1..=steps)
         .map(|i| {
             let t = f64::from(i) / f64::from(steps);
-            let eased = 1.0 - (1.0 - t).powi(3);
+            let eased = t * t * (3.0 - 2.0 * t);
             let point = if i == steps {
                 end
             } else {
@@ -23,6 +24,34 @@ pub fn travel(start: Point, end: Point) -> Vec<(Duration, Point)> {
                 }
             };
             (Duration::from_secs_f64(ms * t / 1000.0), point)
+        })
+        .collect()
+}
+
+/// Fit visual travel into an existing release-to-press gap without delaying input.
+pub fn before_deadline(
+    start: Point,
+    end: Point,
+    available: Duration,
+    deadline: Duration,
+) -> Vec<(Duration, Point)> {
+    let gap = deadline.saturating_sub(available);
+    if gap.is_zero() || start == end {
+        return vec![];
+    }
+    let path = travel(start, end);
+    let duration = path.last().unwrap().0;
+    if duration.is_zero() {
+        return vec![];
+    }
+    let allotted = duration.min(gap);
+    let begins = deadline - allotted;
+    path.into_iter()
+        .map(|(at, point)| {
+            (
+                begins + allotted.mul_f64(at.as_secs_f64() / duration.as_secs_f64()),
+                point,
+            )
         })
         .collect()
 }
@@ -45,6 +74,23 @@ pub fn animate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn timeline_gap_compresses_travel_and_keeps_the_deadline() {
+        let start = Point { x: 0.0, y: 0.0 };
+        let end = Point { x: 900.0, y: 200.0 };
+        for gap in [1, 10, 50, 115] {
+            let available = Duration::from_millis(105);
+            let deadline = available + Duration::from_millis(gap);
+            let points = before_deadline(start, end, available, deadline);
+            assert_eq!(points.last(), Some(&(deadline, end)));
+            assert!(
+                points
+                    .iter()
+                    .all(|(at, _)| *at > available && *at <= deadline)
+            );
+        }
+        assert!(before_deadline(start, end, Duration::ZERO, Duration::ZERO).is_empty());
+    }
     #[test]
     fn fast_travel_is_bounded_and_lands_exactly_without_overshoot() {
         let start = Point { x: 25.0, y: 400.0 };
