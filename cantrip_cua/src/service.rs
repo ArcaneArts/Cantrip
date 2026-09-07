@@ -344,16 +344,21 @@ impl<B: CaptureBackend> CuaService<B> {
                         "CUA target was replaced.",
                     ));
                 }
-                let mut state =
-                    self.sessions
-                        .get(&binding.session_id)
-                        .cloned()
-                        .unwrap_or(SessionState {
-                            binding: binding.clone(),
-                            target: None,
-                            cursor: CursorState::default(),
-                            observation_revision: 0,
-                        });
+                let mut state = self
+                    .sessions
+                    .get(&binding.session_id)
+                    .cloned()
+                    .unwrap_or_else(|| SessionState {
+                        binding: binding.clone(),
+                        target: None,
+                        cursor: CursorState {
+                            appearance: CursorAppearance::for_identity(
+                                binding.thread_id.as_deref().unwrap_or(&binding.chat_id),
+                            ),
+                            ..CursorState::default()
+                        },
+                        observation_revision: 0,
+                    });
                 // A second observer attaching to the same native generation must
                 // not reset the shared cursor. Switching targets resets geometry.
                 if state.target.as_ref().is_none_or(|previous| {
@@ -443,7 +448,7 @@ impl<B: CaptureBackend> CuaService<B> {
                     state.cursor.move_to(position, &current.bounds, now_ms)?;
                     state.cursor.trail_points.clear();
                 }
-                state.cursor.render(
+                state.cursor.presentation(now_ms).render(
                     &mut raster.rgba,
                     raster.width,
                     raster.height,

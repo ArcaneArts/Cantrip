@@ -50,6 +50,9 @@ fn all_styles_render_distinct_images_at_the_logical_hotspot() {
         if style == CursorStyle::Ring {
             assert_eq!(pixel(&image, 200, 40, 30), &[0, 0, 0, 0]);
             assert_eq!(pixel(&image, 200, 49, 30), &[255, 0, 0, 255]);
+        } else if style == CursorStyle::Arrow {
+            assert_eq!(pixel(&image, 200, 40, 30)[3], 255);
+            assert_eq!(pixel(&image, 200, 46, 38), &[255, 0, 0, 255]);
         } else {
             assert_eq!(pixel(&image, 200, 40, 30), &[255, 0, 0, 255]);
         }
@@ -393,4 +396,43 @@ fn image_size_validation_and_edge_clipping_do_not_panic_or_write_outside_buffer(
         ..bounds()
     };
     assert!(state.render(&mut [0; 4], 1, 1, &invalid_bounds).is_err());
+}
+
+#[test]
+fn identity_hues_are_stable_and_preserve_default_saturation_and_brightness() {
+    let base = CursorAppearance::default();
+    let channels = |color: &str| -> Vec<u8> {
+        (1..7)
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&color[i..i + 2], 16).unwrap())
+            .collect()
+    };
+    let base = channels(&base.color);
+    let mut colors = std::collections::HashSet::new();
+    for id in ["conversation-a", "conversation-b", "agent-one", "agent-two"] {
+        let appearance = CursorAppearance::for_identity(id);
+        assert_eq!(appearance, CursorAppearance::for_identity(id));
+        let rgb = channels(&appearance.color);
+        assert_eq!(rgb.iter().min(), base.iter().min());
+        assert_eq!(rgb.iter().max(), base.iter().max());
+        assert!(colors.insert(appearance.color));
+    }
+}
+
+#[test]
+fn click_glow_fades_without_changing_the_input_receipt_or_hotspot() {
+    let mut state = CursorState::new();
+    state.position = Point { x: 40.0, y: 30.0 };
+    let idle = rendered(&state, 200, 100);
+    state.mark_action("background-timeline", "unknown", 100);
+    let clicked = rendered(&state, 200, 100);
+    assert_ne!(idle, clicked);
+    let faded = state.presentation(340);
+    assert_eq!(faded.glow_strength(), 0);
+    assert_eq!(rendered(&faded, 200, 100), idle);
+    assert!(state.presentation(220).glow_strength() < state.glow_strength());
+    assert_eq!(faded.action, state.action);
+    assert_eq!(faded.position, state.position);
+    // Click feedback has no separate outcome label below the cursor.
+    assert_eq!(pixel(&clicked, 200, 44, 75), &[0, 0, 0, 0]);
 }

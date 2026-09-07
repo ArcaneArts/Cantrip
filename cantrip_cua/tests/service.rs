@@ -716,3 +716,47 @@ fn attach_resolves_a_discovered_target_beyond_the_first_public_page() {
         );
     }
 }
+
+#[test]
+fn default_cursor_hue_follows_agent_identity_across_turns_and_sessions() {
+    let mut service = CuaService::new(FakeBackend);
+    let first = binding();
+    let initial = state(&apply(&mut service, attach(&first, "fake-window", 1)))
+        .cursor
+        .appearance;
+    let mut next = first.clone();
+    next.session_id = "session-next".into();
+    next.turn_id = Some("turn-next".into());
+    assert_eq!(
+        state(&apply(&mut service, attach(&next, "fake-window", 1)))
+            .cursor
+            .appearance,
+        initial
+    );
+    let mut other = first.clone();
+    other.session_id = "session-other".into();
+    other.thread_id = Some("other-agent".into());
+    assert_ne!(
+        state(&apply(&mut service, attach(&other, "fake-window", 1)))
+            .cursor
+            .appearance
+            .color,
+        initial.color
+    );
+    let custom = configure(&mut service, &first);
+    assert_eq!(
+        state(&apply(&mut service, attach(&first, "fake-window", 1)))
+            .cursor
+            .appearance,
+        custom
+    );
+    let mut preview = first.clone();
+    preview.session_id = "preview".into();
+    preview.thread_id = None;
+    assert_eq!(
+        state(&apply(&mut service, attach(&preview, "fake-window", 1)))
+            .cursor
+            .appearance,
+        CursorAppearance::for_identity(&preview.chat_id)
+    );
+}

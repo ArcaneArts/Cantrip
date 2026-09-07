@@ -8,9 +8,11 @@ use crate::error::{CuaError, Result};
 use crate::target::{Bounds, MAX_IMAGE_PIXELS, MAX_SEQUENCE, Point};
 use font8x8::UnicodeFonts;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 pub const DESKTOP_TILE_SIZE: u32 = 256;
+pub const CLICK_GLOW_MS: u64 = 240;
 
 pub const CURSOR_APPEARANCE_VERSION: u8 = 1;
 pub const MAX_TRAIL_POINTS: usize = 24;
@@ -57,6 +59,31 @@ impl Default for CursorAppearance {
 }
 
 impl CursorAppearance {
+    /// Rotate only the default hue. Min/max channels (and therefore HSV value
+    /// and saturation / HSL lightness) stay fixed; identity never leaves the hash.
+    pub fn for_identity(identity: &str) -> Self {
+        let mut appearance = Self::default();
+        let base = appearance.rgba().expect("valid default cursor color");
+        let low = f64::from(*base[..3].iter().min().unwrap());
+        let high = f64::from(*base[..3].iter().max().unwrap());
+        let digest = Sha256::digest(identity.as_bytes());
+        let hue =
+            f64::from(u32::from_be_bytes(digest[..4].try_into().unwrap())) / 4_294_967_296.0 * 6.0;
+        let chroma = high - low;
+        let x = chroma * (1.0 - (hue % 2.0 - 1.0).abs());
+        let rgb = match hue as u8 {
+            0 => [chroma, x, 0.0],
+            1 => [x, chroma, 0.0],
+            2 => [0.0, chroma, x],
+            3 => [0.0, x, chroma],
+            4 => [x, 0.0, chroma],
+            _ => [chroma, 0.0, x],
+        }
+        .map(|v| (v + low).round() as u8);
+        appearance.color = format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]);
+        appearance
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.version != CURSOR_APPEARANCE_VERSION
             || !(MIN_CURSOR_SIZE..=MAX_CURSOR_SIZE).contains(&self.size)
@@ -137,6 +164,25 @@ impl Default for CursorState {
 impl CursorState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Advance presentation time without changing the retained input receipt.
+    pub fn presentation(&self, now: u64) -> Self {
+        let mut result = self.clone();
+        result.updated_at_ms = result.updated_at_ms.max(now);
+        result
+    }
+
+    pub fn glow_strength(&self) -> u8 {
+        let Some(action) = &self.action else {
+            return 0;
+        };
+        if !matches!(action.outcome.as_str(), "unknown" | "dispatched") {
+            return 0;
+        }
+        let age = self.updated_at_ms.saturating_sub(action.at_ms);
+        let remaining = 1.0 - age.min(CLICK_GLOW_MS) as f64 / CLICK_GLOW_MS as f64;
+        (255.0 * remaining * remaining).round() as u8
     }
 
     pub fn configure(&mut self, appearance: CursorAppearance, now: u64) -> Result<()> {
@@ -315,28 +361,11 @@ impl CursorState {
                 );
             }
         }
-        canvas.shape(self.position, self.appearance.style, size, color);
-        if let Some(action) = &self.action {
-            canvas.shape(
-                self.position,
-                CursorStyle::Ring,
-                (size * 1.5).min(144.0),
-                color,
-            );
-            if action.outcome == "dispatched" {
-                canvas.shape(self.position, CursorStyle::Dot, 4.0, color);
-            }
-            canvas.label(
-                Point {
-                    x: self.position.x,
-                    y: self.position.y + size + 8.0,
-                },
-                0.0,
-                &format!("[{}]", action.outcome),
-                color,
-                bounds,
-            );
+        let glow = self.glow_strength();
+        if glow > 0 {
+            canvas.glow(self.position, self.appearance.style, size, color, glow);
         }
+        canvas.shape(self.position, self.appearance.style, size, color);
         if let Some(label) = &self.appearance.label {
             canvas.label(self.position, size, label, color, bounds);
         }
@@ -423,7 +452,83 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    fn glow(&mut self, point: Point, style: CursorStyle, size: f64, color: [u8; 4], strength: u8) {
+        let spread = (size * 0.35).max(4.0);
+        let (left, top, right, bottom) = if style == CursorStyle::Arrow {
+            (
+                point.x - spread,
+                point.y - spread,
+                point.x + size + spread,
+                point.y + size + spread,
+            )
+        } else {
+            let radius = size / 2.0 + spread;
+            (
+                point.x - radius,
+                point.y - radius,
+                point.x + radius,
+                point.y + radius,
+            )
+        };
+        self.paint(left, top, right, bottom, |x, y| {
+            let x = x - point.x;
+            let y = y - point.y;
+            let distance = if style == CursorStyle::Arrow {
+                arrow_distance(x / size, y / size) * size
+            } else {
+                (x * x + y * y).sqrt() - size / 2.0
+            };
+            let falloff = (1.0 - distance.max(0.0) / spread).clamp(0.0, 1.0);
+            let alpha =
+                (f64::from(color[3]) * f64::from(strength) / 255.0 * 0.48 * falloff * falloff)
+                    .round() as u8;
+            (alpha > 0).then_some([color[0], color[1], color[2], alpha])
+        });
+    }
+
     fn shape(&mut self, point: Point, style: CursorStyle, size: f64, color: [u8; 4]) {
+        if style == CursorStyle::Arrow {
+            // Signed-distance edge gives a thin light keyline and soft dark
+            // outside edge, remaining readable on both light and dark content.
+            let aa = (0.65 / self.scale_x.min(self.scale_y)).min(1.0);
+            let border = (size / 24.0).clamp(0.7, 1.5);
+            self.paint(
+                point.x - 3.0,
+                point.y - 3.0,
+                point.x + size + 3.0,
+                point.y + size + 3.0,
+                |x, y| {
+                    let d = arrow_distance((x - point.x) / size, (y - point.y) / size) * size;
+                    if d > border + aa + 1.0 {
+                        return None;
+                    }
+                    let (rgb, opacity) = if d < -border {
+                        ([color[0], color[1], color[2]], 1.0)
+                    } else if d <= 0.0 {
+                        let edge = ((d + border) / border).clamp(0.0, 1.0);
+                        (
+                            [color[0], color[1], color[2]].map(|v| {
+                                (f64::from(v) * (1.0 - edge) + 245.0 * edge).round() as u8
+                            }),
+                            1.0,
+                        )
+                    } else {
+                        (
+                            [18, 23, 32],
+                            (1.0 - d / (border + aa + 1.0)).clamp(0.0, 1.0) * 0.65,
+                        )
+                    };
+                    Some([
+                        rgb[0],
+                        rgb[1],
+                        rgb[2],
+                        (f64::from(color[3]) * opacity).round() as u8,
+                    ])
+                },
+            );
+            return;
+        }
+
         let radius = size / 2.0;
         let (left, top, right, bottom) = if style == CursorStyle::Arrow {
             (point.x, point.y, point.x + size, point.y + size)
@@ -486,16 +591,28 @@ impl<'a> Canvas<'a> {
     }
 }
 
+const ARROW_POINTS: [(f64, f64); 4] = [(0.0, 0.0), (0.24, 0.92), (0.44, 0.48), (0.88, 0.30)];
+
+fn arrow_distance(x: f64, y: f64) -> f64 {
+    let mut distance = f64::INFINITY;
+    for i in 0..ARROW_POINTS.len() {
+        let a = ARROW_POINTS[i];
+        let b = ARROW_POINTS[(i + 1) % ARROW_POINTS.len()];
+        let dx = b.0 - a.0;
+        let dy = b.1 - a.1;
+        let t = ((x - a.0) * dx + (y - a.1) * dy) / (dx * dx + dy * dy);
+        distance = distance
+            .min((x - a.0 - t.clamp(0.0, 1.0) * dx).hypot(y - a.1 - t.clamp(0.0, 1.0) * dy));
+    }
+    if inside_arrow(x, y) {
+        -distance
+    } else {
+        distance
+    }
+}
+
 fn inside_arrow(x: f64, y: f64) -> bool {
-    const POINTS: [(f64, f64); 7] = [
-        (0.0, 0.0),
-        (0.0, 1.0),
-        (0.26, 0.74),
-        (0.47, 1.0),
-        (0.64, 0.90),
-        (0.42, 0.64),
-        (0.81, 0.62),
-    ];
+    const POINTS: [(f64, f64); 4] = ARROW_POINTS;
     let mut inside = false;
     let mut previous = POINTS[POINTS.len() - 1];
     for current in POINTS {
