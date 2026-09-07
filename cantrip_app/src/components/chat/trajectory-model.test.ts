@@ -680,6 +680,64 @@ describe("trajectory projection", () => {
     });
   });
 
+  it("settles a running file change when the same agent moves on", () => {
+    const turn = projectTrajectory({
+      active: true,
+      messages: [
+        message("user", 1, "user", 1_000, [
+          { type: "text", text: "Update the parser twice" },
+        ]),
+        activityMessage("files-first", 2, 1_200, {
+          type: "fileChange",
+          id: "files-first",
+          status: "running",
+          changes: [{ path: "src/parser.ts", kind: "update" }],
+          startedAtMs: 1_100,
+          updatedAtMs: 1_200,
+          completedAtMs: null,
+          correlation: correlation("turn-1", "files-first"),
+        }),
+        activityMessage("reasoning", 3, 1_400, {
+          type: "reasoning",
+          id: "reasoning",
+          status: "completed",
+          summary: ["Reviewing the first edit"],
+          correlation: correlation("turn-1", "reasoning"),
+        }),
+        activityMessage("files-second", 4, 1_600, {
+          type: "fileChange",
+          id: "files-second",
+          status: "running",
+          changes: [{ path: "src/parser.ts", kind: "update" }],
+          startedAtMs: 1_600,
+          updatedAtMs: 1_600,
+          completedAtMs: null,
+          correlation: correlation("turn-1", "files-second"),
+        }),
+      ],
+      nowMs: 2_200,
+    });
+
+    const files = turn?.events.filter((event) => event.kind === "fileChange");
+    expect(files).toHaveLength(2);
+    expect(files?.[0]).toMatchObject({
+      completedAtMs: 1_400,
+      id: expect.stringContaining("files-first"),
+      status: "completed",
+      timingQuality: "derived",
+      updatedAtMs: 1_400,
+    });
+    expect(files?.[0]?.activity?.status).toBe("completed");
+    expect(files?.[1]).toMatchObject({
+      completedAtMs: null,
+      id: expect.stringContaining("files-second"),
+      status: "running",
+      updatedAtMs: 2_200,
+    });
+    expect(turn?.statusCounts.running).toBe(1);
+    expect(turn?.nextTransitionAtMs).toBe(2_700);
+  });
+
   it("filters projected events by lane, family, and local search", () => {
     const turn = projectTrajectory({
       active: false,
