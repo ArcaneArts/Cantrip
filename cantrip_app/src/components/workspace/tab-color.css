@@ -34,10 +34,34 @@
   transition: color 150ms ease;
 }
 .tab-color .tab-color-underline {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
   background-color: var(--tab-ink);
   transition:
     background-color 150ms ease,
     opacity 150ms ease;
+}
+.tab-color-underline[data-active="true"] {
+  opacity: 1;
+}
+.tab-color-underline[data-edge="bottom"],
+.tab-color-underline[data-edge="top"] {
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+.tab-color-underline[data-edge="bottom"] {
+  bottom: 0;
+}
+.tab-color-underline[data-edge="top"] {
+  top: 0;
+}
+.tab-color-underline[data-edge="left"] {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
   .tab-color .tab-color-content,
