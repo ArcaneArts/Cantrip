@@ -253,6 +253,22 @@ pub(super) fn present(sessions: Vec<SessionState>) {
         })
     });
 }
+/// Called only by the native executor. Drain earlier main-queue updates and
+/// render this travel frame before allowing the executor to post the click.
+pub(super) fn present_step(sessions: Vec<SessionState>) {
+    DispatchQueue::main().exec_sync(move || {
+        autoreleasepool(|_| {
+            PRESENTATION.with_borrow_mut(|p| {
+                p.sessions = sessions;
+                if !p.ticking {
+                    p.ticking = true;
+                    schedule();
+                }
+            });
+            refresh();
+        })
+    });
+}
 /// Update only the exact active attachment, without replacing other sessions.
 pub(super) fn move_cursor(
     session: &str,

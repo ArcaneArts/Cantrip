@@ -107,6 +107,24 @@ The combined ordinary-click route also has the bounded user confirmation above. 
 sound, visible key response, foreground focus and the physical pointer. A native
 `unknown` receipt still does not prove acceptance.
 
+### Fast cursor travel before clicks (API 8)
+
+Ordinary `cua.click(point)` and unmodified `cua.pointerPress(point, holdMs)`
+now move the custom cursor rapidly to the requested point before posting input.
+Travel uses a short ease-out path at about 60 frames/second, nominally 30–90 ms
+according to distance. The final presentation update completes before the native
+click starts; rendering load can extend elapsed time. The movement posts no OS
+mouse events, preserves cursor appearance/trails, and stays behind covering
+windows. Clicking the current point adds no travel delay. A hidden cursor does
+not add animation delay.
+
+Stop during travel cancels before mouse-down and leaves the cursor at the last
+presented point. Drag remains tied to its actual dispatched motion events.
+Explicit `inputTimeline` schedules and modified mouse presses retain their
+existing timing; no automatic travel delay is inserted into musical scores.
+The user confirmed API 7's C4→G4 drag animated smoothly and produced piano sound.
+API 8 travel itself remains for user visual acceptance.
+
 ### Automatic preparation for mouse macros (API 7)
 
 `clickDrag` and each unmodified `pointerDown` in `inputTimeline` now use the

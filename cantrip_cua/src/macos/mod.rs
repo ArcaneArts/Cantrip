@@ -229,6 +229,9 @@ impl CaptureBackend for MacOsBackend {
         sharing::retain_sessions(&sessions);
         overlay::present(sessions);
     }
+    fn present_cursor_step(&mut self, sessions: Vec<crate::service::SessionState>) {
+        overlay::present_step(sessions);
+    }
     fn background_click(
         &mut self,
         session: &str,
