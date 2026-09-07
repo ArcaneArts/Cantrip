@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CantripCuaService } from "./service.js";
 import { launchCuaTransport, type CuaRequestOptions } from "./transport.js";
-import { CuaNativeError } from "./errors.js";
+import { CuaNativeError, CuaProcessError } from "./errors.js";
 import {
   cuaJavascriptActionSchema,
   type CuaJavascriptOptions,
@@ -185,6 +185,31 @@ describe("bounded CUA JavaScript host arguments", () => {
 });
 
 describe("worker JavaScript ownership before MCP activation", () => {
+  it.each([false, true])(
+    "preserves a host deadline cause but lets actual Stop win (%s)",
+    async (stop) => {
+      const controller = new AbortController();
+      const timeout = new CuaProcessError("timeout");
+      const { service } = fixture(async ({ onHostCall }) => {
+        try {
+          await onHostCall!({ operation: "targets" }, controller.signal);
+        } catch {
+          if (stop) controller.abort();
+          // This is the native host-result wire's timeout-to-cancel mapping.
+          throw new CuaNativeError("cancelled");
+        }
+      });
+      await expect(
+        service.evaluateJavascript(scope, "await cua.targets()", {
+          ...options(controller),
+          authorize: async () => {
+            throw timeout;
+          },
+        }),
+      ).rejects.toMatchObject({ code: stop ? "cancelled" : "timeout" });
+    },
+  );
+
   it.each([undefined, 1, 7_500_000])(
     "propagates trusted wall timeout %s to Rust and the host transport",
     async (wallTimeoutMs) => {

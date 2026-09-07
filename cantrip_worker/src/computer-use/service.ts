@@ -442,22 +442,21 @@ export class CantripCuaService {
             (fields.command as CuaInputCommand).kind,
           )
             ? {
-                timeoutMs: Math.max(
-                  15_000,
-                  ((fields.command as CuaInputCommand).kind === "prepared-press"
-                    ? (
-                        fields.command as Extract<
-                          CuaInputCommand,
-                          { kind: "prepared-press" }
-                        >
-                      ).holdMs
-                    : (
-                        fields.command as Extract<
-                          CuaInputCommand,
-                          { kind: "timeline" }
-                        >
-                      ).frames.at(-1)!.atMs) + 5_000,
-                ),
+                // A score's last atMs is a scheduling target, not a completion
+                // deadline: allocation, target preparation and presentation cost
+                // real time. Keep the bounded performance budget and live Stop.
+                timeoutMs:
+                  (fields.command as CuaInputCommand).kind === "timeline"
+                    ? 7_205_000
+                    : Math.max(
+                        15_000,
+                        (
+                          fields.command as Extract<
+                            CuaInputCommand,
+                            { kind: "prepared-press" }
+                          >
+                        ).holdMs + 5_000,
+                      ),
               }
             : {}),
         },

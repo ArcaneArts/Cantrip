@@ -149,7 +149,7 @@ pub fn dispatch(
     cancel: &Cancellation,
     post: impl FnMut(Transition),
     mut prepare: impl FnMut(Transition) -> Result<()>,
-    mut wait: impl FnMut(Duration) -> Result<()>,
+    mut wait: impl FnMut(Duration) -> Result<Duration>,
 ) -> Result<()> {
     struct Held<F: FnMut(Transition)> {
         keys: Vec<bool>,
@@ -172,12 +172,21 @@ pub fn dispatch(
     let mut began = false;
     let mut result = Ok(());
     for frame in frames {
-        result = wait(frame.at).and_then(|_| cancel.check());
-        if result.is_err() {
-            break;
-        }
+        let elapsed = match wait(frame.at).and_then(|elapsed| cancel.check().map(|_| elapsed)) {
+            Ok(elapsed) => elapsed,
+            Err(error) => {
+                result = Err(error);
+                break;
+            }
+        };
+        // Obsolete cosmetic samples must not amplify a slow renderer's backlog.
+        // Keep every native Down/Up and on-time travel sample, including Stop.
+        let late_visual = elapsed.saturating_sub(frame.at) > Duration::from_millis(16);
         // No waits, RPCs, authority lookups or snapshots inside a frame.
         for &event in &frame.events {
+            if late_visual && matches!(event, Transition::Move(_)) {
+                continue;
+            }
             if let Err(error) = cancel.check() {
                 result = Err(error);
                 break;
@@ -223,7 +232,8 @@ pub fn run(
 ) -> Result<()> {
     let start = Instant::now();
     dispatch(frames, count, cancel, post, prepare, |at| {
-        wait_until(start + at, cancel)
+        wait_until(start + at, cancel)?;
+        Ok(start.elapsed())
     })
 }
 #[cfg(test)]
@@ -340,10 +350,51 @@ mod tests {
                 cancel.cancel();
             },
             |_| Ok(()),
-            |_| Ok(()),
+            |at| Ok(at),
         );
         assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
         assert_eq!(*events.borrow(), vec![Transition::Move(0)]);
+    }
+    #[test]
+    fn slow_presentation_skips_overdue_travel_but_keeps_all_native_input() {
+        let events = RefCell::new(vec![]);
+        let frames = [
+            Frame {
+                at: Duration::ZERO,
+                events: vec![Transition::Move(0)],
+            },
+            Frame {
+                at: Duration::from_millis(10),
+                events: vec![Transition::Move(1), Transition::Down(0)],
+            },
+            Frame {
+                at: Duration::from_millis(20),
+                events: vec![Transition::Up(0)],
+            },
+            Frame {
+                at: Duration::from_millis(100),
+                events: vec![Transition::Move(2), Transition::Down(1), Transition::Up(1)],
+            },
+        ];
+        dispatch(
+            &frames,
+            2,
+            &Cancellation::default(),
+            |e| events.borrow_mut().push(e),
+            |_| Ok(()),
+            |at| Ok(at.max(Duration::from_millis(50))),
+        )
+        .unwrap();
+        assert_eq!(
+            *events.borrow(),
+            vec![
+                Transition::Down(0),
+                Transition::Up(0),
+                Transition::Move(2),
+                Transition::Down(1),
+                Transition::Up(1)
+            ]
+        );
     }
     #[test]
     fn chord_downs_precede_all_ups_and_one_wait_per_frame() {
@@ -371,7 +422,7 @@ mod tests {
             |_| Ok(()),
             |at| {
                 waits.borrow_mut().push(at);
-                Ok(())
+                Ok(at)
             },
         )
         .unwrap();
@@ -407,7 +458,7 @@ mod tests {
                 c.cancel();
             },
             |_| Ok(()),
-            |_| Ok(()),
+            |at| Ok(at),
         );
         assert_eq!(result.unwrap_err().code, ErrorCode::InputUnknown);
         assert_eq!(*events.borrow(), [Transition::Down(0), Transition::Up(0)]);
@@ -438,7 +489,7 @@ mod tests {
                 }
                 Ok(())
             },
-            |_| Ok(()),
+            |at| Ok(at),
         )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::InputUnknown);
@@ -477,7 +528,7 @@ mod tests {
             },
             |at| {
                 calls.borrow_mut().push(format!("wait {}", at.as_millis()));
-                Ok(())
+                Ok(at)
             },
         )
         .unwrap();
@@ -499,7 +550,7 @@ mod tests {
             &Cancellation::default(),
             |_| panic!("no input or cleanup before first down"),
             |_| Err(CuaError::new(ErrorCode::Unsupported, "unavailable")),
-            |_| Ok(()),
+            |at| Ok(at),
         )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::Unsupported);
