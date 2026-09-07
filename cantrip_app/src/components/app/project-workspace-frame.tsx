@@ -1,5 +1,9 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { TabColor, TabColorMenuItem } from "@/components/workspace/tab-color";
+import {
+  TabColor,
+  TabColorMenuItem,
+  TabIndicator,
+} from "@/components/workspace/tab-color";
 import { surfaceColorKey } from "@/lib/tab-colors";
 import {
   expandedTabCount,
@@ -200,15 +204,14 @@ function SortableDockRailTab({
       <TabColor colorKey={surfaceColorKey(surface)} active={active}>
         <ContextMenu.Root>
           <ContextMenu.Trigger asChild>
-            <div className="h-10 w-full min-w-0">
+            <div className="relative h-10 w-full min-w-0">
               <TooltipButton
                 aria-label={`${actionLabel} in ${region} dock`}
                 aria-pressed={active}
                 className={cn(
-                  "tab-color-content flex h-10 w-full min-w-0 shrink-0 items-center rounded-none border-transparent text-muted-foreground transition-colors duration-150 group-hover/dock-rail:border-border hover:bg-muted hover:text-foreground motion-reduce:transition-none [&_svg]:shrink-0",
+                  "tab-color-content flex h-10 w-full min-w-0 shrink-0 items-center rounded-none border-0 text-muted-foreground transition-colors duration-150 hover:bg-muted/60 hover:text-foreground motion-reduce:transition-none [&_svg]:shrink-0",
                   expanded ? "justify-start gap-2 px-3" : "justify-center p-0",
-                  region === "right" ? "border-b" : "border-r",
-                  active && "bg-muted text-foreground",
+                  active && "text-foreground",
                 )}
                 disabled={disabled}
                 onClick={onSelect}
@@ -229,6 +232,10 @@ function SortableDockRailTab({
                   <span className="truncate">{surface.title}</span>
                 ) : null}
               </TooltipButton>
+              <TabIndicator
+                active={active}
+                edge={region === "bottom" ? "top" : "left"}
+              />
             </div>
           </ContextMenu.Trigger>
           <ContextMenu.Portal>

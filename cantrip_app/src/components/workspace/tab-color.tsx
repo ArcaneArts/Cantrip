@@ -43,6 +43,23 @@ export function TabColor({
   );
 }
 
+export function TabIndicator({
+  active,
+  edge = "bottom",
+}: {
+  active: boolean;
+  edge?: "top" | "bottom" | "left";
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className="tab-color-underline"
+      data-active={active}
+      data-edge={edge}
+    />
+  );
+}
+
 export function TabColorMenuItem({
   colorKey,
   title,

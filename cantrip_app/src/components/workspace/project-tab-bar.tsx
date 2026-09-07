@@ -1,5 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { TabColor, TabColorMenuItem } from "./tab-color";
+import { TabColor, TabColorMenuItem, TabIndicator } from "./tab-color";
 import { surfaceColorKey, tabColorKey } from "@/lib/tab-colors";
 import { useDroppable } from "@dnd-kit/core";
 import {
@@ -268,8 +268,8 @@ export function ProjectPaneTabStrip({
                             }
                             onMouseDown={preventMiddleMouseDefault}
                             className={cn(
-                              "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                              active && "bg-muted text-foreground",
+                              "group relative flex min-w-0 max-w-56 shrink-0 items-center text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                              active && "text-foreground",
                             )}
                           >
                             {editing ? (
@@ -326,13 +326,7 @@ export function ProjectPaneTabStrip({
                                 }
                               />
                             ) : null}
-                            <span
-                              aria-hidden="true"
-                              className={cn(
-                                "tab-color-underline absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
-                                active ? "opacity-100" : "opacity-0",
-                              )}
-                            />
+                            <TabIndicator active={active} />
                           </div>
                         </ContextMenu.Trigger>
                         <ContextMenu.Portal>
@@ -430,8 +424,8 @@ export function ProjectPaneTabStrip({
                     }
                     onMouseDown={preventMiddleMouseDefault}
                     className={cn(
-                      "group relative flex min-w-0 max-w-56 shrink-0 self-start items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                      previewFile.active && "bg-muted text-foreground",
+                      "group relative flex min-w-0 max-w-56 shrink-0 self-start items-center text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                      previewFile.active && "text-foreground",
                     )}
                     data-preview-file-path={previewFile.path}
                     data-condensed={surfaces.length >= expanded}
@@ -472,13 +466,7 @@ export function ProjectPaneTabStrip({
                     >
                       <X className="size-3.5" />
                     </button>
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "tab-color-underline absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
-                        previewFile.active ? "opacity-100" : "opacity-0",
-                      )}
-                    />
+                    <TabIndicator active={previewFile.active} />
                   </div>
                 </ContextMenu.Trigger>
                 <ContextMenu.Portal>
