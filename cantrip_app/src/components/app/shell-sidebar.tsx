@@ -17,6 +17,7 @@ import { ProjectSwitcher } from "@/components/projects/project-switcher";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
@@ -145,6 +146,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     setShowSettings,
     setSidebarCollapsed,
     showArchivedStandaloneChats,
+    showSettings,
     sidebarCollapsed,
     sidebarExpanded,
     sidebarExplorer,
@@ -460,13 +462,23 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   onOpenAdmin={openServerAdmin}
                   workerName={onlineWorker?.name ?? "Worker offline"}
                 />
-                <Button
-                  aria-label="Open settings"
+                <TooltipButton
+                  aria-label={showSettings ? "Close settings" : "Open settings"}
+                  aria-pressed={Boolean(showSettings)}
+                  tooltip={showSettings ? "Close settings" : "Open settings"}
+                  tooltipSide="top"
                   size="icon"
                   variant="ghost"
-                  className="size-8"
+                  className={cn(
+                    "size-8",
+                    showSettings && "bg-muted text-foreground",
+                  )}
                   onClick={() => {
                     setDesktopSidebarDrawerOpen(false);
+                    if (showSettings) {
+                      setShowSettings(false);
+                      return;
+                    }
                     setSettingsSection("general");
                     setShowSettings(true);
                     setShowArchivedStandaloneChats(false);
@@ -476,8 +488,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   }}
                 >
                   <Settings className="size-4" />
-                  <span className="sr-only">Open settings</span>
-                </Button>
+                </TooltipButton>
               </div>
             </div>
           </aside>
