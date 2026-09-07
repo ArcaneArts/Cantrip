@@ -1,6 +1,11 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { TabColor, TabColorMenuItem } from "@/components/workspace/tab-color";
 import { surfaceColorKey } from "@/lib/tab-colors";
+import {
+  expandedTabCount,
+  useTabBarWidth,
+  useTabDisplay,
+} from "@/lib/tab-display";
 import { useDroppable } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
@@ -113,6 +118,7 @@ function VisibleChatLiveScope({ chatId }: { chatId: string }) {
 
 function SortableDockRailTab({
   active,
+  expanded,
   disabled,
   memberPosition,
   onClose,
@@ -123,6 +129,7 @@ function SortableDockRailTab({
   surface,
 }: {
   active: boolean;
+  expanded: boolean;
   disabled: boolean;
   memberPosition: number;
   onClose(): void;
@@ -171,7 +178,7 @@ function SortableDockRailTab({
   const actionLabel = `${action} ${surface.title}`;
   return (
     <div
-      className="size-10 shrink-0"
+      className={expanded ? "h-10 w-40 shrink-0" : "size-10 shrink-0"}
       data-dock-rail-tab={surface.tabKey}
       data-dock-rail-tab-position={memberPosition}
       onAuxClick={(event) => {
@@ -191,12 +198,13 @@ function SortableDockRailTab({
       <TabColor colorKey={surfaceColorKey(surface)} active={active}>
         <ContextMenu.Root>
           <ContextMenu.Trigger asChild>
-            <div className="size-10 shrink-0">
+            <div className="h-10 w-full min-w-0">
               <TooltipButton
                 aria-label={`${actionLabel} in ${region} dock`}
                 aria-pressed={active}
                 className={cn(
-                  "tab-color-content grid size-10 shrink-0 place-items-center rounded-none border-transparent p-0 text-muted-foreground transition-colors duration-150 group-hover/dock-rail:border-border hover:bg-muted hover:text-foreground motion-reduce:transition-none",
+                  "tab-color-content flex h-10 w-full min-w-0 shrink-0 items-center rounded-none border-transparent text-muted-foreground transition-colors duration-150 group-hover/dock-rail:border-border hover:bg-muted hover:text-foreground motion-reduce:transition-none [&_svg]:shrink-0",
+                  expanded ? "justify-start gap-2 px-3" : "justify-center p-0",
                   region === "right" ? "border-b" : "border-r",
                   active && "bg-muted text-foreground",
                 )}
@@ -215,6 +223,9 @@ function SortableDockRailTab({
                 ) : (
                   <ProjectSurfaceIcon className="size-4" kind={surface.kind} />
                 )}
+                {expanded ? (
+                  <span className="truncate">{surface.title}</span>
+                ) : null}
               </TooltipButton>
             </div>
           </ContextMenu.Trigger>
@@ -303,6 +314,12 @@ export function DockRail({
   surfaces: readonly ProjectSurface[];
 }) {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const displayMode = useTabDisplay("bottom");
+  const { setElement, width } = useTabBarWidth();
+  const expanded =
+    region === "right"
+      ? 0
+      : expandedTabCount(displayMode, surfaces.length, width);
   const [createTooltipOpen, setCreateTooltipOpen] = useState(false);
   const drop = useDroppable({
     id: workspaceRegionDropId(region),
@@ -316,6 +333,13 @@ export function DockRail({
     } satisfies WorkspaceDndData,
   });
   const workspaceDnd = useWorkspaceDndState();
+  const railRef = useCallback(
+    (node: HTMLElement | null) => {
+      drop.setNodeRef(node);
+      setElement(node);
+    },
+    [drop.setNodeRef, setElement],
+  );
   const crossPaneDrag =
     workspaceDnd.activeDrag?.type === "surface" &&
     workspaceDnd.activeDrag.paneId !== (pane?.id ?? null)
@@ -342,7 +366,7 @@ export function DockRail({
           drop.isOver && "bg-primary/10",
         )}
         data-dock-rail={region}
-        ref={drop.setNodeRef}
+        ref={railRef}
         style={
           region === "right"
             ? { gridColumn: 2, gridRow: 1 }
@@ -410,6 +434,7 @@ export function DockRail({
               ) : null}
               <SortableDockRailTab
                 active={surface.tabKey === activeTabKey}
+                expanded={memberPosition < expanded}
                 disabled={pending}
                 memberPosition={memberPosition}
                 onClose={() => onClose(surface)}

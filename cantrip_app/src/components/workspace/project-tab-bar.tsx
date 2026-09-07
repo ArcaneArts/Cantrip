@@ -17,7 +17,13 @@ import {
   X,
 } from "lucide-react";
 import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useState, type ReactNode } from "react";
+import {
+  expandedTabCount,
+  useTabBarWidth,
+  useTabDisplay,
+} from "@/lib/tab-display";
+import "./tab-display.css";
 
 import {
   ProjectSurfaceCreateMenu,
@@ -126,6 +132,13 @@ export function ProjectPaneTabStrip({
   surfaces,
 }: ProjectPaneTabStripProps) {
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
+  const displayMode = useTabDisplay("top");
+  const { setElement, width } = useTabBarWidth();
+  const expanded = expandedTabCount(
+    displayMode,
+    surfaces.length + (previewFile ? 1 : 0),
+    width,
+  );
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
   const lastSurface = surfaces.at(-1);
@@ -179,11 +192,19 @@ export function ProjectPaneTabStrip({
     onClose(surface);
   };
 
+  const stripRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      paneStripDrop.setNodeRef(node);
+      setElement(node);
+    },
+    [paneStripDrop.setNodeRef, setElement],
+  );
   return (
     <>
       <div className="relative z-20 flex h-10 shrink-0 items-stretch">
         <div
-          ref={paneStripDrop.setNodeRef}
+          ref={stripRef}
+          data-tab-display={displayMode}
           className={cn(
             "flex min-w-0 flex-1 items-stretch overflow-x-auto overscroll-x-contain px-1 transition-colors [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             paneStripDrop.isOver && "bg-muted/30",
@@ -228,6 +249,18 @@ export function ProjectPaneTabStrip({
                         <ContextMenu.Trigger asChild>
                           <div
                             data-project-tab-key={surface.tabKey}
+                            data-condensed={
+                              !editing && memberPosition >= expanded
+                            }
+                            title={surface.title}
+                            style={{
+                              width:
+                                !editing && memberPosition >= expanded
+                                  ? 40
+                                  : displayMode === "hybrid"
+                                    ? 160
+                                    : undefined,
+                            }}
                             onAuxClick={(event) =>
                               closeTabOnMiddleClick(event, () =>
                                 closeImmediately(surface),
@@ -252,6 +285,7 @@ export function ProjectPaneTabStrip({
                               <button
                                 type="button"
                                 role="tab"
+                                aria-label={surface.title}
                                 aria-selected={active}
                                 className="tab-color-content flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
                                 onClick={() => onSelect(surface.tabKey)}
@@ -400,10 +434,20 @@ export function ProjectPaneTabStrip({
                       previewFile.active && "bg-muted text-foreground",
                     )}
                     data-preview-file-path={previewFile.path}
+                    data-condensed={surfaces.length >= expanded}
+                    style={{
+                      width:
+                        surfaces.length >= expanded
+                          ? 40
+                          : displayMode === "hybrid"
+                            ? 160
+                            : undefined,
+                    }}
                     title={`${previewFile.path}\nDouble-click to keep open`}
                   >
                     <button
                       aria-selected={previewFile.active}
+                      aria-label={previewFile.title}
                       className="tab-color-content flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left italic"
                       onClick={previewFile.onSelect}
                       onDoubleClick={(event) => {

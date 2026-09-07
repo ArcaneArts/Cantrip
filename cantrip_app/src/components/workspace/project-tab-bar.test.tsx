@@ -6,13 +6,27 @@ import {
 } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import TestRenderer, { act } from "react-test-renderer";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectFileSurface, ProjectSurface } from "@/lib/project-surface";
 import { projectSurfaceIdentityForTab } from "@/lib/project-surface-registry";
 import { WorkspaceDndStateProvider } from "./workspace-dnd-state";
 
 import { ProjectPaneTabStrip } from "./project-tab-bar";
+
+const display = vi.hoisted(() => ({
+  mode: "tabs" as "tabs" | "icons" | "hybrid",
+  width: 208,
+}));
+vi.mock("@/lib/tab-display", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tab-display")>()),
+  useTabDisplay: () => display.mode,
+  useTabBarWidth: () => ({ setElement: () => {}, width: display.width }),
+}));
+beforeEach(() => {
+  display.mode = "tabs";
+  display.width = 208;
+});
 
 vi.mock("@radix-ui/react-context-menu", async () => {
   const React = await import("react");
@@ -243,6 +257,21 @@ function renderTabs(surface: ProjectFileSurface) {
 }
 
 describe("project pane tab strip", () => {
+  it.each([
+    ["tabs", 0, false],
+    ["icons", 208, true],
+    ["hybrid", 208, false],
+    ["hybrid", 207, true],
+  ] as const)(
+    "renders %s at %i with condensed=%s",
+    (mode, width, condensed) => {
+      display.mode = mode;
+      display.width = width;
+      const markup = renderTabs(fileSurface());
+      expect(markup).toContain(`data-condensed="${condensed}"`);
+      expect(markup).toContain('aria-label="index.ts"');
+    },
+  );
   it("leaves the strip background transparent for the app shell", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
