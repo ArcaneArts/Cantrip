@@ -56,7 +56,7 @@ describe("project action menus", () => {
 
       expect(markup).toContain(`data-slot="${slot}"`);
       expect(markup).toContain("z-[100]");
-      expect(markup).toContain("Settings");
+      expect(markup).toContain("Project Settings");
       expect(markup).toContain("Reveal in Finder");
       expect(markup).toContain("Remove project");
     },

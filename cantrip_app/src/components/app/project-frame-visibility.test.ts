@@ -45,14 +45,17 @@ describe("project frame visibility", () => {
     ).toEqual({ docked: true, railsVisible: true });
   });
 
-  it("hides both while a full-shell overlay owns the content area", () => {
-    expect(
-      projectFrameVisibility({
-        ...visibleProjectFrame,
-        showSettings: true,
-        sidebarFilePreviewVisible: false,
-        workspaceDestination: "surface",
-      }),
-    ).toEqual({ docked: false, railsVisible: false });
-  });
+  it.each(["showSettings", "showProjectSettings"])(
+    "hides panes and rails while %s owns the content area",
+    (setting) => {
+      expect(
+        projectFrameVisibility({
+          ...visibleProjectFrame,
+          [setting]: true,
+          sidebarFilePreviewVisible: false,
+          workspaceDestination: "surface",
+        }),
+      ).toEqual({ docked: false, railsVisible: false });
+    },
+  );
 });
