@@ -16,7 +16,7 @@ use std::{
     collections::{HashMap, HashSet},
     ffi::c_void,
     sync::{Mutex, OnceLock},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 #[link(name = "AppKit", kind = "framework")]
@@ -171,8 +171,13 @@ impl Panel {
     fn update(&mut self, state: &SessionState, native: &Window, region: &Bounds) -> Option<()> {
         // Renderer preserves the same appearance/trail/action feedback as model images.
         let key = format!(
-            "{}:{}:{}:{}:{:?}",
-            native.id, state.cursor.revision, native.bounds.width, native.bounds.height, region
+            "{}:{}:{}:{}:{:?}:{}",
+            native.id,
+            state.cursor.revision,
+            native.bounds.width,
+            native.bounds.height,
+            region,
+            state.cursor.glow_strength()
         );
         if key != self.rendered {
             let bytes = cursor_png(state, &native.bounds, region)?;
@@ -246,7 +251,7 @@ pub(super) fn present(sessions: Vec<SessionState>) {
                 presentation.sessions = sessions;
                 if !presentation.ticking {
                     presentation.ticking = true;
-                    schedule();
+                    schedule(true);
                 }
             });
             refresh();
@@ -262,7 +267,7 @@ pub(super) fn present_step(sessions: Vec<SessionState>) {
                 p.sessions = sessions;
                 if !p.ticking {
                     p.ticking = true;
-                    schedule();
+                    schedule(true);
                 }
             });
             refresh();
@@ -287,7 +292,7 @@ pub(super) fn move_cursor(
                             .as_ref()
                             .is_some_and(|t| t.id == target.id && t.generation == target.generation)
                 }) {
-                    let now = state.cursor.updated_at_ms.saturating_add(1);
+                    let now = timestamp();
                     let _ = state.cursor.move_to(point, &target.bounds, now);
                     if let Some(method) = method {
                         state.cursor.mark_action(method, "unknown", now);
@@ -305,15 +310,25 @@ pub(super) fn move_cursor(
         DispatchQueue::main().exec_sync(update);
     }
 }
-fn schedule() {
+fn timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+fn schedule(animating: bool) {
     let _ = DispatchQueue::main().after(
-        DispatchTime::try_from(Duration::from_millis(100)).unwrap(),
+        DispatchTime::try_from(Duration::from_millis(if animating { 33 } else { 100 })).unwrap(),
         || {
             autoreleasepool(|_| {
                 refresh();
                 PRESENTATION.with_borrow_mut(|p| {
                     if p.sessions.iter().any(|s| s.target.is_some()) {
-                        schedule();
+                        schedule(
+                            p.sessions
+                                .iter()
+                                .any(|s| s.cursor.presentation(timestamp()).glow_strength() > 0),
+                        );
                     } else {
                         p.ticking = false;
                     }
@@ -333,7 +348,10 @@ fn refresh() {
                         .is_some_and(|t| t.kind == TargetKind::Window)
             })
         });
-        for state in &p.sessions {
+        for stored in &p.sessions {
+            let mut displayed = stored.clone();
+            displayed.cursor = stored.cursor.presentation(timestamp());
+            let state = &displayed;
             let Some(target) = state
                 .target
                 .as_ref()

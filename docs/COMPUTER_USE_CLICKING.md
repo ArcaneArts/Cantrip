@@ -106,6 +106,21 @@ input: inspect once, never automatically replay the score. Await the whole tool
 call and any outer executor continuation; resetting or abandoning a running call
 is not a playback continuation mechanism.
 
+## Cursor appearance
+
+The default cursor is a compact arrow with a thin light edge and a subtle dark
+outline for light/dark backgrounds. Input feedback is a soft cursor-colored glow
+that fades over 240 ms, replacing the click ring, dot, and on-cursor outcome text.
+The desktop overlay and captured images share the renderer. Glow indicates an
+input attempt; actual outcomes remain in tool receipts.
+
+New sessions derive their hue from SHA-256 of the agent thread ID, falling back
+to the conversation ID when no thread is present. Only hue changes: the default
+color's saturation and brightness are preserved. Color stays stable across turns,
+resets and reattachments. Hash-derived hues are not a guarantee of unique colors
+for every possible ID. Explicit cursor appearance/color overrides remain supported.
+Restart the worker after updating the helper to load the new rendering.
+
 ## Text, keys, scrolling and drag
 
 The current development helper adds these awaited methods on an attached
