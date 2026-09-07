@@ -43,14 +43,23 @@ export function reconcileWorkspaceSelection(
   selection: WorkspaceSelection,
   layout: ProjectTabLayoutSummary | null | undefined,
   preferredTabKey?: string | null,
+  openCenterTab = false,
 ): WorkspaceSelection {
   if (!layout) return emptyWorkspaceSelection(selection.projectId);
   if (layout.panes.length === 0) {
     return emptyWorkspaceSelection(layout.projectId);
   }
   const projectChanged = selection.projectId !== layout.projectId;
+  const centerPane = openCenterTab
+    ? layout.panes.find(
+        ({ region, members }) => region === "center" && members.length > 0,
+      )
+    : undefined;
   const overviewSelected =
-    !projectChanged && !preferredTabKey && selection.destination === "overview";
+    !projectChanged &&
+    !preferredTabKey &&
+    !centerPane &&
+    selection.destination === "overview";
   const preferredPane = preferredTabKey
     ? layout.panes.find(({ members }) =>
         members.some(({ tabKey }) => tabKey === preferredTabKey),
@@ -76,6 +85,7 @@ export function reconcileWorkspaceSelection(
     relocatedFocusedPane ??
     previousFocusedPane ??
     preferredPane ??
+    centerPane ??
     layout.panes[0];
   const activeTabByPane: Record<string, string> = {};
   for (const pane of layout.panes) {

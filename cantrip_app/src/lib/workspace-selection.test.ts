@@ -195,6 +195,47 @@ describe("workspace selection", () => {
     });
   });
 
+  it("opens a center tab on desktop even when a dock precedes it", () => {
+    const desktopLayout = structuredClone(initialLayout);
+    desktopLayout.panes[0]!.region = "bottom";
+    const selected = reconcileWorkspaceSelection(
+      emptyWorkspaceSelection("project-1"),
+      desktopLayout,
+      null,
+      true,
+    );
+    expect(selected.focusedPaneId).toBe("group-2");
+    expect(selectedWorkspaceTabKey(selected)).toBe("chat:two");
+  });
+
+  it("keeps the empty center when only dock tabs exist", () => {
+    const dockLayout = structuredClone(initialLayout);
+    dockLayout.panes.forEach((pane) => {
+      pane.region = "bottom";
+    });
+    const selected = reconcileWorkspaceSelection(
+      emptyWorkspaceSelection("project-1"),
+      dockLayout,
+      null,
+      true,
+    );
+    expect(selected.destination).toBe("overview");
+    expect(selectedWorkspaceTabKey(selected)).toBeNull();
+  });
+
+  it("retains an already selected tab during desktop layout refresh", () => {
+    const selected = selectWorkspaceTab(
+      emptyWorkspaceSelection("project-1"),
+      initialLayout,
+      "terminal:one",
+    );
+    expect(
+      selectedWorkspaceTabKey(
+        reconcileWorkspaceSelection(selected, initialLayout, null, true),
+      ),
+    ).toBe("terminal:one");
+  });
+
   it("leaves the overview when a child tab is selected", () => {
     const overview = reconcileWorkspaceSelection(
       emptyWorkspaceSelection("project-1"),
