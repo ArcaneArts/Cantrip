@@ -8,6 +8,7 @@ import {
 } from "@/components/app/application-shell-surfaces";
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
 import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
+import { paneTerminal } from "./project-pane-render-bindings";
 import { dockPresentationsForSidebarPreview } from "@/components/app/project-workspace-frame-model";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import {
@@ -127,21 +128,29 @@ export function PersistentSurfaceLayer({
   );
   const dockTerminalPlacements = useMemo(
     () =>
-      surfaceDockPanePresentations?.flatMap((presentation: any) =>
-        presentation.activeSurface?.kind === "terminal" &&
-        presentation.activeSurface.entity.kind !== "run-configuration"
+      surfaceDockPanePresentations?.flatMap((presentation: any) => {
+        const terminal = paneTerminal(
+          presentation,
+          bindings.chatConsoleOpenChats,
+          bindings.terminals?.data,
+        );
+        return terminal && terminal.kind !== "run-configuration"
           ? [
               {
                 focused: presentation.focused,
                 gridArea: presentation.gridArea,
                 paneId: presentation.pane.id,
                 portalTarget: presentation.portalTarget,
-                terminal: presentation.activeSurface.entity,
+                terminal,
               },
             ]
-          : [],
-      ),
-    [surfaceDockPanePresentations],
+          : [];
+      }),
+    [
+      surfaceDockPanePresentations,
+      bindings.chatConsoleOpenChats,
+      bindings.terminals?.data,
+    ],
   );
   const dockExplorerPlacements = useMemo(() => {
     const placements = surfaceDockPanePresentations?.flatMap(

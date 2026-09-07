@@ -509,6 +509,7 @@ function genericPaneBody(
   const kind = presentation.activeSurface?.kind;
   if (
     kind === "code" ||
+    bindings.terminalSurfaceVisible ||
     kind === "explorer" ||
     (kind === "terminal" &&
       presentation.activeSurface?.entity.kind !== "run-configuration")
