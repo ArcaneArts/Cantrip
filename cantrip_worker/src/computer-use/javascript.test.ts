@@ -597,6 +597,38 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       services.push(service);
       return { service, launch };
     }
+    it("routes the reported Command-K variants past validation and returns targeted help", async () => {
+      const { service } = create();
+      const opts = options();
+      await service.evaluateJavascript(
+        scope,
+        "await cua.attach({targetId:'fake-window',targetGeneration:1})",
+        opts,
+      );
+      for (const script of [
+        "await cua.keyPress('k', ['Meta'])",
+        "await cua.keyChord(['Meta','k'])",
+        "await cua.keyChord(['k'],500,['Meta'])",
+      ]) {
+        await expect(
+          service.evaluateJavascript(scope, script, opts),
+        ).rejects.toMatchObject({ code: "unsupported" }); // Fake backend deliberately cannot post keyboard input.
+        expect(opts.authorize.mock.calls.at(-1)?.[0].operation).toBe("perform");
+      }
+      const result = await service.evaluateJavascript(
+        scope,
+        "cua.help('key')",
+        opts,
+      );
+      expect(result.value).toMatchObject({
+        apiVersion: 17,
+        methods: { keyPress: expect.any(String), keyChord: expect.any(String) },
+        examples: { commandK: expect.any(String) },
+      });
+      expect((result.value as { methods: object }).methods).not.toHaveProperty(
+        "click",
+      );
+    });
     it("drops failed engine variables while reusing the authorized native attachment", async () => {
       const { service, launch } = create();
       const opts = options();

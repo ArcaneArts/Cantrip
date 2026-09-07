@@ -14,9 +14,9 @@ use std::{
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InputFrame {
     pub at_ms: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::gesture::deserialize_keys")]
     pub key_down: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::gesture::deserialize_keys")]
     pub key_up: Vec<String>,
     #[serde(default)]
     pub pointer_down: Option<Point>,

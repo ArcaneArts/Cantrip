@@ -12,6 +12,7 @@ import {
   computerUseResponseSchema,
   computerUseResultContentSchema,
   cuaBindingSchema,
+  cuaInputCommandSchema,
   cuaAgentObservationSchema,
   cuaAgentSourcesSchema,
   cuaCapabilitiesSchema,
@@ -665,4 +666,28 @@ describe("bounded inventory pages", () => {
           .success,
       ).toBe(false);
   });
+});
+
+it("normalizes letter case in shortcuts and balanced timeline keys", () => {
+  expect(
+    cuaInputCommandSchema.parse({ kind: "key", key: "k", modifiers: ["Meta"] }),
+  ).toMatchObject({ key: "K", modifiers: ["Meta"] });
+  expect(
+    cuaInputCommandSchema.safeParse({
+      kind: "timeline",
+      frames: [
+        { atMs: 0, keyDown: ["k"] },
+        { atMs: 50, keyUp: ["K"] },
+      ],
+    }).success,
+  ).toBe(true);
+  expect(
+    cuaInputCommandSchema.safeParse({
+      kind: "timeline",
+      frames: [
+        { atMs: 0, keyDown: ["k", "K"] },
+        { atMs: 50, keyUp: ["k", "K"] },
+      ],
+    }).success,
+  ).toBe(false);
 });

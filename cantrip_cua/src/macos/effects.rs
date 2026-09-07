@@ -124,6 +124,8 @@ pub(super) fn observe(
 ) -> Result<(Target, InputReceipt)> {
     let before = Snapshot::capture();
     let mut result = action()?;
-    result.1.effects = Some(before.compare(Snapshot::capture()));
+    let after = Snapshot::capture();
+    result.0.focused = after.focus.target_focused(&result.0);
+    result.1.effects = Some(before.compare(after));
     Ok(result)
 }

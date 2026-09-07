@@ -217,7 +217,11 @@ impl MacOsBackend {
             unsafe { SCShareableContent::getShareableContentExcludingDesktopWindows_onScreenWindowsOnly_completionHandler(false, false, &completion); }
         });
         let (inventory, next_cursor) = pending.wait(&receiver)?;
-        let (targets, truncated) = self.registry.update(inventory)?;
+        let (mut targets, truncated) = self.registry.update(inventory)?;
+        let focus = accessibility::FocusSample::capture();
+        for target in &mut targets {
+            target.focused = focus.target_focused(target);
+        }
         self.truncated = truncated;
         Ok(TargetPage {
             targets,
@@ -445,6 +449,8 @@ impl CaptureBackend for MacOsBackend {
             }
         };
         cancellation.check()?;
+        capture.target.focused =
+            accessibility::FocusSample::capture().target_focused(&capture.target);
         Ok(Capture {
             target: capture.target.clone(),
             raster: Raster {

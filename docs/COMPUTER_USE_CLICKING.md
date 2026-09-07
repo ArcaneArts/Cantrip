@@ -914,3 +914,49 @@ Manual retest: on the same already-authorized application, open one matching
 window and request several snapshots across ordinary UI changes. There should be
 no reattach after a capture error. Record any timeout code and elapsed tool time.
 This check does not require sending messages or repeating unverified input.
+
+## Shortcut, focus and dispatch semantics (API 17)
+
+Letter key names now accept either case across the JS, worker and native
+validators. `k` and `K` mean the same physical key; uppercase does not implicitly
+add Shift. All three forms work:
+
+```js
+await cua.keyPress("k", ["Meta"]);
+await cua.keyChord(["k"], 500, ["Meta"]);
+await cua.keyChord(["Meta", "k"]);
+```
+
+Use just one form for an action. `cua.help("key")`, `cua.help("type")`, and
+`cua.help("focus")` return targeted help and examples. In raw timelines, keep
+modifiers in `keyModifiers`, not in held key arrays. Case aliases normalize
+before held-key validation, so `k` and `K` cannot be held twice.
+
+Successful macOS macro receipts report `outcome:"dispatched"`: every native
+posting call completed. `windowDelivery:"unverified"` remains explicit because
+that does not prove that the app accepted the events or performed the intended
+action. An interrupted/ambiguous dispatch still returns an unknown error. Always
+observe the UI result; never resend messages or repeat other uncertain input
+based on a posting receipt alone. These semantics supersede the older successful
+macro `unknown` descriptions above. Legacy diagnostic click methods are unchanged.
+
+Window `focused` metadata is now sampled on attach/inventory, snapshots, and
+after input. It combines WindowServer's foreground PID with the exact AX focused
+window ID; a background PID is false, an exact match true, and missing evidence
+null. `getState()` returns the last sample, not an independent live focus poll.
+Missing focus evidence never prevents capture or input.
+
+Background pointer preparation now queues target-only activation plus paired
+native key-window records before input. This addresses the missing key-window
+step without calling the foreground/raise API or deactivating the user's app.
+The record layout is informed by the
+[trycua SkyLight implementation](https://github.com/trycua/cua/blob/main/libs/cua-driver/rust/crates/platform-macos/src/input/skylight.rs).
+This remains an experimental macOS delivery path; Discord acceptance needs a
+manual retest. No automatic focus fallback or duplicate click is performed.
+`requestFocus()` remains an explicit operation that activates and raises a window.
+
+Manual retest: keep Discord visible but unfocused, open it with CUA, check
+`focused`, click Home once and capture the result. Separately try Command-K once,
+then Escape. Report the input receipt and observed navigation. Avoid sending a
+message as part of this diagnostic. Repeat with Discord focused only as a
+separate comparison if needed.
