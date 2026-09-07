@@ -1,6 +1,7 @@
 pub mod backend;
 pub mod cancellation;
 pub mod cursor;
+mod cursor_motion;
 pub mod error;
 pub mod gesture;
 pub mod input;

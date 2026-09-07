@@ -31,6 +31,11 @@ impl Raster {
 pub trait CaptureBackend: Send {
     /// Presentation is best effort and must never change an input result.
     fn present_cursors(&mut self, _sessions: Vec<crate::service::SessionState>) {}
+    /// Finish this presentation update before subsequent input dispatch. Display
+    /// failure remains best effort, never a readiness gate for native input.
+    fn present_cursor_step(&mut self, sessions: Vec<crate::service::SessionState>) {
+        self.present_cursors(sessions);
+    }
     fn background_click(
         &mut self,
         _session: &str,

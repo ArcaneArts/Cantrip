@@ -650,13 +650,38 @@ impl<B: CaptureBackend> CuaService<B> {
                     }
                     _ => state.cursor.position,
                 };
-                state.cursor.move_to(position, &target.bounds, now_ms)?;
-                state.target = Some(target.clone());
-                self.sessions
-                    .insert(binding.session_id.clone(), state.clone());
-                self.backend
-                    .present_cursors(self.sessions.values().cloned().collect());
+                target.bounds.to_global(position)?;
                 let started = std::time::Instant::now();
+                state.target = Some(target.clone());
+                if matches!(command, crate::gesture::InputCommand::PreparedPress { .. })
+                    && state.cursor.appearance.visible
+                    && target.bounds.contains_local(state.cursor.position)
+                {
+                    let points = crate::cursor_motion::travel(state.cursor.position, position);
+                    crate::cursor_motion::animate(
+                        &points,
+                        cancel,
+                        |at| crate::gesture::wait_until(started + at, cancel),
+                        |point| {
+                            state.cursor.move_to(
+                                point,
+                                &target.bounds,
+                                now_ms + started.elapsed().as_millis() as u64,
+                            )?;
+                            self.sessions
+                                .insert(binding.session_id.clone(), state.clone());
+                            self.backend
+                                .present_cursor_step(self.sessions.values().cloned().collect());
+                            Ok(())
+                        },
+                    )?;
+                } else {
+                    state.cursor.move_to(position, &target.bounds, now_ms)?;
+                    self.sessions
+                        .insert(binding.session_id.clone(), state.clone());
+                    self.backend
+                        .present_cursors(self.sessions.values().cloned().collect());
+                }
                 let result = self.backend.perform(
                     &binding.session_id,
                     &target,

@@ -17,6 +17,19 @@ Acceptance requires the user's report of that complete outcome. Work is solo,
 with sequential worktree PRs and squash auto-merge. The latest testing instruction leaves live acceptance to the user; implementation
 continues between useful cycles and stops when only that acceptance remains.
 
+### Current refinement: fast pre-click cursor travel
+
+The user confirmed API 7 C4→G4 drag (one second) showed smooth cursor motion
+and produced piano sound. API 8 now animates the custom cursor before ordinary
+unmodified clicks: roughly 30–90 ms ease-out travel, final presentation before
+input dispatch, and cancellation before down if Stop occurs during travel.
+Existing cursor preferences and occlusion behavior remain in use. Drag still
+follows actual native events, and explicit timeline timing is unchanged.
+No OS mouse movement, extra click or implicit focus request is added.
+Three focused Rust unit tests, dependency/worker builds, Clippy, formatting
+and diff checks passed. No live input, app launch, integration tests or CI jobs
+were run. Live visual acceptance of the new travel remains for the user.
+
 ### Current refinement: prepared drag and pointer timelines
 
 The user confirmed API 6 ordinary clicks work unfocused after the successful
