@@ -82,6 +82,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
+          components: rustfmt, clippy
       - name: Install Windows native prerequisites
         if: runner.os == 'Windows'
         shell: pwsh
