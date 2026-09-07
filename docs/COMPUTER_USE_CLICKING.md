@@ -38,6 +38,34 @@ agent's thread instructions and general Cantrip MCP guidance identify this
 distinction. A missing callable `cantrip_cua` tool is a registration problem;
 AppleScript or shell automation is not the Cantrip CUA fallback.
 
+### Efficient discovery and playback
+
+Discover `cantrip_cua` by exact tool name and list names before requesting full
+metadata. Read `cua.help()` once for the running API. Page targets only until the
+intended window is found; reuse its attachment within the current agent turn.
+Preserve the user's cursor appearance unless a change was requested. Current
+MCP guidance uses ordinary prepared clicks consistently; Accessibility control
+lookup is optional when choosing an explicit reference action.
+
+API 11 reduces timeline rendering work: gaps shorter than a display frame keep
+only the endpoint, and cosmetic travel samples more than 16 ms late are skipped.
+Native down/up events remain ordered and are never dropped by this optimization.
+Longer gaps retain cubic ease-out travel. Timing remains best effort.
+
+A timeline's final `atMs` schedules input; it is not a completion deadline. The
+native request now uses the existing 2-hour-plus-5-second performance budget,
+subject to the enclosing 125-minute script budget and immediate Stop/revocation.
+Previously, a 23.108-second, 958-frame piano sequence was cancelled after roughly
+28.2 seconds, matching the old final-`atMs`-plus-5-second timeout. A fake-clock
+regression reproduces that cutoff without native input. The fix allows processing
+overhead without requiring agents to split short pieces into chunks.
+
+A host transport deadline is now reported as a deadline instead of being lost in
+the native cancellation mapping. Actual Stop still wins. Either can leave partial
+input: inspect once, never automatically replay the score. Await the whole tool
+call and any outer executor continuation; resetting or abandoning a running call
+is not a playback continuation mechanism.
+
 ## Text, keys, scrolling and drag
 
 The current development helper adds these awaited methods on an attached

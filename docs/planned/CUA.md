@@ -35,6 +35,23 @@ acceptance still requires observation. The broader roadmap below remains open.
 The following entries retain cycle-time evidence; historical pending-test notes
 are superseded by this acceptance record only for the cases confirmed above.
 
+### Follow-up: timeline efficiency and clear tool guidance (API 11)
+
+User QA reported Scarbo playback cancelling after about 28 seconds. The recorded
+script contained 958 frames ending at 23,108 ms, matching the worker's scheduled
+length plus 5,000 ms deadline. Native requests now retain the full existing
+performance budget and Stop handling. A fake-clock test fails on the prior code
+and passes with this change, including explicit interruption. Underlying host
+transport deadlines remain distinguishable from actual cancellation.
+
+Compressed cursor travel now samples according to the available display time;
+late cosmetic frames are skipped while all native downs/ups retain their order.
+Tool guidance is consolidated to 4.3 KB, removes contradictory legacy click advice,
+and directs exact-name discovery, attachment reuse, live help and one timeline
+for a stable score. Validation passed: 56 focused TypeScript tests, 15 Rust
+unit tests, dependency/worker builds, Clippy, formatting and diff checks. No
+native/UI/integration testing or CI jobs were run. User retesting of long mouse playback remains the application-level verification.
+
 ### Current refinement: cubic ease-out preference
 
 The user confirmed API 9 timeline animation looks good and requested a faster

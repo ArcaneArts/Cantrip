@@ -336,6 +336,7 @@ export class CuaJavascriptContexts {
     if (context.busy) throw new CuaProcessError("capacity", "not-sent");
     context.busy = true;
     const images: CuaSnapshot[] = [];
+    let hostTransportFailure: CuaProcessError | undefined;
     const active = AbortSignal.any([
       context.controller.signal,
       context.executionSignal,
@@ -396,6 +397,11 @@ export class CuaJavascriptContexts {
             } catch (caught) {
               failed = true;
               error = caught;
+              if (
+                caught instanceof CuaProcessError &&
+                (caught.code === "timeout" || caught.code === "closed")
+              )
+                hostTransportFailure = caught;
               throw caught;
             } finally {
               options.onOperation?.({
@@ -441,10 +447,19 @@ export class CuaJavascriptContexts {
     } catch (error) {
       for (const image of images) image.payload.fill(0);
       images.length = 0;
+      // The native host-result wire maps transport deadlines to cancellation.
+      // Capture the actual cause before disposal aborts the context itself.
+      const failure =
+        !active.aborted &&
+        error instanceof CuaNativeError &&
+        error.code === "cancelled" &&
+        hostTransportFailure
+          ? hostTransportFailure
+          : error;
       // Failed/ambiguous scripts are never replayed. Their variables, queued
       // host work and native attachment are disposed together.
       this.dispose(context, false);
-      throw error;
+      throw failure;
     } finally {
       context.busy = false;
     }

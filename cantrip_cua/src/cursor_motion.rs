@@ -47,7 +47,13 @@ pub fn before_deadline(
     }
     let allotted = duration.min(gap);
     let begins = deadline - allotted;
-    path.into_iter()
+    // A compressed 6 ms gap needs one endpoint, not four rasterizations.
+    // Retain evenly spaced samples and the exact endpoint at at most ~60 Hz.
+    let samples = ((allotted.as_secs_f64() * 60.0).ceil() as usize)
+        .max(1)
+        .min(path.len());
+    (1..=samples)
+        .map(|i| path[(i * path.len()).div_ceil(samples) - 1])
         .map(|(at, point)| {
             (
                 begins + allotted.mul_f64(at.as_secs_f64() / duration.as_secs_f64()),
@@ -75,6 +81,19 @@ pub fn animate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn short_piano_gaps_do_not_queue_multiple_renders_inside_one_display_frame() {
+        let start = Point { x: 0.0, y: 0.0 };
+        let end = Point { x: 500.0, y: 200.0 };
+        for gap in [1, 6, 10, 16] {
+            let deadline = Duration::from_millis(gap);
+            assert_eq!(
+                before_deadline(start, end, Duration::ZERO, deadline),
+                vec![(deadline, end)]
+            );
+        }
+        assert!(before_deadline(start, end, Duration::ZERO, Duration::from_millis(100)).len() >= 4);
+    }
     #[test]
     fn timeline_gap_compresses_travel_and_keeps_the_deadline() {
         let start = Point { x: 0.0, y: 0.0 };

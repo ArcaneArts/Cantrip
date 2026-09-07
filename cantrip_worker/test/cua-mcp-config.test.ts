@@ -13,6 +13,7 @@ import {
   managedCantripMcpServer,
   mergeManagedMcpServers,
 } from "../src/mcp/managed.js";
+import { CUA_MCP_INSTRUCTIONS } from "../src/mcp/cua-server.js";
 import { CANTRIP_MCP_MAX_RESPONSE_BYTES } from "../src/mcp/http.js";
 import { CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS } from "../src/mcp/timeouts.js";
 
@@ -25,9 +26,11 @@ describe("managed CUA MCP configuration", () => {
       const instructions = cantripChatThreadParams(true, profile, [
         cua,
       ]).developerInstructions;
-      expect(instructions).toContain('"script":"await cua.targets()"');
+      expect(instructions).toContain("cua.targets()");
       expect(instructions).toContain("namespace is separate from `cantrip`");
-      expect(instructions).toContain("An empty `cantrip.target_list`");
+      expect(instructions).toContain(
+        "an empty registry does not mean native CUA is unavailable",
+      );
       expect(instructions).toContain("Window sharing starts automatically");
       expect(
         cantripChatThreadParams(true, profile, [{ ...cua, enabled: false }])
@@ -39,6 +42,17 @@ describe("managed CUA MCP configuration", () => {
       ).not.toContain("await cua.targets()");
     },
   );
+  it("keeps dedicated guidance compact and uses current ordinary click routing", () => {
+    expect(CUA_MCP_INSTRUCTIONS.length).toBeLessThan(6000);
+    expect(CUA_MCP_INSTRUCTIONS).toContain(
+      "No Accessibility lookup or separate preparation call is required",
+    );
+    expect(CUA_MCP_INSTRUCTIONS).toContain("Never automatically replay");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("await the entire tool call");
+    expect(CUA_MCP_INSTRUCTIONS).not.toContain(
+      "through the attached window's Accessibility controls",
+    );
+  });
   it("uses the dedicated worker host in source and packaged runtimes", () => {
     expect(
       cuaMcpHostInvocation({
