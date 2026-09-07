@@ -610,3 +610,40 @@ Implementation references (source, not instructions):
 [Chromium inactive mouse handling](https://github.com/chromium/chromium/blob/main/content/app_shim_remote_cocoa/render_widget_host_view_cocoa.mm),
 [CUA driver's AppKit event records](https://github.com/trycua/cua/blob/main/libs/cua-driver/rust/crates/platform-macos/src/input/skylight.rs),
 and [yabai window events](https://github.com/koekeishiya/yabai/blob/master/src/window_manager.c).
+
+## Combined preparation and ordinary press (API 5)
+
+The API 4 user trial above failed: the cursor appeared and Brave remained
+unfocused, but no note sounded. Its receipts place preparation about 11 seconds
+before mouse-down. Do not repeat that trial or treat preparation dispatch as
+proof of active input state.
+
+`await cua.preparedPointerPress({x,y},1000)` is a distinct experimental timing
+candidate. The helper allocates and addresses the tracking/down/up events first,
+then queues target-only preparation followed immediately by one unmodified press
+in the same native request. There is no model round trip, extra/primer click,
+Command flag, foreground request, window raise, or prior-app deactivation.
+The default hold is 150 ms, with explicit holds from 1 to 2000 ms. Ordinary
+`pointerPress`, keyboard timelines, and explicit Command-click are unchanged.
+
+Preparation failure prevents the press. After preparation is dispatched, any
+subsequent error is uncertain; Stop releases the button if down began. Success
+returns method `background-prepared-press`, `activation: true`, `outcome: unknown`
+and `windowDelivery: unverified`, with before/after effects. The activation field
+discloses the request, not proof that focus changed. AppKit can react to the
+notification; foreground preservation and actual acceptance still require QA.
+
+Test with API 5 after restarting the development worker: keep the piano window
+unfocused, attach its current window ID/generation, and take a fresh snapshot.
+Choose a white key, then call `preparedPointerPress(point,1000)` exactly once.
+Report its receipt and whether a note sounded, the custom cursor appeared, or
+physical pointer/focus/window order changed. Do not separately prepare, add
+modifiers, request focus, or retry. No native integration test has established
+that this timing candidate works.
+
+Source inspection also distinguishes application activation from the target
+window's key state. On the inspected macOS build, AppKit's left-mouse handler
+checks key-window state and `acceptsFirstMouse`; this supports the inactive-window
+hypothesis but does not identify the branch taken in the user's trial. The
+reference "make key" records carry a Command modifier and are synthetic mouse
+records, so they are not an unmodified-click solution and are not used here.

@@ -13,6 +13,12 @@ pub enum InputCommand {
     Focus {},
     #[serde(rename = "window-input")]
     WindowInput {},
+    #[serde(rename = "prepared-press")]
+    PreparedPress {
+        point: Point,
+        #[serde(rename = "holdMs")]
+        hold_ms: u64,
+    },
     Timeline {
         frames: Vec<crate::timeline::InputFrame>,
     },
@@ -54,6 +60,7 @@ impl InputCommand {
         match self {
             Self::Focus {} => "focus",
             Self::WindowInput {} => "window-input",
+            Self::PreparedPress { .. } => "background-prepared-press",
             Self::Timeline { .. } => "background-timeline",
             Self::Text { .. } => "background-text",
             Self::Key { .. } => "background-key",
@@ -65,6 +72,7 @@ impl InputCommand {
         let point = |p: Point| p.x.is_finite() && p.y.is_finite() && p.x >= 0.0 && p.y >= 0.0;
         let valid = match self {
             Self::Focus {} | Self::WindowInput {} => true,
+            Self::PreparedPress { point: p, hold_ms } => point(*p) && (1..=2000).contains(hold_ms),
             Self::Timeline { frames } => return crate::timeline::validate(frames),
             Self::Text { text } => {
                 !text.is_empty()
@@ -230,6 +238,34 @@ pub fn wait_until(deadline: Instant, cancel: &Cancellation) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prepared_press_is_a_single_bounded_unmodified_action() {
+        for hold_ms in [1, 150, 1000, 2000] {
+            let command = InputCommand::PreparedPress {
+                point: Point { x: 12., y: 34. },
+                hold_ms,
+            };
+            command.validate().unwrap();
+            assert_eq!(command.method(), "background-prepared-press");
+        }
+        for hold_ms in [0, 2001, u64::MAX] {
+            assert!(
+                InputCommand::PreparedPress {
+                    point: Point { x: 0., y: 0. },
+                    hold_ms
+                }
+                .validate()
+                .is_err()
+            );
+        }
+        assert!(
+            serde_json::from_value::<InputCommand>(serde_json::json!({
+                "kind":"prepared-press", "point":{"x":0,"y":0}, "holdMs":1000,
+                "modifiers":["Meta"]
+            }))
+            .is_err()
+        );
+    }
     #[test]
     fn unicode_and_keys() {
         assert_eq!(text_units("a🦀"), vec![vec![97], vec![0xd83e, 0xdd80]]);

@@ -86,9 +86,64 @@ pub(super) fn prepare(pid: i32, window: u32, cancel: &Cancellation) -> Result<()
         (api.post)(&psn, record.as_ptr())
     })
 }
+/// Queue preparation and one preallocated input operation within the same native
+/// request. A successful post is not proof that AppKit accepted the activation.
+/// Any subsequent failure is uncertain, including Stop before mouse-down.
+pub(super) fn prepare_then(
+    pid: i32,
+    window: u32,
+    cancel: &Cancellation,
+    action: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    after_preparation(|| prepare(pid, window, cancel), action)
+}
+fn after_preparation(
+    prepare: impl FnOnce() -> Result<()>,
+    action: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    prepare()?;
+    action().map_err(|_| CuaError::new(
+        ErrorCode::InputUnknown,
+        "Prepared press stopped after activation was attempted. Button-up cleanup was sent if down began. Observe; do not replay automatically.",
+    ))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preparation_precedes_action_and_failure_never_replays() {
+        use std::cell::RefCell;
+        let calls = RefCell::new(vec![]);
+        after_preparation(
+            || {
+                calls.borrow_mut().push("prepare");
+                Ok(())
+            },
+            || {
+                calls.borrow_mut().push("press");
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(*calls.borrow(), ["prepare", "press"]);
+        let err = after_preparation(
+            || Err(CuaError::new(ErrorCode::Unsupported, "unavailable")),
+            || panic!("must not click after preparation fails"),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Unsupported);
+        let err = after_preparation(
+            || Ok(()),
+            || {
+                Err(CuaError::new(
+                    ErrorCode::Cancelled,
+                    "Stop after preparation",
+                ))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InputUnknown);
+    }
     #[test]
     fn sends_one_target_activation_record_without_mouse_or_defocus_records() {
         let mut calls = 0;

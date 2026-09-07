@@ -279,3 +279,46 @@ describe("target-only AppKit preparation", () => {
     ).toBe(false);
   });
 });
+
+it("keeps prepared press unmodified, bounded and visibly uncertain", () => {
+  const command = {
+    kind: "prepared-press",
+    point: { x: 12, y: 34 },
+    holdMs: 1000,
+  };
+  expect(
+    cuaJavascriptActionSchema.parse({ operation: "perform", command }),
+  ).toEqual({ operation: "perform", command });
+  for (const extra of [
+    { modifiers: ["Meta"] },
+    { globalInput: true },
+    { targetId: "other" },
+    { holdMs: 0 },
+    { holdMs: 2001 },
+  ]) {
+    expect(
+      cuaInputCommandSchema.safeParse({ ...command, ...extra }).success,
+    ).toBe(false);
+  }
+  const receipt = {
+    method: "background-prepared-press" as const,
+    activation: true,
+    outcome: "unknown" as const,
+    windowDelivery: "unverified" as const,
+    position: command.point,
+    globalPosition: { x: 112, y: 134 },
+  };
+  expect(matchesInputReceipt(receipt, receipt.method, command.point)).toBe(
+    true,
+  );
+  expect(
+    matchesInputReceipt({ ...receipt, activation: false }, receipt.method),
+  ).toBe(false);
+  expect(
+    matchesInputReceipt({ ...receipt, outcome: "dispatched" }, receipt.method),
+  ).toBe(false);
+  expect(matchesInputReceipt(receipt, "background-timeline")).toBe(false);
+  expect(matchesInputReceipt(receipt, receipt.method, { x: 13, y: 34 })).toBe(
+    false,
+  );
+});

@@ -87,6 +87,7 @@ export const cuaSessionSchema = z.strictObject({
           "background-drag",
           "background-scroll",
           "background-timeline",
+          "background-prepared-press",
           "focus",
           "window-input",
         ]),
@@ -288,6 +289,11 @@ const cuaTimelineSchema = z
 export const cuaInputCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("focus") }),
   z.strictObject({ kind: z.literal("window-input") }),
+  z.strictObject({
+    kind: z.literal("prepared-press"),
+    point: cuaPointSchema,
+    holdMs: z.number().int().min(1).max(2000),
+  }),
   z.strictObject({ kind: z.literal("timeline"), frames: cuaTimelineSchema }),
   z.strictObject({
     kind: z.literal("text"),
@@ -357,6 +363,7 @@ export const cuaInputReceiptSchema = z.strictObject({
     "background-drag",
     "background-scroll",
     "background-timeline",
+    "background-prepared-press",
     "focus",
     "window-input",
   ]),

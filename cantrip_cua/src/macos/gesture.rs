@@ -1,4 +1,5 @@
-//! Experimental window-directed macros. No global post, activation, clipboard,
+//! Experimental window-directed macros. Activation requires explicit focus/preparation.
+//! No global post, clipboard,
 //! hardware pointer warp or modifier-state suppression. Void SPI cannot certify
 //! which responder consumed an event; every completed macro remains unverified.
 use crate::{
@@ -154,6 +155,30 @@ pub(super) fn perform(
     match command {
         InputCommand::Focus {} | InputCommand::WindowInput {} => {
             unreachable!("focus handled without allocating mouse input")
+        }
+        InputCommand::PreparedPress { point, hold_ms } => {
+            // Allocate and address the complete pair before the activation request.
+            let tracking = Event::mouse(source.0, 5, global)?;
+            let down = Event::mouse(source.0, 1, global)?;
+            let up = Event::mouse(source.0, 2, global)?;
+            for event in [&tracking, &down, &up] {
+                prepare(event, *point, true);
+            }
+            super::window_input::prepare_then(pid, window, cancel, || {
+                held_gesture(
+                    cancel,
+                    || {
+                        post(&tracking);
+                        post(&down);
+                    },
+                    || {
+                        final_position = *point;
+                        progress(*point);
+                        wait_until(Instant::now() + Duration::from_millis(*hold_ms), cancel)
+                    },
+                    || post(&up),
+                )
+            })?;
         }
         InputCommand::Timeline { frames } => {
             use crate::timeline::{Frame, Transition};
@@ -354,7 +379,7 @@ pub(super) fn perform(
         InputReceipt {
             control: None,
             method: command.method(),
-            activation: false,
+            activation: matches!(command, InputCommand::PreparedPress { .. }),
             outcome: "unknown",
             position: Some(final_position),
             global_position: Some(target.bounds.to_global(final_position)?),
