@@ -1,3 +1,4 @@
+import { cuaEffectConfigurationSchema } from "./computer-use-effects.js";
 import { z } from "zod";
 
 import {
@@ -43,6 +44,8 @@ export const configurablePermissionProfileIdSchema = z.enum([
 
 export const userSettingsSchema = z.object({
   computerUseEnabled: z.boolean().default(false),
+  computerUseEffects: cuaEffectConfigurationSchema.optional(),
+  computerUseEffectsRevision: z.number().int().positive().optional(),
   protectedComputerUseCursor: cuaCursorPreferenceRecordSchema
     .nullable()
     .optional(),
@@ -94,6 +97,7 @@ export const userSettingsSchema = z.object({
 export const userSettingsUpdateSchema = userSettingsSchema
   .partial()
   .omit({
+    computerUseEffectsRevision: true,
     lastAppMode: true,
     lastIdeProjectId: true,
     lastIdeWorkspaceId: true,

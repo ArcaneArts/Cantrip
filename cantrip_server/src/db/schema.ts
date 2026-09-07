@@ -1,3 +1,4 @@
+import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";
 import type {
   AgentInteractionRequestPayload,
   AgentInteractionResponse,
@@ -1035,6 +1036,13 @@ export const userSettings = pgTable(
     computerUseEnabled: boolean("computer_use_enabled")
       .notNull()
       .default(false),
+    computerUseEffects: jsonb("computer_use_effects")
+      .$type<CuaEffectConfiguration>()
+      .notNull()
+      .default({ effect: "off", parameters: {} }),
+    computerUseEffectsRevision: integer("computer_use_effects_revision")
+      .notNull()
+      .default(1),
     protectedComputerUseCursor: jsonb(
       "protected_computer_use_cursor",
     ).$type<CuaCursorPreferenceRecord>(),

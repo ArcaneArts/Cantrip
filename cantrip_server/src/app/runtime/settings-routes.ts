@@ -1,4 +1,8 @@
 import {
+  effectiveCuaEffects,
+  cuaEffectWorkerStatusSchema,
+} from "@cantrip/protocol/computer-use-effects";
+import {
   appDestinationSchema,
   appDestinationUpdateSchema,
   chatReasoningStateSchema,
@@ -913,8 +917,56 @@ export function installSettingsRouteRuntime(
         .code(400)
         .send({ error: "Default model or worker was not found." });
     }
+    if (
+      input.data.computerUseEffects !== undefined ||
+      input.data.computerUseEnabled !== undefined
+    ) {
+      const ownerId = applicationOwnerId();
+      const workers = await repository.listWorkers(ownerId);
+      const preferences = effectiveCuaEffects(settings.preferences);
+      // Durable settings are already saved. Offline workers converge through
+      // their next authenticated heartbeat; a rendering failure cannot undo them.
+      await Promise.allSettled(
+        workers.map((worker) =>
+          bridge.request(
+            worker.workerId,
+            {
+              type: "computer-use.effects.sync",
+              preferences,
+            },
+            { timeoutMs: 5_000 },
+          ),
+        ),
+      );
+    }
     return reply.send(settingsBundleWireSchema.parse(settings));
   });
+
+  app.get<{ Params: { workerId: string } }>(
+    "/api/settings/computer-use/workers/:workerId/effects",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      reply.header("cache-control", "no-store");
+      try {
+        const settings = await repository.getUserSettings(ownerId);
+        return reply.send(
+          cuaEffectWorkerStatusSchema.parse(
+            await bridge.request(worker.workerId, {
+              type: "computer-use.effects.sync",
+              preferences: effectiveCuaEffects(settings),
+            }),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
 
   app.patch("/api/settings/destination", async (request, reply) => {
     const input = appDestinationUpdateSchema.safeParse(request.body);

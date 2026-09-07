@@ -1,3 +1,4 @@
+import { cuaEffectPreferencesSchema } from "./computer-use-effects.js";
 import { z } from "zod";
 import { computerUseRequestSchema, cuaIdSchema } from "./computer-use.js";
 import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
@@ -53,4 +54,10 @@ export const workerComputerUsePreviewRevokeCommandSchema = z.strictObject({
   ownerId: cuaIdSchema,
   serverId: cuaIdSchema,
   scope: cuaPreviewRevocationSchema,
+});
+
+/** Trusted account presentation settings, independent of any agent action. */
+export const workerComputerUseEffectsCommandSchema = z.strictObject({
+  type: z.literal("computer-use.effects.sync"),
+  preferences: cuaEffectPreferencesSchema,
 });

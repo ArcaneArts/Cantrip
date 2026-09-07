@@ -1,3 +1,4 @@
+import { CuaEffects } from "./effects.js";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { resolveCuaBinary } from "./binary.js";
@@ -99,6 +100,7 @@ export interface CantripCuaServiceOptions {
  * Constructor/status/idle shutdown do not launch or inspect the native helper. */
 export class CantripCuaService {
   private runtime: Runtime | null = null;
+  readonly effects = new CuaEffects(() => this.runtime?.transport ?? null);
   private opening: Promise<Runtime> | null = null;
   private generation = 0;
   private crashes = 0;
@@ -257,6 +259,7 @@ export class CantripCuaService {
         if (this.stopped || this.runtime !== created)
           throw new CuaProcessError("closed", "not-sent");
         created.capabilities = capabilities;
+        await this.effects.synchronize();
         return created;
       } catch (error) {
         this.failRuntime(

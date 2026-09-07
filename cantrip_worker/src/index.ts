@@ -5490,6 +5490,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.chatId,
           command.threadId,
         );
+      case "computer-use.effects.sync":
+        return computerUse.effects.update(command.preferences);
       case "computer-use.approval.respond":
         return command.agentAuthority
           ? computerUseAgents.answer(command)
@@ -5994,7 +5996,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
         );
       });
-      await sendHeartbeat(
+      const effectPreferences = await sendHeartbeat(
         config,
         createHeartbeat(
           config,
@@ -6013,6 +6015,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           searxngRuntime.capabilities(true, playwrightRuntime.status()),
         ),
       );
+      if (effectPreferences) void computerUse.effects.update(effectPreferences);
       const codeSettingsAuthorizationChanged =
         previousCodeSettingsAuthorization !==
         activeCodeSettingsAuthorizationFingerprint();

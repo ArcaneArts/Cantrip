@@ -1,3 +1,4 @@
+import { effectiveCuaEffects } from "@cantrip/protocol/computer-use-effects";
 import {
   workerEncryptionBootstrapRequestSchema,
   workerEncryptionBootstrapResultSchema,
@@ -21,7 +22,10 @@ export interface InternalWorkerHttpControlRouteDependencies {
   ) => void;
   repository: Pick<
     ServerRepository,
-    "authenticateWorkerCredential" | "encryptionRegistry" | "recordWorker"
+    | "authenticateWorkerCredential"
+    | "encryptionRegistry"
+    | "recordWorker"
+    | "getUserSettings"
   >;
   resumePendingWorktreeTransitionsForWorker: (
     ownerId: string,
@@ -210,7 +214,12 @@ export function installInternalWorkerHttpControlRoutes(
         workerAuth.ownerId,
         heartbeat.data.workerId,
       );
-      return reply.code(202).send(worker);
+      return reply.code(202).send({
+        ...worker,
+        computerUseEffects: effectiveCuaEffects(
+          await repository.getUserSettings(workerAuth.ownerId),
+        ),
+      });
     },
   );
 }

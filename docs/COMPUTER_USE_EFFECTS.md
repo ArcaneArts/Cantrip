@@ -1,12 +1,11 @@
 # CUA window effects
 
 The foundation is being delivered in sequential manual-change PRs. The shader
-ABI and native telemetry are merged in PR #1814. The next milestone implements
-native live capture, the Metal renderer, panel ordering, bundled fragments,
-optional history, and helper-level `effects.configure` / `effects.get` commands.
-User settings and the development shader-replacement workflow remain required
-follow-up work. Effects remain Off by default; this native milestone does not
-add a user-facing settings control yet.
+ABI and native telemetry are merged in PR #1814; clean capture, Metal rendering,
+panel ordering, bundled fragments, and optional history are merged in PR #1815.
+Account settings now propagate through the server and worker to the native helper.
+Effects remain Off by default. Development shader replacement and the final
+lifecycle/delivery audit remain required follow-up work.
 
 ## Composition contract
 
@@ -169,9 +168,8 @@ and [CoreVideo Metal texture import](https://developer.apple.com/documentation/c
 
 ## Remaining delivery and manual acceptance
 
-The remaining milestone must expose settings through the app/server/worker
-boundary, respect computer-use enablement, and provide shader replacement with
-useful compilation diagnostics and last-working-pipeline/original-window fallback.
+The remaining milestone must provide development shader replacement with useful
+compilation diagnostics and last-working-pipeline/original-window fallback.
 It must finish the lifecycle review and document concrete platform limitations.
 
 After those milestones, build/install development artifacts without launching or
@@ -185,3 +183,25 @@ separation, history initialization/accumulation, and compiler diagnostics. Local
 telemetry and service tests cover the ABI and existing session behavior. These
 checks do not establish live window alignment or stacking. Live visual acceptance
 belongs to the user.
+
+## Account settings and worker synchronization
+
+Settings → General → Computer use → Window effects offers Off, Pass-through,
+Debug gradient inversion, and the debug shader’s strength, radius, and input
+feedback parameters. Effects default to Off. Disabling computer use removes the
+active effect while retaining the chosen effect for a later opt-in.
+
+Configuration is account-wide and lives in server-owned user settings, separately
+from cursor appearance and input authorization. Migration 0202 advances a durable
+revision whenever the effect or computer-use opt-in changes. Settings saves send
+the effective configuration to workers immediately; authenticated heartbeats
+also carry it every five seconds. The worker ignores older revisions, applies
+the newest revision to its current helper, and restores it when a helper starts.
+Reading or saving settings never starts the helper or a capture session.
+
+The settings page can select a worker and refresh its actual effect status.
+It reports compiler/render errors and unsupported backends; a status of
+“presenting” describes native presentation state, not user-verified visual
+correctness. Rendering configuration errors do not revoke input authorization or
+cause agent input to be replayed. Disabling computer use still uses the existing
+session-revocation and input-cleanup behavior.

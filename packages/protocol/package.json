@@ -151,6 +151,10 @@
     "./surface-private-state": {
       "types": "./src/surface-private-state.ts",
       "import": "./dist/surface-private-state.js"
+    },
+    "./computer-use-effects": {
+      "types": "./src/computer-use-effects.ts",
+      "import": "./dist/computer-use-effects.js"
     }
   },
   "files": [

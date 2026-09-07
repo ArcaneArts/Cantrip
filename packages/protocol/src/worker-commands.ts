@@ -6,6 +6,7 @@ import { workerWorktreeCodeCommandSchemas } from "./worker-command-worktree-code
 import { workerSurfaceCommandSchemas } from "./worker-command-surfaces.js";
 import { workerChatCommandSchemas } from "./worker-command-chat.js";
 import {
+  workerComputerUseEffectsCommandSchema,
   workerComputerUseCommandSchema,
   workerComputerUseApprovalResponseCommandSchema,
   workerComputerUsePreviewOpenCommandSchema,
@@ -14,6 +15,7 @@ import {
 } from "./worker-command-computer-use.js";
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
+  workerComputerUseEffectsCommandSchema,
   workerComputerUseCommandSchema,
   workerComputerUseApprovalResponseCommandSchema,
   workerComputerUsePreviewOpenCommandSchema,

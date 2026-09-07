@@ -1,3 +1,4 @@
+import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
 import type {
   CodeAppearance,
   CodexDeviceLogin,
@@ -1906,15 +1907,31 @@ export function SettingsPage({
                 ) : null}
 
                 {section === "general" && computerUseMatches ? (
-                  <ComputerUseSettings
-                    enabled={
-                      settings.data?.preferences.computerUseEnabled ?? false
-                    }
-                    pending={preferences.isPending}
-                    onChange={(computerUseEnabled) =>
-                      preferences.mutate({ computerUseEnabled })
-                    }
-                  />
+                  <div>
+                    <ComputerUseSettings
+                      enabled={
+                        settings.data?.preferences.computerUseEnabled ?? false
+                      }
+                      pending={preferences.isPending}
+                      onChange={(computerUseEnabled) =>
+                        preferences.mutate({ computerUseEnabled })
+                      }
+                    />
+                    {settings.data?.preferences.computerUseEnabled ? (
+                      <div className="px-3 pb-3">
+                        <ComputerUseEffectsSettings
+                          configuration={
+                            settings.data.preferences.computerUseEffects
+                          }
+                          pending={preferences.isPending}
+                          onChange={(computerUseEffects) =>
+                            preferences.mutate({ computerUseEffects })
+                          }
+                          workers={workers.data ?? []}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
                 {section === "general" && chatDisplayMatches ? (
                   <section>
