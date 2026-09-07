@@ -6,6 +6,23 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { navigateMobileSettingsBack, ShellHeader } from "./shell-header";
 
 describe("desktop settings workspace", () => {
+  it("returns from Overview without selecting or closing a tab", () => {
+    const setShowProjectOverview = vi.fn();
+    const header = ShellHeader({
+      bindings: {
+        appMode: "ide",
+        showProjectOverview: true,
+        setShowProjectOverview,
+        sidebarToggleVisible: true,
+      },
+    });
+    const markup = renderToStaticMarkup(header);
+    expect(markup).toContain("Back to Project");
+    expect(markup).toContain("Overview");
+    expect(markup).not.toContain("Expand sidebar");
+    header.props.children[0].props.onClick();
+    expect(setShowProjectOverview).toHaveBeenCalledExactlyOnceWith(false);
+  });
   it("closes project settings without changing account settings or the selected tab", () => {
     const setShowSettings = vi.fn();
     const setShowProjectSettings = vi.fn();

@@ -2,6 +2,19 @@
 
 Status: implemented through Milestone 7.
 
+## Overview navigation (supersedes the Overview tab design below)
+
+Overview is a project page, not a surface tab. Open it from the project
+switcher's `…` menu. It hides the project sidebar, tab bar, and dock rails;
+Back to Project restores the existing selection and dock expansion without
+changing the workspace layout. The repeated project-name Overview row is no
+longer displayed in the sidebar.
+
+Overview is absent from the surface registry and cannot be opened or moved as
+a tab. The server lazily retires old Overview placements when reading a layout,
+using normal pane/anchor repair and advancing the layout revision. Its legacy
+identifier remains decodable for compatibility; Tasks remains a built-in tab.
+
 Cantrip is moving from a kind-dependent tab-group presentation to a unified
 workspace model. Every open surface should behave like a tab, every tab should
 have exactly one placement, and the pane containing that tab should determine

@@ -101,6 +101,8 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     showProjectSettings,
     showServerAdmin,
     showSettings,
+    showProjectOverview,
+    setShowProjectOverview,
     sidebarFilePreview,
     sidebarFilePreviewVisible,
     sidebarToggleVisible,
@@ -118,7 +120,10 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
       : appMode === "ide"
         ? switchToChat
         : switchToIde;
-  if ((showSettings || showProjectSettings) && !compactShell) {
+  if (
+    ((showSettings || showProjectSettings) && !compactShell) ||
+    showProjectOverview
+  ) {
     return (
       <header
         className={cn(
@@ -138,7 +143,9 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
           onClick={() =>
             showSettings
               ? setShowSettings(false)
-              : setShowProjectSettings(false)
+              : showProjectSettings
+                ? setShowProjectSettings(false)
+                : setShowProjectOverview(false)
           }
         >
           <ArrowLeft className="size-4" />
@@ -147,7 +154,11 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
             : "Back to Chat"}
         </Button>
         <span data-tauri-drag-region={overlayTitlebar ? "" : undefined}>
-          {showSettings ? "Settings" : "Project Settings"}
+          {showSettings
+            ? "Settings"
+            : showProjectSettings
+              ? "Project Settings"
+              : "Overview"}
         </span>
       </header>
     );

@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
 
-import { ProjectChatList, ProjectOverviewTab } from "./project-chat-list";
+import { ProjectChatList } from "./project-chat-list";
 
 vi.mock("@/components/chat/chat-menu", () => ({
   ChatContextMenu: ({ children }: { children: ReactNode }) => children,
@@ -71,31 +71,6 @@ describe("chat activity status", () => {
     expect(completed).toContain("Agent turn finished; open to dismiss");
     expect(running).toContain("animate-spin");
     expect(running).not.toContain("bg-sky-400");
-  });
-});
-
-describe("project root sidebar row", () => {
-  it("uses the project name instead of duplicating the Overview launcher", () => {
-    const markup = renderToStaticMarkup(
-      <ProjectOverviewTab
-        active
-        onOpenSettings={() => undefined}
-        onRemove={() => undefined}
-        onSelect={() => undefined}
-        project={
-          {
-            id: "project-1",
-            name: "BileTools",
-            setupStatus: "ready",
-          } as Parameters<typeof ProjectOverviewTab>[0]["project"]
-        }
-        revealDisabled={false}
-      />,
-    );
-
-    expect(markup).toContain(">BileTools</span>");
-    expect(markup).toContain("h-8");
-    expect(markup).not.toContain(">Overview</span>");
   });
 });
 
@@ -241,6 +216,7 @@ describe("sidebar surface inventory", () => {
 
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Open views");
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Project tools");
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Overview");
     await act(async () => renderer.unmount());
   });
 });

@@ -809,6 +809,25 @@ export class ProjectTabLayoutRepository {
           ] as const,
       ),
     ]);
+    // Lazily retire legacy Overview placements using the same anchor/empty-pane
+    // repair as a normal close. Lock the project revision before changing rows.
+    const overviewMembers = members.filter(
+      (member) =>
+        member.tabKind === "builtin" && member.tabId === "project.overview",
+    );
+    if (overviewMembers.length) {
+      await this.database.transaction(async (transaction) => {
+        await bumpRevision(transaction, projectId);
+        for (const member of overviewMembers) {
+          await detachProjectTabPlacement(
+            transaction,
+            projectId,
+            member.tabKey,
+          );
+        }
+      });
+      return this.get(ownerId, projectId);
+    }
     const memberSummaries = new Map<string, ProjectTabMemberWireSummary[]>();
     const dockPresentationByTabAndRegion = new Map(
       dockPresentations.map(
@@ -1608,6 +1627,14 @@ export class ProjectTabLayoutRepository {
     projectId: string,
     input: ProjectSurfaceViewOpen,
   ): Promise<ProjectSurfaceViewOpenResult | null> {
+    if (
+      input.surfaceRef.kind === "builtin" &&
+      input.surfaceRef.definitionId === "project.overview"
+    ) {
+      throw new TabLayoutInvariantError(
+        "Overview is a project page, not a tab.",
+      );
+    }
     const current = await this.get(ownerId, projectId);
     if (!current) return null;
     const viewId = projectSurfaceViewId({

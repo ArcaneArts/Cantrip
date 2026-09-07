@@ -185,6 +185,7 @@ export function PersistentSurfaceLayer({
       !compactShell &&
       !showImporter &&
       !showSettings &&
+      !bindings.showProjectOverview &&
       !showArchivedStandaloneChats &&
       !showServerAdmin &&
       !showProjectSettings &&

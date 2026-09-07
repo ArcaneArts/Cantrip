@@ -33,7 +33,10 @@ describe("project surface registry", () => {
   it("keeps registry identities unique and built-ins non-destructive", () => {
     const ids = PROJECT_SURFACE_DEFINITIONS.map(({ id }) => id);
     expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).not.toContain("project.overview");
     for (const id of PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS) {
+      // The legacy identifier remains decodable, but Overview is no longer a tab.
+      if (id === "project.overview") continue;
       expect(
         PROJECT_SURFACE_DEFINITIONS.find((definition) => definition.id === id),
       ).toMatchObject({

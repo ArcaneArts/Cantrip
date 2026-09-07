@@ -394,8 +394,15 @@ export function App() {
     focusedPaneId: workspaceSelection.focusedPaneId,
     preview: sidebarFilePreview,
   });
+  const [showProjectOverview, setShowProjectOverview] = useState(false);
+  useEffect(() => setShowProjectOverview(false), [
+    selectedProjectId,
+    selectedTabKey,
+    showSettings,
+    showProjectSettings,
+  ]);
   const projectOverviewSelected =
-    !sidebarFilePreviewFocused &&
+    (showProjectOverview || !sidebarFilePreviewFocused) &&
     !showImporter &&
     !showSettings &&
     !showArchivedStandaloneChats &&
@@ -403,9 +410,9 @@ export function App() {
     !showProjectSettings &&
     (projectOverviewPopoutTarget !== null ||
       selectedBuiltInDefinitionId !== null ||
-      (!isPopout && workspaceSelection.destination === "overview"));
+      showProjectOverview);
   const activeProjectOverviewSection =
-    projectOverviewPopoutTarget?.section ??
+    (showProjectOverview ? "overview" : projectOverviewPopoutTarget?.section) ??
     (selectedBuiltInDefinitionId
       ? projectOverviewSectionForBuiltInDefinition(selectedBuiltInDefinitionId)
       : projectOverviewSection);
@@ -780,6 +787,7 @@ export function App() {
   useEffect(() => {
     if (
       isPopout ||
+      projectOverviewSection === "overview" ||
       !selectedProjectId ||
       !tabLayout.isSuccess ||
       workspaceSelection.destination !== "overview" ||
@@ -790,10 +798,7 @@ export function App() {
     const attempt = `${selectedProjectId}:${tabLayout.data.revision}:${projectOverviewSection}:${projectOverviewWorktreeId ?? ""}`;
     if (projectToolBridgeAttemptRef.current === attempt) return;
     projectToolBridgeAttemptRef.current = attempt;
-    if (
-      projectOverviewSection === "overview" ||
-      projectOverviewSection === "tasks"
-    ) {
+    if (projectOverviewSection === "tasks") {
       void openProjectBuiltinSurface(selectedProjectId, projectOverviewSection);
       return;
     }
@@ -1786,10 +1791,7 @@ export function App() {
       returnToLegacyCompactProjectOverview();
       return;
     }
-    void openProjectNavigatorSurface(
-      selectedProjectId,
-      projectBuiltInSurfaceResourceRef("project.overview"),
-    );
+    setShowProjectOverview(true);
   };
   useShellClientControlNavigation({
     activeProjectWorkspace,
@@ -2023,6 +2025,7 @@ export function App() {
     renamePaneMutation, renameStandaloneChat, renameSurface, renameTerminalMutation, repositoryStats,
     requestBindWorktree, requestDeleteExplorer, resizeSidebarWithKeyboard, resolvedProjectOverviewWorktreeId, restoreStandaloneChat,
     retryFolderSetupMutation, retryLongPathSetupMutation, retrySidebarFileTree, returnToCompactProjectOverview, revealWorkspace,
+    showProjectOverview, setShowProjectOverview,
     runConfigurationEditorId, runConfigurationRuntimes, runConfigurations, runProjectScriptCommand, scriptCommandWorktreeId,
     selectPaneFromSidebar, selectProjectFromCommandBar,
     selectProjectFromSidebar, selectProjectWorkspace, selectStandaloneChat, selectTopTab, selectedBrowser,

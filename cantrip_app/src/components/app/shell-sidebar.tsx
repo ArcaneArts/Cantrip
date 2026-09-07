@@ -148,6 +148,8 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     showArchivedStandaloneChats,
     showSettings,
     showProjectSettings,
+    showProjectOverview,
+    returnToCompactProjectOverview,
     sidebarCollapsed,
     sidebarExpanded,
     sidebarExplorer,
@@ -186,7 +188,10 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
               : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
           )}
           style={{
-            display: showSettings || showProjectSettings ? "none" : undefined,
+            display:
+              showSettings || showProjectSettings || showProjectOverview
+                ? "none"
+                : undefined,
             width: desktopSidebarDrawer
               ? undefined
               : sidebarCollapsed
@@ -360,6 +365,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                       setShowProjectSettings(false);
                     }}
                     onOpenProjectSettings={openProjectSettings}
+                    onOpenOverview={returnToCompactProjectOverview}
                     onRemoveProject={(projectId, deleteLocalFiles) =>
                       removeProjectMutation
                         .mutateAsync({ projectId, deleteLocalFiles })
