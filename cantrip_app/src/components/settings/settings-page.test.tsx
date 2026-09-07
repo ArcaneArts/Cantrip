@@ -50,6 +50,34 @@ function settingsWithContentGutters(contentGutters: boolean): SettingsBundle {
 }
 
 describe("account settings", () => {
+  it("carves computer use and remote desktop controls out of General", () => {
+    const general = renderSettings("general");
+    expect(general).not.toContain("Enable computer use");
+    expect(general).not.toContain('aria-label="Remote Desktop frame rate"');
+    const settings = settingsWithContentGutters(false);
+    settings.preferences.computerUseEnabled = true;
+    const computer = renderSettings("computer-use", settings);
+    expect(computer).toContain("Enable computer use");
+    expect(computer).toContain("Window effects");
+    expect(computer).not.toContain('aria-label="Remote Desktop frame rate"');
+    expect(computer).not.toContain("Default agent permissions");
+    const desktop = renderSettings("remote-desktop", settings);
+    expect(desktop).toContain('aria-label="Remote Desktop frame rate"');
+    expect(desktop).toContain('aria-label="Remote Desktop stream quality"');
+    expect(desktop).not.toContain("Enable computer use");
+    expect(desktop).not.toContain("Window effects");
+  });
+
+  it.each([
+    ["accessibility", "computer-use"],
+    ["window effects", "computer-use"],
+    ["fps", "remote-desktop"],
+  ])("routes %s search to %s", (query, sectionId) => {
+    expect(settingsSearchResults(query, settingsNavigationSections)).toEqual([
+      expect.objectContaining({ sectionId }),
+    ]);
+  });
+
   it("opens Pro Mode configuration without letting a secondary click toggle it", async () => {
     const configured: boolean[] = [];
     const checkedChanges: boolean[] = [];
