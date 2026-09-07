@@ -60,6 +60,12 @@ pub struct SessionState {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "operation", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "effects.configure")]
+    EffectsConfigure {
+        configuration: crate::effects::Configuration,
+    },
+    #[serde(rename = "effects.get")]
+    EffectsGet {},
     #[serde(rename = "capabilities.get")]
     CapabilitiesGet {},
     #[serde(rename = "targets.list")]
@@ -271,9 +277,18 @@ impl<B: CaptureBackend> CuaService<B> {
     ) -> Result<OperationResult> {
         cancel.check()?;
         match operation {
+            Operation::EffectsConfigure { configuration } => {
+                configuration.validate()?;
+                Ok(OperationResult::json(
+                    self.backend.configure_effects(configuration)?,
+                ))
+            }
+            Operation::EffectsGet {} => Ok(OperationResult::json(self.backend.effects_status())),
             Operation::CapabilitiesGet {} => {
                 let mut operations = vec![
                     "capabilities.get",
+                    "effects.configure",
+                    "effects.get",
                     "targets.list",
                     "target.attach",
                     "target.detach",

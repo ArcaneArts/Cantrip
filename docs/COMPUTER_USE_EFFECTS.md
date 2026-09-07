@@ -1,10 +1,12 @@
 # CUA window effects
 
-The foundation is being delivered in sequential manual-change PRs. The first
-milestone defines the shader ABI, bundled effect descriptors, and native input /
-shared cursor telemetry. It does **not** yet display a filtered window or expose
-settings. Live GPU capture/rendering, panel ordering, configuration, shader
-replacement, and lifecycle handling remain required follow-up milestones.
+The foundation is being delivered in sequential manual-change PRs. The shader
+ABI and native telemetry are merged in PR #1814. The next milestone implements
+native live capture, the Metal renderer, panel ordering, bundled fragments,
+optional history, and helper-level `effects.configure` / `effects.get` commands.
+User settings and the development shader-replacement workflow remain required
+follow-up work. Effects remain Off by default; this native milestone does not
+add a user-facing settings control yet.
 
 ## Composition contract
 
@@ -105,17 +107,81 @@ request it and must keep it separate from the original capture.
 Configuration validation checks the actual supplied parameter values and names.
 It does not gate capture or input on cached capability/permission guesses.
 
+## Native rendering and ownership
+
+ScreenCaptureKit uses a desktop-independent filter containing only the selected
+application window, at its pixel resolution, with cursor capture, audio, shadows,
+and global clipping disabled. Complete frames replace a single retained sample
+slot. Idle notifications keep the last clean image; blank/suspended output hides
+the panel. The existing low-resolution sharing stream is released while the live
+effect stream supplies that window. Agent snapshots retain their separate,
+unfiltered screenshot path. Monitor snapshots exclude the helper application
+when its panels are present, also covering newly created panels during capture.
+
+CoreVideo imports the sample's IOSurface into a Metal texture without encoding
+or reading pixels on the CPU. Each GPU frame retains both its pixel buffer and
+CoreVideo texture wrapper until GPU completion. Source timestamps are mapped
+from the CoreMedia host clock to the local monotonic epoch before conversion to
+shader-relative seconds.
+
+The main queue owns AppKit windows, geometry, capture delegates, and composition
+order. A shader compiler thread creates pipelines without blocking CUA or the
+main queue. Each target has one render thread with a latest-only mailbox;
+drawable acquisition and GPU work cannot block input dispatch. There are at most
+three GPU submissions in flight per target. If drawable acquisition waits, the
+worker replaces its waiting job with the newest available frame/input context.
+Cursor telemetry is sampled when the worker actually renders.
+
+The effect panel is transparent until a matching geometry generation finishes
+rendering. Acknowledgments also track the source sample sequence so a dropped
+submission is retried even if the source subsequently becomes static. Failed GPU
+commands or stopped capture remove the presentation and expose a diagnostic in
+`effects.get`. Old asynchronous discovery and render callbacks cannot restore a
+detached target. The last owner releases its stream, renderer, compiler resources,
+and windows; in-flight GPU references live until completion.
+
+All sessions on a helper share its effect configuration. One target/generation
+owns one effect surface; the lexically first session ID supplies initial metadata
+when owners have different retained revisions. Actual window geometry takes
+precedence. Each agent retains its separate cursor color and telemetry. Window
+movement and display scale update the panel, and resize invalidates stale frames.
+Closed, minimized, and off-Space targets are removed from presentation. Panels
+use the target's level and relative ordering, never activation or target raising.
+Cursor panels order above the effect panel. Settings and visual acceptance must
+still verify the applicable fullscreen/Space behavior on the user's macOS build.
+
+History is an optional pair of GPU-only render-target textures. The first history
+image is cleared; subsequent frames sample the previous effect output and render
+into the other texture, then blit into the drawable. Neither history texture can
+replace or modify the capture texture. History resets on geometry/effect changes
+and is not allocated by the initial bundled effects.
+
+The debug fragment uses a left-to-right gradient inversion of source pixels and
+an animated FX badge. Optional telemetry shows raw/smoothed velocity, held-button
+and modifier feedback, and overlapping press events. This is a diagnostics
+shader, not a final artistic warp effect. The pass-through fragment samples the
+source unchanged. A fixed fullscreen triangle is the only vertex stage.
+
+The native approach follows Apple's documentation for
+[window capture](https://developer.apple.com/documentation/screencapturekit/sccontentfilter/init(desktopindependentwindow:)),
+[IOSurface-backed screen frames](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos),
+and [CoreVideo Metal texture import](https://developer.apple.com/documentation/corevideo/cvmetaltexturecachecreatetexturefromimage(_:_:_:_:_:_:_:_:_:)).
+
 ## Remaining delivery and manual acceptance
 
-Subsequent milestones must deliver clean live capture, bounded frame/GPU
-ownership, independent animation, shader compilation and replacement, optional
-history, shared-window ownership, click-through panel stacking, geometry and
-Space/fullscreen lifecycle, settings that respect computer-use enablement, and
-cleanup on disable/final detach. Off must remain the default. A failed renderer
-must reveal the original application rather than cover it with a frozen frame.
+The remaining milestone must expose settings through the app/server/worker
+boundary, respect computer-use enablement, and provide shader replacement with
+useful compilation diagnostics and last-working-pipeline/original-window fallback.
+It must finish the lifecycle review and document concrete platform limitations.
 
 After those milestones, build/install development artifacts without launching or
 restarting the app. The final handoff will include exact setup instructions and
 a copyable agent prompt for checking filtering, clean agent snapshots,
 unfiltered cursors, click/drag telemetry, window alignment, stacking, and cleanup.
-Live visual acceptance belongs to the user; local tests do not claim it.
+
+Focused offscreen Metal tests use synthetic textures (no desktop capture, window,
+or input). They check pass-through orientation/pixel preservation, debug output
+separation, history initialization/accumulation, and compiler diagnostics. Local
+telemetry and service tests cover the ABI and existing session behavior. These
+checks do not establish live window alignment or stacking. Live visual acceptance
+belongs to the user.

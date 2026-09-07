@@ -27,3 +27,7 @@ pub fn input(session: &str, target: &Target, event: InputEvent) {
 pub fn window(target: &Target, now: u64) -> Vec<Agent> {
     with(|s| s.window(&target.id, target.generation, now))
 }
+
+pub fn geometry(target: &Target) {
+    with(|s| s.geometry(target, now_ns()));
+}

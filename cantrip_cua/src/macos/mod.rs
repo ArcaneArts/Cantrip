@@ -12,6 +12,7 @@ mod pending;
 mod registry;
 mod sharing;
 mod skylight;
+mod window_effects;
 mod window_input;
 
 use crate::{
@@ -227,8 +228,19 @@ impl MacOsBackend {
 }
 
 impl CaptureBackend for MacOsBackend {
+    fn configure_effects(
+        &mut self,
+        configuration: crate::effects::Configuration,
+    ) -> Result<serde_json::Value> {
+        Ok(window_effects::configure(configuration))
+    }
+    fn effects_status(&mut self) -> serde_json::Value {
+        window_effects::status()
+    }
+
     fn present_cursors(&mut self, sessions: Vec<crate::service::SessionState>) {
         sharing::retain_sessions(&sessions);
+        window_effects::sessions(sessions.clone());
         overlay::present(sessions);
     }
     fn present_cursor_step(&mut self, sessions: Vec<crate::service::SessionState>) {
@@ -706,12 +718,26 @@ unsafe fn selected_filter(
                         .is_some_and(|app| unsafe { app.processID() } == std::process::id() as i32)
                 })
                 .collect();
+            let helper = excluded
+                .iter()
+                .find_map(|window| unsafe { window.owningApplication() });
             let filter = unsafe {
-                SCContentFilter::initWithDisplay_excludingWindows(
-                    SCContentFilter::alloc(),
-                    &display,
-                    &NSArray::from_retained_slice(&excluded),
-                )
+                if let Some(helper) = helper {
+                    // Application exclusion also covers panels created after this
+                    // inventory callback, while the screenshot is in flight.
+                    SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(
+                        SCContentFilter::alloc(),
+                        &display,
+                        &NSArray::from_slice(&[&*helper]),
+                        &NSArray::<SCWindow>::new(),
+                    )
+                } else {
+                    SCContentFilter::initWithDisplay_excludingWindows(
+                        SCContentFilter::alloc(),
+                        &display,
+                        &NSArray::from_retained_slice(&excluded),
+                    )
+                }
             };
             (
                 unsafe { display_candidate(&display, Some(&filter)) }?,
