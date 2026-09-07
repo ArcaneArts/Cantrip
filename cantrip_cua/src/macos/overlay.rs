@@ -244,6 +244,8 @@ struct Presentation {
 }
 thread_local! { static PRESENTATION: RefCell<Presentation> = RefCell::default(); }
 pub(super) fn present(sessions: Vec<SessionState>) {
+    // Register owners before native input can be posted on the executor.
+    crate::effects::live::synchronize(&sessions);
     // Only plain owned data crosses the executor/main-queue boundary.
     DispatchQueue::main().exec_async(move || {
         autoreleasepool(|_| {
@@ -264,6 +266,7 @@ pub(super) fn present_step(sessions: Vec<SessionState>) {
     DispatchQueue::main().exec_sync(move || {
         autoreleasepool(|_| {
             PRESENTATION.with_borrow_mut(|p| {
+                crate::effects::live::synchronize(&sessions);
                 p.sessions = sessions;
                 if !p.ticking {
                     p.ticking = true;
@@ -292,6 +295,7 @@ pub(super) fn move_cursor(
                             .as_ref()
                             .is_some_and(|t| t.id == target.id && t.generation == target.generation)
                 }) {
+                    crate::effects::live::movement(&session, &target, point, false);
                     let now = timestamp();
                     let _ = state.cursor.move_to(point, &target.bounds, now);
                     if let Some(method) = method {

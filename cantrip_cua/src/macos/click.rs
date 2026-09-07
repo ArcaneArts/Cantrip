@@ -66,6 +66,7 @@ impl MouseEvent {
     }
 }
 pub(super) fn click(
+    session: &str,
     target: &Target,
     position: Point,
     cancel: &Cancellation,
@@ -82,8 +83,14 @@ pub(super) fn click(
     let up = MouseEvent::create(2, global)?; // kCGEventLeftMouseUp
     crate::input::dispatch_single_click(
         cancel,
-        || unsafe { CGEventPost(0, down.0) },
-        || unsafe { CGEventPost(0, up.0) },
+        || unsafe {
+            CGEventPost(0, down.0);
+            super::input_telemetry::posted(session, &current, down.0);
+        },
+        || unsafe {
+            CGEventPost(0, up.0);
+            super::input_telemetry::posted(session, &current, up.0);
+        },
     )?;
     Ok((
         current,
@@ -104,6 +111,7 @@ pub(super) fn click(
 /// Quartz fields 91/92 describe the intended window but do not guarantee routing.
 /// No global post, application activation or system cursor restoration occurs.
 pub(super) fn process_click(
+    session: &str,
     target: &Target,
     position: Point,
     cancel: &Cancellation,
@@ -122,8 +130,14 @@ pub(super) fn process_click(
     }
     crate::input::dispatch_single_click(
         cancel,
-        || unsafe { CGEventPostToPid(pid, down.0) },
-        || unsafe { CGEventPostToPid(pid, up.0) },
+        || unsafe {
+            CGEventPostToPid(pid, down.0);
+            super::input_telemetry::posted(session, target, down.0);
+        },
+        || unsafe {
+            CGEventPostToPid(pid, up.0);
+            super::input_telemetry::posted(session, target, up.0);
+        },
     )?;
     Ok((
         target.clone(),
@@ -143,6 +157,7 @@ pub(super) fn process_click(
 
 /// One explicit experimental mouse gesture. No public/global second posting.
 pub(super) fn background_click(
+    session: &str,
     target: &Target,
     position: Point,
     cancel: &Cancellation,
@@ -171,6 +186,7 @@ pub(super) fn background_click(
     cancel.check()?;
     unsafe {
         delivery.post(pid, movement.0);
+        super::input_telemetry::posted(session, target, movement.0);
     }
     // Give the target's event loop a tracking update before the button pair.
     std::thread::sleep(Duration::from_millis(12));
@@ -185,11 +201,13 @@ pub(super) fn background_click(
         || {
             unsafe {
                 delivery.post(pid, down.0);
+                super::input_telemetry::posted(session, target, down.0);
             }
             std::thread::sleep(Duration::from_millis(28));
         },
         || unsafe {
             delivery.post(pid, up.0);
+            super::input_telemetry::posted(session, target, up.0);
         },
     ).map_err(|_| CuaError::new(
         ErrorCode::InputUnknown,

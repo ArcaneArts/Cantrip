@@ -90,6 +90,7 @@ impl Event {
     }
 }
 pub(super) fn perform(
+    session: &str,
     target: &Target,
     command: &InputCommand,
     position: Point,
@@ -174,7 +175,8 @@ pub(super) fn perform(
             event.0,
             epoch.saturating_add(clock.elapsed().as_nanos().min(u64::MAX as u128) as u64),
         );
-        delivery.post(pid, event.0)
+        delivery.post(pid, event.0);
+        super::input_telemetry::posted(session, target, event.0);
     };
     let mut final_position = position;
     match command {
@@ -435,6 +437,17 @@ pub(super) fn perform(
             prepare(&event, position, false);
             cancel.check()?;
             post(&event);
+            crate::effects::live::input(
+                session,
+                target,
+                crate::effects::telemetry::InputEvent {
+                    kind: crate::effects::telemetry::EventKind::Scroll,
+                    code: 0,
+                    modifiers: 0,
+                    position: Some(position),
+                    delta: [*delta_x as f32, *delta_y as f32],
+                },
+            );
         }
     }
     Ok((

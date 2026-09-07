@@ -105,7 +105,7 @@ impl CursorAppearance {
         Ok(())
     }
 
-    fn rgba(&self) -> Result<[u8; 4]> {
+    pub(crate) fn rgba(&self) -> Result<[u8; 4]> {
         let bytes = self.color.as_bytes();
         if !matches!(bytes.len(), 7 | 9)
             || bytes[0] != b'#'

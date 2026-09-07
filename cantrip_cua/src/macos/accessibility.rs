@@ -572,6 +572,19 @@ impl Accessibility {
         cancel.check()?;
         let action = Owned::string("AXPress");
         let code = unsafe { AXUIElementPerformAction(element.0, action.0) };
+        if code == 0 || !matches!(code, -25202 | -25206 | -25208 | -25211) {
+            crate::effects::live::input(
+                session,
+                target,
+                crate::effects::telemetry::InputEvent {
+                    kind: crate::effects::telemetry::EventKind::ControlAction,
+                    code: 0,
+                    modifiers: 0,
+                    position,
+                    delta: [0.0; 2],
+                },
+            );
+        }
         // Any failure not guaranteed to reject the action is ambiguous.
         if code != 0 {
             if matches!(code, -25202 | -25206 | -25208 | -25211) {
