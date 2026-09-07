@@ -41,6 +41,7 @@ export const CUA_NATIVE_ERROR_CODES = [
   "invalid-request",
   "script-syntax",
   "script-evaluation",
+  "script-action",
   "protocol-version",
   "capacity",
   "cancelled",
@@ -77,7 +78,9 @@ const nativeMessages: Record<CuaNativeErrorCode, string> = {
   "script-syntax":
     "Invalid JavaScript syntax. Use top-level await and a final expression, such as await cua.targets(); do not use a top-level return. Correct the script before trying again.",
   "script-evaluation":
-    "JavaScript evaluation failed before any computer-use host action was dispatched. Persistent top-level let/const bindings cannot be redeclared. Use a block { ... } for temporary variables or choose fresh names, then correct the script. This is not a native click rejection.",
+    "JavaScript evaluation failed in the script, not necessarily in native input. Check window matching and ordinary JavaScript errors; use cua.findWindows({application,title}) with a partial title because window titles can change (for example an audio indicator). Persistent top-level let/const bindings cannot be redeclared; use a block { ... } for temporary variables. Earlier host operations may have completed; do not replay input based on this error.",
+  "script-action":
+    "Invalid CUA method arguments; that action was not dispatched. Read cua.help() for signatures. Mouse timeline example: [{atMs:0,pointerDown:{x:100,y:200}},{atMs:150,pointerUp:true}]. pointerUp must be true, not a point or button object; keyDown/keyUp must be arrays. Earlier actions in the script may have completed.",
   "protocol-version": "The computer-use protocol version is unsupported.",
   capacity: "The computer-use operation exceeded a runtime limit.",
   cancelled: "The computer-use operation was cancelled by the runtime.",

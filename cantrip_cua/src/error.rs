@@ -15,6 +15,7 @@ pub enum ErrorCode {
     InvalidRequest,
     ScriptSyntax,
     ScriptEvaluation,
+    ScriptAction,
     ProtocolVersion,
     Capacity,
     Cancelled,
